@@ -15,6 +15,10 @@ type InvitationApplication interface {
 	AcceptStudentClassInvitation(context.Context, application.Invocation, application.AcceptStudentClassInvitationCommand) (*application.InvitationAcceptanceView, error)
 	IssueTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.IssueTeacherAcademicUnitInvitationCommand) (application.InvitationView, error)
 	AcceptTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.AcceptTeacherAcademicUnitInvitationCommand) (*application.InvitationAcceptanceView, error)
+	IssueAcademicUnitRoleInvitation(context.Context, application.Invocation, application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error)
+	AcceptAcademicUnitRoleInvitation(context.Context, application.Invocation, application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error)
+	IssueInstitutionRoleInvitation(context.Context, application.Invocation, application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error)
+	AcceptInstitutionRoleInvitation(context.Context, application.Invocation, application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error)
 }
 
 type issueStudentClassInvitationRequest struct {
@@ -53,6 +57,17 @@ type issueTeacherAcademicUnitInvitationRequest struct {
 
 type acceptTeacherAcademicUnitInvitationRequest acceptStudentClassInvitationRequest
 
+type issueScopedRoleInvitationRequest struct {
+	Email   string `json:"email"`
+	RoleID  string `json:"role_id"`
+	StartAt int64  `json:"start_at,omitempty"`
+	EndAt   int64  `json:"end_at,omitempty"`
+}
+
+type acceptScopedRoleInvitationRequest struct {
+	Claim string `json:"claim"`
+}
+
 type invitationResponse struct {
 	ID               string   `json:"id"`
 	Purpose          string   `json:"purpose"`
@@ -70,8 +85,8 @@ type invitationResponse struct {
 type invitationAcceptanceResponse struct {
 	UserID               string `json:"user_id"`
 	InvitationID         string `json:"invitation_id"`
-	AffiliationID        string `json:"affiliation_id"`
-	ClassMemberID        string `json:"class_member_id"`
+	AffiliationID        string `json:"affiliation_id,omitempty"`
+	ClassMemberID        string `json:"class_member_id,omitempty"`
 	AcademicUnitMemberID string `json:"academic_unit_member_id,omitempty"`
 	RoleBindingID        string `json:"role_binding_id,omitempty"`
 	Replayed             bool   `json:"replayed"`
@@ -93,6 +108,18 @@ func (unavailableInvitationApplication) IssueTeacherAcademicUnitInvitation(conte
 func (unavailableInvitationApplication) AcceptTeacherAcademicUnitInvitation(context.Context, application.Invocation, application.AcceptTeacherAcademicUnitInvitationCommand) (*application.InvitationAcceptanceView, error) {
 	return nil, application.NewError("invitation.unavailable")
 }
+func (unavailableInvitationApplication) IssueAcademicUnitRoleInvitation(context.Context, application.Invocation, application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
+	return application.InvitationView{}, application.NewError("invitation.unavailable")
+}
+func (unavailableInvitationApplication) AcceptAcademicUnitRoleInvitation(context.Context, application.Invocation, application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+	return nil, application.NewError("invitation.unavailable")
+}
+func (unavailableInvitationApplication) IssueInstitutionRoleInvitation(context.Context, application.Invocation, application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error) {
+	return application.InvitationView{}, application.NewError("invitation.unavailable")
+}
+func (unavailableInvitationApplication) AcceptInstitutionRoleInvitation(context.Context, application.Invocation, application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+	return nil, application.NewError("invitation.unavailable")
+}
 
 func invitationResource(invitations InvitationApplication) resource {
 	module := invitationResourceModule{invitations: invitations}
@@ -105,7 +132,80 @@ func invitationResource(invitations InvitationApplication) resource {
 			academicRelationshipMutationErrorCodes("invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"), module.issueTeacherAcademicUnit),
 		publicRoute(http.MethodPost, apiPath(literal("invitations"), literal("teacher-academic-unit"), literal("accept")),
 			[]string{"request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.user_invalid", "invitation.mail_unavailable", "invitation.unavailable", "authentication.password.invalid"}, module.acceptTeacherAcademicUnit),
+		principalRoute(http.MethodPost, apiPath(literal("academic-units"), canonicalID("academic_unit_id"), literal("invitations"), literal("role")),
+			academicRelationshipMutationErrorCodes("invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"), module.issueAcademicUnitRole),
+		sessionRoute(http.MethodPost, apiPath(literal("invitations"), literal("academic-unit-role"), literal("accept")),
+			sessionAuthenticationMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"), module.acceptAcademicUnitRole),
+		strongRecentSessionRoute(http.MethodPost, apiPath(literal("institutions"), canonicalID("institution_id"), literal("invitations"), literal("role")),
+			append(academicRelationshipMutationErrorCodes("invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable"),
+				"authentication.strong_required", "authentication.reauthentication_required"), module.issueInstitutionRole),
+		sessionRoute(http.MethodPost, apiPath(literal("invitations"), literal("institution-role"), literal("accept")),
+			sessionAuthenticationMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"), module.acceptInstitutionRole),
 	)
+}
+
+func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest) (operationResult, error) {
+	unitID, err := request.params.RequireAcademicUnitId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body issueScopedRoleInvitationRequest
+	if err = request.decodeJSON(&body, "issueAcademicUnitRoleInvitation"); err != nil {
+		return operationResult{}, err
+	}
+	created, err := m.invitations.IssueAcademicUnitRoleInvitation(request.context, request.invocation(), application.IssueAcademicUnitRoleInvitationCommand{
+		TargetEmail: body.Email, AcademicUnitID: unitID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusCreated, invitationResponseFromView(created)), nil
+}
+
+func (m invitationResourceModule) issueInstitutionRole(request operationRequest) (operationResult, error) {
+	institutionID, err := request.params.RequireInstitutionId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body issueScopedRoleInvitationRequest
+	if err = request.decodeJSON(&body, "issueInstitutionRoleInvitation"); err != nil {
+		return operationResult{}, err
+	}
+	created, err := m.invitations.IssueInstitutionRoleInvitation(request.context, request.invocation(), application.IssueInstitutionRoleInvitationCommand{
+		TargetEmail: body.Email, InstitutionID: institutionID, RoleID: body.RoleID, IntendedStartsAt: body.StartAt, IntendedEndsAt: body.EndAt,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusCreated, invitationResponseFromView(created)), nil
+}
+
+func (m invitationResourceModule) acceptAcademicUnitRole(request operationRequest) (operationResult, error) {
+	var body acceptScopedRoleInvitationRequest
+	if err := request.decodeJSON(&body, "acceptAcademicUnitRoleInvitation"); err != nil {
+		return operationResult{}, err
+	}
+	accepted, err := m.invitations.AcceptAcademicUnitRoleInvitation(request.context, request.invocation(), application.AcceptAcademicUnitRoleInvitationCommand{
+		Claim: body.Claim, Source: request.request.RemoteAddr,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)), nil
+}
+
+func (m invitationResourceModule) acceptInstitutionRole(request operationRequest) (operationResult, error) {
+	var body acceptScopedRoleInvitationRequest
+	if err := request.decodeJSON(&body, "acceptInstitutionRoleInvitation"); err != nil {
+		return operationResult{}, err
+	}
+	accepted, err := m.invitations.AcceptInstitutionRoleInvitation(request.context, request.invocation(), application.AcceptInstitutionRoleInvitationCommand{
+		Claim: body.Claim, Source: request.request.RemoteAddr,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, invitationAcceptanceResponseFromView(accepted)), nil
 }
 
 func (m invitationResourceModule) issueTeacherAcademicUnit(request operationRequest) (operationResult, error) {

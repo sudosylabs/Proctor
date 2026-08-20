@@ -153,7 +153,12 @@ The initial registered work covers:
 - `file.purge_expired_content`, a bounded cleanup of expired Upload Leases,
   partial renditions, and retention-eligible archived content;
 - delayed and recovery-driven Exam Sitting lifecycle work, plus bounded
-  non-cancelable sealing of Closing Sittings; and
+  non-cancelable sealing of Closing Sittings;
+- ordinary bounded Exam Sitting mail expansion, with a stable User cursor,
+  permanent recipient deduplication, and per-node reconciliation of upcoming
+  audience drift; expired, failed, or orphaned expansion is terminalized by
+  bounded PostgreSQL-clock mail maintenance so it cannot retain a bundle or
+  block later reconciliation; and
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
   running, or its own active work.
 

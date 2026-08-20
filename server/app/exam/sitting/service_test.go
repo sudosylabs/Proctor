@@ -39,7 +39,8 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 	if fixture.persistence.schedule == nil || fixture.persistence.schedule.ManagerOverride || fixture.persistence.schedule.ActorUserID != fixture.userID ||
 		fixture.persistence.schedule.Sitting.ID != fixture.sittingID || fixture.persistence.schedule.Sitting.ScheduledStartAt != start || fixture.persistence.command == nil ||
 		fixture.persistence.schedule.OpenJob != fixture.jobs.open || fixture.persistence.schedule.DeadlineJob != fixture.jobs.deadline ||
-		fixture.jobs.boundaryRevision != 1 || !fixture.jobs.boundaryStart.Equal(start) || !fixture.jobs.boundaryEnd.Equal(end) {
+		fixture.jobs.boundaryRevision != 1 || !fixture.jobs.boundaryStart.Equal(start) || !fixture.jobs.boundaryEnd.Equal(end) ||
+		fixture.persistence.schedule.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailScheduled {
 		t.Fatalf("store schedule = %#v, command=%#v", fixture.persistence.schedule, fixture.persistence.command)
 	}
 	wantAudit := map[string]any{
@@ -227,6 +228,10 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 		t.Fatalf("boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob,
 			fixture.jobs.boundaryRevision, fixture.jobs.boundaryStart, fixture.jobs.boundaryEnd)
 	}
+	if input.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailRescheduled ||
+		fixture.mail.request.PriorClassID != fixture.classID || fixture.mail.request.SittingRevision != 2 {
+		t.Fatalf("mail preparation = %#v, store=%#v", fixture.mail.request, input.Mail)
+	}
 	if input.ExamRevisionID != fixture.revisionID || input.ClassID != fixture.classID || !input.ScheduledStartAt.Equal(changedStart) || !input.ScheduledEndAt.Equal(changedEnd) {
 		t.Fatalf("merged store update = %#v", input)
 	}
@@ -406,6 +411,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		t.Parallel()
 		fixture := newFixture(t)
+		fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 		canceled := fixture.sitting(t)
 		if err := canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow); err != nil {
 			t.Fatal(err)
@@ -538,6 +544,7 @@ func TestUpdateRejectsMismatchedStoreOutcome(t *testing.T) {
 func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
+	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: fixture.sitting(t)}
 	canceled := fixture.sitting(t)
 	if err := canceled.Cancel(model.ExamSittingReasonManagerCanceled, testNow); err != nil {
 		t.Fatal(err)
@@ -556,6 +563,9 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	}
 	if fixture.persistence.cancel == nil || fixture.persistence.cancel.PrivateReason != "Room became unavailable" || fixture.persistence.cancel.ExpectedRevision != 1 {
 		t.Fatalf("store cancel = %#v", fixture.persistence.cancel)
+	}
+	if fixture.persistence.cancel.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailCancelled {
+		t.Fatalf("cancellation mail = %#v, store=%#v", fixture.mail.request, fixture.persistence.cancel.Mail)
 	}
 	wantAudit := map[string]any{"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"expected_sitting_revision": int64(1), "reason_code": string(model.ExamSittingReasonManagerCanceled)}
@@ -587,6 +597,7 @@ type fixture struct {
 	systemAudit *systemAuditorFake
 	effects     *effectsFake
 	jobs        *lifecycleJobFactoryFake
+	mail        *scheduleMailPreparerFake
 }
 
 func (fixture fixture) sitting(t *testing.T) *model.ExamSitting {
@@ -639,15 +650,16 @@ func newFixture(t *testing.T) fixture {
 	memberships := &membershipsFake{items: []*model.AcademicUnitMember{{AcademicUnitID: unitID}}}
 	authorizer, auditor, systemAudit, effects := &authorizerFake{}, &auditorFake{id: model.NewId()}, &systemAuditorFake{id: model.NewId()}, &effectsFake{}
 	jobs := &lifecycleJobFactoryFake{open: &model.Job{}, deadline: &model.Job{}, finalize: &model.Job{}}
+	mail := &scheduleMailPreparerFake{result: &store.ExamSittingMailFanout{}}
 	service, err := New(persistence, access, memberships, authorizer, auditor, systemAudit, effects, effects, jobs,
-		func() time.Time { return testNow }, func() model.ExamSittingID { return sittingID })
+		mail, func() time.Time { return testNow }, func() model.ExamSittingID { return sittingID })
 	if err != nil {
 		t.Fatal(err)
 	}
 	return fixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), userID: userID,
 		unitID: unitID, examID: examID, revisionID: revisionID, classID: classID, sittingID: sittingID,
 		persistence: persistence, access: access, memberships: memberships, authorizer: authorizer, auditor: auditor,
-		systemAudit: systemAudit, effects: effects, jobs: jobs}
+		systemAudit: systemAudit, effects: effects, jobs: jobs, mail: mail}
 }
 
 func assertFaultCode(t *testing.T, err error, want string) {
@@ -690,6 +702,17 @@ type sittingStoreFake struct {
 	items         []store.ExamSittingSnapshot
 	err           error
 	getErr        error
+}
+
+type scheduleMailPreparerFake struct {
+	request ScheduleMailRequest
+	result  *store.ExamSittingMailFanout
+	err     error
+}
+
+func (fake *scheduleMailPreparerFake) Prepare(_ context.Context, request ScheduleMailRequest) (*store.ExamSittingMailFanout, error) {
+	fake.request = request
+	return fake.result, fake.err
 }
 
 func (fake *sittingStoreFake) Resolve(_ context.Context, sittingID model.ExamSittingID) (*store.ExamSittingSnapshot, error) {

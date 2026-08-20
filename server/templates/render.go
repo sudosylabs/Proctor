@@ -28,6 +28,8 @@ type Properties struct {
 	Copy                i18n.Copy
 	ActionURL           string
 	PersonalAccessToken *PersonalAccessTokenProperties
+	ExamManager         *ExamManagerProperties
+	SittingSchedule     *SittingScheduleProperties
 }
 
 // PersonalAccessTokenDetails is the bounded, scope-safe dynamic input for a
@@ -49,6 +51,47 @@ type PersonalAccessTokenProperties struct {
 	ActionCount int
 }
 
+type ExamManagerRelationship string
+
+const (
+	ExamManagerRelationshipManager         ExamManagerRelationship = "manager"
+	ExamManagerRelationshipOwner           ExamManagerRelationship = "owner"
+	ExamManagerRelationshipNoLongerManager ExamManagerRelationship = "no_longer_manager"
+)
+
+// ExamManagerDetails is the bounded dynamic input for one Exam management
+// relationship notice. Actor identity and authorization detail are absent by
+// construction.
+type ExamManagerDetails struct {
+	Title        string
+	Relationship ExamManagerRelationship
+	ActionAt     time.Time
+}
+
+type ExamManagerProperties struct {
+	Title        string
+	Relationship string
+	ActionAt     string
+}
+
+// SittingScheduleDetails is the complete safe fact set available to Sitting
+// mail. Instructions, resources, policy, roster, and actor identity have no
+// representation here.
+type SittingScheduleDetails struct {
+	ExamTitle        string
+	ClassDisplayName string
+	StartsAt         time.Time
+	EndsAt           time.Time
+}
+
+type SittingScheduleProperties struct {
+	ExamTitle        string
+	ClassDisplayName string
+	StartsAt         string
+	EndsAt           string
+	Timezone         string
+}
+
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
 	Key                 i18n.Key
@@ -56,6 +99,8 @@ type Request struct {
 	InstallationLocale  string
 	ActionURL           string
 	PersonalAccessToken *PersonalAccessTokenDetails
+	ExamManager         *ExamManagerDetails
+	SittingSchedule     *SittingScheduleDetails
 }
 
 // Message is one safe, fully rendered multipart-alternative payload.
@@ -158,6 +203,44 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			ActionCount: request.PersonalAccessToken.ActionCount,
 		}
 	}
+	examManagerKey := isExamManagerTemplate(request.Key)
+	if examManagerKey != (request.ExamManager != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
+	}
+	if request.ExamManager != nil {
+		if resolved.Copy.ExamManager == nil || !validExamManagerDetails(request.ExamManager) {
+			return Message{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
+		}
+		var relationship string
+		switch request.ExamManager.Relationship {
+		case ExamManagerRelationshipManager:
+			relationship = resolved.Copy.ExamManager.Manager
+		case ExamManagerRelationshipOwner:
+			relationship = resolved.Copy.ExamManager.Owner
+		case ExamManagerRelationshipNoLongerManager:
+			relationship = resolved.Copy.ExamManager.NoLongerManager
+		}
+		properties.ExamManager = &ExamManagerProperties{
+			Title: strings.TrimSpace(request.ExamManager.Title), Relationship: relationship,
+			ActionAt: request.ExamManager.ActionAt.UTC().Format(time.RFC3339),
+		}
+	}
+	sittingKey := isSittingScheduleTemplate(request.Key)
+	if sittingKey != (request.SittingSchedule != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
+	}
+	if request.SittingSchedule != nil {
+		if resolved.Copy.SittingSchedule == nil || !validSittingScheduleDetails(request.SittingSchedule) {
+			return Message{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
+		}
+		properties.SittingSchedule = &SittingScheduleProperties{
+			ExamTitle:        strings.TrimSpace(request.SittingSchedule.ExamTitle),
+			ClassDisplayName: strings.TrimSpace(request.SittingSchedule.ClassDisplayName),
+			StartsAt:         request.SittingSchedule.StartsAt.UTC().Format(time.RFC3339),
+			EndsAt:           request.SittingSchedule.EndsAt.UTC().Format(time.RFC3339),
+			Timezone:         resolved.Copy.SittingSchedule.TimezoneUTC,
+		}
+	}
 
 	htmlValue, ok := r.html[request.Key]
 	if !ok {
@@ -206,6 +289,66 @@ func validPersonalAccessTokenDetails(details *PersonalAccessTokenDetails) bool {
 	for _, character := range details.Description {
 		if unicode.IsControl(character) {
 			return false
+		}
+	}
+	return true
+}
+
+func isExamManagerTemplate(key i18n.Key) bool {
+	switch key {
+	case i18n.ExamManagerAdded,
+		i18n.ExamManagerRemoved,
+		i18n.ExamOwnershipTransferredToYou,
+		i18n.ExamOwnershipTransferredFromYou:
+		return true
+	default:
+		return false
+	}
+}
+
+func validExamManagerDetails(details *ExamManagerDetails) bool {
+	if details == nil {
+		return false
+	}
+	title := strings.TrimSpace(details.Title)
+	if title == "" || !utf8.ValidString(title) || utf8.RuneCountInString(title) > 255 || details.ActionAt.IsZero() {
+		return false
+	}
+	switch details.Relationship {
+	case ExamManagerRelationshipManager, ExamManagerRelationshipOwner, ExamManagerRelationshipNoLongerManager:
+	default:
+		return false
+	}
+	for _, character := range title {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSittingScheduleTemplate(key i18n.Key) bool {
+	switch key {
+	case i18n.ExamSittingScheduled, i18n.ExamSittingRescheduled, i18n.ExamSittingCancelled, i18n.ExamSittingAssignmentRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
+func validSittingScheduleDetails(details *SittingScheduleDetails) bool {
+	if details == nil || details.StartsAt.IsZero() || !details.StartsAt.Before(details.EndsAt) {
+		return false
+	}
+	for _, value := range []string{details.ExamTitle, details.ClassDisplayName} {
+		value = strings.TrimSpace(value)
+		if value == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > 255 {
+			return false
+		}
+		for _, character := range value {
+			if unicode.IsControl(character) {
+				return false
+			}
 		}
 	}
 	return true

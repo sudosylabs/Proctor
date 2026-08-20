@@ -33,9 +33,9 @@ type RoleBinding struct {
 	ArchivedAt OptionalTime
 	UserID     UserID
 	RoleID     RoleID
-	// OriginInvitationID identifies the teacher package that first created
-	// this binding. Ordinary and independently administered bindings leave it
-	// empty so ending package membership cannot affect them.
+	// OriginInvitationID identifies the Invitation package that first created
+	// this binding. Teacher packages also identify their owning Academic Unit
+	// membership so ending that membership can end only package bindings.
 	OriginInvitationID         InvitationID
 	OriginAcademicUnitMemberID AcademicUnitMemberID
 	ScopeType                  RoleScopeType
@@ -97,9 +97,11 @@ func (rb *RoleBinding) Validate() error {
 	if !rb.OriginInvitationID.IsZero() && !rb.OriginInvitationID.IsValid() {
 		return invalidModelError(where, "role_binding", "origin_invitation_id", "must be empty or a valid identifier", details)
 	}
-	if rb.OriginInvitationID.IsValid() != rb.OriginAcademicUnitMemberID.IsValid() ||
-		(!rb.OriginInvitationID.IsZero() && rb.ScopeType != RoleScopeAcademicUnit) {
-		return invalidModelError(where, "role_binding", "origin_package", "must identify one complete Academic Unit Invitation package", details)
+	if rb.OriginAcademicUnitMemberID.IsValid() && (!rb.OriginInvitationID.IsValid() || rb.ScopeType != RoleScopeAcademicUnit) {
+		return invalidModelError(where, "role_binding", "origin_package", "membership provenance requires one complete Academic Unit Invitation package", details)
+	}
+	if rb.OriginInvitationID.IsValid() && rb.ScopeType != RoleScopeAcademicUnit && rb.ScopeType != RoleScopeInstitution {
+		return invalidModelError(where, "role_binding", "origin_package", "Invitation provenance requires an Academic Unit or Institution scope", details)
 	}
 	if !rb.ScopeType.IsValid() {
 		return invalidModelError(where, "role_binding", "scope_type", "has an unknown value", details)

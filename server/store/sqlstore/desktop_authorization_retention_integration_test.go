@@ -190,7 +190,6 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	issueAudit := saveDesktopAuthorizationAuditForSQLTest(t, ctx, primary, institution.ID, user.ID, "issue-disable-race")
 	disableAudit := saveUserStateAuditForSQLTest(t, ctx, primary, institution.ID, user.ID)
 
-	const pauseKey int64 = 8154700260822
 	controller, err := primary.GetMaster().DB().Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -200,28 +199,33 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	if err = controller.QueryRowContext(ctx, `SELECT pg_backend_pid()`).Scan(&controllerPID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, pauseKey); err != nil {
+	if _, err = controller.ExecContext(ctx, `BEGIN`); err != nil {
 		t.Fatal(err)
 	}
 	locked := true
 	defer func() {
 		if locked {
-			_, _ = controller.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, pauseKey)
+			_, _ = controller.ExecContext(context.Background(), `ROLLBACK`)
 		}
 	}()
-	if _, err = primary.GetMaster().Exec(ctx, `
-		CREATE OR REPLACE FUNCTION proctor_test_pause_desktop_code_issue() RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN
-			PERFORM pg_advisory_xact_lock(8154700260822);
-			RETURN NEW;
-		END $$;
-		CREATE TRIGGER proctor_test_pause_desktop_code_issue BEFORE UPDATE ON browser_authentication_transactions
-		FOR EACH ROW WHEN (NEW.state = 'code_issued') EXECUTE FUNCTION proctor_test_pause_desktop_code_issue()`); err != nil {
+	if _, err = controller.ExecContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, user.ID.String()); err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		_, _ = primary.GetMaster().Exec(context.Background(), `DROP TRIGGER IF EXISTS proctor_test_pause_desktop_code_issue ON browser_authentication_transactions; DROP FUNCTION IF EXISTS proctor_test_pause_desktop_code_issue()`)
+
+	type disableOutcome struct {
+		result *store.UserDisabledStateResult
+		err    error
+	}
+	disableResult := make(chan disableOutcome, 1)
+	go func() {
+		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
+			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
+			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+		}))
+		disableResult <- disableOutcome{result: result, err: disableErr}
 	}()
+	disablePID := waitForBlockedMailQuery(t, ctx, primary, controllerPID, "FROM users WHERE id")
 
 	type issueOutcome struct {
 		result *model.BrowserAuthenticationTransaction
@@ -239,37 +243,46 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 		})
 		issueResult <- issueOutcome{result: result, err: issueErr}
 	}()
-	issuePID := waitForBlockedMailQuery(t, ctx, primary, controllerPID, "UPDATE browser_authentication_transactions")
-
-	type disableOutcome struct {
-		result *store.UserDisabledStateResult
-		err    error
-	}
-	disableResult := make(chan disableOutcome, 1)
-	go func() {
-		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
-			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
-			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		}))
-		disableResult <- disableOutcome{result: result, err: disableErr}
-	}()
-	_ = waitForBlockedMailQuery(t, ctx, primary, issuePID, "pg_advisory_xact_lock")
-	if _, err = controller.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, pauseKey); err != nil {
+	waitForSecondLockWaiter(t, ctx, primary, controllerPID, disablePID)
+	if _, err = controller.ExecContext(ctx, `ROLLBACK`); err != nil {
 		t.Fatal(err)
 	}
 	locked = false
-	issued := <-issueResult
-	if issued.err != nil || issued.result == nil || issued.result.State != model.BrowserAuthenticationStateCodeIssued {
-		t.Fatalf("IssueCode() = %#v, %v", issued.result, issued.err)
-	}
 	disabled := <-disableResult
 	if disabled.err != nil || disabled.result == nil || disabled.result.User == nil || !disabled.result.User.DisabledAt.Valid {
 		t.Fatalf("SetDisabledWithAudit() = %#v, %v", disabled.result, disabled.err)
 	}
+	issued := <-issueResult
+	if !store.IsNotFound(issued.err) || issued.result != nil {
+		t.Fatalf("IssueCode() after concurrent disable = %#v, %v; want not found", issued.result, issued.err)
+	}
 	after, err := primary.Audit().Get(ctx, issueAudit.ID.String())
-	if err != nil || after.Status != model.AuditStatusSuccess {
+	if err != nil || after.Status != model.AuditStatusAttempt {
 		t.Fatalf("IssueCode audit = %#v, %v", after, err)
+	}
+}
+
+func waitForSecondLockWaiter(t *testing.T, ctx context.Context, persistence *SQLStore, controllerPID, firstWaiterPID int) {
+	t.Helper()
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var waiting bool
+		err := persistence.GetMaster().Get(ctx, &waiting, `SELECT EXISTS (
+			SELECT 1 FROM pg_stat_activity WHERE pid NOT IN (?, ?, pg_backend_pid())
+			AND cardinality(pg_blocking_pids(pid)) > 0
+			AND (query LIKE '%FROM users%' OR query LIKE '%pg_advisory_xact_lock%'))`, controllerPID, firstWaiterPID)
+		if err != nil {
+			t.Fatalf("inspect PostgreSQL lock-order probe: %v", err)
+		}
+		if waiting {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-ticker.C:
+		}
 	}
 }
 

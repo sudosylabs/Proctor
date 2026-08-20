@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
@@ -21,10 +22,19 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	effects := examRealtimeEffects{realtime: foundation.realtime}
 	authoring, err := examengine.NewAuthoring(
 		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(), deps.Store.User(),
+		foundation.mail,
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		effects, effects, time.Now, model.NewExamID,
 	)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	sittingRenderer, ok := deps.MailTemplateRenderer.(SittingMailTemplateRenderer)
+	if !ok {
+		return examinationConstruction{}, errors.New("Sitting mail template renderer is unavailable")
+	}
+	sittingMail, err := newSittingMailPreparer(sittingRenderer, deps.MailDeliverySender, deps.MailSecretSealer, time.Now)
 	if err != nil {
 		return examinationConstruction{}, err
 	}
@@ -37,6 +47,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
+	sittingMailPreparation := sittingScheduleMailPreparationAdapter{preparer: sittingMail,
+		revisions: deps.Store.ExamRevision(), classes: deps.Store.Class()}
 	sittings, err := examsitting.New(
 		deps.Store.ExamSitting(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examSittingAuthorizationAdapter{authorization: access.authorization},
@@ -45,6 +57,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examSittingRealtimeEffects{realtime: foundation.realtime},
 		examSittingRealtimeEffects{realtime: foundation.realtime},
 		examSittingLifecycleJobFactory{now: time.Now, newID: model.NewJobID},
+		sittingMailPreparation,
 		time.Now, model.NewExamSittingID,
 	)
 	if err != nil {
@@ -117,7 +130,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, attempts: attempts, reviews: reviews,
+	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
+		sittingMailPreparation: sittingMailPreparation, attempts: attempts, reviews: reviews,
 		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }
 

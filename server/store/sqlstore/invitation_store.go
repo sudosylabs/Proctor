@@ -162,6 +162,86 @@ func (s SQLInvitationStore) IssueTeacherAcademicUnit(ctx context.Context, input 
 	})
 }
 
+func (s SQLInvitationStore) IssueScopedRole(ctx context.Context, input *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
+	if err := validateScopedRoleInvitationIssue(input); err != nil {
+		return nil, err
+	}
+	invitation := *input.Invitation
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "scoped Role invitation issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Invitation, error) {
+		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
+		if err := requireExistingUserInvitationPolicy(ctx, tx); err != nil {
+			return nil, err
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		occurrence, delivery, deliveryJob, err := scopedRoleInvitationIssueAt(input, &invitation, databaseNow)
+		if err != nil {
+			return nil, err
+		}
+		if invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time) {
+			return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
+		}
+		if err = terminalizeElapsedScopedRoleInvitationConflict(ctx, tx, &invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = validateScopedRoleInvitationPackage(ctx, tx, &invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = requireScopedRoleInvitationAuthority(ctx, tx, &invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = insertInvitation(ctx, tx, &invitation); err != nil {
+			return nil, err
+		}
+		if err = insertInvitationMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
+			return nil, err
+		}
+		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
+		if appErr != nil {
+			return nil, appErr
+		}
+		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+			return nil, fmt.Errorf("complete scoped Role invitation issue audit: %w", err)
+		}
+		return &invitation, nil
+	})
+}
+
+func terminalizeElapsedScopedRoleInvitationConflict(ctx context.Context, tx *sqlxTxWrapper, candidate *model.Invitation, at time.Time) error {
+	var row invitationRow
+	err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations
+		WHERE target_email=? AND role_id=? AND scope_type=? AND scope_id=? AND purpose=? AND state='pending'
+		FOR UPDATE`, candidate.TargetEmail, candidate.RoleID.String(), candidate.ScopeType, candidate.ScopeID, candidate.Purpose)
+	if isNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("lock conflicting scoped Role Invitation: %w", err)
+	}
+	invitation, err := row.model()
+	if err != nil {
+		return err
+	}
+	if model.TimeUTC(at).Before(invitation.ExpiresAt) && (!invitation.IntendedEndsAt.Valid || model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
+		return nil
+	}
+	if err = invitation.Expire(at); err != nil {
+		return invalidPersistedState("invitation", "expiry", err)
+	}
+	if err = updateExpiredInvitation(ctx, tx, invitation); err != nil {
+		return err
+	}
+	return suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, at)
+}
+
 func terminalizeElapsedTeacherAcademicUnitInvitationConflict(ctx context.Context, tx *sqlxTxWrapper, targetEmail string, unitID model.AcademicUnitID, roleID model.RoleID, at time.Time) error {
 	var row invitationRow
 	err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations
@@ -346,13 +426,13 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
 		}
-		if err := requireInvitationPolicy(ctx, tx); err != nil {
+		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 			return nil, err
 		}
-		if err := validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		if err = requireInvitationPolicy(ctx, tx); err != nil {
 			return nil, err
 		}
-		if err := requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
+		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
 			return nil, err
 		}
 		if payloadKeyID != "" {
@@ -362,6 +442,12 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 		}
 		user, err := resolveInvitationUser(ctx, tx, invitation, input, databaseNow)
 		if err != nil {
+			return nil, err
+		}
+		if err := validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err := requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
 			return nil, err
 		}
 		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
@@ -435,13 +521,13 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
 		}
+		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return nil, err
+		}
 		if err = requireInvitationPolicy(ctx, tx); err != nil {
 			return nil, err
 		}
-		if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
+		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
 			return nil, err
 		}
 		if err = lockInvitationMailbox(ctx, tx, invitation.TargetEmail); err != nil {
@@ -460,6 +546,12 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 			PasswordCredential: input.PasswordCredential, DefaultProfilePictureJob: input.DefaultProfilePictureJob}
 		user, err := resolveInvitationUser(ctx, tx, invitation, studentArtifacts, databaseNow)
 		if err != nil {
+			return nil, err
+		}
+		if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
 			return nil, err
 		}
 		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
@@ -510,6 +602,172 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 		}
 		return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding}, nil
 	})
+}
+
+func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+	if err := validateScopedRoleInvitationAcceptance(input); err != nil {
+		return nil, err
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "scoped Role invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+		var row invitationRow
+		if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE claim_hash=? FOR UPDATE`, input.ClaimHash); err != nil {
+			return nil, translateError("invitation", "claim", err)
+		}
+		invitation, err := row.model()
+		if err != nil || (invitation.Purpose != model.InvitationPurposeAcademicUnitRole && invitation.Purpose != model.InvitationPurposeInstitutionRole) {
+			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
+		}
+		if invitation.State == model.InvitationAccepted {
+			if invitation.AcceptedUserID != input.UserID {
+				return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
+			}
+			result, replayErr := replayScopedRoleInvitation(ctx, tx, invitation)
+			if replayErr != nil {
+				return nil, replayErr
+			}
+			if replayErr = completeScopedRoleInvitationAcceptanceAudit(ctx, tx, input, invitation); replayErr != nil {
+				return nil, replayErr
+			}
+			return result, nil
+		}
+		databaseNow, err := jobDatabaseNow(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		if invitation.State != model.InvitationPending || !databaseNow.Before(invitation.ExpiresAt) ||
+			(invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
+			return nil, store.NewErrConflict("invitation", "invitation_not_pending", nil)
+		}
+		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err = requireExistingUserInvitationPolicy(ctx, tx); err != nil {
+			return nil, err
+		}
+		if err = lockInvitationInviterBeforeHierarchy(ctx, tx, invitation.InviterUserID); err != nil {
+			return nil, err
+		}
+		var persistedUser userRow
+		if err = tx.Get(ctx, &persistedUser, `SELECT `+strings.Join(userSliceColumns(), ",")+` FROM users
+			WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
+			if isNoRows(err) {
+				return nil, store.NewErrConflict("invitation", "invitation_user_unavailable", nil)
+			}
+			return nil, fmt.Errorf("lock scoped Role Invitation User: %w", err)
+		}
+		user, err := persistedUser.model()
+		if err != nil {
+			return nil, err
+		}
+		if err = validateScopedRoleInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = requireScopedRoleInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
+			return nil, err
+		}
+		effectiveStart := invitation.EffectiveStartsAt(databaseNow)
+		binding, err := ensureScopedRoleInvitationBinding(ctx, tx, invitation, input.RoleBinding, user.ID, effectiveStart, databaseNow)
+		if err != nil {
+			return nil, err
+		}
+		if err = invitation.AcceptScopedRole(user.ID, binding.ID, databaseNow); err != nil {
+			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
+		}
+		result, err := tx.Exec(ctx, `UPDATE invitations SET state=?,accepted_at=?,accepted_user_id=?,accepted_role_binding_id=?,updated_at=?,revision=?
+			WHERE id=? AND state='pending' AND revision=?`, invitation.State, invitation.AcceptedAt.Time, user.ID.String(), binding.ID.String(),
+			invitation.UpdatedAt, invitation.Revision, invitation.ID.String(), invitation.Revision-1)
+		if err != nil {
+			return nil, fmt.Errorf("consume scoped Role Invitation: %w", err)
+		}
+		if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+			return nil, store.NewErrConflict("invitation", "invitation_revision", affectedErr)
+		}
+		if err = suppressInvitationCredentialMail(ctx, tx, invitation.ID, model.MailDeliveryObsoleteCode, databaseNow); err != nil {
+			return nil, err
+		}
+		if err = completeScopedRoleInvitationAcceptanceAudit(ctx, tx, input, invitation); err != nil {
+			return nil, err
+		}
+		return &store.ScopedRoleInvitationAcceptanceResult{Invitation: invitation, User: user, RoleBinding: binding}, nil
+	})
+}
+
+func validateScopedRoleInvitationAcceptance(input *store.ScopedRoleInvitationAcceptance) error {
+	if input == nil || !model.IsValidTokenHash(input.ClaimHash) || !input.UserID.IsValid() || input.RoleBinding == nil ||
+		!model.AuditEventID(input.AuditEventID).IsValid() || input.AuditAt <= 0 {
+		return store.NewErrInvalidInput("invitation", "acceptance", nil)
+	}
+	if !slices.Equal(input.RequiredActions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
+		input.RoleBinding.UserID != input.UserID || !input.RoleBinding.OriginInvitationID.IsValid() ||
+		input.RoleBinding.OriginAcademicUnitMemberID.IsValid() || input.RoleBinding.Validate() != nil {
+		return store.NewErrInvalidInput("invitation", "acceptance_relationship", nil)
+	}
+	return nil
+}
+
+func completeScopedRoleInvitationAcceptanceAudit(ctx context.Context, tx *sqlxTxWrapper,
+	input *store.ScopedRoleInvitationAcceptance, invitation *model.Invitation,
+) error {
+	encoded, err := model.EncodeAuditData(invitation.Auditable())
+	if err != nil {
+		return err
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return fmt.Errorf("complete scoped Role Invitation acceptance audit: %w", err)
+	}
+	return nil
+}
+
+func ensureScopedRoleInvitationBinding(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, prepared *model.RoleBinding,
+	userID model.UserID, effectiveStart, at time.Time,
+) (*model.RoleBinding, error) {
+	var row roleBindingRow
+	err := tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,user_id,role_id,origin_invitation_id,origin_academic_unit_member_id,scope_type,scope_id,start_at,end_at
+		FROM role_bindings WHERE user_id=? AND role_id=? AND scope_type=? AND scope_id=? AND archived_at IS NULL
+		AND start_at<=? AND (end_at IS NULL OR end_at>?) ORDER BY start_at DESC,id LIMIT 1 FOR UPDATE`,
+		userID.String(), invitation.RoleID.String(), invitation.ScopeType, invitation.ScopeID, effectiveStart, effectiveStart)
+	if err == nil {
+		existing, modelErr := row.model()
+		if modelErr != nil {
+			return nil, modelErr
+		}
+		if !invitationEffectiveIntervalCovered(existing.StartsAt, existing.EndsAt, effectiveStart, invitation.IntendedEndsAt) {
+			return nil, store.NewErrConflict("invitation", "invitation_role_binding_conflict", nil)
+		}
+		return existing, nil
+	}
+	if !isNoRows(err) {
+		return nil, fmt.Errorf("find scoped Invitation Role Binding: %w", err)
+	}
+	candidate := *prepared
+	candidate.UserID, candidate.RoleID, candidate.OriginInvitationID = userID, invitation.RoleID, invitation.ID
+	candidate.OriginAcademicUnitMemberID = ""
+	candidate.ScopeType, candidate.ScopeID, candidate.StartsAt, candidate.EndsAt = invitation.ScopeType, invitation.ScopeID, effectiveStart, invitation.IntendedEndsAt
+	candidate.CreatedAt, candidate.UpdatedAt, candidate.ArchivedAt = model.TimeUTC(at), model.TimeUTC(at), model.OptionalTime{}
+	if err = candidate.Validate(); err != nil {
+		return nil, store.NewErrInvalidInput("invitation", "role_binding", err)
+	}
+	if err = insertRoleBinding(ctx, tx, &candidate); err != nil {
+		return nil, err
+	}
+	return &candidate, nil
+}
+
+func replayScopedRoleInvitation(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+	user, err := invitationAcceptanceUser(ctx, tx, invitation.AcceptedUserID)
+	if err != nil {
+		return nil, err
+	}
+	var row roleBindingRow
+	if err = tx.Get(ctx, &row, `SELECT id,created_at,updated_at,archived_at,user_id,role_id,origin_invitation_id,origin_academic_unit_member_id,scope_type,scope_id,start_at,end_at
+		FROM role_bindings WHERE id=? AND user_id=?`, invitation.AcceptedRoleBindingID.String(), user.ID.String()); err != nil {
+		return nil, translateError("role_binding", invitation.AcceptedRoleBindingID.String(), err)
+	}
+	binding, err := row.model()
+	if err != nil {
+		return nil, err
+	}
+	return &store.ScopedRoleInvitationAcceptanceResult{Invitation: invitation, User: user, RoleBinding: binding, Replayed: true}, nil
 }
 
 func validateTeacherAcademicUnitInvitationAcceptance(input *store.TeacherAcademicUnitInvitationAcceptance) error {
@@ -615,7 +873,11 @@ func resolveInvitationUser(ctx context.Context, tx *sqlxTxWrapper, invitation *m
 			return nil, store.NewErrConflict("invitation", "invitation_user_disabled", nil)
 		}
 		if !user.EmailVerified {
-			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,updated_at=?,revision=revision+1 WHERE id=?`, at, user.ID.String()); updateErr != nil {
+			mailEligibilityRevision, revisionErr := advanceUserMailEligibilityRevision(ctx, tx)
+			if revisionErr != nil {
+				return nil, revisionErr
+			}
+			if _, updateErr := tx.Exec(ctx, `UPDATE users SET email_verified=TRUE,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=?`, mailEligibilityRevision, at, user.ID.String()); updateErr != nil {
 				return nil, fmt.Errorf("verify invited user email: %w", updateErr)
 			}
 			user.EmailVerified = true
@@ -735,9 +997,14 @@ func ensureInvitationClassMember(ctx context.Context, tx *sqlxTxWrapper, invitat
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("invitation", "class_member", err)
 	}
+	audienceRevisions, err := advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
+	if err != nil {
+		return nil, err
+	}
 	row = newClassMemberRow(&candidate)
-	if _, err := tx.NamedExec(ctx, `INSERT INTO class_members (id,created_at,updated_at,archived_at,revision,class_id,academic_period_id,user_id,start_at,end_at)
-		VALUES (:id,:created_at,:updated_at,:archived_at,:revision,:class_id,:academic_period_id,:user_id,:start_at,:end_at)`, &row); err != nil {
+	row.MailAudienceRevision = audienceRevisions[candidate.ClassID]
+	if _, err := tx.NamedExec(ctx, `INSERT INTO class_members (id,created_at,updated_at,archived_at,revision,mail_audience_revision,class_id,academic_period_id,user_id,start_at,end_at)
+		VALUES (:id,:created_at,:updated_at,:archived_at,:revision,:mail_audience_revision,:class_id,:academic_period_id,:user_id,:start_at,:end_at)`, &row); err != nil {
 		return nil, fmt.Errorf("insert invitation class membership: %w", translateError("class_member", candidate.ID.String(), err))
 	}
 	return &candidate, nil
@@ -968,7 +1235,66 @@ func validateTeacherAcademicUnitInvitationIssue(input *store.TeacherAcademicUnit
 	return nil
 }
 
+func validateScopedRoleInvitationIssue(input *store.ScopedRoleInvitationIssue) error {
+	if input == nil || input.Invitation == nil || input.Occurrence == nil || input.Delivery == nil || input.DeliveryJob == nil ||
+		input.Lifetime != model.StudentClassInvitationLifetime || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return store.NewErrInvalidInput("invitation", "issue", nil)
+	}
+	if err := input.Invitation.Validate(); err != nil {
+		return store.NewErrInvalidInput("invitation", "value", err)
+	}
+	expectedKey := model.MailTemplateAccessAcademicUnitRoleInvitation
+	if input.Invitation.Purpose == model.InvitationPurposeInstitutionRole {
+		expectedKey = model.MailTemplateAccessInstitutionRoleInvitation
+	}
+	if (input.Invitation.Purpose != model.InvitationPurposeAcademicUnitRole && input.Invitation.Purpose != model.InvitationPurposeInstitutionRole) ||
+		input.Invitation.State != model.InvitationPending || input.Occurrence.Kind != model.MailOccurrenceInvitation ||
+		input.Occurrence.TemplateKey != expectedKey || input.Occurrence.ActorUserID != input.Invitation.InviterUserID ||
+		input.Delivery.TargetUserID.IsValid() || input.Delivery.TargetInvitationID != input.Invitation.ID ||
+		input.Delivery.TemplateKey != input.Occurrence.TemplateKey || input.Delivery.Deadline.After(input.Invitation.ExpiresAt) ||
+		input.DeliveryJob.Type != model.JobTypeMailDeliverCredential {
+		return store.NewErrInvalidInput("invitation", "issue_relationship", nil)
+	}
+	if input.Delivery.Validate() != nil || input.Occurrence.Validate() != nil || input.DeliveryJob.Validate() != nil ||
+		input.Delivery.State != model.MailDeliveryQueued || input.Delivery.AttemptCount != 0 || input.Delivery.Revision != 1 ||
+		input.DeliveryJob.Status != model.JobStatusQueued || input.DeliveryJob.AttemptCount != 0 || input.DeliveryJob.MaximumAttempts != model.MailMaximumAttempts {
+		return store.NewErrInvalidInput("invitation", "mail", nil)
+	}
+	command, err := model.DecodeMailDeliveryCommand(input.DeliveryJob.CommandVersion, input.DeliveryJob.Command)
+	if err != nil || input.Delivery.OccurrenceID != input.Occurrence.ID || input.Delivery.JobID != input.DeliveryJob.ID ||
+		!input.Occurrence.CreatedAt.Equal(input.Delivery.CreatedAt) || !input.Delivery.UpdatedAt.Equal(input.Delivery.CreatedAt) ||
+		!input.Delivery.MessageDate.Equal(input.Delivery.CreatedAt) || command.DeliveryID != input.Delivery.ID ||
+		input.DeliveryJob.DedupeKey != input.Delivery.ID.String() {
+		return store.NewErrInvalidInput("invitation", "mail_relationship", err)
+	}
+	return nil
+}
+
 func teacherInvitationIssueAt(input *store.TeacherAcademicUnitInvitationIssue, invitation *model.Invitation, at time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job, error) {
+	at = model.TimeUTC(at)
+	invitation.CreatedAt, invitation.UpdatedAt, invitation.ExpiresAt = at, at, at.Add(input.Lifetime)
+	if err := invitation.Validate(); err != nil {
+		return nil, nil, nil, store.NewErrInvalidInput("invitation", "database_lifecycle", err)
+	}
+	occurrence := *input.Occurrence
+	occurrence.CreatedAt = at
+	delivery := input.Delivery.Clone()
+	delivery.CreatedAt, delivery.UpdatedAt, delivery.MessageDate, delivery.Deadline = at, at, at, invitation.ExpiresAt
+	job := *input.DeliveryJob
+	job.CreatedAt, job.UpdatedAt, job.AvailableAt = at, at, at
+	if err := occurrence.Validate(); err != nil {
+		return nil, nil, nil, store.NewErrInvalidInput("invitation", "mail_occurrence_lifecycle", err)
+	}
+	if err := delivery.Validate(); err != nil {
+		return nil, nil, nil, store.NewErrInvalidInput("invitation", "mail_delivery_lifecycle", err)
+	}
+	if err := job.Validate(); err != nil {
+		return nil, nil, nil, store.NewErrInvalidInput("invitation", "mail_job_lifecycle", err)
+	}
+	return &occurrence, delivery, &job, nil
+}
+
+func scopedRoleInvitationIssueAt(input *store.ScopedRoleInvitationIssue, invitation *model.Invitation, at time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job, error) {
 	at = model.TimeUTC(at)
 	invitation.CreatedAt, invitation.UpdatedAt, invitation.ExpiresAt = at, at, at.Add(input.Lifetime)
 	if err := invitation.Validate(); err != nil {
@@ -1018,10 +1344,102 @@ func validateTeacherAcademicUnitInvitationPackage(ctx context.Context, tx *sqlxT
 	return nil
 }
 
-func requireTeacherAcademicUnitInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
-	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-		return err
+func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
+	resourceType := model.ResourceAcademicUnit
+	switch invitation.Purpose {
+	case model.InvitationPurposeAcademicUnitRole:
+		if err := lockAcademicUnitHierarchy(ctx, tx); err != nil {
+			return err
+		}
+		var active bool
+		if err := tx.Get(ctx, &active, `SELECT true FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE`, invitation.AcademicUnitID.String()); err != nil {
+			if isNoRows(err) {
+				return store.NewErrConflict("invitation", "invitation_academic_unit", nil)
+			}
+			return fmt.Errorf("lock scoped Role Invitation Academic Unit: %w", err)
+		}
+	case model.InvitationPurposeInstitutionRole:
+		resourceType = model.ResourceInstitution
+		var active bool
+		if err := tx.Get(ctx, &active, `SELECT true FROM institutions WHERE id=? AND archived_at IS NULL FOR SHARE`, invitation.ScopeID); err != nil {
+			if isNoRows(err) {
+				return store.NewErrConflict("invitation", "invitation_institution", nil)
+			}
+			return fmt.Errorf("lock scoped Role Invitation Institution: %w", err)
+		}
+	default:
+		return store.NewErrConflict("invitation", "invitation_purpose", nil)
 	}
+	var permissions pq.StringArray
+	if err := tx.Get(ctx, &permissions, `SELECT permissions FROM roles WHERE id=? AND archived_at IS NULL AND built_in=FALSE FOR SHARE`, invitation.RoleID.String()); err != nil {
+		if isNoRows(err) {
+			return store.NewErrConflict("invitation", "invitation_role", nil)
+		}
+		return fmt.Errorf("lock scoped Role Invitation Role: %w", err)
+	}
+	current := append([]string(nil), permissions...)
+	slices.Sort(current)
+	if !slices.Equal(current, invitation.RoleActions) || (invitation.IntendedEndsAt.Valid && !model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
+		return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
+	}
+	for _, action := range current {
+		definition, ok := model.DefinitionForAction(model.Action(action))
+		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+			return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
+		}
+	}
+	return nil
+}
+
+func requireScopedRoleInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
+	var active bool
+	if err := tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, invitation.InviterUserID.String()); err != nil {
+		if isNoRows(err) {
+			return store.NewErrConflict("invitation", "invitation_authority", nil)
+		}
+		return fmt.Errorf("lock scoped Role Invitation inviter: %w", err)
+	}
+	actions := append([]string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage)}, invitation.RoleActions...)
+	for index, action := range actions {
+		definition, ok := model.DefinitionForAction(model.Action(action))
+		resourceType := model.ResourceAcademicUnit
+		if invitation.Purpose == model.InvitationPurposeInstitutionRole {
+			resourceType = model.ResourceInstitution
+		}
+		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+			return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
+		}
+		strictParent := index >= 2 && teacherInvitationProtectedDelegationAction(model.Action(action))
+		var authority bool
+		var err error
+		if invitation.Purpose == model.InvitationPurposeInstitutionRole {
+			err = tx.Get(ctx, &authority, `SELECT true FROM role_bindings rb JOIN roles r ON r.id=rb.role_id AND r.archived_at IS NULL
+				WHERE rb.user_id=$1 AND rb.archived_at IS NULL AND rb.start_at<=$2 AND (rb.end_at IS NULL OR rb.end_at>$2)
+				AND rb.scope_type='institution' AND rb.scope_id=$3 AND $4=ANY(r.permissions)
+				ORDER BY r.id,rb.id LIMIT 1 FOR SHARE OF r,rb`, invitation.InviterUserID.String(), model.TimeUTC(at), invitation.ScopeID, action)
+		} else {
+			err = tx.Get(ctx, &authority, `WITH RECURSIVE ancestors AS (
+				SELECT id,parent_id,0 depth FROM academic_units WHERE id=$1 AND archived_at IS NULL
+				UNION ALL SELECT au.id,au.parent_id,a.depth+1 FROM academic_units au JOIN ancestors a ON au.id=a.parent_id WHERE au.archived_at IS NULL
+			)
+			SELECT true FROM role_bindings rb JOIN roles r ON r.id=rb.role_id AND r.archived_at IS NULL
+			WHERE rb.user_id=$2 AND rb.archived_at IS NULL AND rb.start_at<=$3 AND (rb.end_at IS NULL OR rb.end_at>$3)
+			AND $4=ANY(r.permissions) AND ((rb.scope_type='institution' AND $5) OR
+				(rb.scope_type='academic_unit' AND $6 AND rb.scope_id IN (SELECT id FROM ancestors WHERE NOT $7 OR depth>0)))
+			ORDER BY r.id,rb.id LIMIT 1 FOR SHARE OF r,rb`, invitation.AcademicUnitID.String(), invitation.InviterUserID.String(), model.TimeUTC(at),
+				action, definition.InheritInstitutionScope, definition.InheritAcademicUnitScopes, strictParent)
+		}
+		if isNoRows(err) {
+			return store.NewErrConflict("invitation", "invitation_authority", nil)
+		}
+		if err != nil {
+			return fmt.Errorf("lock scoped Role Invitation authority for %s: %w", action, err)
+		}
+	}
+	return nil
+}
+
+func requireTeacherAcademicUnitInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, invitation *model.Invitation, at time.Time) error {
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, invitation.InviterUserID.String()); err != nil {
 		if isNoRows(err) {
@@ -1052,6 +1470,23 @@ func requireTeacherAcademicUnitInvitationAuthority(ctx context.Context, tx *sqlx
 		if err != nil {
 			return fmt.Errorf("lock teacher Invitation authority for %s: %w", action, err)
 		}
+	}
+	return nil
+}
+
+// lockInvitationInviterBeforeHierarchy follows the global administrator-
+// authentication fence and keeps Invitation acceptance aligned with the User
+// -> mail eligibility singleton -> Class/hierarchy order used by Sitting
+// reconciliation. Authority is rechecked against bindings after the hierarchy
+// is locked by the purpose-specific guard.
+func lockInvitationInviterBeforeHierarchy(ctx context.Context, tx *sqlxTxWrapper, inviterID model.UserID) error {
+	var activeInviterID string
+	if err := tx.Get(ctx, &activeInviterID, `SELECT id FROM users
+		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, inviterID.String()); err != nil {
+		if isNoRows(err) {
+			return store.NewErrConflict("invitation", "invitation_authority", nil)
+		}
+		return fmt.Errorf("lock Invitation inviter before hierarchy: %w", err)
 	}
 	return nil
 }
@@ -1087,6 +1522,17 @@ func requireInvitationPolicy(ctx context.Context, tx *sqlxTxWrapper) error {
 	var allowed bool
 	if err := tx.Get(ctx, &allowed, `SELECT invitation_admission_enabled AND invitation_local_credential_enabled AND local_login_enabled FROM access_policies WHERE singleton=1 FOR SHARE`); err != nil {
 		return fmt.Errorf("lock invitation access policy: %w", err)
+	}
+	if !allowed {
+		return store.NewErrConflict("invitation", "invitation_policy_disabled", nil)
+	}
+	return nil
+}
+
+func requireExistingUserInvitationPolicy(ctx context.Context, tx *sqlxTxWrapper) error {
+	var allowed bool
+	if err := tx.Get(ctx, &allowed, `SELECT invitation_admission_enabled FROM access_policies WHERE singleton=1 FOR SHARE`); err != nil {
+		return fmt.Errorf("lock existing-User invitation access policy: %w", err)
 	}
 	if !allowed {
 		return store.NewErrConflict("invitation", "invitation_policy_disabled", nil)
@@ -1138,9 +1584,6 @@ func lockStudentClassInvitationHierarchy(ctx context.Context, tx sqlxExecutor) e
 }
 
 func requireStudentClassInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper, inviterID model.UserID, classID model.ClassID, at time.Time) error {
-	if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-		return err
-	}
 	var active bool
 	if err := tx.Get(ctx, &active, `SELECT true FROM users
 		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, inviterID.String()); err != nil {

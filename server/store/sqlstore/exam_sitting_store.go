@@ -249,7 +249,7 @@ func (s sqlExamSittingStore) Schedule(ctx context.Context, input *store.ExamSitt
 }
 
 func prepareExamSittingSchedule(input *store.ExamSittingSchedule) error {
-	if input == nil || input.Sitting == nil || input.OpenJob == nil || input.DeadlineJob == nil || !input.ActorUserID.IsValid() ||
+	if input == nil || input.Sitting == nil || input.OpenJob == nil || input.DeadlineJob == nil || input.Mail == nil || !input.ActorUserID.IsValid() ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_sitting", "schedule", nil)
 	}
@@ -276,7 +276,7 @@ func (s sqlExamSittingStore) UpdateSchedule(ctx context.Context, input *store.Ex
 }
 
 func prepareExamSittingUpdate(input *store.ExamSittingScheduleUpdate) error {
-	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.OpenJob == nil || input.DeadlineJob == nil ||
+	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.OpenJob == nil || input.DeadlineJob == nil || input.Mail == nil ||
 		!input.ExamRevisionID.IsValid() || !input.ClassID.IsValid() || input.ExpectedRevision < 1 ||
 		input.ScheduledStartAt.IsZero() || input.ScheduledEndAt.IsZero() || !input.ScheduledStartAt.Before(input.ScheduledEndAt) ||
 		input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
@@ -331,7 +331,7 @@ func (s sqlExamSittingStore) Cancel(ctx context.Context, input *store.ExamSittin
 }
 
 func prepareExamSittingCancellation(input *store.ExamSittingCancellation) error {
-	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() ||
+	if input == nil || !input.ExamID.IsValid() || !input.SittingID.IsValid() || !input.ActorUserID.IsValid() || input.Mail == nil ||
 		input.ExpectedRevision < 1 || input.CanceledAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		!utf8.ValidString(input.PrivateReason) || input.PrivateReason != strings.TrimSpace(input.PrivateReason) ||
 		utf8.RuneCountInString(input.PrivateReason) < 1 || utf8.RuneCountInString(input.PrivateReason) > 1000 {
@@ -383,6 +383,10 @@ func (s sqlExamSittingStore) runExamSittingMutation(ctx context.Context, label, 
 
 func scheduleExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSittingSchedule) (*model.ExamSitting, error) {
 	candidate := *input.Sitting
+	disabledEligibilityRevision, err := lockDisabledExamSittingMailChronology(ctx, tx, input.ActorUserID, input.Mail)
+	if err != nil {
+		return nil, err
+	}
 	if err := lockExamSittingLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
@@ -390,7 +394,7 @@ func scheduleExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		candidate.ExamRevisionID, candidate.ClassID, candidate.ScheduledStartAt, candidate.ScheduledEndAt); err != nil {
 		return nil, err
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO exam_sittings (id,exam_id,exam_revision_id,class_id,scheduled_start_at,scheduled_end_at,
+	_, err = tx.Exec(ctx, `INSERT INTO exam_sittings (id,exam_id,exam_revision_id,class_id,scheduled_start_at,scheduled_end_at,
 		state,created_at,updated_at,revision) VALUES (?,?,?,?,?,?,?,?,?,?)`, candidate.ID.String(), candidate.ExamID.String(),
 		candidate.ExamRevisionID.String(), candidate.ClassID.String(), candidate.ScheduledStartAt, candidate.ScheduledEndAt,
 		candidate.State, candidate.CreatedAt, candidate.UpdatedAt, candidate.Revision)
@@ -403,6 +407,9 @@ func scheduleExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if err := insertExamSittingLifecycleJob(ctx, tx, input.DeadlineJob); err != nil {
 		return nil, err
 	}
+	if err := insertExamSittingMailFanout(ctx, tx, input.Mail, &candidate, "", input.ActorUserID, disabledEligibilityRevision); err != nil {
+		return nil, err
+	}
 	if err := completeExamSittingAudit(ctx, tx, &candidate, input.AuditEventID, input.AuditAt); err != nil {
 		return nil, err
 	}
@@ -410,6 +417,10 @@ func scheduleExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 }
 
 func updateExamSittingSchedule(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSittingScheduleUpdate) (*model.ExamSitting, error) {
+	disabledEligibilityRevision, err := lockDisabledExamSittingMailChronology(ctx, tx, input.ActorUserID, input.Mail)
+	if err != nil {
+		return nil, err
+	}
 	if err := lockExamSittingLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
@@ -426,6 +437,7 @@ func updateExamSittingSchedule(ctx context.Context, tx *sqlxTxWrapper, input *st
 	if current.State != model.ExamSittingScheduled {
 		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	}
+	priorClassID := current.ClassID
 	if err := guardExamSittingLineage(ctx, tx, input.ExamID, input.ExamRevisionID, input.ClassID,
 		input.ScheduledStartAt, input.ScheduledEndAt); err != nil {
 		return nil, err
@@ -453,6 +465,9 @@ func updateExamSittingSchedule(ctx context.Context, tx *sqlxTxWrapper, input *st
 	if err := insertExamSittingLifecycleJob(ctx, tx, input.DeadlineJob); err != nil {
 		return nil, err
 	}
+	if err := insertExamSittingMailFanout(ctx, tx, input.Mail, current, priorClassID, input.ActorUserID, disabledEligibilityRevision); err != nil {
+		return nil, err
+	}
 	if err := completeExamSittingAudit(ctx, tx, current, input.AuditEventID, input.AuditAt); err != nil {
 		return nil, err
 	}
@@ -460,6 +475,10 @@ func updateExamSittingSchedule(ctx context.Context, tx *sqlxTxWrapper, input *st
 }
 
 func cancelExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSittingCancellation) (*model.ExamSitting, error) {
+	disabledEligibilityRevision, err := lockDisabledExamSittingMailChronology(ctx, tx, input.ActorUserID, input.Mail)
+	if err != nil {
+		return nil, err
+	}
 	if err := lockExamSittingLifecycle(ctx, tx); err != nil {
 		return nil, err
 	}
@@ -492,10 +511,218 @@ func cancelExamSitting(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 	if err := insertExamSittingPrivateAction(ctx, tx, current, input.ActorUserID, "manager_canceled", input.PrivateReason, input.AuditEventID); err != nil {
 		return nil, err
 	}
+	if err := insertExamSittingMailFanout(ctx, tx, input.Mail, current, current.ClassID, input.ActorUserID, disabledEligibilityRevision); err != nil {
+		return nil, err
+	}
 	if err := completeExamSittingAudit(ctx, tx, current, input.AuditEventID, input.AuditAt); err != nil {
 		return nil, err
 	}
 	return current, nil
+}
+
+func insertExamSittingMailFanout(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSittingMailFanout,
+	sitting *model.ExamSitting, priorClassID model.ClassID, actorID model.UserID, disabledEligibilityRevision int64,
+) error {
+	if input == nil {
+		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+	}
+	if sitting == nil || sitting.Validate() != nil || input.Occurrence == nil || input.ExpansionJob == nil ||
+		input.DeliveryLifetime <= 0 || input.DeliveryLifetime > 72*time.Hour {
+		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+	}
+	wantKey := model.MailTemplateExamSittingScheduled
+	switch input.ChangeKind {
+	case store.ExamSittingMailScheduled:
+		if sitting.Revision != 1 || sitting.State != model.ExamSittingScheduled {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+	case store.ExamSittingMailRescheduled:
+		wantKey = model.MailTemplateExamSittingRescheduled
+		if sitting.State != model.ExamSittingScheduled || !priorClassID.IsValid() {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+	case store.ExamSittingMailCancelled:
+		wantKey = model.MailTemplateExamSittingCancelled
+		if sitting.State != model.ExamSittingCanceled || !priorClassID.IsValid() {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+	case store.ExamSittingMailReconciled:
+		if sitting.State != model.ExamSittingScheduled || !priorClassID.IsValid() {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+	default:
+		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+	}
+	if input.Occurrence.Validate() != nil || input.Occurrence.Kind != model.MailOccurrenceSittingSchedule ||
+		input.Occurrence.TemplateKey != wantKey || input.Occurrence.ActorUserID != actorID || input.ExpansionJob.Validate() != nil ||
+		input.ExpansionJob.Type != model.JobTypeMailExpandSitting || input.ExpansionJob.DedupePolicy != model.JobDedupePermanent ||
+		input.ExpansionJob.MaximumAttempts != model.MailMaximumAttempts {
+		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+	}
+	command, err := model.DecodeSittingMailExpansionCommand(input.ExpansionJob.CommandVersion, input.ExpansionJob.Command)
+	wantDedupe, keyErr := model.SittingMailExpansionDedupeKey(input.Occurrence.ID)
+	if err != nil || keyErr != nil || command.OccurrenceID != input.Occurrence.ID || input.ExpansionJob.DedupeKey != wantDedupe {
+		return store.NewErrInvalidInput("exam_sitting", "mail_fanout", err)
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err = supersedeActiveSittingMailFanouts(ctx, tx, sitting.ID, databaseNow); err != nil {
+		return err
+	}
+	occurrence := *input.Occurrence
+	occurrence.CreatedAt = databaseNow
+	job := *input.ExpansionJob
+	job.CreatedAt, job.UpdatedAt, job.AvailableAt = databaseNow, databaseNow, databaseNow
+	deadline := databaseNow.Add(input.DeliveryLifetime)
+	var bundleID any
+	var completedAt any
+	terminalReason := ""
+	if input.Bundle == nil {
+		if job.Status != model.JobStatusCanceled || !job.CompletedAt.Valid || disabledEligibilityRevision < 1 {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+		job.CompletedAt = model.OptionalTimeFrom(databaseNow)
+		completedAt = databaseNow
+		terminalReason = "suppressed_disabled"
+	} else {
+		if disabledEligibilityRevision != 0 || input.Bundle.Validate() != nil || input.Bundle.ID != occurrence.ID || job.Status != model.JobStatusQueued {
+			return store.NewErrInvalidInput("exam_sitting", "mail_fanout", nil)
+		}
+		bundle := *input.Bundle
+		bundle.CreatedAt = databaseNow
+		payloadKeyID, payloadErr := mailPayloadKeyID(bundle.EncryptedPayload)
+		if payloadErr != nil {
+			return store.NewErrInvalidInput("mail_fanout_bundle", "encrypted_payload", payloadErr)
+		}
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO mail_fanout_bundles(id,payload_key_id,encrypted_payload,created_at,revision) VALUES(?,?,?,?,1)`,
+			bundle.ID.String(), payloadKeyID, bundle.EncryptedPayload, databaseNow); err != nil {
+			return fmt.Errorf("insert Sitting mail fan-out bundle: %w", translateError("mail_fanout_bundle", bundle.ID.String(), err))
+		}
+		if err = incrementMailPayloadKeyReference(ctx, tx, payloadKeyID); err != nil {
+			return err
+		}
+		bundleID = bundle.ID.String()
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO mail_occurrences(id,kind,template_key,actor_user_id,created_at) VALUES(?,?,?,?,?)`,
+		occurrence.ID.String(), occurrence.Kind, occurrence.TemplateKey, occurrence.ActorUserID.String(), databaseNow); err != nil {
+		return fmt.Errorf("insert Sitting mail occurrence: %w", translateError("mail_occurrence", occurrence.ID.String(), err))
+	}
+	if err = insertPreparedMailJob(ctx, tx, &job); err != nil {
+		return fmt.Errorf("insert Sitting mail expansion Job: %w", translateError("job", job.ID.String(), err))
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO exam_sitting_mail_fanouts
+		(occurrence_id,bundle_id,exam_sitting_id,sitting_revision,prior_class_id,change_kind,created_at,deadline,completed_at,terminal_reason)
+		VALUES(?,?,?,?,?,?,?,?,?,?)`, occurrence.ID.String(), bundleID, sitting.ID.String(), sitting.Revision, nullableID(priorClassID.String()),
+		input.ChangeKind, databaseNow, deadline, completedAt, terminalReason); err != nil {
+		return fmt.Errorf("insert Sitting mail fan-out: %w", translateError("exam_sitting_mail_fanout", occurrence.ID.String(), err))
+	}
+	if terminalReason == "suppressed_disabled" {
+		var audienceRevision int64
+		if updateErr := tx.Get(ctx, &audienceRevision, `SELECT mail_audience_revision FROM classes WHERE id=? FOR SHARE`,
+			sitting.ClassID.String()); updateErr != nil {
+			return fmt.Errorf("lock disabled Sitting mail audience: %w", updateErr)
+		}
+		result, updateErr := tx.Exec(ctx, `UPDATE exam_sittings SET mail_reconciliation_actor_user_id=?,
+			mail_disabled_suppressed_revision=?,mail_disabled_suppressed_audience_revision=?,
+			mail_disabled_suppressed_eligibility_revision=? WHERE id=? AND revision=?`,
+			actorID.String(), sitting.Revision, audienceRevision, disabledEligibilityRevision, sitting.ID.String(), sitting.Revision)
+		if updateErr != nil {
+			return fmt.Errorf("record disabled Sitting mail convergence: %w", updateErr)
+		}
+		affected, affectedErr := result.RowsAffected()
+		if affectedErr != nil || affected != 1 {
+			return store.NewErrConflict("exam_sitting", "exam_sitting_revision", affectedErr)
+		}
+	} else {
+		result, updateErr := tx.Exec(ctx, `UPDATE exam_sittings SET mail_reconciliation_actor_user_id=? WHERE id=? AND revision=?`,
+			actorID.String(), sitting.ID.String(), sitting.Revision)
+		if updateErr != nil {
+			return fmt.Errorf("record Sitting mail reconciliation actor: %w", updateErr)
+		}
+		affected, affectedErr := result.RowsAffected()
+		if affectedErr != nil || affected != 1 {
+			return store.NewErrConflict("exam_sitting", "exam_sitting_revision", affectedErr)
+		}
+	}
+	return nil
+}
+
+// lockDisabledExamSittingMailChronology establishes the canonical ordering for
+// a disabled-mail terminal fan-out: active Manager User, installation mail
+// eligibility singleton, then (at the caller) Class and hierarchy. The
+// captured revision is persisted only after those later authority checks.
+func lockDisabledExamSittingMailChronology(ctx context.Context, tx *sqlxTxWrapper, actorID model.UserID,
+	input *store.ExamSittingMailFanout,
+) (int64, error) {
+	if input == nil || input.Bundle != nil {
+		return 0, nil
+	}
+	var activeActorID string
+	if err := tx.Get(ctx, &activeActorID, `SELECT id FROM users
+		WHERE id=? AND archived_at IS NULL AND disabled_at IS NULL FOR SHARE`, actorID.String()); err != nil {
+		if isNoRows(err) {
+			return 0, store.NewErrConflict("exam_sitting_mail", "actor_unavailable", nil)
+		}
+		return 0, fmt.Errorf("lock disabled Sitting mail actor: %w", err)
+	}
+	return currentUserMailEligibilityRevision(ctx, tx)
+}
+
+func supersedeActiveSittingMailFanouts(ctx context.Context, tx *sqlxTxWrapper, sittingID model.ExamSittingID, at time.Time) error {
+	var rows []struct {
+		OccurrenceID string         `db:"occurrence_id"`
+		BundleID     sql.NullString `db:"bundle_id"`
+		PayloadKeyID sql.NullString `db:"payload_key_id"`
+		JobID        string         `db:"job_id"`
+	}
+	if err := tx.Select(ctx, &rows, `SELECT f.occurrence_id,f.bundle_id,b.payload_key_id,j.id job_id
+		FROM exam_sitting_mail_fanouts f
+		LEFT JOIN mail_fanout_bundles b ON b.id=f.bundle_id
+		JOIN jobs j ON j.type='mail.expand_sitting' AND j.dedupe_key='sitting-mail:'||f.occurrence_id
+		WHERE f.exam_sitting_id=? AND f.completed_at IS NULL ORDER BY f.occurrence_id FOR UPDATE OF f,j`, sittingID.String()); err != nil {
+		return fmt.Errorf("lock superseded Sitting mail fan-outs: %w", err)
+	}
+	for _, row := range rows {
+		jobID := model.JobID(row.JobID)
+		job, err := getJob(ctx, tx, jobID, true)
+		if err != nil {
+			return err
+		}
+		if job.Status == model.JobStatusQueued || job.Status == model.JobStatusRunning {
+			transitionAt := model.TimeUTC(at)
+			if transitionAt.Before(job.UpdatedAt) {
+				transitionAt = job.UpdatedAt
+			}
+			updated, cancelErr := job.RequestCancellation(transitionAt)
+			if cancelErr != nil {
+				return invalidPersistedState("job", "sitting_mail_supersession", cancelErr)
+			}
+			if err = updateJob(ctx, tx, updated); err != nil {
+				return err
+			}
+		}
+		if _, err = tx.Exec(ctx, `UPDATE exam_sitting_mail_fanouts SET bundle_id=NULL,completed_at=?,terminal_reason='superseded'
+			WHERE occurrence_id=? AND completed_at IS NULL`, model.TimeUTC(at), row.OccurrenceID); err != nil {
+			return fmt.Errorf("complete superseded Sitting mail fan-out: %w", err)
+		}
+		if row.BundleID.Valid {
+			if _, err = tx.Exec(ctx, `DELETE FROM mail_fanout_bundles WHERE id=?`, row.BundleID.String); err != nil {
+				return fmt.Errorf("destroy superseded Sitting mail bundle: %w", err)
+			}
+			if !row.PayloadKeyID.Valid {
+				return invalidPersistedState("mail_fanout_bundle", "payload_key_id", errors.New("missing payload key"))
+			}
+			if err = decrementMailPayloadKeyReference(ctx, tx, row.PayloadKeyID.String); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func insertExamSittingLifecycleJob(ctx context.Context, tx *sqlxTxWrapper, job *model.Job) error {

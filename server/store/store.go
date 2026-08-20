@@ -138,6 +138,16 @@ type ExamManagerMutation struct {
 	ChangedAt        int64
 	AuditEventID     string
 	AuditAt          int64
+	Notices          []ExamManagerMail
+}
+
+// ExamManagerMail is one fully prepared direct notification inserted with an
+// Exam management transition. Ownership transfer carries exactly two entries;
+// addition and removal carry exactly one.
+type ExamManagerMail struct {
+	Occurrence *model.MailOccurrence
+	Delivery   *model.MailDelivery
+	Job        *model.Job
 }
 
 type ExamManagerCommandResult struct {
@@ -1401,6 +1411,39 @@ type TeacherAcademicUnitInvitationAcceptanceResult struct {
 	Replayed           bool
 }
 
+// ScopedRoleInvitationIssue atomically persists one existing-User Role
+// Invitation, its recoverable claim delivery, and the successful issue audit.
+type ScopedRoleInvitationIssue struct {
+	Invitation   *model.Invitation
+	Lifetime     time.Duration
+	Occurrence   *model.MailOccurrence
+	Delivery     *model.MailDelivery
+	DeliveryJob  *model.Job
+	AuditEventID string
+	AuditAt      int64
+}
+
+// ScopedRoleInvitationAcceptance consumes one role-only claim for the exact
+// authenticated User and adds only a missing compatible Role Binding. It
+// intentionally carries no User/profile mutation or acceptance mail.
+type ScopedRoleInvitationAcceptance struct {
+	ClaimHash   string
+	UserID      model.UserID
+	RoleBinding *model.RoleBinding
+	// AuditEventID identifies the already-persisted secret-free attempt. The
+	// aggregate completes it atomically with acceptance or exact replay.
+	AuditEventID    string
+	AuditAt         int64
+	RequiredActions []model.Action
+}
+
+type ScopedRoleInvitationAcceptanceResult struct {
+	Invitation  *model.Invitation
+	User        *model.User
+	RoleBinding *model.RoleBinding
+	Replayed    bool
+}
+
 type InvitationMaintenanceResult struct {
 	Expired int
 	Purged  int
@@ -1412,10 +1455,12 @@ type InvitationMaintenanceResult struct {
 type InvitationStore interface {
 	IssueStudentClass(context.Context, *StudentClassInvitationIssue) (*model.Invitation, error)
 	IssueTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationIssue) (*model.Invitation, error)
+	IssueScopedRole(context.Context, *ScopedRoleInvitationIssue) (*model.Invitation, error)
 	Get(context.Context, model.InvitationID) (*model.Invitation, error)
 	GetByClaimHash(context.Context, string) (*model.Invitation, error)
 	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
 	AcceptTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationAcceptance) (*TeacherAcademicUnitInvitationAcceptanceResult, error)
+	AcceptScopedRole(context.Context, *ScopedRoleInvitationAcceptance) (*ScopedRoleInvitationAcceptanceResult, error)
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }
 

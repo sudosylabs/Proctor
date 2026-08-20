@@ -20,6 +20,10 @@ type invitationStoreFake struct {
 	accepted        *store.StudentClassInvitationAcceptance
 	teacherIssued   *store.TeacherAcademicUnitInvitationIssue
 	teacherAccepted *store.TeacherAcademicUnitInvitationAcceptance
+	scopedIssued    *store.ScopedRoleInvitationIssue
+	scopedAccepted  *store.ScopedRoleInvitationAcceptance
+	scopedAcceptErr error
+	events          *[]string
 }
 
 func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {
@@ -36,6 +40,9 @@ func (f *invitationStoreFake) Get(context.Context, model.InvitationID) (*model.I
 	return f.invitation, nil
 }
 func (f *invitationStoreFake) GetByClaimHash(_ context.Context, hash string) (*model.Invitation, error) {
+	if f.events != nil {
+		*f.events = append(*f.events, "resolve")
+	}
 	if f.invitation == nil || f.invitation.ClaimHash != hash {
 		return nil, store.NewErrNotFound("invitation", "claim")
 	}
@@ -53,6 +60,23 @@ func (f *invitationStoreFake) AcceptTeacherAcademicUnit(_ context.Context, input
 	_ = accepted.AcceptTeacherAcademicUnit(input.User.ID, input.Affiliation.ID, input.AcademicUnitMember.ID, input.RoleBinding.ID, model.TimeFromMillis(input.AcceptedAt))
 	return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: &accepted, User: input.User,
 		Affiliation: input.Affiliation, AcademicUnitMember: input.AcademicUnitMember, RoleBinding: input.RoleBinding}, nil
+}
+func (f *invitationStoreFake) IssueScopedRole(_ context.Context, input *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
+	f.scopedIssued = input
+	f.invitation = input.Invitation
+	return input.Invitation, nil
+}
+func (f *invitationStoreFake) AcceptScopedRole(_ context.Context, input *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+	if f.events != nil {
+		*f.events = append(*f.events, "accept")
+	}
+	f.scopedAccepted = input
+	if f.scopedAcceptErr != nil {
+		return nil, f.scopedAcceptErr
+	}
+	accepted := *f.invitation
+	_ = accepted.AcceptScopedRole(input.UserID, input.RoleBinding.ID, model.TimeFromMillis(1_800_000_060_000))
+	return &store.ScopedRoleInvitationAcceptanceResult{Invitation: &accepted, User: &model.User{ID: input.UserID}, RoleBinding: input.RoleBinding}, nil
 }
 func (f *invitationStoreFake) Maintain(context.Context, int) (*store.InvitationMaintenanceResult, error) {
 	return &store.InvitationMaintenanceResult{}, nil
@@ -127,6 +151,155 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
 		authorizer.delegatedScopeID != unitID.String() {
 		t.Fatalf("teacher issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
+	}
+}
+
+func TestInvitationServiceIssuesAcademicUnitRoleForExistingUser(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID, inviterID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID()
+	role := &model.Role{ID: roleID, Name: "unit-reviewer", DisplayName: "Unit Reviewer",
+		Permissions: []string{string(model.ActionProgrammeManage), string(model.ActionAcademicUnitView)}}
+	persistence := &invitationStoreFake{}
+	authorizer := &invitationAuthorizerFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{unit: &model.AcademicUnit{ID: unitID}},
+		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
+	view, err := service.IssueAcademicUnitRole(context.Background(),
+		NewInvocation(model.Principal{UserID: inviterID}, model.RequestMetadata{}),
+		IssueAcademicUnitRoleInvitationCommand{TargetEmail: "existing@example.edu", AcademicUnitID: unitID.String(),
+			RoleID: roleID.String(), IntendedStartsAt: model.MillisFromTime(now.Add(time.Hour))})
+	if err != nil {
+		t.Fatalf("IssueAcademicUnitRole() error = %v", err)
+	}
+	if view.Purpose != model.InvitationPurposeAcademicUnitRole || view.AcademicUnitID != unitID || view.RoleID != roleID ||
+		persistence.scopedIssued == nil || persistence.scopedIssued.Lifetime != model.StudentClassInvitationLifetime {
+		t.Fatalf("academic-unit Role issue view/input = %#v / %#v", view, persistence.scopedIssued)
+	}
+	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
+		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
+		authorizer.delegatedScopeID != unitID.String() {
+		t.Fatalf("academic-unit Role issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
+	}
+}
+
+func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWithoutMail(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID, inviterID, userID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID(), model.NewUserID()
+	raw := model.NewCredentialToken()
+	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{
+		ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "other-mailbox@example.edu",
+		AcademicUnitID: unitID, RoleID: roleID, RoleActions: []string{string(model.ActionAcademicUnitView)},
+		IntendedStartsAt: now, InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []string{}
+	auditID := model.NewAuditEventID().String()
+	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
+	persistence := &invitationStoreFake{invitation: invitation, events: &events}
+	mail := &invitationMailPreparerFake{}
+	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
+		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
+	result, err := service.AcceptAcademicUnitRole(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "request-1"}),
+		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
+	if err != nil {
+		t.Fatalf("AcceptAcademicUnitRole() error = %v", err)
+	}
+	accepted := persistence.scopedAccepted
+	if accepted == nil || accepted.UserID != userID || accepted.RoleBinding.UserID != userID ||
+		accepted.RoleBinding.RoleID != roleID || accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit ||
+		accepted.RoleBinding.ScopeID != unitID.String() || accepted.RoleBinding.OriginInvitationID != invitation.ID ||
+		accepted.AuditEventID != auditID || accepted.AuditAt != model.MillisFromTime(now.Add(time.Minute)) ||
+		result.User == nil || result.User.ID != userID || result.RoleBinding == nil || mail.directJobType != "" {
+		t.Fatalf("scoped Role acceptance/result = %#v / %#v", accepted, result)
+	}
+	if !slices.Equal(events, []string{"resolve", "begin-at-scope", "accept"}) ||
+		auditor.attempt.Action != model.Action("invitation.accept") || auditor.attempt.Resource.Type != model.ResourceAcademicUnit ||
+		auditor.attempt.Resource.ID != unitID.String() || auditor.attempt.ScopeType != model.RoleScopeAcademicUnit ||
+		auditor.attempt.ScopeID != unitID.String() || auditor.attempt.Operation != "accept_scoped_role_invitation" {
+		t.Fatalf("scoped Role audit attempt/events = %#v / %v", auditor.attempt, events)
+	}
+	encoded, encodeErr := model.EncodeAuditData(auditor.attempt.Value)
+	if encodeErr != nil || strings.Contains(string(encoded), raw) || strings.Contains(string(encoded), invitation.ClaimHash) {
+		t.Fatalf("scoped Role audit attempt leaked claim material: %s / %v", encoded, encodeErr)
+	}
+}
+
+func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID, roleID, inviterID, userID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID(), model.NewUserID()
+	raw := model.NewCredentialToken()
+	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{
+		ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "other-mailbox@example.edu",
+		AcademicUnitID: unitID, RoleID: roleID, RoleActions: []string{string(model.ActionAcademicUnitView)}, IntendedStartsAt: now,
+		InviterUserID: inviterID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: model.HashInvitationClaim(raw), IssuedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []string{}
+	auditID := model.NewAuditEventID().String()
+	auditor := &mutationAttemptAuditorFake{events: &events, beginID: auditID}
+	persistence := &invitationStoreFake{invitation: invitation, events: &events,
+		scopedAcceptErr: store.NewErrConflict("invitation", "invitation_role_binding_conflict", nil)}
+	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{},
+		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
+	_, appErr := service.AcceptAcademicUnitRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
+		AcceptAcademicUnitRoleInvitationCommand{Claim: raw, Source: "127.0.0.1"})
+	if !Is(appErr, "invitation.invalid") || auditor.failID != auditID || auditor.failCode != "invitation.invalid" ||
+		!slices.Equal(events, []string{"resolve", "begin-at-scope", "accept", "fail"}) {
+		t.Fatalf("scoped Role conflict error/audit/events = %v / %#v / %v", appErr, auditor, events)
+	}
+}
+
+func TestInvitationServiceInstitutionRoleRequiresStrongRecentInteractiveSession(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	institutionID, roleID, inviterID := model.NewInstitutionID(), model.NewRoleID(), model.NewUserID()
+	role := &model.Role{ID: roleID, Name: "institution-reviewer", DisplayName: "Institution Reviewer",
+		Permissions: []string{string(model.ActionAuditView)}}
+	persistence := &invitationStoreFake{}
+	authorizer := &invitationAuthorizerFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{},
+		invitationRoleStoreFake{role: role}, authorizer, &invitationMailPreparerFake{}, now)
+	principal := model.Principal{UserID: inviterID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: now}
+	command := IssueInstitutionRoleInvitationCommand{TargetEmail: "existing@example.edu", InstitutionID: institutionID.String(), RoleID: roleID.String()}
+	if _, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); !Is(err, "authentication.strong_required") {
+		t.Fatalf("weak IssueInstitutionRole() error = %v", err)
+	}
+	principal.AuthenticationStrength = model.AuthenticationMultiFactor
+	principal.MFACompletedAt = model.OptionalTimeFrom(now)
+	view, err := service.IssueInstitutionRole(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatalf("strong IssueInstitutionRole() error = %v", err)
+	}
+	if view.Purpose != model.InvitationPurposeInstitutionRole || view.RoleID != roleID || view.AcademicUnitID.IsValid() ||
+		persistence.scopedIssued == nil || persistence.scopedIssued.Invitation.ScopeType != model.RoleScopeInstitution ||
+		persistence.scopedIssued.Invitation.ScopeID != institutionID.String() {
+		t.Fatalf("institution Role issue = %#v / %#v", view, persistence.scopedIssued)
+	}
+	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}) ||
+		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeInstitution {
+		t.Fatalf("institution Role issue authorization = %v / %v", authorizer.actions, authorizer.delegatedActions)
 	}
 }
 
@@ -222,7 +395,7 @@ func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore
 	events := []string{}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, units, roles,
 		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{},
-		"node-1", "https://proctor.example.edu", model.NewCredentialToken, func() time.Time { return now })
+		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +411,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
-		model.NewCredentialToken, func() time.Time { return now })
+		15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +436,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	mail := &invitationMailPreparerFake{disabled: true}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
 		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
-		model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
+		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +471,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 	raw := model.NewCredentialToken()
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu", func() string { return raw }, func() time.Time { return now })
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newInvitationService() error = %v", err)
 	}

@@ -82,6 +82,14 @@ type PersonalAccessTokenMailDetails struct {
 	AcademicUnitScoped bool
 }
 
+// ExamManagerMailDetails is the bounded, actor-free context allowed in Exam
+// relationship notices.
+type ExamManagerMailDetails struct {
+	Title        string
+	Relationship string
+	ActionAt     time.Time
+}
+
 // DirectMailTemplateRenderer makes every rendering capability used by the
 // direct-mail preparer explicit at construction. A partially capable renderer
 // must fail composition rather than a security-notice request at runtime.
@@ -93,6 +101,7 @@ type DirectMailTemplateRenderer interface {
 		string,
 		PersonalAccessTokenMailDetails,
 	) (FrozenMailContent, error)
+	RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error)
 }
 
 type MailDeliverySender interface {
@@ -232,7 +241,7 @@ func (p *directMailPreparer) PrepareDirect(request DirectMailPreparation) (*prep
 		return nil, errors.New("direct mail input is invalid")
 	}
 	return p.prepareRecipient(user.DisplayName, user.Email, user.Locale, user.ID, user.ID, "", occurrenceID,
-		kind, key, actionURL, at, deadline, jobType, nil)
+		kind, key, actionURL, at, deadline, jobType, nil, nil)
 }
 
 func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
@@ -245,19 +254,24 @@ func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, act
 		key = model.MailTemplateAccessStudentClassInvitation
 	case model.InvitationPurposeTeacherAcademicUnit:
 		key = model.MailTemplateAccessTeacherAcademicUnitInvitation
+	case model.InvitationPurposeAcademicUnitRole:
+		key = model.MailTemplateAccessAcademicUnitRoleInvitation
+	case model.InvitationPurposeInstitutionRole:
+		key = model.MailTemplateAccessInstitutionRoleInvitation
 	default:
 		return nil, errors.New("invitation mail purpose is not implemented")
 	}
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
 		model.MailOccurrenceInvitation, key, actionURL,
-		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil)
+		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil)
 }
 
 func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, locale string, actorUserID, targetUserID model.UserID,
 	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind,
 	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,
 	personalAccessToken *PersonalAccessTokenMailDetails,
+	examManager *ExamManagerMailDetails,
 ) (*preparedDirectMail, error) {
 	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() || !occurrenceID.IsValid() ||
 		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
@@ -297,8 +311,13 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 		return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
 	}
 	var rendered FrozenMailContent
+	if personalAccessToken != nil && examManager != nil {
+		return nil, errors.New("direct mail details are ambiguous")
+	}
 	if personalAccessToken != nil {
 		rendered, err = p.renderer.RenderPersonalAccessTokenSecurityNotice(key, locale, model.DefaultLocale, *personalAccessToken)
+	} else if examManager != nil {
+		rendered, err = p.renderer.RenderExamManagerNotice(key, locale, model.DefaultLocale, *examManager)
 	} else {
 		rendered, err = p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
 	}

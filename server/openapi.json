@@ -585,6 +585,70 @@
         }
       }
     },
+    "/api/v1/academic-units/{academic_unit_id}/invitations/role": {
+      "parameters": [{"$ref": "#/components/parameters/AcademicUnitID"}],
+      "post": {
+        "operationId": "issueAcademicUnitRoleInvitation", "summary": "Invite an existing User to one exact Academic Unit Role package",
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable", "administration.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"}}}},
+        "responses": {
+          "201": {"description": "Invitation issued without claim or mailbox disclosure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/api/v1/institutions/{institution_id}/invitations/role": {
+      "parameters": [{"$ref": "#/components/parameters/InstitutionID"}],
+      "post": {
+        "operationId": "issueInstitutionRoleInvitation", "summary": "Invite an existing User to one exact Institution Role package",
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "invitation.invalid", "invitation.role_not_delegable", "invitation.conflict", "invitation.mail_unavailable", "invitation.unavailable", "administration.unavailable", "authentication.strong_required", "authentication.reauthentication_required"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"}}}},
+        "responses": {
+          "201": {"description": "Invitation issued without claim or mailbox disclosure", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}, "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/api/v1/invitations/academic-unit-role/accept": {
+      "post": {
+        "operationId": "acceptAcademicUnitRoleInvitation", "summary": "Accept an Academic Unit Role Invitation as the authenticated User",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcceptScopedRoleInvitationRequest"}}}},
+        "responses": {
+          "200": {"description": "Invitation accepted or exact outcome replayed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAcceptanceResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"}, "429": {"$ref": "#/components/responses/TooManyRequests"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
+    "/api/v1/invitations/institution-role/accept": {
+      "post": {
+        "operationId": "acceptInstitutionRoleInvitation", "summary": "Accept an Institution Role Invitation as the authenticated User",
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AcceptScopedRoleInvitationRequest"}}}},
+        "responses": {
+          "200": {"description": "Invitation accepted or exact outcome replayed", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAcceptanceResponse"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"}, "429": {"$ref": "#/components/responses/TooManyRequests"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+        }
+      }
+    },
     "/api/v1/class-members/{class_member_id}": {
       "parameters": [{"$ref": "#/components/parameters/ClassMemberID"}],
       "delete": {
@@ -2475,6 +2539,12 @@
       },
       "AcademicUnitID": {
         "name": "academic_unit_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ID"}
+      },
+      "InstitutionID": {
+        "name": "institution_id",
         "in": "path",
         "required": true,
         "schema": {"$ref": "#/components/schemas/ID"}
@@ -5059,11 +5129,23 @@
       "AcceptTeacherAcademicUnitInvitationRequest": {
         "$ref": "#/components/schemas/AcceptStudentClassInvitationRequest"
       },
+      "IssueScopedRoleInvitationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["email", "role_id"],
+        "properties": {
+          "email": {"type": "string", "format": "email"}, "role_id": {"$ref": "#/components/schemas/ID"},
+          "start_at": {"type": "integer", "format": "int64", "minimum": 1},
+          "end_at": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "AcceptScopedRoleInvitationRequest": {
+        "type": "object", "additionalProperties": false, "required": ["claim"],
+        "properties": {"claim": {"type": "string", "minLength": 43, "maxLength": 128}}
+      },
       "InvitationResponse": {
         "type": "object", "additionalProperties": false,
         "required": ["id", "purpose", "state", "start_at", "expires_at"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"}, "purpose": {"type": "string", "enum": ["student_class", "teacher_academic_unit"]},
+          "id": {"$ref": "#/components/schemas/ID"}, "purpose": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "academic_unit_role", "institution_role"]},
           "state": {"type": "string", "enum": ["pending", "accepted", "revoked", "expired", "superseded"]},
           "class_id": {"$ref": "#/components/schemas/ID"}, "academic_period_id": {"$ref": "#/components/schemas/ID"},
           "academic_unit_id": {"$ref": "#/components/schemas/ID"}, "role_id": {"$ref": "#/components/schemas/ID"},
@@ -5074,7 +5156,7 @@
       },
       "InvitationAcceptanceResponse": {
         "type": "object", "additionalProperties": false,
-        "required": ["user_id", "invitation_id", "affiliation_id", "replayed"],
+        "required": ["user_id", "invitation_id", "replayed"],
         "properties": {
           "user_id": {"$ref": "#/components/schemas/ID"},
           "invitation_id": {"$ref": "#/components/schemas/ID"},

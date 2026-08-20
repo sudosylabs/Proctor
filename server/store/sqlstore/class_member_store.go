@@ -12,6 +12,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
@@ -27,22 +28,23 @@ type SQLClassMemberStore struct {
 
 // classMemberRow is the legacy integer-millisecond column layout.
 type classMemberRow struct {
-	ID               string       `db:"id"`
-	CreatedAt        time.Time    `db:"created_at"`
-	UpdatedAt        time.Time    `db:"updated_at"`
-	ArchivedAt       sql.NullTime `db:"archived_at"`
-	Revision         int64        `db:"revision"`
-	ClassID          string       `db:"class_id"`
-	AcademicPeriodID string       `db:"academic_period_id"`
-	UserID           string       `db:"user_id"`
-	StartAt          time.Time    `db:"start_at"`
-	EndAt            sql.NullTime `db:"end_at"`
+	ID                   string       `db:"id"`
+	CreatedAt            time.Time    `db:"created_at"`
+	UpdatedAt            time.Time    `db:"updated_at"`
+	ArchivedAt           sql.NullTime `db:"archived_at"`
+	Revision             int64        `db:"revision"`
+	MailAudienceRevision int64        `db:"mail_audience_revision"`
+	ClassID              string       `db:"class_id"`
+	AcademicPeriodID     string       `db:"academic_period_id"`
+	UserID               string       `db:"user_id"`
+	StartAt              time.Time    `db:"start_at"`
+	EndAt                sql.NullTime `db:"end_at"`
 }
 
 func classMemberColumns() []string {
 	return []string{
 		"class_members.id", "class_members.created_at", "class_members.updated_at",
-		"class_members.archived_at", "class_members.revision", "class_members.class_id",
+		"class_members.archived_at", "class_members.revision", "class_members.mail_audience_revision", "class_members.class_id",
 		"class_members.academic_period_id", "class_members.user_id",
 		"class_members.start_at", "class_members.end_at",
 	}
@@ -132,7 +134,7 @@ func (s SQLClassMemberStore) enroll(
 
 		var previousRow classMemberRow
 		err = tx.Get(ctx, &previousRow, `
-		SELECT id, created_at, updated_at, archived_at, revision, class_id,
+		SELECT id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
 		       academic_period_id, user_id, start_at, end_at
 		  FROM class_members
 		 WHERE user_id = ? AND academic_period_id = ?
@@ -143,6 +145,7 @@ func (s SQLClassMemberStore) enroll(
 			candidate.UserID.String(), candidate.AcademicPeriodID.String(),
 		)
 		var previous *model.ClassMember
+		var audienceRevisions map[model.ClassID]int64
 		switch {
 		case err == nil:
 			previous, err = previousRow.model()
@@ -163,11 +166,15 @@ func (s SQLClassMemberStore) enroll(
 					nil,
 				)
 			}
+			audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, previous.ClassID, candidate.ClassID)
+			if err != nil {
+				return nil, err
+			}
 			if _, err := tx.Exec(ctx, `
 			UPDATE class_members
-			SET updated_at = ?, end_at = ?, revision = revision + 1
+			SET updated_at = ?, end_at = ?, revision = revision + 1, mail_audience_revision = ?
 			 WHERE id = ? AND archived_at IS NULL AND end_at IS NULL`,
-				candidate.UpdatedAt, startAt, previous.ID.String(),
+				candidate.UpdatedAt, startAt, audienceRevisions[previous.ClassID], previous.ID.String(),
 			); err != nil {
 				return nil, fmt.Errorf("end previous class enrollment: %w", err)
 			}
@@ -176,6 +183,12 @@ func (s SQLClassMemberStore) enroll(
 			previous.Revision++
 		case err != nil && !isNoRows(err):
 			return nil, fmt.Errorf("find current class enrollment: %w", err)
+		}
+		if audienceRevisions == nil {
+			audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
+			if err != nil {
+				return nil, err
+			}
 		}
 		var overlaps bool
 		excludedID := ""
@@ -208,12 +221,13 @@ func (s SQLClassMemberStore) enroll(
 		}
 
 		row := newClassMemberRow(candidate)
+		row.MailAudienceRevision = audienceRevisions[candidate.ClassID]
 		if _, err := tx.NamedExec(ctx, `
 		INSERT INTO class_members (
-			id, created_at, updated_at, archived_at, revision, class_id,
+			id, created_at, updated_at, archived_at, revision, mail_audience_revision, class_id,
 			academic_period_id, user_id, start_at, end_at
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :class_id,
+			:id, :created_at, :updated_at, :archived_at, :revision, :mail_audience_revision, :class_id,
 			:academic_period_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
 			return nil, fmt.Errorf(
@@ -373,11 +387,15 @@ func (s SQLClassMemberStore) endClassMember(
 		return nil, store.NewErrConflict("class_member", "class_member_end_time", nil)
 	}
 	at := model.TimeFromMillis(endAt)
+	audienceRevisions, err := advanceClassMailAudienceRevisions(ctx, executor, current.ClassID)
+	if err != nil {
+		return nil, err
+	}
 	result, err := executor.Exec(ctx, `
 		UPDATE class_members
-		   SET updated_at = ?, end_at = ?, revision = revision + 1
+		   SET updated_at = ?, end_at = ?, revision = revision + 1, mail_audience_revision = ?
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?`,
-		at, at, id, expectedRevision,
+		at, at, audienceRevisions[current.ClassID], id, expectedRevision,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("end class member: %w", err)
@@ -389,6 +407,34 @@ func (s SQLClassMemberStore) endClassMember(
 	current.EndsAt = model.OptionalTimeFromMillis(endAt)
 	current.Revision = expectedRevision + 1
 	return current, nil
+}
+
+func advanceClassMailAudienceRevisions(ctx context.Context, executor sqlxExecutor,
+	classIDs ...model.ClassID,
+) (map[model.ClassID]int64, error) {
+	unique := make(map[model.ClassID]struct{}, len(classIDs))
+	ordered := make([]string, 0, len(classIDs))
+	for _, classID := range classIDs {
+		if !classID.IsValid() {
+			return nil, store.NewErrInvalidInput("class", "mail_audience_revision", nil)
+		}
+		if _, exists := unique[classID]; exists {
+			continue
+		}
+		unique[classID] = struct{}{}
+		ordered = append(ordered, classID.String())
+	}
+	sort.Strings(ordered)
+	result := make(map[model.ClassID]int64, len(ordered))
+	for _, rawID := range ordered {
+		var revision int64
+		if err := executor.Get(ctx, &revision, `UPDATE classes SET mail_audience_revision=mail_audience_revision+1
+			WHERE id=? RETURNING mail_audience_revision`, rawID); err != nil {
+			return nil, fmt.Errorf("advance Class mail audience revision: %w", translateError("class", rawID, err))
+		}
+		result[model.ClassID(rawID)] = revision
+	}
+	return result, nil
 }
 
 func lockClassEnrollment(ctx context.Context, executor sqlxExecutor, userID, periodID string) error {

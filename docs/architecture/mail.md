@@ -148,6 +148,13 @@ Email change intentionally creates an old-address warning and a new-address
 verification, while ownership transfer creates separate role-appropriate
 messages for its two recipients.
 
+Exam Manager addition and removal each create one direct occurrence for the
+affected User. Ownership transfer creates exactly two direct occurrences: the
+new Owner receives the resulting Owner relationship and the previous Owner is
+told that they remain a Manager. The frozen payload contains only the safe Exam
+title, resulting relationship, and action time; it excludes the actor, other
+Managers, and private authorization detail.
+
 Accepting an invitation for a new User sends one semantic
 `access.invitation_accepted` message rather than separate notices for every
 membership and role-binding side effect. Acceptance by an already authenticated
@@ -167,11 +174,24 @@ deadlines and derives the User-token, occurrence, delivery, and Job timestamps
 from one PostgreSQL clock sample inside the committing transaction.
 
 Sitting audience is the set of active students whose effective Class
-membership contains the Sitting's scheduled start. A bounded expansion Job
-pages the authoritative roster and creates per-recipient deliveries. Class
-enrollment, ending, and transfer reconcile upcoming Sittings. Moving a Sitting
-between Classes sends removal to the removed audience, update to the retained
-audience, and schedule to newly eligible candidates.
+membership contains the Sitting's scheduled start. The implemented transition
+aggregate records one encrypted render bundle and an ordinary, bounded
+expansion Job atomically with the Sitting revision and audit. The worker pages
+the authoritative roster, commits each unique recipient independently, and
+destroys the bundle after completion. Bounded periodic reconciliation detects
+enrollment, ending, transfer, and other audience drift for upcoming Sittings;
+multiple nodes converge through the same one-active-fan-out and recipient
+projection fences. Moving a Sitting between Classes sends removal to the
+removed audience, update to the retained audience, and schedule to newly
+eligible candidates.
+
+The daily mail-maintenance aggregate uses one PostgreSQL clock sample and a
+bounded page to terminalize expired expansion, permanently failed expansion,
+or an expansion whose retained Job has disappeared. It cancels live expansion
+work, destroys the shared bundle and its key reference, releases the active
+fan-out fence, and suppresses child deliveries in bounded follow-up pages.
+Reconciliation treats those terminal reasons as an absent desired fact, so a
+current audience can converge without waiting for every old child to be swept.
 
 Each candidate has a last-communicated Sitting projection. Unaccepted schedule
 changes coalesce to the latest relevant fact. An unsent schedule followed by
@@ -341,6 +361,30 @@ mail unavailable while disabled. Other domain mutations commit a terminal
 `suppressed_disabled` occurrence. Starting with mail disabled suppresses and
 cancels outstanding nonterminal delivery work, destroys its ciphertext, and
 does not resurrect it after re-enablement.
+For Sitting fan-out, each enrollment, ending, or transfer advances a bounded
+Class audience revision and stamps the affected membership row. A disabled
+aggregate records the exact Sitting revision and Class audience revision
+outside retained mail history. Reconciliation treats only membership facts at
+or before that watermark as converged, even after the 90-day occurrence
+cleanup; a later audience mutation or schedule revision remains independently
+eligible without resurrecting the earlier suppressed audience. The Sitting
+also records a transactional singleton User-eligibility revision. Email
+verification and account enablement or disablement advance and stamp that
+chronology, while a disabled fan-out reads it under the same PostgreSQL row
+lock; either commit order is therefore exact without retaining a per-Sitting
+roster snapshot. Reconciliation considers a membership or User eligibility
+fact newer than its corresponding watermark. It retains only the last
+reconciliation actor ID: a due scan selects an active current Exam Manager,
+then the aggregate locks that User before the eligibility singleton and before
+Class/hierarchy state, and rechecks current authority before replacing the
+provenance. The installation-wide system-administrator authentication-path
+fence, where required, precedes every User row. Every affected transaction then
+uses the canonical User, eligibility singleton, Class/hierarchy order:
+account-state and email transitions lock the target User before advancing the
+singleton; Invitation acceptance locks the inviter and target User before
+verification advances it; and disabled Sitting fan-out captures it before the
+lifecycle fence. Reconciliation therefore depends on neither retained mail
+history nor stale authority and cannot form a cross-aggregate lock cycle.
 
 An installation may not activate invitation-required onboarding while mail is
 disabled or unhealthy. It must not reveal raw invitation links through an
@@ -401,7 +445,9 @@ template data, credentials, SMTP configuration, and raw provider responses.
 Succeeded, suppressed, and canceled metadata is retained for 90 days; failed
 metadata for 180 days. A durable bounded cleanup Job enforces those cutoffs and
 catches abandoned ciphertext without changing independent security-audit
-retention.
+retention. Sitting cleanup clears only the exact retired desired-delivery
+reference, preserves the last-communicated projection, and retires the
+completed fan-out before its now-orphaned occurrence.
 
 Unsafe template, encryption, or configuration state prevents server startup.
 Every mail-enabled node validates the bounded key-reference aggregate for

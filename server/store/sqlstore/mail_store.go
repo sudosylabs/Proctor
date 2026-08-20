@@ -277,6 +277,17 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 				return nil, err
 			}
 		}
+		var sittingFence *sittingMailDeliveryFence
+		if isSittingScheduleMailTemplate(templateKey) {
+			if !route.TargetUserID.Valid {
+				return nil, invalidPersistedState("mail_delivery", "target_user_id", errors.New("Sitting delivery has no user target"))
+			}
+			fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, id)
+			if fenceErr != nil {
+				return nil, fenceErr
+			}
+			sittingFence = fence
+		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -332,8 +343,31 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 				return updated, nil
 			}
 		}
+		if sittingFence != nil {
+			relevant, relevanceErr := sittingFence.relevant(ctx, tx, current.ID)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				transitionAt := sittingFence.Now
+				if transitionAt.Before(current.UpdatedAt) {
+					transitionAt = current.UpdatedAt
+				}
+				if err = clearExactSittingDesiredDelivery(ctx, tx, sittingFence, current.ID, transitionAt); err != nil {
+					return nil, err
+				}
+				updated, suppressErr := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+				if suppressErr != nil {
+					return nil, invalidPersistedState("mail_delivery", "suppression", suppressErr)
+				}
+				if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+					return nil, err
+				}
+				return updated, nil
+			}
+		}
 		startAt := at
-		if credential || invitationCredential {
+		if credential || invitationCredential || sittingFence != nil {
 			startAt = databaseNow
 			if startAt.Before(current.UpdatedAt) {
 				startAt = current.UpdatedAt
@@ -379,8 +413,9 @@ func suppressInvitationCredentialMail(
 	}
 	var rows []mailDeliveryRow
 	if err := tx.Select(ctx, &rows, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries
-		WHERE target_invitation_id=? AND template_key IN (?,?) ORDER BY id FOR UPDATE`,
-		invitationID.String(), string(model.MailTemplateAccessStudentClassInvitation), string(model.MailTemplateAccessTeacherAcademicUnitInvitation)); err != nil {
+		WHERE target_invitation_id=? AND template_key IN (?,?,?,?) ORDER BY id FOR UPDATE`,
+		invitationID.String(), string(model.MailTemplateAccessStudentClassInvitation), string(model.MailTemplateAccessTeacherAcademicUnitInvitation),
+		string(model.MailTemplateAccessAcademicUnitRoleInvitation), string(model.MailTemplateAccessInstitutionRoleInvitation)); err != nil {
 		return fmt.Errorf("lock target credential deliveries: %w", err)
 	}
 	for index := range rows {
@@ -457,24 +492,34 @@ func lockActiveInvitationMail(ctx context.Context, executor sqlxExecutor, invita
 		FROM invitations WHERE id=? FOR SHARE`, invitationID); err != nil {
 		return false, translateError("invitation", invitationID, err)
 	}
-	if invitation.Purpose != string(model.InvitationPurposeTeacherAcademicUnit) {
+	expectedPurpose := model.InvitationPurpose(invitation.Purpose)
+	if expectedPurpose == model.InvitationPurposeStudentClass {
 		return invitation.Pending, nil
 	}
-	if !invitation.AcademicUnitID.Valid || !invitation.RoleID.Valid {
-		return false, invalidPersistedState("invitation", "teacher_package", errors.New("teacher Invitation package is incomplete"))
+	if (expectedPurpose != model.InvitationPurposeTeacherAcademicUnit && expectedPurpose != model.InvitationPurposeAcademicUnitRole && expectedPurpose != model.InvitationPurposeInstitutionRole) ||
+		!invitation.RoleID.Valid ||
+		(expectedPurpose != model.InvitationPurposeInstitutionRole && !invitation.AcademicUnitID.Valid) {
+		return false, invalidPersistedState("invitation", "role_package", errors.New("Role Invitation package is incomplete"))
 	}
 	// Invitation acceptance takes these locks in the same order. Academic Unit
 	// hierarchy changes share the advisory lock, while Role updates/archival
 	// take an exclusive row lock. Holding the exact package lineage through the
 	// delivery transition prevents a credential from starting against a stale
 	// Unit or permission snapshot.
-	if err := lockAcademicUnitHierarchy(ctx, executor); err != nil {
-		return false, err
-	}
-	var unitActive bool
-	if err := executor.Get(ctx, &unitActive, `SELECT EXISTS(
-		SELECT 1 FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE)`, invitation.AcademicUnitID.String); err != nil {
-		return false, fmt.Errorf("lock teacher Invitation Academic Unit mail lineage: %w", err)
+	packageActive := true
+	if expectedPurpose == model.InvitationPurposeInstitutionRole {
+		if err := executor.Get(ctx, &packageActive, `SELECT EXISTS(
+			SELECT 1 FROM institutions WHERE id=(SELECT scope_id FROM invitations WHERE id=?) AND archived_at IS NULL FOR SHARE)`, invitationID); err != nil {
+			return false, fmt.Errorf("lock institution Role Invitation mail lineage: %w", err)
+		}
+	} else {
+		if err := lockAcademicUnitHierarchy(ctx, executor); err != nil {
+			return false, err
+		}
+		if err := executor.Get(ctx, &packageActive, `SELECT EXISTS(
+			SELECT 1 FROM academic_units WHERE id=? AND archived_at IS NULL FOR SHARE)`, invitation.AcademicUnitID.String); err != nil {
+			return false, fmt.Errorf("lock Academic Unit Role Invitation mail lineage: %w", err)
+		}
 	}
 	var currentPermissions pq.StringArray
 	if err := executor.Get(ctx, &currentPermissions, `SELECT permissions FROM roles
@@ -486,7 +531,7 @@ func lockActiveInvitationMail(ctx context.Context, executor sqlxExecutor, invita
 	}
 	current := append([]string(nil), currentPermissions...)
 	slices.Sort(current)
-	return invitation.Pending && unitActive && slices.Equal(current, []string(invitation.RoleActions)), nil
+	return invitation.Pending && packageActive && slices.Equal(current, []string(invitation.RoleActions)), nil
 }
 
 func activeInvitationMail(ctx context.Context, executor sqlxExecutor, delivery *model.MailDelivery, at time.Time) (bool, error) {
@@ -506,21 +551,38 @@ func activeInvitationMail(ctx context.Context, executor sqlxExecutor, delivery *
 		}
 		return active, nil
 	}
+	if delivery.TemplateKey == model.MailTemplateAccessInstitutionRoleInvitation {
+		if err := executor.Get(ctx, &active, `SELECT EXISTS(
+			SELECT 1 FROM invitations i JOIN institutions institution ON institution.id=i.scope_id AND institution.archived_at IS NULL
+			JOIN roles r ON r.id=i.role_id AND r.archived_at IS NULL AND r.built_in=FALSE
+			WHERE i.id=? AND i.purpose='institution_role' AND i.state='pending' AND i.expires_at>?
+			AND (i.intended_end_at IS NULL OR i.intended_end_at>?)
+			AND (SELECT array_agg(value ORDER BY value) FROM unnest(r.permissions) value)=i.role_actions
+		)`, delivery.TargetInvitationID.String(), model.TimeUTC(at), model.TimeUTC(at)); err != nil {
+			return false, fmt.Errorf("check institution Role Invitation mail relevance: %w", err)
+		}
+		return active, nil
+	}
+	purpose := model.InvitationPurposeTeacherAcademicUnit
+	if delivery.TemplateKey == model.MailTemplateAccessAcademicUnitRoleInvitation {
+		purpose = model.InvitationPurposeAcademicUnitRole
+	}
 	if err := executor.Get(ctx, &active, `SELECT EXISTS(
 		SELECT 1 FROM invitations i
 		JOIN academic_units au ON au.id=i.academic_unit_id AND au.archived_at IS NULL
 		JOIN roles r ON r.id=i.role_id AND r.archived_at IS NULL AND r.built_in=FALSE
-		WHERE i.id=? AND i.purpose='teacher_academic_unit' AND i.state='pending' AND i.expires_at>?
+		WHERE i.id=? AND i.purpose=? AND i.state='pending' AND i.expires_at>?
 		AND (i.intended_end_at IS NULL OR i.intended_end_at>?)
 		AND (SELECT array_agg(value ORDER BY value) FROM unnest(r.permissions) value)=i.role_actions
-	)`, delivery.TargetInvitationID.String(), model.TimeUTC(at), model.TimeUTC(at)); err != nil {
+	)`, delivery.TargetInvitationID.String(), purpose, model.TimeUTC(at), model.TimeUTC(at)); err != nil {
 		return false, fmt.Errorf("check teacher Invitation mail relevance: %w", err)
 	}
 	return active, nil
 }
 
 func isInvitationCredentialTemplate(key model.MailTemplateKey) bool {
-	return key == model.MailTemplateAccessStudentClassInvitation || key == model.MailTemplateAccessTeacherAcademicUnitInvitation
+	return key == model.MailTemplateAccessStudentClassInvitation || key == model.MailTemplateAccessTeacherAcademicUnitInvitation ||
+		key == model.MailTemplateAccessAcademicUnitRoleInvitation || key == model.MailTemplateAccessInstitutionRoleInvitation
 }
 
 func (s SQLMailStore) CompleteDelivery(ctx context.Context, input *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
@@ -611,6 +673,14 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 				return nil, err
 			}
 		}
+		var sittingFence *sittingMailDeliveryFence
+		if operation == "retry" && isSittingScheduleMailTemplate(templateKey) {
+			fence, fenceErr := lockSittingMailDeliveryFence(ctx, tx, input.ID)
+			if fenceErr != nil {
+				return nil, fenceErr
+			}
+			sittingFence = fence
+		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -637,6 +707,15 @@ func (s SQLMailStore) mutateOperatorDelivery(ctx context.Context, input *store.M
 		}
 		if operation == "retry" && invitationCredential {
 			relevant, relevanceErr := activeInvitationMail(ctx, tx, current, databaseNow)
+			if relevanceErr != nil {
+				return nil, relevanceErr
+			}
+			if !relevant {
+				return nil, store.NewErrConflict("mail_delivery", "obsolete", nil)
+			}
+		}
+		if sittingFence != nil {
+			relevant, relevanceErr := sittingFence.relevant(ctx, tx, current.ID)
 			if relevanceErr != nil {
 				return nil, relevanceErr
 			}
@@ -700,6 +779,20 @@ func (s SQLMailStore) mutateDelivery(ctx context.Context, id model.MailDeliveryI
 	return executeSQLTransaction(ctx, s.GetMaster().Begin, rawSQLTransactionPolicy[*model.MailDelivery](true, func(_ *model.MailDelivery, err error) error {
 		return fmt.Errorf("commit mail delivery transition: %w", err)
 	}), func(ctx context.Context, tx *sqlxTxWrapper) (*model.MailDelivery, error) {
+		var route struct {
+			TemplateKey string `db:"template_key"`
+		}
+		if err := tx.Get(ctx, &route, `SELECT template_key FROM mail_deliveries WHERE id=?`, id.String()); err != nil {
+			return nil, translateError("mail_delivery", id.String(), err)
+		}
+		var sittingFence *sittingMailDeliveryFence
+		if isSittingScheduleMailTemplate(model.MailTemplateKey(route.TemplateKey)) {
+			fence, err := lockSittingMailDeliveryFence(ctx, tx, id)
+			if err != nil {
+				return nil, err
+			}
+			sittingFence = fence
+		}
 		var row mailDeliveryRow
 		if err := tx.Get(ctx, &row, `SELECT `+mailDeliveryColumns+` FROM mail_deliveries WHERE id = ? FOR UPDATE`, id.String()); err != nil {
 			return nil, translateError("mail_delivery", id.String(), err)
@@ -717,6 +810,11 @@ func (s SQLMailStore) mutateDelivery(ctx context.Context, id model.MailDeliveryI
 		}
 		if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
 			return nil, err
+		}
+		if sittingFence != nil && updated.State == model.MailDeliveryAccepted {
+			if err = markSittingMailCommunicated(ctx, tx, sittingFence, updated.UpdatedAt); err != nil {
+				return nil, fmt.Errorf("record communicated Sitting mail: %w", err)
+			}
 		}
 		return updated, nil
 	})

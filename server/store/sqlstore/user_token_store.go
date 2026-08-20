@@ -122,6 +122,10 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if user.Revision != input.ExpectedRevision || user.Email == input.NewEmail {
 			return nil, store.NewErrConflict("user", "email_revision", nil)
 		}
+		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
 		var priorIDs []string
 		if err = tx.Select(ctx, &priorIDs, `SELECT id FROM user_tokens WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("lock prior email tokens: %w", err)
@@ -129,7 +133,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=?,archived_at=? WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("invalidate prior email tokens: %w", err)
 		}
-		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, at, input.UserID.String(), input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
 		if err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}
@@ -187,6 +191,10 @@ func (s SQLUserTokenStore) VerifyEmailPrivileged(ctx context.Context, input *sto
 		if user.Revision != input.ExpectedRevision || user.EmailVerified {
 			return nil, store.NewErrConflict("user", "email_revision", nil)
 		}
+		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
 		var priorIDs []string
 		if err = tx.Select(ctx, &priorIDs, `SELECT id FROM user_tokens WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, err
@@ -195,7 +203,7 @@ func (s SQLUserTokenStore) VerifyEmailPrivileged(ctx context.Context, input *sto
 		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=?,archived_at=? WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, err
 		}
-		result, err := tx.Exec(ctx, `UPDATE users SET email_verified=true,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, at, input.UserID.String(), input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE users SET email_verified=true,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
 		if err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}
@@ -552,11 +560,15 @@ func (s SQLUserTokenStore) ConsumeEmailVerification(
 		if err != nil {
 			return nil, err
 		}
+		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET updated_at = ?, email_verified = true, revision = revision + 1
+		   SET updated_at = ?, email_verified = true, mail_eligibility_revision = ?, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL`,
-			at, user.ID,
+			at, mailEligibilityRevision, user.ID,
 		); err != nil {
 			return nil, fmt.Errorf("verify user email: %w", err)
 		}

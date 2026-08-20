@@ -116,6 +116,7 @@ CREATE TABLE classes (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    mail_audience_revision bigint NOT NULL DEFAULT 0 CHECK (mail_audience_revision >= 0),
     programme_level_id varchar(26) NOT NULL REFERENCES programme_levels(id),
     academic_period_id varchar(26) NOT NULL REFERENCES academic_periods(id),
     name varchar(64) NOT NULL,
@@ -263,6 +264,17 @@ CREATE TABLE file_renditions (
     )
 );
 
+-- User mail eligibility changes and disabled Sitting fan-outs share this one
+-- transactional chronology. The singleton row makes commit ordering exact:
+-- a disabled watermark and a concurrent eligibility mutation cannot pass one
+-- another without observing the same row lock.
+CREATE TABLE mail_audience_states (
+    singleton smallint PRIMARY KEY CHECK (singleton = 1),
+    user_eligibility_revision bigint NOT NULL DEFAULT 0 CHECK (user_eligibility_revision >= 0)
+);
+
+INSERT INTO mail_audience_states (singleton) VALUES (1);
+
 CREATE TABLE users (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -272,6 +284,7 @@ CREATE TABLE users (
     username varchar(64) NOT NULL,
     email varchar(254) NOT NULL,
     email_verified boolean NOT NULL DEFAULT false,
+    mail_eligibility_revision bigint NOT NULL DEFAULT 0 CHECK (mail_eligibility_revision >= 0),
     display_name varchar(512) NOT NULL DEFAULT '',
     first_name varchar(256) NOT NULL DEFAULT '',
     last_name varchar(256) NOT NULL DEFAULT '',
@@ -309,7 +322,7 @@ CREATE TABLE invitations (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-    purpose varchar(32) NOT NULL CHECK (purpose IN ('student_class', 'teacher_academic_unit')),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('student_class', 'teacher_academic_unit', 'academic_unit_role', 'institution_role')),
     state varchar(24) NOT NULL CHECK (state IN ('pending', 'accepted', 'revoked', 'expired', 'superseded')),
     target_email varchar(254) NOT NULL CHECK (target_email = lower(btrim(target_email))),
     class_id varchar(26) REFERENCES classes(id),
@@ -325,7 +338,7 @@ CREATE TABLE invitations (
     suggested_last_name varchar(256) NOT NULL DEFAULT '',
     suggested_locale varchar(35) NOT NULL DEFAULT '',
     inviter_user_id varchar(26) NOT NULL REFERENCES users(id),
-    scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit')),
+    scope_type varchar(32) NOT NULL CHECK (scope_type IN ('class', 'academic_unit', 'institution')),
     scope_id varchar(26) NOT NULL,
     claim_hash char(64) NOT NULL UNIQUE CHECK (claim_hash ~ '^[0-9a-f]{64}$'),
     expires_at timestamptz NOT NULL,
@@ -340,15 +353,25 @@ CREATE TABLE invitations (
             AND academic_unit_id IS NULL AND role_id IS NULL AND role_actions = '{}' AND scope_type = 'class' AND scope_id = class_id) OR
         (purpose = 'teacher_academic_unit' AND class_id IS NULL AND academic_period_id IS NULL
             AND academic_unit_id IS NOT NULL AND role_id IS NOT NULL AND cardinality(role_actions) > 0
-            AND scope_type = 'academic_unit' AND scope_id = academic_unit_id)
+            AND scope_type = 'academic_unit' AND scope_id = academic_unit_id) OR
+        (purpose = 'academic_unit_role' AND class_id IS NULL AND academic_period_id IS NULL
+            AND academic_unit_id IS NOT NULL AND role_id IS NOT NULL AND cardinality(role_actions) > 0
+            AND scope_type = 'academic_unit' AND scope_id = academic_unit_id) OR
+        (purpose = 'institution_role' AND class_id IS NULL AND academic_period_id IS NULL
+            AND academic_unit_id IS NULL AND role_id IS NOT NULL AND cardinality(role_actions) > 0
+            AND scope_type = 'institution')
     ),
     CONSTRAINT invitations_effective_bounds_check CHECK (intended_end_at IS NULL OR intended_end_at > intended_start_at),
     CONSTRAINT invitations_lifetime_check CHECK (expires_at = created_at + interval '7 days'),
     CONSTRAINT invitations_lifecycle_check CHECK (
         updated_at >= created_at AND
-        ((state = 'accepted') = (accepted_at IS NOT NULL AND accepted_user_id IS NOT NULL AND accepted_affiliation_id IS NOT NULL AND
-            ((purpose = 'student_class' AND accepted_class_member_id IS NOT NULL AND accepted_academic_unit_member_id IS NULL AND accepted_role_binding_id IS NULL) OR
-             (purpose = 'teacher_academic_unit' AND accepted_class_member_id IS NULL AND accepted_academic_unit_member_id IS NOT NULL AND accepted_role_binding_id IS NOT NULL)))) AND
+        ((state = 'accepted') = (accepted_at IS NOT NULL AND accepted_user_id IS NOT NULL AND
+            ((purpose = 'student_class' AND accepted_affiliation_id IS NOT NULL AND accepted_class_member_id IS NOT NULL
+                AND accepted_academic_unit_member_id IS NULL AND accepted_role_binding_id IS NULL) OR
+             (purpose = 'teacher_academic_unit' AND accepted_affiliation_id IS NOT NULL AND accepted_class_member_id IS NULL
+                AND accepted_academic_unit_member_id IS NOT NULL AND accepted_role_binding_id IS NOT NULL) OR
+             (purpose IN ('academic_unit_role', 'institution_role') AND accepted_affiliation_id IS NULL
+                AND accepted_class_member_id IS NULL AND accepted_academic_unit_member_id IS NULL AND accepted_role_binding_id IS NOT NULL)))) AND
         (accepted_at IS NULL OR (accepted_at >= created_at AND accepted_at < expires_at))
     )
 );
@@ -361,12 +384,20 @@ CREATE UNIQUE INDEX invitations_pending_teacher_package_key
     ON invitations (target_email, academic_unit_id, role_id)
     WHERE state = 'pending' AND purpose = 'teacher_academic_unit';
 
+CREATE UNIQUE INDEX invitations_pending_academic_unit_role_package_key
+    ON invitations (target_email, academic_unit_id, role_id)
+    WHERE state = 'pending' AND purpose = 'academic_unit_role';
+
+CREATE UNIQUE INDEX invitations_pending_institution_role_package_key
+    ON invitations (target_email, scope_id, role_id)
+    WHERE state = 'pending' AND purpose = 'institution_role';
+
 -- One immutable logical occurrence owns one or more frozen recipient
 -- deliveries. Occurrence actors and recipient targets are deliberately
 -- independent because an administrator may notify a pre-User Invitation.
 CREATE TABLE mail_occurrences (
     id varchar(26) PRIMARY KEY,
-    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation')),
+    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'sitting_schedule', 'exam_management')),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
@@ -378,7 +409,12 @@ CREATE TABLE mail_occurrences (
 		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
 		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
-        'access.invitation_accepted'
+        'access.academic_unit_role_invitation', 'access.institution_role_invitation',
+        'access.invitation_accepted',
+        'exam.sitting_scheduled', 'exam.sitting_rescheduled',
+        'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
+        'exam.manager_added', 'exam.manager_removed',
+        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     created_at timestamptz NOT NULL,
@@ -413,7 +449,12 @@ CREATE TABLE mail_deliveries (
 		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
 		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
-        'access.invitation_accepted'
+        'access.academic_unit_role_invitation', 'access.institution_role_invitation',
+        'access.invitation_accepted',
+        'exam.sitting_scheduled', 'exam.sitting_rescheduled',
+        'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
+        'exam.manager_added', 'exam.manager_removed',
+        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
     masked_recipient varchar(254) NOT NULL
@@ -434,8 +475,7 @@ CREATE TABLE mail_deliveries (
     encrypted_payload jsonb,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     CONSTRAINT mail_deliveries_occurrence_identity_fkey
-        FOREIGN KEY (occurrence_id, template_key)
-        REFERENCES mail_occurrences(id, template_key),
+        FOREIGN KEY (occurrence_id) REFERENCES mail_occurrences(id),
     CONSTRAINT mail_deliveries_exact_target_check CHECK (
         (target_user_id IS NULL) <> (target_invitation_id IS NULL)
     ),
@@ -1003,11 +1043,21 @@ CREATE TABLE exam_sittings (
     canceled_at timestamptz,
     reason_code varchar(32),
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    mail_reconciliation_actor_user_id varchar(26) REFERENCES users(id),
+    mail_disabled_suppressed_revision bigint,
+    mail_disabled_suppressed_audience_revision bigint,
+    mail_disabled_suppressed_eligibility_revision bigint,
     UNIQUE (exam_id, id),
     CONSTRAINT exam_sittings_revision_fkey
         FOREIGN KEY (exam_id, exam_revision_id, exam_revision_sealed)
         REFERENCES exam_revisions(exam_id, id, sealed),
     CONSTRAINT exam_sittings_schedule_check CHECK (scheduled_start_at < scheduled_end_at),
+    CONSTRAINT exam_sittings_mail_disabled_suppressed_revision_check CHECK (
+        (mail_disabled_suppressed_revision IS NULL AND mail_disabled_suppressed_audience_revision IS NULL AND
+            mail_disabled_suppressed_eligibility_revision IS NULL) OR
+        (mail_disabled_suppressed_revision BETWEEN 1 AND revision AND mail_disabled_suppressed_audience_revision >= 0 AND
+            mail_disabled_suppressed_eligibility_revision >= 0)
+    ),
     CONSTRAINT exam_sittings_timestamps_check CHECK (
         updated_at >= created_at AND
         (opened_at IS NULL OR opened_at BETWEEN created_at AND updated_at) AND
@@ -1098,6 +1148,7 @@ CREATE TABLE class_members (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    mail_audience_revision bigint NOT NULL CHECK (mail_audience_revision > 0),
     class_id varchar(26) NOT NULL,
     academic_period_id varchar(26) NOT NULL REFERENCES academic_periods(id),
     user_id varchar(26) NOT NULL REFERENCES users(id),
@@ -1120,6 +1171,66 @@ CREATE INDEX class_members_current_class_user_idx
     WHERE archived_at IS NULL;
 CREATE INDEX class_members_class_user_history_idx
     ON class_members (class_id, user_id, start_at, end_at, archived_at);
+
+-- One bounded Sitting transition owns one encrypted, release-frozen render
+-- bundle. Its expansion Job pages the current roster and the durable
+-- last-communicated projection; deleting the bundle after terminal expansion
+-- destroys the shared recoverable payload without deleting mail history.
+CREATE TABLE exam_sitting_mail_fanouts (
+    occurrence_id varchar(26) PRIMARY KEY REFERENCES mail_occurrences(id),
+    bundle_id varchar(26) UNIQUE REFERENCES mail_fanout_bundles(id) ON DELETE SET NULL,
+    exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    sitting_revision bigint NOT NULL CHECK (sitting_revision > 0),
+    prior_class_id varchar(26) REFERENCES classes(id),
+    change_kind varchar(16) NOT NULL CHECK (change_kind IN ('scheduled', 'rescheduled', 'cancelled', 'reconciled')),
+    created_at timestamptz NOT NULL,
+    deadline timestamptz NOT NULL CHECK (deadline > created_at),
+    completed_at timestamptz,
+	terminal_reason varchar(24) NOT NULL DEFAULT '' CHECK (terminal_reason IN
+		('', 'completed', 'superseded', 'suppressed_disabled', 'expired', 'failed', 'orphaned')),
+    CONSTRAINT exam_sitting_mail_fanouts_lifecycle_check CHECK (
+		((completed_at IS NULL AND bundle_id IS NOT NULL AND terminal_reason = '') OR
+		 (completed_at IS NOT NULL AND bundle_id IS NULL AND terminal_reason <> '')) AND
+        (completed_at IS NULL OR completed_at >= created_at)
+    )
+);
+
+CREATE INDEX exam_sitting_mail_fanouts_sitting_revision_idx
+    ON exam_sitting_mail_fanouts (exam_sitting_id, sitting_revision DESC);
+CREATE UNIQUE INDEX exam_sitting_mail_fanouts_one_active_per_sitting_key
+    ON exam_sitting_mail_fanouts (exam_sitting_id) WHERE completed_at IS NULL;
+
+-- Desired delivery identity fences Start against a newer schedule fact. The
+-- communicated columns advance only when SMTP accepts that desired delivery.
+CREATE TABLE exam_sitting_mail_recipients (
+    exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    desired_occurrence_id varchar(26) REFERENCES mail_occurrences(id),
+    desired_delivery_id varchar(26) REFERENCES mail_deliveries(id),
+    desired_sitting_revision bigint CHECK (desired_sitting_revision > 0),
+    desired_template_key varchar(128),
+    communicated_sitting_revision bigint CHECK (communicated_sitting_revision > 0),
+    communicated_template_key varchar(128),
+    communicated_class_id varchar(26) REFERENCES classes(id),
+    updated_at timestamptz NOT NULL,
+    PRIMARY KEY (exam_sitting_id, user_id),
+    CONSTRAINT exam_sitting_mail_recipients_desired_check CHECK (
+        (desired_occurrence_id IS NULL) = (desired_delivery_id IS NULL) AND
+        (desired_delivery_id IS NULL) = (desired_sitting_revision IS NULL) AND
+        (desired_sitting_revision IS NULL) = (desired_template_key IS NULL) AND
+        (desired_template_key IS NULL OR desired_template_key IN
+            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_cancelled', 'exam.sitting_assignment_removed'))
+    ),
+    CONSTRAINT exam_sitting_mail_recipients_communicated_check CHECK (
+        (communicated_sitting_revision IS NULL) = (communicated_template_key IS NULL) AND
+        (communicated_template_key IS NULL) = (communicated_class_id IS NULL) AND
+        (communicated_template_key IS NULL OR communicated_template_key IN
+            ('exam.sitting_scheduled', 'exam.sitting_rescheduled', 'exam.sitting_cancelled', 'exam.sitting_assignment_removed'))
+    )
+);
+
+CREATE INDEX exam_sitting_mail_recipients_user_idx
+    ON exam_sitting_mail_recipients (user_id, exam_sitting_id);
 
 ALTER TABLE invitations
     ADD CONSTRAINT invitations_accepted_affiliation_id_fkey
@@ -2809,6 +2920,28 @@ ALTER TABLE mail_fanout_bundles
     ADD CONSTRAINT mail_fanout_bundles_id_canonical_check
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
+ALTER TABLE exam_sitting_mail_fanouts
+    ADD CONSTRAINT exam_sitting_mail_fanouts_occurrence_id_canonical_check
+    CHECK (occurrence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_fanouts_bundle_id_canonical_check
+    CHECK (bundle_id IS NULL OR bundle_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_fanouts_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_fanouts_prior_class_id_canonical_check
+    CHECK (prior_class_id IS NULL OR prior_class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_sitting_mail_recipients
+    ADD CONSTRAINT exam_sitting_mail_recipients_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_recipients_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_recipients_desired_occurrence_id_canonical_check
+    CHECK (desired_occurrence_id IS NULL OR desired_occurrence_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_recipients_desired_delivery_id_canonical_check
+    CHECK (desired_delivery_id IS NULL OR desired_delivery_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_mail_recipients_communicated_class_id_canonical_check
+    CHECK (communicated_class_id IS NULL OR communicated_class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
 ALTER TABLE mail_key_state
     ADD CONSTRAINT mail_key_state_active_rekey_job_id_canonical_check
     CHECK (active_rekey_job_id IS NULL OR active_rekey_job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
@@ -3070,7 +3203,9 @@ ALTER TABLE exam_sittings
     ADD CONSTRAINT exam_sittings_exam_revision_id_canonical_check
     CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_sittings_class_id_canonical_check
-    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    CHECK (class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sittings_mail_reconciliation_actor_user_id_canonical_check
+    CHECK (mail_reconciliation_actor_user_id IS NULL OR mail_reconciliation_actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_correction_resource_stages
     ADD CONSTRAINT exam_correction_resource_stages_id_canonical_check

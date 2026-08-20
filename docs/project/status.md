@@ -287,10 +287,22 @@ Implemented product-transition mail also covers student and teacher Invitation
 issuance and acceptance, explicit email transitions, account enable and
 disable, explicit administrative Session revocation, and MFA enable, disable,
 recovery-code regeneration, and Personal Access Token create, enable, disable,
-and revoke. PAT notices use ordinary security-delivery work and contain only
-the safe description, exact expiry, action time, localized scope context, and
-bounded action count; credentials, hashes, and complete scopes are excluded.
-The remaining catalog transitions are not yet implemented.
+and revoke. Exam Manager addition, removal, and ownership transfer now commit
+their exact role-specific notices atomically with the relationship change;
+ownership transfer tells the previous Owner that they remain a Manager. PAT
+notices use ordinary security-delivery work and contain only the safe
+description, exact expiry, action time, localized scope context, and bounded
+action count; credentials, hashes, and complete scopes are excluded. Sitting
+scheduling, rescheduling, cancellation, and assignment removal now use
+an atomic frozen fan-out bundle plus bounded expansion Job. Per-candidate
+last-communicated projections coalesce unsent changes, authoritative pre-send
+fences suppress stale or post-start work, and bounded multi-node
+reconciliation converges later Class-audience changes without loading a roster
+in the request transaction. Daily bounded maintenance now terminalizes
+expired, permanently failed, or orphaned expansion, destroys its encrypted
+bundle, suppresses remaining child work, and releases reconciliation; terminal
+retention preserves only the last-communicated candidate projection. The
+remaining catalog transitions are not yet implemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
@@ -449,6 +461,12 @@ package, expiry, lifecycle, delivery identity, and atomic acceptance. Student
 invitations establish exact Class membership; teacher invitations establish
 Academic Unit membership plus their invitation-package-origin role binding;
 institution and Academic Unit role invitations use explicit typed purposes.
+Those scoped Role Invitations are implemented as existing-User claim flows:
+Academic Unit issue checks exact Role delegation, Institution issue additionally
+requires a strong/recent interactive Session and rejects PATs, and atomic
+acceptance adds or reuses only the compatible Role Binding without changing the
+canonical User, creating a relationship, or sending redundant welcome or
+acceptance mail. Same-User replay is exact and cross-User replay fails closed.
 CSV imports are asynchronous validated batches over the same invitation and
 progression commands, with row-level results and no raw invitation secrets in
 exports. The closed authorization registry now distinguishes Academic Unit

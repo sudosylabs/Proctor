@@ -25,6 +25,18 @@ type mailMaintenanceFake struct {
 	calls       []string
 }
 
+type sittingMailMaintenanceFake struct {
+	results []*store.ExamSittingMailMaintenanceResult
+	calls   int
+}
+
+func (f *sittingMailMaintenanceFake) MaintainMailExpansions(context.Context, int) (*store.ExamSittingMailMaintenanceResult, error) {
+	f.calls++
+	value := f.results[0]
+	f.results = f.results[1:]
+	return value, nil
+}
+
 func (f *mailMaintenanceFake) SuppressOutstanding(context.Context, string, int) (*store.MailMaintenanceResult, error) {
 	f.suppressed++
 	if f.outstanding != nil {
@@ -156,15 +168,22 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 		expired: []*store.MailMaintenanceResult{{Affected: 2, More: true, Deliveries: []store.MailMaintenanceDelivery{{TemplateKey: model.MailTemplateSystemTest, State: model.MailDeliverySuppressed, PublicFailureCode: model.MailDeliveryExpiredCode, AttemptCount: 1, ProcessingLatency: time.Minute}}}, {Affected: 1}},
 		cleaned: []*store.MailMaintenanceResult{{Affected: 3}},
 	}
+	sittings := &sittingMailMaintenanceFake{results: []*store.ExamSittingMailMaintenanceResult{
+		{FanoutsTerminalized: 4, DeliveriesSuppressed: 2, More: true},
+		{FanoutsTerminalized: 1, DeliveriesSuppressed: 1},
+	}}
 	command, _ := modelJSON(MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, 1, command, "cleanup", time.Now(), time.Now(), 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	metrics := &recordingMailMetrics{}
-	outcome := (mailCleanupHandler{mail: mail, recorder: metrics}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
-	if outcome.Kind != jobengine.OutcomeSucceeded || string(outcome.Result) != `{"expired":3,"deleted":3}` {
+	outcome := (mailCleanupHandler{mail: mail, sittings: sittings, recorder: metrics}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	if outcome.Kind != jobengine.OutcomeSucceeded || string(outcome.Result) != `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}` {
 		t.Fatalf("cleanup outcome = %#v", outcome)
+	}
+	if sittings.calls != 2 {
+		t.Fatalf("Sitting fan-out maintenance calls = %d", sittings.calls)
 	}
 	if got := strings.Join(mail.calls, ","); got != "cleanup_terminal,suppress_expired,suppress_expired" {
 		t.Fatalf("cleanup order = %q", got)

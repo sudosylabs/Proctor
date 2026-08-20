@@ -17,6 +17,49 @@ func queuedMailDeliveryFixture(at time.Time) *MailDelivery {
 		MessageID: "<mail." + NewId() + "@example.test>", EncryptedPayload: json.RawMessage(`{"version":1,"ciphertext":"secret"}`), Revision: 1}
 }
 
+func TestExamManagerMailMeaningsAreClosed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for _, key := range []MailTemplateKey{
+		MailTemplateExamManagerAdded,
+		MailTemplateExamManagerRemoved,
+		MailTemplateExamOwnershipTransferredToYou,
+		MailTemplateExamOwnershipTransferredFromYou,
+	} {
+		if !key.IsValid() {
+			t.Errorf("MailTemplateKey(%q) is invalid", key)
+		}
+		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceExamManagement,
+			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
+		if err := occurrence.Validate(); err != nil {
+			t.Errorf("MailOccurrence(%q): %v", key, err)
+		}
+	}
+	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceExamManagement,
+		TemplateKey: MailTemplateIdentityPasswordChanged, ActorUserID: NewUserID(), CreatedAt: at}
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Exam management occurrence accepted an identity-security template")
+	}
+}
+
+func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for _, key := range []MailTemplateKey{
+		MailTemplateAccessAcademicUnitRoleInvitation,
+		MailTemplateAccessInstitutionRoleInvitation,
+	} {
+		if !key.IsValid() {
+			t.Errorf("MailTemplateKey(%q) is invalid", key)
+		}
+		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceInvitation,
+			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
+		if err := occurrence.Validate(); err != nil {
+			t.Errorf("MailOccurrence(%q): %v", key, err)
+		}
+	}
+}
+
 func TestMailDeliveryLifecyclePreservesStableRoutingAndDestroysAcceptedPayload(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	queued := queuedMailDeliveryFixture(at)
@@ -240,5 +283,29 @@ func TestIdentityMailCatalogAcceptsCredentialAndSecurityOccurrences(t *testing.T
 		if err := delivery.Validate(); err != nil {
 			t.Fatalf("%s delivery: %v", test.key, err)
 		}
+	}
+}
+
+func TestSittingScheduleMailMeaningsAreClosed(t *testing.T) {
+	actorID := NewUserID()
+	for _, key := range []MailTemplateKey{
+		MailTemplateExamSittingScheduled,
+		MailTemplateExamSittingRescheduled,
+		MailTemplateExamSittingCancelled,
+		MailTemplateExamSittingAssignmentRemoved,
+	} {
+		if !key.IsValid() {
+			t.Fatalf("Sitting template %q is not in the closed catalog", key)
+		}
+		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSittingSchedule,
+			TemplateKey: key, ActorUserID: actorID, CreatedAt: NowUTC()}
+		if err := occurrence.Validate(); err != nil {
+			t.Fatalf("Sitting occurrence %q: %v", key, err)
+		}
+	}
+	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSittingSchedule,
+		TemplateKey: MailTemplateIdentityVerifyEmail, ActorUserID: actorID, CreatedAt: NowUTC()}
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Sitting occurrence accepted an account-token template")
 	}
 }

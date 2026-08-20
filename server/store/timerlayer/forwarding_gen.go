@@ -1217,6 +1217,48 @@ func (s *timedExamSittingStore) ListNoShows(arg0 context.Context, arg1 store.Exa
 	})
 }
 
+func (s *timedExamSittingStore) GetMailFanout(arg0 context.Context, arg1 model.MailOccurrenceID) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodGetMailFanout), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.GetMailFanout(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListMailRecipients(arg0 context.Context, arg1 store.ExamSittingMailRecipientPageRequest) (*store.ExamSittingMailRecipientPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailRecipients), func() (*store.ExamSittingMailRecipientPage, error) {
+		return s.next.ListMailRecipients(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) CommitMailRecipient(arg0 context.Context, arg1 *store.ExamSittingMailRecipientCommit) (*store.ExamSittingMailRecipientResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCommitMailRecipient), func() (*store.ExamSittingMailRecipientResult, error) {
+		return s.next.CommitMailRecipient(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) CompleteMailExpansion(arg0 context.Context, arg1 *store.ExamSittingMailExpansionCompletion) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodCompleteMailExpansion), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.CompleteMailExpansion(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) MaintainMailExpansions(arg0 context.Context, arg1 int) (*store.ExamSittingMailMaintenanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodMaintainMailExpansions), func() (*store.ExamSittingMailMaintenanceResult, error) {
+		return s.next.MaintainMailExpansions(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ListMailReconciliationDue(arg0 context.Context, arg1 store.ExamSittingMailReconciliationOptions) ([]store.ExamSittingMailReconciliationCandidate, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListMailReconciliationDue), func() ([]store.ExamSittingMailReconciliationCandidate, error) {
+		return s.next.ListMailReconciliationDue(arg0, arg1)
+	})
+}
+
+func (s *timedExamSittingStore) ReconcileMail(arg0 context.Context, arg1 *store.ExamSittingMailReconciliation) (*store.ExamSittingMailFanoutSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodReconcileMail), func() (*store.ExamSittingMailFanoutSnapshot, error) {
+		return s.next.ReconcileMail(arg0, arg1)
+	})
+}
+
 func (s *timedExamStarterWorkspaceStore) List(arg0 context.Context, arg1 model.ExamID) ([]store.ExamStarterWorkspaceItem, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamStarterWorkspace, methodList), func() ([]store.ExamStarterWorkspaceItem, error) {
 		return s.next.List(arg0, arg1)
@@ -2243,6 +2285,12 @@ func (s *timedInvitationStore) IssueTeacherAcademicUnit(arg0 context.Context, ar
 	})
 }
 
+func (s *timedInvitationStore) IssueScopedRole(arg0 context.Context, arg1 *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueScopedRole), func() (*model.Invitation, error) {
+		return s.next.IssueScopedRole(arg0, arg1)
+	})
+}
+
 func (s *timedInvitationStore) Get(arg0 context.Context, arg1 model.InvitationID) (*model.Invitation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodGet), func() (*model.Invitation, error) {
 		return s.next.Get(arg0, arg1)
@@ -2264,6 +2312,12 @@ func (s *timedInvitationStore) AcceptStudentClass(arg0 context.Context, arg1 *st
 func (s *timedInvitationStore) AcceptTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationAcceptance) (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptTeacherAcademicUnit), func() (*store.TeacherAcademicUnitInvitationAcceptanceResult, error) {
 		return s.next.AcceptTeacherAcademicUnit(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) AcceptScopedRole(arg0 context.Context, arg1 *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodAcceptScopedRole), func() (*store.ScopedRoleInvitationAcceptanceResult, error) {
+		return s.next.AcceptScopedRole(arg0, arg1)
 	})
 }
 

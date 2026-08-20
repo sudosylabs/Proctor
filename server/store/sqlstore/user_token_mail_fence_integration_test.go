@@ -12,6 +12,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
+	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
 func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
@@ -467,5 +468,103 @@ func TestUserTokenIssueSerializesWithTargetChange(t *testing.T) {
 	}
 	if issueErr := <-issued; !store.IsNotFound(issueErr) {
 		t.Fatalf("Issue after target change = %v, want not found", issueErr)
+	}
+}
+
+// TestUserDisableAndEmailChangeShareUserEligibilityLockOrder proves account
+// state and mailbox transitions both acquire the User before the installation
+// mail-eligibility singleton. Holding the User while both commands queue makes
+// an inverse singleton -> User path form a deterministic PostgreSQL deadlock.
+func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	institution, err := persistence.Institution().Save(ctx, &model.Institution{
+		Name: "disable-email-order", DisplayName: "Disable Email Order",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	user := saveIntegrationUser(t, ctx, persistence, &model.User{
+		Username: "disable-email-order", Email: "disable-email-order@example.edu",
+	})
+
+	changeAt := model.NowUTC()
+	newEmail := "disable-email-order-changed@example.edu"
+	token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: newEmail, ExpiresAt: changeAt.Add(time.Hour)}
+	token.PrepareCreate(model.NewUserTokenID(), changeAt)
+	warningOccurrence, warningDelivery, warningJob := authenticationPolicyTestMail(t, user.ID, model.NewMailOccurrenceID(),
+		model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver,
+		changeAt, changeAt.Add(24*time.Hour))
+	verificationOccurrence, verificationDelivery, verificationJob := authenticationPolicyTestMail(t, user.ID,
+		model.MailOccurrenceID(token.ID.String()), model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew,
+		model.JobTypeMailDeliverCredential, changeAt, changeAt.Add(time.Hour))
+	changeAudit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
+	changeAudit.Status = model.AuditStatusAttempt
+	changeAudit, err = persistence.Audit().Save(ctx, changeAudit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := &store.UserEmailChange{UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: newEmail, Token: token,
+		TokenLifetime: time.Hour, WarningLifetime: 24 * time.Hour,
+		WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+		VerificationOccurrence: verificationOccurrence, VerificationDelivery: verificationDelivery, VerificationJob: verificationJob,
+		AuditEventID: changeAudit.ID.String(), AuditAt: model.GetMillis()}
+	disableAt := model.GetMillis()
+	disableAudit := authenticationPolicyTestAudit("user.disable", user.ID.String(), institution.ID.String())
+	disableAudit.Status = model.AuditStatusAttempt
+	disableAudit, err = persistence.Audit().Save(ctx, disableAudit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
+		RevocationReason: "administrative disable", AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
+	})
+
+	controller, err := persistence.GetMaster().DB().Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer controller.Close()
+	controllerBackendPID := controllerPID(t, ctx, controller)
+	if _, err = controller.ExecContext(ctx, `BEGIN`); err != nil {
+		t.Fatal(err)
+	}
+	locked := true
+	defer func() {
+		if locked {
+			_, _ = controller.ExecContext(context.Background(), `ROLLBACK`)
+		}
+	}()
+	if _, err = controller.ExecContext(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, user.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	changeResult := make(chan error, 1)
+	go func() {
+		_, changeErr := persistence.UserToken().ChangeEmail(ctx, change)
+		changeResult <- changeErr
+	}()
+	changePID := waitForBlockedMailQuery(t, ctx, persistence, controllerBackendPID, "FROM users WHERE id")
+	disableResult := make(chan error, 1)
+	go func() {
+		_, disableErr := persistence.User().SetDisabledWithAudit(ctx, disable)
+		disableResult <- disableErr
+	}()
+	_ = waitForBlockedMailQuery(t, ctx, persistence, changePID, "SELECT id FROM users")
+	if _, err = controller.ExecContext(ctx, `ROLLBACK`); err != nil {
+		t.Fatal(err)
+	}
+	locked = false
+
+	changeErr, disableErr := <-changeResult, <-disableResult
+	if changeErr != nil {
+		t.Fatalf("ChangeEmail: %v", changeErr)
+	}
+	if !store.IsConflict(disableErr) {
+		t.Fatalf("SetDisabledWithAudit after email change = %v, want conflict", disableErr)
 	}
 }

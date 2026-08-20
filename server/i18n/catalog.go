@@ -98,6 +98,8 @@ type Copy struct {
 	ActionLabel         string                   `json:"action_label"`
 	Footer              string                   `json:"footer"`
 	PersonalAccessToken *PersonalAccessTokenCopy `json:"personal_access_token,omitempty"`
+	ExamManager         *ExamManagerCopy         `json:"exam_manager,omitempty"`
+	SittingSchedule     *SittingScheduleCopy     `json:"sitting_schedule,omitempty"`
 }
 
 // PersonalAccessTokenCopy contains the localized labels and closed scope
@@ -110,6 +112,28 @@ type PersonalAccessTokenCopy struct {
 	ActionCountLabel  string `json:"action_count_label"`
 	InstitutionScope  string `json:"institution_scope"`
 	AcademicUnitScope string `json:"academic_unit_scope"`
+}
+
+// ExamManagerCopy contains localized labels and the closed relationship
+// vocabulary used by Exam management transition notices.
+type ExamManagerCopy struct {
+	ExamLabel         string `json:"exam_label"`
+	RelationshipLabel string `json:"relationship_label"`
+	ActionAtLabel     string `json:"action_at_label"`
+	Manager           string `json:"manager"`
+	Owner             string `json:"owner"`
+	NoLongerManager   string `json:"no_longer_manager"`
+}
+
+// SittingScheduleCopy contains the localized labels for the bounded schedule
+// facts shared by Sitting audience notices.
+type SittingScheduleCopy struct {
+	ExamLabel     string `json:"exam_label"`
+	ClassLabel    string `json:"class_label"`
+	StartsAtLabel string `json:"starts_at_label"`
+	EndsAtLabel   string `json:"ends_at_label"`
+	TimezoneLabel string `json:"timezone_label"`
+	TimezoneUTC   string `json:"timezone_utc"`
 }
 
 // ResolvedCopy records which locale supplied a complete copy model.
@@ -260,6 +284,46 @@ func (c Copy) validate() error {
 			{name: "personal_access_token.academic_unit_scope", value: c.PersonalAccessToken.AcademicUnitScope},
 		}
 		for _, field := range patFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
+			}
+		}
+	}
+	if c.ExamManager != nil {
+		examFields := []struct{ name, value string }{
+			{name: "exam_manager.exam_label", value: c.ExamManager.ExamLabel},
+			{name: "exam_manager.relationship_label", value: c.ExamManager.RelationshipLabel},
+			{name: "exam_manager.action_at_label", value: c.ExamManager.ActionAtLabel},
+			{name: "exam_manager.manager", value: c.ExamManager.Manager},
+			{name: "exam_manager.owner", value: c.ExamManager.Owner},
+			{name: "exam_manager.no_longer_manager", value: c.ExamManager.NoLongerManager},
+		}
+		for _, field := range examFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
+			}
+		}
+	}
+	if c.SittingSchedule != nil {
+		sittingFields := []struct{ name, value string }{
+			{name: "sitting_schedule.exam_label", value: c.SittingSchedule.ExamLabel},
+			{name: "sitting_schedule.class_label", value: c.SittingSchedule.ClassLabel},
+			{name: "sitting_schedule.starts_at_label", value: c.SittingSchedule.StartsAtLabel},
+			{name: "sitting_schedule.ends_at_label", value: c.SittingSchedule.EndsAtLabel},
+			{name: "sitting_schedule.timezone_label", value: c.SittingSchedule.TimezoneLabel},
+			{name: "sitting_schedule.timezone_utc", value: c.SittingSchedule.TimezoneUTC},
+		}
+		for _, field := range sittingFields {
 			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
 				return fmt.Errorf("%s is empty or invalid", field.name)
 			}

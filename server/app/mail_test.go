@@ -180,6 +180,10 @@ func (r mailRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemp
 	return r.content, nil
 }
 
+func (r mailRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error) {
+	return r.content, nil
+}
+
 type mailSenderFake struct {
 	enabled   bool
 	from      MailAddress
@@ -291,6 +295,49 @@ func TestDirectMailPreparerSelectsTeacherInvitationTemplate(t *testing.T) {
 	if prepared.Delivery.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation ||
 		prepared.Occurrence.TemplateKey != model.MailTemplateAccessTeacherAcademicUnitInvitation {
 		t.Fatalf("teacher Invitation mail = %#v", prepared)
+	}
+}
+
+func TestDirectMailPreparerSelectsScopedRoleInvitationTemplates(t *testing.T) {
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	unitID, institutionID := model.NewAcademicUnitID(), model.NewInstitutionID()
+	for _, test := range []struct {
+		name       string
+		purpose    model.InvitationPurpose
+		unitID     model.AcademicUnitID
+		scopeType  model.RoleScopeType
+		scopeID    string
+		template   model.MailTemplateKey
+		permission model.Action
+	}{
+		{name: "academic unit", purpose: model.InvitationPurposeAcademicUnitRole, unitID: unitID,
+			scopeType: model.RoleScopeAcademicUnit, scopeID: unitID.String(), template: model.MailTemplateAccessAcademicUnitRoleInvitation,
+			permission: model.ActionAcademicAuditView},
+		{name: "institution", purpose: model.InvitationPurposeInstitutionRole,
+			scopeType: model.RoleScopeInstitution, scopeID: institutionID.String(), template: model.MailTemplateAccessInstitutionRoleInvitation,
+			permission: model.ActionAuditView},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(), Purpose: test.purpose,
+				TargetEmail: "existing@example.test", AcademicUnitID: test.unitID, RoleID: model.NewRoleID(), RoleActions: []string{string(test.permission)},
+				IntendedStartsAt: at, InviterUserID: model.NewUserID(), ScopeType: test.scopeType, ScopeID: test.scopeID,
+				ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
+			if err != nil {
+				t.Fatal(err)
+			}
+			preparer, err := newDirectMailPreparer(mailRendererFake{content: FrozenMailContent{Subject: "Invite", Text: "Invite", HTML: "<p>Invite</p>"}},
+				&mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}, mailTestSealer(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := preparer.PrepareInvitation(invitation, "https://proctor.example.test/join#token=secret")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared.Delivery.TemplateKey != test.template || prepared.Occurrence.TemplateKey != test.template {
+				t.Fatalf("scoped Role Invitation mail = %#v", prepared)
+			}
+		})
 	}
 }
 

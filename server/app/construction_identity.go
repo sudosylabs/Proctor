@@ -19,10 +19,7 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	accountMail, err := newDirectMailPreparer(deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer)
-	if err != nil {
-		return identityConstruction{}, err
-	}
+	accountMail := foundation.mail
 	desktopAuthorization, err := newDesktopAuthorizationService(
 		deps.Store.DesktopAuthorization(), deps.Store.Institution(), authenticationAccess,
 		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
@@ -80,7 +77,7 @@ func constructIdentity(
 		invitationAuthorizationAdapter{authorization: authorization},
 		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, deps.NodeID, deps.PublicURL,
-		model.NewCredentialToken, time.Now,
+		deps.RecentAuthenticationTTL, model.NewCredentialToken, time.Now,
 	)
 	if err != nil {
 		return identityConstruction{}, err

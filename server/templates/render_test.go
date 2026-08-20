@@ -52,6 +52,69 @@ func TestRendererEscapesBoundedPersonalAccessTokenDetailsWithoutScopes(t *testin
 	}
 }
 
+func TestRendererEscapesBoundedExamManagerDetails(t *testing.T) {
+	t.Parallel()
+
+	renderer, err := DefaultRenderer()
+	if err != nil {
+		t.Fatalf("DefaultRenderer: %v", err)
+	}
+	message, err := renderer.Render(Request{
+		Key: i18n.ExamOwnershipTransferredFromYou,
+		ExamManager: &ExamManagerDetails{
+			Title:        `<script>Algorithms & data</script>`,
+			Relationship: ExamManagerRelationshipManager,
+			ActionAt:     time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	for _, want := range []string{
+		"&lt;script&gt;Algorithms &amp; data&lt;/script&gt;",
+		"Exam Manager",
+		"2026-08-20T08:15:00Z",
+	} {
+		if !strings.Contains(message.HTML, want) {
+			t.Errorf("HTML does not contain %q", want)
+		}
+	}
+	if !strings.Contains(message.Text, `<script>Algorithms & data</script>`) {
+		t.Fatal("text alternative changed the plain Exam title")
+	}
+	for _, forbidden := range []string{"actor-user", "private-reason", "role.manage"} {
+		if strings.Contains(message.HTML, forbidden) || strings.Contains(message.Text, forbidden) {
+			t.Fatalf("rendered Exam Manager notice exposes forbidden value %q", forbidden)
+		}
+	}
+}
+
+func TestRendererIncludesTimezoneExplicitSafeSittingFacts(t *testing.T) {
+	t.Parallel()
+	renderer, err := DefaultRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := renderer.Render(Request{Key: i18n.ExamSittingRescheduled, SittingSchedule: &SittingScheduleDetails{
+		ExamTitle: "Algorithms & structures", ClassDisplayName: "CS 2A",
+		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
+		EndsAt:   time.Date(2026, 9, 1, 10, 30, 0, 0, time.FixedZone("node", 7200)),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Algorithms &amp; structures", "CS 2A", "2026-09-01T06:30:00Z", "2026-09-01T08:30:00Z", "UTC"} {
+		if !strings.Contains(message.HTML, want) {
+			t.Errorf("HTML does not contain %q", want)
+		}
+	}
+	for _, forbidden := range []string{"instructions", "resource", "answer", "candidate list"} {
+		if strings.Contains(strings.ToLower(message.HTML), forbidden) || strings.Contains(strings.ToLower(message.Text), forbidden) {
+			t.Fatalf("Sitting notice leaked forbidden content %q", forbidden)
+		}
+	}
+}
+
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
@@ -131,6 +194,16 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
 			}
+		}
+		if isExamManagerTemplate(key) {
+			request.ExamManager = &ExamManagerDetails{
+				Title: "Representative exam", Relationship: ExamManagerRelationshipManager,
+				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
+			}
+		}
+		if isSittingScheduleTemplate(key) {
+			request.SittingSchedule = &SittingScheduleDetails{ExamTitle: "Representative exam", ClassDisplayName: "Class A",
+				StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC), EndsAt: time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)}
 		}
 		message, err := renderer.Render(request)
 		if err != nil {

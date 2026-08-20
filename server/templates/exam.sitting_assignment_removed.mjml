@@ -7,6 +7,11 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .SittingSchedule.ExamTitle — bounded published Exam title
+  .SittingSchedule.ClassDisplayName — bounded Class display name
+  .SittingSchedule.StartsAt — UTC RFC 3339 scheduled start
+  .SittingSchedule.EndsAt — UTC RFC 3339 scheduled end
+  .SittingSchedule.Timezone — localized explicit timezone label
 -->
 <mjml>
   <mj-head>
@@ -16,5 +21,6 @@ Template properties (templates.Properties):
   </mj-head>
   <mj-body background-color="#f4f5f7">
     <mj-include path="./partials/foundation-message.mjml" />
+    <mj-section background-color="#ffffff" padding="0 24px 24px"><mj-column><mj-text><strong>{{.Copy.SittingSchedule.ExamLabel}}:</strong> {{.SittingSchedule.ExamTitle}}<br /><strong>{{.Copy.SittingSchedule.ClassLabel}}:</strong> {{.SittingSchedule.ClassDisplayName}}<br /><strong>{{.Copy.SittingSchedule.StartsAtLabel}}:</strong> {{.SittingSchedule.StartsAt}}<br /><strong>{{.Copy.SittingSchedule.EndsAtLabel}}:</strong> {{.SittingSchedule.EndsAt}}<br /><strong>{{.Copy.SittingSchedule.TimezoneLabel}}:</strong> {{.SittingSchedule.Timezone}}</mj-text></mj-column></mj-section>
   </mj-body>
 </mjml>

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
+	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -23,13 +24,28 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
-	helper := testlib.Setup(t, testlib.WithStore(persistence))
-	ctx := context.Background()
-
-	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "sitting-university", DisplayName: "Sitting University"})
-	if err != nil {
-		t.Fatal(err)
+	secondaryPersistence := openAdditionalUserSettingsStore(t, dataSource)
+	configure := func(nodeID string) func(*config.Config) {
+		return func(cfg *config.Config) {
+			cfg.Cluster.NodeID = nodeID
+			cfg.Server.ListenAddress = "127.0.0.1:0"
+		}
 	}
+	helper := testlib.Setup(t, testlib.WithConfig(configure("exam-sitting-node-a")), testlib.WithStore(persistence))
+	secondary := testlib.Setup(t, testlib.WithConfig(configure("exam-sitting-node-b")), testlib.WithStore(secondaryPersistence))
+	ctx := context.Background()
+	const password = "correct horse battery staple"
+
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+		InstitutionName: "sitting-university", InstitutionDisplayName: "Sitting University",
+		AdministratorUsername: "sitting-administrator", AdministratorEmail: "sitting-administrator@example.edu",
+		AdministratorDisplayName: "Sitting Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
+		Password: password, BootstrapSecret: testlib.BootstrapSecret, Source: "127.0.0.1:1",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	institution := bootstrap.Institution
 	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{
 		InstitutionID: institution.ID, Name: "sitting-computing", DisplayName: "Sitting Computing",
 	})
@@ -64,14 +80,36 @@ func TestExamSittingIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const password = "correct horse battery staple"
+	candidate, appErr := helper.App.CreateLocalUser(ctx, &model.User{
+		Username: "sitting-candidate", Email: "sitting-candidate@example.edu", DisplayName: "Sitting Candidate",
+		EmailVerified: true, Locale: "en", Timezone: "UTC",
+	}, password)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	if _, err = persistence.Affiliation().Save(ctx, &model.Affiliation{
+		UserID: candidate.ID, Kind: model.AffiliationStudent, StartsAt: period.StartsAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = persistence.ClassMember().Enroll(ctx, &model.ClassMember{
+		ClassID: class.ID, UserID: candidate.ID, StartsAt: period.StartsAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	manager, appErr := helper.App.CreateLocalUser(ctx, &model.User{
 		Username: "sitting-manager", Email: "sitting-manager@example.edu", DisplayName: "Sitting Manager",
 	}, password)
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
-	managerLogin := loginIntegrationUser(t, helper.Handler(), manager.Username, password, model.SessionClientCLI, "sitting-manager-cli")
+	managerLogin, appErr := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+		LoginID: manager.Username, Password: password, ClientType: model.SessionClientCLI,
+		DeviceID: "sitting-manager-cli", Source: "127.0.0.1:1",
+	})
+	if appErr != nil {
+		t.Fatalf("manager login: %v; logs=%s", appErr, helper.Logs.String())
+	}
 	managerPrincipal, appErr := helper.App.AuthenticateAccess(ctx, managerLogin.Tokens.AccessToken)
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -114,6 +152,8 @@ func TestExamSittingIntegration(t *testing.T) {
 	if appErr != nil {
 		t.Fatal(appErr)
 	}
+	startIntegrationServer(t, helper)
+	startIntegrationServer(t, secondary)
 
 	startAt := now.Add(2 * time.Hour).Truncate(time.Millisecond)
 	endAt := startAt.Add(2 * time.Hour)
@@ -133,6 +173,8 @@ func TestExamSittingIntegration(t *testing.T) {
 	if appErr != nil || scheduledReplay.Sitting == nil || scheduledReplay.Sitting.ID != scheduled.Sitting.ID || scheduledReplay.Sitting.Revision != 1 {
 		t.Fatalf("schedule replay = %#v, %v", scheduledReplay, appErr)
 	}
+	waitForExamSittingMailDelivery(t, ctx, persistence, helper, secondary, candidate.ID,
+		model.MailTemplateExamSittingScheduled)
 
 	got, appErr := helper.App.GetExamSitting(ctx, managerInvocation, application.GetExamSittingQuery{
 		ExamID: created.Exam.ID, SittingID: scheduled.Sitting.ID,
@@ -343,6 +385,34 @@ func TestExamSittingIntegration(t *testing.T) {
 		model.Resource{Type: model.ResourceExam, ID: created.Exam.ID.String()}, unit.ID)
 	assertExamSittingOverrideAudit(t, ctx, persistence, overrideUser.ID, model.ActionExamSittingManageOverride,
 		model.Resource{Type: model.ResourceExamSitting, ID: overrideScheduled.Sitting.ID.String()}, unit.ID)
+}
+
+func waitForExamSittingMailDelivery(t *testing.T, ctx context.Context, persistence store.Store,
+	primary, secondary *testlib.Helper, target model.UserID, templateKey model.MailTemplateKey,
+) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		deliveries, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
+			TemplateKeys: []model.MailTemplateKey{templateKey}, Limit: 20,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, delivery := range deliveries {
+			if delivery.TargetUserID == target && delivery.State == model.MailDeliveryAccepted && len(delivery.EncryptedPayload) == 0 {
+				if len(primary.Mailer.Deliveries())+len(secondary.Mailer.Deliveries()) == 0 {
+					t.Fatal("accepted Sitting delivery was not observed by either server.New mail adapter")
+				}
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Sitting %s mail did not converge across two nodes: %#v; primary logs=%s; secondary logs=%s",
+				templateKey, deliveries, primary.Logs.String(), secondary.Logs.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func assertExamSittingOverrideAudit(t *testing.T, ctx context.Context, persistence store.Store, actorID model.UserID,

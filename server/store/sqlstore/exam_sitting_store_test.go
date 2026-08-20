@@ -41,7 +41,8 @@ func TestValidateExamSittingListOptions(t *testing.T) {
 
 func TestPrepareExamSittingCancellationBoundsPrivateReason(t *testing.T) {
 	valid := &store.ExamSittingCancellation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ActorUserID: model.NewUserID(),
-		ExpectedRevision: 1, PrivateReason: "é", CanceledAt: model.NowUTC(), AuditEventID: model.NewId(), AuditAt: model.GetMillis()}
+		ExpectedRevision: 1, PrivateReason: "é", CanceledAt: model.NowUTC(), AuditEventID: model.NewId(), AuditAt: model.GetMillis(),
+		Mail: &store.ExamSittingMailFanout{}}
 	if err := prepareExamSittingCancellation(valid); err != nil {
 		t.Fatalf("valid cancellation: %v", err)
 	}

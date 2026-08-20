@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,12 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 		probe = probes[0]
 	}
 	TestTeacherAcademicUnitInvitationStore(t, ss, probe)
+	t.Run("ScopedRoleExistingUserAtomicAndReplaySafe", func(t *testing.T) {
+		testScopedRoleInvitationExistingUserAtomicAndReplaySafe(t, ss)
+	})
+	t.Run("InstitutionRoleExistingUserAtomicAndReplaySafe", func(t *testing.T) {
+		testInstitutionRoleInvitationExistingUserAtomicAndReplaySafe(t, ss)
+	})
 	t.Run("IssueStudentClassAtomic", func(t *testing.T) {
 		testInvitationIssueStudentClassAtomic(t, ss)
 	})
@@ -62,7 +69,281 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 		t.Run("AcceptStudentClassSerializesWithConcurrentRoleArchive", func(t *testing.T) {
 			testInvitationAcceptSerializesWithRoleArchive(t, ss, probe.ArchiveRoleBeforeAccept)
 		})
+		t.Run("AcceptScopedRoleSerializesWithConcurrentRoleArchive", func(t *testing.T) {
+			testScopedRoleAcceptSerializesWithRoleArchive(t, ss, probe.ArchiveRoleBeforeAccept)
+		})
 	}
+	if probe.EndBindingBeforeAccept != nil {
+		t.Run("AcceptScopedRoleSerializesWithConcurrentInviterBindingEnd", func(t *testing.T) {
+			testScopedRoleAcceptSerializesWithInviterBindingEnd(t, ss, probe.EndBindingBeforeAccept)
+		})
+	}
+}
+
+func testScopedRoleAcceptSerializesWithRoleArchive(t *testing.T, ss store.Store,
+	archive func(*testing.T, context.Context, *model.Role, func() error) error,
+) {
+	ctx := context.Background()
+	invitation, _, targetRole, acceptance := scopedRoleInvitationRaceFixture(t, ctx, ss, "role-archive")
+	err := archive(t, ctx, targetRole, func() error {
+		_, acceptErr := ss.Invitation().AcceptScopedRole(ctx, acceptance)
+		return acceptErr
+	})
+	if !store.IsConflict(err) {
+		t.Fatalf("AcceptScopedRole() concurrent Role archive error = %v", err)
+	}
+	current, getErr := ss.Invitation().Get(ctx, invitation.ID)
+	requireNoError(t, getErr)
+	if current.State != model.InvitationPending {
+		t.Fatalf("scoped Role Invitation state after Role archive = %q", current.State)
+	}
+}
+
+func testScopedRoleAcceptSerializesWithInviterBindingEnd(t *testing.T, ss store.Store,
+	end func(*testing.T, context.Context, *model.RoleBinding, func() error) error,
+) {
+	ctx := context.Background()
+	invitation, issuerBinding, _, acceptance := scopedRoleInvitationRaceFixture(t, ctx, ss, "binding-end")
+	err := end(t, ctx, issuerBinding, func() error {
+		_, acceptErr := ss.Invitation().AcceptScopedRole(ctx, acceptance)
+		return acceptErr
+	})
+	if !store.IsConflict(err) {
+		t.Fatalf("AcceptScopedRole() concurrent inviter binding end error = %v", err)
+	}
+	current, getErr := ss.Invitation().Get(ctx, invitation.ID)
+	requireNoError(t, getErr)
+	if current.State != model.InvitationPending {
+		t.Fatalf("scoped Role Invitation state after binding end = %q", current.State)
+	}
+}
+
+func scopedRoleInvitationRaceFixture(t *testing.T, ctx context.Context, ss store.Store, suffix string) (*model.Invitation, *model.RoleBinding, *model.Role, *store.ScopedRoleInvitationAcceptance) {
+	t.Helper()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-race-"+suffix+model.NewId())
+	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
+	at := model.NowUTC().Add(-time.Minute)
+	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-race-issuer-" + model.NewId(), DisplayName: "Scoped Role Race Issuer",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
+	requireNoError(t, err)
+	issuerBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: at.Add(-time.Second)})
+	requireNoError(t, err)
+	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-race-target-" + model.NewId(), DisplayName: "Scoped Role Race Target",
+		Permissions: []string{string(model.ActionAcademicAuditView)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: targetRole.ID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: at.Add(-time.Second)})
+	requireNoError(t, err)
+	candidate, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
+		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "scoped-role-race-" + model.NewId() + "@example.edu",
+		AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: at,
+		InviterUserID: inviter.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: at})
+	requireNoError(t, err)
+	invitation, err := ss.Invitation().IssueScopedRole(ctx, scopedRoleInvitationIssueFixture(t, ss, candidate))
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, existing.ID.String(), 10)
+	acceptance := scopedRoleInvitationAcceptanceFixture(t, ctx, ss, invitation, existing.ID, session.ID, model.NowUTC())
+	return invitation, issuerBinding, targetRole, acceptance
+}
+
+func testInstitutionRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "institution-role-"+model.NewId())
+	inviter, existing := saveUser(t, ctx, ss), saveUser(t, ctx, ss)
+	issuedAt := model.NowUTC().Add(-time.Minute)
+	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "institution-role-issuer-" + model.NewId(), DisplayName: "Institution Role Issuer",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAuditView)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+		ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(), StartsAt: issuedAt.Add(-time.Second)})
+	requireNoError(t, err)
+	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "institution-role-target-" + model.NewId(), DisplayName: "Institution Role Target",
+		Permissions: []string{string(model.ActionAuditView)}})
+	requireNoError(t, err)
+	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
+		Purpose: model.InvitationPurposeInstitutionRole, TargetEmail: "institution-invited-" + model.NewId() + "@example.edu",
+		RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: issuedAt,
+		InviterUserID: inviter.ID, ScopeType: model.RoleScopeInstitution, ScopeID: unit.InstitutionID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: issuedAt})
+	requireNoError(t, err)
+	issue := scopedRoleInvitationIssueFixture(t, ss, invitation)
+	created, err := ss.Invitation().IssueScopedRole(ctx, issue)
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, existing.ID.String(), 10)
+	acceptances := []*store.ScopedRoleInvitationAcceptance{
+		scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, existing.ID, session.ID, model.NowUTC()),
+		scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, existing.ID, session.ID, model.NowUTC()),
+	}
+	results := make([]*store.ScopedRoleInvitationAcceptanceResult, 2)
+	errors := make([]error, 2)
+	start := make(chan struct{})
+	var wait sync.WaitGroup
+	for index := range results {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			results[index], errors[index] = ss.Invitation().AcceptScopedRole(ctx, acceptances[index])
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	for _, acceptErr := range errors {
+		requireNoError(t, acceptErr)
+	}
+	for _, acceptance := range acceptances {
+		requireScopedRoleAcceptanceAuditSuccess(t, ctx, ss, acceptance)
+	}
+	accepted := results[0]
+	if accepted.Replayed {
+		accepted = results[1]
+	}
+	if results[0].Replayed == results[1].Replayed {
+		t.Fatalf("concurrent scoped Role replay flags = %v / %v", results[0].Replayed, results[1].Replayed)
+	}
+	if accepted.Replayed || accepted.User.ID != existing.ID || accepted.RoleBinding.RoleID != targetRole.ID ||
+		accepted.RoleBinding.ScopeType != model.RoleScopeInstitution || accepted.RoleBinding.ScopeID != unit.InstitutionID.String() {
+		t.Fatalf("institution AcceptScopedRole() = %#v", accepted)
+	}
+	replayAcceptance := scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, existing.ID, session.ID, model.NowUTC())
+	replayed, err := ss.Invitation().AcceptScopedRole(ctx, replayAcceptance)
+	requireNoError(t, err)
+	requireScopedRoleAcceptanceAuditSuccess(t, ctx, ss, replayAcceptance)
+	if !replayed.Replayed || replayed.RoleBinding.ID != accepted.RoleBinding.ID {
+		t.Fatalf("institution replay = %#v", replayed)
+	}
+}
+
+func testScopedRoleInvitationExistingUserAtomicAndReplaySafe(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "scoped-role-"+model.NewId())
+	inviter, existing, other := saveUser(t, ctx, ss), saveUser(t, ctx, ss), saveUser(t, ctx, ss)
+	issuedAt := model.NowUTC().Add(-time.Minute)
+	issuerRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-issuer-" + model.NewId(), DisplayName: "Scoped Role Issuer",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage), string(model.ActionAcademicAuditView)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: inviter.ID, RoleID: issuerRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
+	requireNoError(t, err)
+	targetRole, err := ss.Role().Save(ctx, &model.Role{Name: "scoped-role-target-" + model.NewId(), DisplayName: "Scoped Role Target",
+		Permissions: []string{string(model.ActionAcademicAuditView)}})
+	requireNoError(t, err)
+	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{ID: model.NewInvitationID(),
+		Purpose: model.InvitationPurposeAcademicUnitRole, TargetEmail: "invited-" + model.NewId() + "@example.edu",
+		AcademicUnitID: unit.ID, RoleID: targetRole.ID, RoleActions: targetRole.Permissions, IntendedStartsAt: issuedAt,
+		InviterUserID: inviter.ID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: issuedAt})
+	requireNoError(t, err)
+	issue := scopedRoleInvitationIssueFixture(t, ss, invitation)
+	created, err := ss.Invitation().IssueScopedRole(ctx, issue)
+	requireNoError(t, err)
+	if created.Purpose != model.InvitationPurposeAcademicUnitRole || created.RoleID != targetRole.ID {
+		t.Fatalf("IssueScopedRole() = %#v", created)
+	}
+	existingBinding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: existing.ID, RoleID: targetRole.ID,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), StartsAt: issuedAt.Add(-time.Second)})
+	requireNoError(t, err)
+	session, _, _ := saveSession(t, ctx, ss, existing.ID.String(), 10)
+	acceptance := scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, existing.ID, session.ID, model.NowUTC())
+	missingAttempt := *acceptance
+	missingAttempt.AuditEventID = model.NewAuditEventID().String()
+	if _, err = ss.Invitation().AcceptScopedRole(ctx, &missingAttempt); err == nil {
+		t.Fatal("AcceptScopedRole() without persisted attempt error = nil")
+	}
+	stillPending, err := ss.Invitation().Get(ctx, created.ID)
+	requireNoError(t, err)
+	if stillPending.State != model.InvitationPending {
+		t.Fatalf("Invitation state after missing audit attempt = %q", stillPending.State)
+	}
+	accepted, err := ss.Invitation().AcceptScopedRole(ctx, acceptance)
+	requireNoError(t, err)
+	requireScopedRoleAcceptanceAuditSuccess(t, ctx, ss, acceptance)
+	if accepted.Replayed || accepted.User.ID != existing.ID || accepted.User.Email != existing.Email ||
+		accepted.RoleBinding.ID != existingBinding.ID || accepted.RoleBinding.UserID != existing.ID || accepted.RoleBinding.RoleID != targetRole.ID ||
+		accepted.RoleBinding.ScopeType != model.RoleScopeAcademicUnit || accepted.RoleBinding.ScopeID != unit.ID.String() ||
+		accepted.Invitation.AcceptedAffiliationID.IsValid() || accepted.Invitation.AcceptedAcademicUnitMemberID.IsValid() {
+		t.Fatalf("AcceptScopedRole() = %#v", accepted)
+	}
+	obsolete, err := ss.Mail().GetDelivery(ctx, issue.Delivery.ID)
+	requireNoError(t, err)
+	if obsolete.State != model.MailDeliverySuppressed || obsolete.PublicFailureCode != model.MailDeliveryObsoleteCode || len(obsolete.EncryptedPayload) != 0 {
+		t.Fatalf("accepted scoped Role credential delivery = %#v", obsolete)
+	}
+	replayAcceptance := scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, existing.ID, session.ID, model.NowUTC())
+	replayed, err := ss.Invitation().AcceptScopedRole(ctx, replayAcceptance)
+	requireNoError(t, err)
+	requireScopedRoleAcceptanceAuditSuccess(t, ctx, ss, replayAcceptance)
+	if !replayed.Replayed || replayed.User.ID != existing.ID || replayed.RoleBinding.ID != accepted.RoleBinding.ID {
+		t.Fatalf("replayed AcceptScopedRole() = %#v", replayed)
+	}
+	otherSession, _, _ := saveSession(t, ctx, ss, other.ID.String(), 10)
+	differentUser := scopedRoleInvitationAcceptanceFixture(t, ctx, ss, created, other.ID, otherSession.ID, model.NowUTC())
+	if _, err = ss.Invitation().AcceptScopedRole(ctx, differentUser); !store.IsConflict(err) {
+		t.Fatalf("different User replay error = %v", err)
+	}
+}
+
+func scopedRoleInvitationIssueFixture(t *testing.T, ss store.Store, invitation *model.Invitation) *store.ScopedRoleInvitationIssue {
+	t.Helper()
+	key := model.MailTemplateAccessAcademicUnitRoleInvitation
+	if invitation.Purpose == model.InvitationPurposeInstitutionRole {
+		key = model.MailTemplateAccessInstitutionRoleInvitation
+	}
+	at := invitation.CreatedAt
+	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	requireNoError(t, err)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliverCredential, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	requireNoError(t, err)
+	attempt, err := ss.Audit().Save(context.Background(), &model.AuditEvent{ActorID: invitation.InviterUserID,
+		Action: string(model.ActionInvitationCreate), Resource: model.Resource{Type: resourceTypeForScopedInvitation(invitation), ID: invitation.ScopeID},
+		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, Status: model.AuditStatusAttempt, NodeID: "scoped-role-invitation-store-test"})
+	requireNoError(t, err)
+	return &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.StudentClassInvitationLifetime,
+		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceInvitation, TemplateKey: key,
+			ActorUserID: invitation.InviterUserID, CreatedAt: at},
+		Delivery: &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetInvitationID: invitation.ID,
+			TemplateKey: key, TemplateDigest: strings.Repeat("d", 64), MaskedRecipient: "i***@example.edu",
+			State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: invitation.ExpiresAt,
+			MessageID:        "<scoped-role." + deliveryID.String() + "@example.test>",
+			EncryptedPayload: json.RawMessage(`{"version":1,"key_id":"11111111111111111111111111111111","ciphertext":"secret"}`), Revision: 1},
+		DeliveryJob: job, AuditEventID: attempt.ID.String(), AuditAt: model.MillisFromTime(at)}
+}
+
+func scopedRoleInvitationAcceptanceFixture(t *testing.T, ctx context.Context, ss store.Store, invitation *model.Invitation,
+	userID model.UserID, sessionID model.SessionID, at time.Time,
+) *store.ScopedRoleInvitationAcceptance {
+	t.Helper()
+	binding := &model.RoleBinding{UserID: userID, RoleID: invitation.RoleID, OriginInvitationID: invitation.ID,
+		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, StartsAt: invitation.EffectiveStartsAt(at), EndsAt: invitation.IntendedEndsAt}
+	binding.PrepareCreate(model.NewRoleBindingID(), at)
+	attempt, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: userID, SessionID: sessionID,
+		Action: "invitation.accept", Resource: model.Resource{Type: resourceTypeForScopedInvitation(invitation), ID: invitation.ScopeID},
+		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, Status: model.AuditStatusAttempt,
+		NodeID: "scoped-role-invitation-store-test"})
+	requireNoError(t, err)
+	return &store.ScopedRoleInvitationAcceptance{ClaimHash: invitation.ClaimHash, UserID: userID, RoleBinding: binding,
+		AuditEventID: attempt.ID.String(), AuditAt: model.MillisFromTime(at),
+		RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}}
+}
+
+func requireScopedRoleAcceptanceAuditSuccess(t *testing.T, ctx context.Context, ss store.Store, input *store.ScopedRoleInvitationAcceptance) {
+	t.Helper()
+	event, err := ss.Audit().Get(ctx, input.AuditEventID)
+	requireNoError(t, err)
+	if event.Status != model.AuditStatusSuccess || len(event.Result) == 0 ||
+		strings.Contains(string(event.Result), input.ClaimHash) {
+		t.Fatalf("scoped Role acceptance audit = %#v", event)
+	}
+}
+
+func resourceTypeForScopedInvitation(invitation *model.Invitation) model.ResourceType {
+	if invitation.Purpose == model.InvitationPurposeInstitutionRole {
+		return model.ResourceInstitution
+	}
+	return model.ResourceAcademicUnit
 }
 
 func testInvitationIssueSerializesWithInviterDisable(

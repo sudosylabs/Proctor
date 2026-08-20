@@ -6,8 +6,10 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,15 +28,21 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	persistence := openAuthenticationStore(t, dataSource)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	ctx := context.Background()
-	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "northbridge", DisplayName: "Northbridge University"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: institution.ID, Name: "computing", DisplayName: "Computing"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	password := "correct horse battery staple"
+	bootstrap, appErr := helper.App.BootstrapInstallation(ctx, application.Invocation{}, application.BootstrapInstallationCommand{
+		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge University",
+		AdministratorUsername: "exam-admin", AdministratorEmail: "exam-admin@example.edu",
+		AdministratorDisplayName: "Exam Administrator", AdministratorLocale: "en", AdministratorTimezone: "UTC",
+		Password: password, BootstrapSecret: testlib.BootstrapSecret, Source: "203.0.113.10",
+	})
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	institution := bootstrap.Institution
+	unit, err := persistence.AcademicUnit().Save(ctx, &model.AcademicUnit{InstitutionID: bootstrap.Institution.ID, Name: "computing", DisplayName: "Computing"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	teacher, appErr := helper.App.CreateLocalUser(ctx, &model.User{Username: "exam-teacher", Email: "exam-teacher@example.edu", DisplayName: "Exam Teacher"}, password)
 	if appErr != nil {
 		t.Fatal(appErr)
@@ -215,6 +223,17 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	if appErr != nil || transferred.Exam.OwnerUserID != managerUser.ID || transferred.Exam.Revision != 3 {
 		t.Fatalf("ownership transfer = %#v, %v", transferred, appErr)
 	}
+	afterTransfer, appErr := helper.App.ListExamManagers(ctx, invocation, application.ListExamManagersQuery{ExamID: created.Exam.ID, Limit: 50})
+	if appErr != nil || len(afterTransfer.Items) != 2 {
+		t.Fatalf("Manager relationships after ownership transfer = %#v, %v", afterTransfer, appErr)
+	}
+	relationships := map[model.UserID]bool{}
+	for _, item := range afterTransfer.Items {
+		relationships[item.Manager.UserID] = item.IsOwner
+	}
+	if owner, remainsManager := relationships[teacher.ID]; !remainsManager || owner || !relationships[managerUser.ID] {
+		t.Fatalf("ownership transfer relationships = %#v", afterTransfer.Items)
+	}
 	removedCreator, appErr := helper.App.RemoveExamManager(ctx, managerInvocation, application.RemoveExamManagerCommand{
 		ExamID: created.Exam.ID, UserID: teacher.ID, ExpectedExamRevision: 3, IdempotencyKey: "exam-manager-remove-creator",
 	})
@@ -351,5 +370,65 @@ func TestExamAuthoringIntegration(t *testing.T) {
 	})
 	if !application.Is(appErr, "exam.archived") {
 		t.Fatalf("post-archive edit error = %v", appErr)
+	}
+
+	startIntegrationServer(t, helper)
+	managerMailKeys := []model.MailTemplateKey{
+		model.MailTemplateExamManagerAdded,
+		model.MailTemplateExamManagerRemoved,
+		model.MailTemplateExamOwnershipTransferredToYou,
+		model.MailTemplateExamOwnershipTransferredFromYou,
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var managerDeliveries []*model.MailDelivery
+	for {
+		managerDeliveries, err = persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: managerMailKeys, Limit: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		accepted := len(managerDeliveries) == 5
+		for _, delivery := range managerDeliveries {
+			accepted = accepted && delivery.State == model.MailDeliveryAccepted && len(delivery.EncryptedPayload) == 0
+		}
+		if accepted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Exam Manager notices did not reach accepted: %#v", managerDeliveries)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	wantTargets := map[model.MailTemplateKey]map[model.UserID]int{
+		model.MailTemplateExamManagerAdded:                {managerUser.ID: 1, teacher.ID: 1},
+		model.MailTemplateExamManagerRemoved:              {teacher.ID: 1},
+		model.MailTemplateExamOwnershipTransferredFromYou: {teacher.ID: 1},
+		model.MailTemplateExamOwnershipTransferredToYou:   {managerUser.ID: 1},
+	}
+	for _, delivery := range managerDeliveries {
+		wantTargets[delivery.TemplateKey][delivery.TargetUserID]--
+	}
+	for key, targets := range wantTargets {
+		for target, remaining := range targets {
+			if remaining != 0 {
+				t.Fatalf("Exam Manager delivery %s/%s remaining = %d; deliveries=%#v", key, target, remaining, managerDeliveries)
+			}
+		}
+	}
+	var managerMessages int
+	for _, delivery := range helper.Mailer.Deliveries() {
+		data := string(delivery.Data)
+		if !strings.Contains(data, "Subject: ") || !strings.Contains(data, "exam manager") && !strings.Contains(data, "Exam ownership") {
+			continue
+		}
+		managerMessages++
+		if !bytes.Contains(delivery.Data, []byte(editedTitle)) {
+			t.Fatalf("Exam Manager mail omitted safe Exam identity: %s", delivery.Data)
+		}
+		if strings.Contains(data, "private-reason") || strings.Contains(data, "role.manage") || strings.Contains(data, outsider.Email) {
+			t.Fatal("Exam Manager mail exposed actor or private authorization detail")
+		}
+	}
+	if managerMessages != 5 {
+		t.Fatalf("captured Exam Manager messages = %d, want 5", managerMessages)
 	}
 }

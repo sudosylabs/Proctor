@@ -112,10 +112,32 @@ type users interface {
 	Get(context.Context, string) (*model.User, error)
 }
 
+type ManagerMailRelationship string
+
+const (
+	ManagerMailRelationshipManager         ManagerMailRelationship = "manager"
+	ManagerMailRelationshipOwner           ManagerMailRelationship = "owner"
+	ManagerMailRelationshipNoLongerManager ManagerMailRelationship = "no_longer_manager"
+)
+
+type ManagerMailPreparation struct {
+	Recipient    *model.User
+	OccurrenceID model.MailOccurrenceID
+	TemplateKey  model.MailTemplateKey
+	ExamTitle    string
+	Relationship ManagerMailRelationship
+	ActionAt     time.Time
+}
+
+type ManagerMailPreparer interface {
+	PrepareManagerMail(ManagerMailPreparation) (*store.ExamManagerMail, error)
+}
+
 type Authoring struct {
 	persistence store.ExamAuthoringStore
 	memberships memberships
 	users       users
+	mail        ManagerMailPreparer
 	authorizer  Authorizer
 	auditor     Auditor
 	effects     Effects
@@ -124,11 +146,11 @@ type Authoring struct {
 	newID       func() model.ExamID
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, users users, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
-	if persistence == nil || memberships == nil || users == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
+func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
+	if persistence == nil || memberships == nil || users == nil || mail == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
-	return &Authoring{persistence: persistence, memberships: memberships, users: users, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
+	return &Authoring{persistence: persistence, memberships: memberships, users: users, mail: mail, authorizer: authorizer, auditor: auditor, effects: effects, failures: failures, now: now, newID: newID}, nil
 }
 
 func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand) (View, error) {

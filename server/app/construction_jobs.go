@@ -160,7 +160,8 @@ func buildApplicationJobDefinitions(
 		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
 		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
 		mailCredentialDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
-		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), recorder: deps.MailDeliveryRecorder}),
+		sittingMailExpansionDescriptor(sittingMailExpansionHandler{sittings: deps.Store.ExamSitting(), mail: examinations.sittingMail}),
+		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), sittings: deps.Store.ExamSitting(), recorder: deps.MailDeliveryRecorder}),
 		mailRekeyDescriptor(mailRekeyHandler{mail: deps.Store.Mail(), sealer: deps.MailSecretSealer}),
 		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Store.Invitation()}),
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
@@ -189,6 +190,8 @@ func buildApplicationJobDefinitions(
 			Runner: externalAuthenticationMaintenancePeriodicRunner{states: deps.Store.ExternalLoginState()}},
 		{Name: "personal-access-token-maintenance", Interval: personalAccessTokenMaintenanceInterval,
 			Runner: personalAccessTokenMaintenancePeriodicRunner{tokens: deps.Store.PersonalAccessToken()}},
+		{Name: "exam-sitting-mail-reconciliation", Interval: sittingMailReconciliationInterval,
+			Runner: sittingMailReconciliationPeriodicRunner{sittings: deps.Store.ExamSitting(), mail: examinations.sittingMailPreparation}},
 	}
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
 		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})

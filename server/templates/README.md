@@ -32,6 +32,17 @@ closed `.Copy.PersonalAccessToken` label set and these bounded fields under
 `.ScopeContext`, and `.ActionCount`. They never receive the one-time
 credential, stored token hash, or complete action list.
 
+The four Exam Sitting schedule messages additionally receive the closed
+`.Copy.SittingSchedule` label set and these bounded fields under
+`.SittingSchedule`: `.ExamTitle`, `.ClassDisplayName`, `.StartsAt`, `.EndsAt`,
+and `.Timezone`. They never receive Exam instructions, resources, roster
+contents, private cancellation rationale, or the actor's identity.
+
+The four Exam Manager relationship notices additionally receive the closed
+`.Copy.ExamManager` label set and these bounded fields under `.ExamManager`:
+`.Title`, `.Relationship`, and `.ActionAt`. They never receive the actor,
+authorization grants, other Managers, or private audit detail.
+
 The renderer accepts no arbitrary map and registers no custom template
 functions. Copy is markup-free and HTML is parsed with Go `html/template`, so
 localized and dynamic values are contextually escaped. Action URLs are

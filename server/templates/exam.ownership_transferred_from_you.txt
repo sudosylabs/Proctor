@@ -7,10 +7,16 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .ExamManager.Title — bounded Exam title
+  .ExamManager.Relationship — localized resulting relationship
+  .ExamManager.ActionAt — UTC RFC 3339 transition time
 */}}
 {{.Copy.Heading}}
 
 {{.Copy.Body}}
+{{.Copy.ExamManager.ExamLabel}}: {{.ExamManager.Title}}
+{{.Copy.ExamManager.RelationshipLabel}}: {{.ExamManager.Relationship}}
+{{.Copy.ExamManager.ActionAtLabel}}: {{.ExamManager.ActionAt}}
 {{if .ActionURL}}
 {{.Copy.ActionLabel}}: {{.ActionURL}}
 {{end}}

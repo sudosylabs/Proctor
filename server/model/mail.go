@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	MailRenderedPayloadMaximumBytes  = 1 << 20
-	MailEncryptedPayloadMaximumBytes = 2 << 20
-	MailMaskedRecipientMaximumBytes  = 254
-	MailMessageIDMaximumBytes        = 900
-	MailMaximumAttempts              = 8
+	MailRenderedPayloadMaximumBytes       = 1 << 20
+	MailEncryptedPayloadMaximumBytes      = 2 << 20
+	MailEncryptedFanoutBundleMaximumBytes = 4 << 20
+	MailMaskedRecipientMaximumBytes       = 254
+	MailMessageIDMaximumBytes             = 900
+	MailMaximumAttempts                   = 8
 )
 
 type MailTemplateKey string
@@ -45,7 +46,17 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateIdentityPasswordChanged,
 		MailTemplateAccessStudentClassInvitation,
 		MailTemplateAccessTeacherAcademicUnitInvitation,
-		MailTemplateAccessInvitationAccepted:
+		MailTemplateAccessAcademicUnitRoleInvitation,
+		MailTemplateAccessInstitutionRoleInvitation,
+		MailTemplateAccessInvitationAccepted,
+		MailTemplateExamSittingScheduled,
+		MailTemplateExamSittingRescheduled,
+		MailTemplateExamSittingCancelled,
+		MailTemplateExamSittingAssignmentRemoved,
+		MailTemplateExamManagerAdded,
+		MailTemplateExamManagerRemoved,
+		MailTemplateExamOwnershipTransferredToYou,
+		MailTemplateExamOwnershipTransferredFromYou:
 		return true
 	default:
 		return false
@@ -73,12 +84,24 @@ const (
 	MailTemplateIdentityPersonalAccessTokenRevoked  MailTemplateKey = "identity.personal_access_token_revoked"
 	MailTemplateAccessStudentClassInvitation        MailTemplateKey = "access.student_class_invitation"
 	MailTemplateAccessTeacherAcademicUnitInvitation MailTemplateKey = "access.teacher_academic_unit_invitation"
+	MailTemplateAccessAcademicUnitRoleInvitation    MailTemplateKey = "access.academic_unit_role_invitation"
+	MailTemplateAccessInstitutionRoleInvitation     MailTemplateKey = "access.institution_role_invitation"
 	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
+	MailTemplateExamSittingScheduled                MailTemplateKey = "exam.sitting_scheduled"
+	MailTemplateExamSittingRescheduled              MailTemplateKey = "exam.sitting_rescheduled"
+	MailTemplateExamSittingCancelled                MailTemplateKey = "exam.sitting_cancelled"
+	MailTemplateExamSittingAssignmentRemoved        MailTemplateKey = "exam.sitting_assignment_removed"
+	MailTemplateExamManagerAdded                    MailTemplateKey = "exam.manager_added"
+	MailTemplateExamManagerRemoved                  MailTemplateKey = "exam.manager_removed"
+	MailTemplateExamOwnershipTransferredToYou       MailTemplateKey = "exam.ownership_transferred_to_you"
+	MailTemplateExamOwnershipTransferredFromYou     MailTemplateKey = "exam.ownership_transferred_from_you"
 
-	MailOccurrenceOperatorTest   MailOccurrenceKind = "operator_test"
-	MailOccurrenceAccountToken   MailOccurrenceKind = "account_token"
-	MailOccurrenceSecurityNotice MailOccurrenceKind = "security_notice"
-	MailOccurrenceInvitation     MailOccurrenceKind = "invitation"
+	MailOccurrenceOperatorTest    MailOccurrenceKind = "operator_test"
+	MailOccurrenceAccountToken    MailOccurrenceKind = "account_token"
+	MailOccurrenceSecurityNotice  MailOccurrenceKind = "security_notice"
+	MailOccurrenceInvitation      MailOccurrenceKind = "invitation"
+	MailOccurrenceSittingSchedule MailOccurrenceKind = "sitting_schedule"
+	MailOccurrenceExamManagement  MailOccurrenceKind = "exam_management"
 
 	MailDeliveryQueued     MailDeliveryState = "queued"
 	MailDeliverySending    MailDeliveryState = "sending"
@@ -132,7 +155,14 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 			key == MailTemplateIdentityPersonalAccessTokenDisabled || key == MailTemplateIdentityPersonalAccessTokenRevoked
 	case MailOccurrenceInvitation:
 		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
+			key == MailTemplateAccessAcademicUnitRoleInvitation || key == MailTemplateAccessInstitutionRoleInvitation ||
 			key == MailTemplateAccessInvitationAccepted
+	case MailOccurrenceSittingSchedule:
+		return key == MailTemplateExamSittingScheduled || key == MailTemplateExamSittingRescheduled ||
+			key == MailTemplateExamSittingCancelled || key == MailTemplateExamSittingAssignmentRemoved
+	case MailOccurrenceExamManagement:
+		return key == MailTemplateExamManagerAdded || key == MailTemplateExamManagerRemoved ||
+			key == MailTemplateExamOwnershipTransferredToYou || key == MailTemplateExamOwnershipTransferredFromYou
 	default:
 		return false
 	}
@@ -161,6 +191,25 @@ type MailDelivery struct {
 	PublicFailureCode  string
 	EncryptedPayload   json.RawMessage
 	Revision           int64
+}
+
+// MailFanoutBundle is one encrypted, release-frozen render set shared by all
+// recipients expanded from a bounded fan-out occurrence. The bundle identity
+// equals its occurrence identity so it cannot be attached to another fact.
+type MailFanoutBundle struct {
+	ID               MailOccurrenceID
+	EncryptedPayload json.RawMessage
+	CreatedAt        time.Time
+	Revision         int64
+}
+
+func (bundle *MailFanoutBundle) Validate() error {
+	if bundle == nil || !bundle.ID.IsValid() || bundle.CreatedAt.IsZero() || bundle.Revision != 1 ||
+		len(bundle.EncryptedPayload) == 0 || len(bundle.EncryptedPayload) > MailEncryptedFanoutBundleMaximumBytes ||
+		!json.Valid(bundle.EncryptedPayload) {
+		return errors.New("model: invalid mail fan-out bundle")
+	}
+	return nil
 }
 
 func (d *MailDelivery) Validate() error {

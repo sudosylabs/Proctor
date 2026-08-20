@@ -7,6 +7,9 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .ExamManager.Title — bounded Exam title
+  .ExamManager.Relationship — localized resulting relationship
+  .ExamManager.ActionAt — UTC RFC 3339 transition time
 -->
 <mjml>
   <mj-head>
@@ -16,5 +19,8 @@ Template properties (templates.Properties):
   </mj-head>
   <mj-body background-color="#f4f5f7">
     <mj-include path="./partials/foundation-message.mjml" />
+    <mj-section background-color="#ffffff" padding="0 24px 24px">
+      <mj-column><mj-text><strong>{{.Copy.ExamManager.ExamLabel}}:</strong> {{.ExamManager.Title}}<br /><strong>{{.Copy.ExamManager.RelationshipLabel}}:</strong> {{.ExamManager.Relationship}}<br /><strong>{{.Copy.ExamManager.ActionAtLabel}}:</strong> {{.ExamManager.ActionAt}}</mj-text></mj-column>
+    </mj-section>
   </mj-body>
 </mjml>

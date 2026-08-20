@@ -119,6 +119,24 @@ type TeacherAcademicUnitInvitationInput struct {
 	IssuedAt         time.Time
 }
 
+// ScopedRoleInvitationInput freezes one Role assignment for an existing User
+// at either one exact Academic Unit or the Institution.
+type ScopedRoleInvitationInput struct {
+	ID               InvitationID
+	Purpose          InvitationPurpose
+	TargetEmail      string
+	AcademicUnitID   AcademicUnitID
+	RoleID           RoleID
+	RoleActions      []string
+	IntendedStartsAt time.Time
+	IntendedEndsAt   OptionalTime
+	InviterUserID    UserID
+	ScopeType        RoleScopeType
+	ScopeID          string
+	ClaimHash        string
+	IssuedAt         time.Time
+}
+
 // NewStudentClassInvitation constructs the one exact package implemented by
 // the first Invitation slice. Expiry is fixed here so callers cannot widen the
 // credential lifetime accidentally.
@@ -158,6 +176,27 @@ func NewTeacherAcademicUnitInvitation(input TeacherAcademicUnitInvitationInput) 
 		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType,
 		ScopeID: input.ScopeID, ClaimHash: input.ClaimHash,
 		ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
+	}
+	if err := invitation.Validate(); err != nil {
+		return nil, err
+	}
+	return invitation, nil
+}
+
+// NewScopedRoleInvitation constructs one immutable Role-only package for an
+// already authenticated User. The claim proves control of the invited mailbox;
+// acceptance never changes the User's canonical email or profile.
+func NewScopedRoleInvitation(input ScopedRoleInvitationInput) (*Invitation, error) {
+	issuedAt := TimeUTC(input.IssuedAt)
+	invitation := &Invitation{
+		ID: input.ID, CreatedAt: issuedAt, UpdatedAt: issuedAt, Revision: 1,
+		Purpose: input.Purpose, State: InvitationPending,
+		TargetEmail: normalizeInvitationEmail(input.TargetEmail), AcademicUnitID: input.AcademicUnitID,
+		RoleID: input.RoleID, RoleActions: canonicalInvitationRoleActions(input.RoleActions),
+		IntendedStartsAt: TimeUTC(input.IntendedStartsAt),
+		IntendedEndsAt:   normalizeOptionalInvitationTime(input.IntendedEndsAt),
+		InviterUserID:    input.InviterUserID, ScopeType: input.ScopeType, ScopeID: input.ScopeID,
+		ClaimHash: input.ClaimHash, ExpiresAt: issuedAt.Add(StudentClassInvitationLifetime),
 	}
 	if err := invitation.Validate(); err != nil {
 		return nil, err
@@ -248,19 +287,40 @@ func (i *Invitation) Validate() error {
 			return invalidModelError(where, "invitation", "teacher_academic_unit", "must not contain a student package", details)
 		}
 	}
+	if i.Purpose == InvitationPurposeAcademicUnitRole || i.Purpose == InvitationPurposeInstitutionRole {
+		if !i.RoleID.IsValid() || len(i.RoleActions) == 0 || !slices.IsSorted(i.RoleActions) {
+			return invalidModelError(where, "invitation", "scoped_role", "must identify a Role with a nonempty canonical action snapshot", details)
+		}
+		for index, action := range i.RoleActions {
+			if !IsGrantableAction(action) || (index > 0 && i.RoleActions[index-1] == action) {
+				return invalidModelError(where, "invitation", "role_actions", "must contain unique grantable actions", details)
+			}
+		}
+		if i.IntendedStartsAt.IsZero() ||
+			(i.IntendedEndsAt.Valid && !i.IntendedEndsAt.Time.After(i.IntendedStartsAt)) {
+			return invalidModelError(where, "invitation", "effective_bounds", "must form a valid half-open interval", details)
+		}
+		if i.ClassID.IsValid() || i.AcademicPeriodID.IsValid() || !invitationScopedRoleTargetIsValid(i) {
+			return invalidModelError(where, "invitation", "scoped_role", "must identify its exact authorization scope", details)
+		}
+	}
 	if i.State == InvitationAccepted {
-		if !i.AcceptedAt.Valid || !i.AcceptedUserID.IsValid() || !i.AcceptedAffiliationID.IsValid() ||
+		if !i.AcceptedAt.Valid || !i.AcceptedUserID.IsValid() ||
 			i.AcceptedAt.Time.Before(i.CreatedAt) || !i.AcceptedAt.Time.Before(i.ExpiresAt) {
 			return invalidModelError(where, "invitation", "acceptance", "must identify a User within the invitation lifetime", details)
 		}
 		switch i.Purpose {
 		case InvitationPurposeStudentClass:
-			if !i.AcceptedClassMemberID.IsValid() || i.AcceptedAcademicUnitMemberID.IsValid() || i.AcceptedRoleBindingID.IsValid() {
+			if !i.AcceptedAffiliationID.IsValid() || !i.AcceptedClassMemberID.IsValid() || i.AcceptedAcademicUnitMemberID.IsValid() || i.AcceptedRoleBindingID.IsValid() {
 				return invalidModelError(where, "invitation", "acceptance", "must identify the accepted Class package", details)
 			}
 		case InvitationPurposeTeacherAcademicUnit:
-			if i.AcceptedClassMemberID.IsValid() || !i.AcceptedAcademicUnitMemberID.IsValid() || !i.AcceptedRoleBindingID.IsValid() {
+			if !i.AcceptedAffiliationID.IsValid() || i.AcceptedClassMemberID.IsValid() || !i.AcceptedAcademicUnitMemberID.IsValid() || !i.AcceptedRoleBindingID.IsValid() {
 				return invalidModelError(where, "invitation", "acceptance", "must identify the accepted Academic Unit package", details)
+			}
+		case InvitationPurposeAcademicUnitRole, InvitationPurposeInstitutionRole:
+			if i.AcceptedAffiliationID.IsValid() || i.AcceptedClassMemberID.IsValid() || i.AcceptedAcademicUnitMemberID.IsValid() || !i.AcceptedRoleBindingID.IsValid() {
+				return invalidModelError(where, "invitation", "acceptance", "must identify only the accepted Role Binding", details)
 			}
 		}
 	} else if i.AcceptedAt.Valid || !i.AcceptedUserID.IsZero() || !i.AcceptedAffiliationID.IsZero() ||
@@ -316,6 +376,41 @@ func (i *Invitation) AcceptTeacherAcademicUnit(userID UserID, affiliationID Affi
 	i.UpdatedAt = at
 	i.Revision++
 	return i.Validate()
+}
+
+// AcceptScopedRole records the exact existing User and compatible Role Binding
+// selected by the authoritative acceptance transaction.
+func (i *Invitation) AcceptScopedRole(userID UserID, bindingID RoleBindingID, at time.Time) error {
+	if i == nil || (i.Purpose != InvitationPurposeAcademicUnitRole && i.Purpose != InvitationPurposeInstitutionRole) ||
+		i.State != InvitationPending || !userID.IsValid() || !bindingID.IsValid() {
+		return fmt.Errorf("model: scoped Role invitation cannot be accepted")
+	}
+	at = TimeUTC(at)
+	if at.Before(i.CreatedAt) || !at.Before(i.ExpiresAt) ||
+		(i.IntendedEndsAt.Valid && !at.Before(i.IntendedEndsAt.Time)) {
+		return fmt.Errorf("model: scoped Role invitation cannot be accepted at this time")
+	}
+	i.State = InvitationAccepted
+	i.AcceptedAt = OptionalTimeFrom(at)
+	i.AcceptedUserID = userID
+	i.AcceptedRoleBindingID = bindingID
+	i.UpdatedAt = at
+	i.Revision++
+	return i.Validate()
+}
+
+func invitationScopedRoleTargetIsValid(invitation *Invitation) bool {
+	if invitation == nil {
+		return false
+	}
+	switch invitation.Purpose {
+	case InvitationPurposeAcademicUnitRole:
+		return invitation.AcademicUnitID.IsValid() && invitation.ScopeType == RoleScopeAcademicUnit && invitation.ScopeID == invitation.AcademicUnitID.String()
+	case InvitationPurposeInstitutionRole:
+		return invitation.AcademicUnitID.IsZero() && invitation.ScopeType == RoleScopeInstitution && IsValidId(invitation.ScopeID)
+	default:
+		return false
+	}
 }
 
 // Expire terminalizes a pending Invitation only after its claim lifetime or

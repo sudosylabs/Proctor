@@ -154,6 +154,9 @@ func addExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamMan
 		}
 		return nil, fmt.Errorf("add Exam Manager: %w", translated)
 	}
+	if err := insertExamManagerMail(ctx, tx, input.Notices, []examManagerMailExpectation{{userID: input.TargetUserID, key: model.MailTemplateExamManagerAdded}}, input.ChangedAt); err != nil {
+		return nil, err
+	}
 	return completeExamManagerMutation(ctx, tx, exam, manager, input)
 }
 
@@ -182,6 +185,9 @@ func removeExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 		}
 		return nil, store.NewErrConflict("exam_manager", "exam_manager_missing", nil)
 	}
+	if err := insertExamManagerMail(ctx, tx, input.Notices, []examManagerMailExpectation{{userID: input.TargetUserID, key: model.MailTemplateExamManagerRemoved}}, input.ChangedAt); err != nil {
+		return nil, err
+	}
 	return completeExamManagerMutation(ctx, tx, exam, manager, input)
 }
 
@@ -200,8 +206,55 @@ func transferExamOwner(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 	if err != nil {
 		return nil, err
 	}
+	previousOwnerID := exam.OwnerUserID
 	exam.OwnerUserID = input.TargetUserID
+	if err := insertExamManagerMail(ctx, tx, input.Notices, []examManagerMailExpectation{
+		{userID: previousOwnerID, key: model.MailTemplateExamOwnershipTransferredFromYou},
+		{userID: input.TargetUserID, key: model.MailTemplateExamOwnershipTransferredToYou},
+	}, input.ChangedAt); err != nil {
+		return nil, err
+	}
 	return completeExamManagerMutation(ctx, tx, exam, manager, input)
+}
+
+type examManagerMailExpectation struct {
+	userID model.UserID
+	key    model.MailTemplateKey
+}
+
+func insertExamManagerMail(ctx context.Context, tx *sqlxTxWrapper, notices []store.ExamManagerMail, expected []examManagerMailExpectation, at int64) error {
+	if len(notices) != len(expected) {
+		return store.NewErrInvalidInput("exam_manager", "mail_count", nil)
+	}
+	when := model.TimeFromMillis(at)
+	seenUsers := make(map[model.UserID]struct{}, len(expected))
+	for index, expectation := range expected {
+		notice := notices[index]
+		if _, exists := seenUsers[expectation.userID]; exists || notice.Occurrence == nil || notice.Delivery == nil || notice.Job == nil ||
+			notice.Occurrence.Kind != model.MailOccurrenceExamManagement || notice.Occurrence.TemplateKey != expectation.key ||
+			notice.Occurrence.ActorUserID != expectation.userID || notice.Delivery.TargetUserID != expectation.userID ||
+			notice.Delivery.TemplateKey != expectation.key || notice.Job.Type != model.JobTypeMailDeliver ||
+			!notice.Occurrence.CreatedAt.Equal(when) || notice.Delivery.Deadline.Sub(notice.Delivery.CreatedAt) != 72*time.Hour {
+			return store.NewErrInvalidInput("exam_manager", "mail", nil)
+		}
+		seenUsers[expectation.userID] = struct{}{}
+		if err := validateRecoveryMail(notice.Occurrence, notice.Delivery, notice.Job); err != nil {
+			return err
+		}
+		payloadKeyID, err := mailPayloadKeyID(notice.Delivery.EncryptedPayload)
+		if err != nil {
+			return store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+		}
+		if payloadKeyID != "" {
+			if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return err
+			}
+		}
+		if err = insertRecoveryMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+			return fmt.Errorf("insert Exam Manager mail: %w", err)
+		}
+	}
+	return nil
 }
 
 func lockExamForManagerMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamManagerMutation) (*model.Exam, bool, error) {

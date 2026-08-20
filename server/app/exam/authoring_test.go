@@ -455,6 +455,7 @@ type authoringFixture struct {
 	authorizer  *authorizerFake
 	memberships *membershipsFake
 	users       *usersFake
+	mail        *managerMailPreparerFake
 	auditor     *auditorFake
 	persistence *authoringStoreFake
 	effects     *effectsFake
@@ -467,16 +468,17 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	authorizer := &authorizerFake{order: &order}
 	memberships := &membershipsFake{order: &order}
 	users := &usersFake{order: &order, user: activeTestUser(userID)}
+	mail := &managerMailPreparerFake{order: &order}
 	auditor := &auditorFake{order: &order}
 	persistence := &authoringStoreFake{order: &order, examID: examID, unitID: unitID, actorID: userID}
 	effects := &effectsFake{order: &order}
-	service, err := NewAuthoring(persistence, memberships, users, authorizer, auditor, effects, effects, func() time.Time {
+	service, err := NewAuthoring(persistence, memberships, users, mail, authorizer, auditor, effects, effects, func() time.Time {
 		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
 	}, func() model.ExamID { return examID })
 	if err != nil {
 		t.Fatal(err)
 	}
-	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, auditor: auditor, persistence: persistence, effects: effects}
+	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, mail: mail, auditor: auditor, persistence: persistence, effects: effects}
 }
 
 func testPrincipal(userID model.UserID) model.Principal {
@@ -521,12 +523,34 @@ func (f *membershipsFake) ListActiveByUser(_ context.Context, userID string, _ i
 type usersFake struct {
 	order *[]string
 	user  *model.User
+	users map[string]*model.User
 	err   error
 }
 
-func (f *usersFake) Get(context.Context, string) (*model.User, error) {
+func (f *usersFake) Get(_ context.Context, id string) (*model.User, error) {
 	*f.order = append(*f.order, "user.get")
+	if user, ok := f.users[id]; ok {
+		return user, f.err
+	}
 	return f.user, f.err
+}
+
+type managerMailPreparerFake struct {
+	order    *[]string
+	requests []ManagerMailPreparation
+	err      error
+}
+
+func (f *managerMailPreparerFake) PrepareManagerMail(request ManagerMailPreparation) (*store.ExamManagerMail, error) {
+	*f.order = append(*f.order, "mail.prepare")
+	f.requests = append(f.requests, request)
+	if f.err != nil {
+		return nil, f.err
+	}
+	occurrence := &model.MailOccurrence{ID: request.OccurrenceID, Kind: model.MailOccurrenceExamManagement,
+		TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.ActionAt}
+	delivery := &model.MailDelivery{TargetUserID: request.Recipient.ID, TemplateKey: request.TemplateKey}
+	return &store.ExamManagerMail{Occurrence: occurrence, Delivery: delivery, Job: &model.Job{}}, nil
 }
 
 type auditorFake struct {

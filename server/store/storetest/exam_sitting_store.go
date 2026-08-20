@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,14 +24,118 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID, fixture.class.ID, start, end, model.NowUTC())
 	requireNoError(t, err)
 	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+	scheduleMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)
 	scheduleAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	command := examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-schedule", "sitting-schedule-command")
 	created, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
-		AuditEventID: scheduleAudit.ID.String(), AuditAt: model.GetMillis()}, command)
+		AuditEventID: scheduleAudit.ID.String(), AuditAt: model.GetMillis(), Mail: scheduleMail}, command)
 	requireNoError(t, err)
 	if created.Replayed || created.Value == nil || created.Value.Sitting == nil || created.Value.Sitting.ID != sitting.ID || created.Value.Sitting.Revision != 1 {
 		t.Fatalf("Schedule()=%#v", created)
 	}
+	fanout, err := ss.ExamSitting().GetMailFanout(ctx, scheduleMail.Occurrence.ID)
+	requireNoError(t, err)
+	if fanout.SittingID != sitting.ID || fanout.SittingRevision != 1 || fanout.ChangeKind != store.ExamSittingMailScheduled ||
+		fanout.Bundle == nil || fanout.Bundle.ID != scheduleMail.Occurrence.ID || fanout.CompletedAt.Valid ||
+		!fanout.Deadline.Equal(fanout.Occurrence.CreatedAt.Add(72*time.Hour)) {
+		t.Fatalf("GetMailFanout()=%#v", fanout)
+	}
+	if queued, getErr := ss.Job().Get(ctx, scheduleMail.ExpansionJob.ID); getErr != nil || queued.Type != model.JobTypeMailExpandSitting {
+		t.Fatalf("expansion Job=(%#v,%v)", queued, getErr)
+	}
+	candidateInput := newUser()
+	candidateInput.EmailVerified = true
+	candidate, err := createUser(t, ctx, ss, candidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	membershipAudit := saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: membershipAudit.ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	mailPage, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: scheduleMail.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	if len(mailPage.Recipients) != 1 || mailPage.Recipients[0].User.ID != candidate.ID ||
+		mailPage.Recipients[0].TemplateKey != model.MailTemplateExamSittingScheduled {
+		t.Fatalf("ListMailRecipients()=%#v", mailPage)
+	}
+	delivery, deliveryJob := newExamSittingMailDelivery(t, fanout, candidate, mailPage.Recipients[0].TemplateKey)
+	committed, err := ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision, Recipient: candidate,
+		Delivery: delivery, DeliveryJob: deliveryJob})
+	requireNoError(t, err)
+	if !committed.Inserted || committed.Delivery == nil || committed.Delivery.ID != delivery.ID {
+		t.Fatalf("CommitMailRecipient()=%#v", committed)
+	}
+	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	requireNoError(t, err)
+	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
+		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+	requireNoError(t, err)
+	if accepted.State != model.MailDeliveryAccepted {
+		t.Fatalf("accepted delivery=%#v", accepted)
+	}
+	mailPage, err = ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: scheduleMail.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	if len(mailPage.Recipients) != 1 || mailPage.Recipients[0].TemplateKey != "" {
+		t.Fatalf("communicated recipient page=%#v", mailPage)
+	}
+	completedFanout, err := ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: fanout.Occurrence.ID})
+	requireNoError(t, err)
+	if !completedFanout.CompletedAt.Valid || completedFanout.Bundle != nil {
+		t.Fatalf("CompleteMailExpansion()=%#v", completedFanout)
+	}
+	lateInput := newUser()
+	lateInput.EmailVerified = true
+	lateCandidate, err := createUser(t, ctx, ss, lateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: lateCandidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	lateMembership := &model.ClassMember{ClassID: fixture.class.ID, UserID: lateCandidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	lateMembership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	lateAudit := saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: lateMembership,
+		AuditEventID: lateAudit.ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	var dueSitting *store.ExamSittingMailReconciliationCandidate
+	for index := range due {
+		if due[index].Sitting.ID == sitting.ID {
+			dueSitting = &due[index]
+		}
+	}
+	if dueSitting == nil || dueSitting.ActorUserID != fixture.actor.ID {
+		t.Fatalf("ListMailReconciliationDue()=%#v", due)
+	}
+	reconciliationMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled,
+		model.MailTemplateExamSittingScheduled)
+	reconciled, err := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: sitting.ID, ExpectedRevision: sitting.Revision, ActorUserID: fixture.actor.ID, Mail: reconciliationMail})
+	requireNoError(t, err)
+	mailPage, err = ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: reconciled.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	keys := make(map[model.UserID]model.MailTemplateKey, len(mailPage.Recipients))
+	for _, recipient := range mailPage.Recipients {
+		keys[recipient.User.ID] = recipient.TemplateKey
+	}
+	if keys[candidate.ID] != "" || keys[lateCandidate.ID] != model.MailTemplateExamSittingScheduled {
+		t.Fatalf("reconciliation recipients=%#v", keys)
+	}
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: reconciled.Occurrence.ID})
+	requireNoError(t, err)
 	exact, err := ss.ExamSitting().Get(ctx, fixture.examID, sitting.ID)
 	requireNoError(t, err)
 	if exact.AcademicUnitID != fixture.unitID || exact.Sitting.ExamRevisionID != fixture.revisionID || exact.Sitting.ClassID != fixture.class.ID || exact.Sitting.ScheduledEndAt != end {
@@ -58,7 +163,8 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	foreignOpen, foreignDeadline := newExamSittingLifecycleJobs(t, foreignSelection.ID, 1, start, end)
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: foreignSelection, OpenJob: foreignOpen, DeadlineJob: foreignDeadline, ActorUserID: fixture.actor.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-foreign-selection", "sitting-foreign-selection-command"))
 	requireExamSittingConflict(t, err, "exam_sitting_revision_lineage")
 
@@ -68,7 +174,8 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	updated, err := ss.ExamSitting().UpdateSchedule(ctx, &store.ExamSittingScheduleUpdate{ExamID: fixture.examID, SittingID: sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, ExamRevisionID: fixture.revisionID, ClassID: fixture.class.ID,
 		ScheduledStartAt: newStart, ScheduledEndAt: newEnd, OpenJob: updatedOpen, DeadlineJob: updatedDeadline,
-		ChangedAt: model.NowUTC(), AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis()},
+		ChangedAt: model.NowUTC(), AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-update", "sitting-update-command"))
 	requireNoError(t, err)
 	if updated.Value.Sitting.Revision != 2 || updated.Value.Sitting.ScheduledStartAt != newStart || updated.Value.Sitting.ScheduledEndAt != newEnd {
@@ -79,7 +186,8 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	cancelCommand := examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel", "sitting-cancel-command")
 	canceled, err := ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 2, PrivateReason: "Room unavailable", CanceledAt: model.NowUTC(),
-		AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis()}, cancelCommand)
+		AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)}, cancelCommand)
 	requireNoError(t, err)
 	if canceled.Value.Sitting.State != model.ExamSittingCanceled || canceled.Value.Sitting.ReasonCode != model.ExamSittingReasonManagerCanceled || canceled.Value.Sitting.Revision != 3 {
 		t.Fatalf("Cancel()=%#v", canceled)
@@ -93,7 +201,7 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	// The committed schedule result wins before the now-canceled state and
 	// stale relationship/revision fences.
 	retry, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()}, command)
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(), Mail: scheduleMail}, command)
 	requireNoError(t, err)
 	if !retry.Replayed || retry.Value.Sitting.State != model.ExamSittingScheduled || retry.Value.Sitting.Revision != 1 {
 		t.Fatalf("Schedule(replay)=%#v", retry)
@@ -101,7 +209,8 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 
 	staleAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: sitting.ID, ActorUserID: fixture.actor.ID,
-		ExpectedRevision: 2, PrivateReason: "stale", CanceledAt: model.NowUTC(), AuditEventID: staleAudit.ID.String(), AuditAt: model.GetMillis()},
+		ExpectedRevision: 2, PrivateReason: "stale", CanceledAt: model.NowUTC(), AuditEventID: staleAudit.ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-cancel-stale", "sitting-cancel-stale-command"))
 	requireExamSittingConflict(t, err, "exam_sitting_revision")
 
@@ -111,7 +220,8 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	secondOpen, secondDeadline := newExamSittingLifecycleJobs(t, second.ID, 1, second.ScheduledStartAt, second.ScheduledEndAt)
 	secondResult, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: second, OpenJob: secondOpen, DeadlineJob: secondDeadline, ActorUserID: fixture.actor.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-second", "sitting-second-command"))
 	requireNoError(t, err)
 	page, err := ss.ExamSitting().List(ctx, store.ExamSittingListOptions{ExamID: fixture.examID, ClassID: fixture.class.ID,
@@ -126,6 +236,762 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	if len(page) != 1 || page[0].Sitting.ID != sitting.ID {
 		t.Fatalf("cursor List()=%#v", page)
 	}
+}
+
+// TestExamSittingMailReconciliationAfterObsoleteSuppression proves that a
+// delivery suppressed by the authoritative pre-send membership fence does not
+// strand the candidate's desired projection. A later eligible enrollment must
+// make the unchanged upcoming Sitting due for reconciliation again.
+func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	start := fixture.period.StartsAt.Add(4 * time.Hour)
+	end := start.Add(2 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, end, model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+	prepared := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	created, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+		AuditAt:      model.GetMillis(), Mail: prepared},
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-membership-reconcile", "sitting-membership-reconcile-command"))
+	requireNoError(t, err)
+
+	candidateInput := newUser()
+	candidateInput.EmailVerified = true
+	candidate, err := createUser(t, ctx, ss, candidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	enrolled, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+
+	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)
+	requireNoError(t, err)
+	page, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: prepared.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	if len(page.Recipients) != 1 || page.Recipients[0].User.ID != candidate.ID {
+		t.Fatalf("initial recipients=%#v", page.Recipients)
+	}
+	delivery, deliveryJob := newExamSittingMailDelivery(t, fanout, candidate, page.Recipients[0].TemplateKey)
+	_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision, Recipient: candidate,
+		Delivery: delivery, DeliveryJob: deliveryJob})
+	requireNoError(t, err)
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: fanout.Occurrence.ID})
+	requireNoError(t, err)
+
+	changeAt := start.Add(-time.Hour)
+	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
+		ExpectedRevision: enrolled.Membership.Revision, EndAt: model.MillisFromTime(changeAt),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	suppressed, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	requireNoError(t, err)
+	if suppressed.State != model.MailDeliverySuppressed || suppressed.PublicFailureCode != model.MailDeliveryObsoleteCode {
+		t.Fatalf("obsolete delivery=%#v", suppressed)
+	}
+
+	restored := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: changeAt}
+	restored.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: restored,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	for _, item := range due {
+		if item.Sitting.ID == created.Value.Sitting.ID {
+			return
+		}
+	}
+	t.Fatalf("restored candidate did not make Sitting due for reconciliation: %#v", due)
+}
+
+// TestExamSittingDisabledMailReconciliationConverges proves that the terminal
+// suppression recorded by a Sitting transition is authoritative for that
+// revision. Repeated reconcilers, including concurrent nodes whose mail
+// capability later becomes enabled, must not manufacture another occurrence.
+type ExamSittingDisabledMailSQLProbe struct {
+	AgeTerminalFanout func(*testing.T, context.Context, model.MailOccurrenceID)
+}
+
+// ExamSittingDisabledEligibilityRaceFixture exposes only the public aggregate
+// inputs needed by the SQL adapter's deterministic chronology race tests.
+type ExamSittingDisabledEligibilityRaceFixture struct {
+	SittingID    model.ExamSittingID
+	Schedule     *store.ExamSittingSchedule
+	Command      *store.CommandIdempotency
+	Verification *store.PrivilegedEmailVerification
+}
+
+type ExamSittingInvitationLockOrderFixture struct {
+	Acceptance     *store.StudentClassInvitationAcceptance
+	Reconciliation *store.ExamSittingMailReconciliation
+}
+
+func PrepareExamSittingInvitationLockOrderFixture(t *testing.T, ss store.Store) ExamSittingInvitationLockOrderFixture {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	role, err := ss.Role().Save(ctx, &model.Role{Name: "sitting-inviter-" + model.NewId(), DisplayName: "Sitting inviter",
+		Permissions: []string{string(model.ActionInvitationCreate), string(model.ActionClassMembersManage)}})
+	requireNoError(t, err)
+	_, err = ss.RoleBinding().Save(ctx, &model.RoleBinding{UserID: fixture.actor.ID, RoleID: role.ID,
+		ScopeType: model.RoleScopeClass, ScopeID: fixture.class.ID.String(), StartsAt: model.NowUTC().Add(-time.Hour)})
+	requireNoError(t, err)
+	issue := studentClassInvitationIssueFixture(t, ss, fixture.actor, fixture.class, fixture.period, model.NowUTC())
+	issue.Invitation.TargetEmail = fixture.actor.Email
+	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
+	requireNoError(t, err)
+	acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
+
+	start := fixture.period.StartsAt.Add(20 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, start.Add(2*time.Hour), model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+	initialMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob,
+		DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+		AuditAt:      model.GetMillis(), Mail: initialMail},
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-invitation-lock-order", "sitting-invitation-lock-order-command"))
+	requireNoError(t, err)
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: initialMail.Occurrence.ID})
+	requireNoError(t, err)
+	lateInput := newUser()
+	lateInput.EmailVerified = true
+	late, err := createUser(t, ctx, ss, lateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: late.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: late.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	return ExamSittingInvitationLockOrderFixture{
+		Acceptance: acceptance,
+		Reconciliation: &store.ExamSittingMailReconciliation{SittingID: sitting.ID, ExpectedRevision: sitting.Revision,
+			ActorUserID: fixture.actor.ID, Mail: newExamSittingMailFanout(t, fixture.actor.ID,
+				store.ExamSittingMailReconciled, model.MailTemplateExamSittingScheduled)},
+	}
+}
+
+func PrepareExamSittingDisabledEligibilityRaceFixture(t *testing.T, ss store.Store,
+	key string,
+) ExamSittingDisabledEligibilityRaceFixture {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	candidate, err := createUser(t, ctx, ss, newUser())
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	start := fixture.period.StartsAt.Add(18 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, start.Add(2*time.Hour), model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+	mail := newDisabledExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	verificationAt := model.NowUTC()
+	occurrence, delivery, job := userTokenMailFixture(t, candidate.ID, model.NewMailOccurrenceID(),
+		model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailVerifiedByAdmin, model.JobTypeMailDeliver,
+		verificationAt, verificationAt.Add(24*time.Hour))
+	return ExamSittingDisabledEligibilityRaceFixture{
+		SittingID: sitting.ID,
+		Schedule: &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob,
+			ActorUserID:  fixture.actor.ID,
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis(), Mail: mail},
+		Command: examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"),
+		Verification: &store.PrivilegedEmailVerification{UserID: candidate.ID, ExpectedRevision: candidate.Revision,
+			Occurrence: occurrence, Delivery: delivery, Job: job,
+			AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, candidate.ID.String()).ID.String(),
+			AuditAt:      model.MillisFromTime(verificationAt)},
+	}
+}
+
+func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.Store, probe ExamSittingDisabledMailSQLProbe) {
+	if probe.AgeTerminalFanout == nil {
+		t.Fatal("disabled Sitting mail retention SQL probe is required")
+	}
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	candidateInput := newUser()
+	candidateInput.EmailVerified = true
+	candidate, err := createUser(t, ctx, ss, candidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	prepareCandidate := func(emailVerified bool) (*model.User, *model.ClassMember) {
+		input := newUser()
+		input.EmailVerified = emailVerified
+		user, createErr := createUser(t, ctx, ss, input)
+		requireNoError(t, createErr)
+		_, createErr = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: user.ID, Kind: model.AffiliationStudent,
+			StartsAt: fixture.period.StartsAt})
+		requireNoError(t, createErr)
+		member := &model.ClassMember{ClassID: fixture.class.ID, UserID: user.ID,
+			AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+		member.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+		enrolled, createErr := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: member,
+			AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		requireNoError(t, createErr)
+		return user, enrolled.Membership
+	}
+	unverifiedCandidate, _ := prepareCandidate(false)
+	disabledCandidate, _ := prepareCandidate(true)
+	disableAt := model.GetMillis() + 1
+	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: disabledCandidate.ID.String(), ExpectedRevision: disabledCandidate.Revision, Disabled: true,
+		ChangedAt: disableAt, RevocationReason: "account disabled", AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: disableAt,
+	}))
+	requireNoError(t, err)
+
+	start := fixture.period.StartsAt.Add(5 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, start.Add(2*time.Hour), model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+	disabledMail := newDisabledExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	created, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+		AuditAt:      model.GetMillis(), Mail: disabledMail},
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-disabled-mail", "sitting-disabled-mail-command"))
+	requireNoError(t, err)
+	terminal, err := ss.ExamSitting().GetMailFanout(ctx, disabledMail.Occurrence.ID)
+	requireNoError(t, err)
+	if terminal.Bundle != nil || !terminal.CompletedAt.Valid {
+		t.Fatalf("disabled Sitting fan-out=%#v", terminal)
+	}
+
+	// Two nodes may observe the same installation after mail is re-enabled.
+	// The Store is the authoritative terminal fence even if both bypass their
+	// empty due page and race an enabled prepared fan-out directly.
+	prepared := []*store.ExamSittingMailFanout{
+		newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled, model.MailTemplateExamSittingScheduled),
+		newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled, model.MailTemplateExamSittingScheduled),
+	}
+	errs := make([]error, len(prepared))
+	var wait sync.WaitGroup
+	for index := range prepared {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, errs[index] = ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+				SittingID: created.Value.Sitting.ID, ExpectedRevision: created.Value.Sitting.Revision,
+				ActorUserID: fixture.actor.ID, Mail: prepared[index],
+			})
+		}()
+	}
+	wait.Wait()
+	for index, reconcileErr := range errs {
+		if !store.IsConflict(reconcileErr) {
+			t.Fatalf("node %d ReconcileMail(disabled revision) error=%v", index, reconcileErr)
+		}
+		if _, getErr := ss.ExamSitting().GetMailFanout(ctx, prepared[index].Occurrence.ID); !store.IsNotFound(getErr) {
+			t.Fatalf("node %d duplicate fan-out error=%v", index, getErr)
+		}
+		if _, getErr := ss.Job().Get(ctx, prepared[index].ExpansionJob.ID); !store.IsNotFound(getErr) {
+			t.Fatalf("node %d duplicate expansion Job error=%v", index, getErr)
+		}
+	}
+	for pass := 0; pass < 2; pass++ {
+		due, listErr := ss.ExamSitting().ListMailReconciliationDue(ctx,
+			store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+		requireNoError(t, listErr)
+		for _, item := range due {
+			if item.Sitting.ID == sitting.ID {
+				t.Fatalf("pass %d returned terminally suppressed Sitting as due: %#v", pass, due)
+			}
+		}
+	}
+
+	// User mail eligibility is independent of Class membership chronology. A
+	// verification or account-enable transition after the disabled watermark is
+	// a new audience fact at the same Sitting revision, while the unchanged
+	// candidate covered by the watermark remains converged.
+	verificationAt := model.NowUTC()
+	verificationOccurrence, verificationDelivery, verificationJob := userTokenMailFixture(t, unverifiedCandidate.ID,
+		model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailVerifiedByAdmin,
+		model.JobTypeMailDeliver, verificationAt, verificationAt.Add(24*time.Hour))
+	verifiedCandidate, err := ss.UserToken().VerifyEmailPrivileged(ctx, &store.PrivilegedEmailVerification{
+		UserID: unverifiedCandidate.ID, ExpectedRevision: unverifiedCandidate.Revision,
+		Occurrence: verificationOccurrence, Delivery: verificationDelivery, Job: verificationJob,
+		AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, unverifiedCandidate.ID.String()).ID.String(),
+		AuditAt:      model.MillisFromTime(verificationAt),
+	})
+	requireNoError(t, err)
+	enableAt := disableAt + 1
+	enabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
+		ID: disabledCandidate.ID.String(), ExpectedRevision: disabledResult.User.Revision, Disabled: false,
+		ChangedAt: enableAt, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: enableAt,
+	}))
+	requireNoError(t, err)
+	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	requireSittingMailReconciliationDue(t, due, sitting.ID)
+	eligibilityMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled,
+		model.MailTemplateExamSittingScheduled)
+	eligibilityFanout, err := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: sitting.ID, ExpectedRevision: sitting.Revision, ActorUserID: fixture.actor.ID, Mail: eligibilityMail,
+	})
+	requireNoError(t, err)
+	eligibilityPage, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: eligibilityFanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	wantEligibility := map[model.UserID]model.MailTemplateKey{
+		candidate.ID:          "",
+		verifiedCandidate.ID:  model.MailTemplateExamSittingScheduled,
+		enabledResult.User.ID: model.MailTemplateExamSittingScheduled,
+	}
+	for _, recipient := range eligibilityPage.Recipients {
+		if want, ok := wantEligibility[recipient.User.ID]; ok && recipient.TemplateKey != want {
+			t.Fatalf("eligibility recipient %s template=%q want=%q", recipient.User.ID, recipient.TemplateKey, want)
+		}
+	}
+	for userID, want := range wantEligibility {
+		if want == "" {
+			continue
+		}
+		var found bool
+		for _, recipient := range eligibilityPage.Recipients {
+			found = found || recipient.User.ID == userID
+		}
+		if !found {
+			t.Fatalf("eligible recipient %s missing from page: %#v", userID, eligibilityPage.Recipients)
+		}
+	}
+	for _, recipient := range eligibilityPage.Recipients {
+		if recipient.TemplateKey == "" {
+			continue
+		}
+		delivery, job := newExamSittingMailDelivery(t, eligibilityFanout, recipient.User, recipient.TemplateKey)
+		_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+			OccurrenceID: eligibilityFanout.Occurrence.ID, SittingRevision: eligibilityFanout.SittingRevision,
+			Recipient: recipient.User, Delivery: delivery, DeliveryJob: job})
+		requireNoError(t, err)
+		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		requireNoError(t, startErr)
+		_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
+			ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+		requireNoError(t, err)
+	}
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: eligibilityFanout.Occurrence.ID})
+	requireNoError(t, err)
+
+	// Mail history observes the ordinary 90-day cutoff. Its removal must not
+	// erase the durable decision that this Sitting revision was terminally
+	// suppressed while mail was disabled.
+	probe.AgeTerminalFanout(t, ctx, disabledMail.Occurrence.ID)
+	cleaned, err := ss.Mail().CleanupTerminal(ctx, 10)
+	requireNoError(t, err)
+	if cleaned.Affected != 1 {
+		t.Fatalf("disabled Sitting mail cleanup=%#v", cleaned)
+	}
+	if _, getErr := ss.ExamSitting().GetMailFanout(ctx, disabledMail.Occurrence.ID); !store.IsNotFound(getErr) {
+		t.Fatalf("retired disabled fan-out error=%v", getErr)
+	}
+	afterRetention := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled,
+		model.MailTemplateExamSittingScheduled)
+	if _, reconcileErr := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: created.Value.Sitting.ID, ExpectedRevision: created.Value.Sitting.Revision,
+		ActorUserID: fixture.actor.ID, Mail: afterRetention,
+	}); !store.IsConflict(reconcileErr) {
+		t.Fatalf("ReconcileMail(after disabled history retention) error=%v", reconcileErr)
+	}
+	due, err = ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	for _, item := range due {
+		if item.Sitting.ID == sitting.ID {
+			t.Fatalf("retired disabled history resurrected Sitting reconciliation: %#v", due)
+		}
+	}
+
+	// A later membership mutation is a new audience fact even though the
+	// Sitting revision is unchanged. Re-enablement must notify only that new
+	// audience, without resurrecting candidates covered by the disabled fact.
+	newCandidateInput := newUser()
+	newCandidateInput.EmailVerified = true
+	newCandidate, err := createUser(t, ctx, ss, newCandidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: newCandidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	newMembership := &model.ClassMember{ClassID: fixture.class.ID, UserID: newCandidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	newMembership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	enrolled, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: newMembership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	due, err = ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	requireSittingMailReconciliationDue(t, due, sitting.ID)
+
+	enrollmentMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled,
+		model.MailTemplateExamSittingScheduled)
+	enrollmentFanout, err := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: sitting.ID, ExpectedRevision: sitting.Revision, ActorUserID: fixture.actor.ID, Mail: enrollmentMail,
+	})
+	requireNoError(t, err)
+	page, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: enrollmentFanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	var newRecipient *store.ExamSittingMailRecipient
+	for index := range page.Recipients {
+		recipient := &page.Recipients[index]
+		switch recipient.User.ID {
+		case candidate.ID:
+			if recipient.TemplateKey != "" {
+				t.Fatalf("pre-disable candidate was resurrected: %#v", recipient)
+			}
+		case newCandidate.ID:
+			if recipient.TemplateKey != model.MailTemplateExamSittingScheduled {
+				t.Fatalf("new candidate template=%q", recipient.TemplateKey)
+			}
+			newRecipient = recipient
+		}
+	}
+	if newRecipient == nil {
+		t.Fatalf("new candidate missing from reconciliation page: %#v", page.Recipients)
+	}
+	delivery, deliveryJob := newExamSittingMailDelivery(t, enrollmentFanout, newRecipient.User, newRecipient.TemplateKey)
+	_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: enrollmentFanout.Occurrence.ID, SittingRevision: enrollmentFanout.SittingRevision,
+		Recipient: newRecipient.User, Delivery: delivery, DeliveryJob: deliveryJob})
+	requireNoError(t, err)
+	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	requireNoError(t, err)
+	_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: sending.ID,
+		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+	requireNoError(t, err)
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: enrollmentFanout.Occurrence.ID})
+	requireNoError(t, err)
+
+	// Ending that same membership is another audience fact without a Sitting
+	// revision change and must yield the assignment-removed projection.
+	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
+		ExpectedRevision: enrolled.Membership.Revision, EndAt: model.MillisFromTime(start.Add(-time.Hour)),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+	due, err = ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	requireSittingMailReconciliationDue(t, due, sitting.ID)
+	removalMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled,
+		model.MailTemplateExamSittingScheduled)
+	removalFanout, err := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: sitting.ID, ExpectedRevision: sitting.Revision, ActorUserID: fixture.actor.ID, Mail: removalMail,
+	})
+	requireNoError(t, err)
+	page, err = ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: removalFanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	var removedRecipient *store.ExamSittingMailRecipient
+	for index := range page.Recipients {
+		recipient := &page.Recipients[index]
+		if recipient.User.ID == newCandidate.ID && recipient.TemplateKey != model.MailTemplateExamSittingAssignmentRemoved {
+			t.Fatalf("ended candidate template=%q", recipient.TemplateKey)
+		}
+		if recipient.User.ID == newCandidate.ID {
+			removedRecipient = recipient
+		}
+		if recipient.User.ID == candidate.ID && recipient.TemplateKey != "" {
+			t.Fatalf("pre-disable candidate was resurrected after end: %#v", recipient)
+		}
+	}
+	if removedRecipient == nil {
+		t.Fatalf("ended candidate missing from reconciliation page: %#v", page.Recipients)
+	}
+	removedDelivery, removedJob := newExamSittingMailDelivery(t, removalFanout, removedRecipient.User, removedRecipient.TemplateKey)
+	_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: removalFanout.Occurrence.ID, SittingRevision: removalFanout.SittingRevision,
+		Recipient: removedRecipient.User, Delivery: removedDelivery, DeliveryJob: removedJob})
+	requireNoError(t, err)
+	startedRemoval, err := ss.Mail().StartDelivery(ctx, removedDelivery.ID, removedDelivery.Revision, model.NowUTC())
+	requireNoError(t, err)
+	if startedRemoval.State != model.MailDeliverySending {
+		t.Fatalf("assignment-removed delivery=%#v", startedRemoval)
+	}
+}
+
+func requireSittingMailReconciliationDue(t *testing.T, candidates []store.ExamSittingMailReconciliationCandidate,
+	sittingID model.ExamSittingID,
+) {
+	t.Helper()
+	for _, candidate := range candidates {
+		if candidate.Sitting != nil && candidate.Sitting.ID == sittingID {
+			return
+		}
+	}
+	t.Fatalf("Sitting %s is not due for mail reconciliation: %#v", sittingID, candidates)
+}
+
+// TestExamSittingMailExpansionMaintenance proves that a permanently failed
+// expansion releases reconciliation without retaining its shared ciphertext
+// or leaving already-created recipient work runnable.
+func TestExamSittingMailExpansionMaintenance(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	start := fixture.period.StartsAt.Add(6 * time.Hour)
+	end := start.Add(2 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, end, model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+	prepared := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	created, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+		AuditAt:      model.GetMillis(), Mail: prepared},
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-mail-maintenance", "sitting-mail-maintenance-command"))
+	requireNoError(t, err)
+
+	candidateInput := newUser()
+	candidateInput.EmailVerified = true
+	candidate, err := createUser(t, ctx, ss, candidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+	requireNoError(t, err)
+
+	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)
+	requireNoError(t, err)
+	page, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: fanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	delivery, deliveryJob := newExamSittingMailDelivery(t, fanout, candidate, page.Recipients[0].TemplateKey)
+	_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision, Recipient: candidate,
+		Delivery: delivery, DeliveryJob: deliveryJob})
+	requireNoError(t, err)
+
+	token, err := model.NewJobClaimToken()
+	requireNoError(t, err)
+	claim, err := ss.Job().ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{model.JobTypeMailExpandSitting},
+		NodeID: "sitting-mail-maintenance", ClaimToken: token, LeaseDuration: time.Minute})
+	requireNoError(t, err)
+	if claim.Job.ID != prepared.ExpansionJob.ID {
+		t.Fatalf("claimed expansion Job=%s want=%s", claim.Job.ID, prepared.ExpansionJob.ID)
+	}
+	failed, err := ss.Job().Complete(ctx, &store.JobCompletion{AttemptID: claim.Attempt.ID,
+		ClaimToken: token, Kind: store.JobCompletionPermanentFailure, PublicErrorCode: "mail.sitting.unavailable"})
+	requireNoError(t, err)
+	if failed.Status != model.JobStatusFailed {
+		t.Fatalf("failed expansion Job=%#v", failed)
+	}
+
+	first, err := ss.ExamSitting().MaintainMailExpansions(ctx, 1)
+	requireNoError(t, err)
+	if first.FanoutsTerminalized != 1 || first.DeliveriesSuppressed != 0 || !first.More {
+		t.Fatalf("first maintenance=%#v", first)
+	}
+	terminal, err := ss.ExamSitting().GetMailFanout(ctx, fanout.Occurrence.ID)
+	requireNoError(t, err)
+	if !terminal.CompletedAt.Valid || terminal.Bundle != nil {
+		t.Fatalf("terminal fan-out=%#v", terminal)
+	}
+	second, err := ss.ExamSitting().MaintainMailExpansions(ctx, 1)
+	requireNoError(t, err)
+	if second.FanoutsTerminalized != 0 || second.DeliveriesSuppressed != 1 || second.More {
+		t.Fatalf("second maintenance=%#v", second)
+	}
+	suppressed, err := ss.Mail().GetDelivery(ctx, delivery.ID)
+	requireNoError(t, err)
+	if suppressed.State != model.MailDeliverySuppressed || suppressed.PublicFailureCode != model.MailDeliveryObsoleteCode ||
+		len(suppressed.EncryptedPayload) != 0 {
+		t.Fatalf("maintained child delivery=%#v", suppressed)
+	}
+	canceledJob, err := ss.Job().Get(ctx, deliveryJob.ID)
+	requireNoError(t, err)
+	if canceledJob.Status != model.JobStatusCanceled {
+		t.Fatalf("maintained child Job=%#v", canceledJob)
+	}
+	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	for _, item := range due {
+		if item.Sitting.ID == created.Value.Sitting.ID {
+			return
+		}
+	}
+	t.Fatalf("terminal expansion did not release reconciliation: %#v", due)
+}
+
+type ExamSittingMailRetentionSQLProbe struct {
+	AgeDeliveries func(*testing.T, context.Context, model.MailDeliveryID, model.MailDeliveryID, model.MailDeliveryID)
+	AssertRetired func(*testing.T, context.Context, model.ExamSittingID, model.MailOccurrenceID, []model.UserID)
+}
+
+type ExamSittingMailRecoveryFixture struct {
+	ExpiredOccurrence model.MailOccurrenceID
+	ExpiredJob        model.JobID
+	OrphanOccurrence  model.MailOccurrenceID
+	OrphanJob         model.JobID
+}
+
+// PrepareExamSittingMailRecoveryFixture creates two active, recipient-free
+// expansions through the public aggregate. SQL tests may then move only their
+// durable Job/deadline facts to exercise otherwise unreachable recovery paths.
+func PrepareExamSittingMailRecoveryFixture(t *testing.T, ss store.Store) ExamSittingMailRecoveryFixture {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	create := func(key string, offset time.Duration) (*store.ExamSittingMailFanout, *store.ExamSittingCommandResult) {
+		start := fixture.period.StartsAt.Add(offset)
+		sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+			fixture.class.ID, start, start.Add(time.Hour), model.NowUTC())
+		requireNoError(t, err)
+		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, sitting.ScheduledStartAt, sitting.ScheduledEndAt)
+		mail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+			model.MailTemplateExamSittingScheduled)
+		result, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+			OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis(), Mail: mail},
+			examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"))
+		requireNoError(t, err)
+		return mail, result
+	}
+	expired, _ := create("sitting-mail-expired-recovery", 10*time.Hour)
+	orphan, _ := create("sitting-mail-orphan-recovery", 12*time.Hour)
+	return ExamSittingMailRecoveryFixture{ExpiredOccurrence: expired.Occurrence.ID, ExpiredJob: expired.ExpansionJob.ID,
+		OrphanOccurrence: orphan.Occurrence.ID, OrphanJob: orphan.ExpansionJob.ID}
+}
+
+// TestExamSittingMailRetentionCleanup proves retention through the public Mail
+// Store while the SQL probe only moves immutable terminal timestamps beyond
+// their documented cutoffs and observes the FK/projection result.
+func TestExamSittingMailRetentionCleanup(t *testing.T, ss store.Store, probe ExamSittingMailRetentionSQLProbe) {
+	if probe.AgeDeliveries == nil || probe.AssertRetired == nil {
+		t.Fatal("complete Sitting mail retention SQL probe is required")
+	}
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	start := fixture.period.StartsAt.Add(8 * time.Hour)
+	end := start.Add(2 * time.Hour)
+	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
+		fixture.class.ID, start, end, model.NowUTC())
+	requireNoError(t, err)
+	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+	prepared := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+		model.MailTemplateExamSittingScheduled)
+	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+		OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+		AuditAt:      model.GetMillis(), Mail: prepared},
+		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-mail-retention", "sitting-mail-retention-command"))
+	requireNoError(t, err)
+
+	users := make([]*model.User, 3)
+	for index := range users {
+		input := newUser()
+		input.EmailVerified = true
+		users[index], err = createUser(t, ctx, ss, input)
+		requireNoError(t, err)
+		_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: users[index].ID,
+			Kind: model.AffiliationStudent, StartsAt: fixture.period.StartsAt})
+		requireNoError(t, err)
+		membership := &model.ClassMember{ClassID: fixture.class.ID, UserID: users[index].ID,
+			AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
+		membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+		_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
+			AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		requireNoError(t, err)
+	}
+	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)
+	requireNoError(t, err)
+	page, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: fanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	if len(page.Recipients) != len(users) {
+		t.Fatalf("retention recipients=%#v", page.Recipients)
+	}
+	deliveries := make(map[model.UserID]*model.MailDelivery, len(users))
+	for _, recipient := range page.Recipients {
+		delivery, job := newExamSittingMailDelivery(t, fanout, recipient.User, recipient.TemplateKey)
+		_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+			OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision, Recipient: recipient.User,
+			Delivery: delivery, DeliveryJob: job})
+		requireNoError(t, err)
+		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		requireNoError(t, startErr)
+		deliveries[recipient.User.ID] = sending
+	}
+	accepted, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: deliveries[users[0].ID].ID,
+		ExpectedRevision: deliveries[users[0].ID].Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+	requireNoError(t, err)
+	suppressed, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: deliveries[users[1].ID].ID,
+		ExpectedRevision: deliveries[users[1].ID].Revision, Kind: store.MailDeliveryCompletionSuppress,
+		PublicFailureCode: model.MailDeliveryObsoleteCode, At: model.NowUTC()})
+	requireNoError(t, err)
+	failed, err := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: deliveries[users[2].ID].ID,
+		ExpectedRevision: deliveries[users[2].ID].Revision, Kind: store.MailDeliveryCompletionFailed,
+		PublicFailureCode: "mail.transport.permanent", At: model.NowUTC()})
+	requireNoError(t, err)
+	_, err = ss.ExamSitting().CompleteMailExpansion(ctx,
+		&store.ExamSittingMailExpansionCompletion{OccurrenceID: fanout.Occurrence.ID})
+	requireNoError(t, err)
+
+	probe.AgeDeliveries(t, ctx, accepted.ID, suppressed.ID, failed.ID)
+	cleaned, err := ss.Mail().CleanupTerminal(ctx, 3)
+	requireNoError(t, err)
+	if cleaned.Affected != 3 || cleaned.More {
+		t.Fatalf("Sitting mail retention cleanup=%#v", cleaned)
+	}
+	for _, delivery := range []*model.MailDelivery{accepted, suppressed, failed} {
+		if _, getErr := ss.Mail().GetDelivery(ctx, delivery.ID); !store.IsNotFound(getErr) {
+			t.Fatalf("retained Sitting delivery %s error=%v", delivery.ID, getErr)
+		}
+	}
+	ids := []model.UserID{users[0].ID, users[1].ID, users[2].ID}
+	probe.AssertRetired(t, ctx, sitting.ID, fanout.Occurrence.ID, ids)
 }
 
 // ExamSittingSQLProbe exposes only the corruption/race setup that cannot be
@@ -161,7 +1027,8 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, startAt, endAt)
 		result, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob,
 			ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
-			AuditAt: model.GetMillis()}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"))
+			AuditAt: model.GetMillis(), Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+				model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", key, key+"-command"))
 		requireNoError(t, err)
 		return result
 	}
@@ -181,7 +1048,8 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 	conflictOpen, conflictDeadline := newExamSittingLifecycleJobs(t, rollbackSitting.ID, 1, rollbackStart, rollbackEnd)
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: rollbackSitting, OpenJob: conflictOpen, DeadlineJob: conflictDeadline,
 		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
-		AuditAt: model.GetMillis()}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-job-rollback", "sitting-job-rollback-command"))
+		AuditAt: model.GetMillis(), Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled,
+			model.MailTemplateExamSittingScheduled)}, examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-job-rollback", "sitting-job-rollback-command"))
 	requireExamSittingConflict(t, err, "exam_sitting_job_mismatch")
 	if _, err = ss.ExamSitting().Get(ctx, fixture.examID, rollbackSitting.ID); !store.IsNotFound(err) {
 		t.Fatalf("Sitting survived prepared-Job rollback: %v", err)
@@ -225,7 +1093,8 @@ func TestExamSittingLifecycleStore(t *testing.T, ss store.Store, probe ExamSitti
 		replayScheduled.ScheduledStartAt, replayScheduled.ScheduledEndAt)
 	scheduleReplay, err := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: &replayScheduled,
 		OpenJob: replayOpenJob, DeadlineJob: replayDeadlineJob, ActorUserID: fixture.actor.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-lifecycle", "sitting-lifecycle-command"))
 	requireNoError(t, err)
 	if !scheduleReplay.Replayed || scheduleReplay.Value.Sitting.State != model.ExamSittingScheduled || scheduleReplay.Value.Sitting.Revision != 1 {
@@ -527,7 +1396,8 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 		}
 		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
 		return ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: actor,
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, actor, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, actor, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+			Mail: newExamSittingMailFanout(t, actor, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 			examCommand(actor, "exam.sitting.schedule.v1", key, key+"-command"))
 	}
 	requireScheduleConflict := func(key, constraint string, revisionID model.ExamRevisionID, classID model.ClassID, start, end time.Time) {
@@ -594,12 +1464,16 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 	requireNoError(t, err)
 	exam, err := ss.ExamAuthoring().Resolve(ctx, fixture.examID)
 	requireNoError(t, err)
-	added, err := ss.ExamAuthoring().AddManager(ctx,
-		newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.actor.ID, removedManager.ID, exam.Revision, model.NowUTC(), false),
+	addManager := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.actor.ID, removedManager.ID, exam.Revision, model.NowUTC(), false)
+	addManager.Notices = examManagerMailNotices(t, model.TimeFromMillis(addManager.ChangedAt),
+		examManagerMailRecipient{userID: removedManager.ID, key: model.MailTemplateExamManagerAdded})
+	added, err := ss.ExamAuthoring().AddManager(ctx, addManager,
 		examCommand(fixture.actor.ID, "exam.manager.add.v1", "sitting-manager-add", "sitting-manager-add-command"))
 	requireNoError(t, err)
-	_, err = ss.ExamAuthoring().RemoveManager(ctx,
-		newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.actor.ID, removedManager.ID, added.Exam.Revision, model.NowUTC(), false),
+	removeManager := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.actor.ID, removedManager.ID, added.Exam.Revision, model.NowUTC(), false)
+	removeManager.Notices = examManagerMailNotices(t, model.TimeFromMillis(removeManager.ChangedAt),
+		examManagerMailRecipient{userID: removedManager.ID, key: model.MailTemplateExamManagerRemoved})
+	_, err = ss.ExamAuthoring().RemoveManager(ctx, removeManager,
 		examCommand(fixture.actor.ID, "exam.manager.remove.v1", "sitting-manager-remove", "sitting-manager-remove-command"))
 	requireNoError(t, err)
 	_, err = schedule("sitting-removed-manager", removedManager.ID, fixture.revisionID, fixture.class.ID,
@@ -615,7 +1489,8 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 	requireNoError(t, err)
 	_, err = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID, SittingID: precedence.Value.Sitting.ID,
 		ActorUserID: fixture.actor.ID, ExpectedRevision: 1, PrivateReason: "precedence", CanceledAt: model.NowUTC(),
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 		examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-precedence-cancel", "sitting-precedence-cancel-command"))
 	requireNoError(t, err)
 	invalidUpdate := func(expected int64, key string) error {
@@ -625,7 +1500,8 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 			SittingID: precedence.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: expected,
 			ExamRevisionID: fixture.revisionID, ClassID: foreignClass.ID, ScheduledStartAt: fixture.period.StartsAt.Add(11 * time.Hour),
 			ScheduledEndAt: fixture.period.StartsAt.Add(12 * time.Hour), OpenJob: openJob, DeadlineJob: deadlineJob, ChangedAt: model.NowUTC(),
-			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", key, key+"-command"))
 		return updateErr
 	}
@@ -650,14 +1526,16 @@ func TestExamSittingStoreSQLGuards(t *testing.T, ss store.Store, probe ExamSitti
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
 			ExamRevisionID: fixture.revisionID, ClassID: fixture.class.ID, ScheduledStartAt: fixture.period.StartsAt.Add(15 * time.Hour),
 			ScheduledEndAt: fixture.period.StartsAt.Add(16 * time.Hour), OpenJob: raceOpenJob, DeadlineJob: raceDeadlineJob, ChangedAt: model.NowUTC(),
-			AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis()},
+			AuditEventID: updateAudit.ID.String(), AuditAt: model.GetMillis(),
+			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailRescheduled, model.MailTemplateExamSittingRescheduled)},
 			examCommand(fixture.actor.ID, "exam.sitting.schedule.update.v1", "sitting-race-update", "sitting-race-update-command"))
 	}()
 	go func() {
 		defer wait.Done()
 		_, cancelErr = ss.ExamSitting().Cancel(ctx, &store.ExamSittingCancellation{ExamID: fixture.examID,
 			SittingID: race.Value.Sitting.ID, ActorUserID: fixture.actor.ID, ExpectedRevision: 1,
-			PrivateReason: "race", CanceledAt: model.NowUTC(), AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis()},
+			PrivateReason: "race", CanceledAt: model.NowUTC(), AuditEventID: cancelAudit.ID.String(), AuditAt: model.GetMillis(),
+			Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailCancelled, model.MailTemplateExamSittingCancelled)},
 			examCommand(fixture.actor.ID, "exam.sitting.cancel.v1", "sitting-race-cancel", "sitting-race-cancel-command"))
 	}()
 	wait.Wait()
@@ -731,6 +1609,60 @@ func newExamSittingLifecycleJobs(t *testing.T, sittingID model.ExamSittingID, re
 		return job
 	}
 	return newJob(model.ExamSittingLifecycleJobOpen, startAt), newJob(model.ExamSittingLifecycleJobDeadline, endAt)
+}
+
+func newExamSittingMailFanout(t *testing.T, actorID model.UserID, change store.ExamSittingMailChangeKind,
+	templateKey model.MailTemplateKey,
+) *store.ExamSittingMailFanout {
+	t.Helper()
+	at := model.NowUTC().Add(-2 * time.Hour)
+	occurrenceID := model.NewMailOccurrenceID()
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSittingSchedule,
+		TemplateKey: templateKey, ActorUserID: actorID, CreatedAt: at}
+	bundle := &model.MailFanoutBundle{ID: occurrenceID,
+		EncryptedPayload: []byte(`{"key_id":"11111111111111111111111111111111","version":1,"nonce":"n","ciphertext":"c"}`),
+		CreatedAt:        at, Revision: 1}
+	command, err := model.EncodeSittingMailExpansionCommand(model.SittingMailExpansionCommandV1{OccurrenceID: occurrenceID})
+	requireNoError(t, err)
+	dedupe, err := model.SittingMailExpansionDedupeKey(occurrenceID)
+	requireNoError(t, err)
+	job, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeMailExpandSitting, 1, command, dedupe,
+		model.JobDedupePermanent, at, at, model.MailMaximumAttempts)
+	requireNoError(t, err)
+	return &store.ExamSittingMailFanout{Occurrence: occurrence, Bundle: bundle, ExpansionJob: job,
+		ChangeKind: change, DeliveryLifetime: 72 * time.Hour}
+}
+
+func newDisabledExamSittingMailFanout(t *testing.T, actorID model.UserID, change store.ExamSittingMailChangeKind,
+	templateKey model.MailTemplateKey,
+) *store.ExamSittingMailFanout {
+	t.Helper()
+	prepared := newExamSittingMailFanout(t, actorID, change, templateKey)
+	canceled, err := prepared.ExpansionJob.RequestCancellation(prepared.ExpansionJob.CreatedAt)
+	requireNoError(t, err)
+	prepared.Bundle = nil
+	prepared.ExpansionJob = canceled
+	return prepared
+}
+
+func newExamSittingMailDelivery(t *testing.T, fanout *store.ExamSittingMailFanoutSnapshot, user *model.User,
+	templateKey model.MailTemplateKey,
+) (*model.MailDelivery, *model.Job) {
+	t.Helper()
+	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	requireNoError(t, err)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(),
+		fanout.Occurrence.CreatedAt, fanout.Occurrence.CreatedAt, model.MailMaximumAttempts)
+	requireNoError(t, err)
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: fanout.Occurrence.ID, JobID: jobID,
+		TargetUserID: user.ID, TemplateKey: templateKey, TemplateDigest: strings.Repeat("a", 64),
+		MaskedRecipient: "***@example.edu", State: model.MailDeliveryQueued,
+		CreatedAt: fanout.Occurrence.CreatedAt, UpdatedAt: fanout.Occurrence.CreatedAt, MessageDate: fanout.Occurrence.CreatedAt,
+		Deadline: fanout.Deadline, MessageID: "<" + deliveryID.String() + "@example.edu>",
+		EncryptedPayload: []byte(`{"key_id":"11111111111111111111111111111111","version":1,"nonce":"n","ciphertext":"c"}`), Revision: 1}
+	requireNoError(t, delivery.Validate())
+	return delivery, job
 }
 
 func newExamSittingFinalizeJob(t *testing.T, sittingID model.ExamSittingID, revision int64, availableAt time.Time) *model.Job {

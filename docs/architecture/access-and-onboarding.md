@@ -455,12 +455,25 @@ may place it into administrative review without disclosing the exact reason to
 the recipient. Expiry during authentication prevents final acceptance.
 
 One named aggregate transaction creates or resolves the User, attaches the
-credential or external identity, verifies the invitation email, initializes
-User Settings when creating a User, applies every relationship and Role
-Binding, consumes the Invitation, records audit, and prepares required mail.
-It either commits all effects or none. No disabled placeholder User exists
-before acceptance. Existing Users receive only missing effects; an already
-satisfied package accepts idempotently and never changes canonical email.
+credential or external identity when that purpose requires one, verifies the
+invitation email, initializes User Settings when creating a User, applies the
+purpose-specific relationship and Role Binding package, consumes the
+Invitation, records audit, and prepares required mail. It either commits all
+effects or none. No disabled placeholder User exists before acceptance.
+Existing Users receive only missing effects; an already satisfied package
+accepts idempotently and never changes canonical email.
+
+Academic Unit and Institution Role Invitations are existing-User packages.
+The authenticated User still presents the Invitation claim to prove control of
+the invited mailbox; email equality alone never selects or changes an account.
+Acceptance creates only the missing compatible Role Binding, or reuses the
+already-satisfied binding, and creates no Affiliation, Academic Unit
+membership, credential, Session, welcome message, or acceptance message. The
+Institution form is privileged administration: issue requires a strong,
+recent interactive Session and cannot be performed through a Personal Access
+Token. Both forms freeze the exact Role, canonical action snapshot, scope, and
+effective bounds, and recheck current inviter authority and target validity in
+the committing PostgreSQL transaction.
 
 Intended future dates are allowed, but acceptance never grants authority
 retroactively: the effective start is the later of intended start and

@@ -37,6 +37,7 @@ type Params struct {
 	AttemptWorkspaceEntryID string
 	StarterWorkspaceEntryID string
 	UserID                  string
+	InstitutionID           string
 	AcademicUnitID          string
 	ProgrammeId             string
 	ProgrammeLevelId        string
@@ -75,6 +76,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		AttemptWorkspaceEntryID: strings.TrimSpace(variables["attempt_workspace_entry_id"]),
 		StarterWorkspaceEntryID: strings.TrimSpace(variables["starter_workspace_entry_id"]),
 		UserID:                  strings.TrimSpace(variables["user_id"]),
+		InstitutionID:           strings.TrimSpace(variables["institution_id"]),
 		AcademicUnitID:          strings.TrimSpace(variables["academic_unit_id"]),
 		ProgrammeId:             strings.TrimSpace(variables["programme_id"]),
 		ProgrammeLevelId:        strings.TrimSpace(variables["programme_level_id"]),
@@ -108,6 +110,10 @@ func (p Params) RequireProviderId() (string, error) {
 
 func (p Params) RequireUserId() (string, error) {
 	return requirePathId("user_id", p.UserID)
+}
+
+func (p Params) RequireInstitutionId() (string, error) {
+	return requirePathId("institution_id", p.InstitutionID)
 }
 
 func (p Params) RequireAcademicUnitId() (string, error) {

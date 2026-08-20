@@ -274,6 +274,32 @@ membership, package-origin Role Binding, and Invitation by ID only, plus exact
 replay status. It issues no Session. The hosted `/join` page remains outside
 this transport slice.
 
+## Scoped Role Invitations
+
+`POST /api/v1/academic-units/{academic_unit_id}/invitations/role` requires an
+authenticated principal and authorizes `invitation.create`,
+`role_binding.manage`, and delegation of every action in the selected Role at
+the exact Academic Unit. `POST
+/api/v1/institutions/{institution_id}/invitations/role` applies the same exact
+delegation checks and additionally requires a strong, recent interactive
+Session; a Personal Access Token cannot issue an Institution Role Invitation.
+Both safe issue responses omit the recipient mailbox and every form of the raw
+or hashed claim.
+
+`POST /api/v1/invitations/academic-unit-role/accept` and `POST
+/api/v1/invitations/institution-role/accept` require an authenticated Session.
+The Invitation claim proves control of the invited mailbox and binds the
+acceptance to that Session's exact canonical User; matching an account email is
+never used to select or modify a User. Acceptance creates only a missing
+compatible Role Binding, or reuses an already-satisfied one, then consumes the
+Invitation atomically. It does not change the User profile or canonical email,
+create an Affiliation or Academic Unit membership, attach a credential, issue
+a Session, or prepare welcome or acceptance mail. The response contains only
+the User, Invitation, Role Binding, and replay identifiers. A replay by that
+same User returns the exact result; a different User or incompatible package
+receives a bounded `invitation.*` outcome without consuming the Invitation.
+The hosted `/join` page remains outside this transport slice.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value

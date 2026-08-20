@@ -82,19 +82,24 @@ type managerEffect func(context.Context, Effects, model.ExamID, model.UserID, in
 type managerTransition struct {
 	operation           string
 	eligibilityRequired bool
+	templateKey         model.MailTemplateKey
+	relationship        ManagerMailRelationship
+	ownershipTransfer   bool
 	publish             managerEffect
 }
 
 var (
 	managerAddition = managerTransition{operation: "add_manager", eligibilityRequired: true,
+		templateKey: model.MailTemplateExamManagerAdded, relationship: ManagerMailRelationshipManager,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.ManagerChanged(ctx, examID, userID, true, revision, changedAt)
 		}}
 	managerRemoval = managerTransition{operation: "remove_manager",
+		templateKey: model.MailTemplateExamManagerRemoved, relationship: ManagerMailRelationshipNoLongerManager,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.ManagerChanged(ctx, examID, userID, false, revision, changedAt)
 		}}
-	ownershipTransfer = managerTransition{operation: "transfer_owner", eligibilityRequired: true,
+	ownershipTransfer = managerTransition{operation: "transfer_owner", eligibilityRequired: true, ownershipTransfer: true,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.OwnerTransferred(ctx, examID, userID, revision, changedAt)
 		}}
@@ -108,7 +113,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if command.Idempotency == nil {
 		return ManagerChange{}, &Fault{Code: "idempotency.key_required"}
 	}
-	at := model.TimeUTC(a.now())
+	at := model.TimeFromMillis(model.MillisFromTime(a.now()))
 	access, action, err := a.authorizeManagement(ctx, call, command.ExamID, at)
 	if err != nil {
 		return ManagerChange{}, err
@@ -119,6 +124,13 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		if err != nil {
 			return ManagerChange{}, err
 		}
+	}
+	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return ManagerChange{}, mapStoreError(err)
+	}
+	if snapshot == nil || snapshot.Draft == nil {
+		return ManagerChange{}, unavailable(errors.New("exam store returned no mail identity"))
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	auditData := map[string]any{
@@ -132,10 +144,18 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if err != nil {
 		return ManagerChange{}, err
 	}
+	notices, err := a.prepareManagerNotices(ctx, access.Exam.OwnerUserID, command.UserID, snapshot.Draft.Title, at, transition)
+	if err != nil {
+		mapped := unavailable(err)
+		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {
+			return ManagerChange{}, auditErr
+		}
+		return ManagerChange{}, mapped
+	}
 	result, err := mutate(ctx, &store.ExamManagerMutation{
 		ExamID: command.ExamID, ActorUserID: principal.UserID, TargetUserID: command.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
-		ChangedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		ChangedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notices: notices,
 	}, command.Idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
@@ -154,6 +174,37 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		}
 	}
 	return *result, nil
+}
+
+func (a *Authoring) prepareManagerNotices(ctx context.Context, ownerID, targetID model.UserID, title string, at time.Time, transition managerTransition) ([]store.ExamManagerMail, error) {
+	type recipientNotice struct {
+		userID       model.UserID
+		key          model.MailTemplateKey
+		relationship ManagerMailRelationship
+	}
+	requests := []recipientNotice{{userID: targetID, key: transition.templateKey, relationship: transition.relationship}}
+	if transition.ownershipTransfer {
+		requests = []recipientNotice{
+			{userID: ownerID, key: model.MailTemplateExamOwnershipTransferredFromYou, relationship: ManagerMailRelationshipManager},
+			{userID: targetID, key: model.MailTemplateExamOwnershipTransferredToYou, relationship: ManagerMailRelationshipOwner},
+		}
+	}
+	notices := make([]store.ExamManagerMail, 0, len(requests))
+	for _, request := range requests {
+		recipient, err := a.users.Get(ctx, request.userID.String())
+		if err != nil || recipient == nil {
+			return nil, errors.Join(errors.New("resolve Exam Manager mail recipient"), err)
+		}
+		prepared, err := a.mail.PrepareManagerMail(ManagerMailPreparation{
+			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: request.key,
+			ExamTitle: title, Relationship: request.relationship, ActionAt: at,
+		})
+		if err != nil || prepared == nil {
+			return nil, errors.Join(errors.New("prepare Exam Manager mail"), err)
+		}
+		notices = append(notices, *prepared)
+	}
+	return notices, nil
 }
 
 func (a *Authoring) authorizeManagement(ctx context.Context, call Call, examID model.ExamID, at time.Time) (*store.ExamAccessSnapshot, model.Action, error) {

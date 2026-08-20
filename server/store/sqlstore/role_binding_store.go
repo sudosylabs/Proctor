@@ -209,7 +209,9 @@ func validateRoleBindingReferences(
 	if binding.OriginInvitationID.IsValid() {
 		var originExists bool
 		if err := executor.Get(ctx, &originExists, `SELECT EXISTS(SELECT 1 FROM invitations
-			WHERE id=$1 AND purpose='teacher_academic_unit' AND academic_unit_id=$2)`, binding.OriginInvitationID.String(), binding.ScopeID); err != nil {
+			WHERE id=$1 AND ((purpose='teacher_academic_unit' AND academic_unit_id=$4) OR
+				(purpose IN ('academic_unit_role','institution_role') AND role_id=$2 AND scope_type=$3 AND scope_id=$4)))`,
+			binding.OriginInvitationID.String(), binding.RoleID.String(), binding.ScopeType, binding.ScopeID); err != nil {
 			return fmt.Errorf("validate Role Binding Invitation origin: %w", err)
 		}
 		if !originExists {

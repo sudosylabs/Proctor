@@ -167,6 +167,77 @@ func TestTeacherAcademicUnitInvitationAcceptFreezesCompleteOutcome(t *testing.T)
 	}
 }
 
+func TestNewScopedRoleInvitationFreezesExactPurposeAndScope(t *testing.T) {
+	t.Parallel()
+
+	issuedAt := time.UnixMilli(1_800_000_000_000).UTC()
+	unitID, institutionID, roleID := NewAcademicUnitID(), NewInstitutionID(), NewRoleID()
+	actions := []string{string(ActionProgrammeManage), string(ActionAcademicUnitView)}
+	tests := []struct {
+		name               string
+		purpose            InvitationPurpose
+		academicUnitID     AcademicUnitID
+		scopeType          RoleScopeType
+		scopeID            string
+		wantAcademicUnitID AcademicUnitID
+	}{
+		{name: "academic unit", purpose: InvitationPurposeAcademicUnitRole, academicUnitID: unitID,
+			scopeType: RoleScopeAcademicUnit, scopeID: unitID.String(), wantAcademicUnitID: unitID},
+		{name: "institution", purpose: InvitationPurposeInstitutionRole,
+			scopeType: RoleScopeInstitution, scopeID: institutionID.String()},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			invitation, err := NewScopedRoleInvitation(ScopedRoleInvitationInput{
+				ID: NewInvitationID(), Purpose: test.purpose, TargetEmail: " Existing@Example.EDU ",
+				AcademicUnitID: test.academicUnitID, RoleID: roleID, RoleActions: actions,
+				IntendedStartsAt: issuedAt.Add(time.Hour), IntendedEndsAt: OptionalTimeFrom(issuedAt.Add(30 * 24 * time.Hour)),
+				InviterUserID: NewUserID(), ScopeType: test.scopeType, ScopeID: test.scopeID,
+				ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if invitation.Purpose != test.purpose || invitation.TargetEmail != "existing@example.edu" ||
+				invitation.AcademicUnitID != test.wantAcademicUnitID || invitation.RoleID != roleID ||
+				invitation.ScopeType != test.scopeType || invitation.ScopeID != test.scopeID ||
+				!slices.Equal(invitation.RoleActions, []string{string(ActionAcademicUnitView), string(ActionProgrammeManage)}) {
+				t.Fatalf("scoped Role Invitation = %#v", invitation)
+			}
+		})
+	}
+}
+
+func TestScopedRoleInvitationAcceptRecordsOnlyExistingUserAndBinding(t *testing.T) {
+	t.Parallel()
+
+	issuedAt := time.UnixMilli(1_800_000_000_000).UTC()
+	unitID := NewAcademicUnitID()
+	invitation, err := NewScopedRoleInvitation(ScopedRoleInvitationInput{
+		ID: NewInvitationID(), Purpose: InvitationPurposeAcademicUnitRole, TargetEmail: "existing@example.edu",
+		AcademicUnitID: unitID, RoleID: NewRoleID(), RoleActions: []string{string(ActionAcademicUnitView)},
+		IntendedStartsAt: issuedAt, InviterUserID: NewUserID(), ScopeType: RoleScopeAcademicUnit, ScopeID: unitID.String(),
+		ClaimHash: HashInvitationClaim(NewCredentialToken()), IssuedAt: issuedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, bindingID := NewUserID(), NewRoleBindingID()
+	if err = invitation.AcceptScopedRole(userID, bindingID, issuedAt.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if invitation.State != InvitationAccepted || invitation.AcceptedUserID != userID ||
+		invitation.AcceptedRoleBindingID != bindingID || invitation.AcceptedAffiliationID.IsValid() ||
+		invitation.AcceptedAcademicUnitMemberID.IsValid() || invitation.AcceptedClassMemberID.IsValid() {
+		t.Fatalf("accepted scoped Role Invitation = %#v", invitation)
+	}
+	if err = invitation.Validate(); err != nil {
+		t.Fatalf("Validate() rejected accepted scoped Role Invitation: %v", err)
+	}
+}
+
 func TestStudentClassInvitationRejectsInvalidFrozenPackage(t *testing.T) {
 	t.Parallel()
 

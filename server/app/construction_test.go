@@ -168,6 +168,7 @@ type constructionCatalogWithJobs struct {
 	externalLoginStates  store.ExternalLoginStateStore
 	invitations          store.InvitationStore
 	personalAccessTokens store.PersonalAccessTokenStore
+	examSittings         store.ExamSittingStore
 }
 
 func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
@@ -193,6 +194,9 @@ func (catalog constructionCatalogWithJobs) Invitation() store.InvitationStore {
 func (catalog constructionCatalogWithJobs) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return catalog.personalAccessTokens
 }
+func (catalog constructionCatalogWithJobs) ExamSitting() store.ExamSittingStore {
+	return catalog.examSittings
+}
 func (catalog constructionCatalogWithJobs) CommandOutcome() store.CommandOutcomeStore {
 	return constructionCommandOutcomeStoreStub{}
 }
@@ -203,6 +207,7 @@ type constructionFileStoreStub struct{ store.FileStore }
 type constructionInstitutionStoreStub struct{ store.InstitutionStore }
 type constructionInvitationStoreStub struct{ store.InvitationStore }
 type constructionPersonalAccessTokenStoreStub struct{ store.PersonalAccessTokenStore }
+type constructionExamSittingStoreStub struct{ store.ExamSittingStore }
 type constructionDesktopAuthorizationStoreStub struct {
 	store.DesktopAuthorizationStore
 }
@@ -226,6 +231,7 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 				files: constructionFileStoreStub{}, institutions: constructionInstitutionStoreStub{},
 				desktop: constructionDesktopAuthorizationStoreStub{}, externalLoginStates: constructionExternalLoginStateStoreStub{}, invitations: constructionInvitationStoreStub{},
 				personalAccessTokens: constructionPersonalAccessTokenStoreStub{},
+				examSittings:         constructionExamSittingStoreStub{},
 			},
 			NodeID: "node-a", RecoveryDiagnostics: constructionRecoveryDiagnosticsStub{},
 		},

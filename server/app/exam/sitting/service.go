@@ -160,6 +160,26 @@ type LifecycleJobFactory interface {
 	FinalizeJob(model.ExamSittingID, int64, time.Time) (*model.Job, error)
 }
 
+// ScheduleMailPreparer owns the bounded, presentation-ready fan-out intent.
+// The Sitting service supplies only safe schedule facts; it cannot select
+// recipients, delivery work, ciphertext, or fan-out deadlines.
+type ScheduleMailPreparer interface {
+	Prepare(context.Context, ScheduleMailRequest) (*store.ExamSittingMailFanout, error)
+}
+
+type ScheduleMailRequest struct {
+	ActorUserID     model.UserID
+	ExamID          model.ExamID
+	ExamRevisionID  model.ExamRevisionID
+	SittingID       model.ExamSittingID
+	SittingRevision int64
+	ClassID         model.ClassID
+	PriorClassID    model.ClassID
+	StartsAt        time.Time
+	EndsAt          time.Time
+	ChangeKind      store.ExamSittingMailChangeKind
+}
+
 type Effects interface {
 	Scheduled(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64, time.Time) error
 	ScheduleUpdated(context.Context, model.ExamID, model.ExamSittingID, model.ExamSittingState, int64, time.Time) error
@@ -182,20 +202,21 @@ type Service struct {
 	effects     Effects
 	failures    EffectFailures
 	jobs        LifecycleJobFactory
+	mail        ScheduleMailPreparer
 	now         func() time.Time
 	newID       func() model.ExamSittingID
 }
 
 func New(persistence store.ExamSittingStore, access accessStore, memberships memberships, authorizer Authorizer,
 	auditor Auditor, systemAudit SystemAuditor, effects Effects, failures EffectFailures, jobs LifecycleJobFactory,
-	now func() time.Time, newID func() model.ExamSittingID,
+	mail ScheduleMailPreparer, now func() time.Time, newID func() model.ExamSittingID,
 ) (*Service, error) {
 	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || systemAudit == nil || effects == nil ||
-		failures == nil || jobs == nil || now == nil || newID == nil {
+		failures == nil || jobs == nil || mail == nil || now == nil || newID == nil {
 		return nil, errors.New("Exam Sitting dependencies are required")
 	}
 	return &Service{persistence: persistence, access: access, memberships: memberships, authorizer: authorizer,
-		auditor: auditor, systemAudit: systemAudit, effects: effects, failures: failures, jobs: jobs, now: now, newID: newID}, nil
+		auditor: auditor, systemAudit: systemAudit, effects: effects, failures: failures, jobs: jobs, mail: mail, now: now, newID: newID}, nil
 }
 
 func (service *Service) Schedule(ctx context.Context, call Call, command ScheduleCommand) (store.ExamSittingSnapshot, error) {
@@ -225,6 +246,12 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 	if err != nil || openJob == nil || deadlineJob == nil {
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
 	}
+	mail, err := service.mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: principal.UserID, ExamID: command.ExamID,
+		ExamRevisionID: command.ExamRevisionID, SittingID: sittingID, SittingRevision: sitting.Revision, ClassID: command.ClassID,
+		StartsAt: sitting.ScheduledStartAt, EndsAt: sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailScheduled})
+	if err != nil || mail == nil {
+		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting schedule mail"), err))
+	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": sittingID.String(),
 		"exam_revision_id": command.ExamRevisionID.String(), "class_id": command.ClassID.String()}
 	auditID, err := service.auditor.Begin(ctx, call, authorization.action, model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()},
@@ -233,7 +260,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 		return store.ExamSittingSnapshot{}, err
 	}
 	result, err := service.persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
-		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail}, command.Idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}
@@ -461,6 +488,13 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 	if err != nil || openJob == nil || deadlineJob == nil {
 		return store.ExamSittingSnapshot{}, jobFactoryUnavailable("construct Exam Sitting boundary Jobs", err)
 	}
+	mail, err := service.mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: call.Principal().UserID, ExamID: command.ExamID,
+		ExamRevisionID: revisionID, SittingID: command.SittingID, SittingRevision: command.ExpectedRevision + 1,
+		ClassID: classID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: startAt, EndsAt: endAt,
+		ChangeKind: store.ExamSittingMailRescheduled})
+	if err != nil || mail == nil {
+		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting reschedule mail"), err))
+	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"exam_revision_id": revisionID.String(), "class_id": classID.String(),
 		"expected_sitting_revision": command.ExpectedRevision}
@@ -474,7 +508,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
 		OpenJob: openJob, DeadlineJob: deadlineJob,
-		ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, command.Idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
@@ -505,6 +539,21 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 	if err != nil {
 		return store.ExamSittingSnapshot{}, err
 	}
+	current, err := service.persistence.Get(ctx, command.ExamID, command.SittingID)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, mapStoreError(err)
+	}
+	snapshot, err := requireSnapshot(current)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
+	}
+	mail, err := service.mail.Prepare(ctx, ScheduleMailRequest{ActorUserID: call.Principal().UserID, ExamID: command.ExamID,
+		ExamRevisionID: snapshot.Sitting.ExamRevisionID, SittingID: command.SittingID, SittingRevision: command.ExpectedRevision + 1,
+		ClassID: snapshot.Sitting.ClassID, PriorClassID: snapshot.Sitting.ClassID, StartsAt: snapshot.Sitting.ScheduledStartAt,
+		EndsAt: snapshot.Sitting.ScheduledEndAt, ChangeKind: store.ExamSittingMailCancelled})
+	if err != nil || mail == nil {
+		return store.ExamSittingSnapshot{}, unavailable(errors.Join(errors.New("prepare Sitting cancellation mail"), err))
+	}
 	auditValue := map[string]any{"exam_id": command.ExamID.String(), "exam_sitting_id": command.SittingID.String(),
 		"expected_sitting_revision": command.ExpectedRevision, "reason_code": string(model.ExamSittingReasonManagerCanceled)}
 	auditID, err := service.auditor.Begin(ctx, call, authorization.action, resource, model.RoleScopeAcademicUnit,
@@ -515,7 +564,7 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 	result, err := service.persistence.Cancel(ctx, &store.ExamSittingCancellation{
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, CanceledAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		PrivateReason: command.PrivateReason, CanceledAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
 	}, command.Idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)

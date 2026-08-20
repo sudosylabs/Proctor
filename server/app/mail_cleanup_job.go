@@ -25,8 +25,10 @@ type MailCleanupCommandV1 struct {
 }
 
 type MailCleanupResultV1 struct {
-	Expired int `json:"expired"`
-	Deleted int `json:"deleted"`
+	FanoutsTerminalized        int `json:"fanouts_terminalized"`
+	FanoutDeliveriesSuppressed int `json:"fanout_deliveries_suppressed"`
+	Expired                    int `json:"expired"`
+	Deleted                    int `json:"deleted"`
 }
 
 type mailCleanupStore interface {
@@ -34,8 +36,13 @@ type mailCleanupStore interface {
 	CleanupTerminal(context.Context, int) (*store.MailMaintenanceResult, error)
 }
 
+type sittingMailMaintenanceStore interface {
+	MaintainMailExpansions(context.Context, int) (*store.ExamSittingMailMaintenanceResult, error)
+}
+
 type mailCleanupHandler struct {
 	mail     mailCleanupStore
+	sittings sittingMailMaintenanceStore
 	recorder MailDeliveryRecorder
 }
 
@@ -44,10 +51,21 @@ func (h mailCleanupHandler) Run(ctx context.Context, execution jobengine.Executi
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail cleanup job is invalid"))
 	}
 	var command MailCleanupCommandV1
-	if decodeStrictJobDocument(execution.Job.Command, &command) != nil || command.PageSize < 1 || command.PageSize > mailCleanupPageSize || command.MaxPages < 1 || command.MaxPages > mailCleanupMaximumPages || h.mail == nil {
+	if decodeStrictJobDocument(execution.Job.Command, &command) != nil || command.PageSize < 1 || command.PageSize > mailCleanupPageSize || command.MaxPages < 1 || command.MaxPages > mailCleanupMaximumPages || h.mail == nil || h.sittings == nil {
 		return jobengine.PermanentFailure("job.command.invalid", errors.New("mail cleanup command is invalid"))
 	}
 	result := MailCleanupResultV1{}
+	for page := 0; page < command.MaxPages; page++ {
+		terminalized, err := h.sittings.MaintainMailExpansions(ctx, command.PageSize)
+		if err != nil {
+			return jobengine.RetryableFailure("dependency.unavailable", err)
+		}
+		result.FanoutsTerminalized += terminalized.FanoutsTerminalized
+		result.FanoutDeliveriesSuppressed += terminalized.DeliveriesSuppressed
+		if !terminalized.More {
+			break
+		}
+	}
 	for page := 0; page < command.MaxPages; page++ {
 		deleted, err := h.mail.CleanupTerminal(ctx, command.PageSize)
 		if err != nil {

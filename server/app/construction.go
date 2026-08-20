@@ -11,14 +11,16 @@ import (
 )
 
 type examinationConstruction struct {
-	authoring        examUseCases
-	revisions        examRevisionUseCases
-	sittings         examSittingUseCases
-	attempts         examAttemptUseCases
-	reviews          examReviewUseCases
-	resources        examResourceUseCases
-	corrections      examCorrectionUseCases
-	starterWorkspace examStarterWorkspaceUseCases
+	authoring              examUseCases
+	revisions              examRevisionUseCases
+	sittings               examSittingUseCases
+	sittingMail            *sittingMailPreparer
+	sittingMailPreparation sittingScheduleMailPreparationAdapter
+	attempts               examAttemptUseCases
+	reviews                examReviewUseCases
+	resources              examResourceUseCases
+	corrections            examCorrectionUseCases
+	starterWorkspace       examStarterWorkspaceUseCases
 }
 
 // applicationFoundation holds the shared mechanics constructed before any
@@ -31,6 +33,7 @@ type applicationFoundation struct {
 	invalidator *authenticationCacheInvalidator
 	realtime    *realtimeService
 	audit       *auditService
+	mail        *directMailPreparer
 	mailHealth  *MailHealth
 }
 
@@ -157,6 +160,10 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 	if err != nil {
 		return applicationFoundation{}, err
 	}
+	mail, err := newDirectMailPreparer(deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailSecretSealer)
+	if err != nil {
+		return applicationFoundation{}, err
+	}
 	return applicationFoundation{
 		mfa:         mfa,
 		hasher:      hasher,
@@ -164,6 +171,7 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 		invalidator: invalidator,
 		realtime:    realtime,
 		audit:       audit,
+		mail:        mail,
 		mailHealth:  newMailHealth(deps.MailDeliverySender.Enabled()),
 	}, nil
 }

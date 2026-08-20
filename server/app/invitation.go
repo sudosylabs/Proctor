@@ -34,8 +34,40 @@ type IssueTeacherAcademicUnitInvitationCommand struct {
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale string
 }
 
+type IssueAcademicUnitRoleInvitationCommand struct {
+	TargetEmail, AcademicUnitID, RoleID string
+	IntendedStartsAt, IntendedEndsAt    int64
+}
+
+type IssueInstitutionRoleInvitationCommand struct {
+	TargetEmail, InstitutionID, RoleID string
+	IntendedStartsAt, IntendedEndsAt   int64
+}
+
+// authorizedScopedRoleInvitationIssue is the scope-specific result of the
+// caller's authorization, resource, and delegation checks. The shared issue
+// path must not infer or repeat those checks.
+type authorizedScopedRoleInvitationIssue struct {
+	targetEmail                      string
+	purpose                          model.InvitationPurpose
+	resource                         model.Resource
+	scopeType                        model.RoleScopeType
+	scopeID, operation               string
+	academicUnitID                   model.AcademicUnitID
+	role                             *model.Role
+	intendedStartsAt, intendedEndsAt int64
+}
+
 type AcceptTeacherAcademicUnitInvitationCommand struct {
 	Claim, Password, Username, DisplayName, FirstName, LastName, Locale, Timezone, Source string
+}
+
+type AcceptAcademicUnitRoleInvitationCommand struct {
+	Claim, Source string
+}
+
+type AcceptInstitutionRoleInvitationCommand struct {
+	Claim, Source string
 }
 
 // InvitationView intentionally excludes the target mailbox, claim digest, and
@@ -95,19 +127,20 @@ type invitationMailPreparer interface {
 }
 
 type invitationService struct {
-	store             store.InvitationStore
-	classes           invitationClassReader
-	periods           invitationPeriodReader
-	academicUnits     invitationAcademicUnitReader
-	roles             invitationRoleReader
-	authorization     invitationAuthorizer
-	mail              invitationMailPreparer
-	hasher            invitationPasswordHasher
-	audit             mutationAuditor
-	attempts          invitationAttemptLimiter
-	nodeID, publicURL string
-	newClaim          func() string
-	now               func() time.Time
+	store                   store.InvitationStore
+	classes                 invitationClassReader
+	periods                 invitationPeriodReader
+	academicUnits           invitationAcademicUnitReader
+	roles                   invitationRoleReader
+	authorization           invitationAuthorizer
+	mail                    invitationMailPreparer
+	hasher                  invitationPasswordHasher
+	audit                   mutationAuditor
+	attempts                invitationAttemptLimiter
+	nodeID, publicURL       string
+	newClaim                func() string
+	now                     func() time.Time
+	recentAuthenticationTTL time.Duration
 }
 
 type invitationAuthorizationAdapter struct{ authorization *accessControlService }
@@ -148,14 +181,15 @@ func (a invitationAuditAdapter) Fail(ctx context.Context, auditID, errorCode str
 func newInvitationService(persistence store.InvitationStore, classes invitationClassReader, periods invitationPeriodReader,
 	academicUnits invitationAcademicUnitReader, roles invitationRoleReader,
 	authorization invitationAuthorizer, mail invitationMailPreparer, hasher invitationPasswordHasher, audit mutationAuditor,
-	attempts invitationAttemptLimiter, nodeID, publicURL string, newClaim func() string, now func() time.Time,
+	attempts invitationAttemptLimiter, nodeID, publicURL string, recentAuthenticationTTL time.Duration, newClaim func() string, now func() time.Time,
 ) (*invitationService, error) {
 	if persistence == nil || classes == nil || periods == nil || academicUnits == nil || roles == nil || authorization == nil || mail == nil || hasher == nil || audit == nil ||
-		attempts == nil || nodeID == "" || publicURL == "" || newClaim == nil || now == nil {
+		attempts == nil || nodeID == "" || publicURL == "" || recentAuthenticationTTL <= 0 || newClaim == nil || now == nil {
 		return nil, errors.New("invitation service dependencies are invalid")
 	}
 	return &invitationService{store: persistence, classes: classes, periods: periods, academicUnits: academicUnits, roles: roles, authorization: authorization,
-		mail: mail, hasher: hasher, audit: audit, attempts: attempts, nodeID: nodeID, publicURL: publicURL, newClaim: newClaim, now: now}, nil
+		mail: mail, hasher: hasher, audit: audit, attempts: attempts, nodeID: nodeID, publicURL: publicURL,
+		recentAuthenticationTTL: recentAuthenticationTTL, newClaim: newClaim, now: now}, nil
 }
 
 func (a *App) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
@@ -163,6 +197,20 @@ func (a *App) IssueTeacherAcademicUnitInvitation(ctx context.Context, invocation
 		return InvitationView{}, NewError("invitation.unavailable")
 	}
 	return a.invitations.IssueTeacherAcademicUnit(ctx, invocation, command)
+}
+
+func (a *App) IssueAcademicUnitRoleInvitation(ctx context.Context, invocation Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
+	if a == nil || a.invitations == nil {
+		return InvitationView{}, NewError("invitation.unavailable")
+	}
+	return a.invitations.IssueAcademicUnitRole(ctx, invocation, command)
+}
+
+func (a *App) IssueInstitutionRoleInvitation(ctx context.Context, invocation Invocation, command IssueInstitutionRoleInvitationCommand) (InvitationView, error) {
+	if a == nil || a.invitations == nil {
+		return InvitationView{}, NewError("invitation.unavailable")
+	}
+	return a.invitations.IssueInstitutionRole(ctx, invocation, command)
 }
 
 func (a *App) IssueStudentClassInvitation(ctx context.Context, invocation Invocation, command IssueStudentClassInvitationCommand) (InvitationView, error) {
@@ -184,6 +232,20 @@ func (a *App) AcceptTeacherAcademicUnitInvitation(ctx context.Context, invocatio
 		return nil, NewError("invitation.unavailable")
 	}
 	return a.invitations.AcceptTeacherAcademicUnit(ctx, invocation, command)
+}
+
+func (a *App) AcceptAcademicUnitRoleInvitation(ctx context.Context, invocation Invocation, command AcceptAcademicUnitRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+	if a == nil || a.invitations == nil {
+		return nil, NewError("invitation.unavailable")
+	}
+	return a.invitations.AcceptAcademicUnitRole(ctx, invocation, command)
+}
+
+func (a *App) AcceptInstitutionRoleInvitation(ctx context.Context, invocation Invocation, command AcceptInstitutionRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+	if a == nil || a.invitations == nil {
+		return nil, NewError("invitation.unavailable")
+	}
+	return a.invitations.AcceptInstitutionRole(ctx, invocation, command)
 }
 
 func (s *invitationService) IssueStudentClass(ctx context.Context, invocation Invocation, command IssueStudentClassInvitationCommand) (InvitationView, error) {
@@ -334,6 +396,134 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	return invitationView(created), nil
 }
 
+func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocation Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
+	unitID, err := model.ParseAcademicUnitID(strings.TrimSpace(command.AcademicUnitID))
+	if err != nil {
+		return InvitationView{}, NewError("request.invalid").WithField("field", "academic_unit_id").Wrap(err)
+	}
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	if err != nil {
+		return InvitationView{}, NewError("request.invalid").WithField("field", "role_id").Wrap(err)
+	}
+	resource := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()}
+	for _, action := range []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage} {
+		if err = s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
+			return InvitationView{}, err
+		}
+	}
+	unit, err := s.academicUnits.Get(ctx, unitID.String())
+	if err != nil || unit.ID != unitID || unit.IsArchived() {
+		return InvitationView{}, invitationError(err)
+	}
+	role, err := s.roles.Get(ctx, roleID.String())
+	if err != nil || role.ID != roleID || role.IsArchived() {
+		return InvitationView{}, invitationError(err)
+	}
+	if err = validateInvitationDelegableRole(role, model.ResourceAcademicUnit); err != nil {
+		return InvitationView{}, err
+	}
+	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
+		return InvitationView{}, err
+	}
+	return s.issueAuthorizedScopedRole(ctx, invocation, authorizedScopedRoleInvitationIssue{
+		targetEmail: command.TargetEmail, purpose: model.InvitationPurposeAcademicUnitRole,
+		resource: resource, scopeType: model.RoleScopeAcademicUnit, scopeID: unit.ID.String(), operation: "issue_academic_unit_role",
+		academicUnitID: unit.ID, role: role, intendedStartsAt: command.IntendedStartsAt, intendedEndsAt: command.IntendedEndsAt,
+	})
+}
+
+func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation Invocation, command IssueInstitutionRoleInvitationCommand) (InvitationView, error) {
+	if err := requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
+		return InvitationView{}, err
+	}
+	institutionID, err := model.ParseInstitutionID(strings.TrimSpace(command.InstitutionID))
+	if err != nil {
+		return InvitationView{}, NewError("request.invalid").WithField("field", "institution_id").Wrap(err)
+	}
+	roleID, err := model.ParseRoleID(strings.TrimSpace(command.RoleID))
+	if err != nil {
+		return InvitationView{}, NewError("request.invalid").WithField("field", "role_id").Wrap(err)
+	}
+	resource := model.Resource{Type: model.ResourceInstitution, ID: institutionID.String()}
+	for _, action := range []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage} {
+		if err = s.authorization.Authorize(ctx, invocation, action, resource); err != nil {
+			return InvitationView{}, err
+		}
+	}
+	role, err := s.roles.Get(ctx, roleID.String())
+	if err != nil || role.ID != roleID || role.IsArchived() {
+		return InvitationView{}, invitationError(err)
+	}
+	if err = validateInvitationDelegableRole(role, model.ResourceInstitution); err != nil {
+		return InvitationView{}, err
+	}
+	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
+		return InvitationView{}, err
+	}
+	return s.issueAuthorizedScopedRole(ctx, invocation, authorizedScopedRoleInvitationIssue{
+		targetEmail: command.TargetEmail, purpose: model.InvitationPurposeInstitutionRole,
+		resource: resource, scopeType: model.RoleScopeInstitution, scopeID: institutionID.String(), operation: "issue_institution_role",
+		role: role, intendedStartsAt: command.IntendedStartsAt, intendedEndsAt: command.IntendedEndsAt,
+	})
+}
+
+func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invocation Invocation, issue authorizedScopedRoleInvitationIssue) (InvitationView, error) {
+	if !s.mail.Enabled() {
+		return InvitationView{}, NewError("invitation.mail_unavailable")
+	}
+	issuedAt := model.TimeUTC(s.now())
+	rawClaim := s.newClaim()
+	if !model.IsValidCredentialToken(rawClaim) {
+		return InvitationView{}, NewError("invitation.unavailable")
+	}
+	startsAt := model.TimeFromMillis(issue.intendedStartsAt)
+	if startsAt.IsZero() {
+		startsAt = issuedAt
+	}
+	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{
+		ID: model.NewInvitationID(), Purpose: issue.purpose,
+		TargetEmail: issue.targetEmail, AcademicUnitID: issue.academicUnitID, RoleID: issue.role.ID, RoleActions: issue.role.Permissions,
+		IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(issue.intendedEndsAt),
+		InviterUserID: invocation.Principal().UserID, ScopeType: issue.scopeType, ScopeID: issue.scopeID,
+		ClaimHash: model.HashInvitationClaim(rawClaim), IssuedAt: issuedAt,
+	})
+	if err != nil {
+		return InvitationView{}, domainInvalid("invitation.invalid", err)
+	}
+	actionURL, err := accountCredentialLink(s.publicURL, "/join", rawClaim)
+	if err != nil {
+		return InvitationView{}, NewError("invitation.unavailable").Wrap(err)
+	}
+	prepared, err := s.mail.PrepareInvitation(invitation, actionURL)
+	if err != nil {
+		return InvitationView{}, NewError("invitation.mail_unavailable").Wrap(err)
+	}
+	created, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate,
+		Resource: issue.resource, ScopeType: issue.scopeType, ScopeID: issue.scopeID, Operation: issue.operation, Value: invitation.Auditable()},
+		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*model.Invitation, error) {
+			return s.store.IssueScopedRole(ctx, &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.StudentClassInvitationLifetime,
+				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+		}, invitationError)
+	if err != nil {
+		return InvitationView{}, err
+	}
+	return invitationView(created), nil
+}
+
+func validateInvitationDelegableRole(role *model.Role, resourceType model.ResourceType) error {
+	if role == nil || role.IsArchived() || role.BuiltIn || role.Name == model.SystemAdministratorRoleName || len(role.Permissions) == 0 {
+		return NewError("invitation.role_not_delegable")
+	}
+	for _, action := range role.Permissions {
+		definition, ok := model.DefinitionForAction(model.Action(action))
+		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+			return NewError("invitation.role_not_delegable")
+		}
+	}
+	return nil
+}
+
 func (s *invitationService) AcceptStudentClass(ctx context.Context, invocation Invocation, command AcceptStudentClassInvitationCommand) (*InvitationAcceptanceView, error) {
 	if err := s.attempts.Check(ctx, model.HashInvitationClaim(command.Claim), command.Source); err != nil {
 		return nil, err
@@ -453,6 +643,58 @@ func (s *invitationService) AcceptTeacherAcademicUnit(ctx context.Context, invoc
 	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User, Affiliation: result.Affiliation,
 		AcademicUnitMember: result.AcademicUnitMember, RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil
+}
+
+func (s *invitationService) AcceptAcademicUnitRole(ctx context.Context, invocation Invocation, command AcceptAcademicUnitRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+	return s.acceptScopedRole(ctx, invocation, command.Claim, command.Source, model.InvitationPurposeAcademicUnitRole)
+}
+
+func (s *invitationService) AcceptInstitutionRole(ctx context.Context, invocation Invocation, command AcceptInstitutionRoleInvitationCommand) (*InvitationAcceptanceView, error) {
+	return s.acceptScopedRole(ctx, invocation, command.Claim, command.Source, model.InvitationPurposeInstitutionRole)
+}
+
+func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Invocation, claim, source string, purpose model.InvitationPurpose) (*InvitationAcceptanceView, error) {
+	if err := s.attempts.Check(ctx, model.HashInvitationClaim(claim), source); err != nil {
+		return nil, err
+	}
+	principal := invocation.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return nil, invalidTokenAppError()
+	}
+	if !model.IsValidCredentialToken(claim) {
+		return nil, NewError("invitation.invalid")
+	}
+	claimHash := model.HashInvitationClaim(claim)
+	invitation, err := s.store.GetByClaimHash(ctx, claimHash)
+	if err != nil || invitation.Purpose != purpose {
+		return nil, invalidInvitationError(err)
+	}
+	at := model.TimeUTC(s.now())
+	binding := &model.RoleBinding{UserID: principal.UserID, RoleID: invitation.RoleID, OriginInvitationID: invitation.ID,
+		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, StartsAt: invitation.EffectiveStartsAt(at), EndsAt: invitation.IntendedEndsAt}
+	binding.PrepareCreate(model.NewRoleBindingID(), at)
+	if err = binding.Validate(); err != nil {
+		return nil, NewError("invitation.invalid").Wrap(err)
+	}
+	resourceType := model.ResourceAcademicUnit
+	if purpose == model.InvitationPurposeInstitutionRole {
+		resourceType = model.ResourceInstitution
+	}
+	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{
+		Invocation: invocation, Action: model.Action("invitation.accept"),
+		Resource:  model.Resource{Type: resourceType, ID: invitation.ScopeID},
+		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID,
+		Operation: "accept_scoped_role_invitation", Value: invitation.Auditable(),
+	}, s.now, func(ctx context.Context, attempt mutationAttemptReference) (*store.ScopedRoleInvitationAcceptanceResult, error) {
+		return s.store.AcceptScopedRole(ctx, &store.ScopedRoleInvitationAcceptance{ClaimHash: claimHash,
+			UserID: principal.UserID, RoleBinding: binding, AuditEventID: attempt.ID, AuditAt: attempt.MutationAtMillis,
+			RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}})
+	}, invalidInvitationError)
+	if err != nil {
+		return nil, err
+	}
+	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User,
+		RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil
 }
 
 func invitationView(invitation *model.Invitation) InvitationView {

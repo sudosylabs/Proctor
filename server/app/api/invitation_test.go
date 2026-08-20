@@ -20,11 +20,36 @@ import (
 )
 
 type invitationHTTPApplication struct {
-	issue         application.IssueStudentClassInvitationCommand
-	accept        application.AcceptStudentClassInvitationCommand
-	teacherIssue  application.IssueTeacherAcademicUnitInvitationCommand
-	teacherAccept application.AcceptTeacherAcademicUnitInvitationCommand
-	acceptance    *application.InvitationAcceptanceView
+	issue                 application.IssueStudentClassInvitationCommand
+	accept                application.AcceptStudentClassInvitationCommand
+	teacherIssue          application.IssueTeacherAcademicUnitInvitationCommand
+	teacherAccept         application.AcceptTeacherAcademicUnitInvitationCommand
+	unitRoleIssue         application.IssueAcademicUnitRoleInvitationCommand
+	unitRoleAccept        application.AcceptAcademicUnitRoleInvitationCommand
+	institutionRoleIssue  application.IssueInstitutionRoleInvitationCommand
+	institutionRoleAccept application.AcceptInstitutionRoleInvitationCommand
+	acceptance            *application.InvitationAcceptanceView
+}
+
+func (a *invitationHTTPApplication) IssueAcademicUnitRoleInvitation(_ context.Context, _ application.Invocation, command application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
+	a.unitRoleIssue = command
+	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeAcademicUnitRole,
+		State: model.InvitationPending, AcademicUnitID: model.AcademicUnitID(command.AcademicUnitID), RoleID: model.RoleID(command.RoleID)}, nil
+}
+func (a *invitationHTTPApplication) AcceptAcademicUnitRoleInvitation(_ context.Context, _ application.Invocation, command application.AcceptAcademicUnitRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+	a.unitRoleAccept = command
+	return &application.InvitationAcceptanceView{Invitation: application.InvitationView{ID: model.NewInvitationID()},
+		User: &model.User{ID: model.NewUserID()}, RoleBinding: &model.RoleBinding{ID: model.NewRoleBindingID()}}, nil
+}
+func (a *invitationHTTPApplication) IssueInstitutionRoleInvitation(_ context.Context, _ application.Invocation, command application.IssueInstitutionRoleInvitationCommand) (application.InvitationView, error) {
+	a.institutionRoleIssue = command
+	return application.InvitationView{ID: model.NewInvitationID(), Purpose: model.InvitationPurposeInstitutionRole,
+		State: model.InvitationPending, RoleID: model.RoleID(command.RoleID)}, nil
+}
+func (a *invitationHTTPApplication) AcceptInstitutionRoleInvitation(_ context.Context, _ application.Invocation, command application.AcceptInstitutionRoleInvitationCommand) (*application.InvitationAcceptanceView, error) {
+	a.institutionRoleAccept = command
+	return &application.InvitationAcceptanceView{Invitation: application.InvitationView{ID: model.NewInvitationID()},
+		User: &model.User{ID: model.NewUserID()}, RoleBinding: &model.RoleBinding{ID: model.NewRoleBindingID()}}, nil
 }
 
 func (a *invitationHTTPApplication) IssueTeacherAcademicUnitInvitation(_ context.Context, _ application.Invocation, command application.IssueTeacherAcademicUnitInvitationCommand) (application.InvitationView, error) {
@@ -103,7 +128,7 @@ func TestInvitationAcceptanceOpenAPIExposesOnlyRecordIDs(t *testing.T) {
 	document := readOpenAPIDocument(t)
 	schema := document.Components.Schemas["InvitationAcceptanceResponse"]
 	wantFields := []string{"academic_unit_member_id", "affiliation_id", "class_member_id", "invitation_id", "replayed", "role_binding_id", "user_id"}
-	wantRequired := []string{"affiliation_id", "invitation_id", "replayed", "user_id"}
+	wantRequired := []string{"invitation_id", "replayed", "user_id"}
 	gotFields := make([]string, 0, len(schema.Properties))
 	for field := range schema.Properties {
 		gotFields = append(gotFields, field)
@@ -168,5 +193,63 @@ func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T)
 	httpAPI.ServeHTTP(acceptResponse, accept)
 	if acceptResponse.Code != http.StatusOK || applicationFake.teacherAccept.Claim != raw || strings.Contains(acceptResponse.Body.String(), raw) {
 		t.Fatalf("teacher accept response=%d %s command=%#v", acceptResponse.Code, acceptResponse.Body.String(), applicationFake.teacherAccept)
+	}
+}
+
+func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitutionAssurance(t *testing.T) {
+	logger, _ := newTestLogger(t)
+	applicationFake := &invitationHTTPApplication{}
+	now := time.Now()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: now, MFACompletedAt: model.OptionalTimeFrom(now)}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
+	unitID, institutionID, roleID := model.NewAcademicUnitID().String(), model.NewInstitutionID().String(), model.NewRoleID().String()
+	body, _ := json.Marshal(map[string]string{"email": "existing@example.edu", "role_id": roleID})
+	for _, target := range []struct {
+		path    string
+		command func() (string, string)
+	}{
+		{path: "/api/v1/academic-units/" + unitID + "/invitations/role", command: func() (string, string) {
+			return applicationFake.unitRoleIssue.AcademicUnitID, applicationFake.unitRoleIssue.RoleID
+		}},
+		{path: "/api/v1/institutions/" + institutionID + "/invitations/role", command: func() (string, string) {
+			return applicationFake.institutionRoleIssue.InstitutionID, applicationFake.institutionRoleIssue.RoleID
+		}},
+	} {
+		request := httptest.NewRequest(http.MethodPost, target.path, bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer session")
+		response := httptest.NewRecorder()
+		httpAPI.ServeHTTP(response, request)
+		if first, second := target.command(); response.Code != http.StatusCreated || first == "" || second != roleID || strings.Contains(response.Body.String(), "existing@example.edu") {
+			t.Fatalf("scoped Role issue %s = %d %s command=%q/%q", target.path, response.Code, response.Body.String(), first, second)
+		}
+	}
+	claim := model.NewCredentialToken()
+	for _, target := range []struct {
+		path    string
+		command func() string
+	}{
+		{path: "/api/v1/invitations/academic-unit-role/accept", command: func() string { return applicationFake.unitRoleAccept.Claim }},
+		{path: "/api/v1/invitations/institution-role/accept", command: func() string { return applicationFake.institutionRoleAccept.Claim }},
+	} {
+		request := httptest.NewRequest(http.MethodPost, target.path, bytes.NewReader([]byte(`{"claim":"`+claim+`"}`)))
+		request.Header.Set("Authorization", "Bearer session")
+		response := httptest.NewRecorder()
+		httpAPI.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || target.command() != claim || strings.Contains(response.Body.String(), claim) || strings.Contains(response.Body.String(), "email") {
+			t.Fatalf("scoped Role accept %s = %d %s", target.path, response.Code, response.Body.String())
+		}
+	}
+	pat := principal
+	pat.CredentialType, pat.SessionID = model.CredentialPersonalAccessToken, ""
+	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
+	patAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: pat}, invitationResource(applicationFake))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+institutionID+"/invitations/role", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer pat")
+	response := httptest.NewRecorder()
+	patAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("institution Role PAT issue = %d %s", response.Code, response.Body.String())
 	}
 }

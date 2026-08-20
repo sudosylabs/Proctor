@@ -108,6 +108,15 @@ database constraint protects the invariant that the owner is always a Manager.
 Explicit override bypasses only the actor relationship requirement, never
 target eligibility, owner protection, or revision and archive guards.
 
+Each fresh Manager addition or removal atomically records one direct notice to
+the affected User. A fresh ownership transfer records two distinct notices:
+the new Owner receives their resulting ownership relationship and the previous
+Owner is explicitly told that they remain an Exam Manager. These notices freeze
+only the safe Exam title, resulting relationship, and action time; they do not
+copy other Managers or reveal the actor or authorization detail. Exact command
+replay records no duplicate notice, and mail preparation or persistence failure
+rolls back the relationship transition.
+
 Exam discovery is a bounded database projection, not an in-memory filter over
 unrestricted rows. Ordinary visibility requires the current Manager
 relationship, current membership in the Exam's exact Academic Unit, and an
@@ -186,6 +195,15 @@ at process startup and scans bounded due work so restart or terminal Job
 failure cannot strand a Sitting. Opening revalidates the current academic
 structure so an administrative lineage or period change after scheduling
 cannot admit an ineligible Sitting.
+
+Scheduling, rescheduling, and cancellation also atomically record one bounded
+candidate-mail fan-out occurrence, frozen render bundle, and expansion Job.
+Expansion pages effective Class membership at the scheduled start and uses a
+per-candidate last-communicated projection to coalesce unsent revisions into
+scheduled, rescheduled, canceled, or assignment-removed wording. PostgreSQL
+relevance locks suppress stale or post-start work before SMTP, while bounded
+periodic reconciliation on every node discovers audience changes after an
+earlier expansion completed.
 
 ~~~text
 Scheduled -> Open <-> Paused -> Closing -> Closed

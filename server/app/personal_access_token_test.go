@@ -475,6 +475,10 @@ func (personalAccessTokenActionTimeRenderer) RenderPersonalAccessTokenSecurityNo
 	return FrozenMailContent{Subject: "PAT notice", Text: value, HTML: "<p>" + value + "</p>"}, nil
 }
 
+func (personalAccessTokenActionTimeRenderer) RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, errors.New("unexpected Exam Manager render")
+}
+
 func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.T) {
 	t.Parallel()
 

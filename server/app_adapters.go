@@ -267,6 +267,41 @@ func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
 	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
+func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
+	key model.MailTemplateKey,
+	recipientLocale string,
+	installationLocale string,
+	details app.ExamManagerMailDetails,
+) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{
+		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		ExamManager: &templates.ExamManagerDetails{
+			Title: details.Title, Relationship: templates.ExamManagerRelationship(details.Relationship), ActionAt: details.ActionAt,
+		},
+	})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+}
+
+func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
+	key model.MailTemplateKey,
+	recipientLocale string,
+	installationLocale string,
+	details app.SittingScheduleMailDetails,
+) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{
+		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		SittingSchedule: &templates.SittingScheduleDetails{ExamTitle: details.ExamTitle,
+			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
+	})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+}
+
 // externalProviderRegistryAdapter exposes the platform registry through the
 // app-owned ExternalIdentityProvider port.
 type externalProviderRegistryAdapter struct {

@@ -46,6 +46,7 @@ type ExamSittingSchedule struct {
 	ManagerOverride bool
 	AuditEventID    string
 	AuditAt         int64
+	Mail            *ExamSittingMailFanout
 }
 
 // ExamSittingScheduleUpdate replaces the complete Scheduled-only selection
@@ -65,6 +66,7 @@ type ExamSittingScheduleUpdate struct {
 	ChangedAt        time.Time
 	AuditEventID     string
 	AuditAt          int64
+	Mail             *ExamSittingMailFanout
 }
 
 // ExamSittingManagerTransition is the common revision-fenced manager command
@@ -173,6 +175,99 @@ type ExamSittingCancellation struct {
 	CanceledAt       time.Time
 	AuditEventID     string
 	AuditAt          int64
+	Mail             *ExamSittingMailFanout
+}
+
+type ExamSittingMailChangeKind string
+
+const (
+	ExamSittingMailScheduled   ExamSittingMailChangeKind = "scheduled"
+	ExamSittingMailRescheduled ExamSittingMailChangeKind = "rescheduled"
+	ExamSittingMailCancelled   ExamSittingMailChangeKind = "cancelled"
+	ExamSittingMailReconciled  ExamSittingMailChangeKind = "reconciled"
+)
+
+// ExamSittingMailFanout is the bounded, prepared mail intent committed by a
+// Sitting transition. Persistence rebases every lifecycle timestamp from one
+// PostgreSQL clock sample. Bundle is nil only for disabled-mail suppression.
+type ExamSittingMailFanout struct {
+	Occurrence       *model.MailOccurrence
+	Bundle           *model.MailFanoutBundle
+	ExpansionJob     *model.Job
+	ChangeKind       ExamSittingMailChangeKind
+	DeliveryLifetime time.Duration
+}
+
+type ExamSittingMailFanoutSnapshot struct {
+	Occurrence      *model.MailOccurrence
+	Bundle          *model.MailFanoutBundle
+	SittingID       model.ExamSittingID
+	SittingRevision int64
+	PriorClassID    model.ClassID
+	ChangeKind      ExamSittingMailChangeKind
+	Deadline        time.Time
+	CompletedAt     model.OptionalTime
+}
+
+type ExamSittingMailRecipientPageRequest struct {
+	OccurrenceID model.MailOccurrenceID
+	AfterUserID  model.UserID
+	Limit        int
+}
+
+type ExamSittingMailRecipient struct {
+	User        *model.User
+	TemplateKey model.MailTemplateKey
+}
+
+type ExamSittingMailRecipientPage struct {
+	Fanout     *ExamSittingMailFanoutSnapshot
+	Recipients []ExamSittingMailRecipient
+	More       bool
+}
+
+type ExamSittingMailRecipientCommit struct {
+	OccurrenceID    model.MailOccurrenceID
+	SittingRevision int64
+	Recipient       *model.User
+	Delivery        *model.MailDelivery
+	DeliveryJob     *model.Job
+}
+
+type ExamSittingMailRecipientResult struct {
+	Delivery   *model.MailDelivery
+	Inserted   bool
+	Suppressed bool
+}
+
+type ExamSittingMailExpansionCompletion struct {
+	OccurrenceID model.MailOccurrenceID
+}
+
+// ExamSittingMailMaintenanceResult reports one bounded database-authoritative
+// pass over expansion fan-outs that can no longer make progress.
+type ExamSittingMailMaintenanceResult struct {
+	FanoutsTerminalized  int
+	DeliveriesSuppressed int
+	More                 bool
+}
+
+type ExamSittingMailReconciliationOptions struct {
+	AfterScheduledStartAt time.Time
+	AfterSittingID        model.ExamSittingID
+	Limit                 int
+}
+
+type ExamSittingMailReconciliationCandidate struct {
+	Sitting     *model.ExamSitting
+	ActorUserID model.UserID
+}
+
+type ExamSittingMailReconciliation struct {
+	SittingID        model.ExamSittingID
+	ExpectedRevision int64
+	ActorUserID      model.UserID
+	Mail             *ExamSittingMailFanout
 }
 
 type ExamSittingCommandResult struct {
@@ -208,4 +303,11 @@ type ExamSittingStore interface {
 	AdvanceDue(context.Context, *ExamSittingDueAdvance) (*ExamSittingLifecycleResult, error)
 	FinishSealing(context.Context, *ExamSittingFinishSealing) (*ExamSittingLifecycleResult, error)
 	ListNoShows(context.Context, ExamSittingNoShowListOptions) ([]ExamSittingNoShow, error)
+	GetMailFanout(context.Context, model.MailOccurrenceID) (*ExamSittingMailFanoutSnapshot, error)
+	ListMailRecipients(context.Context, ExamSittingMailRecipientPageRequest) (*ExamSittingMailRecipientPage, error)
+	CommitMailRecipient(context.Context, *ExamSittingMailRecipientCommit) (*ExamSittingMailRecipientResult, error)
+	CompleteMailExpansion(context.Context, *ExamSittingMailExpansionCompletion) (*ExamSittingMailFanoutSnapshot, error)
+	MaintainMailExpansions(context.Context, int) (*ExamSittingMailMaintenanceResult, error)
+	ListMailReconciliationDue(context.Context, ExamSittingMailReconciliationOptions) ([]ExamSittingMailReconciliationCandidate, error)
+	ReconcileMail(context.Context, *ExamSittingMailReconciliation) (*ExamSittingMailFanoutSnapshot, error)
 }

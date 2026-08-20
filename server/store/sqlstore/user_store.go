@@ -680,13 +680,22 @@ func (s SQLUserStore) SetDisabledWithAudit(
 				return nil, err
 			}
 		}
-		// Serialize disabling with login and refresh rotation before changing the
-		// user row. A login that commits first is included in the revocation; one
-		// that follows observes the disabled account.
+		// Security-sensitive account disablement takes the installation-wide
+		// authentication-path fence before any User row. User eligibility changes
+		// then follow the shared User -> mail-eligibility singleton order.
 		if input.Disabled {
 			if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 				return nil, err
 			}
+		}
+		var lockedUserID string
+		if err := tx.Get(ctx, &lockedUserID, `SELECT id FROM users WHERE id=? AND archived_at IS NULL FOR UPDATE`, input.ID); err != nil {
+			return nil, translateError("user", input.ID, err)
+		}
+		// Serialize disabling with login and refresh rotation before changing the
+		// user row. A login that commits first is included in the revocation; one
+		// that follows observes the disabled account.
+		if input.Disabled {
 			policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
 			if err != nil {
 				return nil, err
@@ -716,6 +725,10 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		if input.Disabled {
 			disabledAt = input.ChangedAt
 		}
+		mailEligibilityRevision, err := advanceUserMailEligibilityRevision(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
 		row, err := setUserDisabled(
 			ctx,
 			tx,
@@ -723,6 +736,7 @@ func (s SQLUserStore) SetDisabledWithAudit(
 			input.ExpectedRevision,
 			disabledAt,
 			input.ChangedAt,
+			mailEligibilityRevision,
 		)
 		if err != nil {
 			return nil, err
@@ -788,9 +802,10 @@ func setUserDisabled(
 	expectedRevision int64,
 	disabledAt int64,
 	updateAt int64,
+	mailEligibilityRevision int64,
 ) (*userRow, error) {
 	if expectedRevision <= 0 || updateAt <= 0 || disabledAt < 0 ||
-		(disabledAt != 0 && disabledAt != updateAt) {
+		(disabledAt != 0 && disabledAt != updateAt) || mailEligibilityRevision < 1 {
 		return nil, store.NewErrInvalidInput("user", "disabled_at", disabledAt)
 	}
 	updateTime := model.TimeFromMillis(updateAt)
@@ -800,10 +815,10 @@ func setUserDisabled(
 	}
 	result, err := tx.Exec(ctx, `
 		UPDATE users
-		   SET updated_at = ?, disabled_at = ?, revision = revision + 1
+		   SET updated_at = ?, disabled_at = ?, mail_eligibility_revision = ?, revision = revision + 1
 		 WHERE id = ? AND archived_at IS NULL AND revision = ?
 		   AND ((? AND disabled_at IS NULL) OR (NOT ? AND disabled_at IS NOT NULL))`,
-		updateTime, disabledTime, id, expectedRevision, disabledAt != 0, disabledAt != 0,
+		updateTime, disabledTime, mailEligibilityRevision, id, expectedRevision, disabledAt != 0, disabledAt != 0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(

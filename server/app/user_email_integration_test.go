@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/packages/mail"
 	application "github.com/sudosylabs/proctor/server/app"
@@ -92,19 +93,27 @@ func TestEmailTransitionsUseRealServerGraphAndFrozenRecipients(t *testing.T) {
 	assertNarrowEmailTransitionResponse(t, privileged.Body.Bytes(), second.ID, true)
 
 	startIntegrationServer(t, helper)
-	deliveries := waitForRecoveryDeliveries(t, helper, 4)
-	firstVerification := deliveryTo(t, deliveries, "first-new@example.edu")
+	deliveries := waitForEmailTransitionDeliveries(t, helper)
+	firstVerification := deliveryToMatching(t, deliveries, "first-new@example.edu", func(message string) bool {
+		return credentialPattern.MatchString(message)
+	})
 	verificationToken := credentialFromDelivery(t, firstVerification)
 	if strings.Contains(helper.Logs.String(), verificationToken) {
 		t.Fatal("email-change verification token appeared in logs")
 	}
-	if message := deliveryTo(t, deliveries, "first-old@example.edu"); credentialPattern.Match(message.Data) || !strings.Contains(string(message.Data), "email address") {
+	if message := deliveryToMatching(t, deliveries, "first-old@example.edu", func(message string) bool {
+		return strings.Contains(message, "email address")
+	}); credentialPattern.Match(message.Data) {
 		t.Fatal("old-address warning contains a credential or lacks expected copy")
 	}
-	if message := deliveryTo(t, deliveries, "second-new@example.edu"); credentialPattern.Match(message.Data) || !strings.Contains(string(message.Data), "verified") {
+	if message := deliveryToMatching(t, deliveries, "second-new@example.edu", func(message string) bool {
+		return strings.Contains(message, "verified")
+	}); credentialPattern.Match(message.Data) {
 		t.Fatal("privileged-verification notice contains a credential or lacks expected copy")
 	}
-	if message := deliveryTo(t, deliveries, "second-old@example.edu"); credentialPattern.Match(message.Data) {
+	if message := deliveryToMatching(t, deliveries, "second-old@example.edu", func(message string) bool {
+		return strings.Contains(message, "email address")
+	}); credentialPattern.Match(message.Data) {
 		t.Fatal("second old-address warning contains a credential")
 	}
 
@@ -173,6 +182,44 @@ func assertNarrowEmailTransitionResponse(t *testing.T, body []byte, userID model
 			t.Fatalf("email-transition response exposed %q: %s", forbidden, body)
 		}
 	}
+}
+
+func waitForEmailTransitionDeliveries(t *testing.T, helper *testlib.Helper) []mail.Delivery {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		deliveries := helper.Mailer.Deliveries()
+		if hasMatchingDelivery(deliveries, "first-new@example.edu", credentialPattern.MatchString) &&
+			hasMatchingDelivery(deliveries, "first-old@example.edu", func(message string) bool { return strings.Contains(message, "email address") }) &&
+			hasMatchingDelivery(deliveries, "second-new@example.edu", func(message string) bool { return strings.Contains(message, "verified") }) &&
+			hasMatchingDelivery(deliveries, "second-old@example.edu", func(message string) bool { return strings.Contains(message, "email address") }) {
+			return deliveries
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("email transition deliveries did not reach every expected recipient and semantic template")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func hasMatchingDelivery(deliveries []mail.Delivery, recipient string, matches func(string) bool) bool {
+	for _, delivery := range deliveries {
+		if len(delivery.Recipients) == 1 && delivery.Recipients[0] == recipient && matches(string(delivery.Data)) {
+			return true
+		}
+	}
+	return false
+}
+
+func deliveryToMatching(t *testing.T, deliveries []mail.Delivery, recipient string, matches func(string) bool) mail.Delivery {
+	t.Helper()
+	for _, delivery := range deliveries {
+		if len(delivery.Recipients) == 1 && delivery.Recipients[0] == recipient && matches(string(delivery.Data)) {
+			return delivery
+		}
+	}
+	t.Fatalf("matching delivery to %s not found", recipient)
+	return mail.Delivery{}
 }
 
 func deliveryTo(t *testing.T, deliveries []mail.Delivery, recipient string) mail.Delivery {

@@ -182,13 +182,56 @@ func (s SQLMailStore) CleanupTerminal(ctx context.Context, limit int) (*store.Ma
 					return nil, err
 				}
 			}
+			if _, err := tx.Exec(ctx, `UPDATE exam_sitting_mail_recipients SET desired_occurrence_id=NULL,desired_delivery_id=NULL,
+				desired_sitting_revision=NULL,desired_template_key=NULL
+				WHERE desired_delivery_id=? AND desired_occurrence_id=?`, row.ID, row.OccurrenceID); err != nil {
+				return nil, fmt.Errorf("clear retained Sitting mail projection: %w", err)
+			}
 			if _, err := tx.Exec(ctx, `DELETE FROM mail_deliveries WHERE id=?`, row.ID); err != nil {
 				return nil, fmt.Errorf("delete terminal mail delivery: %w", err)
 			}
-			if _, err := tx.Exec(ctx, `DELETE FROM mail_occurrences o WHERE o.id=? AND NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.occurrence_id=o.id)`, row.OccurrenceID); err != nil {
+			if _, err := tx.Exec(ctx, `DELETE FROM exam_sitting_mail_fanouts f WHERE f.occurrence_id=? AND f.completed_at IS NOT NULL
+				AND NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.occurrence_id=f.occurrence_id)`, row.OccurrenceID); err != nil {
+				return nil, fmt.Errorf("delete retained Sitting mail fan-out: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM mail_occurrences o WHERE o.id=?
+				AND NOT EXISTS (SELECT 1 FROM mail_deliveries d WHERE d.occurrence_id=o.id)
+				AND NOT EXISTS (SELECT 1 FROM exam_sitting_mail_fanouts f WHERE f.occurrence_id=o.id)`, row.OccurrenceID); err != nil {
 				return nil, fmt.Errorf("delete orphan mail occurrence: %w", err)
 			}
 			result.Affected++
+		}
+		remaining := limit - result.Affected
+		if remaining > 0 {
+			var emptyFanouts []struct {
+				OccurrenceID string `db:"occurrence_id"`
+			}
+			if err := tx.Select(ctx, &emptyFanouts, `SELECT f.occurrence_id FROM exam_sitting_mail_fanouts f
+				WHERE f.completed_at IS NOT NULL AND NOT EXISTS (
+					SELECT 1 FROM mail_deliveries d WHERE d.occurrence_id=f.occurrence_id)
+				AND ((f.terminal_reason IN ('failed','orphaned') AND f.completed_at<=statement_timestamp()-INTERVAL '180 days')
+				  OR (f.terminal_reason NOT IN ('failed','orphaned') AND f.completed_at<=statement_timestamp()-INTERVAL '90 days'))
+				ORDER BY f.completed_at,f.occurrence_id LIMIT ? FOR UPDATE OF f SKIP LOCKED`, remaining+1); err != nil {
+				return nil, fmt.Errorf("select empty retained Sitting mail fan-outs: %w", err)
+			}
+			if len(emptyFanouts) > remaining {
+				result.More = true
+				emptyFanouts = emptyFanouts[:remaining]
+			}
+			for _, fanout := range emptyFanouts {
+				if _, err := tx.Exec(ctx, `UPDATE exam_sitting_mail_recipients SET desired_occurrence_id=NULL,desired_delivery_id=NULL,
+					desired_sitting_revision=NULL,desired_template_key=NULL WHERE desired_occurrence_id=?`, fanout.OccurrenceID); err != nil {
+					return nil, fmt.Errorf("clear empty retained Sitting mail projection: %w", err)
+				}
+				if _, err := tx.Exec(ctx, `DELETE FROM exam_sitting_mail_fanouts WHERE occurrence_id=?`, fanout.OccurrenceID); err != nil {
+					return nil, fmt.Errorf("delete empty retained Sitting mail fan-out: %w", err)
+				}
+				if _, err := tx.Exec(ctx, `DELETE FROM mail_occurrences WHERE id=? AND NOT EXISTS (
+					SELECT 1 FROM mail_deliveries WHERE occurrence_id=?)`, fanout.OccurrenceID, fanout.OccurrenceID); err != nil {
+					return nil, fmt.Errorf("delete empty retained Sitting mail occurrence: %w", err)
+				}
+				result.Affected++
+			}
 		}
 		return result, nil
 	})

@@ -61,6 +61,29 @@ func run(args []string, stderr io.Writer) error {
 				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
 			}
+		case i18n.ExamManagerAdded,
+			i18n.ExamManagerRemoved,
+			i18n.ExamOwnershipTransferredToYou,
+			i18n.ExamOwnershipTransferredFromYou:
+			relationship := mailtemplates.ExamManagerRelationshipManager
+			if key == i18n.ExamManagerRemoved {
+				relationship = mailtemplates.ExamManagerRelationshipNoLongerManager
+			} else if key == i18n.ExamOwnershipTransferredToYou {
+				relationship = mailtemplates.ExamManagerRelationshipOwner
+			}
+			request.ExamManager = &mailtemplates.ExamManagerDetails{
+				Title: "Representative programming exam", Relationship: relationship,
+				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
+			}
+		case i18n.ExamSittingScheduled,
+			i18n.ExamSittingRescheduled,
+			i18n.ExamSittingCancelled,
+			i18n.ExamSittingAssignmentRemoved:
+			request.SittingSchedule = &mailtemplates.SittingScheduleDetails{
+				ExamTitle: "Representative programming exam", ClassDisplayName: "Year 2 · Class A",
+				StartsAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
+				EndsAt:   time.Date(2026, 9, 20, 11, 30, 0, 0, time.UTC),
+			}
 		}
 		message, renderErr := renderer.Render(request)
 		if renderErr != nil {
