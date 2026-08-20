@@ -513,7 +513,7 @@
       "post": {
         "operationId": "enrollClassMember", "summary": "Enroll, transfer, or progress a student transactionally",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable"],
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "mail.unavailable", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "requestBody": {"$ref": "#/components/requestBodies/EnrollClassMember"},
         "responses": {
@@ -713,7 +713,7 @@
       "delete": {
         "operationId": "endClassMember", "summary": "End an enrollment while retaining history",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable"],
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "class.enrollment_conflict", "mail.unavailable", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "responses": {
           "200": {"$ref": "#/components/responses/ClassMemberEnded"}, "400": {"$ref": "#/components/responses/BadRequest"},

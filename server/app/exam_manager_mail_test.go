@@ -52,3 +52,7 @@ func (r *examManagerRendererFake) RenderExamManagerNotice(_ model.MailTemplateKe
 	r.details = details
 	return FrozenMailContent{Subject: "Exam changed", Text: details.Title, HTML: "<p>Exam changed</p>"}, nil
 }
+
+func (r *examManagerRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, nil
+}

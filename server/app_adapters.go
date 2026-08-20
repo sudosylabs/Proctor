@@ -285,6 +285,23 @@ func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
 	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
+func (a mailTemplateRendererAdapter) RenderClassTransitionNotice(
+	key model.MailTemplateKey,
+	recipientLocale string,
+	installationLocale string,
+	details app.ClassTransitionMailDetails,
+) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{
+		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		ClassTransition: &templates.ClassTransitionDetails{PreviousClassDisplayName: details.PreviousClassDisplayName,
+			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
+	})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+}
+
 func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,

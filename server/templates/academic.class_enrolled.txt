@@ -7,10 +7,18 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .ClassTransition.ClassDisplayName — bounded destination Class display name
+  .ClassTransition.StartsAt — UTC RFC 3339 effective start
+  .ClassTransition.EndsAt — UTC RFC 3339 effective end or localized open end
+  .ClassTransition.Timezone — localized explicit timezone label
 */}}
 {{.Copy.Heading}}
 
 {{.Copy.Body}}
+{{.Copy.ClassTransition.ClassLabel}}: {{.ClassTransition.ClassDisplayName}}
+{{.Copy.ClassTransition.StartsAtLabel}}: {{.ClassTransition.StartsAt}}
+{{.Copy.ClassTransition.EndsAtLabel}}: {{.ClassTransition.EndsAt}}
+{{.Copy.ClassTransition.TimezoneLabel}}: {{.ClassTransition.Timezone}}
 {{if .ActionURL}}
 {{.Copy.ActionLabel}}: {{.ActionURL}}
 {{end}}

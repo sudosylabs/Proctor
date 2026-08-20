@@ -55,7 +55,9 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	membershipAudit := saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: membershipAudit.ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              membershipAudit.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	mailPage, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
 		OccurrenceID: scheduleMail.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
@@ -104,7 +106,9 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 	lateMembership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	lateAudit := saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: lateMembership,
-		AuditEventID: lateAudit.ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: lateCandidate.Revision,
+		Notice:                    classMemberPreparedMail(t, lateMembership, model.MailTemplateAcademicClassEnrolled, lateMembership.CreatedAt),
+		AuditEventID:              lateAudit.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
 		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
@@ -271,7 +275,9 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	enrolled, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 
 	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)
@@ -293,7 +299,9 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 
 	changeAt := start.Add(-time.Hour)
 	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
-		ExpectedRevision: enrolled.Membership.Revision, EndAt: model.MillisFromTime(changeAt),
+		ExpectedRevision: enrolled.Membership.Revision, ExpectedRecipientRevision: candidate.Revision,
+		EndAt:        model.MillisFromTime(changeAt),
+		Notice:       classMemberPreparedMail(t, enrolled.Membership, model.MailTemplateAcademicClassEnrollmentEnded, changeAt),
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	suppressed, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
@@ -306,7 +314,9 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T, ss 
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: changeAt}
 	restored.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: restored,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, restored, model.MailTemplateAcademicClassEnrolled, restored.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
 		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
@@ -384,7 +394,9 @@ func PrepareExamSittingInvitationLockOrderFixture(t *testing.T, ss store.Store) 
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: late.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	return ExamSittingInvitationLockOrderFixture{
 		Acceptance: acceptance,
@@ -409,7 +421,9 @@ func PrepareExamSittingDisabledEligibilityRaceFixture(t *testing.T, ss store.Sto
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	start := fixture.period.StartsAt.Add(18 * time.Hour)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID,
@@ -453,7 +467,9 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	prepareCandidate := func(emailVerified bool) (*model.User, *model.ClassMember) {
 		input := newUser()
@@ -467,7 +483,9 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 			AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 		member.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 		enrolled, createErr := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: member,
-			AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+			ExpectedRecipientRevision: user.Revision,
+			Notice:                    classMemberPreparedMail(t, member, model.MailTemplateAcademicClassEnrolled, member.CreatedAt),
+			AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 		requireNoError(t, createErr)
 		return user, enrolled.Membership
 	}
@@ -659,7 +677,9 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	newMembership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	enrolled, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: newMembership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: newCandidate.Revision,
+		Notice:                    classMemberPreparedMail(t, newMembership, model.MailTemplateAcademicClassEnrolled, newMembership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	due, err = ss.ExamSitting().ListMailReconciliationDue(ctx,
 		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
@@ -710,7 +730,9 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 	// Ending that same membership is another audience fact without a Sitting
 	// revision change and must yield the assignment-removed projection.
 	_, err = ss.ClassMember().EndWithAudit(ctx, &store.ClassMemberEnd{ID: enrolled.Membership.ID.String(),
-		ExpectedRevision: enrolled.Membership.Revision, EndAt: model.MillisFromTime(start.Add(-time.Hour)),
+		ExpectedRevision: enrolled.Membership.Revision, ExpectedRecipientRevision: newCandidate.Revision,
+		EndAt:        model.MillisFromTime(start.Add(-time.Hour)),
+		Notice:       classMemberPreparedMail(t, enrolled.Membership, model.MailTemplateAcademicClassEnrollmentEnded, start.Add(-time.Hour)),
 		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 	due, err = ss.ExamSitting().ListMailReconciliationDue(ctx,
@@ -751,6 +773,140 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 	requireNoError(t, err)
 	if startedRemoval.State != model.MailDeliverySending {
 		t.Fatalf("assignment-removed delivery=%#v", startedRemoval)
+	}
+}
+
+// TestExamSittingClassTransferMailReconciliation proves that one future-dated
+// transfer advances both affected Class audiences. The source Sitting emits an
+// assignment removal while the destination Sitting emits a new schedule, and
+// replay cannot create another reconciliation occurrence.
+func TestExamSittingClassTransferMailReconciliation(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamSittingFixture(t, ctx, ss)
+	destinationClass := saveClass(t, ctx, ss, fixture.levelID.String(), fixture.period.ID.String(), "sitting-transfer-destination")
+	start, end := fixture.period.StartsAt.Add(12*time.Hour), fixture.period.StartsAt.Add(14*time.Hour)
+
+	candidateInput := newUser()
+	candidateInput.EmailVerified = true
+	candidate, err := createUser(t, ctx, ss, candidateInput)
+	requireNoError(t, err)
+	_, err = ss.Affiliation().Save(ctx, &model.Affiliation{UserID: candidate.ID, Kind: model.AffiliationStudent,
+		StartsAt: fixture.period.StartsAt})
+	requireNoError(t, err)
+	sourceMember := &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.period.ID, StartsAt: fixture.period.StartsAt}
+	sourceMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	sourceEnrollment, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
+		Member: sourceMember, ExpectedRecipientRevision: candidate.Revision,
+		Notice:       classMemberPreparedMail(t, sourceMember, model.MailTemplateAcademicClassEnrolled, sourceMember.CreatedAt),
+		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+
+	schedule := func(class *model.Class, suffix string) (*model.ExamSitting, *store.ExamSittingMailFanoutSnapshot) {
+		t.Helper()
+		sitting, sittingErr := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID, class.ID,
+			start, end, model.NowUTC())
+		requireNoError(t, sittingErr)
+		openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
+		fanout := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)
+		created, scheduleErr := ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting,
+			OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: fixture.actor.ID,
+			AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(),
+			AuditAt:      model.GetMillis(), Mail: fanout},
+			examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "sitting-transfer-"+suffix, "sitting-transfer-command-"+suffix))
+		requireNoError(t, scheduleErr)
+		snapshot, getErr := ss.ExamSitting().GetMailFanout(ctx, fanout.Occurrence.ID)
+		requireNoError(t, getErr)
+		return created.Value.Sitting, snapshot
+	}
+	sourceSitting, sourceFanout := schedule(fixture.class, "source")
+	destinationSitting, destinationFanout := schedule(destinationClass, "destination")
+
+	sourcePage, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+		OccurrenceID: sourceFanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	if len(sourcePage.Recipients) != 1 || sourcePage.Recipients[0].User.ID != candidate.ID ||
+		sourcePage.Recipients[0].TemplateKey != model.MailTemplateExamSittingScheduled {
+		t.Fatalf("source schedule recipients=%#v", sourcePage.Recipients)
+	}
+	delivery, deliveryJob := newExamSittingMailDelivery(t, sourceFanout, candidate, sourcePage.Recipients[0].TemplateKey)
+	_, err = ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+		OccurrenceID: sourceFanout.Occurrence.ID, SittingRevision: 1, Recipient: candidate,
+		Delivery: delivery, DeliveryJob: deliveryJob})
+	requireNoError(t, err)
+	sending, err := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+	requireNoError(t, err)
+	_, err = ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
+		ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+	requireNoError(t, err)
+	for _, occurrenceID := range []model.MailOccurrenceID{sourceFanout.Occurrence.ID, destinationFanout.Occurrence.ID} {
+		_, err = ss.ExamSitting().CompleteMailExpansion(ctx, &store.ExamSittingMailExpansionCompletion{OccurrenceID: occurrenceID})
+		requireNoError(t, err)
+	}
+
+	transferAt := start.Add(-time.Hour)
+	destinationMember := &model.ClassMember{ClassID: destinationClass.ID, UserID: candidate.ID,
+		AcademicPeriodID: fixture.period.ID, StartsAt: transferAt}
+	destinationMember.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
+	destinationAudit := saveClassMemberAuditAttempt(t, ctx, ss, destinationClass.ID.String())
+	sourceAudit := saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String())
+	transferNotice := classMemberPreparedMail(t, destinationMember, model.MailTemplateAcademicClassTransferred, destinationMember.CreatedAt)
+	transferred, err := ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{
+		Member: destinationMember, ExpectedPreviousID: sourceEnrollment.Membership.ID,
+		ExpectedRecipientRevision: candidate.Revision, Notice: transferNotice,
+		AuditEventID: destinationAudit.ID.String(), PreviousAuditEventID: sourceAudit.ID.String(), AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	if transferred.Previous == nil || transferred.Previous.ID != sourceEnrollment.Membership.ID ||
+		transferred.Previous.EndsAt.Time != transferAt {
+		t.Fatalf("future transfer=%#v", transferred)
+	}
+	requireNoError(t, requireClassMemberMail(t, ctx, ss, transferNotice, model.MailTemplateAcademicClassTransferred))
+
+	due, err := ss.ExamSitting().ListMailReconciliationDue(ctx,
+		store.ExamSittingMailReconciliationOptions{Limit: model.SittingMailExpansionPageSize})
+	requireNoError(t, err)
+	requireSittingMailReconciliationDue(t, due, sourceSitting.ID)
+	requireSittingMailReconciliationDue(t, due, destinationSitting.ID)
+
+	reconcile := func(sitting *model.ExamSitting, want model.MailTemplateKey, suffix string) model.MailOccurrenceID {
+		t.Helper()
+		mail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled, model.MailTemplateExamSittingScheduled)
+		fanout, reconcileErr := ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+			SittingID: sitting.ID, ExpectedRevision: sitting.Revision, ActorUserID: fixture.actor.ID, Mail: mail})
+		requireNoError(t, reconcileErr)
+		page, pageErr := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
+			OccurrenceID: fanout.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
+		requireNoError(t, pageErr)
+		if len(page.Recipients) != 1 || page.Recipients[0].User.ID != candidate.ID || page.Recipients[0].TemplateKey != want {
+			t.Fatalf("%s transfer reconciliation recipients=%#v", suffix, page.Recipients)
+		}
+		delivery, deliveryJob := newExamSittingMailDelivery(t, fanout, page.Recipients[0].User, page.Recipients[0].TemplateKey)
+		_, commitErr := ss.ExamSitting().CommitMailRecipient(ctx, &store.ExamSittingMailRecipientCommit{
+			OccurrenceID: fanout.Occurrence.ID, SittingRevision: fanout.SittingRevision,
+			Recipient: page.Recipients[0].User, Delivery: delivery, DeliveryJob: deliveryJob})
+		requireNoError(t, commitErr)
+		sending, startErr := ss.Mail().StartDelivery(ctx, delivery.ID, delivery.Revision, model.NowUTC())
+		requireNoError(t, startErr)
+		_, acceptErr := ss.Mail().CompleteDelivery(ctx, &store.MailDeliveryCompletion{DeliveryID: delivery.ID,
+			ExpectedRevision: sending.Revision, Kind: store.MailDeliveryCompletionAccepted, At: model.NowUTC()})
+		requireNoError(t, acceptErr)
+		_, completeErr := ss.ExamSitting().CompleteMailExpansion(ctx,
+			&store.ExamSittingMailExpansionCompletion{OccurrenceID: fanout.Occurrence.ID})
+		requireNoError(t, completeErr)
+		return fanout.Occurrence.ID
+	}
+	reconcile(sourceSitting, model.MailTemplateExamSittingAssignmentRemoved, "source")
+	reconcile(destinationSitting, model.MailTemplateExamSittingScheduled, "destination")
+
+	replayMail := newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailReconciled, model.MailTemplateExamSittingScheduled)
+	if _, err = ss.ExamSitting().ReconcileMail(ctx, &store.ExamSittingMailReconciliation{
+		SittingID: sourceSitting.ID, ExpectedRevision: sourceSitting.Revision, ActorUserID: fixture.actor.ID,
+		Mail: replayMail,
+	}); !store.IsConflict(err) {
+		t.Fatalf("source reconciliation replay error=%v", err)
 	}
 }
 
@@ -798,7 +954,9 @@ func TestExamSittingMailExpansionMaintenance(t *testing.T, ss store.Store) {
 		AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 	membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 	_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-		AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+		ExpectedRecipientRevision: candidate.Revision,
+		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+		AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
 
 	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)
@@ -942,7 +1100,9 @@ func TestExamSittingMailRetentionCleanup(t *testing.T, ss store.Store, probe Exa
 			AcademicPeriodID: fixture.class.AcademicPeriodID, StartsAt: fixture.period.StartsAt}
 		membership.PrepareCreate(model.NewClassMemberID(), model.NowUTC())
 		_, err = ss.ClassMember().EnrollWithAudit(ctx, &store.ClassMemberEnrollment{Member: membership,
-			AuditEventID: saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
+			ExpectedRecipientRevision: users[index].Revision,
+			Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
+			AuditEventID:              saveClassMemberAuditAttempt(t, ctx, ss, fixture.class.ID.String()).ID.String(), AuditAt: model.GetMillis()})
 		requireNoError(t, err)
 	}
 	fanout, err := ss.ExamSitting().GetMailFanout(ctx, prepared.Occurrence.ID)

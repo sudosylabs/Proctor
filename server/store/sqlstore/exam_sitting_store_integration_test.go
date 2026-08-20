@@ -25,6 +25,10 @@ func TestExamSittingMailReconciliationAfterObsoleteSuppression(t *testing.T) {
 	StoreTest(t, storetest.TestExamSittingMailReconciliationAfterObsoleteSuppression)
 }
 
+func TestExamSittingClassTransferMailReconciliation(t *testing.T) {
+	StoreTest(t, storetest.TestExamSittingClassTransferMailReconciliation)
+}
+
 func TestExamSittingDisabledMailReconciliationConverges(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)

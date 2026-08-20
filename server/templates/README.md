@@ -43,6 +43,13 @@ The four Exam Manager relationship notices additionally receive the closed
 `.Title`, `.Relationship`, and `.ActionAt`. They never receive the actor,
 authorization grants, other Managers, or private audit detail.
 
+The three Class membership notices additionally receive the closed
+`.Copy.ClassTransition` label set and these bounded fields under
+`.ClassTransition`: `.PreviousClassDisplayName`, `.ClassDisplayName`,
+`.StartsAt`, `.EndsAt`, and `.Timezone`. Enrollment and ending omit the
+previous Class; open-ended enrollment omits the end time. They never receive
+the actor, roster contents, authorization grants, or private audit detail.
+
 The renderer accepts no arbitrary map and registers no custom template
 functions. Copy is markup-free and HTML is parsed with Go `html/template`, so
 localized and dynamic values are contextually escaped. Action URLs are

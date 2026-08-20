@@ -90,6 +90,15 @@ type ExamManagerMailDetails struct {
 	ActionAt     time.Time
 }
 
+// ClassTransitionMailDetails is the bounded Class membership context allowed
+// in one student's enrollment, ending, or transfer notice.
+type ClassTransitionMailDetails struct {
+	PreviousClassDisplayName string
+	ClassDisplayName         string
+	StartsAt                 time.Time
+	EndsAt                   time.Time
+}
+
 // DirectMailTemplateRenderer makes every rendering capability used by the
 // direct-mail preparer explicit at construction. A partially capable renderer
 // must fail composition rather than a security-notice request at runtime.
@@ -102,6 +111,7 @@ type DirectMailTemplateRenderer interface {
 		PersonalAccessTokenMailDetails,
 	) (FrozenMailContent, error)
 	RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error)
+	RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error)
 }
 
 type MailDeliverySender interface {
@@ -241,7 +251,7 @@ func (p *directMailPreparer) PrepareDirect(request DirectMailPreparation) (*prep
 		return nil, errors.New("direct mail input is invalid")
 	}
 	return p.prepareRecipient(user.DisplayName, user.Email, user.Locale, user.ID, user.ID, "", occurrenceID,
-		kind, key, actionURL, at, deadline, jobType, nil, nil)
+		kind, key, actionURL, at, deadline, jobType, nil, nil, nil)
 }
 
 func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
@@ -264,7 +274,7 @@ func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, act
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
 		model.MailOccurrenceInvitation, key, actionURL,
-		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil)
+		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil, nil)
 }
 
 func (p *directMailPreparer) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
@@ -278,7 +288,7 @@ func (p *directMailPreparer) PrepareInvitationResend(invitation *model.Invitatio
 	}
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation, key, actionURL,
-		at, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil)
+		at, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil, nil, nil)
 }
 
 func (p *directMailPreparer) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
@@ -287,7 +297,7 @@ func (p *directMailPreparer) PrepareInvitationRevocation(invitation *model.Invit
 	}
 	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
 		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation,
-		model.MailTemplateAccessInvitationRevoked, "", at, model.TimeUTC(at).Add(24*time.Hour), model.JobTypeMailDeliver, nil, nil)
+		model.MailTemplateAccessInvitationRevoked, "", at, model.TimeUTC(at).Add(24*time.Hour), model.JobTypeMailDeliver, nil, nil, nil)
 }
 
 func invitationTemplateKey(purpose model.InvitationPurpose) (model.MailTemplateKey, error) {
@@ -310,6 +320,7 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,
 	personalAccessToken *PersonalAccessTokenMailDetails,
 	examManager *ExamManagerMailDetails,
+	classTransition *ClassTransitionMailDetails,
 ) (*preparedDirectMail, error) {
 	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() || !occurrenceID.IsValid() ||
 		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
@@ -321,6 +332,10 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 	}
 	at = model.TimeUTC(at)
 	deadline = model.TimeUTC(deadline)
+	if !p.sender.Enabled() {
+		return p.prepareSuppressedRecipient(recipientAddress, actorUserID, targetUserID, targetInvitationID, occurrenceID, kind, key, at, deadline,
+			jobType, model.MailDeliveryDisabledCode)
+	}
 	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
 	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
 	if err != nil {
@@ -331,31 +346,22 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 		return nil, err
 	}
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
-	if !p.sender.Enabled() {
-		job, err = job.RequestCancellation(at)
-		if err != nil {
-			return nil, err
-		}
-		delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
-			TemplateKey: key, TemplateDigest: digestRenderedMail("", "", ""), MaskedRecipient: maskMailAddress(recipientAddress),
-			State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
-			MessageID: stableMailMessageID(deliveryID, ""), PublicFailureCode: model.MailDeliveryDisabledCode, Revision: 1}
-		if err = occurrence.Validate(); err != nil {
-			return nil, err
-		}
-		if err = delivery.Validate(); err != nil {
-			return nil, err
-		}
-		return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
-	}
 	var rendered FrozenMailContent
-	if personalAccessToken != nil && examManager != nil {
+	detailFamilies := 0
+	for _, present := range []bool{personalAccessToken != nil, examManager != nil, classTransition != nil} {
+		if present {
+			detailFamilies++
+		}
+	}
+	if detailFamilies > 1 {
 		return nil, errors.New("direct mail details are ambiguous")
 	}
 	if personalAccessToken != nil {
 		rendered, err = p.renderer.RenderPersonalAccessTokenSecurityNotice(key, locale, model.DefaultLocale, *personalAccessToken)
 	} else if examManager != nil {
 		rendered, err = p.renderer.RenderExamManagerNotice(key, locale, model.DefaultLocale, *examManager)
+	} else if classTransition != nil {
+		rendered, err = p.renderer.RenderClassTransitionNotice(key, locale, model.DefaultLocale, *classTransition)
 	} else {
 		rendered, err = p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
 	}
@@ -386,6 +392,44 @@ func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, l
 		MaskedRecipient: maskMailAddress(recipientAddress), State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at,
 		MessageDate: at, Deadline: deadline, MessageID: stableMailMessageID(deliveryID, from.Address),
 		EncryptedPayload: encrypted, Revision: 1}
+	if err = occurrence.Validate(); err != nil {
+		return nil, err
+	}
+	if err = delivery.Validate(); err != nil {
+		return nil, err
+	}
+	return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
+}
+
+func (p *directMailPreparer) prepareSuppressedRecipient(recipientAddress string, actorUserID, targetUserID model.UserID,
+	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind, key model.MailTemplateKey,
+	at, deadline time.Time, jobType model.JobType, publicCode string,
+) (*preparedDirectMail, error) {
+	if p == nil || p.sender == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
+		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !occurrenceID.IsValid() || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
+		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) ||
+		(publicCode != model.MailDeliveryDisabledCode && publicCode != model.MailDeliveryRecipientIneligibleCode) {
+		return nil, errors.New("direct mail suppression input is invalid")
+	}
+	at, deadline = model.TimeUTC(at), model.TimeUTC(deadline)
+	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	if err != nil {
+		return nil, err
+	}
+	job, err := model.NewJob(jobID, jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	if err != nil {
+		return nil, err
+	}
+	job, err = job.RequestCancellation(at)
+	if err != nil {
+		return nil, err
+	}
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
+		TemplateKey: key, TemplateDigest: digestRenderedMail("", "", ""), MaskedRecipient: maskMailAddress(recipientAddress),
+		State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
+		MessageID: stableMailMessageID(deliveryID, ""), PublicFailureCode: publicCode, Revision: 1}
 	if err = occurrence.Validate(); err != nil {
 		return nil, err
 	}

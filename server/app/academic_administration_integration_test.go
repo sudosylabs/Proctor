@@ -209,8 +209,8 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	}
 	if len(visibilityEvents) != 1 ||
 		visibilityEvents[0].Status != model.AuditStatusSuccess ||
-		visibilityEvents[0].ScopeType != model.RoleScopeInstitution ||
-		visibilityEvents[0].ScopeID != installation.Institution.ID.String() {
+		visibilityEvents[0].ScopeType != model.RoleScopeAcademicUnit ||
+		visibilityEvents[0].ScopeID != root.ID.String() {
 		t.Fatalf("teacher student visibility audit = %#v", visibilityEvents)
 	}
 	hidden := performJSONRequest(
@@ -410,6 +410,46 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 	)
 	if secondRevoked.Code != http.StatusUnauthorized {
 		t.Fatalf("student session survived revoke all = %d", secondRevoked.Code)
+	}
+	endClassMembership := performJSONRequest(
+		handler,
+		http.MethodDelete,
+		"/api/v1/class-members/"+transfer.Membership.ID,
+		nil,
+		adminToken,
+	)
+	if endClassMembership.Code != http.StatusOK {
+		t.Fatalf(
+			"end class membership = %d: %s; logs: %s",
+			endClassMembership.Code,
+			endClassMembership.Body.String(),
+			helper.Logs.String(),
+		)
+	}
+	classNoticeKeys := []model.MailTemplateKey{
+		model.MailTemplateAcademicClassEnrolled,
+		model.MailTemplateAcademicClassTransferred,
+		model.MailTemplateAcademicClassEnrollmentEnded,
+	}
+	classNotices, err := persistence.Mail().ListDeliveries(context.Background(), store.MailDeliveryListOptions{
+		TemplateKeys: classNoticeKeys,
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	classNoticeCounts := map[model.MailTemplateKey]int{}
+	for _, delivery := range classNotices {
+		if delivery.TargetUserID != student.ID {
+			t.Fatalf("Class transition notice targeted %s, want %s", delivery.TargetUserID, student.ID)
+		}
+		classNoticeCounts[delivery.TemplateKey]++
+	}
+	if len(classNotices) != 3 ||
+		classNoticeCounts[model.MailTemplateAcademicClassEnrolled] != 1 ||
+		classNoticeCounts[model.MailTemplateAcademicClassTransferred] != 1 ||
+		classNoticeCounts[model.MailTemplateAcademicClassEnrollmentEnded] != 1 {
+		t.Fatalf("Class transition notices = %#v", classNotices)
 	}
 
 	events, err := persistence.Audit().List(

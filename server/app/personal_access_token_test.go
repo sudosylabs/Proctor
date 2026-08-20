@@ -479,6 +479,10 @@ func (personalAccessTokenActionTimeRenderer) RenderExamManagerNotice(model.MailT
 	return FrozenMailContent{}, errors.New("unexpected Exam Manager render")
 }
 
+func (personalAccessTokenActionTimeRenderer) RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, errors.New("unexpected Class transition render")
+}
+
 func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.T) {
 	t.Parallel()
 

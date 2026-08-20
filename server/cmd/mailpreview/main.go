@@ -84,6 +84,19 @@ func run(args []string, stderr io.Writer) error {
 				StartsAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				EndsAt:   time.Date(2026, 9, 20, 11, 30, 0, 0, time.UTC),
 			}
+		case i18n.AcademicClassEnrolled,
+			i18n.AcademicClassEnrollmentEnded,
+			i18n.AcademicClassTransferred:
+			details := &mailtemplates.ClassTransitionDetails{
+				ClassDisplayName: "Year 2 · Class B",
+				StartsAt:         time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
+			}
+			if key == i18n.AcademicClassEnrollmentEnded {
+				details.EndsAt = time.Date(2026, 10, 20, 16, 30, 0, 0, time.UTC)
+			} else if key == i18n.AcademicClassTransferred {
+				details.PreviousClassDisplayName = "Year 2 · Class A"
+			}
+			request.ClassTransition = details
 		}
 		message, renderErr := renderer.Render(request)
 		if renderErr != nil {

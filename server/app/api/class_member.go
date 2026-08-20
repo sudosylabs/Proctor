@@ -56,13 +56,13 @@ func classMemberResource(members ClassMemberApplication) resource {
 		principalRoute(
 			http.MethodPost,
 			apiPath(literal("classes"), canonicalID("class_id"), literal("members")),
-			academicRelationshipMutationErrorCodes("class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict"),
+			academicRelationshipMutationErrorCodes("class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "mail.unavailable"),
 			module.enroll,
 		),
 		principalRoute(
 			http.MethodDelete,
 			apiPath(literal("class-members"), canonicalID("class_member_id")),
-			academicRelationshipMutationErrorCodes("class.enrollment_conflict"),
+			academicRelationshipMutationErrorCodes("class.enrollment_conflict", "mail.unavailable"),
 			module.end,
 		),
 	)

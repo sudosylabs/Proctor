@@ -50,6 +50,9 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateAccessInstitutionRoleInvitation,
 		MailTemplateAccessInvitationAccepted,
 		MailTemplateAccessInvitationRevoked,
+		MailTemplateAcademicClassEnrolled,
+		MailTemplateAcademicClassEnrollmentEnded,
+		MailTemplateAcademicClassTransferred,
 		MailTemplateExamSittingScheduled,
 		MailTemplateExamSittingRescheduled,
 		MailTemplateExamSittingCancelled,
@@ -89,6 +92,9 @@ const (
 	MailTemplateAccessInstitutionRoleInvitation     MailTemplateKey = "access.institution_role_invitation"
 	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
 	MailTemplateAccessInvitationRevoked             MailTemplateKey = "access.invitation_revoked"
+	MailTemplateAcademicClassEnrolled               MailTemplateKey = "academic.class_enrolled"
+	MailTemplateAcademicClassEnrollmentEnded        MailTemplateKey = "academic.class_enrollment_ended"
+	MailTemplateAcademicClassTransferred            MailTemplateKey = "academic.class_transferred"
 	MailTemplateExamSittingScheduled                MailTemplateKey = "exam.sitting_scheduled"
 	MailTemplateExamSittingRescheduled              MailTemplateKey = "exam.sitting_rescheduled"
 	MailTemplateExamSittingCancelled                MailTemplateKey = "exam.sitting_cancelled"
@@ -98,12 +104,13 @@ const (
 	MailTemplateExamOwnershipTransferredToYou       MailTemplateKey = "exam.ownership_transferred_to_you"
 	MailTemplateExamOwnershipTransferredFromYou     MailTemplateKey = "exam.ownership_transferred_from_you"
 
-	MailOccurrenceOperatorTest    MailOccurrenceKind = "operator_test"
-	MailOccurrenceAccountToken    MailOccurrenceKind = "account_token"
-	MailOccurrenceSecurityNotice  MailOccurrenceKind = "security_notice"
-	MailOccurrenceInvitation      MailOccurrenceKind = "invitation"
-	MailOccurrenceSittingSchedule MailOccurrenceKind = "sitting_schedule"
-	MailOccurrenceExamManagement  MailOccurrenceKind = "exam_management"
+	MailOccurrenceOperatorTest           MailOccurrenceKind = "operator_test"
+	MailOccurrenceAccountToken           MailOccurrenceKind = "account_token"
+	MailOccurrenceSecurityNotice         MailOccurrenceKind = "security_notice"
+	MailOccurrenceInvitation             MailOccurrenceKind = "invitation"
+	MailOccurrenceAcademicAdministration MailOccurrenceKind = "academic_administration"
+	MailOccurrenceSittingSchedule        MailOccurrenceKind = "sitting_schedule"
+	MailOccurrenceExamManagement         MailOccurrenceKind = "exam_management"
 
 	MailDeliveryQueued     MailDeliveryState = "queued"
 	MailDeliverySending    MailDeliveryState = "sending"
@@ -112,11 +119,12 @@ const (
 	MailDeliverySuppressed MailDeliveryState = "suppressed"
 	MailDeliveryCanceled   MailDeliveryState = "canceled"
 
-	MailDeliveryExpiredCode       = "mail.delivery.expired"
-	MailDeliveryDisabledCode      = "mail.delivery.suppressed_disabled"
-	MailDeliveryObsoleteCode      = "mail.delivery.obsolete"
-	MailDeliveryCanceledCode      = "mail.delivery.canceled"
-	MailDeliveryOperatorRetryCode = "mail.operator.retry"
+	MailDeliveryExpiredCode             = "mail.delivery.expired"
+	MailDeliveryDisabledCode            = "mail.delivery.suppressed_disabled"
+	MailDeliveryRecipientIneligibleCode = "mail.delivery.recipient_ineligible"
+	MailDeliveryObsoleteCode            = "mail.delivery.obsolete"
+	MailDeliveryCanceledCode            = "mail.delivery.canceled"
+	MailDeliveryOperatorRetryCode       = "mail.operator.retry"
 )
 
 var (
@@ -159,6 +167,9 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
 			key == MailTemplateAccessAcademicUnitRoleInvitation || key == MailTemplateAccessInstitutionRoleInvitation ||
 			key == MailTemplateAccessInvitationAccepted || key == MailTemplateAccessInvitationRevoked
+	case MailOccurrenceAcademicAdministration:
+		return key == MailTemplateAcademicClassEnrolled || key == MailTemplateAcademicClassEnrollmentEnded ||
+			key == MailTemplateAcademicClassTransferred
 	case MailOccurrenceSittingSchedule:
 		return key == MailTemplateExamSittingScheduled || key == MailTemplateExamSittingRescheduled ||
 			key == MailTemplateExamSittingCancelled || key == MailTemplateExamSittingAssignmentRemoved
@@ -339,7 +350,8 @@ func (d *MailDelivery) Expire(at time.Time) (*MailDelivery, error) {
 func (d *MailDelivery) Suppress(publicCode string, at time.Time) (*MailDelivery, error) {
 	at = TimeUTC(at)
 	if d == nil || (d.State != MailDeliveryQueued && d.State != MailDeliverySending && d.State != MailDeliveryFailed) ||
-		(publicCode != MailDeliveryDisabledCode && publicCode != MailDeliveryObsoleteCode && publicCode != MailDeliveryExpiredCode) ||
+		(publicCode != MailDeliveryDisabledCode && publicCode != MailDeliveryRecipientIneligibleCode &&
+			publicCode != MailDeliveryObsoleteCode && publicCode != MailDeliveryExpiredCode) ||
 		at.Before(d.UpdatedAt) {
 		return nil, errors.New("model: mail delivery cannot be suppressed")
 	}

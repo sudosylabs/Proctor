@@ -24,12 +24,12 @@ func TestClassMemberOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "POST /api/v1/classes/{class_id}/members", Auth: AuthPrincipalRequired,
 				RequestBodyRef: "#/components/requestBodies/EnrollClassMember", RequestSchema: "EnrollClassMemberRequest",
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ClassMemberEnrolled", SuccessSchema: "ClassEnrollmentResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class_member.invalid", "class_member.student_affiliation_required", "class.enrollment_conflict", "mail.unavailable", "administration.unavailable"),
 			},
 			{
 				Key: "DELETE /api/v1/class-members/{class_member_id}", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ClassMemberEnded", SuccessSchema: "ClassMemberResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "administration.unavailable"),
+				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.enrollment_conflict", "mail.unavailable", "administration.unavailable"),
 			},
 		},
 		Schemas: []openAPIAgreementSchema{

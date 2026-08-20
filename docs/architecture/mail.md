@@ -162,6 +162,15 @@ User does not send a redundant welcome message. A teacher invitation applies
 the Academic Unit membership and invitation-package-origin role binding as one
 business transition and therefore also produces only one acceptance message.
 
+Class enrollment, explicit ending, and transfer each commit one direct notice
+with the membership transition and successful audit. A transfer is one
+`academic.class_transferred` occurrence, not an enrollment-ended occurrence
+plus a new-enrollment occurrence. The frozen copy contains only the affected
+Class display names and exact effective bounds; it excludes the actor, roster,
+authorization grants, and private audit detail. The same transaction advances
+the affected Classes' mail-audience revisions so bounded Sitting
+reconciliation adds, updates, or removes candidate schedule projections.
+
 ## Recipient and fan-out rules
 
 Each delivery has exactly one recipient. Proctor never exposes roster

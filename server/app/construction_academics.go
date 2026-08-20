@@ -90,8 +90,8 @@ func constructAccessAndAcademics(
 			mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
 		),
 		classMembers: newClassMemberService(
-			deps.Store.ClassMember(), deps.Store.Class(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			deps.Store.ClassMember(), deps.Store.Class(), deps.Store.User(),
+			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail, time.Now, model.NewId,
 		),
 	}, nil
 }

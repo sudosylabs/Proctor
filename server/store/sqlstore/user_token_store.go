@@ -265,9 +265,10 @@ func validateRecoveryMail(occurrence *model.MailOccurrence, delivery *model.Mail
 	}
 	queued := delivery.State == model.MailDeliveryQueued && delivery.PublicFailureCode == "" && len(delivery.EncryptedPayload) > 0 &&
 		job.Status == model.JobStatusQueued && job.Revision == 1 && !job.CompletedAt.Valid && job.PublicErrorCode == ""
-	suppressedDisabled := delivery.State == model.MailDeliverySuppressed && delivery.PublicFailureCode == model.MailDeliveryDisabledCode && len(delivery.EncryptedPayload) == 0 &&
+	suppressedTerminal := delivery.State == model.MailDeliverySuppressed &&
+		(delivery.PublicFailureCode == model.MailDeliveryDisabledCode || delivery.PublicFailureCode == model.MailDeliveryRecipientIneligibleCode) && len(delivery.EncryptedPayload) == 0 &&
 		job.Status == model.JobStatusCanceled && job.Revision == 2 && job.CompletedAt.Valid && job.CompletedAt.Time.Equal(delivery.CreatedAt) && job.PublicErrorCode == "job.canceled"
-	if !queued && !suppressedDisabled {
+	if !queued && !suppressedTerminal {
 		return store.NewErrInvalidInput("user_token", "mail_lifecycle", nil)
 	}
 	return nil

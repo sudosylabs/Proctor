@@ -30,6 +30,7 @@ type Properties struct {
 	PersonalAccessToken *PersonalAccessTokenProperties
 	ExamManager         *ExamManagerProperties
 	SittingSchedule     *SittingScheduleProperties
+	ClassTransition     *ClassTransitionProperties
 }
 
 // PersonalAccessTokenDetails is the bounded, scope-safe dynamic input for a
@@ -92,6 +93,23 @@ type SittingScheduleProperties struct {
 	Timezone         string
 }
 
+// ClassTransitionDetails is the complete safe dynamic fact set for one
+// enrollment, ending, or transfer notice.
+type ClassTransitionDetails struct {
+	PreviousClassDisplayName string
+	ClassDisplayName         string
+	StartsAt                 time.Time
+	EndsAt                   time.Time
+}
+
+type ClassTransitionProperties struct {
+	PreviousClassDisplayName string
+	ClassDisplayName         string
+	StartsAt                 string
+	EndsAt                   string
+	Timezone                 string
+}
+
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
 	Key                 i18n.Key
@@ -101,6 +119,7 @@ type Request struct {
 	PersonalAccessToken *PersonalAccessTokenDetails
 	ExamManager         *ExamManagerDetails
 	SittingSchedule     *SittingScheduleDetails
+	ClassTransition     *ClassTransitionDetails
 }
 
 // Message is one safe, fully rendered multipart-alternative payload.
@@ -241,6 +260,25 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			Timezone:         resolved.Copy.SittingSchedule.TimezoneUTC,
 		}
 	}
+	classKey := isClassTransitionTemplate(request.Key)
+	if classKey != (request.ClassTransition != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
+	}
+	if request.ClassTransition != nil {
+		if resolved.Copy.ClassTransition == nil || !validClassTransitionDetails(request.Key, request.ClassTransition) {
+			return Message{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
+		}
+		endsAt := resolved.Copy.ClassTransition.NoScheduledEnd
+		if !request.ClassTransition.EndsAt.IsZero() {
+			endsAt = request.ClassTransition.EndsAt.UTC().Format(time.RFC3339)
+		}
+		properties.ClassTransition = &ClassTransitionProperties{
+			PreviousClassDisplayName: strings.TrimSpace(request.ClassTransition.PreviousClassDisplayName),
+			ClassDisplayName:         strings.TrimSpace(request.ClassTransition.ClassDisplayName),
+			StartsAt:                 request.ClassTransition.StartsAt.UTC().Format(time.RFC3339), EndsAt: endsAt,
+			Timezone: resolved.Copy.ClassTransition.TimezoneUTC,
+		}
+	}
 
 	htmlValue, ok := r.html[request.Key]
 	if !ok {
@@ -349,6 +387,43 @@ func validSittingScheduleDetails(details *SittingScheduleDetails) bool {
 			if unicode.IsControl(character) {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+func isClassTransitionTemplate(key i18n.Key) bool {
+	switch key {
+	case i18n.AcademicClassEnrolled, i18n.AcademicClassEnrollmentEnded, i18n.AcademicClassTransferred:
+		return true
+	default:
+		return false
+	}
+}
+
+func validClassTransitionDetails(key i18n.Key, details *ClassTransitionDetails) bool {
+	if details == nil || details.StartsAt.IsZero() || (!details.EndsAt.IsZero() && !details.StartsAt.Before(details.EndsAt)) {
+		return false
+	}
+	previous := strings.TrimSpace(details.PreviousClassDisplayName)
+	if (key == i18n.AcademicClassTransferred) != (previous != "") || !validBoundedMailLabel(details.ClassDisplayName) ||
+		(previous != "" && !validBoundedMailLabel(previous)) {
+		return false
+	}
+	if key == i18n.AcademicClassEnrollmentEnded && details.EndsAt.IsZero() {
+		return false
+	}
+	return true
+}
+
+func validBoundedMailLabel(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > 255 {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
 		}
 	}
 	return true

@@ -42,6 +42,30 @@ func TestExamManagerMailMeaningsAreClosed(t *testing.T) {
 	}
 }
 
+func TestClassTransitionMailMeaningsAreClosed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for _, key := range []MailTemplateKey{
+		MailTemplateAcademicClassEnrolled,
+		MailTemplateAcademicClassEnrollmentEnded,
+		MailTemplateAcademicClassTransferred,
+	} {
+		if !key.IsValid() {
+			t.Errorf("MailTemplateKey(%q) is invalid", key)
+		}
+		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceAcademicAdministration,
+			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
+		if err := occurrence.Validate(); err != nil {
+			t.Errorf("MailOccurrence(%q): %v", key, err)
+		}
+	}
+	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceAcademicAdministration,
+		TemplateKey: MailTemplateIdentityPasswordChanged, ActorUserID: NewUserID(), CreatedAt: at}
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("academic administration occurrence accepted an identity-security template")
+	}
+}
+
 func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)

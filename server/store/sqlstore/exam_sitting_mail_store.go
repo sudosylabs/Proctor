@@ -207,7 +207,7 @@ func (s sqlExamSittingStore) CommitMailRecipient(ctx context.Context, input *sto
 			return fmt.Errorf("commit Sitting mail recipient: %w", err)
 		}),
 		func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSittingMailRecipientResult, error) {
-			user, err := lockSittingMailUser(ctx, tx, input.Recipient.ID)
+			user, err := lockMailRecipientUser(ctx, tx, input.Recipient.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -381,7 +381,7 @@ func lockSittingMailFanout(ctx context.Context, tx *sqlxTxWrapper, occurrenceID 
 	return fanout, sitting, now, nil
 }
 
-func lockSittingMailUser(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID) (*model.User, error) {
+func lockMailRecipientUser(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID) (*model.User, error) {
 	columns := userSliceColumns()
 	for index := range columns {
 		columns[index] = columns[index][len("users."):]
@@ -454,7 +454,7 @@ func lockSittingMailDeliveryFence(ctx context.Context, tx *sqlxTxWrapper, delive
 	if err != nil {
 		return nil, invalidPersistedState("mail_delivery", "target_user_id", err)
 	}
-	user, err := lockSittingMailUser(ctx, tx, userID)
+	user, err := lockMailRecipientUser(ctx, tx, userID)
 	if err != nil {
 		return nil, err
 	}

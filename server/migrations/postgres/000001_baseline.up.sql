@@ -397,7 +397,7 @@ CREATE UNIQUE INDEX invitations_pending_institution_role_package_key
 -- independent because an administrator may notify a pre-User Invitation.
 CREATE TABLE mail_occurrences (
     id varchar(26) PRIMARY KEY,
-    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'sitting_schedule', 'exam_management')),
+    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'academic_administration', 'sitting_schedule', 'exam_management')),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
@@ -411,6 +411,7 @@ CREATE TABLE mail_occurrences (
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.academic_unit_role_invitation', 'access.institution_role_invitation',
         'access.invitation_accepted', 'access.invitation_revoked',
+        'academic.class_enrolled', 'academic.class_enrollment_ended', 'academic.class_transferred',
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
@@ -451,6 +452,7 @@ CREATE TABLE mail_deliveries (
         'access.student_class_invitation', 'access.teacher_academic_unit_invitation',
         'access.academic_unit_role_invitation', 'access.institution_role_invitation',
         'access.invitation_accepted', 'access.invitation_revoked',
+        'academic.class_enrolled', 'academic.class_enrollment_ended', 'academic.class_transferred',
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',

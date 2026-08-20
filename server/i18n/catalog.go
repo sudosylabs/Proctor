@@ -100,6 +100,7 @@ type Copy struct {
 	PersonalAccessToken *PersonalAccessTokenCopy `json:"personal_access_token,omitempty"`
 	ExamManager         *ExamManagerCopy         `json:"exam_manager,omitempty"`
 	SittingSchedule     *SittingScheduleCopy     `json:"sitting_schedule,omitempty"`
+	ClassTransition     *ClassTransitionCopy     `json:"class_transition,omitempty"`
 }
 
 // PersonalAccessTokenCopy contains the localized labels and closed scope
@@ -134,6 +135,19 @@ type SittingScheduleCopy struct {
 	EndsAtLabel   string `json:"ends_at_label"`
 	TimezoneLabel string `json:"timezone_label"`
 	TimezoneUTC   string `json:"timezone_utc"`
+}
+
+// ClassTransitionCopy contains localized labels for one student's bounded
+// Class membership transition facts.
+type ClassTransitionCopy struct {
+	ClassLabel         string `json:"class_label"`
+	PreviousClassLabel string `json:"previous_class_label"`
+	NewClassLabel      string `json:"new_class_label"`
+	StartsAtLabel      string `json:"starts_at_label"`
+	EndsAtLabel        string `json:"ends_at_label"`
+	TimezoneLabel      string `json:"timezone_label"`
+	TimezoneUTC        string `json:"timezone_utc"`
+	NoScheduledEnd     string `json:"no_scheduled_end"`
 }
 
 // ResolvedCopy records which locale supplied a complete copy model.
@@ -324,6 +338,28 @@ func (c Copy) validate() error {
 			{name: "sitting_schedule.timezone_utc", value: c.SittingSchedule.TimezoneUTC},
 		}
 		for _, field := range sittingFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
+			}
+		}
+	}
+	if c.ClassTransition != nil {
+		classFields := []struct{ name, value string }{
+			{name: "class_transition.class_label", value: c.ClassTransition.ClassLabel},
+			{name: "class_transition.previous_class_label", value: c.ClassTransition.PreviousClassLabel},
+			{name: "class_transition.new_class_label", value: c.ClassTransition.NewClassLabel},
+			{name: "class_transition.starts_at_label", value: c.ClassTransition.StartsAtLabel},
+			{name: "class_transition.ends_at_label", value: c.ClassTransition.EndsAtLabel},
+			{name: "class_transition.timezone_label", value: c.ClassTransition.TimezoneLabel},
+			{name: "class_transition.timezone_utc", value: c.ClassTransition.TimezoneUTC},
+			{name: "class_transition.no_scheduled_end", value: c.ClassTransition.NoScheduledEnd},
+		}
+		for _, field := range classFields {
 			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
 				return fmt.Errorf("%s is empty or invalid", field.name)
 			}

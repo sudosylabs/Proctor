@@ -57,9 +57,11 @@ func (a *institutionAuthorizerFake) Authorize(
 type institutionAuditorFake struct {
 	events    *[]string
 	beginID   string
+	beginIDs  []string
 	failCode  string
 	action    model.Action
 	resource  model.Resource
+	resources []model.Resource
 	scopeType model.RoleScopeType
 	scopeID   string
 }
@@ -75,6 +77,12 @@ func (a *institutionAuditorFake) Begin(
 ) (string, error) {
 	*a.events = append(*a.events, "audit-begin")
 	a.action, a.resource = action, resource
+	a.resources = append(a.resources, resource)
+	if len(a.beginIDs) > 0 {
+		id := a.beginIDs[0]
+		a.beginIDs = a.beginIDs[1:]
+		return id, nil
+	}
 	return a.beginID, nil
 }
 

@@ -1789,17 +1789,23 @@ type ClassEnrollmentResult struct {
 // transfer and its already-persisted mutation audit. A transfer closes the
 // previous membership and creates Member in the same transaction.
 type ClassMemberEnrollment struct {
-	Member       *model.ClassMember
-	AuditEventID string
-	AuditAt      int64
+	Member                    *model.ClassMember
+	ExpectedPreviousID        model.ClassMemberID
+	ExpectedRecipientRevision int64
+	Notice                    *PreparedMail
+	AuditEventID              string
+	PreviousAuditEventID      string
+	AuditAt                   int64
 }
 
 type ClassMemberEnd struct {
-	ID               string
-	ExpectedRevision int64
-	EndAt            int64
-	AuditEventID     string
-	AuditAt          int64
+	ID                        string
+	ExpectedRevision          int64
+	ExpectedRecipientRevision int64
+	EndAt                     int64
+	Notice                    *PreparedMail
+	AuditEventID              string
+	AuditAt                   int64
 }
 
 // ClassMemberStore owns transactional student enrollment and history.

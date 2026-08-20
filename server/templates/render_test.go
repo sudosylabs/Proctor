@@ -115,6 +115,35 @@ func TestRendererIncludesTimezoneExplicitSafeSittingFacts(t *testing.T) {
 	}
 }
 
+func TestRendererEscapesCompleteClassTransitionFacts(t *testing.T) {
+	t.Parallel()
+	renderer, err := DefaultRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := renderer.Render(Request{Key: i18n.AcademicClassTransferred, ClassTransition: &ClassTransitionDetails{
+		PreviousClassDisplayName: `Old <Class> & A`, ClassDisplayName: `New <Class> & B`,
+		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
+		EndsAt:   time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Old &lt;Class&gt; &amp; A", "New &lt;Class&gt; &amp; B", "2026-09-01T06:30:00Z", "2027-06-30T16:00:00Z", "UTC"} {
+		if !strings.Contains(message.HTML, want) {
+			t.Errorf("HTML does not contain %q", want)
+		}
+	}
+	if !strings.Contains(message.Text, `Old <Class> & A`) || !strings.Contains(message.Text, `New <Class> & B`) {
+		t.Fatal("text alternative changed Class display names")
+	}
+	for _, forbidden := range []string{"student list", "exam instructions", "actor-user", "private reason"} {
+		if strings.Contains(strings.ToLower(message.HTML), forbidden) || strings.Contains(strings.ToLower(message.Text), forbidden) {
+			t.Fatalf("Class transition notice leaked forbidden content %q", forbidden)
+		}
+	}
+}
+
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
@@ -204,6 +233,13 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		if isSittingScheduleTemplate(key) {
 			request.SittingSchedule = &SittingScheduleDetails{ExamTitle: "Representative exam", ClassDisplayName: "Class A",
 				StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC), EndsAt: time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)}
+		}
+		if isClassTransitionTemplate(key) {
+			request.ClassTransition = &ClassTransitionDetails{PreviousClassDisplayName: "Class A", ClassDisplayName: "Class B",
+				StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC), EndsAt: time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC)}
+			if key != i18n.AcademicClassTransferred {
+				request.ClassTransition.PreviousClassDisplayName = ""
+			}
 		}
 		message, err := renderer.Render(request)
 		if err != nil {

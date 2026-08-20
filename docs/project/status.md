@@ -294,6 +294,12 @@ ownership transfer tells the previous Owner that they remain a Manager. PAT
 notices use ordinary security-delivery work and contain only the safe
 description, exact expiry, action time, localized scope context, and bounded
 action count; credentials, hashes, and complete scopes are excluded. Sitting
+scheduling and Class administration now form one convergent notification
+slice. Enrollment, explicit ending, and transfer commit their exact direct
+student notice atomically with membership and audit; transfer emits only its
+single semantic message. Each transition advances the affected Classes'
+durable audience revisions so bounded multi-node reconciliation adds, updates,
+or removes candidate projections for upcoming Sittings. Sitting
 scheduling, rescheduling, cancellation, and assignment removal now use
 an atomic frozen fan-out bundle plus bounded expansion Job. Per-candidate
 last-communicated projections coalesce unsent changes, authoritative pre-send

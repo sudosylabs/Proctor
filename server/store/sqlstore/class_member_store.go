@@ -77,15 +77,35 @@ func (s SQLClassMemberStore) EnrollWithAudit(
 	ctx context.Context,
 	input *store.ClassMemberEnrollment,
 ) (*store.ClassEnrollmentResult, error) {
-	if input == nil || input.Member == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+	if input == nil || input.Member == nil || input.Notice == nil || input.ExpectedRecipientRevision < 1 ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "enrollment", nil)
+	}
+	transferExpected := input.ExpectedPreviousID.IsValid()
+	if transferExpected != model.IsValidId(input.PreviousAuditEventID) ||
+		(transferExpected && input.PreviousAuditEventID == input.AuditEventID) {
+		return nil, store.NewErrInvalidInput("class_member", "enrollment_audit", nil)
 	}
 	candidate := *input.Member
 	if !candidate.ID.IsValid() || candidate.CreatedAt.IsZero() || candidate.UpdatedAt.IsZero() ||
 		candidate.Revision <= 0 || !candidate.ClassID.IsValid() || !candidate.UserID.IsValid() {
 		return nil, store.NewErrInvalidInput("class_member", "value", nil)
 	}
-	return s.enroll(ctx, &candidate, input.AuditEventID, input.AuditAt)
+	payloadKeyID, err := validateClassMemberTransitionMail(input.Notice, candidate.UserID, candidate.CreatedAt,
+		model.MailTemplateAcademicClassEnrolled, model.MailTemplateAcademicClassTransferred)
+	if err != nil {
+		return nil, err
+	}
+	return s.enrollWithTransition(ctx, &candidate, input.ExpectedPreviousID, input.Notice, payloadKeyID,
+		input.ExpectedRecipientRevision, input.AuditEventID, input.PreviousAuditEventID, input.AuditAt)
+}
+
+func (s SQLClassMemberStore) enrollWithTransition(ctx context.Context, candidate *model.ClassMember,
+	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
+	auditEventID, previousAuditEventID string, auditAt int64,
+) (*store.ClassEnrollmentResult, error) {
+	return s.enrollTransaction(ctx, candidate, expectedPreviousID, notice, payloadKeyID, expectedRecipientRevision,
+		auditEventID, previousAuditEventID, auditAt)
 }
 
 func (s SQLClassMemberStore) enroll(
@@ -94,12 +114,29 @@ func (s SQLClassMemberStore) enroll(
 	auditEventID string,
 	auditAt int64,
 ) (*store.ClassEnrollmentResult, error) {
+	return s.enrollTransaction(ctx, candidate, "", nil, "", 0, auditEventID, "", auditAt)
+}
+
+func (s SQLClassMemberStore) enrollTransaction(ctx context.Context, candidate *model.ClassMember,
+	expectedPreviousID model.ClassMemberID, notice *store.PreparedMail, payloadKeyID string, expectedRecipientRevision int64,
+	auditEventID, previousAuditEventID string, auditAt int64,
+) (*store.ClassEnrollmentResult, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class enrollment", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ClassEnrollmentResult, error) {
+		if notice != nil {
+			if err := lockClassMemberNoticeRecipient(ctx, tx, candidate.UserID, expectedRecipientRevision, notice); err != nil {
+				return nil, err
+			}
+		}
 		if err := lockAffiliationLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
 		if err := lockClassLifecycle(ctx, tx); err != nil {
 			return nil, err
+		}
+		if notice != nil && payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
 		}
 		var periodRaw string
 		if err := tx.Get(ctx, &periodRaw, `
@@ -184,6 +221,22 @@ func (s SQLClassMemberStore) enroll(
 		case err != nil && !isNoRows(err):
 			return nil, fmt.Errorf("find current class enrollment: %w", err)
 		}
+		actualPreviousID := model.ClassMemberID("")
+		if previous != nil {
+			actualPreviousID = previous.ID
+		}
+		if notice != nil && actualPreviousID != expectedPreviousID {
+			return nil, store.NewErrConflict("class_member", "class_member_transition_changed", nil)
+		}
+		if notice != nil {
+			expectedKey := model.MailTemplateAcademicClassEnrolled
+			if previous != nil {
+				expectedKey = model.MailTemplateAcademicClassTransferred
+			}
+			if notice.Occurrence.TemplateKey != expectedKey {
+				return nil, store.NewErrInvalidInput("class_member", "transition_notice", nil)
+			}
+		}
 		if audienceRevisions == nil {
 			audienceRevisions, err = advanceClassMailAudienceRevisions(ctx, tx, candidate.ClassID)
 			if err != nil {
@@ -235,15 +288,28 @@ func (s SQLClassMemberStore) enroll(
 				translateError("class_member", candidate.ID.String(), err),
 			)
 		}
+		if notice != nil {
+			if err := insertRecoveryMail(ctx, tx, notice.Occurrence, notice.Delivery, notice.Job, payloadKeyID); err != nil {
+				return nil, fmt.Errorf("insert Class transition mail: %w", err)
+			}
+		}
 		result := &store.ClassEnrollmentResult{Membership: candidate, Previous: previous}
 		if auditEventID != "" {
-			enrollment := &model.ClassEnrollment{Membership: candidate, Previous: previous}
-			encoded, appErr := model.EncodeAuditData(enrollment.Auditable())
+			encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 			if appErr != nil {
 				return nil, appErr
 			}
 			if _, err := completeAuditEvent(ctx, tx, auditEventID, model.AuditStatusSuccess, "", encoded, auditAt); err != nil {
 				return nil, fmt.Errorf("complete class enrollment audit: %w", err)
+			}
+			if previous != nil {
+				previousEncoded, encodeErr := model.EncodeAuditData(previous.Auditable())
+				if encodeErr != nil {
+					return nil, encodeErr
+				}
+				if _, err := completeAuditEvent(ctx, tx, previousAuditEventID, model.AuditStatusSuccess, "", previousEncoded, auditAt); err != nil {
+					return nil, fmt.Errorf("complete previous class enrollment audit: %w", err)
+				}
 			}
 		}
 		return result, nil
@@ -332,7 +398,7 @@ func (s SQLClassMemberStore) EndWithAudit(
 	ctx context.Context,
 	input *store.ClassMemberEnd,
 ) (*model.ClassMember, error) {
-	if input == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 ||
+	if input == nil || input.Notice == nil || !model.IsValidId(input.ID) || input.ExpectedRevision <= 0 || input.ExpectedRecipientRevision < 1 ||
 		input.EndAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class_member", "end", nil)
 	}
@@ -343,12 +409,32 @@ func (s SQLClassMemberStore) EndWithAudit(
 		})); err != nil {
 			return nil, translateError("class_member", input.ID, err)
 		}
+		userID, parseErr := model.ParseUserID(row.UserID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("class_member", "user_id", parseErr)
+		}
+		if err := lockClassMemberNoticeRecipient(ctx, tx, userID, input.ExpectedRecipientRevision, input.Notice); err != nil {
+			return nil, err
+		}
 		if err := lockClassEnrollment(ctx, tx, row.UserID, row.AcademicPeriodID); err != nil {
 			return nil, err
+		}
+		payloadKeyID, err := validateClassMemberTransitionMail(input.Notice, model.UserID(row.UserID), model.TimeFromMillis(input.EndAt),
+			model.MailTemplateAcademicClassEnrollmentEnded)
+		if err != nil {
+			return nil, err
+		}
+		if payloadKeyID != "" {
+			if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+				return nil, err
+			}
 		}
 		ended, err := s.endClassMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
 		if err != nil {
 			return nil, err
+		}
+		if err := insertRecoveryMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+			return nil, fmt.Errorf("insert Class enrollment-ended mail: %w", err)
 		}
 		encoded, appErr := model.EncodeAuditData(ended.Auditable())
 		if appErr != nil {
@@ -359,6 +445,55 @@ func (s SQLClassMemberStore) EndWithAudit(
 		}
 		return ended, nil
 	})
+}
+
+func lockClassMemberNoticeRecipient(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID,
+	expectedRevision int64, notice *store.PreparedMail,
+) error {
+	current, err := lockMailRecipientUser(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	if current.Revision != expectedRevision {
+		return store.NewErrConflict("class_member", "class_member_recipient_changed", nil)
+	}
+	ineligibleNotice := notice != nil && notice.Delivery != nil && notice.Delivery.State == model.MailDeliverySuppressed &&
+		notice.Delivery.PublicFailureCode == model.MailDeliveryRecipientIneligibleCode
+	if current.IsActive() == ineligibleNotice {
+		return store.NewErrConflict("class_member", "class_member_recipient_changed", nil)
+	}
+	return nil
+}
+
+func validateClassMemberTransitionMail(prepared *store.PreparedMail, userID model.UserID, at time.Time,
+	allowed ...model.MailTemplateKey,
+) (string, error) {
+	if prepared == nil || prepared.Occurrence == nil || prepared.Delivery == nil || prepared.Job == nil ||
+		!userID.IsValid() || at.IsZero() || prepared.Occurrence.Kind != model.MailOccurrenceAcademicAdministration ||
+		prepared.Delivery.TargetUserID != userID || prepared.Delivery.TargetInvitationID.IsValid() ||
+		prepared.Job.Type != model.JobTypeMailDeliver || !prepared.Occurrence.CreatedAt.Equal(model.TimeUTC(at)) ||
+		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour {
+		return "", store.NewErrInvalidInput("class_member", "transition_notice", nil)
+	}
+	key := prepared.Occurrence.TemplateKey
+	allowedKey := false
+	for _, candidate := range allowed {
+		if key == candidate {
+			allowedKey = true
+			break
+		}
+	}
+	if !allowedKey || prepared.Delivery.TemplateKey != key {
+		return "", store.NewErrInvalidInput("class_member", "transition_notice", nil)
+	}
+	if err := validateRecoveryMail(prepared.Occurrence, prepared.Delivery, prepared.Job); err != nil {
+		return "", err
+	}
+	payloadKeyID, err := mailPayloadKeyID(prepared.Delivery.EncryptedPayload)
+	if err != nil {
+		return "", store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	return payloadKeyID, nil
 }
 
 func (s SQLClassMemberStore) endClassMember(
