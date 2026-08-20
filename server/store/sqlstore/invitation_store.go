@@ -71,43 +71,78 @@ func (s SQLInvitationStore) IssueStudentClass(ctx context.Context, input *store.
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "student class invitation issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Invitation, error) {
-		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
-		}
-		if err := requireInvitationPolicy(ctx, tx); err != nil {
-			return nil, err
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		if !databaseNow.Before(invitation.ExpiresAt) || (invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
-			return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
-		}
-		if err = terminalizeElapsedStudentClassInvitationConflict(ctx, tx, invitation.TargetEmail, invitation.AcademicPeriodID, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = validateStudentClassInvitationPackage(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
-			return nil, err
-		}
-		if err := insertInvitation(ctx, tx, &invitation); err != nil {
-			return nil, err
-		}
-		if err := insertInvitationMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
-			return nil, err
-		}
-		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete invitation issue audit: %w", err)
-		}
-		return &invitation, nil
+		return issueStudentClassInvitation(ctx, tx, input, &invitation, payloadKeyID)
 	})
+}
+
+func (s SQLInvitationStore) IssueStudentClassIdempotently(ctx context.Context, input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if err := validateStudentClassInvitationIssue(input); err != nil || command == nil {
+		return nil, store.NewErrInvalidInput("invitation", "idempotent_student_issue", err)
+	}
+	invitation := *input.Invitation
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent student class invitation issue", idempotentMutation[*store.InvitationCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationCommandResult, error) {
+			value, executeErr := issueStudentClassInvitation(ctx, tx, input, &invitation, payloadKeyID)
+			return &store.InvitationCommandResult{Invitation: value}, executeErr
+		},
+		encode: encodeInvitationCommandOutcome, decode: decodeInvitationCommandOutcome,
+		hydrateReplay: hydrateInvitationCommandOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, value.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func issueStudentClassInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.StudentClassInvitationIssue, invitation *model.Invitation, payloadKeyID string) (*model.Invitation, error) {
+	if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+		return nil, err
+	}
+	if err := requireInvitationPolicy(ctx, tx); err != nil {
+		return nil, err
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if !databaseNow.Before(invitation.ExpiresAt) || (invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time)) {
+		return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
+	}
+	if err = terminalizeElapsedStudentClassInvitationConflict(ctx, tx, invitation.TargetEmail, invitation.AcademicPeriodID, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = validateStudentClassInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = requireStudentClassInvitationAuthority(ctx, tx, invitation.InviterUserID, invitation.ClassID, databaseNow); err != nil {
+		return nil, err
+	}
+	if err := insertInvitation(ctx, tx, invitation); err != nil {
+		return nil, err
+	}
+	if err := insertInvitationMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(invitation.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete invitation issue audit: %w", err)
+	}
+	return invitation, nil
 }
 
 func (s SQLInvitationStore) IssueTeacherAcademicUnit(ctx context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
@@ -120,47 +155,82 @@ func (s SQLInvitationStore) IssueTeacherAcademicUnit(ctx context.Context, input 
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "teacher academic unit invitation issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Invitation, error) {
-		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
-		}
-		if err := requireInvitationPolicy(ctx, tx); err != nil {
-			return nil, err
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		occurrence, delivery, deliveryJob, err := teacherInvitationIssueAt(input, &invitation, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		if invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time) {
-			return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
-		}
-		if err = terminalizeElapsedTeacherAcademicUnitInvitationConflict(ctx, tx, invitation.TargetEmail, invitation.AcademicUnitID, invitation.RoleID, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = insertInvitation(ctx, tx, &invitation); err != nil {
-			return nil, err
-		}
-		if err = insertInvitationMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
-			return nil, err
-		}
-		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete teacher invitation issue audit: %w", err)
-		}
-		return &invitation, nil
+		return issueTeacherAcademicUnitInvitation(ctx, tx, input, &invitation, payloadKeyID)
 	})
+}
+
+func (s SQLInvitationStore) IssueTeacherAcademicUnitIdempotently(ctx context.Context, input *store.TeacherAcademicUnitInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if err := validateTeacherAcademicUnitInvitationIssue(input); err != nil || command == nil {
+		return nil, store.NewErrInvalidInput("invitation", "idempotent_teacher_issue", err)
+	}
+	invitation := *input.Invitation
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent teacher academic unit invitation issue", idempotentMutation[*store.InvitationCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationCommandResult, error) {
+			value, executeErr := issueTeacherAcademicUnitInvitation(ctx, tx, input, &invitation, payloadKeyID)
+			return &store.InvitationCommandResult{Invitation: value}, executeErr
+		},
+		encode: encodeInvitationCommandOutcome, decode: decodeInvitationCommandOutcome,
+		hydrateReplay: hydrateInvitationCommandOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, value.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func issueTeacherAcademicUnitInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.TeacherAcademicUnitInvitationIssue, invitation *model.Invitation, payloadKeyID string) (*model.Invitation, error) {
+	if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+		return nil, err
+	}
+	if err := requireInvitationPolicy(ctx, tx); err != nil {
+		return nil, err
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	occurrence, delivery, deliveryJob, err := teacherInvitationIssueAt(input, invitation, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time) {
+		return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
+	}
+	if err = terminalizeElapsedTeacherAcademicUnitInvitationConflict(ctx, tx, invitation.TargetEmail, invitation.AcademicUnitID, invitation.RoleID, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = insertInvitation(ctx, tx, invitation); err != nil {
+		return nil, err
+	}
+	if err = insertInvitationMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(invitation.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete teacher invitation issue audit: %w", err)
+	}
+	return invitation, nil
 }
 
 func (s SQLInvitationStore) IssueScopedRole(ctx context.Context, input *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
@@ -173,47 +243,347 @@ func (s SQLInvitationStore) IssueScopedRole(ctx context.Context, input *store.Sc
 		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "scoped Role invitation issue", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Invitation, error) {
-		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
-		}
-		if err := requireExistingUserInvitationPolicy(ctx, tx); err != nil {
-			return nil, err
-		}
-		databaseNow, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		occurrence, delivery, deliveryJob, err := scopedRoleInvitationIssueAt(input, &invitation, databaseNow)
-		if err != nil {
-			return nil, err
-		}
-		if invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time) {
-			return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
-		}
-		if err = terminalizeElapsedScopedRoleInvitationConflict(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = validateScopedRoleInvitationPackage(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = requireScopedRoleInvitationAuthority(ctx, tx, &invitation, databaseNow); err != nil {
-			return nil, err
-		}
-		if err = insertInvitation(ctx, tx, &invitation); err != nil {
-			return nil, err
-		}
-		if err = insertInvitationMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
-			return nil, err
-		}
-		encoded, appErr := model.EncodeAuditData(invitation.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete scoped Role invitation issue audit: %w", err)
-		}
-		return &invitation, nil
+		return issueScopedRoleInvitation(ctx, tx, input, &invitation, payloadKeyID)
 	})
+}
+
+func (s SQLInvitationStore) IssueScopedRoleIdempotently(ctx context.Context, input *store.ScopedRoleInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if err := validateScopedRoleInvitationIssue(input); err != nil || command == nil {
+		return nil, store.NewErrInvalidInput("invitation", "idempotent_role_issue", err)
+	}
+	invitation := *input.Invitation
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("mail_delivery", "encrypted_payload", err)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent scoped Role invitation issue", idempotentMutation[*store.InvitationCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationCommandResult, error) {
+			value, executeErr := issueScopedRoleInvitation(ctx, tx, input, &invitation, payloadKeyID)
+			return &store.InvitationCommandResult{Invitation: value}, executeErr
+		},
+		encode: encodeInvitationCommandOutcome, decode: decodeInvitationCommandOutcome,
+		hydrateReplay: hydrateInvitationCommandOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, value.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func issueScopedRoleInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.ScopedRoleInvitationIssue, invitation *model.Invitation, payloadKeyID string) (*model.Invitation, error) {
+	if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+		return nil, err
+	}
+	if err := requireExistingUserInvitationPolicy(ctx, tx); err != nil {
+		return nil, err
+	}
+	databaseNow, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	occurrence, delivery, deliveryJob, err := scopedRoleInvitationIssueAt(input, invitation, databaseNow)
+	if err != nil {
+		return nil, err
+	}
+	if invitation.IntendedEndsAt.Valid && !databaseNow.Before(invitation.IntendedEndsAt.Time) {
+		return nil, store.NewErrConflict("invitation", "invitation_expired", nil)
+	}
+	if err = terminalizeElapsedScopedRoleInvitationConflict(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = validateScopedRoleInvitationPackage(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = requireScopedRoleInvitationAuthority(ctx, tx, invitation, databaseNow); err != nil {
+		return nil, err
+	}
+	if err = insertInvitation(ctx, tx, invitation); err != nil {
+		return nil, err
+	}
+	if err = insertInvitationMail(ctx, tx, occurrence, delivery, deliveryJob, payloadKeyID); err != nil {
+		return nil, err
+	}
+	encoded, appErr := model.EncodeAuditData(invitation.Auditable())
+	if appErr != nil {
+		return nil, appErr
+	}
+	if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
+		return nil, fmt.Errorf("complete scoped Role invitation issue audit: %w", err)
+	}
+	return invitation, nil
+}
+
+const (
+	invitationOutcomeKindInvitation = "invitation"
+	invitationOutcomeKindDuplicate  = "duplicate"
+)
+
+type invitationCommandOutcome struct {
+	Kind         string                           `json:"kind"`
+	InvitationID string                           `json:"invitation_id,omitempty"`
+	Delivery     *store.InvitationDeliverySummary `json:"delivery,omitempty"`
+}
+
+func encodeInvitationCommandOutcome(result *store.InvitationCommandResult) ([]byte, error) {
+	if result == nil || result.Invitation == nil || !result.Invitation.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("invitation", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation, InvitationID: result.Invitation.ID.String()})
+}
+
+func decodeInvitationCommandOutcome(version int, data []byte) (*store.InvitationCommandResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported Invitation outcome version %d", version)
+	}
+	var outcome invitationCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	if outcome.Kind == invitationOutcomeKindDuplicate {
+		return &store.InvitationCommandResult{Duplicate: true}, nil
+	}
+	id, err := model.ParseInvitationID(outcome.InvitationID)
+	if err != nil || outcome.Kind != invitationOutcomeKindInvitation {
+		return nil, invalidPersistedState("command_outcome", "invitation", err)
+	}
+	return &store.InvitationCommandResult{Invitation: &model.Invitation{ID: id}}, nil
+}
+
+func hydrateInvitationCommandOutcome(ctx context.Context, tx *sqlxTxWrapper, result *store.InvitationCommandResult) (*store.InvitationCommandResult, error) {
+	if result == nil || result.Duplicate {
+		return result, nil
+	}
+	invitation, err := getInvitationInTransaction(ctx, tx, result.Invitation.ID)
+	if err != nil {
+		return nil, err
+	}
+	result.Invitation = invitation
+	return result, nil
+}
+
+func (s SQLInvitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationCommandResult, error) {
+	result, err := replayIdempotentMutation(ctx, s.SQLStore, "replay Invitation issue", idempotentMutation[*store.InvitationCommandResult]{
+		command: command, auditEventID: auditID, decode: decodeInvitationCommandOutcome,
+		hydrateReplay: hydrateInvitationCommandOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, auditID, auditAt, value.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = true
+	return result.Value, nil
+}
+
+func (s SQLInvitationStore) FindCommandOutcome(ctx context.Context, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	result, err := replayIdempotentMutation(ctx, s.SQLStore, "find Invitation issue outcome", idempotentMutation[*store.InvitationCommandResult]{
+		command: command, decode: decodeInvitationCommandOutcome, hydrateReplay: hydrateInvitationCommandOutcome,
+		freshAuditEventID: func(*store.InvitationCommandResult) (string, error) { return "", nil },
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = true
+	return result.Value, nil
+}
+
+func (s SQLInvitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
+	result, err := replayIdempotentMutation(ctx, s.SQLStore, "replay Invitation administration", idempotentMutation[*store.InvitationAdministrationCommandResult]{
+		command: command, auditEventID: auditID, decode: decodeInvitationAdministrationOutcome,
+		hydrateReplay: hydrateInvitationAdministrationOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationAdministrationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, auditID, auditAt, value.Record.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = true
+	return result.Value, nil
+}
+
+func (s SQLInvitationStore) RecordBatchDuplicate(ctx context.Context, input *store.InvitationBatchDuplicate, command *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
+	if err := validateInvitationBatchDuplicate(input, command); err != nil {
+		return nil, store.NewErrInvalidInput("invitation", "batch_duplicate", nil)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "record Invitation batch duplicate", idempotentMutation[*store.InvitationBatchCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationBatchCommandResult, error) {
+			if authorityErr := validateInvitationBatchDuplicateAuthority(ctx, tx, input, command); authorityErr != nil {
+				return nil, authorityErr
+			}
+			if completeErr := completeInvitationBatchDuplicateAudit(ctx, tx, input, true, ""); completeErr != nil {
+				return nil, completeErr
+			}
+			return &store.InvitationBatchCommandResult{Duplicate: true}, nil
+		},
+		encode: func(value *store.InvitationBatchCommandResult) ([]byte, error) {
+			if value == nil || !value.Duplicate {
+				return nil, store.NewErrInvalidInput("invitation", "batch_duplicate_outcome", nil)
+			}
+			return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindDuplicate})
+		},
+		decode: func(version int, data []byte) (*store.InvitationBatchCommandResult, error) {
+			if version != 1 {
+				return nil, fmt.Errorf("unsupported Invitation batch outcome version %d", version)
+			}
+			var outcome invitationCommandOutcome
+			if err := decodeCommandOutcome(data, &outcome); err != nil {
+				return nil, err
+			}
+			switch outcome.Kind {
+			case invitationOutcomeKindDuplicate:
+				return &store.InvitationBatchCommandResult{Duplicate: true}, nil
+			case invitationOutcomeKindInvitation:
+				id, parseErr := model.ParseInvitationID(outcome.InvitationID)
+				if parseErr != nil {
+					return nil, invalidPersistedState("command_outcome", "batch_invitation_id", parseErr)
+				}
+				return &store.InvitationBatchCommandResult{InvitationID: id}, nil
+			default:
+				return nil, invalidPersistedState("command_outcome", "batch_kind", nil)
+			}
+		},
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationBatchCommandResult, originalAuditID string) error {
+			return completeInvitationBatchDuplicateAudit(ctx, tx, input, value.Duplicate, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func validateInvitationBatchDuplicate(input *store.InvitationBatchDuplicate, command *store.CommandIdempotency) error {
+	if input == nil || command == nil || !input.ActorUserID.IsValid() || input.ActorUserID != command.UserID ||
+		input.CanonicalOperation == "" || input.CanonicalOperation != command.Operation ||
+		input.CanonicalKeyDigest == ([32]byte{}) || input.CanonicalKeyDigest == command.KeyDigest ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		return store.NewErrInvalidInput("invitation", "batch_duplicate", nil)
+	}
+	hasCandidate := input.Candidate != nil
+	hasLifecycle := input.LifecycleID.IsValid()
+	if hasCandidate == hasLifecycle {
+		return store.NewErrInvalidInput("invitation", "batch_duplicate_shape", nil)
+	}
+	if hasCandidate {
+		if input.ExpectedRevision != 0 || input.Candidate.InviterUserID != input.ActorUserID ||
+			input.Candidate.State != model.InvitationPending || input.Candidate.Validate() != nil {
+			return store.NewErrInvalidInput("invitation", "batch_duplicate_candidate", nil)
+		}
+		return nil
+	}
+	if input.ExpectedRevision < 1 {
+		return store.NewErrInvalidInput("invitation", "batch_duplicate_lifecycle", nil)
+	}
+	if input.CanonicalFingerprint == ([32]byte{}) {
+		return store.NewErrInvalidInput("invitation", "batch_duplicate_canonical_fingerprint", nil)
+	}
+	return nil
+}
+
+func validateInvitationBatchDuplicateAuthority(ctx context.Context, tx *sqlxTxWrapper, input *store.InvitationBatchDuplicate, command *store.CommandIdempotency) error {
+	at, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if input.Candidate != nil {
+		candidate := input.Candidate
+		if !at.Before(candidate.ExpiresAt) || (candidate.IntendedEndsAt.Valid && !at.Before(candidate.IntendedEndsAt.Time)) {
+			return store.NewErrConflict("invitation", "invitation_expired", nil)
+		}
+		switch candidate.Purpose {
+		case model.InvitationPurposeStudentClass:
+			if err = requireInvitationPolicy(ctx, tx); err == nil {
+				err = validateStudentClassInvitationPackage(ctx, tx, candidate, at)
+			}
+			if err == nil {
+				err = requireStudentClassInvitationAuthority(ctx, tx, candidate.InviterUserID, candidate.ClassID, at)
+			}
+		case model.InvitationPurposeTeacherAcademicUnit:
+			if err = requireInvitationPolicy(ctx, tx); err == nil {
+				err = validateTeacherAcademicUnitInvitationPackage(ctx, tx, candidate, at)
+			}
+			if err == nil {
+				err = requireTeacherAcademicUnitInvitationAuthority(ctx, tx, candidate, at)
+			}
+		case model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
+			if err = requireExistingUserInvitationPolicy(ctx, tx); err == nil {
+				err = validateScopedRoleInvitationPackage(ctx, tx, candidate, at)
+			}
+			if err == nil {
+				err = requireScopedRoleInvitationAuthority(ctx, tx, candidate, at)
+			}
+		default:
+			err = store.NewErrConflict("invitation", "invitation_purpose", nil)
+		}
+		return err
+	}
+
+	current, err := lockInvitation(ctx, tx, input.LifecycleID)
+	if err != nil {
+		return err
+	}
+	if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
+		return err
+	}
+	var canonicalCommitted bool
+	if err = tx.Get(ctx, &canonicalCommitted, `SELECT EXISTS(SELECT 1 FROM command_outcomes
+		WHERE user_id=? AND operation=? AND key_digest=? AND fingerprint_version=1 AND fingerprint=?
+		AND outcome->>'kind'='invitation' AND outcome->>'invitation_id'=?)`,
+		command.UserID.String(), input.CanonicalOperation, input.CanonicalKeyDigest[:], input.CanonicalFingerprint[:], input.LifecycleID.String()); err != nil {
+		return fmt.Errorf("find canonical Invitation batch outcome: %w", err)
+	}
+	if !canonicalCommitted {
+		if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
+			return store.NewErrConflict("invitation", "invitation_revision", nil)
+		}
+		if !current.IsPendingAt(at) || (current.IntendedEndsAt.Valid && !at.Before(current.IntendedEndsAt.Time)) {
+			return store.NewErrConflict("invitation", "invitation_lifecycle", nil)
+		}
+	}
+	return nil
+}
+
+func completeInvitationBatchDuplicateAudit(ctx context.Context, tx *sqlxTxWrapper, input *store.InvitationBatchDuplicate, duplicate bool, originalAuditID string) error {
+	status, code := model.AuditStatusSuccess, ""
+	if duplicate {
+		status, code = model.AuditStatusFail, "onboarding_batch.duplicate"
+	}
+	data := map[string]any{"batch_duplicate": duplicate}
+	if model.IsValidId(originalAuditID) {
+		data["idempotency_replayed"] = true
+		data["original_audit_event_id"] = originalAuditID
+	}
+	encoded, err := model.EncodeAuditData(data)
+	if err != nil {
+		return err
+	}
+	_, err = completeAuditEvent(ctx, tx, input.AuditEventID, status, code, encoded, input.AuditAt)
+	return err
+}
+
+func completeInvitationReplayAudit(ctx context.Context, tx *sqlxTxWrapper, auditID string, at int64, invitation *model.Invitation, originalAuditID string) error {
+	data := invitation.Auditable()
+	data["idempotency_replayed"] = true
+	data["original_audit_event_id"] = originalAuditID
+	return completeInvitationLifecycleAudit(ctx, tx, auditID, at, data)
 }
 
 func terminalizeElapsedScopedRoleInvitationConflict(ctx context.Context, tx *sqlxTxWrapper, candidate *model.Invitation, at time.Time) error {
@@ -509,44 +879,78 @@ func (s SQLInvitationStore) Resend(ctx context.Context, input *store.InvitationR
 		return nil, store.NewErrInvalidInput("invitation", "delivery_payload", err)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "Invitation resend", func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationAdministrationRecord, error) {
-		if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-			return nil, err
-		}
-		current, err := lockInvitation(ctx, tx, input.ID)
-		if err != nil {
-			return nil, err
-		}
-		if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
-			return nil, store.NewErrConflict("invitation", "invitation_revision", nil)
-		}
-		at, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
-			return nil, err
-		}
-		if err = current.Resend(input.ClaimHash, at); err != nil {
-			return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
-		}
-		occurrence, delivery, job, err := invitationMailAt(input.Occurrence, input.Delivery, input.DeliveryJob, at, current.ExpiresAt)
-		if err != nil {
-			return nil, err
-		}
-		if err = updateInvitationLifecycle(ctx, tx, current, true); err != nil {
-			return nil, err
-		}
-		if err = suppressInvitationCredentialMail(ctx, tx, current.ID, model.MailDeliveryObsoleteCode, at); err != nil {
-			return nil, err
-		}
-		if err = insertInvitationMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
-			return nil, err
-		}
-		if err = completeInvitationLifecycleAudit(ctx, tx, input.AuditEventID, input.AuditAt, current.Auditable()); err != nil {
-			return nil, err
-		}
-		return &store.InvitationAdministrationRecord{Invitation: current, Delivery: invitationDeliverySummary(delivery)}, nil
+		return resendInvitation(ctx, tx, input, payloadKeyID)
 	})
+}
+
+func (s SQLInvitationStore) ResendIdempotently(ctx context.Context, input *store.InvitationResend, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	if err := validateInvitationResend(input); err != nil || command == nil {
+		return nil, store.NewErrInvalidInput("invitation", "idempotent_resend", err)
+	}
+	payloadKeyID, err := mailPayloadKeyID(input.Delivery.EncryptedPayload)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("invitation", "delivery_payload", err)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent Invitation resend", idempotentMutation[*store.InvitationAdministrationCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationAdministrationCommandResult, error) {
+			value, executeErr := resendInvitation(ctx, tx, input, payloadKeyID)
+			return &store.InvitationAdministrationCommandResult{Record: value}, executeErr
+		},
+		encode: encodeInvitationAdministrationOutcome, decode: decodeInvitationAdministrationOutcome,
+		hydrateReplay: hydrateInvitationAdministrationOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationAdministrationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, value.Record.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func resendInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.InvitationResend, payloadKeyID string) (*store.InvitationAdministrationRecord, error) {
+	if err := requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+		return nil, err
+	}
+	current, err := lockInvitation(ctx, tx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
+		return nil, store.NewErrConflict("invitation", "invitation_revision", nil)
+	}
+	at, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
+		return nil, err
+	}
+	if err = current.Resend(input.ClaimHash, at); err != nil {
+		return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
+	}
+	occurrence, delivery, job, err := invitationMailAt(input.Occurrence, input.Delivery, input.DeliveryJob, at, current.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	if err = updateInvitationLifecycle(ctx, tx, current, true); err != nil {
+		return nil, err
+	}
+	if err = suppressInvitationCredentialMail(ctx, tx, current.ID, model.MailDeliveryObsoleteCode, at); err != nil {
+		return nil, err
+	}
+	if err = insertInvitationMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
+		return nil, err
+	}
+	if err = completeInvitationLifecycleAudit(ctx, tx, input.AuditEventID, input.AuditAt, current.Auditable()); err != nil {
+		return nil, err
+	}
+	return &store.InvitationAdministrationRecord{Invitation: current, Delivery: invitationDeliverySummary(delivery)}, nil
 }
 
 func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
@@ -555,63 +959,133 @@ func (s SQLInvitationStore) Revoke(ctx context.Context, input *store.InvitationR
 		return nil, store.NewErrInvalidInput("invitation", "revocation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "Invitation revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationAdministrationRecord, error) {
-		current, err := lockInvitation(ctx, tx, input.ID)
-		if err != nil {
-			return nil, err
-		}
-		if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
-			return nil, store.NewErrConflict("invitation", "invitation_revision", nil)
-		}
-		at, err := jobDatabaseNow(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
-			return nil, err
-		}
-		var accepted bool
-		if err = tx.Get(ctx, &accepted, `SELECT EXISTS(SELECT 1 FROM mail_deliveries WHERE target_invitation_id=?
-			AND template_key IN (?,?,?,?) AND state='accepted')`, current.ID.String(),
-			string(model.MailTemplateAccessStudentClassInvitation), string(model.MailTemplateAccessTeacherAcademicUnitInvitation),
-			string(model.MailTemplateAccessAcademicUnitRoleInvitation), string(model.MailTemplateAccessInstitutionRoleInvitation)); err != nil {
-			return nil, fmt.Errorf("inspect accepted Invitation delivery: %w", err)
-		}
-		if err = current.Revoke(at); err != nil {
-			return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
-		}
-		if err = updateInvitationLifecycle(ctx, tx, current, false); err != nil {
-			return nil, err
-		}
-		if err = suppressInvitationCredentialMail(ctx, tx, current.ID, model.MailDeliveryObsoleteCode, at); err != nil {
-			return nil, err
-		}
-		var summary *store.InvitationDeliverySummary
-		if accepted {
-			if err = validateInvitationRevocationNotice(input.RevocationNotice, current, input.ActorUserID); err != nil {
-				return nil, err
-			}
-			payloadKeyID, payloadErr := mailPayloadKeyID(input.RevocationNotice.Delivery.EncryptedPayload)
-			if payloadErr != nil {
-				return nil, store.NewErrInvalidInput("invitation", "revocation_payload", payloadErr)
-			}
-			if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
-				return nil, err
-			}
-			deadline := at.Add(24 * time.Hour)
-			occurrence, delivery, job, mailErr := invitationMailAt(input.RevocationNotice.Occurrence, input.RevocationNotice.Delivery, input.RevocationNotice.Job, at, deadline)
-			if mailErr != nil {
-				return nil, mailErr
-			}
-			if err = insertInvitationMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
-				return nil, err
-			}
-			summary = invitationDeliverySummary(delivery)
-		}
-		if err = completeInvitationLifecycleAudit(ctx, tx, input.AuditEventID, input.AuditAt, current.Auditable()); err != nil {
-			return nil, err
-		}
-		return &store.InvitationAdministrationRecord{Invitation: current, Delivery: summary}, nil
+		return revokeInvitation(ctx, tx, input)
 	})
+}
+
+func (s SQLInvitationStore) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	if input == nil || !input.ID.IsValid() || input.ExpectedRevision < 1 || !input.ActorUserID.IsValid() ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || command == nil {
+		return nil, store.NewErrInvalidInput("invitation", "idempotent_revocation", nil)
+	}
+	result, err := runIdempotentMutation(ctx, s.SQLStore, "idempotent Invitation revocation", idempotentMutation[*store.InvitationAdministrationCommandResult]{
+		command: command, auditEventID: input.AuditEventID,
+		execute: func(ctx context.Context, tx *sqlxTxWrapper) (*store.InvitationAdministrationCommandResult, error) {
+			value, executeErr := revokeInvitation(ctx, tx, input)
+			return &store.InvitationAdministrationCommandResult{Record: value}, executeErr
+		},
+		encode: encodeInvitationAdministrationOutcome, decode: decodeInvitationAdministrationOutcome,
+		hydrateReplay: hydrateInvitationAdministrationOutcome,
+		completeReplay: func(ctx context.Context, tx *sqlxTxWrapper, value *store.InvitationAdministrationCommandResult, originalAuditID string) error {
+			if value.Duplicate {
+				return nil
+			}
+			return completeInvitationReplayAudit(ctx, tx, input.AuditEventID, input.AuditAt, value.Record.Invitation, originalAuditID)
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	result.Value.Replayed = result.Replayed
+	return result.Value, nil
+}
+
+func revokeInvitation(ctx context.Context, tx *sqlxTxWrapper, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
+	current, err := lockInvitation(ctx, tx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current.Revision != input.ExpectedRevision || current.State != model.InvitationPending {
+		return nil, store.NewErrConflict("invitation", "invitation_revision", nil)
+	}
+	at, err := jobDatabaseNow(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err = requireInvitationManagementAuthority(ctx, tx, input.ActorUserID, current, at); err != nil {
+		return nil, err
+	}
+	var accepted bool
+	if err = tx.Get(ctx, &accepted, `SELECT EXISTS(SELECT 1 FROM mail_deliveries WHERE target_invitation_id=?
+			AND template_key IN (?,?,?,?) AND state='accepted')`, current.ID.String(),
+		string(model.MailTemplateAccessStudentClassInvitation), string(model.MailTemplateAccessTeacherAcademicUnitInvitation),
+		string(model.MailTemplateAccessAcademicUnitRoleInvitation), string(model.MailTemplateAccessInstitutionRoleInvitation)); err != nil {
+		return nil, fmt.Errorf("inspect accepted Invitation delivery: %w", err)
+	}
+	if err = current.Revoke(at); err != nil {
+		return nil, store.NewErrConflict("invitation", "invitation_lifecycle", err)
+	}
+	if err = updateInvitationLifecycle(ctx, tx, current, false); err != nil {
+		return nil, err
+	}
+	if err = suppressInvitationCredentialMail(ctx, tx, current.ID, model.MailDeliveryObsoleteCode, at); err != nil {
+		return nil, err
+	}
+	var summary *store.InvitationDeliverySummary
+	if accepted {
+		if err = validateInvitationRevocationNotice(input.RevocationNotice, current, input.ActorUserID); err != nil {
+			return nil, err
+		}
+		payloadKeyID, payloadErr := mailPayloadKeyID(input.RevocationNotice.Delivery.EncryptedPayload)
+		if payloadErr != nil {
+			return nil, store.NewErrInvalidInput("invitation", "revocation_payload", payloadErr)
+		}
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
+		deadline := at.Add(24 * time.Hour)
+		occurrence, delivery, job, mailErr := invitationMailAt(input.RevocationNotice.Occurrence, input.RevocationNotice.Delivery, input.RevocationNotice.Job, at, deadline)
+		if mailErr != nil {
+			return nil, mailErr
+		}
+		if err = insertInvitationMail(ctx, tx, occurrence, delivery, job, payloadKeyID); err != nil {
+			return nil, err
+		}
+		summary = invitationDeliverySummary(delivery)
+	}
+	if err = completeInvitationLifecycleAudit(ctx, tx, input.AuditEventID, input.AuditAt, current.Auditable()); err != nil {
+		return nil, err
+	}
+	return &store.InvitationAdministrationRecord{Invitation: current, Delivery: summary}, nil
+}
+
+func encodeInvitationAdministrationOutcome(result *store.InvitationAdministrationCommandResult) ([]byte, error) {
+	if result == nil || result.Record == nil || result.Record.Invitation == nil || !result.Record.Invitation.ID.IsValid() {
+		return nil, store.NewErrInvalidInput("invitation", "command_outcome", nil)
+	}
+	return encodeCommandOutcome(invitationCommandOutcome{Kind: invitationOutcomeKindInvitation,
+		InvitationID: result.Record.Invitation.ID.String(), Delivery: result.Record.Delivery})
+}
+
+func decodeInvitationAdministrationOutcome(version int, data []byte) (*store.InvitationAdministrationCommandResult, error) {
+	if version != 1 {
+		return nil, fmt.Errorf("unsupported Invitation administration outcome version %d", version)
+	}
+	var outcome invitationCommandOutcome
+	if err := decodeCommandOutcome(data, &outcome); err != nil {
+		return nil, err
+	}
+	if outcome.Kind == invitationOutcomeKindDuplicate {
+		return &store.InvitationAdministrationCommandResult{Duplicate: true}, nil
+	}
+	id, err := model.ParseInvitationID(outcome.InvitationID)
+	if err != nil || outcome.Kind != invitationOutcomeKindInvitation {
+		return nil, invalidPersistedState("command_outcome", "invitation_administration", err)
+	}
+	return &store.InvitationAdministrationCommandResult{Record: &store.InvitationAdministrationRecord{
+		Invitation: &model.Invitation{ID: id}, Delivery: outcome.Delivery}}, nil
+}
+
+func hydrateInvitationAdministrationOutcome(ctx context.Context, tx *sqlxTxWrapper, result *store.InvitationAdministrationCommandResult) (*store.InvitationAdministrationCommandResult, error) {
+	if result == nil || result.Duplicate {
+		return result, nil
+	}
+	invitation, err := getInvitationInTransaction(ctx, tx, result.Record.Invitation.ID)
+	if err != nil {
+		return nil, err
+	}
+	result.Record.Invitation = invitation
+	return result, nil
 }
 
 func (s SQLInvitationStore) Replace(ctx context.Context, input *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
@@ -688,6 +1162,14 @@ func (s SQLInvitationStore) Replace(ctx context.Context, input *store.Invitation
 func lockInvitation(ctx context.Context, tx *sqlxTxWrapper, id model.InvitationID) (*model.Invitation, error) {
 	var row invitationRow
 	if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE id=? FOR UPDATE`, id.String()); err != nil {
+		return nil, translateError("invitation", id.String(), err)
+	}
+	return row.model()
+}
+
+func getInvitationInTransaction(ctx context.Context, tx *sqlxTxWrapper, id model.InvitationID) (*model.Invitation, error) {
+	var row invitationRow
+	if err := tx.Get(ctx, &row, `SELECT `+invitationColumns+` FROM invitations WHERE id=?`, id.String()); err != nil {
 		return nil, translateError("invitation", id.String(), err)
 	}
 	return row.model()

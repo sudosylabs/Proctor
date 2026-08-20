@@ -330,6 +330,44 @@ same target, delegation, assurance, and package validation required by direct
 issue. Institution Role replacement therefore requires a strong, recent
 interactive Session.
 
+## JSON Invitation batches
+
+`POST /api/v1/invitation-batches` requires an authenticated principal, a
+required `Idempotency-Key`, and `onboarding_batch.manage` at the declared exact
+scope before any row is inspected. The strict body declares one operation from
+`student_class.create`, `teacher_academic_unit.create`,
+`academic_unit_role.create`, `institution_role.create`, `resend`, or `revoke`;
+one matching Institution, Academic Unit, or Class scope; and one to 200 items.
+Each item carries a required stable `key` that is unique within the request;
+combining it with the batch header keeps reconnect recovery stable even when
+the client reorders rows. Repeated item keys make every affected row invalid,
+so no ambiguous row identity executes. It is not
+a generic command envelope, and fields that do not apply to the declared
+operation fail only that row.
+
+Rows execute in order and independently through their corresponding single
+Invitation use case. Each row repeats current authorization, target and
+delegation checks, credential assurance, audit, mail atomicity, and PostgreSQL
+authority. One failure does not roll back prior rows. Repeated email/purpose/
+target create rows or repeated lifecycle targets select the smallest stable
+item key as the canonical row; every other row durably returns
+`onboarding_batch.duplicate` without executing twice. Role-package work
+requires a strong, recent interactive Session; PATs remain limited to ordinary
+student/teacher onboarding authorized by both their ceiling and current Role
+Binding.
+
+The no-store `200` response preserves input order and contains only the item
+index, `succeeded`, `no_op`, or `failed` status, an Invitation ID for success or
+no-op, and one closed public error code for failure, plus bounded aggregate
+counts. It contains no recipient, claim, rendered mail, provider identity,
+private error, authorization detail, or delivery internals. Exact retries of a
+stable item key return committed rows as `no_op`; reusing that key for changed
+input is a per-row `idempotency.conflict`.
+Retained outcomes contain only their disposition, Invitation identity, and the
+already-approved bounded delivery summary. They contain no recipient package,
+raw or hashed claim, rendered mail, or transport secret, and replay resolves
+before a new claim or mail candidate is prepared.
+
 ## Ownership and extension workflow
 
 `api.New` is the production construction boundary. Its broad `Options` value

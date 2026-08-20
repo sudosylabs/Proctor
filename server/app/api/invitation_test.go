@@ -37,6 +37,17 @@ type invitationHTTPApplication struct {
 	listMore              bool
 	getID                 string
 	acceptance            *application.InvitationAcceptanceView
+	batch                 application.RunInvitationBatchCommand
+}
+
+func (a *invitationHTTPApplication) RunInvitationBatch(_ context.Context, _ application.Invocation, command application.RunInvitationBatchCommand) (application.InvitationBatchResult, error) {
+	a.batch = command
+	return application.InvitationBatchResult{Operation: command.Operation, Succeeded: 1, NoOp: 1, Failed: 1,
+		Items: []application.InvitationBatchItemResult{
+			{Index: 0, Status: application.InvitationBatchItemSucceeded, InvitationID: model.NewInvitationID()},
+			{Index: 1, Status: application.InvitationBatchItemNoOp, InvitationID: model.NewInvitationID()},
+			{Index: 2, Status: application.InvitationBatchItemFailed, ErrorCode: "invitation.conflict"},
+		}}, nil
 }
 
 func (a *invitationHTTPApplication) IssueAcademicUnitRoleInvitation(_ context.Context, _ application.Invocation, command application.IssueAcademicUnitRoleInvitationCommand) (application.InvitationView, error) {
@@ -167,6 +178,49 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 		applicationFake.replace.ID != id || applicationFake.replace.ExpectedRevision != 9 ||
 		applicationFake.replace.TargetEmail != "replacement@example.edu" {
 		t.Fatalf("Invitation mutation commands = resend %#v revoke %#v replacement %#v", applicationFake.resend, applicationFake.revoke, applicationFake.replace)
+	}
+}
+
+func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
+	logger, _ := newTestLogger(t)
+	applicationFake := &invitationHTTPApplication{}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now(), MFACompletedAt: model.OptionalTimeFrom(time.Now())}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
+	classID := model.NewClassID().String()
+	body, _ := json.Marshal(map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": classID,
+		"items": []map[string]any{{"key": "row-1", "email": "first@example.edu"}, {"key": "row-2", "email": "second@example.edu"}, {"key": "row-3", "email": "third@example.edu"}}})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer session")
+	request.Header.Set("Idempotency-Key", "batch-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		applicationFake.batch.IdempotencyKey != "batch-once" || applicationFake.batch.ScopeID != classID ||
+		applicationFake.batch.Operation != application.InvitationBatchStudentClassCreate || len(applicationFake.batch.Items) != 3 ||
+		!strings.Contains(response.Body.String(), `"succeeded":1`) || !strings.Contains(response.Body.String(), `"no_op":1`) ||
+		!strings.Contains(response.Body.String(), `"error_code":"invitation.conflict"`) || strings.Contains(response.Body.String(), "@example.edu") {
+		t.Fatalf("Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
+	}
+
+	missingKey := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
+	missingKey.Header.Set("Authorization", "Bearer session")
+	missingResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(missingResponse, missingKey)
+	if missingResponse.Code != http.StatusBadRequest || !strings.Contains(missingResponse.Body.String(), "idempotency.key_required") {
+		t.Fatalf("Invitation batch missing key = %d %s", missingResponse.Code, missingResponse.Body.String())
+	}
+
+	unknownBody := []byte(`{"operation":"revoke","scope_type":"class","scope_id":"` + classID + `","items":[],"command":"arbitrary"}`)
+	unknown := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(unknownBody))
+	unknown.Header.Set("Authorization", "Bearer session")
+	unknown.Header.Set("Idempotency-Key", "unknown-field")
+	unknownResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(unknownResponse, unknown)
+	if unknownResponse.Code != http.StatusBadRequest {
+		t.Fatalf("Invitation batch unknown JSON = %d %s", unknownResponse.Code, unknownResponse.Body.String())
 	}
 }
 

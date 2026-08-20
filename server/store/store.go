@@ -1509,6 +1509,42 @@ type InvitationAdministrationRecord struct {
 	Delivery   *InvitationDeliverySummary
 }
 
+// InvitationCommandResult reports whether an Invitation issue command
+// executed or recovered its previously committed outcome.
+type InvitationCommandResult struct {
+	Invitation *model.Invitation
+	Replayed   bool
+	Duplicate  bool
+}
+
+// InvitationAdministrationCommandResult is the lifecycle-command equivalent
+// for resend and revoke.
+type InvitationAdministrationCommandResult struct {
+	Record    *InvitationAdministrationRecord
+	Replayed  bool
+	Duplicate bool
+}
+
+// InvitationBatchCommandResult is the secret-free retained disposition of an
+// item that was classified as a duplicate before its ordinary command ran.
+type InvitationBatchCommandResult struct {
+	InvitationID model.InvitationID
+	Replayed     bool
+	Duplicate    bool
+}
+
+type InvitationBatchDuplicate struct {
+	Candidate            *model.Invitation
+	LifecycleID          model.InvitationID
+	ExpectedRevision     int64
+	ActorUserID          model.UserID
+	CanonicalOperation   string
+	CanonicalKeyDigest   [sha256.Size]byte
+	CanonicalFingerprint [sha256.Size]byte
+	AuditEventID         string
+	AuditAt              int64
+}
+
 type InvitationListOptions struct {
 	Visibility      InvitationVisibilityScope
 	Purpose         model.InvitationPurpose
@@ -1576,12 +1612,20 @@ type InvitationReplacement struct {
 	AuditAt                 int64
 }
 
-// InvitationStore owns the durable pre-User Invitation and its two atomic
-// first-slice transitions. Raw claims never cross this boundary.
+// InvitationStore owns durable Invitation issuance, acceptance,
+// administration, and their retained idempotent outcomes. Raw claims never
+// cross this boundary.
 type InvitationStore interface {
 	IssueStudentClass(context.Context, *StudentClassInvitationIssue) (*model.Invitation, error)
+	IssueStudentClassIdempotently(context.Context, *StudentClassInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
 	IssueTeacherAcademicUnit(context.Context, *TeacherAcademicUnitInvitationIssue) (*model.Invitation, error)
+	IssueTeacherAcademicUnitIdempotently(context.Context, *TeacherAcademicUnitInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
 	IssueScopedRole(context.Context, *ScopedRoleInvitationIssue) (*model.Invitation, error)
+	IssueScopedRoleIdempotently(context.Context, *ScopedRoleInvitationIssue, *CommandIdempotency) (*InvitationCommandResult, error)
+	FindCommandOutcome(context.Context, *CommandIdempotency) (*InvitationCommandResult, error)
+	ReplayIssue(context.Context, *CommandIdempotency, string, int64) (*InvitationCommandResult, error)
+	ReplayAdministration(context.Context, *CommandIdempotency, string, int64) (*InvitationAdministrationCommandResult, error)
+	RecordBatchDuplicate(context.Context, *InvitationBatchDuplicate, *CommandIdempotency) (*InvitationBatchCommandResult, error)
 	Get(context.Context, model.InvitationID) (*model.Invitation, error)
 	GetByClaimHash(context.Context, string) (*model.Invitation, error)
 	AcceptStudentClass(context.Context, *StudentClassInvitationAcceptance) (*StudentClassInvitationAcceptanceResult, error)
@@ -1591,7 +1635,9 @@ type InvitationStore interface {
 	List(context.Context, InvitationListOptions) (*InvitationPage, error)
 	GetForAdministration(context.Context, model.InvitationID, InvitationVisibilityScope) (*InvitationAdministrationRecord, error)
 	Resend(context.Context, *InvitationResend) (*InvitationAdministrationRecord, error)
+	ResendIdempotently(context.Context, *InvitationResend, *CommandIdempotency) (*InvitationAdministrationCommandResult, error)
 	Revoke(context.Context, *InvitationRevocation) (*InvitationAdministrationRecord, error)
+	RevokeIdempotently(context.Context, *InvitationRevocation, *CommandIdempotency) (*InvitationAdministrationCommandResult, error)
 	Replace(context.Context, *InvitationReplacement) (*InvitationAdministrationRecord, error)
 	Maintain(context.Context, int) (*InvitationMaintenanceResult, error)
 }

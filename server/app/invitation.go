@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -21,6 +22,9 @@ type IssueStudentClassInvitationCommand struct {
 	IntendedStartsAt, IntendedEndsAt                       int64
 	SuggestedUsername, SuggestedDisplayName                string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale string
+	IdempotencyKey                                         string
+	batchDuplicate                                         bool
+	batchCanonicalKey                                      string
 }
 
 type AcceptStudentClassInvitationCommand struct {
@@ -32,16 +36,25 @@ type IssueTeacherAcademicUnitInvitationCommand struct {
 	IntendedStartsAt, IntendedEndsAt                       int64
 	SuggestedUsername, SuggestedDisplayName                string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale string
+	IdempotencyKey                                         string
+	batchDuplicate                                         bool
+	batchCanonicalKey                                      string
 }
 
 type IssueAcademicUnitRoleInvitationCommand struct {
 	TargetEmail, AcademicUnitID, RoleID string
 	IntendedStartsAt, IntendedEndsAt    int64
+	IdempotencyKey                      string
+	batchDuplicate                      bool
+	batchCanonicalKey                   string
 }
 
 type IssueInstitutionRoleInvitationCommand struct {
 	TargetEmail, InstitutionID, RoleID string
 	IntendedStartsAt, IntendedEndsAt   int64
+	IdempotencyKey                     string
+	batchDuplicate                     bool
+	batchCanonicalKey                  string
 }
 
 // authorizedScopedRoleInvitationIssue is the scope-specific result of the
@@ -56,6 +69,9 @@ type authorizedScopedRoleInvitationIssue struct {
 	academicUnitID                   model.AcademicUnitID
 	role                             *model.Role
 	intendedStartsAt, intendedEndsAt int64
+	idempotency                      *store.CommandIdempotency
+	batchDuplicate                   bool
+	batchCanonicalKey                string
 }
 
 type AcceptTeacherAcademicUnitInvitationCommand struct {
@@ -84,6 +100,7 @@ type InvitationView struct {
 	IntendedStartsAt time.Time
 	IntendedEndsAt   model.OptionalTime
 	ExpiresAt        time.Time
+	Replayed         bool
 }
 
 type InvitationAcceptanceView struct {
@@ -139,13 +156,30 @@ type ListInvitationsQuery struct {
 }
 
 type ResendInvitationCommand struct {
-	ID               string
-	ExpectedRevision int64
+	ID                        string
+	ExpectedRevision          int64
+	IdempotencyKey            string
+	BatchScopeType            model.RoleScopeType
+	BatchScopeID              string
+	batchDuplicate            bool
+	batchCanonicalKey         string
+	batchCanonicalFingerprint [sha256.Size]byte
 }
 
 type RevokeInvitationCommand struct {
-	ID               string
-	ExpectedRevision int64
+	ID                        string
+	ExpectedRevision          int64
+	IdempotencyKey            string
+	BatchScopeType            model.RoleScopeType
+	BatchScopeID              string
+	batchDuplicate            bool
+	batchCanonicalKey         string
+	batchCanonicalFingerprint [sha256.Size]byte
+}
+
+type invitationLifecycleIdempotencySemantic struct {
+	ID       string `json:"id"`
+	Revision int64  `json:"revision"`
 }
 
 type ReplaceInvitationCommand struct {
@@ -153,6 +187,71 @@ type ReplaceInvitationCommand struct {
 	ExpectedRevision, IntendedStartsAt, IntendedEndsAt                       int64
 	SuggestedUsername, SuggestedDisplayName                                  string
 	SuggestedFirstName, SuggestedLastName, SuggestedLocale                   string
+}
+
+const MaximumInvitationBatchItems = 200
+
+type InvitationBatchOperation string
+
+const (
+	InvitationBatchStudentClassCreate        InvitationBatchOperation = "student_class.create"
+	InvitationBatchTeacherAcademicUnitCreate InvitationBatchOperation = "teacher_academic_unit.create"
+	InvitationBatchAcademicUnitRoleCreate    InvitationBatchOperation = "academic_unit_role.create"
+	InvitationBatchInstitutionRoleCreate     InvitationBatchOperation = "institution_role.create"
+	InvitationBatchResend                    InvitationBatchOperation = "resend"
+	InvitationBatchRevoke                    InvitationBatchOperation = "revoke"
+)
+
+func (operation InvitationBatchOperation) IsValid() bool {
+	switch operation {
+	case InvitationBatchStudentClassCreate, InvitationBatchTeacherAcademicUnitCreate,
+		InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate,
+		InvitationBatchResend, InvitationBatchRevoke:
+		return true
+	default:
+		return false
+	}
+}
+
+// InvitationBatchItemCommand is a closed union interpreted only according to
+// its batch's single operation. Non-applicable fields make that row invalid.
+type InvitationBatchItemCommand struct {
+	InvitationID, TargetEmail, RoleID                      string
+	IdempotencyKey                                         string
+	ExpectedRevision, IntendedStartsAt, IntendedEndsAt     int64
+	SuggestedUsername, SuggestedDisplayName                string
+	SuggestedFirstName, SuggestedLastName, SuggestedLocale string
+}
+
+type RunInvitationBatchCommand struct {
+	Operation      InvitationBatchOperation
+	ScopeType      model.RoleScopeType
+	ScopeID        string
+	IdempotencyKey string
+	Items          []InvitationBatchItemCommand
+}
+
+type InvitationBatchItemStatus string
+
+const (
+	InvitationBatchItemSucceeded InvitationBatchItemStatus = "succeeded"
+	InvitationBatchItemNoOp      InvitationBatchItemStatus = "no_op"
+	InvitationBatchItemFailed    InvitationBatchItemStatus = "failed"
+)
+
+type InvitationBatchItemResult struct {
+	Index        int
+	Status       InvitationBatchItemStatus
+	InvitationID model.InvitationID
+	ErrorCode    string
+}
+
+type InvitationBatchResult struct {
+	Operation InvitationBatchOperation
+	Items     []InvitationBatchItemResult
+	Succeeded int
+	NoOp      int
+	Failed    int
 }
 
 func (v InvitationView) String() string {
@@ -377,6 +476,362 @@ func (a *App) ReplaceInvitation(ctx context.Context, invocation Invocation, comm
 	return a.invitations.Replace(ctx, invocation, command)
 }
 
+func (a *App) RunInvitationBatch(ctx context.Context, invocation Invocation, command RunInvitationBatchCommand) (InvitationBatchResult, error) {
+	if a == nil || a.invitations == nil {
+		return InvitationBatchResult{}, NewError("invitation.unavailable")
+	}
+	return a.invitations.RunBatch(ctx, invocation, command)
+}
+
+func (s *invitationService) RunBatch(ctx context.Context, invocation Invocation, command RunInvitationBatchCommand) (InvitationBatchResult, error) {
+	command.ScopeID = strings.TrimSpace(command.ScopeID)
+	if !command.Operation.IsValid() || !model.IsValidId(command.ScopeID) || command.IdempotencyKey == "" ||
+		len(command.Items) < 1 || len(command.Items) > MaximumInvitationBatchItems || !invitationBatchScopeMatchesOperation(command.Operation, command.ScopeType) {
+		return InvitationBatchResult{}, NewError("request.invalid")
+	}
+	resource, err := s.invitationBatchAuthorizationResource(ctx, command.ScopeType, command.ScopeID)
+	if err != nil {
+		return InvitationBatchResult{}, err
+	}
+	if err = s.authorization.Authorize(ctx, invocation, model.ActionOnboardingBatchManage, resource); err != nil {
+		return InvitationBatchResult{}, err
+	}
+	if command.Operation == InvitationBatchAcademicUnitRoleCreate || command.Operation == InvitationBatchInstitutionRoleCreate {
+		if err = requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
+			return InvitationBatchResult{}, err
+		}
+	}
+
+	result := InvitationBatchResult{Operation: command.Operation, Items: make([]InvitationBatchItemResult, 0, len(command.Items))}
+	itemKeyCounts := make(map[string]int, len(command.Items))
+	itemsByKey := make(map[string]InvitationBatchItemCommand, len(command.Items))
+	for _, item := range command.Items {
+		itemKeyCounts[item.IdempotencyKey]++
+		itemsByKey[item.IdempotencyKey] = item
+	}
+	duplicateWinners := invitationBatchDuplicateWinners(command.Operation, command.Items, itemKeyCounts)
+	for index, item := range command.Items {
+		outcome := InvitationBatchItemResult{Index: index}
+		if err = validateInvitationBatchItem(command.Operation, item); err != nil {
+			outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
+			result.append(outcome)
+			continue
+		}
+		if itemKeyCounts[item.IdempotencyKey] != 1 {
+			outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
+			result.append(outcome)
+			continue
+		}
+		duplicateKey := invitationBatchDuplicateKey(command.Operation, item)
+		itemKey := invitationBatchItemIdempotencyKey(command.IdempotencyKey, item.IdempotencyKey)
+		winner := duplicateWinners[duplicateKey]
+		duplicate := duplicateKey != "" && winner != item.IdempotencyKey
+		canonicalKey := invitationBatchItemIdempotencyKey(command.IdempotencyKey, winner)
+		var canonicalFingerprint [sha256.Size]byte
+		if duplicate && (command.Operation == InvitationBatchResend || command.Operation == InvitationBatchRevoke) {
+			canonicalItem := itemsByKey[winner]
+			canonical, canonicalErr := newCommandIdempotency(invocation, invitationBatchLifecycleOperation(command.Operation), canonicalKey,
+				invitationLifecycleIdempotencySemantic{ID: strings.TrimSpace(canonicalItem.InvitationID), Revision: canonicalItem.ExpectedRevision})
+			if canonicalErr != nil || canonical == nil {
+				outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, "request.invalid"
+				result.append(outcome)
+				continue
+			}
+			canonicalFingerprint = canonical.Fingerprint
+		}
+		outcome.InvitationID, outcome.Status, err = s.runInvitationBatchItem(ctx, invocation, command, item, itemKey, duplicate, canonicalKey, canonicalFingerprint)
+		if err != nil {
+			outcome.Status, outcome.ErrorCode = InvitationBatchItemFailed, invitationBatchPublicErrorCode(err)
+		}
+		result.append(outcome)
+	}
+	return result, nil
+}
+
+func invitationBatchDuplicateWinners(operation InvitationBatchOperation, items []InvitationBatchItemCommand, itemKeyCounts map[string]int) map[string]string {
+	winners := make(map[string]string, len(items))
+	for _, item := range items {
+		if validateInvitationBatchItem(operation, item) != nil || itemKeyCounts[item.IdempotencyKey] != 1 {
+			continue
+		}
+		duplicateKey := invitationBatchDuplicateKey(operation, item)
+		if duplicateKey == "" {
+			continue
+		}
+		if winner, exists := winners[duplicateKey]; !exists || item.IdempotencyKey < winner {
+			winners[duplicateKey] = item.IdempotencyKey
+		}
+	}
+	return winners
+}
+
+func (result *InvitationBatchResult) append(item InvitationBatchItemResult) {
+	result.Items = append(result.Items, item)
+	switch item.Status {
+	case InvitationBatchItemSucceeded:
+		result.Succeeded++
+	case InvitationBatchItemNoOp:
+		result.NoOp++
+	case InvitationBatchItemFailed:
+		result.Failed++
+	}
+}
+
+func invitationBatchScopeMatchesOperation(operation InvitationBatchOperation, scopeType model.RoleScopeType) bool {
+	switch operation {
+	case InvitationBatchStudentClassCreate:
+		return scopeType == model.RoleScopeClass
+	case InvitationBatchTeacherAcademicUnitCreate, InvitationBatchAcademicUnitRoleCreate:
+		return scopeType == model.RoleScopeAcademicUnit
+	case InvitationBatchInstitutionRoleCreate:
+		return scopeType == model.RoleScopeInstitution
+	case InvitationBatchResend, InvitationBatchRevoke:
+		return scopeType == model.RoleScopeInstitution || scopeType == model.RoleScopeAcademicUnit || scopeType == model.RoleScopeClass
+	default:
+		return false
+	}
+}
+
+func (s *invitationService) invitationBatchAuthorizationResource(ctx context.Context, scopeType model.RoleScopeType, scopeID string) (model.Resource, error) {
+	switch scopeType {
+	case model.RoleScopeInstitution:
+		return model.Resource{Type: model.ResourceInstitution, ID: scopeID}, nil
+	case model.RoleScopeAcademicUnit:
+		return model.Resource{Type: model.ResourceAcademicUnit, ID: scopeID}, nil
+	case model.RoleScopeClass:
+		return model.Resource{Type: model.ResourceClass, ID: scopeID}, nil
+	default:
+		return model.Resource{}, NewError("request.invalid")
+	}
+}
+
+func invitationBatchItemIdempotencyKey(batchKey, itemKey string) string {
+	return fmt.Sprintf("%d:%s:%s", len(batchKey), batchKey, itemKey)
+}
+
+func invitationBatchLifecycleOperation(operation InvitationBatchOperation) string {
+	if operation == InvitationBatchResend {
+		return "invitation.resend.v1"
+	}
+	if operation == InvitationBatchRevoke {
+		return "invitation.revoke.v1"
+	}
+	return ""
+}
+
+func (s *invitationService) recordInvitationCommandDuplicate(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt, input store.InvitationBatchDuplicate) (*store.InvitationBatchCommandResult, error) {
+	return runAuditedMutation(ctx, s.audit, attempt, s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationBatchCommandResult, error) {
+			input.AuditEventID, input.AuditAt = reference.ID, reference.MutationAtMillis
+			return s.store.RecordBatchDuplicate(ctx, &input, idempotency)
+		}, invitationMutationError)
+}
+
+func (s *invitationService) recordDuplicateInvitationView(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt, input store.InvitationBatchDuplicate, canonicalKey string) (InvitationView, error) {
+	if idempotency == nil || canonicalKey == "" {
+		return InvitationView{}, NewError("request.invalid")
+	}
+	input.ActorUserID = attempt.Invocation.Principal().UserID
+	input.CanonicalOperation = idempotency.Operation
+	input.CanonicalKeyDigest = sha256.Sum256([]byte(canonicalKey))
+	result, err := s.recordInvitationCommandDuplicate(ctx, idempotency, attempt, input)
+	if err != nil {
+		return InvitationView{}, err
+	}
+	if result.Duplicate {
+		return InvitationView{}, NewError("onboarding_batch.duplicate")
+	}
+	if !result.InvitationID.IsValid() {
+		return InvitationView{}, NewError("invitation.unavailable")
+	}
+	return InvitationView{ID: result.InvitationID, Replayed: true}, nil
+}
+
+func (s *invitationService) recoverInvitationIssueOutcome(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt) (InvitationView, bool, error) {
+	if idempotency == nil {
+		return InvitationView{}, false, nil
+	}
+	found, err := s.store.FindCommandOutcome(ctx, idempotency)
+	if store.IsNotFound(err) {
+		return InvitationView{}, false, nil
+	}
+	if err == nil && found.Invitation != nil {
+		attempt.Value = found.Invitation.Auditable()
+	}
+	replayed, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+			value, replayErr := s.store.ReplayIssue(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+			if replayErr == nil && value.Duplicate {
+				return nil, NewError("onboarding_batch.duplicate")
+			}
+			return value, replayErr
+		}, invitationMutationError)
+	if err != nil {
+		return InvitationView{}, true, err
+	}
+	view := invitationView(replayed.Invitation)
+	view.Replayed = true
+	return view, true, nil
+}
+
+func (s *invitationService) recoverInvitationAdministrationOutcome(ctx context.Context, idempotency *store.CommandIdempotency, attempt mutationAttempt) (InvitationAdministrationView, bool, error) {
+	if idempotency == nil {
+		return InvitationAdministrationView{}, false, nil
+	}
+	found, err := s.store.FindCommandOutcome(ctx, idempotency)
+	if store.IsNotFound(err) {
+		return InvitationAdministrationView{}, false, nil
+	}
+	if err == nil && found.Invitation != nil {
+		attempt.Value = found.Invitation.Auditable()
+	}
+	replayed, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
+			value, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+			if replayErr == nil && value.Duplicate {
+				return nil, NewError("onboarding_batch.duplicate")
+			}
+			return value, replayErr
+		}, invitationMutationError)
+	if err != nil {
+		return InvitationAdministrationView{}, true, err
+	}
+	view := invitationAdministrationView(replayed.Record)
+	view.Replayed = true
+	return view, true, nil
+}
+
+func validateInvitationBatchItem(operation InvitationBatchOperation, item InvitationBatchItemCommand) error {
+	if !validInvitationBatchItemKey(item.IdempotencyKey) {
+		return errors.New("invalid Invitation batch item key")
+	}
+	hasSuggestions := item.SuggestedUsername != "" || item.SuggestedDisplayName != "" || item.SuggestedFirstName != "" || item.SuggestedLastName != "" || item.SuggestedLocale != ""
+	switch operation {
+	case InvitationBatchStudentClassCreate:
+		if item.InvitationID != "" || item.RoleID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" {
+			return errors.New("invalid student Invitation batch item")
+		}
+	case InvitationBatchTeacherAcademicUnitCreate:
+		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID) == "" {
+			return errors.New("invalid teacher Invitation batch item")
+		}
+	case InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate:
+		if item.InvitationID != "" || item.ExpectedRevision != 0 || strings.TrimSpace(item.TargetEmail) == "" || strings.TrimSpace(item.RoleID) == "" || hasSuggestions {
+			return errors.New("invalid Role Invitation batch item")
+		}
+	case InvitationBatchResend, InvitationBatchRevoke:
+		if strings.TrimSpace(item.InvitationID) == "" || item.ExpectedRevision < 1 || item.TargetEmail != "" || item.RoleID != "" ||
+			item.IntendedStartsAt != 0 || item.IntendedEndsAt != 0 || hasSuggestions {
+			return errors.New("invalid Invitation lifecycle batch item")
+		}
+	default:
+		return errors.New("invalid Invitation batch operation")
+	}
+	return nil
+}
+
+func validInvitationBatchItemKey(value string) bool {
+	if len(value) < 1 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || character == '-' || character == '.' || character == '_' || character == '~' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func invitationBatchDuplicateKey(operation InvitationBatchOperation, item InvitationBatchItemCommand) string {
+	mailbox := strings.ToLower(strings.TrimSpace(model.SanitizeUnicode(item.TargetEmail)))
+	switch operation {
+	case InvitationBatchStudentClassCreate:
+		return mailbox
+	case InvitationBatchTeacherAcademicUnitCreate, InvitationBatchAcademicUnitRoleCreate, InvitationBatchInstitutionRoleCreate:
+		return mailbox + "\x00" + strings.TrimSpace(item.RoleID)
+	case InvitationBatchResend, InvitationBatchRevoke:
+		return strings.TrimSpace(item.InvitationID)
+	default:
+		return ""
+	}
+}
+
+func (s *invitationService) runInvitationBatchItem(ctx context.Context, invocation Invocation, batch RunInvitationBatchCommand, item InvitationBatchItemCommand, itemKey string, duplicate bool, canonicalKey string, canonicalFingerprint [sha256.Size]byte) (model.InvitationID, InvitationBatchItemStatus, error) {
+	switch batch.Operation {
+	case InvitationBatchStudentClassCreate:
+		view, err := s.IssueStudentClass(ctx, invocation, IssueStudentClassInvitationCommand{TargetEmail: item.TargetEmail, ClassID: batch.ScopeID,
+			IntendedStartsAt: item.IntendedStartsAt, IntendedEndsAt: item.IntendedEndsAt, SuggestedUsername: item.SuggestedUsername,
+			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
+			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale, IdempotencyKey: itemKey,
+			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey})
+		return invitationBatchViewOutcome(view, err)
+	case InvitationBatchTeacherAcademicUnitCreate:
+		view, err := s.IssueTeacherAcademicUnit(ctx, invocation, IssueTeacherAcademicUnitInvitationCommand{TargetEmail: item.TargetEmail,
+			AcademicUnitID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt, IntendedEndsAt: item.IntendedEndsAt,
+			SuggestedUsername: item.SuggestedUsername, SuggestedDisplayName: item.SuggestedDisplayName,
+			SuggestedFirstName: item.SuggestedFirstName, SuggestedLastName: item.SuggestedLastName,
+			SuggestedLocale: item.SuggestedLocale, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey})
+		return invitationBatchViewOutcome(view, err)
+	case InvitationBatchAcademicUnitRoleCreate:
+		view, err := s.IssueAcademicUnitRole(ctx, invocation, IssueAcademicUnitRoleInvitationCommand{TargetEmail: item.TargetEmail,
+			AcademicUnitID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
+			IntendedEndsAt: item.IntendedEndsAt, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey})
+		return invitationBatchViewOutcome(view, err)
+	case InvitationBatchInstitutionRoleCreate:
+		view, err := s.IssueInstitutionRole(ctx, invocation, IssueInstitutionRoleInvitationCommand{TargetEmail: item.TargetEmail,
+			InstitutionID: batch.ScopeID, RoleID: item.RoleID, IntendedStartsAt: item.IntendedStartsAt,
+			IntendedEndsAt: item.IntendedEndsAt, IdempotencyKey: itemKey, batchDuplicate: duplicate, batchCanonicalKey: canonicalKey})
+		return invitationBatchViewOutcome(view, err)
+	case InvitationBatchResend:
+		view, err := s.Resend(ctx, invocation, ResendInvitationCommand{ID: item.InvitationID, ExpectedRevision: item.ExpectedRevision,
+			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
+			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
+		return invitationBatchAdministrationOutcome(view, err)
+	case InvitationBatchRevoke:
+		view, err := s.Revoke(ctx, invocation, RevokeInvitationCommand{ID: item.InvitationID, ExpectedRevision: item.ExpectedRevision,
+			IdempotencyKey: itemKey, BatchScopeType: batch.ScopeType, BatchScopeID: batch.ScopeID,
+			batchDuplicate: duplicate, batchCanonicalKey: canonicalKey, batchCanonicalFingerprint: canonicalFingerprint})
+		return invitationBatchAdministrationOutcome(view, err)
+	default:
+		return "", "", NewError("request.invalid")
+	}
+}
+
+func invitationBatchViewOutcome(view InvitationView, err error) (model.InvitationID, InvitationBatchItemStatus, error) {
+	if err != nil {
+		return "", "", err
+	}
+	if view.Replayed {
+		return view.ID, InvitationBatchItemNoOp, nil
+	}
+	return view.ID, InvitationBatchItemSucceeded, nil
+}
+
+func invitationBatchAdministrationOutcome(view InvitationAdministrationView, err error) (model.InvitationID, InvitationBatchItemStatus, error) {
+	return invitationBatchViewOutcome(view.InvitationView, err)
+}
+
+func invitationBatchPublicErrorCode(err error) string {
+	if failure, ok := As(err); ok {
+		switch failure.Code() {
+		case "request.invalid", "resource.not_found", "authorization.denied", "authorization.request.invalid",
+			"authorization.unavailable", "audit.unavailable", "administration.unavailable",
+			"authentication.invalid_token", "authentication.strong_required", "authentication.reauthentication_required",
+			"invitation.invalid", "invitation.class_period_invalid", "invitation.conflict",
+			"invitation.role_not_delegable", "invitation.mail_unavailable", "invitation.unavailable",
+			"idempotency.conflict", "idempotency.in_progress", "onboarding_batch.duplicate":
+			return failure.Code()
+		}
+	}
+	return "invitation.unavailable"
+}
+
+func invitationPurposeRequiresInteractiveBatch(purpose model.InvitationPurpose) bool {
+	return purpose == model.InvitationPurposeAcademicUnitRole || purpose == model.InvitationPurposeInstitutionRole
+}
+
 func (s *invitationService) List(ctx context.Context, invocation Invocation, query ListInvitationsQuery) (InvitationAdministrationPage, error) {
 	visibility, err := s.authorization.Visibility(ctx, invocation, model.ActionInvitationView)
 	if err != nil {
@@ -434,35 +889,86 @@ func (s *invitationService) Resend(ctx context.Context, invocation Invocation, c
 	if err != nil {
 		return InvitationAdministrationView{}, invitationError(err)
 	}
-	if !s.mail.Enabled() {
-		return InvitationAdministrationView{}, NewError("invitation.mail_unavailable")
+	if command.BatchScopeID != "" {
+		if current.Invitation == nil || current.Invitation.ScopeType != command.BatchScopeType || current.Invitation.ScopeID != command.BatchScopeID {
+			return InvitationAdministrationView{}, NewError("resource.not_found")
+		}
+		if invitationPurposeRequiresInteractiveBatch(current.Invitation.Purpose) {
+			if err = requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
+				return InvitationAdministrationView{}, err
+			}
+		}
 	}
-	at := model.TimeUTC(s.now())
-	rawClaim := s.newClaim()
-	if !model.IsValidCredentialToken(rawClaim) {
-		return InvitationAdministrationView{}, NewError("invitation.unavailable")
-	}
-	actionURL, err := accountCredentialLink(s.publicURL, "/join", rawClaim)
-	if err != nil {
-		return InvitationAdministrationView{}, NewError("invitation.unavailable").Wrap(err)
-	}
-	prepared, err := s.mail.PrepareInvitationResend(current.Invitation, actionURL, invocation.Principal().UserID, at)
-	if err != nil {
-		return InvitationAdministrationView{}, NewError("invitation.mail_unavailable").Wrap(err)
-	}
-	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationManage,
-		Resource: invitationResource(current.Invitation), ScopeType: current.Invitation.ScopeType, ScopeID: current.Invitation.ScopeID,
-		Operation: "resend", Value: current.Invitation.Auditable()}, s.now,
-		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationRecord, error) {
-			return s.store.Resend(ctx, &store.InvitationResend{ID: id, ExpectedRevision: command.ExpectedRevision,
-				ClaimHash: model.HashInvitationClaim(rawClaim), Occurrence: prepared.Occurrence, Delivery: prepared.Delivery,
-				DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, invitationError)
+	idempotency, err := newCommandIdempotency(invocation, "invitation.resend.v1", command.IdempotencyKey,
+		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
 	}
-	return invitationAdministrationView(result), nil
+	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationManage,
+		Resource: invitationResource(current.Invitation), ScopeType: current.Invitation.ScopeType, ScopeID: current.Invitation.ScopeID,
+		Operation: "resend", Value: current.Invitation.Auditable()}
+	if recovered, ok, recoverErr := s.recoverInvitationAdministrationOutcome(ctx, idempotency, attempt); ok {
+		return recovered, recoverErr
+	}
+	if command.batchDuplicate {
+		if !s.mail.Enabled() {
+			return InvitationAdministrationView{}, NewError("invitation.mail_unavailable")
+		}
+		view, duplicateErr := s.recordDuplicateInvitationView(ctx, idempotency, attempt,
+			store.InvitationBatchDuplicate{LifecycleID: id, ExpectedRevision: command.ExpectedRevision,
+				CanonicalFingerprint: command.batchCanonicalFingerprint}, command.batchCanonicalKey)
+		return InvitationAdministrationView{InvitationView: view}, duplicateErr
+	}
+	result, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
+			if idempotency != nil {
+				replayed, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+				if replayErr == nil {
+					if replayed.Duplicate {
+						return nil, NewError("onboarding_batch.duplicate")
+					}
+					return replayed, nil
+				}
+				if !store.IsNotFound(replayErr) {
+					return nil, replayErr
+				}
+			}
+			if !s.mail.Enabled() {
+				return nil, NewError("invitation.mail_unavailable")
+			}
+			at := model.TimeFromMillis(reference.MutationAtMillis)
+			rawClaim := s.newClaim()
+			if !model.IsValidCredentialToken(rawClaim) {
+				return nil, NewError("invitation.unavailable")
+			}
+			actionURL, linkErr := accountCredentialLink(s.publicURL, "/join", rawClaim)
+			if linkErr != nil {
+				return nil, NewError("invitation.unavailable").Wrap(linkErr)
+			}
+			prepared, prepareErr := s.mail.PrepareInvitationResend(current.Invitation, actionURL, invocation.Principal().UserID, at)
+			if prepareErr != nil {
+				return nil, NewError("invitation.mail_unavailable").Wrap(prepareErr)
+			}
+			input := &store.InvitationResend{ID: id, ExpectedRevision: command.ExpectedRevision,
+				ClaimHash: model.HashInvitationClaim(rawClaim), Occurrence: prepared.Occurrence, Delivery: prepared.Delivery,
+				DeliveryJob: prepared.Job, ActorUserID: invocation.Principal().UserID,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+			if idempotency != nil {
+				value, storeErr := s.store.ResendIdempotently(ctx, input, idempotency)
+				if storeErr == nil && value.Duplicate {
+					return nil, NewError("onboarding_batch.duplicate")
+				}
+				return value, storeErr
+			}
+			record, storeErr := s.store.Resend(ctx, input)
+			return &store.InvitationAdministrationCommandResult{Record: record}, storeErr
+		}, invitationMutationError)
+	if err != nil {
+		return InvitationAdministrationView{}, err
+	}
+	view := invitationAdministrationView(result.Record)
+	view.Replayed = result.Replayed
+	return view, nil
 }
 
 func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, command RevokeInvitationCommand) (InvitationAdministrationView, error) {
@@ -478,23 +984,71 @@ func (s *invitationService) Revoke(ctx context.Context, invocation Invocation, c
 	if err != nil {
 		return InvitationAdministrationView{}, invitationError(err)
 	}
-	at := model.TimeUTC(s.now())
-	prepared, err := s.mail.PrepareInvitationRevocation(current.Invitation, invocation.Principal().UserID, at)
-	if err != nil {
-		return InvitationAdministrationView{}, NewError("invitation.mail_unavailable").Wrap(err)
+	if command.BatchScopeID != "" {
+		if current.Invitation == nil || current.Invitation.ScopeType != command.BatchScopeType || current.Invitation.ScopeID != command.BatchScopeID {
+			return InvitationAdministrationView{}, NewError("resource.not_found")
+		}
+		if invitationPurposeRequiresInteractiveBatch(current.Invitation.Purpose) {
+			if err = requireStrongRecentSession(invocation.Principal(), s.now(), s.recentAuthenticationTTL); err != nil {
+				return InvitationAdministrationView{}, err
+			}
+		}
 	}
-	result, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationManage,
-		Resource: invitationResource(current.Invitation), ScopeType: current.Invitation.ScopeType, ScopeID: current.Invitation.ScopeID,
-		Operation: "revoke", Value: current.Invitation.Auditable()}, s.now,
-		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationRecord, error) {
-			return s.store.Revoke(ctx, &store.InvitationRevocation{ID: id, ExpectedRevision: command.ExpectedRevision,
-				ActorUserID: invocation.Principal().UserID, RevocationNotice: &store.PreparedMail{Occurrence: prepared.Occurrence,
-					Delivery: prepared.Delivery, Job: prepared.Job}, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, invitationError)
+	idempotency, err := newCommandIdempotency(invocation, "invitation.revoke.v1", command.IdempotencyKey,
+		invitationLifecycleIdempotencySemantic{ID: id.String(), Revision: command.ExpectedRevision})
 	if err != nil {
 		return InvitationAdministrationView{}, err
 	}
-	return invitationAdministrationView(result), nil
+	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationManage,
+		Resource: invitationResource(current.Invitation), ScopeType: current.Invitation.ScopeType, ScopeID: current.Invitation.ScopeID,
+		Operation: "revoke", Value: current.Invitation.Auditable()}
+	if recovered, ok, recoverErr := s.recoverInvitationAdministrationOutcome(ctx, idempotency, attempt); ok {
+		return recovered, recoverErr
+	}
+	if command.batchDuplicate {
+		view, duplicateErr := s.recordDuplicateInvitationView(ctx, idempotency, attempt,
+			store.InvitationBatchDuplicate{LifecycleID: id, ExpectedRevision: command.ExpectedRevision,
+				CanonicalFingerprint: command.batchCanonicalFingerprint}, command.batchCanonicalKey)
+		return InvitationAdministrationView{InvitationView: view}, duplicateErr
+	}
+	result, err := runAuditedMutation(ctx, s.audit, attempt, s.now,
+		func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationAdministrationCommandResult, error) {
+			if idempotency != nil {
+				replayed, replayErr := s.store.ReplayAdministration(ctx, idempotency, reference.ID, reference.MutationAtMillis)
+				if replayErr == nil {
+					if replayed.Duplicate {
+						return nil, NewError("onboarding_batch.duplicate")
+					}
+					return replayed, nil
+				}
+				if !store.IsNotFound(replayErr) {
+					return nil, replayErr
+				}
+			}
+			at := model.TimeFromMillis(reference.MutationAtMillis)
+			prepared, prepareErr := s.mail.PrepareInvitationRevocation(current.Invitation, invocation.Principal().UserID, at)
+			if prepareErr != nil {
+				return nil, NewError("invitation.mail_unavailable").Wrap(prepareErr)
+			}
+			input := &store.InvitationRevocation{ID: id, ExpectedRevision: command.ExpectedRevision,
+				ActorUserID: invocation.Principal().UserID, RevocationNotice: &store.PreparedMail{Occurrence: prepared.Occurrence,
+					Delivery: prepared.Delivery, Job: prepared.Job}, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+			if idempotency != nil {
+				value, storeErr := s.store.RevokeIdempotently(ctx, input, idempotency)
+				if storeErr == nil && value.Duplicate {
+					return nil, NewError("onboarding_batch.duplicate")
+				}
+				return value, storeErr
+			}
+			record, storeErr := s.store.Revoke(ctx, input)
+			return &store.InvitationAdministrationCommandResult{Record: record}, storeErr
+		}, invitationMutationError)
+	if err != nil {
+		return InvitationAdministrationView{}, err
+	}
+	view := invitationAdministrationView(result.Record)
+	view.Replayed = result.Replayed
+	return view, nil
 }
 
 func (s *invitationService) Replace(ctx context.Context, invocation Invocation, command ReplaceInvitationCommand) (InvitationAdministrationView, error) {
@@ -736,9 +1290,6 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	if err = s.authorization.Authorize(ctx, invocation, model.ActionClassMembersManage, resource); err != nil {
 		return InvitationView{}, err
 	}
-	if !s.mail.Enabled() {
-		return InvitationView{}, NewError("invitation.mail_unavailable")
-	}
 	class, err := s.classes.Get(ctx, classID)
 	if err != nil {
 		return InvitationView{}, invitationError(err)
@@ -750,14 +1301,45 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	if class.ID != parsedClassID || period.ID != class.AcademicPeriodID {
 		return InvitationView{}, NewError("invitation.class_period_invalid")
 	}
-	issuedAt := model.TimeUTC(s.now())
-	rawClaim := s.newClaim()
-	if !model.IsValidCredentialToken(rawClaim) {
-		return InvitationView{}, NewError("invitation.unavailable")
+	semantic := command
+	semantic.IdempotencyKey = ""
+	idempotency, err := newCommandIdempotency(invocation, "invitation.student_class.issue.v1", command.IdempotencyKey, semantic)
+	if err != nil {
+		return InvitationView{}, err
 	}
+	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate, Resource: resource,
+		ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), Operation: "issue_student_class",
+		Value: map[string]any{"purpose": model.InvitationPurposeStudentClass, "class_id": class.ID.String(), "academic_period_id": period.ID.String()}}
+	if recovered, ok, recoverErr := s.recoverInvitationIssueOutcome(ctx, idempotency, attempt); ok {
+		return recovered, recoverErr
+	}
+	if !s.mail.Enabled() {
+		return InvitationView{}, NewError("invitation.mail_unavailable")
+	}
+	issuedAt := model.TimeUTC(s.now())
 	startsAt := model.TimeFromMillis(command.IntendedStartsAt)
 	if startsAt.IsZero() {
 		startsAt = period.StartsAt
+	}
+	if command.batchDuplicate {
+		candidate, candidateErr := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
+			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
+			IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
+			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
+				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale},
+			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(),
+			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
+		})
+		if candidateErr != nil {
+			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+		}
+		attempt.Value = candidate.Auditable()
+		return s.recordDuplicateInvitationView(ctx, idempotency, attempt,
+			store.InvitationBatchDuplicate{Candidate: candidate}, command.batchCanonicalKey)
+	}
+	rawClaim := s.newClaim()
+	if !model.IsValidCredentialToken(rawClaim) {
+		return InvitationView{}, NewError("invitation.unavailable")
 	}
 	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
 		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, ClassID: class.ID, AcademicPeriodID: period.ID,
@@ -778,16 +1360,27 @@ func (s *invitationService) IssueStudentClass(ctx context.Context, invocation In
 	if err != nil {
 		return InvitationView{}, NewError("invitation.mail_unavailable").Wrap(err)
 	}
-	created, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate,
-		Resource: resource, ScopeType: model.RoleScopeClass, ScopeID: class.ID.String(), Operation: "issue_student_class", Value: invitation.Auditable()},
-		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*model.Invitation, error) {
-			return s.store.IssueStudentClass(ctx, &store.StudentClassInvitationIssue{Invitation: invitation, Occurrence: prepared.Occurrence,
-				Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, invitationError)
+	attempt.Value = invitation.Auditable()
+	created, err := runAuditedMutation(ctx, s.audit, attempt,
+		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+			input := &store.StudentClassInvitationIssue{Invitation: invitation, Occurrence: prepared.Occurrence,
+				Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+			if idempotency != nil {
+				value, storeErr := s.store.IssueStudentClassIdempotently(ctx, input, idempotency)
+				if storeErr == nil && value.Duplicate {
+					return nil, NewError("onboarding_batch.duplicate")
+				}
+				return value, storeErr
+			}
+			value, storeErr := s.store.IssueStudentClass(ctx, input)
+			return &store.InvitationCommandResult{Invitation: value}, storeErr
+		}, invitationMutationError)
 	if err != nil {
 		return InvitationView{}, err
 	}
-	return invitationView(created), nil
+	view := invitationView(created.Invitation)
+	view.Replayed = created.Replayed
+	return view, nil
 }
 
 func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invocation Invocation, command IssueTeacherAcademicUnitInvitationCommand) (InvitationView, error) {
@@ -826,17 +1419,45 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 		return InvitationView{}, err
 	}
+	semantic := command
+	semantic.IdempotencyKey = ""
+	idempotency, err := newCommandIdempotency(invocation, "invitation.teacher_academic_unit.issue.v1", command.IdempotencyKey, semantic)
+	if err != nil {
+		return InvitationView{}, err
+	}
+	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate, Resource: resource,
+		ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), Operation: "issue_teacher_academic_unit",
+		Value: map[string]any{"purpose": model.InvitationPurposeTeacherAcademicUnit, "academic_unit_id": unit.ID.String(), "role_id": role.ID.String()}}
+	if recovered, ok, recoverErr := s.recoverInvitationIssueOutcome(ctx, idempotency, attempt); ok {
+		return recovered, recoverErr
+	}
 	if !s.mail.Enabled() {
 		return InvitationView{}, NewError("invitation.mail_unavailable")
 	}
 	issuedAt := model.TimeUTC(s.now())
-	rawClaim := s.newClaim()
-	if !model.IsValidCredentialToken(rawClaim) {
-		return InvitationView{}, NewError("invitation.unavailable")
-	}
 	startsAt := model.TimeFromMillis(command.IntendedStartsAt)
 	if startsAt.IsZero() {
 		startsAt = issuedAt
+	}
+	if command.batchDuplicate {
+		candidate, candidateErr := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
+			ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unit.ID, RoleID: role.ID,
+			RoleActions: role.Permissions, IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(command.IntendedEndsAt),
+			Suggestions: model.InvitationProfileSuggestions{Username: command.SuggestedUsername, DisplayName: command.SuggestedDisplayName,
+				FirstName: command.SuggestedFirstName, LastName: command.SuggestedLastName, Locale: command.SuggestedLocale},
+			InviterUserID: invocation.Principal().UserID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(),
+			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
+		})
+		if candidateErr != nil {
+			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+		}
+		attempt.Value = candidate.Auditable()
+		return s.recordDuplicateInvitationView(ctx, idempotency, attempt,
+			store.InvitationBatchDuplicate{Candidate: candidate}, command.batchCanonicalKey)
+	}
+	rawClaim := s.newClaim()
+	if !model.IsValidCredentialToken(rawClaim) {
+		return InvitationView{}, NewError("invitation.unavailable")
 	}
 	invitation, err := model.NewTeacherAcademicUnitInvitation(model.TeacherAcademicUnitInvitationInput{
 		ID: model.NewInvitationID(), TargetEmail: command.TargetEmail, AcademicUnitID: unit.ID, RoleID: role.ID,
@@ -857,18 +1478,29 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	if err != nil {
 		return InvitationView{}, NewError("invitation.mail_unavailable").Wrap(err)
 	}
-	created, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate,
-		Resource: resource, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unit.ID.String(), Operation: "issue_teacher_academic_unit", Value: invitation.Auditable()},
-		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*model.Invitation, error) {
-			return s.store.IssueTeacherAcademicUnit(ctx, &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation,
+	attempt.Value = invitation.Auditable()
+	created, err := runAuditedMutation(ctx, s.audit, attempt,
+		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+			input := &store.TeacherAcademicUnitInvitationIssue{Invitation: invitation,
 				Lifetime:   model.InvitationLifetime,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, invitationError)
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+			if idempotency != nil {
+				value, storeErr := s.store.IssueTeacherAcademicUnitIdempotently(ctx, input, idempotency)
+				if storeErr == nil && value.Duplicate {
+					return nil, NewError("onboarding_batch.duplicate")
+				}
+				return value, storeErr
+			}
+			value, storeErr := s.store.IssueTeacherAcademicUnit(ctx, input)
+			return &store.InvitationCommandResult{Invitation: value}, storeErr
+		}, invitationMutationError)
 	if err != nil {
 		return InvitationView{}, err
 	}
-	return invitationView(created), nil
+	view := invitationView(created.Invitation)
+	view.Replayed = created.Replayed
+	return view, nil
 }
 
 func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocation Invocation, command IssueAcademicUnitRoleInvitationCommand) (InvitationView, error) {
@@ -900,10 +1532,17 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 		return InvitationView{}, err
 	}
+	semantic := command
+	semantic.IdempotencyKey = ""
+	idempotency, err := newCommandIdempotency(invocation, "invitation.academic_unit_role.issue.v1", command.IdempotencyKey, semantic)
+	if err != nil {
+		return InvitationView{}, err
+	}
 	return s.issueAuthorizedScopedRole(ctx, invocation, authorizedScopedRoleInvitationIssue{
 		targetEmail: command.TargetEmail, purpose: model.InvitationPurposeAcademicUnitRole,
 		resource: resource, scopeType: model.RoleScopeAcademicUnit, scopeID: unit.ID.String(), operation: "issue_academic_unit_role",
 		academicUnitID: unit.ID, role: role, intendedStartsAt: command.IntendedStartsAt, intendedEndsAt: command.IntendedEndsAt,
+		idempotency: idempotency, batchDuplicate: command.batchDuplicate, batchCanonicalKey: command.batchCanonicalKey,
 	})
 }
 
@@ -935,25 +1574,53 @@ func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
 		return InvitationView{}, err
 	}
+	semantic := command
+	semantic.IdempotencyKey = ""
+	idempotency, err := newCommandIdempotency(invocation, "invitation.institution_role.issue.v1", command.IdempotencyKey, semantic)
+	if err != nil {
+		return InvitationView{}, err
+	}
 	return s.issueAuthorizedScopedRole(ctx, invocation, authorizedScopedRoleInvitationIssue{
 		targetEmail: command.TargetEmail, purpose: model.InvitationPurposeInstitutionRole,
 		resource: resource, scopeType: model.RoleScopeInstitution, scopeID: institutionID.String(), operation: "issue_institution_role",
 		role: role, intendedStartsAt: command.IntendedStartsAt, intendedEndsAt: command.IntendedEndsAt,
+		idempotency: idempotency, batchDuplicate: command.batchDuplicate, batchCanonicalKey: command.batchCanonicalKey,
 	})
 }
 
 func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invocation Invocation, issue authorizedScopedRoleInvitationIssue) (InvitationView, error) {
+	attempt := mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate, Resource: issue.resource,
+		ScopeType: issue.scopeType, ScopeID: issue.scopeID, Operation: issue.operation,
+		Value: map[string]any{"purpose": issue.purpose, "academic_unit_id": issue.academicUnitID.String(), "role_id": issue.role.ID.String()}}
+	if recovered, ok, recoverErr := s.recoverInvitationIssueOutcome(ctx, issue.idempotency, attempt); ok {
+		return recovered, recoverErr
+	}
 	if !s.mail.Enabled() {
 		return InvitationView{}, NewError("invitation.mail_unavailable")
 	}
 	issuedAt := model.TimeUTC(s.now())
-	rawClaim := s.newClaim()
-	if !model.IsValidCredentialToken(rawClaim) {
-		return InvitationView{}, NewError("invitation.unavailable")
-	}
 	startsAt := model.TimeFromMillis(issue.intendedStartsAt)
 	if startsAt.IsZero() {
 		startsAt = issuedAt
+	}
+	if issue.batchDuplicate {
+		candidate, candidateErr := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{
+			ID: model.NewInvitationID(), Purpose: issue.purpose,
+			TargetEmail: issue.targetEmail, AcademicUnitID: issue.academicUnitID, RoleID: issue.role.ID, RoleActions: issue.role.Permissions,
+			IntendedStartsAt: startsAt, IntendedEndsAt: model.OptionalTimeFromMillis(issue.intendedEndsAt),
+			InviterUserID: invocation.Principal().UserID, ScopeType: issue.scopeType, ScopeID: issue.scopeID,
+			ClaimHash: strings.Repeat("0", model.TokenHashLength), IssuedAt: issuedAt,
+		})
+		if candidateErr != nil {
+			return InvitationView{}, domainInvalid("invitation.invalid", candidateErr)
+		}
+		attempt.Value = candidate.Auditable()
+		return s.recordDuplicateInvitationView(ctx, issue.idempotency, attempt,
+			store.InvitationBatchDuplicate{Candidate: candidate}, issue.batchCanonicalKey)
+	}
+	rawClaim := s.newClaim()
+	if !model.IsValidCredentialToken(rawClaim) {
+		return InvitationView{}, NewError("invitation.unavailable")
 	}
 	invitation, err := model.NewScopedRoleInvitation(model.ScopedRoleInvitationInput{
 		ID: model.NewInvitationID(), Purpose: issue.purpose,
@@ -973,17 +1640,28 @@ func (s *invitationService) issueAuthorizedScopedRole(ctx context.Context, invoc
 	if err != nil {
 		return InvitationView{}, NewError("invitation.mail_unavailable").Wrap(err)
 	}
-	created, err := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionInvitationCreate,
-		Resource: issue.resource, ScopeType: issue.scopeType, ScopeID: issue.scopeID, Operation: issue.operation, Value: invitation.Auditable()},
-		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*model.Invitation, error) {
-			return s.store.IssueScopedRole(ctx, &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
+	attempt.Value = invitation.Auditable()
+	created, err := runAuditedMutation(ctx, s.audit, attempt,
+		func() time.Time { return issuedAt }, func(ctx context.Context, reference mutationAttemptReference) (*store.InvitationCommandResult, error) {
+			input := &store.ScopedRoleInvitationIssue{Invitation: invitation, Lifetime: model.InvitationLifetime,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
-		}, invitationError)
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis}
+			if issue.idempotency != nil {
+				value, storeErr := s.store.IssueScopedRoleIdempotently(ctx, input, issue.idempotency)
+				if storeErr == nil && value.Duplicate {
+					return nil, NewError("onboarding_batch.duplicate")
+				}
+				return value, storeErr
+			}
+			value, storeErr := s.store.IssueScopedRole(ctx, input)
+			return &store.InvitationCommandResult{Invitation: value}, storeErr
+		}, invitationMutationError)
 	if err != nil {
 		return InvitationView{}, err
 	}
-	return invitationView(created), nil
+	view := invitationView(created.Invitation)
+	view.Replayed = created.Replayed
+	return view, nil
 }
 
 func validateInvitationDelegableRole(role *model.Role, resourceType model.ResourceType) error {
@@ -1272,6 +1950,9 @@ func invitationView(invitation *model.Invitation) InvitationView {
 }
 
 func invitationError(err error) error {
+	if mapped := idempotencyError(err); mapped != nil {
+		return mapped
+	}
 	if store.IsNotFound(err) {
 		return NewError("resource.not_found").Wrap(err)
 	}

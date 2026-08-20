@@ -44,6 +44,7 @@ type rootStub struct {
 	examAttempt          store.ExamAttemptStore
 	examAttemptWorkspace store.ExamAttemptWorkspaceStore
 	personalAccessToken  store.PersonalAccessTokenStore
+	invitation           store.InvitationStore
 }
 
 func (s *rootStub) Institution() store.InstitutionStore   { return s.institution }
@@ -58,6 +59,24 @@ func (s *rootStub) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 }
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
+}
+func (s *rootStub) Invitation() store.InvitationStore { return s.invitation }
+
+type invitationRetryStub struct {
+	store.InvitationStore
+	issueAttempts  int
+	resendAttempts int
+	err            error
+}
+
+func (s *invitationRetryStub) IssueStudentClassIdempotently(context.Context, *store.StudentClassInvitationIssue, *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	s.issueAttempts++
+	return nil, s.err
+}
+
+func (s *invitationRetryStub) ResendIdempotently(context.Context, *store.InvitationResend, *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	s.resendAttempts++
+	return nil, s.err
 }
 
 type examAuthoringStub struct {
@@ -335,6 +354,26 @@ func TestRetryOnlyRetriesExamAttemptMutationWithDurableCommandOutcome(t *testing
 	}
 	if stub.connectAttempts != 3 || stub.closeAttempts != 1 {
 		t.Fatalf("Exam Attempt mutation attempts = connect %d close %d", stub.connectAttempts, stub.closeAttempts)
+	}
+}
+
+func TestRetryInvitationMutationsOnlyWithDurableCommandOutcomes(t *testing.T) {
+	t.Parallel()
+	transientErr := errors.New("unknown Invitation commit outcome")
+	stub := &invitationRetryStub{err: transientErr}
+	layer, err := retrylayer.New(&rootStub{invitation: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := &store.CommandIdempotency{UserID: model.NewUserID()}
+	_, _ = layer.Invitation().IssueStudentClassIdempotently(context.Background(), &store.StudentClassInvitationIssue{}, command)
+	_, _ = layer.Invitation().ResendIdempotently(context.Background(), &store.InvitationResend{}, command)
+	_, _ = layer.Invitation().IssueStudentClassIdempotently(context.Background(), &store.StudentClassInvitationIssue{}, nil)
+	if stub.issueAttempts != 4 || stub.resendAttempts != 3 {
+		t.Fatalf("Invitation attempts issue/resend = %d/%d, want 4/3", stub.issueAttempts, stub.resendAttempts)
 	}
 }
 

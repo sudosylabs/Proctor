@@ -2279,15 +2279,57 @@ func (s *timedInvitationStore) IssueStudentClass(arg0 context.Context, arg1 *sto
 	})
 }
 
+func (s *timedInvitationStore) IssueStudentClassIdempotently(arg0 context.Context, arg1 *store.StudentClassInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueStudentClassIdempotently), func() (*store.InvitationCommandResult, error) {
+		return s.next.IssueStudentClassIdempotently(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedInvitationStore) IssueTeacherAcademicUnit(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnit), func() (*model.Invitation, error) {
 		return s.next.IssueTeacherAcademicUnit(arg0, arg1)
 	})
 }
 
+func (s *timedInvitationStore) IssueTeacherAcademicUnitIdempotently(arg0 context.Context, arg1 *store.TeacherAcademicUnitInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueTeacherAcademicUnitIdempotently), func() (*store.InvitationCommandResult, error) {
+		return s.next.IssueTeacherAcademicUnitIdempotently(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedInvitationStore) IssueScopedRole(arg0 context.Context, arg1 *store.ScopedRoleInvitationIssue) (*model.Invitation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueScopedRole), func() (*model.Invitation, error) {
 		return s.next.IssueScopedRole(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) IssueScopedRoleIdempotently(arg0 context.Context, arg1 *store.ScopedRoleInvitationIssue, arg2 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodIssueScopedRoleIdempotently), func() (*store.InvitationCommandResult, error) {
+		return s.next.IssueScopedRoleIdempotently(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedInvitationStore) FindCommandOutcome(arg0 context.Context, arg1 *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodFindCommandOutcome), func() (*store.InvitationCommandResult, error) {
+		return s.next.FindCommandOutcome(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) ReplayIssue(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 string, arg3 int64) (*store.InvitationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayIssue), func() (*store.InvitationCommandResult, error) {
+		return s.next.ReplayIssue(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedInvitationStore) ReplayAdministration(arg0 context.Context, arg1 *store.CommandIdempotency, arg2 string, arg3 int64) (*store.InvitationAdministrationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodReplayAdministration), func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.ReplayAdministration(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedInvitationStore) RecordBatchDuplicate(arg0 context.Context, arg1 *store.InvitationBatchDuplicate, arg2 *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRecordBatchDuplicate), func() (*store.InvitationBatchCommandResult, error) {
+		return s.next.RecordBatchDuplicate(arg0, arg1, arg2)
 	})
 }
 
@@ -2345,9 +2387,21 @@ func (s *timedInvitationStore) Resend(arg0 context.Context, arg1 *store.Invitati
 	})
 }
 
+func (s *timedInvitationStore) ResendIdempotently(arg0 context.Context, arg1 *store.InvitationResend, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodResendIdempotently), func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.ResendIdempotently(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedInvitationStore) Revoke(arg0 context.Context, arg1 *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRevoke), func() (*store.InvitationAdministrationRecord, error) {
 		return s.next.Revoke(arg0, arg1)
+	})
+}
+
+func (s *timedInvitationStore) RevokeIdempotently(arg0 context.Context, arg1 *store.InvitationRevocation, arg2 *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInvitation, methodRevokeIdempotently), func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.next.RevokeIdempotently(arg0, arg1, arg2)
 	})
 }
 

@@ -5,7 +5,9 @@ package storetest
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -39,6 +41,12 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	})
 	t.Run("IssueStudentClassAtomic", func(t *testing.T) {
 		testInvitationIssueStudentClassAtomic(t, ss)
+	})
+	t.Run("BatchCommandIdempotencyRecoversIssueAndResend", func(t *testing.T) {
+		testInvitationBatchCommandIdempotency(t, ss)
+	})
+	t.Run("BatchDuplicateRechecksCurrentInviterAuthority", func(t *testing.T) {
+		testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t, ss)
 	})
 	t.Run("AcceptStudentClassAtomicAndReplaySafe", func(t *testing.T) {
 		testInvitationAcceptStudentClassAtomicAndReplaySafe(t, ss)
@@ -90,6 +98,133 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 			testScopedRoleAcceptSerializesWithInviterBindingEnd(t, ss, probe.EndBindingBeforeAccept)
 		})
 	}
+}
+
+func testInvitationBatchCommandIdempotency(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, issuedAt := invitationAdministrationFixture(t, ctx, ss, "batch-idempotency")
+	issue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt)
+	issue.Invitation.TargetEmail = "batch-" + model.NewId() + "@example.edu"
+	requireNoError(t, issue.Invitation.Validate())
+	issueCommand := invitationTestCommand(inviter.ID, "invitation.student_class.issue.v1", "batch-row-0", "same-issue")
+	created, err := ss.Invitation().IssueStudentClassIdempotently(ctx, issue, issueCommand)
+	requireNoError(t, err)
+	if created.Replayed || created.Invitation.ID != issue.Invitation.ID {
+		t.Fatalf("fresh idempotent Invitation issue = %#v", created)
+	}
+
+	replayIssue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt.Add(time.Second))
+	replayIssue.Invitation.TargetEmail = issue.Invitation.TargetEmail
+	requireNoError(t, replayIssue.Invitation.Validate())
+	replayed, err := ss.Invitation().IssueStudentClassIdempotently(ctx, replayIssue, issueCommand)
+	requireNoError(t, err)
+	if !replayed.Replayed || replayed.Invitation.ID != created.Invitation.ID {
+		t.Fatalf("replayed idempotent Invitation issue = %#v", replayed)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, replayIssue.Delivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("replayed issue inserted duplicate delivery: %v", err)
+	}
+	replayAudit, err := ss.Audit().Get(ctx, replayIssue.AuditEventID)
+	requireNoError(t, err)
+	if replayAudit.Status != model.AuditStatusSuccess || !strings.Contains(string(replayAudit.Result), "idempotency_replayed") ||
+		strings.Contains(string(replayAudit.Result), issue.Invitation.TargetEmail) {
+		t.Fatalf("replayed issue audit = %#v", replayAudit)
+	}
+	conflicting := invitationTestCommand(inviter.ID, issueCommand.Operation, "batch-row-0", "changed-issue")
+	if _, err = ss.Invitation().IssueStudentClassIdempotently(ctx, replayIssue, conflicting); err == nil {
+		t.Fatal("conflicting Invitation issue idempotency reuse succeeded")
+	} else {
+		var conflict *store.ErrIdempotencyConflict
+		if !errors.As(err, &conflict) {
+			t.Fatalf("conflicting Invitation issue error = %v", err)
+		}
+	}
+
+	newHash := model.HashInvitationClaim(model.NewCredentialToken())
+	occurrence, delivery, job := invitationLifecycleMailFixture(t, created.Invitation.ID, inviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), created.Invitation.ExpiresAt)
+	resendAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
+	resend := &store.InvitationResend{ID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision,
+		ClaimHash: newHash, Occurrence: occurrence, Delivery: delivery, DeliveryJob: job, ActorUserID: inviter.ID,
+		AuditEventID: resendAudit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())}
+	resendCommand := invitationTestCommand(inviter.ID, "invitation.resend.v1", "batch-row-1", "same-resend")
+	resent, err := ss.Invitation().ResendIdempotently(ctx, resend, resendCommand)
+	requireNoError(t, err)
+	if resent.Replayed || resent.Record.Invitation.Revision != created.Invitation.Revision+1 {
+		t.Fatalf("fresh idempotent Invitation resend = %#v", resent)
+	}
+
+	replayOccurrence, replayDelivery, replayJob := invitationLifecycleMailFixture(t, created.Invitation.ID, inviter.ID,
+		model.MailTemplateAccessStudentClassInvitation, model.JobTypeMailDeliverCredential, model.NowUTC(), created.Invitation.ExpiresAt)
+	replayResendAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "invitation.resend")
+	replayResend := &store.InvitationResend{ID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision,
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), Occurrence: replayOccurrence, Delivery: replayDelivery,
+		DeliveryJob: replayJob, ActorUserID: inviter.ID, AuditEventID: replayResendAudit.ID.String(), AuditAt: model.MillisFromTime(model.NowUTC())}
+	replayedResend, err := ss.Invitation().ResendIdempotently(ctx, replayResend, resendCommand)
+	requireNoError(t, err)
+	if !replayedResend.Replayed || replayedResend.Record.Invitation.Revision != resent.Record.Invitation.Revision {
+		t.Fatalf("replayed idempotent Invitation resend = %#v", replayedResend)
+	}
+	if _, err = ss.Mail().GetDelivery(ctx, replayDelivery.ID); !store.IsNotFound(err) {
+		t.Fatalf("replayed resend inserted duplicate delivery: %v", err)
+	}
+
+	duplicateAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
+	duplicateCommand := invitationTestCommand(inviter.ID, resendCommand.Operation, "batch-row-2", "duplicate-resend")
+	duplicate, err := ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
+		LifecycleID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision, ActorUserID: inviter.ID,
+		CanonicalOperation: resendCommand.Operation, CanonicalKeyDigest: resendCommand.KeyDigest, CanonicalFingerprint: resendCommand.Fingerprint,
+		AuditEventID: duplicateAudit.ID.String(), AuditAt: model.GetMillis(),
+	}, duplicateCommand)
+	requireNoError(t, err)
+	if !duplicate.Duplicate || duplicate.Replayed {
+		t.Fatalf("fresh lifecycle duplicate after canonical resend = %#v", duplicate)
+	}
+
+	staleAudit := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
+	staleCommand := invitationTestCommand(inviter.ID, resendCommand.Operation, "batch-row-3", "stale-resend")
+	_, err = ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
+		LifecycleID: created.Invitation.ID, ExpectedRevision: created.Invitation.Revision, ActorUserID: inviter.ID,
+		CanonicalOperation: resendCommand.Operation, CanonicalKeyDigest: resendCommand.KeyDigest,
+		CanonicalFingerprint: sha256.Sum256([]byte("missing-canonical-fingerprint")),
+		AuditEventID:         staleAudit.ID.String(), AuditAt: model.GetMillis(),
+	}, staleCommand)
+	if !store.IsConflict(err) {
+		t.Fatalf("stale lifecycle duplicate without canonical outcome error = %v", err)
+	}
+}
+
+func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	fixture, class, inviter, _, binding, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "batch-duplicate-authority")
+	candidate := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt).Invitation
+	candidate.TargetEmail = "duplicate-authority-" + model.NewId() + "@example.edu"
+	requireNoError(t, candidate.Validate())
+	endedAt := model.GetMillis()
+	if _, err := ss.RoleBinding().End(ctx, binding.ID.String(), endedAt); err != nil {
+		t.Fatalf("end inviter authority: %v", err)
+	}
+	attempt := saveInvitationLifecycleAuditAttempt(t, ctx, ss, inviter.ID, class.ID.String(), "onboarding_batch.duplicate")
+	command := invitationTestCommand(inviter.ID, "invitation.student_class.issue.v1", "duplicate-row", "duplicate-package")
+	_, err := ss.Invitation().RecordBatchDuplicate(ctx, &store.InvitationBatchDuplicate{
+		Candidate: candidate, ActorUserID: inviter.ID,
+		CanonicalOperation: command.Operation, CanonicalKeyDigest: sha256.Sum256([]byte("canonical-row")),
+		AuditEventID: attempt.ID.String(), AuditAt: endedAt + 1,
+	}, command)
+	if !store.IsConflict(err) {
+		t.Fatalf("RecordBatchDuplicate() after inviter authority ended error = %v", err)
+	}
+	current, getErr := ss.Audit().Get(ctx, attempt.ID.String())
+	requireNoError(t, getErr)
+	if current.Status != model.AuditStatusAttempt {
+		t.Fatalf("failed duplicate authority audit status = %q", current.Status)
+	}
+}
+
+func invitationTestCommand(userID model.UserID, operation, key, fingerprint string) *store.CommandIdempotency {
+	return &store.CommandIdempotency{UserID: userID, Operation: operation, KeyDigest: sha256.Sum256([]byte(key)),
+		FingerprintVersion: 1, Fingerprint: sha256.Sum256([]byte(fingerprint)), OutcomeVersion: 1,
+		Retention: 24 * time.Hour, Wait: 2 * time.Second}
 }
 
 func testInvitationAdministrationPaginationIsStable(t *testing.T, ss store.Store) {

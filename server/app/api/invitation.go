@@ -31,6 +31,7 @@ type InvitationApplication interface {
 	ResendInvitation(context.Context, application.Invocation, application.ResendInvitationCommand) (application.InvitationAdministrationView, error)
 	RevokeInvitation(context.Context, application.Invocation, application.RevokeInvitationCommand) (application.InvitationAdministrationView, error)
 	ReplaceInvitation(context.Context, application.Invocation, application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error)
+	RunInvitationBatch(context.Context, application.Invocation, application.RunInvitationBatchCommand) (application.InvitationBatchResult, error)
 }
 
 type issueStudentClassInvitationRequest struct {
@@ -125,6 +126,43 @@ type replaceInvitationRequest struct {
 	SuggestedLocale      string `json:"suggested_locale,omitempty"`
 }
 
+type invitationBatchItemRequest struct {
+	Key                  string `json:"key"`
+	InvitationID         string `json:"invitation_id,omitempty"`
+	ExpectedRevision     int64  `json:"expected_revision,omitempty"`
+	Email                string `json:"email,omitempty"`
+	RoleID               string `json:"role_id,omitempty"`
+	StartAt              int64  `json:"start_at,omitempty"`
+	EndAt                int64  `json:"end_at,omitempty"`
+	SuggestedUsername    string `json:"suggested_username,omitempty"`
+	SuggestedDisplayName string `json:"suggested_display_name,omitempty"`
+	SuggestedFirstName   string `json:"suggested_first_name,omitempty"`
+	SuggestedLastName    string `json:"suggested_last_name,omitempty"`
+	SuggestedLocale      string `json:"suggested_locale,omitempty"`
+}
+
+type invitationBatchRequest struct {
+	Operation string                       `json:"operation"`
+	ScopeType string                       `json:"scope_type"`
+	ScopeID   string                       `json:"scope_id"`
+	Items     []invitationBatchItemRequest `json:"items"`
+}
+
+type invitationBatchItemResponse struct {
+	Index        int    `json:"index"`
+	Status       string `json:"status"`
+	InvitationID string `json:"invitation_id,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+}
+
+type invitationBatchResponse struct {
+	Operation string                        `json:"operation"`
+	Items     []invitationBatchItemResponse `json:"items"`
+	Succeeded int                           `json:"succeeded"`
+	NoOp      int                           `json:"no_op"`
+	Failed    int                           `json:"failed"`
+}
+
 type invitationDeliveryResponse struct {
 	TemplateKey       string `json:"template_key"`
 	State             string `json:"state"`
@@ -211,10 +249,16 @@ func (unavailableInvitationApplication) RevokeInvitation(context.Context, applic
 func (unavailableInvitationApplication) ReplaceInvitation(context.Context, application.Invocation, application.ReplaceInvitationCommand) (application.InvitationAdministrationView, error) {
 	return application.InvitationAdministrationView{}, application.NewError("invitation.unavailable")
 }
+func (unavailableInvitationApplication) RunInvitationBatch(context.Context, application.Invocation, application.RunInvitationBatchCommand) (application.InvitationBatchResult, error) {
+	return application.InvitationBatchResult{}, application.NewError("invitation.unavailable")
+}
 
 func invitationResource(invitations InvitationApplication) resource {
 	module := invitationResourceModule{invitations: invitations}
 	return newResource("invitations",
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("invitation-batches")),
+			academicRelationshipMutationErrorCodes("authentication.strong_required", "authentication.reauthentication_required", "invitation.unavailable",
+				"idempotency.key_required", "idempotency.invalid_key"), module.batch),
 		principalRoute(http.MethodGet, apiPath(literal("invitations")),
 			append(academicRelationshipReadErrorCodes(), "invitation.query.invalid", "invitation.unavailable"), module.list),
 		principalRoute(http.MethodGet, apiPath(literal("invitations"), canonicalID("invitation_id")),
@@ -244,6 +288,35 @@ func invitationResource(invitations InvitationApplication) resource {
 		sessionRoute(http.MethodPost, apiPath(literal("invitations"), literal("institution-role"), literal("accept")),
 			sessionAuthenticationMutationErrorCodes("authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"), module.acceptInstitutionRole),
 	)
+}
+
+func (m invitationResourceModule) batch(request operationRequest) (operationResult, error) {
+	var body invitationBatchRequest
+	if err := request.decodeJSON(&body, "runInvitationBatch"); err != nil {
+		return operationResult{}, invalidRequestError("invitationResourceModule.batch", err)
+	}
+	items := make([]application.InvitationBatchItemCommand, 0, len(body.Items))
+	for _, item := range body.Items {
+		items = append(items, application.InvitationBatchItemCommand{IdempotencyKey: item.Key, InvitationID: item.InvitationID,
+			ExpectedRevision: item.ExpectedRevision, TargetEmail: item.Email, RoleID: item.RoleID,
+			IntendedStartsAt: item.StartAt, IntendedEndsAt: item.EndAt, SuggestedUsername: item.SuggestedUsername,
+			SuggestedDisplayName: item.SuggestedDisplayName, SuggestedFirstName: item.SuggestedFirstName,
+			SuggestedLastName: item.SuggestedLastName, SuggestedLocale: item.SuggestedLocale})
+	}
+	result, err := m.invitations.RunInvitationBatch(request.context, request.invocation(), application.RunInvitationBatchCommand{
+		Operation: application.InvitationBatchOperation(body.Operation), ScopeType: model.RoleScopeType(body.ScopeType),
+		ScopeID: body.ScopeID, IdempotencyKey: request.idempotencyKey, Items: items,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := invitationBatchResponse{Operation: string(result.Operation), Items: make([]invitationBatchItemResponse, 0, len(result.Items)),
+		Succeeded: result.Succeeded, NoOp: result.NoOp, Failed: result.Failed}
+	for _, item := range result.Items {
+		response.Items = append(response.Items, invitationBatchItemResponse{Index: item.Index, Status: string(item.Status),
+			InvitationID: item.InvitationID.String(), ErrorCode: item.ErrorCode})
+	}
+	return jsonResult(http.StatusOK, response), nil
 }
 
 func (m invitationResourceModule) list(request operationRequest) (operationResult, error) {

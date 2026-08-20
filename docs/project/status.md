@@ -491,9 +491,14 @@ uniqueness before one named transaction links the identity and accepts the
 package. New and existing canonical Users are supported, provider mailbox
 differences never select an account, losing races fail closed, and the closed
 Invitation purpose creates no ordinary Session.
-CSV imports are asynchronous validated batches over the same invitation and
-progression commands, with row-level results and no raw invitation secrets in
-exports. The closed authorization registry now distinguishes Academic Unit
+Bounded JSON Invitation batches are implemented for one typed create, resend,
+or revoke operation and exact target scope at a time. Up to 200 ordered rows
+reauthorize and commit independently through the ordinary Invitation use cases;
+stable per-row keys and retained outcomes recover unknown commits or row
+reordering without duplicate Invitations or mail, duplicate rows are explicit,
+and PATs remain limited to ordinary scoped student/teacher onboarding. Larger
+validated CSV imports and their retained reports remain the next batch slice.
+The closed authorization registry now distinguishes Academic Unit
 membership, Programme, Programme Level, Academic Period, Class, Class
 membership, progression, Access Policy, Invitation, onboarding batch,
 external-identity, Role, and Role Binding operations. Existing academic HTTP

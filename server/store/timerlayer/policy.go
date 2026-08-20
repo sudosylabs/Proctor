@@ -283,6 +283,18 @@ const (
 )
 
 const (
+	methodIssueStudentClassIdempotently        methodName = "issue_student_class_idempotently"
+	methodIssueTeacherAcademicUnitIdempotently methodName = "issue_teacher_academic_unit_idempotently"
+	methodIssueScopedRoleIdempotently          methodName = "issue_scoped_role_idempotently"
+	methodResendIdempotently                   methodName = "resend_idempotently"
+	methodRevokeIdempotently                   methodName = "revoke_idempotently"
+	methodFindCommandOutcome                   methodName = "find_command_outcome"
+	methodReplayIssue                          methodName = "replay_issue"
+	methodReplayAdministration                 methodName = "replay_administration"
+	methodRecordBatchDuplicate                 methodName = "record_batch_duplicate"
+)
+
+const (
 	methodRecoverAdministratorAccess       methodName = "recover_administrator_access"
 	methodReconcileAdministratorRecovery   methodName = "reconcile_administrator_recovery"
 	methodReconcileSystemAdministratorRole methodName = "reconcile_system_administrator_role"

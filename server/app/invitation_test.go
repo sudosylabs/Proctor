@@ -31,6 +31,33 @@ type invitationStoreFake struct {
 	replaced         *store.InvitationReplacement
 	externalAccepted *store.ExternalIdentityInvitationAcceptance
 	events           *[]string
+	idempotentIssues map[[32]byte]*model.Invitation
+	batchDuplicates  map[[32]byte]bool
+	issueExecutions  int
+}
+
+func (f *invitationStoreFake) RecordBatchDuplicate(_ context.Context, _ *store.InvitationBatchDuplicate, command *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
+	if invitation := f.idempotentIssues[command.KeyDigest]; invitation != nil {
+		return &store.InvitationBatchCommandResult{InvitationID: invitation.ID, Replayed: true}, nil
+	}
+	if f.batchDuplicates == nil {
+		f.batchDuplicates = make(map[[32]byte]bool)
+	}
+	replayed := f.batchDuplicates[command.KeyDigest]
+	f.batchDuplicates[command.KeyDigest] = true
+	return &store.InvitationBatchCommandResult{Duplicate: true, Replayed: replayed}, nil
+}
+func (f *invitationStoreFake) ReplayIssue(_ context.Context, command *store.CommandIdempotency, _ string, _ int64) (*store.InvitationCommandResult, error) {
+	if f.batchDuplicates[command.KeyDigest] {
+		return &store.InvitationCommandResult{Duplicate: true, Replayed: true}, nil
+	}
+	if invitation := f.idempotentIssues[command.KeyDigest]; invitation != nil {
+		return &store.InvitationCommandResult{Invitation: invitation, Replayed: true}, nil
+	}
+	return nil, store.NewErrNotFound("command_outcome", "idempotency_key")
+}
+func (f *invitationStoreFake) FindCommandOutcome(ctx context.Context, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return f.ReplayIssue(ctx, command, "", 0)
 }
 
 func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.StudentClassInvitationIssue) (*model.Invitation, error) {
@@ -38,10 +65,27 @@ func (f *invitationStoreFake) IssueStudentClass(_ context.Context, input *store.
 	f.invitation = input.Invitation
 	return input.Invitation, nil
 }
+func (f *invitationStoreFake) IssueStudentClassIdempotently(_ context.Context, input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	f.issued = input
+	if f.idempotentIssues == nil {
+		f.idempotentIssues = make(map[[32]byte]*model.Invitation)
+	}
+	if existing := f.idempotentIssues[command.KeyDigest]; existing != nil {
+		return &store.InvitationCommandResult{Invitation: existing, Replayed: true}, nil
+	}
+	f.issueExecutions++
+	f.invitation = input.Invitation
+	f.idempotentIssues[command.KeyDigest] = input.Invitation
+	return &store.InvitationCommandResult{Invitation: input.Invitation}, nil
+}
 func (f *invitationStoreFake) IssueTeacherAcademicUnit(_ context.Context, input *store.TeacherAcademicUnitInvitationIssue) (*model.Invitation, error) {
 	f.teacherIssued = input
 	f.invitation = input.Invitation
 	return input.Invitation, nil
+}
+func (f *invitationStoreFake) IssueTeacherAcademicUnitIdempotently(_ context.Context, input *store.TeacherAcademicUnitInvitationIssue, _ *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	value, err := f.IssueTeacherAcademicUnit(context.Background(), input)
+	return &store.InvitationCommandResult{Invitation: value}, err
 }
 func (f *invitationStoreFake) Get(context.Context, model.InvitationID) (*model.Invitation, error) {
 	return f.invitation, nil
@@ -73,6 +117,10 @@ func (f *invitationStoreFake) IssueScopedRole(_ context.Context, input *store.Sc
 	f.invitation = input.Invitation
 	return input.Invitation, nil
 }
+func (f *invitationStoreFake) IssueScopedRoleIdempotently(_ context.Context, input *store.ScopedRoleInvitationIssue, _ *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	value, err := f.IssueScopedRole(context.Background(), input)
+	return &store.InvitationCommandResult{Invitation: value}, err
+}
 func (f *invitationStoreFake) AcceptScopedRole(_ context.Context, input *store.ScopedRoleInvitationAcceptance) (*store.ScopedRoleInvitationAcceptanceResult, error) {
 	if f.events != nil {
 		*f.events = append(*f.events, "accept")
@@ -101,11 +149,19 @@ func (f *invitationStoreFake) Resend(_ context.Context, input *store.InvitationR
 	_ = result.Resend(input.ClaimHash, model.TimeFromMillis(input.AuditAt))
 	return &store.InvitationAdministrationRecord{Invitation: &result, Delivery: &store.InvitationDeliverySummary{State: model.MailDeliveryQueued}}, nil
 }
+func (f *invitationStoreFake) ResendIdempotently(ctx context.Context, input *store.InvitationResend, _ *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	record, err := f.Resend(ctx, input)
+	return &store.InvitationAdministrationCommandResult{Record: record}, err
+}
 func (f *invitationStoreFake) Revoke(_ context.Context, input *store.InvitationRevocation) (*store.InvitationAdministrationRecord, error) {
 	f.revoked = input
 	result := *f.invitation
 	_ = result.Revoke(model.TimeFromMillis(input.AuditAt))
 	return &store.InvitationAdministrationRecord{Invitation: &result}, nil
+}
+func (f *invitationStoreFake) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, _ *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	record, err := f.Revoke(ctx, input)
+	return &store.InvitationAdministrationCommandResult{Record: record}, err
 }
 func (f *invitationStoreFake) Replace(_ context.Context, input *store.InvitationReplacement) (*store.InvitationAdministrationRecord, error) {
 	f.replaced = input
@@ -122,6 +178,10 @@ type invitationClassStoreFake struct{ class *model.Class }
 
 func (f invitationClassStoreFake) Get(context.Context, string) (*model.Class, error) {
 	return f.class, nil
+}
+
+func (f invitationClassStoreFake) GetAcademicUnitId(context.Context, string) (string, error) {
+	return model.NewAcademicUnitID().String(), nil
 }
 
 type invitationPeriodStoreFake struct{ period *model.AcademicPeriod }
@@ -147,6 +207,7 @@ type invitationAuthorizerFake struct {
 	delegatedActions   []string
 	delegatedScopeType model.RoleScopeType
 	delegatedScopeID   string
+	actionErrors       map[model.Action]error
 	err                error
 }
 
@@ -207,6 +268,9 @@ func TestInvitationExternalIdentityAcceptancePreparesTheExactTerminalPackage(t *
 
 func (f *invitationAuthorizerFake) Authorize(_ context.Context, _ Invocation, action model.Action, _ model.Resource) error {
 	f.actions = append(f.actions, action)
+	if err := f.actionErrors[action]; err != nil {
+		return err
+	}
 	return f.err
 }
 func (f *invitationAuthorizerFake) CanDelegateActionsAtScope(_ context.Context, _ Invocation, actions []string, scopeType model.RoleScopeType, scopeID string) error {
@@ -246,6 +310,224 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 		!slices.Equal(authorizer.delegatedActions, role.Permissions) || authorizer.delegatedScopeType != model.RoleScopeAcademicUnit ||
 		authorizer.delegatedScopeID != unitID.String() {
 		t.Fatalf("teacher issue authorization = %v / %v / %s", authorizer.actions, authorizer.delegatedActions, authorizer.delegatedScopeID)
+	}
+}
+
+func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID, actorID := model.NewClassID(), model.NewAcademicPeriodID(), model.NewUserID()
+	class := &model.Class{ID: classID, AcademicPeriodID: periodID}
+	period := &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(90 * 24 * time.Hour)}
+	persistence := &invitationStoreFake{}
+	authorizer := &invitationAuthorizerFake{}
+	mail := &invitationMailPreparerFake{}
+	auditEvents := []string{}
+	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
+		&mutationAttemptAuditorFake{events: &auditEvents}, invitationAttemptLimiterFake{}, "node-a", "https://proctor.example.edu", time.Hour,
+		model.NewCredentialToken, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), IdempotencyKey: "batch-once", Items: []InvitationBatchItemCommand{
+			{IdempotencyKey: "row-1", TargetEmail: "first@example.edu"},
+			{IdempotencyKey: "row-2", TargetEmail: "invalid@example.edu", RoleID: model.NewRoleID().String()},
+			{IdempotencyKey: "row-3", TargetEmail: " FIRST@example.edu "},
+		}}
+	invocation := NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{RequestID: "request-1"})
+	first, err := service.RunBatch(context.Background(), invocation, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Succeeded != 1 || first.NoOp != 0 || first.Failed != 2 || len(first.Items) != 3 ||
+		first.Items[0].Status != InvitationBatchItemSucceeded || !first.Items[0].InvitationID.IsValid() ||
+		first.Items[1].ErrorCode != "request.invalid" || first.Items[2].ErrorCode != "onboarding_batch.duplicate" ||
+		persistence.issueExecutions != 1 {
+		t.Fatalf("first batch result=%#v executions=%d", first, persistence.issueExecutions)
+	}
+	if len(authorizer.actions) < 3 || authorizer.actions[0] != model.ActionOnboardingBatchManage ||
+		authorizer.actions[1] != model.ActionInvitationCreate || authorizer.actions[2] != model.ActionClassMembersManage {
+		t.Fatalf("batch authorization order = %v", authorizer.actions)
+	}
+
+	command.Items = []InvitationBatchItemCommand{command.Items[2], command.Items[1], command.Items[0]}
+	mail.disabled = true
+	second, err := service.RunBatch(context.Background(), invocation, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Succeeded != 0 || second.NoOp != 1 || second.Failed != 2 ||
+		second.Items[0].ErrorCode != "onboarding_batch.duplicate" || second.Items[2].InvitationID != first.Items[0].InvitationID ||
+		second.Items[2].Status != InvitationBatchItemNoOp || persistence.issueExecutions != 1 {
+		t.Fatalf("replayed batch result=%#v executions=%d", second, persistence.issueExecutions)
+	}
+}
+
+func TestInvitationBatchAuthorizesBeforeRowsAndRestrictsRoleWorkToInteractiveSessions(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	unitID := model.NewAcademicUnitID()
+	authorizer := &invitationAuthorizerFake{err: NewError("authorization.denied")}
+	service := newInvitationServiceForTest(t, &invitationStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		authorizer, &invitationMailPreparerFake{}, now)
+	command := RunInvitationBatchCommand{Operation: InvitationBatchTeacherAcademicUnitCreate, ScopeType: model.RoleScopeAcademicUnit,
+		ScopeID: unitID.String(), IdempotencyKey: "authorize-first", Items: []InvitationBatchItemCommand{{IdempotencyKey: "row-1", RoleID: "not-an-id"}}}
+	_, err := service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if !Is(err, "authorization.denied") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
+		t.Fatalf("batch authorization-before-row error/actions = %v / %v", err, authorizer.actions)
+	}
+
+	authorizer.err = nil
+	authorizer.actions = nil
+	command.Operation = InvitationBatchAcademicUnitRoleCreate
+	command.Items = []InvitationBatchItemCommand{{IdempotencyKey: "row-1", TargetEmail: "existing@example.edu", RoleID: model.NewRoleID().String()}}
+	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if !Is(err, "authentication.invalid_token") || !slices.Equal(authorizer.actions, []model.Action{model.ActionOnboardingBatchManage}) {
+		t.Fatalf("Role batch assurance error/actions = %v / %v", err, authorizer.actions)
+	}
+
+	authorizer.actions = nil
+	command.Operation = InvitationBatchTeacherAcademicUnitCreate
+	command.Items = make([]InvitationBatchItemCommand, MaximumInvitationBatchItems+1)
+	_, err = service.RunBatch(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if !Is(err, "request.invalid") || len(authorizer.actions) != 0 {
+		t.Fatalf("oversized batch error/actions = %v / %v", err, authorizer.actions)
+	}
+}
+
+func TestInvitationBatchItemIdempotencyKeyUnambiguouslyEncodesTheTuple(t *testing.T) {
+	t.Parallel()
+	if left, right := invitationBatchItemIdempotencyKey("a.b", "c"), invitationBatchItemIdempotencyKey("a", "b.c"); left == right {
+		t.Fatalf("distinct batch/item tuples collided at %q", left)
+	}
+}
+
+func TestInvitationBatchDuplicatesRetainPerItemAuthorization(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID := model.NewClassID(), model.NewAcademicPeriodID()
+	persistence := &invitationStoreFake{}
+	authorizer := &invitationAuthorizerFake{actionErrors: map[model.Action]error{
+		model.ActionInvitationCreate: NewError("authorization.denied"),
+	}}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		authorizer, &invitationMailPreparerFake{}, now)
+	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
+	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), IdempotencyKey: "row-authorization", Items: []InvitationBatchItemCommand{
+			{IdempotencyKey: "canonical", TargetEmail: "same@example.edu"},
+			{IdempotencyKey: "duplicate", TargetEmail: " SAME@example.edu "},
+		}}
+
+	result, err := service.RunBatch(context.Background(),
+		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Failed != 2 || result.Items[0].ErrorCode != "authorization.denied" ||
+		result.Items[1].ErrorCode != "authorization.denied" || len(persistence.batchDuplicates) != 0 {
+		t.Fatalf("duplicate row authorization result=%#v durable duplicates=%v", result, persistence.batchDuplicates)
+	}
+}
+
+func TestInvitationBatchDuplicateIdentityIncludesRole(t *testing.T) {
+	t.Parallel()
+	firstRole, secondRole := model.NewRoleID(), model.NewRoleID()
+	first := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: firstRole.String()}
+	caseVariant := InvitationBatchItemCommand{TargetEmail: " TEACHER@example.edu ", RoleID: firstRole.String()}
+	second := InvitationBatchItemCommand{TargetEmail: "teacher@example.edu", RoleID: secondRole.String()}
+	if firstKey, caseKey := invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first),
+		invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, caseVariant); firstKey != caseKey {
+		t.Fatalf("same teacher package produced distinct duplicate keys %q and %q", firstKey, caseKey)
+	}
+	if firstKey, secondKey := invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, first),
+		invitationBatchDuplicateKey(InvitationBatchTeacherAcademicUnitCreate, second); firstKey == secondKey {
+		t.Fatalf("different teacher roles produced the same duplicate key %q", firstKey)
+	}
+	plain := InvitationBatchItemCommand{TargetEmail: "same@example.edu"}
+	blockedControl := InvitationBatchItemCommand{TargetEmail: "same@example.edu\u202e"}
+	if plainKey, blockedKey := invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, plain),
+		invitationBatchDuplicateKey(InvitationBatchStudentClassCreate, blockedControl); plainKey != blockedKey {
+		t.Fatalf("model-equivalent mailboxes produced distinct duplicate keys %q and %q", plainKey, blockedKey)
+	}
+}
+
+func TestInvitationBatchDuplicateStillValidatesItsDomainPackage(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID := model.NewClassID(), model.NewAcademicPeriodID()
+	period := &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour), EndsAt: now.Add(90 * 24 * time.Hour)}
+	persistence := &invitationStoreFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
+	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.periods = invitationPeriodStoreFake{period: period}
+	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), IdempotencyKey: "duplicate-validation", Items: []InvitationBatchItemCommand{
+			{IdempotencyKey: "canonical", TargetEmail: "same@example.edu"},
+			{IdempotencyKey: "duplicate", TargetEmail: " SAME@example.edu ", IntendedEndsAt: model.MillisFromTime(now)},
+		}}
+
+	result, err := service.RunBatch(context.Background(),
+		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Succeeded != 1 || result.Failed != 1 || result.Items[0].Status != InvitationBatchItemSucceeded ||
+		result.Items[1].ErrorCode != "invitation.invalid" || len(persistence.batchDuplicates) != 0 {
+		t.Fatalf("invalid duplicate package result=%#v durable duplicates=%v", result, persistence.batchDuplicates)
+	}
+}
+
+func TestInvitationBatchFreshResendDuplicateRequiresMailAvailability(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID, actorID := model.NewClassID(), model.NewAcademicPeriodID(), model.NewUserID()
+	invitation, err := model.NewStudentClassInvitation(model.StudentClassInvitationInput{
+		ID: model.NewInvitationID(), TargetEmail: "student@example.edu", ClassID: classID, AcademicPeriodID: periodID,
+		IntendedStartsAt: now, InviterUserID: actorID, ScopeType: model.RoleScopeClass, ScopeID: classID.String(),
+		ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), IssuedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistence := &invitationStoreFake{invitation: invitation}
+	mail := &invitationMailPreparerFake{disabled: true}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		&invitationAuthorizerFake{}, mail, now.Add(time.Minute))
+	_, err = service.Resend(context.Background(),
+		NewInvocation(model.Principal{UserID: actorID}, model.RequestMetadata{}),
+		ResendInvitationCommand{ID: invitation.ID.String(), ExpectedRevision: invitation.Revision,
+			IdempotencyKey: invitationBatchItemIdempotencyKey("mail-disabled", "duplicate"),
+			BatchScopeType: model.RoleScopeClass, BatchScopeID: classID.String(), batchDuplicate: true,
+			batchCanonicalKey: invitationBatchItemIdempotencyKey("mail-disabled", "canonical")})
+	if !Is(err, "invitation.mail_unavailable") || len(persistence.batchDuplicates) != 0 {
+		t.Fatalf("fresh resend duplicate with disabled mail error=%v durable duplicates=%v", err, persistence.batchDuplicates)
+	}
+}
+
+func TestInvitationBatchRejectsEveryRowWithARepeatedItemKey(t *testing.T) {
+	now := model.TimeFromMillis(1_800_000_000_000)
+	classID, periodID := model.NewClassID(), model.NewAcademicPeriodID()
+	persistence := &invitationStoreFake{}
+	service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+		&invitationAuthorizerFake{}, &invitationMailPreparerFake{}, now)
+	service.classes = invitationClassStoreFake{class: &model.Class{ID: classID, AcademicPeriodID: periodID}}
+	service.periods = invitationPeriodStoreFake{period: &model.AcademicPeriod{ID: periodID, StartsAt: now.Add(time.Hour)}}
+	command := RunInvitationBatchCommand{Operation: InvitationBatchStudentClassCreate, ScopeType: model.RoleScopeClass,
+		ScopeID: classID.String(), IdempotencyKey: "repeated-item-key", Items: []InvitationBatchItemCommand{
+			{IdempotencyKey: "same-key", TargetEmail: "first@example.edu"},
+			{IdempotencyKey: "same-key", TargetEmail: "second@example.edu"},
+			{IdempotencyKey: "unique-key", TargetEmail: " FIRST@example.edu "},
+		}}
+
+	result, err := service.RunBatch(context.Background(),
+		NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Succeeded != 1 || result.Failed != 2 || result.Items[0].ErrorCode != "request.invalid" ||
+		result.Items[1].ErrorCode != "request.invalid" || result.Items[2].Status != InvitationBatchItemSucceeded ||
+		persistence.issueExecutions != 1 {
+		t.Fatalf("repeated-key result=%#v executions=%d", result, persistence.issueExecutions)
 	}
 }
 

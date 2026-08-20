@@ -530,8 +530,16 @@ operation interpreter:
 
 Bulk merge, external-identity attachment, password assignment, MFA removal,
 and permanent deletion remain individual proof-bearing operations. Bounded JSON
-batches accept up to 200 items and return per-item outcomes. CSV serves larger
-file-driven work.
+batches accept up to 200 items and return per-item outcomes. A required batch
+idempotency identity and one required bounded, request-unique key per item are
+domain-separated by operation; repeated item keys invalidate every affected
+row before execution. Each successful item retains a minimal secret-free outcome
+atomically with its ordinary mutation. Within a duplicate group the smallest
+stable item key is canonical and every other duplicate disposition is retained,
+so reconnect recovery or row reordering cannot duplicate an Invitation or
+delivery occurrence and changed retained-key reuse conflicts at the affected
+item. Exact retained outcomes resolve before fresh claim or mail preparation.
+CSV serves larger file-driven work.
 
 Class-scoped student and Academic-Unit-scoped teacher imports select their
 target outside the file. Institution-wide onboarding may carry a per-row kind

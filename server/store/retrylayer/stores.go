@@ -113,6 +113,75 @@ func (s *academicPeriodStore) CreateIdempotently(ctx context.Context, input *sto
 	})
 }
 
+func (s *invitationStore) IssueStudentClassIdempotently(ctx context.Context, input *store.StudentClassInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if command == nil {
+		return s.InvitationStore.IssueStudentClassIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
+		return s.InvitationStore.IssueStudentClassIdempotently(ctx, input, command)
+	})
+}
+
+func (s *invitationStore) IssueTeacherAcademicUnitIdempotently(ctx context.Context, input *store.TeacherAcademicUnitInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if command == nil {
+		return s.InvitationStore.IssueTeacherAcademicUnitIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
+		return s.InvitationStore.IssueTeacherAcademicUnitIdempotently(ctx, input, command)
+	})
+}
+
+func (s *invitationStore) IssueScopedRoleIdempotently(ctx context.Context, input *store.ScopedRoleInvitationIssue, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	if command == nil {
+		return s.InvitationStore.IssueScopedRoleIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
+		return s.InvitationStore.IssueScopedRoleIdempotently(ctx, input, command)
+	})
+}
+
+func (s *invitationStore) ResendIdempotently(ctx context.Context, input *store.InvitationResend, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	if command == nil {
+		return s.InvitationStore.ResendIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.InvitationStore.ResendIdempotently(ctx, input, command)
+	})
+}
+
+func (s *invitationStore) RevokeIdempotently(ctx context.Context, input *store.InvitationRevocation, command *store.CommandIdempotency) (*store.InvitationAdministrationCommandResult, error) {
+	if command == nil {
+		return s.InvitationStore.RevokeIdempotently(ctx, input, command)
+	}
+	return retryCall1(ctx, s.layer, func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.InvitationStore.RevokeIdempotently(ctx, input, command)
+	})
+}
+
+func (s *invitationStore) FindCommandOutcome(ctx context.Context, command *store.CommandIdempotency) (*store.InvitationCommandResult, error) {
+	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
+		return s.InvitationStore.FindCommandOutcome(ctx, command)
+	})
+}
+
+func (s *invitationStore) ReplayIssue(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationCommandResult, error) {
+	return retryCall1(ctx, s.layer, func() (*store.InvitationCommandResult, error) {
+		return s.InvitationStore.ReplayIssue(ctx, command, auditID, auditAt)
+	})
+}
+
+func (s *invitationStore) ReplayAdministration(ctx context.Context, command *store.CommandIdempotency, auditID string, auditAt int64) (*store.InvitationAdministrationCommandResult, error) {
+	return retryCall1(ctx, s.layer, func() (*store.InvitationAdministrationCommandResult, error) {
+		return s.InvitationStore.ReplayAdministration(ctx, command, auditID, auditAt)
+	})
+}
+
+func (s *invitationStore) RecordBatchDuplicate(ctx context.Context, input *store.InvitationBatchDuplicate, command *store.CommandIdempotency) (*store.InvitationBatchCommandResult, error) {
+	return retryCall1(ctx, s.layer, func() (*store.InvitationBatchCommandResult, error) {
+		return s.InvitationStore.RecordBatchDuplicate(ctx, input, command)
+	})
+}
+
 func (s *examAuthoringStore) Create(ctx context.Context, input *store.ExamAuthoringCreation, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	if command == nil {
 		return s.ExamAuthoringStore.Create(ctx, input, command)

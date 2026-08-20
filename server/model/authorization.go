@@ -380,12 +380,12 @@ var actionDefinitions = map[Action]ActionDefinition{
 	},
 	ActionOnboardingBatchView: {
 		Action: ActionOnboardingBatchView, ResourceType: ResourceInstitution,
-		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionOnboardingBatchManage: {
 		Action: ActionOnboardingBatchManage, ResourceType: ResourceInstitution,
-		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit},
+		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionExternalIdentityManage: {

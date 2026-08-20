@@ -58,6 +58,7 @@ type idempotentMutation[T any] struct {
 	execute           func(context.Context, *sqlxTxWrapper) (T, error)
 	encode            func(T) ([]byte, error)
 	decode            func(int, []byte) (T, error)
+	hydrateReplay     func(context.Context, *sqlxTxWrapper, T) (T, error)
 	completeReplay    func(context.Context, *sqlxTxWrapper, T, string) error
 	freshAuditEventID func(T) (string, error)
 }
@@ -103,6 +104,12 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 			value, decodeErr := mutation.decode(row.OutcomeVersion, []byte(row.Outcome))
 			if decodeErr != nil {
 				return nil, fmt.Errorf("decode idempotent command outcome: %w", decodeErr)
+			}
+			if mutation.hydrateReplay != nil {
+				value, decodeErr = mutation.hydrateReplay(ctx, tx, value)
+				if decodeErr != nil {
+					return nil, fmt.Errorf("hydrate idempotent command outcome: %w", decodeErr)
+				}
 			}
 			if mutation.completeReplay != nil && row.OriginalAuditID.Valid &&
 				mutation.auditEventID != row.OriginalAuditID.String {
@@ -153,6 +160,15 @@ func runIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, opera
 		}
 		return &idempotentResult[T]{Value: value}, nil
 	})
+}
+
+func replayIdempotentMutation[T any](ctx context.Context, sqlStore *SQLStore, operation string, mutation idempotentMutation[T]) (*idempotentResult[T], error) {
+	var zero T
+	mutation.execute = func(context.Context, *sqlxTxWrapper) (T, error) {
+		return zero, store.NewErrNotFound("command_outcome", "idempotency_key")
+	}
+	mutation.encode = func(T) ([]byte, error) { return nil, nil }
+	return runIdempotentMutation(ctx, sqlStore, operation, mutation)
 }
 
 func encodeCommandOutcome(value any) ([]byte, error) { return json.Marshal(value) }

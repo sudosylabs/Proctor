@@ -6,9 +6,11 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -17,8 +19,116 @@ import (
 	"github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
+
+func TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests(t *testing.T) {
+	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
+	if dataSource == "" {
+		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
+	}
+	persistence := openAuthenticationStore(t, dataSource)
+	server := testlib.Setup(t, testlib.WithConfig(func(cfg *config.Config) {
+		cfg.Cluster.NodeID = "invitation-batch-node"
+		cfg.Server.ListenAddress = "127.0.0.1:0"
+		cfg.Server.PublicURL = "https://proctor.example.edu"
+	}), testlib.WithStore(persistence))
+	startIntegrationServer(t, server)
+
+	const password = "bootstrap correct horse battery staple"
+	bootstrap := performJSONRequest(server.Handler(), http.MethodPost, "/api/v1/bootstrap", map[string]any{
+		"bootstrap_secret": testlib.BootstrapSecret,
+		"institution":      map[string]any{"name": "batch-university", "display_name": "Batch University"},
+		"administrator":    map[string]any{"username": "batch-admin", "email": "batch-admin@example.edu"},
+		"password":         password,
+	}, "")
+	if bootstrap.Code != http.StatusCreated {
+		t.Fatalf("bootstrap = %d: %s", bootstrap.Code, bootstrap.Body.String())
+	}
+	login := loginIntegrationUser(t, server.Handler(), "batch-admin", password, model.SessionClientCLI, "batch-admin-cli")
+	token := login.Tokens.AccessToken
+	unit := createIntegrationResource[model.AcademicUnit](t, server.Handler(), http.MethodPost, "/api/v1/academic-units",
+		map[string]any{"name": "batch-science", "display_name": "Batch Science"}, token)
+	programme := createIntegrationResource[model.Programme](t, server.Handler(), http.MethodPost,
+		"/api/v1/academic-units/"+unit.ID.String()+"/programmes", map[string]any{"name": "batch-computing", "display_name": "Batch Computing"}, token)
+	level := createIntegrationResource[model.ProgrammeLevel](t, server.Handler(), http.MethodPost,
+		"/api/v1/programmes/"+programme.ID.String()+"/levels", map[string]any{"name": "batch-year-one", "display_name": "Batch Year One"}, token)
+	now := model.GetMillis()
+	period := createIntegrationResource[model.AcademicPeriod](t, server.Handler(), http.MethodPost, "/api/v1/academic-periods",
+		map[string]any{"owner_type": "academic_unit", "owner_id": unit.ID.String(), "name": "batch-2026", "display_name": "Batch 2026",
+			"start_at": now - 60_000, "end_at": now + 31_536_000_000}, token)
+	class := createIntegrationResource[model.Class](t, server.Handler(), http.MethodPost,
+		"/api/v1/programme-levels/"+level.ID.String()+"/classes",
+		map[string]any{"academic_period_id": period.ID.String(), "name": "batch-class", "display_name": "Batch Class"}, token)
+
+	invalidRoleID := model.NewRoleID().String()
+	body := map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": class.ID.String(),
+		"items": []map[string]any{
+			{"key": "row-1", "email": "batch-first@example.edu", "suggested_username": "batch-first"},
+			{"key": "row-2", "email": "batch-invalid@example.edu", "role_id": invalidRoleID},
+			{"key": "row-3", "email": " BATCH-FIRST@example.edu "},
+			{"key": "row-4", "email": "batch-second@example.edu", "suggested_username": "batch-second"},
+		}}
+	first := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", body, token, "batch-request")
+	if first.Code != http.StatusOK || !strings.Contains(first.Body.String(), `"succeeded":2`) ||
+		!strings.Contains(first.Body.String(), `"failed":2`) || !strings.Contains(first.Body.String(), `"error_code":"request.invalid"`) ||
+		!strings.Contains(first.Body.String(), `"error_code":"onboarding_batch.duplicate"`) || strings.Contains(first.Body.String(), "@example.edu") {
+		t.Fatalf("first Invitation batch = %d: %s; logs=%s", first.Code, first.Body.String(), server.Logs.String())
+	}
+	page, err := persistence.Invitation().List(context.Background(), store.InvitationListOptions{
+		Visibility: store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}, Limit: 10})
+	if err != nil || len(page.Items) != 2 {
+		t.Fatalf("persisted batch Invitations = %#v, %v", page, err)
+	}
+	var unsafeOutcomes int
+	if err = persistence.GetMaster().Get(context.Background(), &unsafeOutcomes, `SELECT COUNT(*) FROM command_outcomes
+		WHERE operation LIKE 'invitation.%' AND (outcome::text LIKE '%claim_hash%' OR outcome::text LIKE ? OR outcome::text LIKE '%batch-first@example.edu%')`,
+		"%"+page.Items[0].Invitation.ClaimHash+"%"); err != nil || unsafeOutcomes != 0 {
+		t.Fatalf("unsafe Invitation command outcomes = %d, %v", unsafeOutcomes, err)
+	}
+
+	reordered := map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": class.ID.String(),
+		"items": []map[string]any{
+			{"key": "row-3", "email": " BATCH-FIRST@example.edu "},
+			{"key": "row-4", "email": "batch-second@example.edu", "suggested_username": "batch-second"},
+			{"key": "row-2", "email": "batch-invalid@example.edu", "role_id": invalidRoleID},
+			{"key": "row-1", "email": "batch-first@example.edu", "suggested_username": "batch-first"},
+		}}
+	replay := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", reordered, token, "batch-request")
+	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"no_op":2`) || !strings.Contains(replay.Body.String(), `"failed":2`) {
+		t.Fatalf("replayed Invitation batch = %d: %s", replay.Code, replay.Body.String())
+	}
+	page, err = persistence.Invitation().List(context.Background(), store.InvitationListOptions{
+		Visibility: store.InvitationVisibilityScope{ClassIDs: []string{class.ID.String()}}, Limit: 10})
+	if err != nil || len(page.Items) != 2 {
+		t.Fatalf("replayed batch Invitations = %#v, %v", page, err)
+	}
+
+	changed := map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": class.ID.String(),
+		"items": []map[string]any{
+			{"key": "row-1", "email": "changed@example.edu", "suggested_username": "changed"},
+			{"key": "row-2", "email": "batch-invalid@example.edu", "role_id": model.NewRoleID().String()},
+			{"key": "row-3", "email": "changed@example.edu"},
+			{"key": "row-4", "email": "batch-second@example.edu", "suggested_username": "batch-second"},
+		}}
+	conflict := performIdempotentJSONRequest(server.Handler(), "/api/v1/invitation-batches", changed, token, "batch-request")
+	if conflict.Code != http.StatusOK || !strings.Contains(conflict.Body.String(), `"error_code":"idempotency.conflict"`) ||
+		!strings.Contains(conflict.Body.String(), `"no_op":1`) {
+		t.Fatalf("changed Invitation batch reuse = %d: %s", conflict.Code, conflict.Body.String())
+	}
+}
+
+func performIdempotentJSONRequest(handler http.Handler, path string, body any, bearer, key string) *httptest.ResponseRecorder {
+	encoded, _ := json.Marshal(body)
+	request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(encoded))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+bearer)
+	request.Header.Set("Idempotency-Key", key)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
 
 func TestStudentClassInvitationIssuesMailAndAcceptsAcrossNodes(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")

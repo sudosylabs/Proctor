@@ -124,6 +124,12 @@ func TestGranularAcademicAndOnboardingActionsAreClosedAndResourceTyped(t *testin
 			t.Fatalf("action %q missing from AllActions", test.action)
 		}
 	}
+	for _, action := range []Action{ActionOnboardingBatchView, ActionOnboardingBatchManage} {
+		definition, _ := DefinitionForAction(action)
+		if !definition.AcceptsResource(ResourceClass) {
+			t.Fatalf("action %q does not accept exact Class scope", action)
+		}
+	}
 }
 
 func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testing.T) {
