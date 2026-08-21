@@ -32,6 +32,17 @@ lifecycle. The parent application retains use-case effect timing, Principal
 validation, WebSocket subscription authorization, and translation between
 delivery failures and public application errors.
 
+The `app/mail` child module owns all server-specific mail composition:
+family-specific meaning, safe render inputs, disabled/ineligible suppression,
+frozen encrypted payloads, stable Message-ID construction, and Sitting fan-out
+bundles. It receives rendering and sending capabilities at construction and
+returns validated `MailOccurrence`, `MailDelivery`, and Job records; it does
+not send during a business mutation or persist anything itself. Parent use
+cases retain authorization, audit, idempotency, recipient lookup, and named
+transaction coordination through narrow consumer-owned preparation ports.
+The child never imports the parent application, transports, platform, SQL, or
+deployment configuration.
+
 The examination capability is a cohesive `app/exam` boundary.
 It owns authoring and publication policy, manager relationships, Sitting and
 Attempt lifecycle, Participation fencing, Submission coordination, integrity

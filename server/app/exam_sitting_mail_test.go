@@ -39,7 +39,7 @@ func TestSittingMailPreparerFreezesAllFourSafeRenderVariants(t *testing.T) {
 			t.Fatalf("encrypted bundle exposed %q", forbidden)
 		}
 	}
-	opened, err := preparer.open(prepared.Bundle)
+	opened, err := preparer.OpenBundle(prepared.Bundle)
 	if err != nil || len(opened.Messages) != 4 || opened.Messages[model.MailTemplateExamSittingCancelled].Subject == "" {
 		t.Fatalf("opened bundle=(%#v,%v)", opened, err)
 	}

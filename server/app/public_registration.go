@@ -212,17 +212,3 @@ var (
 	_ publicRegistrationStore          = (store.UserStore)(nil)
 	_ publicRegistrationPasswordHasher = (*passwordHasher)(nil)
 )
-
-func (p *directMailPreparer) PreparePublicRegistrationVerification(
-	recipient *model.User,
-	occurrenceID model.MailOccurrenceID,
-	actionURL string,
-	at time.Time,
-	deadline time.Time,
-) (*preparedDirectMail, error) {
-	return p.PrepareDirect(DirectMailPreparation{
-		Recipient: recipient, OccurrenceID: occurrenceID,
-		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityVerifyEmail,
-		ActionURL: actionURL, At: at, Deadline: deadline, JobType: model.JobTypeMailDeliverCredential,
-	})
-}

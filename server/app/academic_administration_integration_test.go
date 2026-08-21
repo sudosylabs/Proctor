@@ -392,7 +392,7 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf(
 			"end academic unit membership = %d: %s",
 			endUnitMembership.Code,
-			endUnitMembership.Body.String(),
+			endUnitMembership.Body.String()+"; logs="+helper.Logs.String(),
 		)
 	}
 	malformed := httptest.NewRequest(

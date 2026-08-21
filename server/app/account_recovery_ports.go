@@ -24,11 +24,7 @@ type accountTokenEffects interface {
 	SessionsRevoked(context.Context, string, []string, []string)
 }
 
-type preparedDirectMail struct {
-	Occurrence *model.MailOccurrence
-	Delivery   *model.MailDelivery
-	Job        *model.Job
-}
+type preparedDirectMail = store.PreparedMail
 
 type accountTokenMailPreparer interface {
 	Enabled() bool

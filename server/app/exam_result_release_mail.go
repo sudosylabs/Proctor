@@ -6,41 +6,14 @@ package app
 import (
 	"context"
 	"errors"
-	"time"
 
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const resultReleaseMailLifetime = 72 * time.Hour
-
-type ResultReleaseDirectMailPreparation struct {
-	Recipient    *model.User
-	OccurrenceID model.MailOccurrenceID
-	Details      ResultReleaseMailDetails
-	ReleasedAt   time.Time
-}
-
-func (p *directMailPreparer) PrepareResultReleaseMail(
-	request ResultReleaseDirectMailPreparation,
-) (*preparedDirectMail, error) {
-	if request.Recipient == nil || request.Recipient.Validate() != nil || !request.OccurrenceID.IsValid() ||
-		request.Details.ExamTitle == "" || request.Details.ReleasedAt.IsZero() || request.ReleasedAt.IsZero() ||
-		!request.Details.ReleasedAt.Equal(request.ReleasedAt) {
-		return nil, errors.New("result release mail input is invalid")
-	}
-	at := model.TimeUTC(request.ReleasedAt)
-	if !request.Recipient.IsActive() {
-		return p.prepareSuppressedRecipient(request.Recipient.Email, request.Recipient.ID, request.Recipient.ID, "",
-			request.OccurrenceID, model.MailOccurrenceResultRelease, model.MailTemplateExamResultReleased, at,
-			at.Add(resultReleaseMailLifetime), model.JobTypeMailDeliver, model.MailDeliveryRecipientIneligibleCode)
-	}
-	return p.prepareRecipient(request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
-		request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, model.MailOccurrenceResultRelease,
-		model.MailTemplateExamResultReleased, "", at, at.Add(resultReleaseMailLifetime), model.JobTypeMailDeliver,
-		request.Details)
-}
+type ResultReleaseDirectMailPreparation = appmail.ResultReleasePreparation
 
 type examResultReleaseMailPreparationAdapter struct {
 	preparer  *directMailPreparer

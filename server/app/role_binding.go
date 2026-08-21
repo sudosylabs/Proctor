@@ -62,6 +62,10 @@ type roleBindingRoleStore interface {
 	GetIncludingArchived(context.Context, string) (*model.Role, error)
 }
 
+type roleBindingUserStore interface {
+	Get(context.Context, string) (*model.User, error)
+}
+
 type roleBindingAuthorizer interface {
 	AuthorizeRoleBindingInstitution(context.Context, Invocation, model.Action) (model.Resource, error)
 	AuthorizeRoleBindingList(context.Context, Invocation, model.Action) (store.UserVisibilityScope, error)
@@ -77,9 +81,11 @@ type roleBindingEffects interface {
 type roleBindingService struct {
 	bindings      roleBindingStore
 	roles         roleBindingRoleStore
+	users         roleBindingUserStore
 	authorization roleBindingAuthorizer
 	capabilities  accessPolicyCapabilitySource
 	audit         mutationAuditor
+	mail          relationshipTransitionMailPreparer
 	effects       roleBindingEffects
 	now           func() time.Time
 }
@@ -87,15 +93,17 @@ type roleBindingService struct {
 func newRoleBindingService(
 	bindings roleBindingStore,
 	roles roleBindingRoleStore,
+	users roleBindingUserStore,
 	authorization roleBindingAuthorizer,
 	capabilities accessPolicyCapabilitySource,
 	audit mutationAuditor,
+	mail relationshipTransitionMailPreparer,
 	effects roleBindingEffects,
 	now func() time.Time,
 ) *roleBindingService {
 	return &roleBindingService{
-		bindings: bindings, roles: roles, authorization: authorization,
-		capabilities: capabilities, audit: audit, effects: effects, now: now,
+		bindings: bindings, roles: roles, users: users, authorization: authorization,
+		capabilities: capabilities, audit: audit, mail: mail, effects: effects, now: now,
 	}
 }
 
@@ -201,6 +209,25 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 	); err != nil {
 		return nil, err
 	}
+	mailAt := model.TimeFromMillis(model.MillisFromTime(s.now()))
+	recipient := &model.User{ID: userID, Revision: 1}
+	var notice *store.PreparedMail
+	if !command.batchRetainedOutcome {
+		recipient, err = s.users.Get(ctx, userID.String())
+		if err != nil {
+			return nil, roleBindingError(err)
+		}
+		key := model.MailTemplateAuthorizationScopedRoleAssigned
+		if candidate.ScopeType == model.RoleScopeInstitution {
+			key = model.MailTemplateAuthorizationInstitutionRoleAssigned
+		}
+		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
+		})
+		if err != nil {
+			return nil, NewError("mail.unavailable").Wrap(err)
+		}
+	}
 	idempotency, err := newCommandIdempotency(invocation, "role_binding.create.v1", command.IdempotencyKey, struct {
 		UserID    string              `json:"user_id"`
 		RoleID    string              `json:"role_id"`
@@ -231,12 +258,13 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 			Operation:  "create_binding",
 			Value:      candidate.Auditable(),
 		},
-		s.now,
+		func() time.Time { return mailAt },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			input := &store.RoleBindingCreation{
 				Binding: candidate, ExpectedRoleUpdatedAt: role.UpdatedAt,
-				ExpectedRolePermissions: append([]string(nil), role.Permissions...),
-				AuditEventID:            reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
+				ExpectedRolePermissions:   append([]string(nil), role.Permissions...),
+				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
+				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
 			value, storeErr := s.bindings.SaveWithAudit(ctx, input)
 			if command.batchReplayed != nil {
@@ -289,6 +317,25 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+	mailAt := model.TimeFromMillis(model.MillisFromTime(s.now()))
+	recipient := &model.User{ID: current.UserID, Revision: 1}
+	var notice *store.PreparedMail
+	if !command.batchRetainedOutcome {
+		recipient, err = s.users.Get(ctx, current.UserID.String())
+		if err != nil {
+			return nil, roleBindingError(err)
+		}
+		key := model.MailTemplateAuthorizationScopedRoleEnded
+		if current.ScopeType == model.RoleScopeInstitution {
+			key = model.MailTemplateAuthorizationInstitutionRoleEnded
+		}
+		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
+		})
+		if err != nil {
+			return nil, NewError("mail.unavailable").Wrap(err)
+		}
+	}
 	ended, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -300,10 +347,11 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 			Value:      map[string]any{"role_binding_id": id},
 			Prior:      current.Auditable(),
 		},
-		s.now,
+		func() time.Time { return mailAt },
 		func(ctx context.Context, reference mutationAttemptReference) (*model.RoleBinding, error) {
 			input := &store.RoleBindingEnd{
 				ID: id, EndAt: reference.MutationAtMillis,
+				ExpectedRecipientRevision: recipient.Revision, Notice: notice,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}

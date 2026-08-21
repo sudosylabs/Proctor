@@ -50,7 +50,7 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 	if fanout.CompletedAt.Valid {
 		return sittingMailExpansionSucceeded(checkpoint)
 	}
-	bundle, err := handler.mail.open(fanout.Bundle)
+	bundle, err := handler.mail.OpenBundle(fanout.Bundle)
 	if err != nil {
 		return jobengine.RetryableFailure("mail.sitting.bundle_unavailable", err)
 	}
@@ -66,7 +66,7 @@ func (handler sittingMailExpansionHandler) Run(ctx context.Context, execution jo
 			commit := &store.ExamSittingMailRecipientCommit{OccurrenceID: command.OccurrenceID,
 				SittingRevision: fanout.SittingRevision, Recipient: recipient.User}
 			if recipient.TemplateKey.IsValid() {
-				commit.Delivery, commit.DeliveryJob, err = handler.mail.prepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
+				commit.Delivery, commit.DeliveryJob, err = handler.mail.PrepareRecipient(fanout, recipient.User, recipient.TemplateKey, bundle)
 				if err != nil {
 					return jobengine.RetryableFailure("mail.sitting.recipient_unavailable", err)
 				}

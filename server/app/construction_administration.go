@@ -31,8 +31,9 @@ func constructAdministration(
 		sessionAdministrationRealtimeEffects{effects: foundation.realtime}, time.Now,
 	)
 	roleBindings := newRoleBindingService(
-		deps.Store.RoleBinding(), deps.Store.Role(), roleAuthorization, access.capabilities,
-		mutationAuditAdapter{audit: foundation.audit}, roleBindingRealtimeEffects{effects: foundation.realtime}, time.Now,
+		deps.Store.RoleBinding(), deps.Store.Role(), deps.Store.User(), roleAuthorization, access.capabilities,
+		mutationAuditAdapter{audit: foundation.audit}, foundation.mail,
+		roleBindingRealtimeEffects{effects: foundation.realtime}, time.Now,
 	)
 	return administrationConstruction{
 		accountStates:          accountStates,

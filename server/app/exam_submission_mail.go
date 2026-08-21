@@ -6,47 +6,14 @@ package app
 import (
 	"context"
 	"errors"
-	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-const submissionReceiptMailLifetime = 72 * time.Hour
-
-type SubmissionReceiptMailPreparation struct {
-	Recipient    *model.User
-	OccurrenceID model.MailOccurrenceID
-	TemplateKey  model.MailTemplateKey
-	Details      SubmissionReceiptMailDetails
-	ActionAt     time.Time
-}
-
-func (p *directMailPreparer) PrepareSubmissionReceiptMail(request SubmissionReceiptMailPreparation) (*preparedDirectMail, error) {
-	if request.Recipient == nil || request.Recipient.Validate() != nil || !request.OccurrenceID.IsValid() ||
-		!validSubmissionReceiptMailMeaning(request.TemplateKey, request.Details) || request.ActionAt.IsZero() {
-		return nil, errors.New("Submission receipt mail input is invalid")
-	}
-	at := model.TimeUTC(request.ActionAt)
-	if !request.Recipient.IsActive() {
-		return p.prepareSuppressedRecipient(request.Recipient.Email, request.Recipient.ID, request.Recipient.ID, "",
-			request.OccurrenceID, model.MailOccurrenceSubmissionReceipt, request.TemplateKey, at,
-			at.Add(submissionReceiptMailLifetime), model.JobTypeMailDeliver, model.MailDeliveryRecipientIneligibleCode)
-	}
-	details := request.Details
-	return p.prepareRecipient(request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
-		request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, model.MailOccurrenceSubmissionReceipt,
-		request.TemplateKey, "", at, at.Add(submissionReceiptMailLifetime), model.JobTypeMailDeliver,
-		details)
-}
-
-func validSubmissionReceiptMailMeaning(key model.MailTemplateKey, details SubmissionReceiptMailDetails) bool {
-	if details.ExamTitle == "" || !details.SittingID.IsValid() || !details.SubmissionID.IsValid() || details.SealedAt.IsZero() {
-		return false
-	}
-	return key == model.MailTemplateExamSubmissionReceived || key == model.MailTemplateExamSubmissionAutomaticallySealed
-}
+type SubmissionReceiptMailPreparation = appmail.SubmissionReceiptPreparation
 
 type examSubmissionMailPreparationAdapter struct {
 	preparer  *directMailPreparer

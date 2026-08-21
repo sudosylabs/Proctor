@@ -7,6 +7,7 @@ identityprovider ← {model, config}
 model ← store ← app/job ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
+{model, store, secretseal, app/exam} ← app/mail ← app
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 secretseal ← app
 i18n ← templates ← cmd/mailpreview
@@ -29,10 +30,11 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
+| `app/mail` | `model`, bounded `store` mail records, `secretseal`, the Exam Manager preparation contract, standard library, and consumer-owned rendering/sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `i18n` | Standard library and embedded server-owned locale catalogs | application, domain, persistence, transports, concrete adapters |
 | `templates` | `i18n`, standard-library HTML and text templating | application, persistence, transport, mail adapters |
-| `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `app/realtime`, `model`, WebSocket libraries | SQL and platform service location |
@@ -61,7 +63,11 @@ product meaning and policy:
 - `packages/mail` owns transport-neutral messages, MIME composition,
   validation, SMTP, and sender conformance. The server owns templates,
   localization, recipients, rate limits, retries, and durable delivery policy.
-  Mail is not sent synchronously inside a durable business transaction.
+  The `app/mail` child module concentrates server-owned composition,
+  suppression, payload freezing/encryption, stable routing metadata, and
+  family-specific meaning. Parent use cases consume narrow preparation ports
+  and persist the result through named aggregate transactions. Mail is not
+  sent synchronously inside a durable business transaction.
 - `secretseal` owns versioned AES-256-GCM envelopes, bounded key rings,
   authenticated purpose/owner binding, and safe cryptographic failures for
   recoverable server application secrets. It has no persistence or

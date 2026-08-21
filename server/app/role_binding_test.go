@@ -89,12 +89,15 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	events := []string{}
 	userID := model.NewId()
 	created := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.UserID(userID), RoleID: model.NewRoleID()}
+	mail := &relationshipMailPreparerTestFake{}
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events, createResult: created},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: created.RoleID, Name: "teacher"}},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		mail,
 		&roleBindingEffectsFake{events: &events},
 		func() time.Time { return time.UnixMilli(500) },
 	)
@@ -107,6 +110,10 @@ func TestRoleBindingCreateCommitsBeforeInvalidation(t *testing.T) {
 	}
 	if got.ID != created.ID {
 		t.Fatalf("result = %#v", got)
+	}
+	if len(mail.requests) != 1 || mail.requests[0].TemplateKey != model.MailTemplateAuthorizationInstitutionRoleAssigned ||
+		service.bindings.(*roleBindingStoreFake).createInput.Notice == nil {
+		t.Fatalf("role assignment mail = %#v", mail.requests)
 	}
 	want := []string{"authorize-binding-scope", "get-role", "authorize-delegation", "audit-begin", "store-create", "invalidate-authorization"}
 	if !reflect.DeepEqual(events, want) {
@@ -121,9 +128,11 @@ func TestRoleBindingCreateRejectsSystemAdminOutsideInstitution(t *testing.T) {
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events},
 		&roleBindingRoleStoreFake{events: &events, role: &model.Role{ID: model.RoleID(roleID), Name: model.SystemAdministratorRoleName}},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events},
+		&relationshipMailPreparerTestFake{},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
@@ -150,8 +159,9 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 		UpdatedAt: model.TimeFromMillis(300), ArchivedAt: model.OptionalTimeFromMillis(300)}
 	service := newRoleBindingService(persistence,
 		&roleBindingRoleStoreFake{events: &events, role: archivedRole},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: scopeID}},
-		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()},
+		&accessPolicyCapabilitiesFake{}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, &relationshipMailPreparerTestFake{},
 		&roleBindingEffectsFake{events: &events}, func() time.Time { return time.UnixMilli(500) })
 	result, err := service.Create(context.Background(), NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{}),
 		CreateRoleBindingCommand{UserID: userID.String(), RoleID: roleID.String(), ScopeType: model.RoleScopeInstitution,
@@ -167,7 +177,8 @@ func TestRoleBindingRetainedCreateUsesArchivedRoleForCurrentDelegation(t *testin
 func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	t.Parallel()
 	events := []string{}
-	binding := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.NewUserID()}
+	binding := &model.RoleBinding{ID: model.NewRoleBindingID(), UserID: model.NewUserID(), ScopeType: model.RoleScopeClass, ScopeID: model.NewId()}
+	mail := &relationshipMailPreparerTestFake{}
 	persistence := &roleBindingStoreFake{
 		events: &events, binding: binding,
 		endErr: store.NewErrConflict("role_binding", "role_bindings_last_system_admin", errors.New("last")),
@@ -175,11 +186,13 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	service := newRoleBindingService(
 		persistence,
 		&roleBindingRoleStoreFake{events: &events},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{
 			Descriptor: model.ExternalAuthenticationProvider{Id: "campus", Type: "oidc"},
 		}}}},
 		&institutionAuditorFake{events: &events, beginID: model.NewId()},
+		mail,
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
@@ -189,6 +202,10 @@ func TestRoleBindingEndFailurePublishesNoInvalidation(t *testing.T) {
 	}
 	if _, available := persistence.endInput.Capabilities.Providers["campus"]; !available {
 		t.Fatalf("Store capability snapshot = %#v, want configured campus provider", persistence.endInput.Capabilities)
+	}
+	if persistence.endInput.Notice == nil || len(mail.requests) != 1 ||
+		mail.requests[0].TemplateKey != model.MailTemplateAuthorizationScopedRoleEnded {
+		t.Fatalf("role ending mail = %#v / %#v", persistence.endInput, mail.requests)
 	}
 	want := []string{"authorize-binding-preflight", "get-binding", "authorize-binding-scope", "audit-begin", "store-end", "audit-fail"}
 	if !reflect.DeepEqual(events, want) {
@@ -203,9 +220,11 @@ func TestRoleBindingListByUserAuthorizesThenReads(t *testing.T) {
 	service := newRoleBindingService(
 		&roleBindingStoreFake{events: &events, list: []*model.RoleBinding{{ID: model.NewRoleBindingID(), UserID: model.UserID(userID)}}},
 		&roleBindingRoleStoreFake{events: &events},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, resource: model.Resource{Type: model.ResourceInstitution, ID: model.NewId()}},
 		&accessPolicyCapabilitiesFake{},
 		&institutionAuditorFake{events: &events},
+		&relationshipMailPreparerTestFake{},
 		&roleBindingEffectsFake{events: &events},
 		time.Now,
 	)
@@ -226,9 +245,10 @@ func TestRoleBindingListByUserPassesAcademicScopeToPersistence(t *testing.T) {
 	persistence := &roleBindingStoreFake{events: &events}
 	service := newRoleBindingService(
 		persistence, &roleBindingRoleStoreFake{events: &events},
+		relationshipUserStoreTestFake{},
 		&roleAuthorizerFake{events: &events, bindingScope: store.UserVisibilityScope{AcademicUnitRootIDs: []string{rootID}}},
 		&accessPolicyCapabilitiesFake{},
-		&institutionAuditorFake{events: &events}, &roleBindingEffectsFake{events: &events}, time.Now,
+		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, &roleBindingEffectsFake{events: &events}, time.Now,
 	)
 	if _, err := service.List(context.Background(), Invocation{}, ListRoleBindingsQuery{UserID: model.NewUserID().String()}); err != nil {
 		t.Fatal(err)

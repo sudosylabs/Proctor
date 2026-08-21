@@ -53,6 +53,12 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateAcademicClassEnrolled,
 		MailTemplateAcademicClassEnrollmentEnded,
 		MailTemplateAcademicClassTransferred,
+		MailTemplateAcademicUnitAssigned,
+		MailTemplateAcademicUnitAssignmentEnded,
+		MailTemplateAuthorizationScopedRoleAssigned,
+		MailTemplateAuthorizationScopedRoleEnded,
+		MailTemplateAuthorizationInstitutionRoleAssigned,
+		MailTemplateAuthorizationInstitutionRoleEnded,
 		MailTemplateExamSittingScheduled,
 		MailTemplateExamSittingRescheduled,
 		MailTemplateExamSittingCancelled,
@@ -72,43 +78,49 @@ func (key MailTemplateKey) IsValid() bool {
 func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
 
 const (
-	MailTemplateSystemTest                          MailTemplateKey = "system.mail_test"
-	MailTemplateIdentityVerifyEmail                 MailTemplateKey = "identity.verify_email"
-	MailTemplateIdentityPasswordReset               MailTemplateKey = "identity.password_reset"
-	MailTemplateIdentityPasswordChanged             MailTemplateKey = "identity.password_changed"
-	MailTemplateIdentityEmailChangeWarningOld       MailTemplateKey = "identity.email_change_warning_old"
-	MailTemplateIdentityEmailChangeVerifyNew        MailTemplateKey = "identity.email_change_verify_new"
-	MailTemplateIdentityEmailVerifiedByAdmin        MailTemplateKey = "identity.email_verified_by_admin"
-	MailTemplateIdentityAccountDisabled             MailTemplateKey = "identity.account_disabled"
-	MailTemplateIdentityAccountEnabled              MailTemplateKey = "identity.account_enabled"
-	MailTemplateIdentitySessionsRevokedByAdmin      MailTemplateKey = "identity.sessions_revoked_by_admin"
-	MailTemplateIdentityMFAEnabled                  MailTemplateKey = "identity.mfa_enabled"
-	MailTemplateIdentityMFADisabled                 MailTemplateKey = "identity.mfa_disabled"
-	MailTemplateIdentityMFARecoveryCodesRegenerated MailTemplateKey = "identity.mfa_recovery_codes_regenerated"
-	MailTemplateIdentityPersonalAccessTokenCreated  MailTemplateKey = "identity.personal_access_token_created"
-	MailTemplateIdentityPersonalAccessTokenEnabled  MailTemplateKey = "identity.personal_access_token_enabled"
-	MailTemplateIdentityPersonalAccessTokenDisabled MailTemplateKey = "identity.personal_access_token_disabled"
-	MailTemplateIdentityPersonalAccessTokenRevoked  MailTemplateKey = "identity.personal_access_token_revoked"
-	MailTemplateAccessStudentClassInvitation        MailTemplateKey = "access.student_class_invitation"
-	MailTemplateAccessTeacherAcademicUnitInvitation MailTemplateKey = "access.teacher_academic_unit_invitation"
-	MailTemplateAccessAcademicUnitRoleInvitation    MailTemplateKey = "access.academic_unit_role_invitation"
-	MailTemplateAccessInstitutionRoleInvitation     MailTemplateKey = "access.institution_role_invitation"
-	MailTemplateAccessInvitationAccepted            MailTemplateKey = "access.invitation_accepted"
-	MailTemplateAccessInvitationRevoked             MailTemplateKey = "access.invitation_revoked"
-	MailTemplateAcademicClassEnrolled               MailTemplateKey = "academic.class_enrolled"
-	MailTemplateAcademicClassEnrollmentEnded        MailTemplateKey = "academic.class_enrollment_ended"
-	MailTemplateAcademicClassTransferred            MailTemplateKey = "academic.class_transferred"
-	MailTemplateExamSittingScheduled                MailTemplateKey = "exam.sitting_scheduled"
-	MailTemplateExamSittingRescheduled              MailTemplateKey = "exam.sitting_rescheduled"
-	MailTemplateExamSittingCancelled                MailTemplateKey = "exam.sitting_cancelled"
-	MailTemplateExamSittingAssignmentRemoved        MailTemplateKey = "exam.sitting_assignment_removed"
-	MailTemplateExamManagerAdded                    MailTemplateKey = "exam.manager_added"
-	MailTemplateExamManagerRemoved                  MailTemplateKey = "exam.manager_removed"
-	MailTemplateExamOwnershipTransferredToYou       MailTemplateKey = "exam.ownership_transferred_to_you"
-	MailTemplateExamOwnershipTransferredFromYou     MailTemplateKey = "exam.ownership_transferred_from_you"
-	MailTemplateExamSubmissionReceived              MailTemplateKey = "exam.submission_received"
-	MailTemplateExamSubmissionAutomaticallySealed   MailTemplateKey = "exam.submission_automatically_sealed"
-	MailTemplateExamResultReleased                  MailTemplateKey = "exam.result_released"
+	MailTemplateSystemTest                           MailTemplateKey = "system.mail_test"
+	MailTemplateIdentityVerifyEmail                  MailTemplateKey = "identity.verify_email"
+	MailTemplateIdentityPasswordReset                MailTemplateKey = "identity.password_reset"
+	MailTemplateIdentityPasswordChanged              MailTemplateKey = "identity.password_changed"
+	MailTemplateIdentityEmailChangeWarningOld        MailTemplateKey = "identity.email_change_warning_old"
+	MailTemplateIdentityEmailChangeVerifyNew         MailTemplateKey = "identity.email_change_verify_new"
+	MailTemplateIdentityEmailVerifiedByAdmin         MailTemplateKey = "identity.email_verified_by_admin"
+	MailTemplateIdentityAccountDisabled              MailTemplateKey = "identity.account_disabled"
+	MailTemplateIdentityAccountEnabled               MailTemplateKey = "identity.account_enabled"
+	MailTemplateIdentitySessionsRevokedByAdmin       MailTemplateKey = "identity.sessions_revoked_by_admin"
+	MailTemplateIdentityMFAEnabled                   MailTemplateKey = "identity.mfa_enabled"
+	MailTemplateIdentityMFADisabled                  MailTemplateKey = "identity.mfa_disabled"
+	MailTemplateIdentityMFARecoveryCodesRegenerated  MailTemplateKey = "identity.mfa_recovery_codes_regenerated"
+	MailTemplateIdentityPersonalAccessTokenCreated   MailTemplateKey = "identity.personal_access_token_created"
+	MailTemplateIdentityPersonalAccessTokenEnabled   MailTemplateKey = "identity.personal_access_token_enabled"
+	MailTemplateIdentityPersonalAccessTokenDisabled  MailTemplateKey = "identity.personal_access_token_disabled"
+	MailTemplateIdentityPersonalAccessTokenRevoked   MailTemplateKey = "identity.personal_access_token_revoked"
+	MailTemplateAccessStudentClassInvitation         MailTemplateKey = "access.student_class_invitation"
+	MailTemplateAccessTeacherAcademicUnitInvitation  MailTemplateKey = "access.teacher_academic_unit_invitation"
+	MailTemplateAccessAcademicUnitRoleInvitation     MailTemplateKey = "access.academic_unit_role_invitation"
+	MailTemplateAccessInstitutionRoleInvitation      MailTemplateKey = "access.institution_role_invitation"
+	MailTemplateAccessInvitationAccepted             MailTemplateKey = "access.invitation_accepted"
+	MailTemplateAccessInvitationRevoked              MailTemplateKey = "access.invitation_revoked"
+	MailTemplateAcademicClassEnrolled                MailTemplateKey = "academic.class_enrolled"
+	MailTemplateAcademicClassEnrollmentEnded         MailTemplateKey = "academic.class_enrollment_ended"
+	MailTemplateAcademicClassTransferred             MailTemplateKey = "academic.class_transferred"
+	MailTemplateAcademicUnitAssigned                 MailTemplateKey = "academic.academic_unit_assigned"
+	MailTemplateAcademicUnitAssignmentEnded          MailTemplateKey = "academic.academic_unit_assignment_ended"
+	MailTemplateAuthorizationScopedRoleAssigned      MailTemplateKey = "authorization.scoped_role_assigned"
+	MailTemplateAuthorizationScopedRoleEnded         MailTemplateKey = "authorization.scoped_role_ended"
+	MailTemplateAuthorizationInstitutionRoleAssigned MailTemplateKey = "authorization.institution_role_assigned"
+	MailTemplateAuthorizationInstitutionRoleEnded    MailTemplateKey = "authorization.institution_role_ended"
+	MailTemplateExamSittingScheduled                 MailTemplateKey = "exam.sitting_scheduled"
+	MailTemplateExamSittingRescheduled               MailTemplateKey = "exam.sitting_rescheduled"
+	MailTemplateExamSittingCancelled                 MailTemplateKey = "exam.sitting_cancelled"
+	MailTemplateExamSittingAssignmentRemoved         MailTemplateKey = "exam.sitting_assignment_removed"
+	MailTemplateExamManagerAdded                     MailTemplateKey = "exam.manager_added"
+	MailTemplateExamManagerRemoved                   MailTemplateKey = "exam.manager_removed"
+	MailTemplateExamOwnershipTransferredToYou        MailTemplateKey = "exam.ownership_transferred_to_you"
+	MailTemplateExamOwnershipTransferredFromYou      MailTemplateKey = "exam.ownership_transferred_from_you"
+	MailTemplateExamSubmissionReceived               MailTemplateKey = "exam.submission_received"
+	MailTemplateExamSubmissionAutomaticallySealed    MailTemplateKey = "exam.submission_automatically_sealed"
+	MailTemplateExamResultReleased                   MailTemplateKey = "exam.result_released"
 
 	MailOccurrenceOperatorTest           MailOccurrenceKind = "operator_test"
 	MailOccurrenceAccountToken           MailOccurrenceKind = "account_token"
@@ -177,7 +189,10 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 			key == MailTemplateAccessInvitationAccepted || key == MailTemplateAccessInvitationRevoked
 	case MailOccurrenceAcademicAdministration:
 		return key == MailTemplateAcademicClassEnrolled || key == MailTemplateAcademicClassEnrollmentEnded ||
-			key == MailTemplateAcademicClassTransferred
+			key == MailTemplateAcademicClassTransferred || key == MailTemplateAcademicUnitAssigned ||
+			key == MailTemplateAcademicUnitAssignmentEnded || key == MailTemplateAuthorizationScopedRoleAssigned ||
+			key == MailTemplateAuthorizationScopedRoleEnded || key == MailTemplateAuthorizationInstitutionRoleAssigned ||
+			key == MailTemplateAuthorizationInstitutionRoleEnded
 	case MailOccurrenceSittingSchedule:
 		return key == MailTemplateExamSittingScheduled || key == MailTemplateExamSittingRescheduled ||
 			key == MailTemplateExamSittingCancelled || key == MailTemplateExamSittingAssignmentRemoved

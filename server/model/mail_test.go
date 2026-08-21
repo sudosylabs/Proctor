@@ -42,13 +42,19 @@ func TestExamManagerMailMeaningsAreClosed(t *testing.T) {
 	}
 }
 
-func TestClassTransitionMailMeaningsAreClosed(t *testing.T) {
+func TestAcademicAdministrationMailMeaningsAreClosed(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	for _, key := range []MailTemplateKey{
 		MailTemplateAcademicClassEnrolled,
 		MailTemplateAcademicClassEnrollmentEnded,
 		MailTemplateAcademicClassTransferred,
+		MailTemplateAcademicUnitAssigned,
+		MailTemplateAcademicUnitAssignmentEnded,
+		MailTemplateAuthorizationScopedRoleAssigned,
+		MailTemplateAuthorizationScopedRoleEnded,
+		MailTemplateAuthorizationInstitutionRoleAssigned,
+		MailTemplateAuthorizationInstitutionRoleEnded,
 	} {
 		if !key.IsValid() {
 			t.Errorf("MailTemplateKey(%q) is invalid", key)

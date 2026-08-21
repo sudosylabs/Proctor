@@ -11,6 +11,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -18,7 +19,7 @@ import (
 
 const (
 	mailRekeyPageSize           = 100
-	mailFanoutBundleSealPurpose = "mail.fanout_bundle"
+	mailFanoutBundleSealPurpose = appmail.FanoutBundleSealingPurpose
 )
 
 type MailRekeyCommandV1 struct {

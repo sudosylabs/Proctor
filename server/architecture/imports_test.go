@@ -117,6 +117,10 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "Realtime child cannot import persistence", from: serverModule + "/app/realtime", imported: serverModule + "/store"},
 		{name: "Realtime child cannot import WebSocket", from: serverModule + "/app/realtime", imported: serverModule + "/websocket"},
 		{name: "Realtime child cannot import platform", from: serverModule + "/app/realtime", imported: serverModule + "/platform"},
+		{name: "Mail child cannot import parent application", from: serverModule + "/app/mail", imported: serverModule + "/app"},
+		{name: "Mail child cannot import HTTP transport", from: serverModule + "/app/mail", imported: serverModule + "/app/api"},
+		{name: "Mail child cannot import platform", from: serverModule + "/app/mail", imported: serverModule + "/platform"},
+		{name: "Mail child cannot import SQL adapter", from: serverModule + "/app/mail", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import Redis client", from: serverModule + "/app", imported: "github.com/redis/go-redis/v9"},
 		{name: "Job engine descendants cannot import application", from: serverModule + "/app/job/internal", imported: serverModule + "/app"},
 		{name: "Job engine cannot import HTTP transport", from: serverModule + "/app/job", imported: serverModule + "/app/api"},
@@ -176,6 +180,11 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "application may import Exam child", from: serverModule + "/app", imported: serverModule + "/app/exam"},
 		{name: "application may import Exam resource child", from: serverModule + "/app", imported: serverModule + "/app/exam/resource"},
 		{name: "application may import Exam workspace child", from: serverModule + "/app", imported: serverModule + "/app/exam/workspace"},
+		{name: "application may import Mail child", from: serverModule + "/app", imported: serverModule + "/app/mail"},
+		{name: "Mail child may import domain models", from: serverModule + "/app/mail", imported: serverModule + "/model"},
+		{name: "Mail child may import store contracts", from: serverModule + "/app/mail", imported: serverModule + "/store"},
+		{name: "Mail child may import secret sealing", from: serverModule + "/app/mail", imported: serverModule + "/secretseal"},
+		{name: "Mail child may import Exam mail contracts", from: serverModule + "/app/mail", imported: serverModule + "/app/exam"},
 		{name: "Exam child may import domain models", from: serverModule + "/app/exam", imported: serverModule + "/model"},
 		{name: "Exam child may import store contracts", from: serverModule + "/app/exam", imported: serverModule + "/store"},
 		{name: "Exam children may import shared safe Markdown", from: serverModule + "/app/exam/review", imported: serverModule + "/app/exam/safemarkdown"},
@@ -301,6 +310,10 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/app/realtime"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model")
+	case packageOrBelow(from, serverModule+"/app/mail"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
+				serverModule+"/secretseal", serverModule+"/app/exam")
 	case packageOrBelow(from, serverModule+"/app/exam"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
@@ -329,6 +342,7 @@ func forbiddenImport(from, imported string) bool {
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
 				imported != serverModule+"/model" && imported != serverModule+"/store" &&
 				imported != serverModule+"/app/job" && imported != serverModule+"/app/realtime" &&
+				imported != serverModule+"/app/mail" &&
 				imported != serverModule+"/secretseal" &&
 				!packageOrBelow(imported, serverModule+"/app/exam"))
 	case httpOrWebSocketPackage(from):

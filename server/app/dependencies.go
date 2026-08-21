@@ -12,6 +12,7 @@ import (
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -49,8 +50,8 @@ type OnboardingImportFiles interface {
 type Dependencies struct {
 	Store                store.Catalog
 	Cache                authenticationCache
-	MailDeliverySender   MailDeliverySender
-	MailTemplateRenderer DirectMailTemplateRenderer
+	MailDeliverySender   appmail.Sender
+	MailTemplateRenderer appmail.Renderer
 	MailDeliveryRecorder MailDeliveryRecorder
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.

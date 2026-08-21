@@ -246,12 +246,10 @@ delivery order are in [Examinations](../architecture/examinations.md).
 
 ## Transactional mail
 
-The transactional-mail delivery phase is implemented and certified for its
-31-key system, identity/security, Class, Exam-management, Sitting, Submission,
-and Result-release slice. The six access-and-onboarding Invitation messages
-are also implemented. The complete 43-key presentation catalog remains
-authoritative, while the six Academic Unit and Role relationship transitions
-are presentation-only until their ordinary named aggregates record mail.
+The transactional-mail service is implemented for the complete closed 43-key
+catalog. One dedicated `server/app/mail` child module now owns composition for
+all system, identity/security, access/onboarding, academic administration,
+Exam-management, Sitting, Submission, and Result-release families.
 The transactional-mail product and delivery architecture are accepted. The
 transport now exposes portable temporary, permanent, and acceptance-uncertain
 outcomes; the server has an independently configured versioned secret-sealing
@@ -301,7 +299,12 @@ notices use ordinary security-delivery work and contain only the safe
 description, exact expiry, action time, localized scope context, and bounded
 action count; credentials, hashes, and complete scopes are excluded. Sitting
 scheduling and Class administration now form one convergent notification
-slice. Enrollment, explicit ending, and transfer commit their exact direct
+slice. Ordinary Academic Unit membership and Role Binding creation/ending now
+commit their six scope-appropriate notices with the relationship and audit,
+including disabled/ineligible terminal suppression and replay-safe no-op
+behavior. Invitation acceptance deliberately remains its single semantic
+acceptance message rather than duplicating those internal relationship notices.
+Enrollment, explicit ending, and transfer commit their exact direct
 student notice atomically with membership and audit; transfer emits only its
 single semantic message. Each transition advances the affected Classes'
 durable audience revisions so bounded multi-node reconciliation adds, updates,
@@ -610,10 +613,6 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the deferred server-hosted account, Invitation, and Desktop
   authorization pages with the design system, plus the Desktop LaunchWindow.
-- Integrate the six remaining Academic Unit membership and Role Binding
-  transitions with the accepted transactional-mail aggregate contract. The
-  recovery landing pages remain a separately visible dependency of the future
-  server-hosted design system.
 - Resource search remains deferred because an Exam initially has at most ten
   active resources.
 

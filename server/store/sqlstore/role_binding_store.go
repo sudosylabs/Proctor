@@ -113,6 +113,19 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("role_binding", "value", nil).Wrap(err)
 	}
+	allowedCreated := model.MailTemplateAuthorizationScopedRoleAssigned
+	if candidate.ScopeType == model.RoleScopeInstitution {
+		allowedCreated = model.MailTemplateAuthorizationInstitutionRoleAssigned
+	}
+	payloadKeyID := ""
+	if input.Notice != nil {
+		var err error
+		payloadKeyID, err = validateRelationshipTransitionMail("role_binding", input.Notice, candidate.UserID,
+			candidate.CreatedAt, allowedCreated)
+		if err != nil {
+			return nil, err
+		}
+	}
 	execute := func(ctx context.Context, tx *sqlxTxWrapper) (*roleBindingMutationResult, error) {
 		if err := lockExpectedRoleForBinding(ctx, tx, candidate.RoleID, input.ExpectedRoleUpdatedAt, input.ExpectedRolePermissions); err != nil {
 			return nil, err
@@ -130,8 +143,24 @@ func (s SQLRoleBindingStore) SaveWithAudit(
 			}
 			return &roleBindingMutationResult{Value: existing, NoOp: true}, nil
 		}
+		if input.Notice != nil {
+			if err = lockPreparedMailRecipient(ctx, tx, "role_binding", candidate.UserID,
+				input.ExpectedRecipientRevision, input.Notice); err != nil {
+				return nil, err
+			}
+			if payloadKeyID != "" {
+				if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if err := insertRoleBinding(ctx, tx, &candidate); err != nil {
 			return nil, err
+		}
+		if input.Notice != nil {
+			if err = insertRecoveryMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+				return nil, fmt.Errorf("insert Role Binding assignment mail: %w", err)
+			}
 		}
 		encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 		if appErr != nil {
@@ -442,9 +471,35 @@ func (s SQLRoleBindingStore) EndWithAudit(
 			}
 			return &roleBindingMutationResult{Value: current, NoOp: true}, nil
 		}
+		payloadKeyID := ""
+		if input.Notice != nil {
+			if err = lockPreparedMailRecipient(ctx, tx, "role_binding", current.UserID,
+				input.ExpectedRecipientRevision, input.Notice); err != nil {
+				return nil, err
+			}
+			allowedEnded := model.MailTemplateAuthorizationScopedRoleEnded
+			if current.ScopeType == model.RoleScopeInstitution {
+				allowedEnded = model.MailTemplateAuthorizationInstitutionRoleEnded
+			}
+			payloadKeyID, err = validateRelationshipTransitionMail("role_binding", input.Notice, current.UserID,
+				model.TimeFromMillis(input.EndAt), allowedEnded)
+			if err != nil {
+				return nil, err
+			}
+			if payloadKeyID != "" {
+				if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		ended, err := endRoleBinding(ctx, tx, input.ID, input.EndAt, input.Capabilities)
 		if err != nil {
 			return nil, err
+		}
+		if input.Notice != nil {
+			if err = insertRecoveryMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+				return nil, fmt.Errorf("insert Role Binding ended mail: %w", err)
+			}
 		}
 		encoded, appErr := model.EncodeAuditData(ended.Auditable())
 		if appErr != nil {

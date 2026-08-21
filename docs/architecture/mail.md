@@ -124,9 +124,10 @@ and their validated transitions. Accepted means that SMTP accepted the DATA
 operation; Proctor never claims inbox delivery. Every delivery has a stable
 Message-ID that survives automatic and operator retry.
 
-The application mail module prepares a validated occurrence, encrypted payload
-and required Job. The originating named Store mutation inserts them with the
-business state and audit in one PostgreSQL transaction. A standalone mail or
+The `server/app/mail` child module prepares a validated occurrence, encrypted
+payload and required Job for every catalog family. The originating named Store
+mutation inserts them with the business state and audit in one PostgreSQL
+transaction. A standalone mail or
 Job enqueue after the business commit is forbidden. If enabled mail cannot be
 prepared or persisted, the originating mutation rolls back. A missing or
 ineligible recipient instead records an operator-visible terminal suppression;
@@ -170,6 +171,18 @@ Class display names and exact effective bounds; it excludes the actor, roster,
 authorization grants, and private audit detail. The same transaction advances
 the affected Classes' mail-audience revisions so bounded Sitting
 reconciliation adds, updates, or removes candidate schedule projections.
+
+Ordinary direct Academic Unit membership creation and ending commit
+`academic.academic_unit_assigned` and
+`academic.academic_unit_assignment_ended` respectively for the affected User.
+Ordinary Role Binding creation and ending select the institution templates for
+Institution scope and the scoped templates for every narrower scope. The
+relationship, successful audit, occurrence, delivery, and Job commit in the
+same named PostgreSQL transaction after a recipient-revision and eligibility
+fence. Disabled or ineligible delivery is retained as terminal suppression;
+exact replay or an idempotent no-op creates no second occurrence. Invitation
+acceptance remains one semantic `access.invitation_accepted` message and does
+not also emit notices for its internal membership or Role Binding package.
 
 ## Recipient and fan-out rules
 

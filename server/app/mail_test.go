@@ -283,6 +283,43 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	}
 }
 
+func TestRelationshipMailComposerSupportsCompleteCatalog(t *testing.T) {
+	at := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	user := mailTestUser(mailTestPrincipal(at), at)
+	preparer, err := newDirectMailPreparer(
+		mailRendererFake{content: FrozenMailContent{Subject: "Relationship changed", Text: "Relationship changed", HTML: "<p>Relationship changed</p>"}},
+		&mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}},
+		mailTestSealer(t),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := []model.MailTemplateKey{
+		model.MailTemplateAcademicUnitAssigned,
+		model.MailTemplateAcademicUnitAssignmentEnded,
+		model.MailTemplateAuthorizationScopedRoleAssigned,
+		model.MailTemplateAuthorizationScopedRoleEnded,
+		model.MailTemplateAuthorizationInstitutionRoleAssigned,
+		model.MailTemplateAuthorizationInstitutionRoleEnded,
+	}
+	for _, key := range keys {
+		key := key
+		t.Run(string(key), func(t *testing.T) {
+			prepared, prepareErr := preparer.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+				Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: at,
+			})
+			if prepareErr != nil {
+				t.Fatal(prepareErr)
+			}
+			if prepared.Occurrence.TemplateKey != key || prepared.Occurrence.Kind != model.MailOccurrenceAcademicAdministration ||
+				prepared.Delivery.TemplateKey != key || prepared.Delivery.State != model.MailDeliveryQueued ||
+				prepared.Job.Type != model.JobTypeMailDeliver {
+				t.Fatalf("prepared relationship mail = %#v", prepared)
+			}
+		})
+	}
+}
+
 func TestDirectMailPreparerSelectsTeacherInvitationTemplate(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	unitID := model.NewAcademicUnitID()

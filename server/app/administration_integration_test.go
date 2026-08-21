@@ -304,7 +304,7 @@ func TestBootstrapAndRoleAdministrationIntegration(t *testing.T) {
 		administratorLogin.Tokens.AccessToken,
 	)
 	if createBinding.Code != http.StatusCreated {
-		t.Fatalf("create binding status = %d: %s", createBinding.Code, createBinding.Body.String())
+		t.Fatalf("create binding status = %d: %s; logs=%s", createBinding.Code, createBinding.Body.String(), helper.Logs.String())
 	}
 	var customBinding model.RoleBinding
 	if err := json.Unmarshal(createBinding.Body.Bytes(), &customBinding); err != nil {

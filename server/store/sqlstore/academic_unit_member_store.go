@@ -71,6 +71,15 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("academic_unit_member", "value", nil).Wrap(err)
 	}
+	payloadKeyID := ""
+	if input.Notice != nil {
+		var err error
+		payloadKeyID, err = validateRelationshipTransitionMail("academic_unit_member", input.Notice, candidate.UserID,
+			candidate.CreatedAt, model.MailTemplateAcademicUnitAssigned)
+		if err != nil {
+			return nil, err
+		}
+	}
 	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
 	if appErr != nil {
 		return nil, appErr
@@ -92,6 +101,17 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 			}
 			return &academicUnitMemberMutationResult{Value: existing, NoOp: true}, nil
 		}
+		if input.Notice != nil {
+			if err = lockPreparedMailRecipient(ctx, tx, "academic_unit_member", candidate.UserID,
+				input.ExpectedRecipientRevision, input.Notice); err != nil {
+				return nil, err
+			}
+			if payloadKeyID != "" {
+				if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if err := ensureAcademicUnitMemberRangeAvailable(ctx, tx, &candidate); err != nil {
 			return nil, err
 		}
@@ -102,6 +122,11 @@ func (s SQLAcademicUnitMemberStore) Create(ctx context.Context, input *store.Aca
 			:id, :created_at, :updated_at, :archived_at, :revision, :academic_unit_id, :user_id, :start_at, :end_at
 		)`, &row); err != nil {
 			return nil, fmt.Errorf("create academic unit member: %w", translateError("academic_unit_member", candidate.ID.String(), err))
+		}
+		if input.Notice != nil {
+			if err = insertRecoveryMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+				return nil, fmt.Errorf("insert Academic Unit assignment mail: %w", err)
+			}
 		}
 		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete academic unit member creation audit: %w", err)
@@ -260,9 +285,31 @@ func (s SQLAcademicUnitMemberStore) EndWithAudit(ctx context.Context, input *sto
 			}
 			return &academicUnitMemberMutationResult{Value: before, NoOp: true}, nil
 		}
+		payloadKeyID := ""
+		if input.Notice != nil {
+			if err = lockPreparedMailRecipient(ctx, tx, "academic_unit_member", before.UserID,
+				input.ExpectedRecipientRevision, input.Notice); err != nil {
+				return nil, err
+			}
+			payloadKeyID, err = validateRelationshipTransitionMail("academic_unit_member", input.Notice, before.UserID,
+				model.TimeFromMillis(input.EndAt), model.MailTemplateAcademicUnitAssignmentEnded)
+			if err != nil {
+				return nil, err
+			}
+			if payloadKeyID != "" {
+				if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		ended, err := s.endAcademicUnitMember(ctx, tx, input.ID, input.ExpectedRevision, input.EndAt)
 		if err != nil {
 			return nil, err
+		}
+		if input.Notice != nil {
+			if err = insertRecoveryMail(ctx, tx, input.Notice.Occurrence, input.Notice.Delivery, input.Notice.Job, payloadKeyID); err != nil {
+				return nil, fmt.Errorf("insert Academic Unit assignment-ended mail: %w", err)
+			}
 		}
 		encoded, appErr := model.EncodeAuditData(ended.Auditable())
 		if appErr != nil {

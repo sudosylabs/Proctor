@@ -15,6 +15,7 @@ import (
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/i18n"
 	"github.com/sudosylabs/proctor/server/mlog"
@@ -187,19 +188,19 @@ func (a accountMailerAdapter) Enabled() bool {
 	return a.mailer.Enabled()
 }
 
-func (a accountMailerAdapter) From() app.MailAddress {
+func (a accountMailerAdapter) From() appmail.Address {
 	from := a.mailer.From()
-	return app.MailAddress{Name: from.Name, Address: from.Address}
+	return appmail.Address{Name: from.Name, Address: from.Address}
 }
 
-func (a accountMailerAdapter) Send(ctx context.Context, message app.OutboundMail) (app.MailTransportOutcome, error) {
+func (a accountMailerAdapter) Send(ctx context.Context, message appmail.Outbound) (appmail.TransportOutcome, error) {
 	_, err := a.mailer.Send(ctx, mailpkg.Message{
 		From: mailpkg.Address{Name: message.From.Name, Address: message.From.Address}, EnvelopeFrom: message.EnvelopeFrom,
 		To: []mailpkg.Address{{Name: message.To.Name, Address: message.To.Address}}, Subject: message.Subject,
 		Text: message.Text, HTML: message.HTML, Headers: message.Headers, MessageID: message.MessageID, Date: message.Date,
 	})
 	if err == nil {
-		return app.MailTransportUnknown, nil
+		return appmail.TransportUnknown, nil
 	}
 	return classifyMailTransportError(err), err
 }
@@ -208,28 +209,28 @@ type portableMailOutcome interface {
 	MailOutcome() string
 }
 
-func classifyMailTransportError(err error) app.MailTransportOutcome {
+func classifyMailTransportError(err error) appmail.TransportOutcome {
 	var portable portableMailOutcome
 	if errors.As(err, &portable) {
 		switch portable.MailOutcome() {
 		case "temporary":
-			return app.MailTransportTemporary
+			return appmail.TransportTemporary
 		case "permanent":
-			return app.MailTransportPermanent
+			return appmail.TransportPermanent
 		case "acceptance_uncertain":
-			return app.MailTransportAcceptanceUncertain
+			return appmail.TransportAcceptanceUncertain
 		}
 	}
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, mailpkg.ErrConnection):
-		return app.MailTransportTemporary
+		return appmail.TransportTemporary
 	case errors.Is(err, mailpkg.ErrInvalidMessage), errors.Is(err, mailpkg.ErrInvalidAddress),
 		errors.Is(err, mailpkg.ErrInvalidHeader), errors.Is(err, mailpkg.ErrMessageTooLarge),
 		errors.Is(err, mailpkg.ErrTLS), errors.Is(err, mailpkg.ErrAuthentication),
 		errors.Is(err, mailpkg.ErrRejected), errors.Is(err, mailpkg.ErrUnsupported):
-		return app.MailTransportPermanent
+		return appmail.TransportPermanent
 	default:
-		return app.MailTransportUnknown
+		return appmail.TransportUnknown
 	}
 }
 
@@ -239,20 +240,20 @@ func (a accountMailerAdapter) Probe(ctx context.Context) error {
 
 type mailTemplateRendererAdapter struct{ renderer *templates.Renderer }
 
-func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (app.FrozenMailContent, error) {
+func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale, ActionURL: actionURL})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.PersonalAccessTokenMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.PersonalAccessTokenDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		PersonalAccessToken: &templates.PersonalAccessTokenDetails{
@@ -262,17 +263,17 @@ func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
 		},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.ExamManagerMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.ExamManagerDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ExamManager: &templates.ExamManagerDetails{
@@ -280,76 +281,76 @@ func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
 		},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderClassTransitionNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.ClassTransitionMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.ClassTransitionDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ClassTransition: &templates.ClassTransitionDetails{PreviousClassDisplayName: details.PreviousClassDisplayName,
 			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderSubmissionReceipt(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.SubmissionReceiptMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.SubmissionReceiptDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		SubmissionReceipt: &templates.SubmissionReceiptDetails{ExamTitle: details.ExamTitle,
 			SittingID: details.SittingID.String(), SubmissionID: details.SubmissionID.String(), SealedAt: details.SealedAt},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderResultRelease(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.ResultReleaseMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.ResultReleaseDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ResultRelease: &templates.ResultReleaseDetails{ExamTitle: details.ExamTitle, ReleasedAt: details.ReleasedAt},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,
 	installationLocale string,
-	details app.SittingScheduleMailDetails,
-) (app.FrozenMailContent, error) {
+	details appmail.SittingScheduleDetails,
+) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
 		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		SittingSchedule: &templates.SittingScheduleDetails{ExamTitle: details.ExamTitle,
 			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
 	})
 	if err != nil {
-		return app.FrozenMailContent{}, err
+		return appmail.FrozenContent{}, err
 	}
-	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 // externalProviderRegistryAdapter exposes the platform registry through the

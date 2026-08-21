@@ -305,6 +305,11 @@ func TestTeacherAcademicUnitInvitationIssuesMailAndAcceptsAcrossNodes(t *testing
 	if replay.Code != http.StatusOK || !strings.Contains(replay.Body.String(), `"replayed":true`) {
 		t.Fatalf("teacher acceptance replay = %d: %s", replay.Code, replay.Body.String())
 	}
+	waitForInvitationDeliveries(t, primary, secondary, 2)
+	time.Sleep(100 * time.Millisecond)
+	if count := len(primary.Mailer.Deliveries()) + len(secondary.Mailer.Deliveries()); count != 2 {
+		t.Fatalf("teacher invitation produced %d messages, want issue plus one semantic acceptance only", count)
+	}
 }
 
 func TestScopedRoleInvitationAcceptsAsExistingUserAcrossNodesWithoutProfileOrWelcomeMutation(t *testing.T) {

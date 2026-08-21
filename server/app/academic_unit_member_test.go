@@ -47,8 +47,9 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	events := []string{}
 	unitID, userID := model.NewId(), model.NewId()
 	persistence := &academicUnitMemberStoreFake{events: &events}
+	mail := &relationshipMailPreparerTestFake{}
 	clockCalls := 0
-	service := newAcademicUnitMemberService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time {
+	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mail, func() time.Time {
 		clockCalls++
 		return time.UnixMilli(500)
 	}, model.NewId)
@@ -61,6 +62,10 @@ func TestAcademicUnitMemberCreateUsesAuthorizationWithoutGrantingPermission(t *t
 	}
 	if clockCalls != 1 || persistence.createInput.AuditAt != model.MillisFromTime(created.CreatedAt) {
 		t.Fatalf("clock calls/creation/audit time = %d/%v/%d", clockCalls, created.CreatedAt, persistence.createInput.AuditAt)
+	}
+	if persistence.createInput.Notice == nil || persistence.createInput.ExpectedRecipientRevision != 1 || len(mail.requests) != 1 ||
+		mail.requests[0].TemplateKey != model.MailTemplateAcademicUnitAssigned {
+		t.Fatalf("creation mail = %#v / %#v", persistence.createInput, mail.requests)
 	}
 	want := []string{"authorize", "audit-begin", "store-create"}
 	if !reflect.DeepEqual(events, want) {
@@ -77,13 +82,18 @@ func TestAcademicUnitMemberEndCarriesRevision(t *testing.T) {
 		StartsAt: model.TimeFromMillis(100),
 	}
 	persistence := &academicUnitMemberStoreFake{events: &events, current: current}
-	service := newAcademicUnitMemberService(persistence, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, func() time.Time { return time.UnixMilli(500) }, model.NewId)
+	mail := &relationshipMailPreparerTestFake{}
+	service := newAcademicUnitMemberService(persistence, relationshipUserStoreTestFake{}, &programmeAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events, beginID: model.NewId()}, mail, func() time.Time { return time.UnixMilli(500) }, model.NewId)
 	ended, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if persistence.endInput.ExpectedRevision != current.Revision || ended.Revision != current.Revision+1 {
 		t.Fatalf("end input/result = %#v / %#v", persistence.endInput, ended)
+	}
+	if persistence.endInput.Notice == nil || persistence.endInput.ExpectedRecipientRevision != 1 || len(mail.requests) != 1 ||
+		mail.requests[0].TemplateKey != model.MailTemplateAcademicUnitAssignmentEnded {
+		t.Fatalf("end mail = %#v / %#v", persistence.endInput, mail.requests)
 	}
 	want := []string{"authorize-preflight", "get-member", "authorize", "audit-begin", "store-end"}
 	if !reflect.DeepEqual(events, want) {
@@ -96,8 +106,9 @@ func TestAcademicUnitMemberEndDenialDoesNotInspectOpaqueMemberID(t *testing.T) {
 	events := []string{}
 	service := newAcademicUnitMemberService(
 		&academicUnitMemberStoreFake{events: &events},
+		relationshipUserStoreTestFake{},
 		&programmeAuthorizerFake{events: &events, preflightErr: NewError("authorization.denied")},
-		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, time.Now, model.NewId,
 	)
 	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: model.NewId()}); !Is(err, "authorization.denied") {
 		t.Fatalf("End() error = %v, want authorization.denied", err)
@@ -116,8 +127,9 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 	}
 	service := newAcademicUnitMemberService(
 		&academicUnitMemberStoreFake{events: &events, current: current},
+		relationshipUserStoreTestFake{},
 		&programmeAuthorizerFake{events: &events, err: NewError("authorization.denied")},
-		&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+		&institutionAuditorFake{events: &events}, &relationshipMailPreparerTestFake{}, time.Now, model.NewId,
 	)
 	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)

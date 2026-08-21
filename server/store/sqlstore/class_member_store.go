@@ -695,17 +695,23 @@ func (s SQLClassMemberStore) EndWithAudit(
 func lockClassMemberNoticeRecipient(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID,
 	expectedRevision int64, notice *store.PreparedMail,
 ) error {
+	return lockPreparedMailRecipient(ctx, tx, "class_member", userID, expectedRevision, notice)
+}
+
+func lockPreparedMailRecipient(ctx context.Context, tx *sqlxTxWrapper, resource string, userID model.UserID,
+	expectedRevision int64, notice *store.PreparedMail,
+) error {
 	current, err := lockMailRecipientUser(ctx, tx, userID)
 	if err != nil {
 		return err
 	}
 	if current.Revision != expectedRevision {
-		return store.NewErrConflict("class_member", "class_member_recipient_changed", nil)
+		return store.NewErrConflict(resource, resource+"_recipient_changed", nil)
 	}
 	ineligibleNotice := notice != nil && notice.Delivery != nil && notice.Delivery.State == model.MailDeliverySuppressed &&
 		notice.Delivery.PublicFailureCode == model.MailDeliveryRecipientIneligibleCode
 	if current.IsActive() == ineligibleNotice {
-		return store.NewErrConflict("class_member", "class_member_recipient_changed", nil)
+		return store.NewErrConflict(resource, resource+"_recipient_changed", nil)
 	}
 	return nil
 }
@@ -713,12 +719,18 @@ func lockClassMemberNoticeRecipient(ctx context.Context, tx *sqlxTxWrapper, user
 func validateClassMemberTransitionMail(prepared *store.PreparedMail, userID model.UserID, at time.Time,
 	allowed ...model.MailTemplateKey,
 ) (string, error) {
+	return validateRelationshipTransitionMail("class_member", prepared, userID, at, allowed...)
+}
+
+func validateRelationshipTransitionMail(resource string, prepared *store.PreparedMail, userID model.UserID, at time.Time,
+	allowed ...model.MailTemplateKey,
+) (string, error) {
 	if prepared == nil || prepared.Occurrence == nil || prepared.Delivery == nil || prepared.Job == nil ||
 		!userID.IsValid() || at.IsZero() || prepared.Occurrence.Kind != model.MailOccurrenceAcademicAdministration ||
 		prepared.Delivery.TargetUserID != userID || prepared.Delivery.TargetInvitationID.IsValid() ||
 		prepared.Job.Type != model.JobTypeMailDeliver || !prepared.Occurrence.CreatedAt.Equal(model.TimeUTC(at)) ||
 		prepared.Delivery.Deadline.Sub(prepared.Delivery.CreatedAt) != 72*time.Hour {
-		return "", store.NewErrInvalidInput("class_member", "transition_notice", nil)
+		return "", store.NewErrInvalidInput(resource, "transition_notice", nil)
 	}
 	key := prepared.Occurrence.TemplateKey
 	allowedKey := false
@@ -729,7 +741,7 @@ func validateClassMemberTransitionMail(prepared *store.PreparedMail, userID mode
 		}
 	}
 	if !allowedKey || prepared.Delivery.TemplateKey != key {
-		return "", store.NewErrInvalidInput("class_member", "transition_notice", nil)
+		return "", store.NewErrInvalidInput(resource, "transition_notice", nil)
 	}
 	if err := validateRecoveryMail(prepared.Occurrence, prepared.Delivery, prepared.Job); err != nil {
 		return "", err

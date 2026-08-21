@@ -2045,23 +2045,27 @@ type AffiliationStore interface {
 
 // AcademicUnitMemberStore persists organizational membership without roles.
 type AcademicUnitMemberCreation struct {
-	Member       *model.AcademicUnitMember
-	AuditEventID string
-	AuditAt      int64
-	Command      *CommandIdempotency
-	Replayed     bool
-	NoOp         bool
+	Member                    *model.AcademicUnitMember
+	ExpectedRecipientRevision int64
+	Notice                    *PreparedMail
+	AuditEventID              string
+	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 type AcademicUnitMemberEnd struct {
-	ID               string
-	ExpectedRevision int64
-	EndAt            int64
-	AuditEventID     string
-	AuditAt          int64
-	Command          *CommandIdempotency
-	Replayed         bool
-	NoOp             bool
+	ID                        string
+	ExpectedRevision          int64
+	ExpectedRecipientRevision int64
+	Notice                    *PreparedMail
+	EndAt                     int64
+	AuditEventID              string
+	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 type AcademicUnitMemberStore interface {
@@ -2287,27 +2291,31 @@ type RoleStore interface {
 // RoleBindingCreation is the durable input for creating a binding under an
 // already-persisted audit attempt.
 type RoleBindingCreation struct {
-	Binding                 *model.RoleBinding
-	ExpectedRoleUpdatedAt   time.Time
-	ExpectedRolePermissions []string
-	AuditEventID            string
-	AuditAt                 int64
-	Command                 *CommandIdempotency
-	Replayed                bool
-	NoOp                    bool
+	Binding                   *model.RoleBinding
+	ExpectedRoleUpdatedAt     time.Time
+	ExpectedRolePermissions   []string
+	ExpectedRecipientRevision int64
+	Notice                    *PreparedMail
+	AuditEventID              string
+	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 // RoleBindingEnd is the durable input for ending a binding under an
 // already-persisted audit attempt.
 type RoleBindingEnd struct {
-	ID           string
-	EndAt        int64
-	Capabilities AccessDeploymentCapabilities
-	AuditEventID string
-	AuditAt      int64
-	Command      *CommandIdempotency
-	Replayed     bool
-	NoOp         bool
+	ID                        string
+	EndAt                     int64
+	ExpectedRecipientRevision int64
+	Notice                    *PreparedMail
+	Capabilities              AccessDeploymentCapabilities
+	AuditEventID              string
+	AuditAt                   int64
+	Command                   *CommandIdempotency
+	Replayed                  bool
+	NoOp                      bool
 }
 
 // RoleBindingStore persists time-bounded role assignments. Scope references

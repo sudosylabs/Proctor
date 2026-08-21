@@ -58,15 +58,19 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
 		requireNoError(t, err)
+		createNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
+			model.MailTemplateAuthorizationInstitutionRoleAssigned, model.TimeFromMillis(at))
 		saved, err := ss.RoleBinding().SaveWithAudit(ctx, &store.RoleBindingCreation{
 			Binding: &model.RoleBinding{
 				UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
 				ScopeID: institution.ID.String(), StartsAt: model.TimeFromMillis(at),
 			},
 			ExpectedRoleUpdatedAt: role.UpdatedAt, ExpectedRolePermissions: append([]string(nil), role.Permissions...),
+			ExpectedRecipientRevision: user.Revision, Notice: createNotice,
 			AuditEventID: attempt.ID.String(), AuditAt: at,
 		})
 		requireNoError(t, err)
+		requireNoError(t, requireClassMemberMail(t, ctx, ss, createNotice, model.MailTemplateAuthorizationInstitutionRoleAssigned))
 		endAttempt, err := ss.Audit().Save(ctx, &model.AuditEvent{
 			Action:    string(model.ActionRoleManage),
 			Resource:  model.Resource{Type: model.ResourceInstitution, ID: institution.ID.String()},
@@ -74,10 +78,14 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 			Status: model.AuditStatusAttempt, NodeID: "test-node",
 		})
 		requireNoError(t, err)
+		endNotice := classMemberPreparedMail(t, &model.ClassMember{UserID: user.ID},
+			model.MailTemplateAuthorizationInstitutionRoleEnded, model.TimeFromMillis(at+1))
 		ended, err := ss.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{
-			ID: saved.ID.String(), EndAt: at + 1, AuditEventID: endAttempt.ID.String(), AuditAt: at + 1,
+			ID: saved.ID.String(), EndAt: at + 1, ExpectedRecipientRevision: user.Revision, Notice: endNotice,
+			AuditEventID: endAttempt.ID.String(), AuditAt: at + 1,
 		})
 		requireNoError(t, err)
+		requireNoError(t, requireClassMemberMail(t, ctx, ss, endNotice, model.MailTemplateAuthorizationInstitutionRoleEnded))
 		if ended.EndsAt.Millis() != at+1 {
 			t.Fatalf("EndWithAudit = %#v", ended)
 		}

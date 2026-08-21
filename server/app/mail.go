@@ -5,186 +5,42 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"net/mail"
-	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 const (
-	mailDeliverySealingPurpose = "mail.delivery"
+	mailDeliverySealingPurpose = appmail.DeliverySealingPurpose
 	mailTestRateLimitWindow    = time.Hour
 	mailTestRateLimitMaximum   = 3
 )
 
-type FrozenMailContent struct{ Subject, Text, HTML string }
-
-// DirectMailPreparation is the application-owned description of one mail
-// intent addressed to an existing User. The preparer freezes the rendered
-// content and returns the occurrence, delivery, and Job that the caller must
-// persist in its named aggregate transaction.
-type DirectMailPreparation struct {
-	Recipient    *model.User
-	OccurrenceID model.MailOccurrenceID
-	Kind         model.MailOccurrenceKind
-	TemplateKey  model.MailTemplateKey
-	ActionURL    string
-	At           time.Time
-	Deadline     time.Time
-	JobType      model.JobType
-}
-
-type MailAddress struct {
-	Name    string
-	Address string
-}
-
-type OutboundMail struct {
-	From         MailAddress
-	EnvelopeFrom string
-	To           MailAddress
-	Subject      string
-	Text         string
-	HTML         string
-	Headers      map[string][]string
-	MessageID    string
-	Date         time.Time
-}
-
-type MailTransportOutcome string
+type FrozenMailContent = appmail.FrozenContent
+type DirectMailPreparation = appmail.DirectPreparation
+type MailAddress = appmail.Address
+type OutboundMail = appmail.Outbound
+type MailTransportOutcome = appmail.TransportOutcome
+type PersonalAccessTokenMailDetails = appmail.PersonalAccessTokenDetails
+type ExamManagerMailDetails = appmail.ExamManagerDetails
+type ClassTransitionMailDetails = appmail.ClassTransitionDetails
+type SubmissionReceiptMailDetails = appmail.SubmissionReceiptDetails
+type ResultReleaseMailDetails = appmail.ResultReleaseDetails
+type DirectMailTemplateRenderer = appmail.Renderer
+type MailDeliverySender = appmail.Sender
+type frozenMailPayloadV1 = appmail.FrozenPayloadV1
+type directMailPreparer = appmail.Composer
 
 const (
-	MailTransportUnknown             MailTransportOutcome = "unknown"
-	MailTransportTemporary           MailTransportOutcome = "temporary"
-	MailTransportPermanent           MailTransportOutcome = "permanent"
-	MailTransportAcceptanceUncertain MailTransportOutcome = "acceptance_uncertain"
+	MailTransportUnknown             = appmail.TransportUnknown
+	MailTransportTemporary           = appmail.TransportTemporary
+	MailTransportPermanent           = appmail.TransportPermanent
+	MailTransportAcceptanceUncertain = appmail.TransportAcceptanceUncertain
 )
-
-type MailTemplateRenderer interface {
-	Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (FrozenMailContent, error)
-}
-
-// PersonalAccessTokenMailDetails is the bounded, non-secret context allowed in
-// PAT security notices. It intentionally excludes the one-time credential,
-// stored hash, and complete action list.
-type PersonalAccessTokenMailDetails struct {
-	Description        string
-	ExpiresAt          time.Time
-	ActionAt           time.Time
-	ActionCount        int
-	AcademicUnitScoped bool
-}
-
-// ExamManagerMailDetails is the bounded, actor-free context allowed in Exam
-// relationship notices.
-type ExamManagerMailDetails struct {
-	Title        string
-	Relationship string
-	ActionAt     time.Time
-}
-
-// ClassTransitionMailDetails is the bounded Class membership context allowed
-// in one student's enrollment, ending, or transfer notice.
-type ClassTransitionMailDetails struct {
-	PreviousClassDisplayName string
-	ClassDisplayName         string
-	StartsAt                 time.Time
-	EndsAt                   time.Time
-}
-
-// SubmissionReceiptMailDetails is the complete candidate-safe context allowed
-// in a Submission receipt. Protected manifest and integrity data are absent.
-type SubmissionReceiptMailDetails struct {
-	ExamTitle    string
-	SittingID    model.ExamSittingID
-	SubmissionID model.SubmissionID
-	SealedAt     time.Time
-}
-
-// ResultReleaseMailDetails is the complete inbox-safe context for the
-// availability fact. Scores, outcomes, remarks, evidence, rationale, and
-// Submission content have no representation.
-type ResultReleaseMailDetails struct {
-	ExamTitle  string
-	ReleasedAt time.Time
-}
-
-// DirectMailTemplateRenderer makes every rendering capability used by the
-// direct-mail preparer explicit at construction. A partially capable renderer
-// must fail composition rather than a security-notice request at runtime.
-type DirectMailTemplateRenderer interface {
-	MailTemplateRenderer
-	RenderPersonalAccessTokenSecurityNotice(
-		model.MailTemplateKey,
-		string,
-		string,
-		PersonalAccessTokenMailDetails,
-	) (FrozenMailContent, error)
-	RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error)
-	RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error)
-	RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error)
-	RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error)
-}
-
-type directMailDetails interface {
-	render(DirectMailTemplateRenderer, model.MailTemplateKey, string, string) (FrozenMailContent, error)
-}
-
-func (details PersonalAccessTokenMailDetails) render(renderer DirectMailTemplateRenderer, key model.MailTemplateKey,
-	locale, fallback string,
-) (FrozenMailContent, error) {
-	return renderer.RenderPersonalAccessTokenSecurityNotice(key, locale, fallback, details)
-}
-
-func (details ExamManagerMailDetails) render(renderer DirectMailTemplateRenderer, key model.MailTemplateKey,
-	locale, fallback string,
-) (FrozenMailContent, error) {
-	return renderer.RenderExamManagerNotice(key, locale, fallback, details)
-}
-
-func (details ClassTransitionMailDetails) render(renderer DirectMailTemplateRenderer, key model.MailTemplateKey,
-	locale, fallback string,
-) (FrozenMailContent, error) {
-	return renderer.RenderClassTransitionNotice(key, locale, fallback, details)
-}
-
-func (details SubmissionReceiptMailDetails) render(renderer DirectMailTemplateRenderer, key model.MailTemplateKey,
-	locale, fallback string,
-) (FrozenMailContent, error) {
-	return renderer.RenderSubmissionReceipt(key, locale, fallback, details)
-}
-
-func (details ResultReleaseMailDetails) render(renderer DirectMailTemplateRenderer, key model.MailTemplateKey,
-	locale, fallback string,
-) (FrozenMailContent, error) {
-	return renderer.RenderResultRelease(key, locale, fallback, details)
-}
-
-type MailDeliverySender interface {
-	Enabled() bool
-	From() MailAddress
-	Send(context.Context, OutboundMail) (MailTransportOutcome, error)
-}
-
-type frozenMailPayloadV1 struct {
-	Version              int    `json:"version"`
-	RecipientName        string `json:"recipient_name"`
-	RecipientAddress     string `json:"recipient_address"`
-	FromName             string `json:"from_name"`
-	FromAddress          string `json:"from_address"`
-	Subject              string `json:"subject"`
-	Text                 string `json:"text"`
-	HTML                 string `json:"html"`
-	AutoSubmitted        string `json:"auto_submitted"`
-	AutoResponseSuppress string `json:"auto_response_suppress"`
-}
 
 type MailDeliveryView struct {
 	ID                                          model.MailDeliveryID
@@ -269,7 +125,7 @@ type mailService struct {
 	authorization           mailAuthorizer
 	audit                   mailAuditPreparer
 	attempts                *authenticationAttemptAccounting
-	renderer                MailTemplateRenderer
+	composer                *directMailPreparer
 	sender                  MailDeliverySender
 	metrics                 MailDeliveryRecorder
 	sealer                  *secretseal.Sealer
@@ -278,217 +134,26 @@ type mailService struct {
 	wake                    func()
 }
 
-type directMailPreparer struct {
-	renderer DirectMailTemplateRenderer
-	sender   MailDeliverySender
-	sealer   *secretseal.Sealer
-}
-
 func newDirectMailPreparer(renderer DirectMailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer) (*directMailPreparer, error) {
-	if renderer == nil || sender == nil || (sender.Enabled() && sealer == nil) {
-		return nil, errors.New("direct mail preparer dependencies are invalid")
-	}
-	return &directMailPreparer{renderer: renderer, sender: sender, sealer: sealer}, nil
+	return appmail.NewComposer(renderer, sender, sealer)
 }
 
-func (p *directMailPreparer) Enabled() bool {
-	return p != nil && p.sender != nil && p.sender.Enabled() && p.sealer != nil
-}
-
-func (p *directMailPreparer) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
-	user, occurrenceID, kind, key := request.Recipient, request.OccurrenceID, request.Kind, request.TemplateKey
-	actionURL, at, deadline, jobType := request.ActionURL, request.At, request.Deadline, request.JobType
-	if p == nil || p.sender == nil || user == nil || user.Validate() != nil || !user.IsActive() || !occurrenceID.IsValid() ||
-		!key.IsValid() || at.IsZero() || !deadline.After(at) ||
-		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) {
-		return nil, errors.New("direct mail input is invalid")
-	}
-	return p.prepareRecipient(user.DisplayName, user.Email, user.Locale, user.ID, user.ID, "", occurrenceID,
-		kind, key, actionURL, at, deadline, jobType, nil)
-}
-
-func (p *directMailPreparer) PrepareInvitation(invitation *model.Invitation, actionURL string) (*preparedDirectMail, error) {
-	if !p.Enabled() || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending {
-		return nil, errors.New("invitation mail input is invalid")
-	}
-	var key model.MailTemplateKey
-	switch invitation.Purpose {
-	case model.InvitationPurposeStudentClass:
-		key = model.MailTemplateAccessStudentClassInvitation
-	case model.InvitationPurposeTeacherAcademicUnit:
-		key = model.MailTemplateAccessTeacherAcademicUnitInvitation
-	case model.InvitationPurposeAcademicUnitRole:
-		key = model.MailTemplateAccessAcademicUnitRoleInvitation
-	case model.InvitationPurposeInstitutionRole:
-		key = model.MailTemplateAccessInstitutionRoleInvitation
-	default:
-		return nil, errors.New("invitation mail purpose is not implemented")
-	}
-	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
-		invitation.InviterUserID, "", invitation.ID, model.MailOccurrenceID(invitation.ID.String()),
-		model.MailOccurrenceInvitation, key, actionURL,
-		invitation.CreatedAt, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil)
-}
-
-func (p *directMailPreparer) PrepareInvitationResend(invitation *model.Invitation, actionURL string, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
-	if !p.Enabled() || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending ||
-		!actor.IsValid() || at.IsZero() || !model.TimeUTC(at).Before(invitation.ExpiresAt) {
-		return nil, errors.New("Invitation resend mail input is invalid")
-	}
-	key, err := invitationTemplateKey(invitation.Purpose)
-	if err != nil {
-		return nil, err
-	}
-	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
-		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation, key, actionURL,
-		at, invitation.ExpiresAt, model.JobTypeMailDeliverCredential, nil)
-}
-
-func (p *directMailPreparer) PrepareInvitationRevocation(invitation *model.Invitation, actor model.UserID, at time.Time) (*preparedDirectMail, error) {
-	if p == nil || invitation == nil || invitation.Validate() != nil || invitation.State != model.InvitationPending || !actor.IsValid() || at.IsZero() {
-		return nil, errors.New("Invitation revocation mail input is invalid")
-	}
-	return p.prepareRecipient(invitation.Suggestions.DisplayName, invitation.TargetEmail, invitation.Suggestions.Locale,
-		actor, "", invitation.ID, model.NewMailOccurrenceID(), model.MailOccurrenceInvitation,
-		model.MailTemplateAccessInvitationRevoked, "", at, model.TimeUTC(at).Add(24*time.Hour), model.JobTypeMailDeliver, nil)
-}
-
-func invitationTemplateKey(purpose model.InvitationPurpose) (model.MailTemplateKey, error) {
-	switch purpose {
-	case model.InvitationPurposeStudentClass:
-		return model.MailTemplateAccessStudentClassInvitation, nil
-	case model.InvitationPurposeTeacherAcademicUnit:
-		return model.MailTemplateAccessTeacherAcademicUnitInvitation, nil
-	case model.InvitationPurposeAcademicUnitRole:
-		return model.MailTemplateAccessAcademicUnitRoleInvitation, nil
-	case model.InvitationPurposeInstitutionRole:
-		return model.MailTemplateAccessInstitutionRoleInvitation, nil
-	default:
-		return "", errors.New("Invitation mail purpose is not implemented")
-	}
-}
-
-func (p *directMailPreparer) prepareRecipient(recipientName, recipientAddress, locale string, actorUserID, targetUserID model.UserID,
-	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind,
-	key model.MailTemplateKey, actionURL string, at, deadline time.Time, jobType model.JobType,
-	details directMailDetails,
-) (*preparedDirectMail, error) {
-	if p == nil || p.sender == nil || p.renderer == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() || !occurrenceID.IsValid() ||
-		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
-		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) {
-		return nil, errors.New("direct mail recipient is invalid")
-	}
-	if locale == "" {
-		locale = model.DefaultLocale
-	}
-	at = model.TimeUTC(at)
-	deadline = model.TimeUTC(deadline)
-	if !p.sender.Enabled() {
-		return p.prepareSuppressedRecipient(recipientAddress, actorUserID, targetUserID, targetInvitationID, occurrenceID, kind, key, at, deadline,
-			jobType, model.MailDeliveryDisabledCode)
-	}
-	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	if err != nil {
-		return nil, err
-	}
-	job, err := model.NewJob(jobID, jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	if err != nil {
-		return nil, err
-	}
-	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
-	var rendered FrozenMailContent
-	if details != nil {
-		rendered, err = details.render(p.renderer, key, locale, model.DefaultLocale)
-	} else {
-		rendered, err = p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
-	}
-	if err != nil {
-		return nil, err
-	}
-	from := p.sender.From()
-	if err = validateMailAddress(from); err != nil {
-		return nil, err
-	}
-	payload := frozenMailPayloadV1{Version: 1, RecipientName: recipientName, RecipientAddress: recipientAddress,
-		FromName: from.Name, FromAddress: from.Address, Subject: rendered.Subject, Text: rendered.Text, HTML: rendered.HTML,
-		AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
-	plaintext, err := json.Marshal(payload)
-	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes {
-		return nil, errors.New("rendered mail payload is invalid")
-	}
-	envelope, err := p.sealer.Seal(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: deliveryID.String()}, plaintext)
-	if err != nil {
-		return nil, err
-	}
-	encrypted, err := json.Marshal(envelope)
-	if err != nil {
-		return nil, err
-	}
-	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
-		TemplateKey: key, TemplateDigest: digestRenderedMail(rendered.Subject, rendered.Text, rendered.HTML),
-		MaskedRecipient: maskMailAddress(recipientAddress), State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at,
-		MessageDate: at, Deadline: deadline, MessageID: stableMailMessageID(deliveryID, from.Address),
-		EncryptedPayload: encrypted, Revision: 1}
-	if err = occurrence.Validate(); err != nil {
-		return nil, err
-	}
-	if err = delivery.Validate(); err != nil {
-		return nil, err
-	}
-	return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
-}
-
-func (p *directMailPreparer) prepareSuppressedRecipient(recipientAddress string, actorUserID, targetUserID model.UserID,
-	targetInvitationID model.InvitationID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind, key model.MailTemplateKey,
-	at, deadline time.Time, jobType model.JobType, publicCode string,
-) (*preparedDirectMail, error) {
-	if p == nil || p.sender == nil || !model.IsValidEmail(recipientAddress) || !actorUserID.IsValid() ||
-		(targetUserID.IsValid() == targetInvitationID.IsValid()) || !occurrenceID.IsValid() || !key.IsValid() || at.IsZero() || !deadline.After(at) ||
-		(jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential) ||
-		(publicCode != model.MailDeliveryDisabledCode && publicCode != model.MailDeliveryRecipientIneligibleCode) {
-		return nil, errors.New("direct mail suppression input is invalid")
-	}
-	at, deadline = model.TimeUTC(at), model.TimeUTC(deadline)
-	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	if err != nil {
-		return nil, err
-	}
-	job, err := model.NewJob(jobID, jobType, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
-	if err != nil {
-		return nil, err
-	}
-	job, err = job.RequestCancellation(at)
-	if err != nil {
-		return nil, err
-	}
-	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
-	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: targetUserID, TargetInvitationID: targetInvitationID,
-		TemplateKey: key, TemplateDigest: digestRenderedMail("", "", ""), MaskedRecipient: maskMailAddress(recipientAddress),
-		State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: deadline,
-		MessageID: stableMailMessageID(deliveryID, ""), PublicFailureCode: publicCode, Revision: 1}
-	if err = occurrence.Validate(); err != nil {
-		return nil, err
-	}
-	if err = delivery.Validate(); err != nil {
-		return nil, err
-	}
-	return &preparedDirectMail{Occurrence: occurrence, Delivery: delivery, Job: job}, nil
-}
-
-func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer MailTemplateRenderer, sender MailDeliverySender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
+func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer DirectMailTemplateRenderer, sender MailDeliverySender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}
 	if sender.Enabled() && sealer == nil {
 		return nil, errors.New("enabled mail requires secret sealing")
 	}
+	composer, err := newDirectMailPreparer(renderer, sender, sealer)
+	if err != nil {
+		return nil, err
+	}
 	rekey, _ := mailStore.(mailRekeyStarter)
 	keyState, _ := mailStore.(mailKeyInspector)
 	rekeyAudit, _ := audit.(mutationAuditor)
 	return &mailService{mail: mailStore, rekey: rekey, keyState: keyState, rekeyAudit: rekeyAudit, users: users,
-		authorization: authorization, audit: audit, attempts: attempts, renderer: renderer,
+		authorization: authorization, audit: audit, attempts: attempts, composer: composer,
 		sender: sender, metrics: metrics, sealer: sealer, recentAuthenticationTTL: recentTTL, now: now}, nil
 }
 
@@ -572,47 +237,18 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	if !user.IsActive() {
 		return MailDeliveryView{}, NewError("mail.recipient_ineligible")
 	}
-	rendered, err := s.renderer.Render(model.MailTemplateSystemTest, user.Locale, model.DefaultLocale, "")
-	if err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	templateDigest := digestRenderedMail(rendered.Subject, rendered.Text, rendered.HTML)
-	from := s.sender.From()
-	if err = validateMailAddress(from); err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
 	now := model.TimeUTC(s.now())
-	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
-	payload := frozenMailPayloadV1{Version: 1, RecipientName: user.DisplayName, RecipientAddress: user.Email, FromName: from.Name, FromAddress: from.Address, Subject: rendered.Subject, Text: rendered.Text, HTML: rendered.HTML, AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
-	plaintext, err := json.Marshal(payload)
-	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	envelope, err := s.sealer.Seal(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: deliveryID.String()}, plaintext)
+	prepared, err := s.composer.PrepareDirect(DirectMailPreparation{Recipient: user, OccurrenceID: model.NewMailOccurrenceID(),
+		Kind: model.MailOccurrenceOperatorTest, TemplateKey: model.MailTemplateSystemTest, At: now,
+		Deadline: now.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
 	if err != nil {
 		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
 	}
-	encrypted, err := json.Marshal(envelope)
-	if err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
-	if err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), now, now, model.MailMaximumAttempts)
-	if err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: user.ID, TemplateKey: model.MailTemplateSystemTest, TemplateDigest: templateDigest, MaskedRecipient: maskMailAddress(user.Email), State: model.MailDeliveryQueued, CreatedAt: now, UpdatedAt: now, MessageDate: now, Deadline: now.Add(24 * time.Hour), MessageID: stableMailMessageID(deliveryID, from.Address), EncryptedPayload: encrypted, Revision: 1}
-	if err = delivery.Validate(); err != nil {
-		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
-	}
-	audit, err := s.audit.PrepareTest(ctx, invocation, institutionResource, deliveryID)
+	audit, err := s.audit.PrepareTest(ctx, invocation, institutionResource, prepared.Delivery.ID)
 	if err != nil {
 		return MailDeliveryView{}, err
 	}
-	created, err := s.mail.EnqueueTest(ctx, &store.MailTestEnqueue{Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceOperatorTest, TemplateKey: model.MailTemplateSystemTest, ActorUserID: user.ID, CreatedAt: now}, Delivery: delivery, Job: job, AuditEvent: audit})
+	created, err := s.mail.EnqueueTest(ctx, &store.MailTestEnqueue{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job, AuditEvent: audit})
 	if err != nil {
 		return MailDeliveryView{}, mailAppError(err)
 	}
@@ -623,14 +259,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 }
 
 func validateMailAddress(address MailAddress) error {
-	if address.Address == "" || strings.ContainsAny(address.Name+address.Address, "\x00\r\n") {
-		return errors.New("mail address is invalid")
-	}
-	parsed, err := mail.ParseAddress(address.Address)
-	if err != nil || parsed.Address != address.Address {
-		return errors.New("mail address is invalid")
-	}
-	return nil
+	return appmail.ValidateAddress(address)
 }
 
 func (s *mailService) Get(ctx context.Context, invocation Invocation, id model.MailDeliveryID) (MailDeliveryView, error) {
@@ -741,26 +370,11 @@ func (s *mailService) checkTestRateLimit(ctx context.Context, userID model.UserI
 }
 
 func stableMailMessageID(id model.MailDeliveryID, from string) string {
-	domain := "localhost"
-	if parsed, err := mail.ParseAddress(from); err == nil {
-		if at := strings.LastIndexByte(parsed.Address, '@'); at >= 0 {
-			domain = parsed.Address[at+1:]
-		}
-	}
-	return "<mail." + id.String() + "@" + strings.ToLower(domain) + ">"
+	return appmail.StableMessageID(id, from)
 }
 
 func maskMailAddress(address string) string {
-	at := strings.LastIndexByte(address, '@')
-	if at < 1 {
-		return "***"
-	}
-	local := []rune(address[:at])
-	prefix := "***"
-	if len(local) > 1 {
-		prefix = string(local[0]) + strings.Repeat("*", min(3, len(local)-1))
-	}
-	return prefix + address[at:]
+	return appmail.MaskAddress(address)
 }
 
 func mailDeliveryView(delivery *model.MailDelivery) MailDeliveryView {
@@ -771,13 +385,7 @@ func mailDeliveryView(delivery *model.MailDelivery) MailDeliveryView {
 }
 
 func digestRenderedMail(subject, text, html string) string {
-	hash := sha256.New()
-	_, _ = hash.Write([]byte(subject))
-	_, _ = hash.Write([]byte{0})
-	_, _ = hash.Write([]byte(text))
-	_, _ = hash.Write([]byte{0})
-	_, _ = hash.Write([]byte(html))
-	return hex.EncodeToString(hash.Sum(nil))
+	return appmail.Digest(subject, text, html)
 }
 
 func mailAppError(err error) error {
