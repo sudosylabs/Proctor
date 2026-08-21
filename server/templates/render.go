@@ -25,7 +25,7 @@ const maxRenderedMessageBytes = 1 << 20
 // Properties is the complete typed model visible to HTML and text templates.
 // It intentionally contains no arbitrary map and offers no template helpers.
 type Properties struct {
-	Copy                i18n.Copy
+	Copy                Copy
 	ActionURL           string
 	PersonalAccessToken *PersonalAccessTokenProperties
 	ExamManager         *ExamManagerProperties
@@ -146,7 +146,7 @@ type ResultReleaseProperties struct {
 
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
-	Key                 i18n.Key
+	Key                 Key
 	RecipientLocale     string
 	InstallationLocale  string
 	ActionURL           string
@@ -160,7 +160,7 @@ type Request struct {
 
 // Message is one safe, fully rendered multipart-alternative payload.
 type Message struct {
-	Key     i18n.Key
+	Key     Key
 	Locale  string
 	Subject string
 	Text    string
@@ -169,9 +169,9 @@ type Message struct {
 
 // Renderer owns parsed, embedded templates and the localization catalog.
 type Renderer struct {
-	catalog *i18n.Catalog
-	html    map[i18n.Key]*htmltemplate.Template
-	text    map[i18n.Key]*texttemplate.Template
+	catalog *i18n.Bundle
+	html    map[Key]*htmltemplate.Template
+	text    map[Key]*texttemplate.Template
 }
 
 //go:embed *.html *.txt
@@ -179,7 +179,7 @@ var templateFiles embed.FS
 
 // DefaultRenderer constructs a renderer from the embedded English catalog.
 func DefaultRenderer() (*Renderer, error) {
-	catalog, err := i18n.DefaultCatalog()
+	catalog, err := i18n.DefaultBundle(i18n.EnglishLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -187,16 +187,25 @@ func DefaultRenderer() (*Renderer, error) {
 }
 
 // NewRenderer parses every production template during construction.
-func NewRenderer(catalog *i18n.Catalog) (*Renderer, error) {
+func NewRenderer(catalog *i18n.Bundle) (*Renderer, error) {
+	return newRenderer(catalog, true)
+}
+
+func newRenderer(catalog *i18n.Bundle, validateCompleteCatalog bool) (*Renderer, error) {
 	if catalog == nil {
 		return nil, errors.New("mail template catalog is nil")
 	}
 	renderer := &Renderer{
 		catalog: catalog,
-		html:    make(map[i18n.Key]*htmltemplate.Template),
-		text:    make(map[i18n.Key]*texttemplate.Template),
+		html:    make(map[Key]*htmltemplate.Template),
+		text:    make(map[Key]*texttemplate.Template),
 	}
-	for _, key := range i18n.AllKeys() {
+	for _, key := range AllKeys() {
+		if validateCompleteCatalog {
+			if _, _, err := resolveCopy(catalog, key, i18n.EnglishLocale, i18n.EnglishLocale); err != nil {
+				return nil, fmt.Errorf("validate localized mail copy %q: %w", key, err)
+			}
+		}
 		name := string(key)
 		htmlSource, err := templateFiles.ReadFile(name + ".html")
 		if err != nil {
@@ -225,30 +234,30 @@ func (r *Renderer) Render(request Request) (Message, error) {
 	if r == nil || r.catalog == nil {
 		return Message{}, errors.New("mail template renderer is nil")
 	}
-	resolved, err := r.catalog.Resolve(request.Key, request.RecipientLocale, request.InstallationLocale)
+	copy, locale, err := resolveCopy(r.catalog, request.Key, request.RecipientLocale, request.InstallationLocale)
 	if err != nil {
 		return Message{}, err
 	}
 	actionURL := strings.TrimSpace(request.ActionURL)
-	if resolved.Copy.ActionLabel == "" {
+	if copy.ActionLabel == "" {
 		actionURL = ""
 	} else {
 		if err := validateActionURL(actionURL); err != nil {
 			return Message{}, err
 		}
 	}
-	properties := Properties{Copy: resolved.Copy, ActionURL: actionURL}
+	properties := Properties{Copy: copy, ActionURL: actionURL}
 	patKey := isPersonalAccessTokenTemplate(request.Key)
 	if patKey != (request.PersonalAccessToken != nil) {
 		return Message{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
 	}
 	if request.PersonalAccessToken != nil {
-		if resolved.Copy.PersonalAccessToken == nil || !validPersonalAccessTokenDetails(request.PersonalAccessToken) {
+		if copy.PersonalAccessToken == nil || !validPersonalAccessTokenDetails(request.PersonalAccessToken) {
 			return Message{}, fmt.Errorf("mail template %q has invalid PAT details", request.Key)
 		}
-		scope := resolved.Copy.PersonalAccessToken.InstitutionScope
+		scope := copy.PersonalAccessToken.InstitutionScope
 		if request.PersonalAccessToken.AcademicUnitScoped {
-			scope = resolved.Copy.PersonalAccessToken.AcademicUnitScope
+			scope = copy.PersonalAccessToken.AcademicUnitScope
 		}
 		properties.PersonalAccessToken = &PersonalAccessTokenProperties{
 			Description: request.PersonalAccessToken.Description,
@@ -263,17 +272,17 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		return Message{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
 	}
 	if request.ExamManager != nil {
-		if resolved.Copy.ExamManager == nil || !validExamManagerDetails(request.ExamManager) {
+		if copy.ExamManager == nil || !validExamManagerDetails(request.ExamManager) {
 			return Message{}, fmt.Errorf("mail template %q has invalid Exam Manager details", request.Key)
 		}
 		var relationship string
 		switch request.ExamManager.Relationship {
 		case ExamManagerRelationshipManager:
-			relationship = resolved.Copy.ExamManager.Manager
+			relationship = copy.ExamManager.Manager
 		case ExamManagerRelationshipOwner:
-			relationship = resolved.Copy.ExamManager.Owner
+			relationship = copy.ExamManager.Owner
 		case ExamManagerRelationshipNoLongerManager:
-			relationship = resolved.Copy.ExamManager.NoLongerManager
+			relationship = copy.ExamManager.NoLongerManager
 		}
 		properties.ExamManager = &ExamManagerProperties{
 			Title: strings.TrimSpace(request.ExamManager.Title), Relationship: relationship,
@@ -285,7 +294,7 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		return Message{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
 	}
 	if request.SittingSchedule != nil {
-		if resolved.Copy.SittingSchedule == nil || !validSittingScheduleDetails(request.SittingSchedule) {
+		if copy.SittingSchedule == nil || !validSittingScheduleDetails(request.SittingSchedule) {
 			return Message{}, fmt.Errorf("mail template %q has invalid Sitting schedule details", request.Key)
 		}
 		properties.SittingSchedule = &SittingScheduleProperties{
@@ -293,7 +302,7 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			ClassDisplayName: strings.TrimSpace(request.SittingSchedule.ClassDisplayName),
 			StartsAt:         request.SittingSchedule.StartsAt.UTC().Format(time.RFC3339),
 			EndsAt:           request.SittingSchedule.EndsAt.UTC().Format(time.RFC3339),
-			Timezone:         resolved.Copy.SittingSchedule.TimezoneUTC,
+			Timezone:         copy.SittingSchedule.TimezoneUTC,
 		}
 	}
 	classKey := isClassTransitionTemplate(request.Key)
@@ -301,10 +310,10 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		return Message{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
 	}
 	if request.ClassTransition != nil {
-		if resolved.Copy.ClassTransition == nil || !validClassTransitionDetails(request.Key, request.ClassTransition) {
+		if copy.ClassTransition == nil || !validClassTransitionDetails(request.Key, request.ClassTransition) {
 			return Message{}, fmt.Errorf("mail template %q has invalid Class transition details", request.Key)
 		}
-		endsAt := resolved.Copy.ClassTransition.NoScheduledEnd
+		endsAt := copy.ClassTransition.NoScheduledEnd
 		if !request.ClassTransition.EndsAt.IsZero() {
 			endsAt = request.ClassTransition.EndsAt.UTC().Format(time.RFC3339)
 		}
@@ -312,7 +321,7 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			PreviousClassDisplayName: strings.TrimSpace(request.ClassTransition.PreviousClassDisplayName),
 			ClassDisplayName:         strings.TrimSpace(request.ClassTransition.ClassDisplayName),
 			StartsAt:                 request.ClassTransition.StartsAt.UTC().Format(time.RFC3339), EndsAt: endsAt,
-			Timezone: resolved.Copy.ClassTransition.TimezoneUTC,
+			Timezone: copy.ClassTransition.TimezoneUTC,
 		}
 	}
 	submissionReceiptKey := isSubmissionReceiptTemplate(request.Key)
@@ -320,7 +329,7 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		return Message{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
 	}
 	if request.SubmissionReceipt != nil {
-		if resolved.Copy.SubmissionReceipt == nil || !validSubmissionReceiptDetails(request.SubmissionReceipt) {
+		if copy.SubmissionReceipt == nil || !validSubmissionReceiptDetails(request.SubmissionReceipt) {
 			return Message{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
 		}
 		properties.SubmissionReceipt = &SubmissionReceiptProperties{
@@ -328,21 +337,21 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			SittingID:    strings.TrimSpace(request.SubmissionReceipt.SittingID),
 			SubmissionID: strings.TrimSpace(request.SubmissionReceipt.SubmissionID),
 			SealedAt:     request.SubmissionReceipt.SealedAt.UTC().Format(time.RFC3339),
-			Timezone:     resolved.Copy.SubmissionReceipt.TimezoneUTC,
+			Timezone:     copy.SubmissionReceipt.TimezoneUTC,
 		}
 	}
-	resultReleaseKey := request.Key == i18n.ExamResultReleased
+	resultReleaseKey := request.Key == ExamResultReleased
 	if resultReleaseKey != (request.ResultRelease != nil) {
 		return Message{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
 	}
 	if request.ResultRelease != nil {
-		if resolved.Copy.ResultRelease == nil || request.ResultRelease.ReleasedAt.IsZero() ||
+		if copy.ResultRelease == nil || request.ResultRelease.ReleasedAt.IsZero() ||
 			!validBoundedMailLabel(request.ResultRelease.ExamTitle) {
 			return Message{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
 		}
 		properties.ResultRelease = &ResultReleaseProperties{ExamTitle: strings.TrimSpace(request.ResultRelease.ExamTitle),
 			ReleasedAt: request.ResultRelease.ReleasedAt.UTC().Format(time.RFC3339),
-			Timezone:   resolved.Copy.ResultRelease.TimezoneUTC}
+			Timezone:   copy.ResultRelease.TimezoneUTC}
 	}
 
 	htmlValue, ok := r.html[request.Key]
@@ -365,17 +374,17 @@ func (r *Renderer) Render(request Request) (Message, error) {
 		return Message{}, fmt.Errorf("rendered mail template %q exceeds %d bytes", request.Key, maxRenderedMessageBytes)
 	}
 	return Message{
-		Key: request.Key, Locale: resolved.Locale, Subject: resolved.Copy.Subject,
+		Key: request.Key, Locale: locale, Subject: copy.Subject,
 		Text: textOutput.String(), HTML: htmlOutput.String(),
 	}, nil
 }
 
-func isPersonalAccessTokenTemplate(key i18n.Key) bool {
+func isPersonalAccessTokenTemplate(key Key) bool {
 	switch key {
-	case i18n.IdentityPersonalAccessTokenCreated,
-		i18n.IdentityPersonalAccessTokenEnabled,
-		i18n.IdentityPersonalAccessTokenDisabled,
-		i18n.IdentityPersonalAccessTokenRevoked:
+	case IdentityPersonalAccessTokenCreated,
+		IdentityPersonalAccessTokenEnabled,
+		IdentityPersonalAccessTokenDisabled,
+		IdentityPersonalAccessTokenRevoked:
 		return true
 	default:
 		return false
@@ -397,12 +406,12 @@ func validPersonalAccessTokenDetails(details *PersonalAccessTokenDetails) bool {
 	return true
 }
 
-func isExamManagerTemplate(key i18n.Key) bool {
+func isExamManagerTemplate(key Key) bool {
 	switch key {
-	case i18n.ExamManagerAdded,
-		i18n.ExamManagerRemoved,
-		i18n.ExamOwnershipTransferredToYou,
-		i18n.ExamOwnershipTransferredFromYou:
+	case ExamManagerAdded,
+		ExamManagerRemoved,
+		ExamOwnershipTransferredToYou,
+		ExamOwnershipTransferredFromYou:
 		return true
 	default:
 		return false
@@ -430,9 +439,9 @@ func validExamManagerDetails(details *ExamManagerDetails) bool {
 	return true
 }
 
-func isSittingScheduleTemplate(key i18n.Key) bool {
+func isSittingScheduleTemplate(key Key) bool {
 	switch key {
-	case i18n.ExamSittingScheduled, i18n.ExamSittingRescheduled, i18n.ExamSittingCancelled, i18n.ExamSittingAssignmentRemoved:
+	case ExamSittingScheduled, ExamSittingRescheduled, ExamSittingCancelled, ExamSittingAssignmentRemoved:
 		return true
 	default:
 		return false
@@ -457,17 +466,17 @@ func validSittingScheduleDetails(details *SittingScheduleDetails) bool {
 	return true
 }
 
-func isClassTransitionTemplate(key i18n.Key) bool {
+func isClassTransitionTemplate(key Key) bool {
 	switch key {
-	case i18n.AcademicClassEnrolled, i18n.AcademicClassEnrollmentEnded, i18n.AcademicClassTransferred:
+	case AcademicClassEnrolled, AcademicClassEnrollmentEnded, AcademicClassTransferred:
 		return true
 	default:
 		return false
 	}
 }
 
-func isSubmissionReceiptTemplate(key i18n.Key) bool {
-	return key == i18n.ExamSubmissionReceived || key == i18n.ExamSubmissionAutomaticallySealed
+func isSubmissionReceiptTemplate(key Key) bool {
+	return key == ExamSubmissionReceived || key == ExamSubmissionAutomaticallySealed
 }
 
 func validSubmissionReceiptDetails(details *SubmissionReceiptDetails) bool {
@@ -488,16 +497,16 @@ func validSubmissionReceiptDetails(details *SubmissionReceiptDetails) bool {
 	return true
 }
 
-func validClassTransitionDetails(key i18n.Key, details *ClassTransitionDetails) bool {
+func validClassTransitionDetails(key Key, details *ClassTransitionDetails) bool {
 	if details == nil || details.StartsAt.IsZero() || (!details.EndsAt.IsZero() && !details.StartsAt.Before(details.EndsAt)) {
 		return false
 	}
 	previous := strings.TrimSpace(details.PreviousClassDisplayName)
-	if (key == i18n.AcademicClassTransferred) != (previous != "") || !validBoundedMailLabel(details.ClassDisplayName) ||
+	if (key == AcademicClassTransferred) != (previous != "") || !validBoundedMailLabel(details.ClassDisplayName) ||
 		(previous != "" && !validBoundedMailLabel(previous)) {
 		return false
 	}
-	if key == i18n.AcademicClassEnrollmentEnded && details.EndsAt.IsZero() {
+	if key == AcademicClassEnrollmentEnded && details.EndsAt.IsZero() {
 		return false
 	}
 	return true

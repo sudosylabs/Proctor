@@ -39,16 +39,16 @@ build:
 	go build ./...
 
 mail-templates-install:
-	cd templates && npm ci
+	$(MAKE) -C templates install
 
 mail-templates-generate:
-	cd templates && npm run generate
+	$(MAKE) -C templates generate
 
 mail-templates-check:
-	cd templates && npm run check
+	$(MAKE) -C templates check
 
 mail-templates-test:
-	cd templates && npm test
+	$(MAKE) -C templates test
 
 mail-preview:
 	@test -n "$(OUTPUT)" || (echo 'usage: make -C server mail-preview OUTPUT=/path/to/previews' >&2; exit 2)

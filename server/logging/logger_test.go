@@ -1,16 +1,21 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package mlog
+package logging
 
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 func TestLoggerSupportsIndependentTargetsAndLevels(t *testing.T) {
 	t.Parallel()
@@ -35,6 +40,9 @@ func TestLoggerSupportsIndependentTargetsAndLevels(t *testing.T) {
 
 	logger.Debug("debug entry", String("component", "test"))
 	logger.Error("error entry", Int("attempt", 2))
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(all.String(), "debug entry") || !strings.Contains(all.String(), "error entry") {
 		t.Fatalf("all target = %q", all.String())
 	}
@@ -63,6 +71,9 @@ func TestLoggerReconfiguresWithoutChangingScopedLoggers(t *testing.T) {
 		t.Fatal(err)
 	}
 	scoped.Info("after")
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	if strings.Contains(first.String(), "after") {
 		t.Fatalf("old target received post-reconfiguration entry: %q", first.String())
 	}
@@ -87,6 +98,9 @@ func TestLoggerConfigurationLockAndFailurePreserveCurrentTargets(t *testing.T) {
 		t.Fatal("invalid configuration was accepted")
 	}
 	logger.Info("still configured")
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(output.String(), "still configured") {
 		t.Fatal("failed reconfiguration replaced the working target")
 	}
@@ -112,6 +126,9 @@ func TestLoggerLimitsLargeFieldsWithoutBreakingUTF8(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger.Info("large", String("value", strings.Repeat("é", 300)))
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
 
 	var entry map[string]any
 	if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
@@ -155,6 +172,48 @@ func TestFileTargetFlushAndShutdown(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "persisted") {
 		t.Fatalf("file target = %q", data)
+	}
+}
+
+func TestLoggerDoesNotReflectArbitraryValues(t *testing.T) {
+	t.Parallel()
+	logger, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	var output Buffer
+	if err := logger.Configure(writerConfig(&output, "info")); err != nil {
+		t.Fatal(err)
+	}
+	secret := struct{ Password string }{Password: "must-not-appear"}
+	logger.Info("safe", Any("payload", secret))
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), secret.Password) || !strings.Contains(output.String(), "unsupported") {
+		t.Fatalf("arbitrary value handling = %q", output.String())
+	}
+}
+
+func TestLoggerReportsAsynchronousTargetFailures(t *testing.T) {
+	t.Parallel()
+	logger, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	if err := logger.Configure(Config{MaxFieldBytes: 1024, Targets: []Target{{
+		Name: "broken", Type: "console", Level: "info", Format: "json", Writer: failingWriter{},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	logger.Error("write fails")
+	if err := logger.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if stats := logger.Stats(); stats.InternalErrors == 0 {
+		t.Fatalf("stats = %#v", stats)
 	}
 }
 

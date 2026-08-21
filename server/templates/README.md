@@ -3,8 +3,8 @@
 This directory is the exact maintainer contract for Proctor transactional-mail
 presentation. It contains one authored MJML source, one authored plain-text
 source, and one tracked generated HTML file for every closed mail key. Human
-copy is not authored here; the server-owned catalogs under
-[`../i18n/catalog`](../i18n/catalog) supply one complete typed copy model to
+copy is not authored here; the flat server-owned catalogs under
+[`../i18n`](../i18n) supply localized fields to
 both alternatives.
 
 The checked-in foundation is intentionally visually neutral. Maintainers may
@@ -74,16 +74,16 @@ server-constructed absolute HTTPS URLs; templates never construct routes.
 Install the exact lockfile toolchain once after checkout:
 
 ```sh
-make -C server mail-templates-install
+make -C server/templates install
 ```
 
 Regenerate tracked HTML after changing MJML or a partial, then verify that the
 result is fresh and deterministic:
 
 ```sh
-make -C server mail-templates-generate
-make -C server mail-templates-check
-make -C server mail-templates-test
+make -C server/templates generate
+make -C server/templates check
+make -C server/templates test
 ```
 
 Render the complete English catalog, without mail delivery or production
@@ -99,13 +99,14 @@ must not be written below this source directory.
 
 ## Adding or translating a message
 
-1. Add the key to the closed Go catalog and add a complete English copy entry.
+1. Add the key to the closed Go mail-template catalog and add the required
+   lexically sorted flat `mail.<key>.<field>` entries to `../i18n/en.json`.
 2. Add matching `<key>.mjml` and `<key>.txt` sources with the exact property
    comment.
 3. Regenerate `<key>.html` and run the template and Go tests.
-4. Add another locale catalog only when every entry it contains is a complete
-   copy model. Missing recipient copy falls back to the installation locale,
-   then English.
+4. Add or extend another top-level locale file using only English IDs and
+   matching interpolation placeholders. A locale may be partial; every missing
+   message falls back to the installation locale, then English.
 
 The MJML compiler is a build-time dependency only. Runtime binaries embed the
 generated HTML and authored text. Renderer construction parses every

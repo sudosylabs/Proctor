@@ -32,10 +32,11 @@ func consoleTarget(cfg *Config) *LogTarget {
 		}
 	}
 	cfg.Log.Targets = append(cfg.Log.Targets, LogTarget{
-		Name:   "console",
-		Type:   "console",
-		Level:  "info",
-		Format: "text",
+		Name:      "console",
+		Type:      "console",
+		Level:     "info",
+		Format:    "text",
+		QueueSize: 256,
 	})
 	return &cfg.Log.Targets[len(cfg.Log.Targets)-1]
 }

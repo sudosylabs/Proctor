@@ -18,7 +18,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -81,7 +81,7 @@ type Helper struct {
 	Server      *server.Server
 	App         *app.App
 	ConfigStore *config.Store
-	Logs        *mlog.Buffer
+	Logs        *logging.Buffer
 	// Persistence and Cluster are the exact adapters supplied by testlib. A nil
 	// Cluster means the production selector constructed a non-local configured
 	// adapter such as Memberlist.
@@ -141,14 +141,14 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		}
 	}
 
-	logs := &mlog.Buffer{}
-	logger, err := mlog.New()
+	logs := &logging.Buffer{}
+	logger, err := logging.New()
 	if err != nil {
 		tb.Fatalf("create test logger: %v", err)
 	}
-	if err := logger.Configure(mlog.Config{
+	if err := logger.Configure(logging.Config{
 		MaxFieldBytes: store.Get().Log.MaxFieldBytes,
-		Targets: []mlog.Target{{
+		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs,
 		}},
 	}); err != nil {

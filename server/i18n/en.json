@@ -1,0 +1,1426 @@
+[
+  {
+    "id": "mail.academic.academic_unit_assigned.body",
+    "translation": "An administrator assigned you to an academic unit. Open the Proctor client to view your current academic relationships."
+  },
+  {
+    "id": "mail.academic.academic_unit_assigned.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.academic.academic_unit_assigned.heading",
+    "translation": "Academic unit assigned"
+  },
+  {
+    "id": "mail.academic.academic_unit_assigned.preheader",
+    "translation": "Your Proctor academic unit membership changed."
+  },
+  {
+    "id": "mail.academic.academic_unit_assigned.subject",
+    "translation": "You were assigned to an academic unit"
+  },
+  {
+    "id": "mail.academic.academic_unit_assignment_ended.body",
+    "translation": "An administrator ended one of your academic unit assignments. Open the Proctor client to view your current academic relationships."
+  },
+  {
+    "id": "mail.academic.academic_unit_assignment_ended.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.academic.academic_unit_assignment_ended.heading",
+    "translation": "Academic unit assignment ended"
+  },
+  {
+    "id": "mail.academic.academic_unit_assignment_ended.preheader",
+    "translation": "Your Proctor academic unit membership changed."
+  },
+  {
+    "id": "mail.academic.academic_unit_assignment_ended.subject",
+    "translation": "Your academic unit assignment ended"
+  },
+  {
+    "id": "mail.academic.class_enrolled.body",
+    "translation": "An administrator enrolled you in the class shown below. The effective dates also determine which upcoming Exam Sittings appear in your schedule. Open the Proctor client to review the current schedule."
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.new_class_label",
+    "translation": "New Class"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.no_scheduled_end",
+    "translation": "No scheduled end"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.previous_class_label",
+    "translation": "Previous Class"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.academic.class_enrolled.class_transition.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.academic.class_enrolled.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.academic.class_enrolled.heading",
+    "translation": "Class enrollment confirmed"
+  },
+  {
+    "id": "mail.academic.class_enrolled.preheader",
+    "translation": "Your Proctor class enrollment changed."
+  },
+  {
+    "id": "mail.academic.class_enrolled.subject",
+    "translation": "You were enrolled in a class"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.body",
+    "translation": "An administrator ended the class enrollment shown below. Upcoming Exam Sittings that begin after the effective end are removed from your schedule. Open the Proctor client to review your current classes and schedule."
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.new_class_label",
+    "translation": "New Class"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.no_scheduled_end",
+    "translation": "No scheduled end"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.previous_class_label",
+    "translation": "Previous Class"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.class_transition.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.heading",
+    "translation": "Class enrollment ended"
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.preheader",
+    "translation": "Your Proctor class enrollment changed."
+  },
+  {
+    "id": "mail.academic.class_enrollment_ended.subject",
+    "translation": "Your class enrollment ended"
+  },
+  {
+    "id": "mail.academic.class_transferred.body",
+    "translation": "An administrator transferred you between the classes shown below. The transfer time ends the previous enrollment and starts the new one, and upcoming Exam Sittings are reconciled to the new effective Class membership."
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.new_class_label",
+    "translation": "New Class"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.no_scheduled_end",
+    "translation": "No scheduled end"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.previous_class_label",
+    "translation": "Previous Class"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.academic.class_transferred.class_transition.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.academic.class_transferred.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.academic.class_transferred.heading",
+    "translation": "Class transfer confirmed"
+  },
+  {
+    "id": "mail.academic.class_transferred.preheader",
+    "translation": "Your Proctor class enrollment changed."
+  },
+  {
+    "id": "mail.academic.class_transferred.subject",
+    "translation": "You were transferred to another class"
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.action_label",
+    "translation": "Review invitation"
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.body",
+    "translation": "You have been invited to join Proctor with a role scoped to an academic unit. Review the invitation before accepting it."
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.heading",
+    "translation": "Academic unit role invitation"
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.preheader",
+    "translation": "An academic unit role invitation is waiting for you."
+  },
+  {
+    "id": "mail.access.academic_unit_role_invitation.subject",
+    "translation": "You are invited to an academic unit role in Proctor"
+  },
+  {
+    "id": "mail.access.institution_role_invitation.action_label",
+    "translation": "Review invitation"
+  },
+  {
+    "id": "mail.access.institution_role_invitation.body",
+    "translation": "You have been invited to join Proctor with an institution-wide role. Review the invitation before accepting it."
+  },
+  {
+    "id": "mail.access.institution_role_invitation.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.institution_role_invitation.heading",
+    "translation": "Institution role invitation"
+  },
+  {
+    "id": "mail.access.institution_role_invitation.preheader",
+    "translation": "An institution role invitation is waiting for you."
+  },
+  {
+    "id": "mail.access.institution_role_invitation.subject",
+    "translation": "You are invited to an institution role in Proctor"
+  },
+  {
+    "id": "mail.access.invitation_accepted.body",
+    "translation": "Your invitation has been accepted and its approved account relationship is now active. Open the Proctor client to continue."
+  },
+  {
+    "id": "mail.access.invitation_accepted.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.invitation_accepted.heading",
+    "translation": "Invitation accepted"
+  },
+  {
+    "id": "mail.access.invitation_accepted.preheader",
+    "translation": "Your Proctor account and invited relationship are ready."
+  },
+  {
+    "id": "mail.access.invitation_accepted.subject",
+    "translation": "Your Proctor invitation was accepted"
+  },
+  {
+    "id": "mail.access.invitation_revoked.body",
+    "translation": "An administrator revoked your invitation. Its invitation link can no longer be used. Contact your institution if you believe this was unexpected."
+  },
+  {
+    "id": "mail.access.invitation_revoked.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.invitation_revoked.heading",
+    "translation": "Invitation revoked"
+  },
+  {
+    "id": "mail.access.invitation_revoked.preheader",
+    "translation": "A previously delivered Proctor invitation is no longer valid."
+  },
+  {
+    "id": "mail.access.invitation_revoked.subject",
+    "translation": "Your Proctor invitation was revoked"
+  },
+  {
+    "id": "mail.access.student_class_invitation.action_label",
+    "translation": "Review invitation"
+  },
+  {
+    "id": "mail.access.student_class_invitation.body",
+    "translation": "You have been invited to join Proctor as a student in a specific class. Review the invitation before accepting it."
+  },
+  {
+    "id": "mail.access.student_class_invitation.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.student_class_invitation.heading",
+    "translation": "Student class invitation"
+  },
+  {
+    "id": "mail.access.student_class_invitation.preheader",
+    "translation": "A student class invitation is waiting for you."
+  },
+  {
+    "id": "mail.access.student_class_invitation.subject",
+    "translation": "You are invited to a class in Proctor"
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.action_label",
+    "translation": "Review invitation"
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.body",
+    "translation": "You have been invited to join Proctor as a teacher in an academic unit. Review the invitation before accepting it."
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.heading",
+    "translation": "Teacher academic unit invitation"
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.preheader",
+    "translation": "A teacher academic unit invitation is waiting for you."
+  },
+  {
+    "id": "mail.access.teacher_academic_unit_invitation.subject",
+    "translation": "You are invited to an academic unit in Proctor"
+  },
+  {
+    "id": "mail.authorization.institution_role_assigned.body",
+    "translation": "An administrator assigned an institution-wide role to your account. Open the Proctor client to review the capabilities now available to you."
+  },
+  {
+    "id": "mail.authorization.institution_role_assigned.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.authorization.institution_role_assigned.heading",
+    "translation": "Institution role assigned"
+  },
+  {
+    "id": "mail.authorization.institution_role_assigned.preheader",
+    "translation": "Your Proctor permissions changed."
+  },
+  {
+    "id": "mail.authorization.institution_role_assigned.subject",
+    "translation": "An institution role was assigned to you"
+  },
+  {
+    "id": "mail.authorization.institution_role_ended.body",
+    "translation": "An administrator ended an institution-wide role assignment on your account. Open the Proctor client to review your current capabilities."
+  },
+  {
+    "id": "mail.authorization.institution_role_ended.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.authorization.institution_role_ended.heading",
+    "translation": "Institution role assignment ended"
+  },
+  {
+    "id": "mail.authorization.institution_role_ended.preheader",
+    "translation": "Your Proctor permissions changed."
+  },
+  {
+    "id": "mail.authorization.institution_role_ended.subject",
+    "translation": "An institution role assignment ended"
+  },
+  {
+    "id": "mail.authorization.scoped_role_assigned.body",
+    "translation": "An administrator assigned a scoped role to your account. Open the Proctor client to review the capabilities now available to you."
+  },
+  {
+    "id": "mail.authorization.scoped_role_assigned.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.authorization.scoped_role_assigned.heading",
+    "translation": "Scoped role assigned"
+  },
+  {
+    "id": "mail.authorization.scoped_role_assigned.preheader",
+    "translation": "Your Proctor permissions changed."
+  },
+  {
+    "id": "mail.authorization.scoped_role_assigned.subject",
+    "translation": "A scoped role was assigned to you"
+  },
+  {
+    "id": "mail.authorization.scoped_role_ended.body",
+    "translation": "An administrator ended a scoped role assignment on your account. Open the Proctor client to review your current capabilities."
+  },
+  {
+    "id": "mail.authorization.scoped_role_ended.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.authorization.scoped_role_ended.heading",
+    "translation": "Scoped role assignment ended"
+  },
+  {
+    "id": "mail.authorization.scoped_role_ended.preheader",
+    "translation": "Your Proctor permissions changed."
+  },
+  {
+    "id": "mail.authorization.scoped_role_ended.subject",
+    "translation": "A scoped role assignment ended"
+  },
+  {
+    "id": "mail.exam.manager_added.body",
+    "translation": "You were added as a manager of the exam shown below. Open the Proctor client to review and manage it."
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.action_at_label",
+    "translation": "Changed at"
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.manager",
+    "translation": "Exam Manager"
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.no_longer_manager",
+    "translation": "No longer an Exam Manager"
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.owner",
+    "translation": "Exam Owner and Manager"
+  },
+  {
+    "id": "mail.exam.manager_added.exam_manager.relationship_label",
+    "translation": "Resulting relationship"
+  },
+  {
+    "id": "mail.exam.manager_added.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.manager_added.heading",
+    "translation": "Exam manager access granted"
+  },
+  {
+    "id": "mail.exam.manager_added.preheader",
+    "translation": "Your authority over a Proctor exam changed."
+  },
+  {
+    "id": "mail.exam.manager_added.subject",
+    "translation": "You were added as an exam manager"
+  },
+  {
+    "id": "mail.exam.manager_removed.body",
+    "translation": "You were removed as a manager of the exam shown below. Open the Proctor client to view the exams you can currently manage."
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.action_at_label",
+    "translation": "Changed at"
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.manager",
+    "translation": "Exam Manager"
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.no_longer_manager",
+    "translation": "No longer an Exam Manager"
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.owner",
+    "translation": "Exam Owner and Manager"
+  },
+  {
+    "id": "mail.exam.manager_removed.exam_manager.relationship_label",
+    "translation": "Resulting relationship"
+  },
+  {
+    "id": "mail.exam.manager_removed.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.manager_removed.heading",
+    "translation": "Exam manager access removed"
+  },
+  {
+    "id": "mail.exam.manager_removed.preheader",
+    "translation": "Your authority over a Proctor exam changed."
+  },
+  {
+    "id": "mail.exam.manager_removed.subject",
+    "translation": "You were removed as an exam manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.body",
+    "translation": "Ownership of the exam shown below was transferred from you. You remain an Exam Manager. Open the Proctor client to review your current access."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.action_at_label",
+    "translation": "Changed at"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.manager",
+    "translation": "Exam Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.no_longer_manager",
+    "translation": "No longer an Exam Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.owner",
+    "translation": "Exam Owner and Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.exam_manager.relationship_label",
+    "translation": "Resulting relationship"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.heading",
+    "translation": "Exam ownership transferred"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.preheader",
+    "translation": "You remain a manager but are no longer the owner of a Proctor exam."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_from_you.subject",
+    "translation": "Exam ownership was transferred from you"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.body",
+    "translation": "Ownership of the exam shown below was transferred to you. Open the Proctor client to review and manage it."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.action_at_label",
+    "translation": "Changed at"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.manager",
+    "translation": "Exam Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.no_longer_manager",
+    "translation": "No longer an Exam Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.owner",
+    "translation": "Exam Owner and Manager"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.exam_manager.relationship_label",
+    "translation": "Resulting relationship"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.footer",
+    "translation": "If this change was unexpected, contact your institution. This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.heading",
+    "translation": "You now own an exam"
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.preheader",
+    "translation": "You are now the owner of a Proctor exam."
+  },
+  {
+    "id": "mail.exam.ownership_transferred_to_you.subject",
+    "translation": "Exam ownership was transferred to you"
+  },
+  {
+    "id": "mail.exam.result_released.body",
+    "translation": "An examination result is now available to you. Open the Proctor client to view the released result securely."
+  },
+  {
+    "id": "mail.exam.result_released.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.result_released.heading",
+    "translation": "Result available"
+  },
+  {
+    "id": "mail.exam.result_released.preheader",
+    "translation": "A result has been released in Proctor."
+  },
+  {
+    "id": "mail.exam.result_released.result_release.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.result_released.result_release.released_at_label",
+    "translation": "Released at"
+  },
+  {
+    "id": "mail.exam.result_released.result_release.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.result_released.result_release.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.result_released.subject",
+    "translation": "An examination result is available"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.body",
+    "translation": "You are no longer assigned to the scheduled exam sitting shown below. Open the Proctor client to review your current examination schedule."
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.heading",
+    "translation": "Exam sitting assignment removed"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.preheader",
+    "translation": "Your Proctor examination schedule changed."
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.sitting_schedule.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.sitting_assignment_removed.subject",
+    "translation": "An exam sitting assignment was removed"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.body",
+    "translation": "The scheduled exam sitting shown below was cancelled. Open the Proctor client to review your current examination schedule."
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.heading",
+    "translation": "Exam sitting cancelled"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.preheader",
+    "translation": "Your Proctor examination schedule changed."
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.sitting_schedule.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.sitting_cancelled.subject",
+    "translation": "An exam sitting was cancelled"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.body",
+    "translation": "The date, time, or Class for the exam sitting shown below changed. Open the Proctor client to review the current schedule."
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.heading",
+    "translation": "Exam sitting rescheduled"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.preheader",
+    "translation": "Your Proctor examination schedule changed."
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.sitting_schedule.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.sitting_rescheduled.subject",
+    "translation": "An exam sitting was rescheduled"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.body",
+    "translation": "You were assigned to the scheduled exam sitting shown below. Open the Proctor client to review its permitted details."
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.heading",
+    "translation": "Exam sitting scheduled"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.preheader",
+    "translation": "A new examination appears in your Proctor schedule."
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.class_label",
+    "translation": "Class"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.ends_at_label",
+    "translation": "Ends at"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.starts_at_label",
+    "translation": "Starts at"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.sitting_schedule.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.sitting_scheduled.subject",
+    "translation": "An exam sitting was scheduled"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.body",
+    "translation": "Proctor automatically sealed the last acknowledged state of your exam attempt. This message does not claim that you submitted it voluntarily. Keep this message as a receipt."
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.heading",
+    "translation": "Examination work automatically sealed"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.preheader",
+    "translation": "Proctor preserved the acknowledged state of your exam attempt."
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.subject",
+    "translation": "Your examination work was automatically sealed"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.sealed_at_label",
+    "translation": "Automatically sealed at"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.sitting_id_label",
+    "translation": "Sitting receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.submission_id_label",
+    "translation": "Submission receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.submission_automatically_sealed.submission_receipt.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.exam.submission_received.body",
+    "translation": "Proctor received and sealed your voluntary examination submission. Keep this message as a receipt."
+  },
+  {
+    "id": "mail.exam.submission_received.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.submission_received.heading",
+    "translation": "Submission received"
+  },
+  {
+    "id": "mail.exam.submission_received.preheader",
+    "translation": "Proctor recorded your submitted exam attempt."
+  },
+  {
+    "id": "mail.exam.submission_received.subject",
+    "translation": "Your examination submission was received"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.sealed_at_label",
+    "translation": "Submitted at"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.sitting_id_label",
+    "translation": "Sitting receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.submission_id_label",
+    "translation": "Submission receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.submission_received.submission_receipt.timezone_utc",
+    "translation": "UTC"
+  },
+  {
+    "id": "mail.identity.account_disabled.body",
+    "translation": "An administrator disabled your Proctor account. You cannot sign in while it remains disabled. Contact your institution if you believe this was unexpected."
+  },
+  {
+    "id": "mail.identity.account_disabled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.account_disabled.heading",
+    "translation": "Account disabled"
+  },
+  {
+    "id": "mail.identity.account_disabled.preheader",
+    "translation": "An administrator changed your account state."
+  },
+  {
+    "id": "mail.identity.account_disabled.subject",
+    "translation": "Your Proctor account was disabled"
+  },
+  {
+    "id": "mail.identity.account_enabled.body",
+    "translation": "An administrator enabled your Proctor account. You may sign in again using an authentication method configured for your institution."
+  },
+  {
+    "id": "mail.identity.account_enabled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.account_enabled.heading",
+    "translation": "Account enabled"
+  },
+  {
+    "id": "mail.identity.account_enabled.preheader",
+    "translation": "An administrator changed your account state."
+  },
+  {
+    "id": "mail.identity.account_enabled.subject",
+    "translation": "Your Proctor account was enabled"
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.action_label",
+    "translation": "Verify new email address"
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.body",
+    "translation": "A change to this email address was requested for a Proctor account. Verify the address to complete the change. If you did not request this, do not use the link and contact your institution."
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.footer",
+    "translation": "This link expires and can be used only once. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.heading",
+    "translation": "Verify your new email address"
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.preheader",
+    "translation": "Confirm the new email address requested for your account."
+  },
+  {
+    "id": "mail.identity.email_change_verify_new.subject",
+    "translation": "Verify your new email address for Proctor"
+  },
+  {
+    "id": "mail.identity.email_change_warning_old.body",
+    "translation": "A request was made to replace the email address on your Proctor account. If you did not request this change, contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.email_change_warning_old.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.email_change_warning_old.heading",
+    "translation": "Email address change requested"
+  },
+  {
+    "id": "mail.identity.email_change_warning_old.preheader",
+    "translation": "A change was requested for the email address on your account."
+  },
+  {
+    "id": "mail.identity.email_change_warning_old.subject",
+    "translation": "Your Proctor email address is being changed"
+  },
+  {
+    "id": "mail.identity.email_verified_by_admin.body",
+    "translation": "An administrator marked the email address on your Proctor account as verified. Contact your institution if you believe this was unexpected."
+  },
+  {
+    "id": "mail.identity.email_verified_by_admin.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.email_verified_by_admin.heading",
+    "translation": "Email address verified"
+  },
+  {
+    "id": "mail.identity.email_verified_by_admin.preheader",
+    "translation": "An administrator changed your email verification state."
+  },
+  {
+    "id": "mail.identity.email_verified_by_admin.subject",
+    "translation": "Your Proctor email address was verified by an administrator"
+  },
+  {
+    "id": "mail.identity.mfa_disabled.body",
+    "translation": "Multi-factor authentication was disabled on your Proctor account. If you did not make this change, contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.mfa_disabled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.mfa_disabled.heading",
+    "translation": "Multi-factor authentication disabled"
+  },
+  {
+    "id": "mail.identity.mfa_disabled.preheader",
+    "translation": "A security setting changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.mfa_disabled.subject",
+    "translation": "Multi-factor authentication was disabled"
+  },
+  {
+    "id": "mail.identity.mfa_enabled.body",
+    "translation": "Multi-factor authentication was enabled on your Proctor account. If you did not make this change, contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.mfa_enabled.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.mfa_enabled.heading",
+    "translation": "Multi-factor authentication enabled"
+  },
+  {
+    "id": "mail.identity.mfa_enabled.preheader",
+    "translation": "A security setting changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.mfa_enabled.subject",
+    "translation": "Multi-factor authentication was enabled"
+  },
+  {
+    "id": "mail.identity.mfa_recovery_codes_regenerated.body",
+    "translation": "Your multi-factor authentication recovery codes were regenerated, so all previous recovery codes are invalid. If you did not make this change, contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.mfa_recovery_codes_regenerated.footer",
+    "translation": "Recovery codes are never included in email. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.mfa_recovery_codes_regenerated.heading",
+    "translation": "Recovery codes replaced"
+  },
+  {
+    "id": "mail.identity.mfa_recovery_codes_regenerated.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.mfa_recovery_codes_regenerated.subject",
+    "translation": "Your MFA recovery codes were replaced"
+  },
+  {
+    "id": "mail.identity.password_changed.body",
+    "translation": "The password for your Proctor account was changed. If you did not make this change, contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.password_changed.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.password_changed.heading",
+    "translation": "Password changed"
+  },
+  {
+    "id": "mail.identity.password_changed.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.password_changed.subject",
+    "translation": "Your Proctor password was changed"
+  },
+  {
+    "id": "mail.identity.password_reset.action_label",
+    "translation": "Reset password"
+  },
+  {
+    "id": "mail.identity.password_reset.body",
+    "translation": "A password reset was requested for your Proctor account. Use the link below to choose a new password. If you did not request this, you can ignore this message."
+  },
+  {
+    "id": "mail.identity.password_reset.footer",
+    "translation": "This link expires and can be used only once. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.password_reset.heading",
+    "translation": "Reset your password"
+  },
+  {
+    "id": "mail.identity.password_reset.preheader",
+    "translation": "Use this single-use link to choose a new password."
+  },
+  {
+    "id": "mail.identity.password_reset.subject",
+    "translation": "Reset your Proctor password"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.body",
+    "translation": "A personal access token was created for your Proctor account. If you did not create it, revoke it in Proctor and contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.footer",
+    "translation": "The token value is never included in email. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.heading",
+    "translation": "Personal access token created"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.academic_unit_scope",
+    "translation": "Academic Unit constrained"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.action_at_label",
+    "translation": "Created at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.action_count_label",
+    "translation": "Authorized action count"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.description_label",
+    "translation": "Description"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.expires_at_label",
+    "translation": "Expires at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.institution_scope",
+    "translation": "Institution-wide"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.personal_access_token.scope_label",
+    "translation": "Scope"
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.personal_access_token_created.subject",
+    "translation": "A personal access token was created"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.body",
+    "translation": "A personal access token on your Proctor account was disabled. If you did not make this change, review your account security and contact your institution."
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.footer",
+    "translation": "The token value is never included in email. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.heading",
+    "translation": "Personal access token disabled"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.academic_unit_scope",
+    "translation": "Academic Unit constrained"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.action_at_label",
+    "translation": "Disabled at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.action_count_label",
+    "translation": "Authorized action count"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.description_label",
+    "translation": "Description"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.expires_at_label",
+    "translation": "Expires at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.institution_scope",
+    "translation": "Institution-wide"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.personal_access_token.scope_label",
+    "translation": "Scope"
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.personal_access_token_disabled.subject",
+    "translation": "A personal access token was disabled"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.body",
+    "translation": "A personal access token on your Proctor account was enabled. If you did not make this change, revoke it and contact your institution immediately."
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.footer",
+    "translation": "The token value is never included in email. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.heading",
+    "translation": "Personal access token enabled"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.academic_unit_scope",
+    "translation": "Academic Unit constrained"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.action_at_label",
+    "translation": "Enabled at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.action_count_label",
+    "translation": "Authorized action count"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.description_label",
+    "translation": "Description"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.expires_at_label",
+    "translation": "Expires at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.institution_scope",
+    "translation": "Institution-wide"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.personal_access_token.scope_label",
+    "translation": "Scope"
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.personal_access_token_enabled.subject",
+    "translation": "A personal access token was enabled"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.body",
+    "translation": "A personal access token on your Proctor account was permanently revoked. If you did not make this change, review your account security and contact your institution."
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.footer",
+    "translation": "The token value is never included in email. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.heading",
+    "translation": "Personal access token revoked"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.academic_unit_scope",
+    "translation": "Academic Unit constrained"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.action_at_label",
+    "translation": "Revoked at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.action_count_label",
+    "translation": "Authorized action count"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.description_label",
+    "translation": "Description"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.expires_at_label",
+    "translation": "Expires at"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.institution_scope",
+    "translation": "Institution-wide"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.personal_access_token.scope_label",
+    "translation": "Scope"
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.preheader",
+    "translation": "A security credential changed on your Proctor account."
+  },
+  {
+    "id": "mail.identity.personal_access_token_revoked.subject",
+    "translation": "A personal access token was revoked"
+  },
+  {
+    "id": "mail.identity.sessions_revoked_by_admin.body",
+    "translation": "An administrator revoked one or more sessions for your Proctor account. You may need to sign in again. Contact your institution if you believe this was unexpected."
+  },
+  {
+    "id": "mail.identity.sessions_revoked_by_admin.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.identity.sessions_revoked_by_admin.heading",
+    "translation": "Sessions revoked"
+  },
+  {
+    "id": "mail.identity.sessions_revoked_by_admin.preheader",
+    "translation": "An administrator ended active access to your account."
+  },
+  {
+    "id": "mail.identity.sessions_revoked_by_admin.subject",
+    "translation": "Your Proctor sessions were revoked"
+  },
+  {
+    "id": "mail.identity.verify_email.action_label",
+    "translation": "Verify email address"
+  },
+  {
+    "id": "mail.identity.verify_email.body",
+    "translation": "Verify this email address to finish securing your Proctor account. If you did not request this, do not use the link and contact your institution."
+  },
+  {
+    "id": "mail.identity.verify_email.footer",
+    "translation": "This link expires and can be used only once. This automated message was sent by your Proctor installation."
+  },
+  {
+    "id": "mail.identity.verify_email.heading",
+    "translation": "Verify your email address"
+  },
+  {
+    "id": "mail.identity.verify_email.preheader",
+    "translation": "Confirm the email address associated with your Proctor account."
+  },
+  {
+    "id": "mail.identity.verify_email.subject",
+    "translation": "Verify your email address for Proctor"
+  },
+  {
+    "id": "mail.system.mail_test.body",
+    "translation": "An administrator sent this controlled test message to confirm the installation's transactional-mail configuration. No account or academic state changed."
+  },
+  {
+    "id": "mail.system.mail_test.footer",
+    "translation": "This automated test was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.system.mail_test.heading",
+    "translation": "Transactional mail test"
+  },
+  {
+    "id": "mail.system.mail_test.preheader",
+    "translation": "Your Proctor installation can render and submit transactional mail."
+  },
+  {
+    "id": "mail.system.mail_test.subject",
+    "translation": "Proctor test message"
+  },
+  {
+    "id": "problem.bad_request.detail",
+    "translation": "The request is invalid."
+  },
+  {
+    "id": "problem.bad_request.title",
+    "translation": "Invalid request"
+  },
+  {
+    "id": "problem.client_error.detail",
+    "translation": "The request could not be completed."
+  },
+  {
+    "id": "problem.client_error.title",
+    "translation": "Request failed"
+  },
+  {
+    "id": "problem.conflict.detail",
+    "translation": "The request conflicts with the current state."
+  },
+  {
+    "id": "problem.conflict.title",
+    "translation": "Conflict"
+  },
+  {
+    "id": "problem.forbidden.detail",
+    "translation": "You are not allowed to perform this action."
+  },
+  {
+    "id": "problem.forbidden.title",
+    "translation": "Access denied"
+  },
+  {
+    "id": "problem.internal.detail",
+    "translation": "An unexpected error occurred."
+  },
+  {
+    "id": "problem.internal.title",
+    "translation": "Internal server error"
+  },
+  {
+    "id": "problem.not_found.detail",
+    "translation": "The requested resource was not found."
+  },
+  {
+    "id": "problem.not_found.title",
+    "translation": "Resource not found"
+  },
+  {
+    "id": "problem.service_unavailable.detail",
+    "translation": "The service is temporarily unavailable."
+  },
+  {
+    "id": "problem.service_unavailable.title",
+    "translation": "Service unavailable"
+  },
+  {
+    "id": "problem.too_many_requests.detail",
+    "translation": "Please retry later."
+  },
+  {
+    "id": "problem.too_many_requests.title",
+    "translation": "Too many requests"
+  },
+  {
+    "id": "problem.unauthorized.detail",
+    "translation": "Authentication is required."
+  },
+  {
+    "id": "problem.unauthorized.title",
+    "translation": "Authentication required"
+  }
+]

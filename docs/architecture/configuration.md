@@ -5,7 +5,9 @@ are durable application data changed through authorized use cases.
 
 Deployment configuration includes listeners/public URL, PostgreSQL, cache,
 cluster, VFS, SMTP, external identity providers, logging, secrets, and process
-limits. Application settings include institution presentation, branding,
+limits. `localization.default_locale` selects the installed catalog fallback
+and is validated against the embedded catalogs during root composition.
+Application settings include institution presentation, branding,
 academic policy, exam defaults, invitation rules, and other administrator
 behavior.
 
@@ -61,6 +63,11 @@ Runtime reconfiguration is capability-specific. Logging and the external
 provider registry reconfigure dynamically; listener addresses, HTTP limits,
 cluster backend, and node identity require restart. Structural validation and
 external connectivity diagnostics remain separate.
+
+Logging configuration bounds the engine and per-target queues, enqueue/flush/
+shutdown deadlines, field size, target level/format, and file rotation. A
+configuration change becomes visible only after every replacement target has
+initialized successfully.
 
 A User-owned portable presentation document is neither deployment
 configuration nor an institution application setting. Its exact-source,

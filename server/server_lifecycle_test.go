@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 )
 
 type lifecycleEvents struct {
@@ -1202,7 +1202,7 @@ func TestServerConcurrentCloseBeforeStartIsIdempotent(t *testing.T) {
 func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server {
 	t.Helper()
 
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatalf("create test logger: %v", err)
 	}

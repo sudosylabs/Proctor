@@ -14,8 +14,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/sudosylabs/proctor/server/i18n"
 )
 
 //go:embed *.mjml *.html *.txt partials/*.mjml package.json package-lock.json
@@ -54,7 +52,7 @@ func TestGeneratedTemplatesAreFreshAndSourcesDeclareExactProperties(t *testing.T
 		".Copy.Subject", ".Copy.Preheader", ".Copy.Heading", ".Copy.Body",
 		".Copy.ActionLabel", ".Copy.Footer", ".ActionURL",
 	}
-	for _, key := range i18n.AllKeys() {
+	for _, key := range AllKeys() {
 		sourceName := string(key) + ".mjml"
 		source, err := authoredAndGeneratedFiles.ReadFile(sourceName)
 		if err != nil {

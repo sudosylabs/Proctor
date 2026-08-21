@@ -453,6 +453,10 @@ make -C server mail-templates-test
 make -C server mail-preview OUTPUT=/tmp/proctor-mail-preview
 ```
 
+The first four commands delegate to the maintainer interface in
+`server/templates/Makefile`; they may also be run directly as
+`make -C server/templates install|generate|check|test`.
+
 The exact property and maintenance contract lives in
 [`templates/README.md`](templates/README.md).
 

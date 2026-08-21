@@ -33,10 +33,17 @@ type BuildInfo struct {
 }
 
 // Logger is the narrow operational logging port owned by the HTTP transport.
-// Composition supplies an mlog-backed adapter; package api never imports mlog.
+// Composition supplies an logging-backed adapter; package api never imports logging.
 type Logger interface {
 	InfoContext(ctx context.Context, message string, fields ...LogField)
 	ErrorContext(ctx context.Context, message string, fields ...LogField)
+}
+
+// Localizer is the narrow presentation-owned localization port. Application
+// and domain failures remain stable codes; only the HTTP edge asks for prose.
+type Localizer interface {
+	Translate(locale, id string, args any) (string, error)
+	SupportedLocales() []string
 }
 
 // LogField is one structured operational log attribute.
@@ -103,6 +110,7 @@ type routeMatcher struct {
 
 type Options struct {
 	Logger                        Logger
+	Localizer                     Localizer
 	Health                        Health
 	Application                   Application
 	AcademicUnits                 AcademicUnitApplication
@@ -456,6 +464,7 @@ type API struct {
 	router                  *mux.Router
 	authenticator           Authenticator
 	logger                  Logger
+	localizer               Localizer
 	cookies                 browserCookies
 	recentAuthenticationTTL time.Duration
 	routes                  []Route
@@ -468,6 +477,16 @@ type API struct {
 func New(options Options) (*API, error) {
 	if options.Logger == nil {
 		return nil, errors.New("logger is required")
+	}
+	if options.Localizer != nil {
+		for _, name := range []string{"bad_request", "client_error", "conflict", "forbidden", "internal", "not_found", "service_unavailable", "too_many_requests", "unauthorized"} {
+			for _, field := range []string{"detail", "title"} {
+				id := "problem." + name + "." + field
+				if _, err := options.Localizer.Translate("", id, nil); err != nil {
+					return nil, fmt.Errorf("validate localization %q: %w", id, err)
+				}
+			}
+		}
 	}
 	if options.Health == nil {
 		return nil, errors.New("health state is required")
@@ -540,6 +559,7 @@ func New(options Options) (*API, error) {
 	api := &API{
 		authenticator:           options.Application,
 		logger:                  options.Logger,
+		localizer:               options.Localizer,
 		cookies:                 cookies,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		webSocket:               options.WebSocket,
@@ -635,6 +655,11 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 }
 
 func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if a.localizer != nil {
+		request = request.WithContext(withRequestLocalization(
+			request.Context(), a.localizer, preferredLocale(request, a.localizer.SupportedLocales()),
+		))
+	}
 	a.handler.ServeHTTP(writer, request)
 }
 

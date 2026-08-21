@@ -16,6 +16,8 @@ import (
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
+	"github.com/sudosylabs/proctor/server/i18n"
+	"github.com/sudosylabs/proctor/server/templates"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
@@ -49,13 +51,22 @@ type consumerConstructors struct {
 	jobs           func(*app.App) runtimeJobs
 }
 
-func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
+func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, error) {
+	bundle, err := i18n.DefaultBundle(snapshot.Localization.DefaultLocale)
+	if err != nil {
+		return consumerConstructors{}, fmt.Errorf("construct localization bundle: %w", err)
+	}
+	mailRenderer, err := templates.NewRenderer(bundle)
+	if err != nil {
+		return consumerConstructors{}, fmt.Errorf("construct mail template renderer: %w", err)
+	}
+	localizer := i18nAdapter{bundle: bundle}
 	return consumerConstructors{
 		fileContent: func(capabilities constructionCapabilities) (app.FileContent, error) {
 			return filecontent.New(capabilities.filesystem)
 		},
 		dependencies: func(capabilities constructionCapabilities, content app.FileContent) (app.Dependencies, error) {
-			return applicationDependencies(capabilities, snapshot, content)
+			return applicationDependencies(capabilities, snapshot, content, mailRenderer)
 		},
 		application: app.New,
 		realtime: func(cluster borrowedCluster) (apprealtime.ClusterFanout, error) {
@@ -71,6 +82,7 @@ func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
 			return application.AttachRealtimeSink(sink)
 		},
 		http: func(options api.Options) (runtimeTransport, http.Handler, error) {
+			options.Localizer = localizer
 			transport, err := api.New(options)
 			return transport, transport, err
 		},
@@ -80,7 +92,7 @@ func defaultConsumerConstructors(snapshot config.Config) consumerConstructors {
 			}
 			return nil
 		},
-	}
+	}, nil
 }
 
 // testingProjection borrows behavioral handles from the completed graph. It
@@ -112,7 +124,10 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 		return nil, fmt.Errorf("accept platform ownership: %w", err)
 	}
 
-	constructors := defaultConsumerConstructors(snapshot)
+	constructors, constructorsErr := defaultConsumerConstructors(snapshot)
+	if constructorsErr != nil {
+		return nil, errors.Join(constructorsErr, applicationPlatform.Close())
+	}
 	if input.constructors != nil {
 		constructors = *input.constructors
 	}

@@ -12,7 +12,7 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
@@ -139,7 +139,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
 
 	settings := config.Default()
 	settings.VFS.Local.Root = t.TempDir()
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -625,6 +625,8 @@ Modifications:
   revocation.
 
 The Morph migration dependency is separately licensed under the MIT License.
+The Mattermost Logr logging-engine dependency is separately licensed under the
+MIT License.
 The Masterminds Squirrel query-builder dependency is separately licensed under
 the MIT License.
 The Gorilla mux router dependency is separately licensed under the BSD

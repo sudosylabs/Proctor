@@ -6,6 +6,7 @@ package templates
 import (
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/i18n"
@@ -19,7 +20,7 @@ func TestRendererEscapesBoundedPersonalAccessTokenDetailsWithoutScopes(t *testin
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
 	message, err := renderer.Render(Request{
-		Key: i18n.IdentityPersonalAccessTokenCreated,
+		Key: IdentityPersonalAccessTokenCreated,
 		PersonalAccessToken: &PersonalAccessTokenDetails{
 			Description:        `<script>automation & reports</script>`,
 			ExpiresAt:          time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
@@ -60,7 +61,7 @@ func TestRendererEscapesBoundedExamManagerDetails(t *testing.T) {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
 	message, err := renderer.Render(Request{
-		Key: i18n.ExamOwnershipTransferredFromYou,
+		Key: ExamOwnershipTransferredFromYou,
 		ExamManager: &ExamManagerDetails{
 			Title:        `<script>Algorithms & data</script>`,
 			Relationship: ExamManagerRelationshipManager,
@@ -95,7 +96,7 @@ func TestRendererIncludesTimezoneExplicitSafeSittingFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: i18n.ExamSittingRescheduled, SittingSchedule: &SittingScheduleDetails{
+	message, err := renderer.Render(Request{Key: ExamSittingRescheduled, SittingSchedule: &SittingScheduleDetails{
 		ExamTitle: "Algorithms & structures", ClassDisplayName: "CS 2A",
 		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
 		EndsAt:   time.Date(2026, 9, 1, 10, 30, 0, 0, time.FixedZone("node", 7200)),
@@ -121,7 +122,7 @@ func TestRendererEscapesCompleteClassTransitionFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: i18n.AcademicClassTransferred, ClassTransition: &ClassTransitionDetails{
+	message, err := renderer.Render(Request{Key: AcademicClassTransferred, ClassTransition: &ClassTransitionDetails{
 		PreviousClassDisplayName: `Old <Class> & A`, ClassDisplayName: `New <Class> & B`,
 		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
 		EndsAt:   time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC),
@@ -150,7 +151,7 @@ func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []i18n.Key{i18n.ExamSubmissionReceived, i18n.ExamSubmissionAutomaticallySealed} {
+	for _, key := range []Key{ExamSubmissionReceived, ExamSubmissionAutomaticallySealed} {
 		message, renderErr := renderer.Render(Request{Key: key, SubmissionReceipt: &SubmissionReceiptDetails{
 			ExamTitle: "Algorithms <Final> & proofs", SittingID: "sitting-safe-id",
 			SubmissionID: "submission-safe-id", SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
@@ -177,7 +178,7 @@ func TestRendererIncludesOnlySafeReleasedResultFacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: i18n.ExamResultReleased, ResultRelease: &ResultReleaseDetails{
+	message, err := renderer.Render(Request{Key: ExamResultReleased, ResultRelease: &ResultReleaseDetails{
 		ExamTitle:  "Algorithms <Final> & proofs",
 		ReleasedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
 	}})
@@ -199,23 +200,19 @@ func TestRendererIncludesOnlySafeReleasedResultFacts(t *testing.T) {
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
-	key := i18n.IdentityVerifyEmail
-	catalog, err := i18n.NewCatalog(map[string]map[i18n.Key]i18n.Copy{
-		i18n.EnglishLocale: {
-			key: {
-				Subject:     "Verify <account>",
-				Preheader:   "Use this & only this link",
-				Heading:     "<script>alert(1)</script>",
-				Body:        "A & B",
-				ActionLabel: "Verify >",
-				Footer:      "No reply <needed>",
-			},
-		},
-	})
+	key := IdentityVerifyEmail
+	catalog, err := i18n.LoadBundle(fstest.MapFS{"en.json": {Data: []byte(`[
+  {"id":"mail.identity.verify_email.action_label","translation":"Verify >"},
+  {"id":"mail.identity.verify_email.body","translation":"A & B"},
+  {"id":"mail.identity.verify_email.footer","translation":"No reply <needed>"},
+  {"id":"mail.identity.verify_email.heading","translation":"<script>alert(1)</script>"},
+  {"id":"mail.identity.verify_email.preheader","translation":"Use this & only this link"},
+  {"id":"mail.identity.verify_email.subject","translation":"Verify <account>"}
+]`)}}, i18n.EnglishLocale)
 	if err != nil {
-		t.Fatalf("NewCatalog: %v", err)
+		t.Fatalf("LoadBundle: %v", err)
 	}
-	renderer, err := NewRenderer(catalog)
+	renderer, err := newRenderer(catalog, false)
 	if err != nil {
 		t.Fatalf("NewRenderer: %v", err)
 	}
@@ -248,7 +245,7 @@ func TestRendererRejectsUnsafeActionURL(t *testing.T) {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
 	_, err = renderer.Render(Request{
-		Key:       i18n.IdentityVerifyEmail,
+		Key:       IdentityVerifyEmail,
 		ActionURL: "javascript:alert(1)",
 	})
 	if err == nil {
@@ -263,7 +260,7 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
-	for _, key := range i18n.AllKeys() {
+	for _, key := range AllKeys() {
 		request := Request{
 			Key:                key,
 			RecipientLocale:    "zz-ZZ",
@@ -289,7 +286,7 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		if isClassTransitionTemplate(key) {
 			request.ClassTransition = &ClassTransitionDetails{PreviousClassDisplayName: "Class A", ClassDisplayName: "Class B",
 				StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC), EndsAt: time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC)}
-			if key != i18n.AcademicClassTransferred {
+			if key != AcademicClassTransferred {
 				request.ClassTransition.PreviousClassDisplayName = ""
 			}
 		}
@@ -298,7 +295,7 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
 				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 		}
-		if key == i18n.ExamResultReleased {
+		if key == ExamResultReleased {
 			request.ResultRelease = &ResultReleaseDetails{ExamTitle: "Representative exam",
 				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 		}

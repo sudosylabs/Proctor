@@ -53,16 +53,25 @@ type Server struct {
 }
 
 type LogTarget struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Level  string `json:"level"`
-	Format string `json:"format"`
-	File   string `json:"file,omitempty"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Level      string `json:"level"`
+	Format     string `json:"format"`
+	File       string `json:"file,omitempty"`
+	QueueSize  int    `json:"queue_size"`
+	MaxSizeMB  int    `json:"max_size_mb,omitempty"`
+	MaxAgeDays int    `json:"max_age_days,omitempty"`
+	MaxBackups int    `json:"max_backups,omitempty"`
+	Compress   bool   `json:"compress,omitempty"`
 }
 
 type Log struct {
-	MaxFieldBytes int         `json:"max_field_bytes"`
-	Targets       []LogTarget `json:"targets"`
+	MaxFieldBytes   int         `json:"max_field_bytes"`
+	QueueSize       int         `json:"queue_size"`
+	EnqueueTimeout  Duration    `json:"enqueue_timeout"`
+	FlushTimeout    Duration    `json:"flush_timeout"`
+	ShutdownTimeout Duration    `json:"shutdown_timeout"`
+	Targets         []LogTarget `json:"targets"`
 }
 
 type Database struct {
@@ -233,6 +242,12 @@ type Authentication struct {
 	External                ExternalAuthentication `json:"external"`
 }
 
+// Localization selects the installation-wide fallback locale. Catalog
+// availability is validated by the i18n module during root composition.
+type Localization struct {
+	DefaultLocale string `json:"default_locale"`
+}
+
 type Config struct {
 	Version        int            `json:"version"`
 	Server         Server         `json:"server"`
@@ -242,6 +257,7 @@ type Config struct {
 	Mail           Mail           `json:"mail"`
 	VFS            VFS            `json:"vfs"`
 	Authentication Authentication `json:"authentication"`
+	Localization   Localization   `json:"localization"`
 	Log            Log            `json:"log"`
 }
 
@@ -359,13 +375,19 @@ func Default() Config {
 				Providers:     []ExternalAuthenticationProvider{},
 			},
 		},
+		Localization: Localization{DefaultLocale: "en"},
 		Log: Log{
-			MaxFieldBytes: 16 << 10,
+			MaxFieldBytes:   16 << 10,
+			QueueSize:       1024,
+			EnqueueTimeout:  Duration{Duration: 250 * time.Millisecond},
+			FlushTimeout:    Duration{Duration: 5 * time.Second},
+			ShutdownTimeout: Duration{Duration: 10 * time.Second},
 			Targets: []LogTarget{{
-				Name:   "console",
-				Type:   "console",
-				Level:  "info",
-				Format: "text",
+				Name:      "console",
+				Type:      "console",
+				Level:     "info",
+				Format:    "text",
+				QueueSize: 256,
 			}},
 		},
 	}
@@ -543,9 +565,27 @@ func (c Config) Validate() error {
 	validateAuthentication(c.Authentication, add)
 	validateBootstrap(c.Server, c.Authentication.Bootstrap, add)
 	validateSecretKeySeparation(c, add)
+	if !validLocaleIdentifier(c.Localization.DefaultLocale) {
+		add("localization.default_locale", "must be a valid locale identifier")
+	}
 
 	if c.Log.MaxFieldBytes < 256 || c.Log.MaxFieldBytes > 1<<20 {
 		add("log.max_field_bytes", "must be between 256 and 1048576")
+	}
+	if c.Log.QueueSize < 1 || c.Log.QueueSize > 1<<20 {
+		add("log.queue_size", "must be between 1 and 1048576")
+	}
+	for _, timeout := range []struct {
+		path  string
+		value time.Duration
+	}{
+		{path: "log.enqueue_timeout", value: c.Log.EnqueueTimeout.Duration},
+		{path: "log.flush_timeout", value: c.Log.FlushTimeout.Duration},
+		{path: "log.shutdown_timeout", value: c.Log.ShutdownTimeout.Duration},
+	} {
+		if timeout.value <= 0 || timeout.value > time.Minute {
+			add(timeout.path, "must be positive and no greater than one minute")
+		}
 	}
 	if len(c.Log.Targets) == 0 {
 		add("log.targets", "must contain at least one target")
@@ -560,6 +600,9 @@ func (c Config) Validate() error {
 		} else {
 			names[target.Name] = struct{}{}
 		}
+		if target.QueueSize < 1 || target.QueueSize > 1<<20 {
+			add(prefix+".queue_size", "must be between 1 and 1048576")
+		}
 		switch strings.ToLower(target.Type) {
 		case "console":
 			if target.File != "" {
@@ -570,6 +613,15 @@ func (c Config) Validate() error {
 				add(prefix+".file", "is required for a file target")
 			} else if strings.ContainsAny(target.File, "\x00\r\n") {
 				add(prefix+".file", "contains invalid characters")
+			}
+			if target.MaxSizeMB < 1 || target.MaxSizeMB > 10240 {
+				add(prefix+".max_size_mb", "must be between 1 and 10240")
+			}
+			if target.MaxAgeDays < 0 || target.MaxAgeDays > 3650 {
+				add(prefix+".max_age_days", "must be between 0 and 3650")
+			}
+			if target.MaxBackups < 0 || target.MaxBackups > 10000 {
+				add(prefix+".max_backups", "must be between 0 and 10000")
 			}
 		default:
 			add(prefix+".type", "must be console or file")
@@ -1236,4 +1288,25 @@ func isLoopbackPublicURL(raw string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func validLocaleIdentifier(value string) bool {
+	if value == "" || len(value) > 35 || strings.TrimSpace(value) != value {
+		return false
+	}
+	for index, part := range strings.Split(value, "-") {
+		if part == "" || len(part) > 8 {
+			return false
+		}
+		for _, character := range part {
+			if character < 'A' || character > 'Z' {
+				if character < 'a' || character > 'z' {
+					if index == 0 || character < '0' || character > '9' {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
 }

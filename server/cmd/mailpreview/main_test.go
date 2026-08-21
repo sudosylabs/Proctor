@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/i18n"
+	mailtemplates "github.com/sudosylabs/proctor/server/templates"
 )
 
 func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
@@ -38,7 +38,7 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	if bytes.Contains(firstIndex, []byte("@")) {
 		t.Fatal("preview index appears to contain a production-like email address")
 	}
-	keys := i18n.AllKeys()
+	keys := mailtemplates.AllKeys()
 	if len(keys) != 43 {
 		t.Fatalf("preview catalog keys = %d, want 43", len(keys))
 	}

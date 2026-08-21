@@ -25,7 +25,7 @@ var (
 // transport boundary. Handlers must be idempotent under best-effort delivery.
 type Handler func(context.Context, *Message) error
 
-// Logger reports operational transport failures without depending on mlog.
+// Logger reports operational transport failures without depending on logging.
 type Logger interface {
 	ErrorContext(ctx context.Context, message string, err error)
 }

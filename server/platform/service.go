@@ -16,7 +16,7 @@ import (
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -28,7 +28,7 @@ import (
 // aliases do not carry lifecycle authority.
 type OwnedResources struct {
 	Configuration          *config.Store
-	Logger                 *mlog.Logger
+	Logger                 *logging.Logger
 	Persistence            store.Store
 	Cache                  Cache
 	Cluster                Cluster
@@ -39,7 +39,7 @@ type OwnedResources struct {
 
 type Service struct {
 	configStore            *config.Store
-	logger                 *mlog.Logger
+	logger                 *logging.Logger
 	store                  store.Store
 	cache                  Cache
 	cluster                Cluster
@@ -113,7 +113,7 @@ func newService(
 ) (*Service, error) {
 	logger := resources.Logger
 	if err := configureLogger(logger, snapshot.Log); err != nil &&
-		!errors.Is(err, mlog.ErrConfigurationLocked) {
+		!errors.Is(err, logging.ErrConfigurationLocked) {
 		return nil, fmt.Errorf("configure logger: %w", err)
 	}
 
@@ -158,16 +158,16 @@ func newService(
 			); err != nil {
 				service.logger.Error(
 					"failed to reconfigure external authentication providers",
-					mlog.Err(err),
+					logging.Err(err),
 				)
 			}
 		}
 		if logConfigurationChanged(old, current) {
 			if err := configureLogger(service.logger, current.Log); err != nil &&
-				!errors.Is(err, mlog.ErrConfigurationLocked) {
+				!errors.Is(err, logging.ErrConfigurationLocked) {
 				service.logger.Error(
 					"failed to reconfigure logger",
-					mlog.Err(err),
+					logging.Err(err),
 				)
 			}
 		}
@@ -177,10 +177,10 @@ func newService(
 	}
 	service.logger.Info(
 		"platform initialized",
-		mlog.String("go_version", runtime.Version()),
-		mlog.String("config_source", service.configStore.Describe()),
-		mlog.String("node_id", service.cluster.NodeID()),
-		mlog.String("cluster_backend", snapshot.Cluster.Backend),
+		logging.String("go_version", runtime.Version()),
+		logging.String("config_source", service.configStore.Describe()),
+		logging.String("node_id", service.cluster.NodeID()),
+		logging.String("cluster_backend", snapshot.Cluster.Backend),
 	)
 	return service, nil
 }
@@ -214,7 +214,7 @@ func closeOwnedResources(resources OwnedResources) error {
 	}
 	var loggerErr error
 	if resources.Logger != nil {
-		loggerErr = resources.Logger.Shutdown()
+		loggerErr = resources.Logger.Shutdown(stopCtx)
 	}
 	var configurationErr error
 	if resources.Configuration != nil {
@@ -235,7 +235,7 @@ func (s *Service) Start(ctx context.Context) error {
 	if err := s.cluster.Start(ctx); err != nil {
 		return fmt.Errorf("start cluster transport: %w", err)
 	}
-	s.logger.Info("cluster transport started", mlog.String("node_id", s.cluster.NodeID()))
+	s.logger.Info("cluster transport started", logging.String("node_id", s.cluster.NodeID()))
 	return nil
 }
 
@@ -267,8 +267,7 @@ func (s *Service) Close() error {
 			s.cluster.Stop(stopCtx),
 			s.closeInfrastructure(),
 			s.store.Close(),
-			s.logger.Flush(),
-			s.logger.Shutdown(),
+			s.logger.Shutdown(stopCtx),
 			s.configStore.Close(),
 		)
 	})
@@ -287,21 +286,20 @@ func (s *Service) closeInfrastructure() error {
 	)
 }
 
-func configureLogger(logger *mlog.Logger, settings config.Log) error {
-	targets := make([]mlog.Target, 0, len(settings.Targets))
+func configureLogger(logger *logging.Logger, settings config.Log) error {
+	targets := make([]logging.Target, 0, len(settings.Targets))
 	for _, target := range settings.Targets {
-		targets = append(targets, mlog.Target{
-			Name:      target.Name,
-			Type:      target.Type,
-			Level:     target.Level,
-			Format:    target.Format,
-			File:      target.File,
-			AddSource: true,
+		targets = append(targets, logging.Target{
+			Name: target.Name, Type: target.Type, Level: target.Level, Format: target.Format,
+			File: target.File, AddSource: true, QueueSize: target.QueueSize,
+			MaxSizeMB: target.MaxSizeMB, MaxAgeDays: target.MaxAgeDays,
+			MaxBackups: target.MaxBackups, Compress: target.Compress,
 		})
 	}
-	return logger.Configure(mlog.Config{
-		MaxFieldBytes: settings.MaxFieldBytes,
-		Targets:       targets,
+	return logger.Configure(logging.Config{
+		MaxFieldBytes: settings.MaxFieldBytes, QueueSize: settings.QueueSize,
+		EnqueueTimeout: settings.EnqueueTimeout.Duration, FlushTimeout: settings.FlushTimeout.Duration,
+		ShutdownTimeout: settings.ShutdownTimeout.Duration, Targets: targets,
 	})
 }
 

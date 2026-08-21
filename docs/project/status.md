@@ -13,8 +13,13 @@ the code and component contracts for that detail.
   `platform.Service`, a discarded non-owning projection wires `app.App`, HTTP,
   WebSocket and Jobs, and `Server` alone owns milestone-based startup,
   readiness, listener handoff, bounded drain and reverse shutdown.
-- Typed deployment configuration, structured logging, health/readiness,
-  graceful shutdown, and the shared `testlib` graph are operational.
+- Typed deployment configuration, bounded asynchronous structured logging with
+  rotated targets and failure/drop diagnostics, health/readiness, graceful
+  shutdown, and the shared `testlib` graph are operational.
+- General server localization uses immutable embedded flat `{id, translation}`
+  catalogs directly under `server/i18n`, installation/English fallback, strict
+  catalog and placeholder validation, and HTTP Problem Details localization
+  without changing stable machine codes.
 - PostgreSQL schema management, the root/per-model store architecture, SQL
   conformance suites, and constrained timing, retry, and local-cache layers
   are implemented.
@@ -605,9 +610,10 @@ The Execution Environment design is accepted but not implemented. An
 Execution Profile is authored on the Draft, frozen in the Revision, and
 defaults to off. The Attempt Workspace remains the durable authority; the
 environment is a Firecracker-isolated projection with one Attempt Terminal.
-`packages/guest` is the exam-blind client contract; the host binary lives in
-a separate repository; only the installation talks to hosts. The complete
-contract is in [Execution environments](../architecture/execution.md).
+[`execenv`](https://github.com/sudosylabs/execenv) is the exam-blind
+client contract and the host daemon repository; only the installation talks
+to hosts. The complete contract is in
+[Execution environments](../architecture/execution.md).
 
 ## Planned product work
 

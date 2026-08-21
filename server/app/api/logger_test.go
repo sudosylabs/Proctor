@@ -7,24 +7,24 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 )
 
 type testLogger struct {
-	log *mlog.Logger
+	log *logging.Logger
 }
 
-func newTestLogger(tb testing.TB) (Logger, *mlog.Buffer) {
+func newTestLogger(tb testing.TB) (Logger, *logging.Buffer) {
 	tb.Helper()
-	var logs mlog.Buffer
-	logger, err := mlog.New()
+	var logs logging.Buffer
+	logger, err := logging.New()
 	if err != nil {
 		tb.Fatal(err)
 	}
 	tb.Cleanup(func() { _ = logger.Shutdown() })
-	if err := logger.Configure(mlog.Config{
+	if err := logger.Configure(logging.Config{
 		MaxFieldBytes: 1024,
-		Targets: []mlog.Target{{
+		Targets: []logging.Target{{
 			Name: "test", Type: "console", Level: "debug", Format: "json", Writer: &logs,
 		}},
 	}); err != nil {
@@ -39,12 +39,13 @@ func (l testLogger) InfoContext(ctx context.Context, message string, fields ...L
 
 func (l testLogger) ErrorContext(ctx context.Context, message string, fields ...LogField) {
 	l.log.ErrorContext(ctx, message, testLogFields(fields)...)
+	_ = l.log.Flush(ctx)
 }
 
-func testLogFields(fields []LogField) []mlog.Field {
-	out := make([]mlog.Field, 0, len(fields))
+func testLogFields(fields []LogField) []logging.Field {
+	out := make([]logging.Field, 0, len(fields))
 	for _, field := range fields {
-		out = append(out, mlog.Any(field.Key, field.Value))
+		out = append(out, logging.Any(field.Key, field.Value))
 	}
 	return out
 }

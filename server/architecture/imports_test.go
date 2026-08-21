@@ -331,7 +331,7 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
 	case from == serverModule+"/i18n":
-		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+		return standardInfrastructureImport(imported) && imported != "io/fs" || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
 	case from == serverModule+"/templates":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
@@ -376,7 +376,7 @@ func forbiddenImport(from, imported string) bool {
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
 	case from == serverModule+"/config":
 		return strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/identityprovider"
-	case from == serverModule+"/mlog", from == serverModule+"/migrations":
+	case from == serverModule+"/logging", from == serverModule+"/migrations":
 		return strings.HasPrefix(imported, repositoryModule+"/")
 	default:
 		return true
@@ -454,7 +454,7 @@ func knownProductionPackage(packagePath string) bool {
 	if packagePath == serverModule || packagePath == serverModule+"/identityprovider" || packagePath == serverModule+"/model" ||
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
-		packagePath == serverModule+"/mlog" || packagePath == serverModule+"/migrations" ||
+		packagePath == serverModule+"/logging" || packagePath == serverModule+"/migrations" ||
 		packagePath == serverModule+"/secretseal" ||
 		packagePath == serverModule+"/i18n" || packagePath == serverModule+"/templates" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||

@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/i18n"
 	mailtemplates "github.com/sudosylabs/proctor/server/templates"
 )
 
@@ -47,61 +46,61 @@ func run(args []string, stderr io.Writer) error {
 	var index strings.Builder
 	index.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Proctor mail previews</title></head><body>\n")
 	index.WriteString("<h1>Proctor transactional-mail previews</h1>\n<ul>\n")
-	for _, key := range i18n.AllKeys() {
+	for _, key := range mailtemplates.AllKeys() {
 		request := mailtemplates.Request{
 			Key: key, RecipientLocale: "en", InstallationLocale: "en",
 			ActionURL: "https://proctor.example.test/representative#token=not-a-credential",
 		}
 		switch key {
-		case i18n.IdentityPersonalAccessTokenCreated,
-			i18n.IdentityPersonalAccessTokenEnabled,
-			i18n.IdentityPersonalAccessTokenDisabled,
-			i18n.IdentityPersonalAccessTokenRevoked:
+		case mailtemplates.IdentityPersonalAccessTokenCreated,
+			mailtemplates.IdentityPersonalAccessTokenEnabled,
+			mailtemplates.IdentityPersonalAccessTokenDisabled,
+			mailtemplates.IdentityPersonalAccessTokenRevoked:
 			request.PersonalAccessToken = &mailtemplates.PersonalAccessTokenDetails{
 				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
 			}
-		case i18n.ExamManagerAdded,
-			i18n.ExamManagerRemoved,
-			i18n.ExamOwnershipTransferredToYou,
-			i18n.ExamOwnershipTransferredFromYou:
+		case mailtemplates.ExamManagerAdded,
+			mailtemplates.ExamManagerRemoved,
+			mailtemplates.ExamOwnershipTransferredToYou,
+			mailtemplates.ExamOwnershipTransferredFromYou:
 			relationship := mailtemplates.ExamManagerRelationshipManager
-			if key == i18n.ExamManagerRemoved {
+			if key == mailtemplates.ExamManagerRemoved {
 				relationship = mailtemplates.ExamManagerRelationshipNoLongerManager
-			} else if key == i18n.ExamOwnershipTransferredToYou {
+			} else if key == mailtemplates.ExamOwnershipTransferredToYou {
 				relationship = mailtemplates.ExamManagerRelationshipOwner
 			}
 			request.ExamManager = &mailtemplates.ExamManagerDetails{
 				Title: "Representative programming exam", Relationship: relationship,
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
 			}
-		case i18n.ExamSittingScheduled,
-			i18n.ExamSittingRescheduled,
-			i18n.ExamSittingCancelled,
-			i18n.ExamSittingAssignmentRemoved:
+		case mailtemplates.ExamSittingScheduled,
+			mailtemplates.ExamSittingRescheduled,
+			mailtemplates.ExamSittingCancelled,
+			mailtemplates.ExamSittingAssignmentRemoved:
 			request.SittingSchedule = &mailtemplates.SittingScheduleDetails{
 				ExamTitle: "Representative programming exam", ClassDisplayName: "Year 2 · Class A",
 				StartsAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				EndsAt:   time.Date(2026, 9, 20, 11, 30, 0, 0, time.UTC),
 			}
-		case i18n.AcademicClassEnrolled,
-			i18n.AcademicClassEnrollmentEnded,
-			i18n.AcademicClassTransferred:
+		case mailtemplates.AcademicClassEnrolled,
+			mailtemplates.AcademicClassEnrollmentEnded,
+			mailtemplates.AcademicClassTransferred:
 			details := &mailtemplates.ClassTransitionDetails{
 				ClassDisplayName: "Year 2 · Class B",
 				StartsAt:         time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
 			}
-			if key == i18n.AcademicClassEnrollmentEnded {
+			if key == mailtemplates.AcademicClassEnrollmentEnded {
 				details.EndsAt = time.Date(2026, 10, 20, 16, 30, 0, 0, time.UTC)
-			} else if key == i18n.AcademicClassTransferred {
+			} else if key == mailtemplates.AcademicClassTransferred {
 				details.PreviousClassDisplayName = "Year 2 · Class A"
 			}
 			request.ClassTransition = details
-		case i18n.ExamSubmissionReceived, i18n.ExamSubmissionAutomaticallySealed:
+		case mailtemplates.ExamSubmissionReceived, mailtemplates.ExamSubmissionAutomaticallySealed:
 			request.SubmissionReceipt = &mailtemplates.SubmissionReceiptDetails{ExamTitle: "Representative programming exam",
 				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
 				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
-		case i18n.ExamResultReleased:
+		case mailtemplates.ExamResultReleased:
 			request.ResultRelease = &mailtemplates.ResultReleaseDetails{ExamTitle: "Representative programming exam",
 				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 		}

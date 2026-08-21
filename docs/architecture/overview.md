@@ -29,7 +29,7 @@ and open choices live in [`docs/project/status.md`](../project/status.md), while
 | `packages/vfs` | Portable file operations and storage backends |
 | `server` | Proctor-specific domain, application, transports, persistence, and runtime |
 
-Reusable modules never import Proctor Server. Identity, authorization, academics, examinations, WebSocket, and clustering remain in `server`. Extract another module only when it has a Proctor-independent contract, plausible external consumers, its own compatibility policy, and no server imports.
+Reusable modules never import Proctor Server. Identity, authorization, academics, examinations, WebSocket, and clustering remain in `server`. Extract another module only when it has a Proctor-independent contract, plausible external consumers, its own compatibility policy, and no server imports. The accepted extraction is [`github.com/sudosylabs/execenv`](https://github.com/sudosylabs/execenv), which also owns the Execution Host daemon. This monorepo will require that module; it will not contain it. See [Execution environments](./execution.md).
 
 The server is not promised as a reusable Go library, but direct readable package paths are retained. A broad `internal/` tree is not used as a substitute for deliberate exports and import tests.
 
@@ -55,7 +55,9 @@ server/
 │   └── storetest/            # conformance suites
 ├── platform/                 # infrastructure lifecycle and health
 ├── config/
-├── mlog/
+├── i18n/                     # flat embedded locale catalogs and lookup
+├── templates/                # transactional-mail presentation
+├── logging/                  # bounded asynchronous operational logging
 ├── migrations/
 └── testlib/
 ~~~

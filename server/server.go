@@ -16,7 +16,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 )
 
 type options struct {
@@ -51,10 +51,10 @@ type runtimePlatform interface {
 // Flush and Shutdown remain available only to Platform, the infrastructure
 // owner.
 type runtimeLogger interface {
-	Info(message string, fields ...mlog.Field)
-	InfoContext(ctx context.Context, message string, fields ...mlog.Field)
-	WarnContext(ctx context.Context, message string, fields ...mlog.Field)
-	ErrorContext(ctx context.Context, message string, fields ...mlog.Field)
+	Info(message string, fields ...logging.Field)
+	InfoContext(ctx context.Context, message string, fields ...logging.Field)
+	WarnContext(ctx context.Context, message string, fields ...logging.Field)
+	ErrorContext(ctx context.Context, message string, fields ...logging.Field)
 	StdLogger(level slog.Level) *log.Logger
 }
 
@@ -516,9 +516,9 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		s.components.logger.InfoContext(
 			runCtx,
 			"server started",
-			mlog.String("listen_address", listener.Addr().String()),
-			mlog.String("public_url", settings.publicURL),
-			mlog.String("version", app.Version),
+			logging.String("listen_address", listener.Addr().String()),
+			logging.String("public_url", settings.publicURL),
+			logging.String("version", app.Version),
 		)
 	}
 
@@ -539,7 +539,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		runtimeErr = fmt.Errorf("maintain serving node lease: %w", leaseErr)
 		forceServingStop = true
 		s.setUnready()
-		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", mlog.Err(leaseErr))
+		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", logging.Err(leaseErr))
 	}
 
 	var stopErr error

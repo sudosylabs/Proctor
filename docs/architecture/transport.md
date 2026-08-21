@@ -81,6 +81,12 @@ boundary. Role, binding, assurance, account, and session changes invalidate
 affected connections. Cluster-received events are delivered locally without
 rebroadcast, preventing loops.
 
+When an Execution Profile enables an Attempt Terminal, PTY octets travel on
+the same Attempt Connection and then through execenv to the Execution Host.
+They are not workspace mutations, not realtime event payloads, and not
+ordinary log fields. The accepted path is in
+[Execution environments](./execution.md).
+
 A committed voluntary Submission publishes bounded `exam_attempt_submitted`
 facts to the authorized manager Sitting subscription and the candidate user,
 then propagates an exact Attempt Connection identity for local and peer
@@ -121,6 +127,13 @@ HTTP Problem Details or WebSocket protocol error
 ~~~
 
 HTTP and WebSocket each maintain exhaustive mappings. Unknown failures become generic correlated internal errors. Unexpected failures preserve their cause and are logged once at the outer operational boundary.
+
+HTTP negotiates presentation language from `Accept-Language` against the
+embedded server catalogs. Problem `type`, `code`, `status`, fields, and request
+correlation remain locale-independent; only `title` and `detail` are resolved
+at the HTTP edge. Missing messages fall back through the installation locale
+and then English. WebSocket codes remain machine-only until a protocol message
+explicitly defines localized presentation.
 
 Validation ownership is divided:
 

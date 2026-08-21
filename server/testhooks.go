@@ -12,7 +12,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
@@ -30,7 +30,7 @@ import (
 // uses New with WithConfigPath only.
 type TestingOverrides struct {
 	Configuration     *config.Store
-	Logger            *mlog.Logger
+	Logger            *logging.Logger
 	Persistence       store.Store
 	StoreRetry        *retrylayer.Policy
 	StoreMetrics      timerlayer.Recorder

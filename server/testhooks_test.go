@@ -23,7 +23,7 @@ import (
 	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
@@ -350,7 +350,7 @@ func newHookOverrides(t *testing.T) (server.TestingOverrides, *hookStore, *hookC
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,10 +398,10 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 		}
 	})
 	configuration := overrides.Configuration
-	logs := &mlog.Buffer{}
-	if err := overrides.Logger.Configure(mlog.Config{
+	logs := &logging.Buffer{}
+	if err := overrides.Logger.Configure(logging.Config{
 		MaxFieldBytes: configuration.Get().Log.MaxFieldBytes,
-		Targets:       []mlog.Target{{Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs}},
+		Targets:       []logging.Target{{Name: "test", Type: "console", Level: "trace", Format: "json", Writer: logs}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -548,7 +548,7 @@ func TestCanceledAcquisitionReleasesOverridesOnceInReverseOrder(t *testing.T) {
 			t.Fatalf("%s close count = %d, want 1", name, count)
 		}
 	}
-	if err := overrides.Logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+	if err := overrides.Logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("logger Configure() after release error = %v, want closed", err)
 	}
 }
@@ -594,7 +594,7 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 
 	events := &hookCloseEvents{}
 	configuration, configurationBacking := newHookConfiguration(t, events)
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +640,7 @@ func TestPlatformAcceptanceFailureReleasesTransferredResourcesOnce(t *testing.T)
 			t.Fatalf("%s close count = %d, want 1", name, count)
 		}
 	}
-	if err := logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+	if err := logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("logger Configure() after acceptance failure error = %v, want closed", err)
 	}
 }

@@ -84,7 +84,7 @@ type shard struct {
 	replay map[string]*replayState
 }
 
-// Logger reports operational transport failures without depending on mlog.
+// Logger reports operational transport failures without depending on logging.
 type Logger interface {
 	WarnContext(ctx context.Context, message string, err error)
 }

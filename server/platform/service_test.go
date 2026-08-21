@@ -17,7 +17,7 @@ import (
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
 	externalauthoidc "github.com/sudosylabs/proctor/server/platform/externalauth/oidc"
@@ -80,7 +80,7 @@ type blockingStopCluster struct {
 
 func completeOwnedResources(t *testing.T, configuration *config.Store) OwnedResources {
 	t.Helper()
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,9 +124,9 @@ func TestServiceRequiresConstructedCapabilities(t *testing.T) {
 		}
 		return configuration
 	}
-	newLogger := func(t *testing.T) *mlog.Logger {
+	newLogger := func(t *testing.T) *logging.Logger {
 		t.Helper()
-		logger, err := mlog.New()
+		logger, err := logging.New()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestAcceptOwnsResourcesBeforeRequiredValidation(t *testing.T) {
 	if listenerID := configuration.AddListener(func(config.Config, config.Config) {}); listenerID != "" {
 		t.Fatalf("closed configuration accepted listener %q", listenerID)
 	}
-	if err := logger.Configure(mlog.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
+	if err := logger.Configure(logging.Config{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("closed logger Configure() error = %v", err)
 	}
 }
@@ -525,6 +525,7 @@ func TestServiceReconfiguresLoggerFromSharedConfiguration(t *testing.T) {
 	initial := store.Get()
 	initial.Log.Targets = []config.LogTarget{{
 		Name: "file", Type: "file", Level: "info", Format: "json", File: firstPath,
+		QueueSize: 256, MaxSizeMB: 100,
 	}}
 	if _, _, err := store.Set(context.Background(), initial); err != nil {
 		t.Fatal(err)
@@ -641,7 +642,7 @@ func TestServiceConstructionFailureClosesOwnedInfrastructure(t *testing.T) {
 	cache := &unhealthyCache{}
 	mailer := &trackedMailer{}
 	cluster := &trackedCluster{}
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +688,7 @@ func TestServiceConstructionFailurePreservesCleanupError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logger, err := mlog.New()
+	logger, err := logging.New()
 	if err != nil {
 		t.Fatal(err)
 	}

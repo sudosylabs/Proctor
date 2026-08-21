@@ -131,14 +131,22 @@
       "providers": []
     }
   },
+  "localization": {
+    "default_locale": "en"
+  },
   "log": {
     "max_field_bytes": 16384,
+    "queue_size": 1024,
+    "enqueue_timeout": "250ms",
+    "flush_timeout": "5s",
+    "shutdown_timeout": "10s",
     "targets": [
       {
         "name": "console",
         "type": "console",
         "level": "info",
-        "format": "text"
+        "format": "text",
+        "queue_size": 256
       }
     ]
   }

@@ -71,8 +71,16 @@ and packaged inline assets live under `server/templates`. Human prose,
 including subjects, headings, paragraphs, action labels, and footer copy,
 lives under `server/i18n`. English is the only required initial catalog;
 recipient locale falls back through the installation locale and then English.
-The localization module resolves a complete typed copy model before rendering,
-so HTML and text cannot diverge by looking up translations independently.
+Each locale file lives directly under that directory as a lexically sorted,
+flat JSON array of `{ "id", "translation" }` records. IDs are stable dotted
+meanings such as `mail.identity.verify_email.subject`; nested catalog objects
+are forbidden. English is canonical and complete. Other locales may be partial,
+but may contain neither unknown IDs nor placeholder signatures that differ
+from English. The localization module validates and compiles every embedded
+catalog at startup, then resolves each field with per-message fallback. The
+mail renderer assembles those fields into one complete typed copy model before
+executing either alternative, so HTML and text cannot diverge by performing
+independent lookups.
 
 Every message key has a typed data model. Templates do not receive arbitrary
 maps, construct routes, or look up application state. Each MJML and text source
@@ -92,6 +100,8 @@ renderer before readiness once delivery is wired. Edits require regeneration,
 rebuild, and restart. The exact source layout, property contract, generation,
 freshness, and preview commands are maintained in the
 [transactional-mail template workflow](../../server/templates/README.md).
+Template-local install, generation, freshness, and test targets live in
+`server/templates/Makefile`; the server Makefile provides delegating aliases.
 
 Messages use UTF-8 multipart alternatives with authored text first and HTML
 second. Only versioned Proctor-owned inline Content-ID assets are permitted.

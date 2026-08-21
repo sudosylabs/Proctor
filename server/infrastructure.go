@@ -26,7 +26,7 @@ import (
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	clustermemberlist "github.com/sudosylabs/proctor/server/cluster/memberlist"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
@@ -43,7 +43,7 @@ import (
 // Platform boundary; before then, release is the only cleanup path.
 type ownedInfrastructure struct {
 	configuration          *config.Store
-	logger                 *mlog.Logger
+	logger                 *logging.Logger
 	persistence            store.Store
 	cache                  platform.Cache
 	cluster                platform.Cluster
@@ -122,7 +122,7 @@ func openRuntimeInfrastructure(
 	}
 
 	if result.logger == nil {
-		logger, err := mlog.New()
+		logger, err := logging.New()
 		if err != nil {
 			return result, fmt.Errorf("create logger: %w", err)
 		}
@@ -300,15 +300,15 @@ func (i *ownedInfrastructure) replacePersistence(next store.Store) {
 }
 
 func (i *ownedInfrastructure) release() error {
+	shutdownTimeout := 15 * time.Second
+	if i.configuration != nil {
+		shutdownTimeout = i.configuration.Get().Server.ShutdownTimeout.Duration
+	}
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancelStop()
 	var clusterErr error
 	if i.cluster != nil {
-		shutdownTimeout := 15 * time.Second
-		if i.configuration != nil {
-			shutdownTimeout = i.configuration.Get().Server.ShutdownTimeout.Duration
-		}
-		stopCtx, cancelStop := context.WithTimeout(context.Background(), shutdownTimeout)
 		clusterErr = i.cluster.Stop(stopCtx)
-		cancelStop()
 	}
 	var vfsErr error
 	if closer, ok := i.filesystem.(interface{ Close() error }); ok {
@@ -328,7 +328,7 @@ func (i *ownedInfrastructure) release() error {
 	}
 	var loggerErr error
 	if i.logger != nil {
-		loggerErr = i.logger.Shutdown()
+		loggerErr = i.logger.Shutdown(stopCtx)
 	}
 	var configErr error
 	if i.configuration != nil {
@@ -486,15 +486,15 @@ func newVFS(settings config.VFS) (vfspkg.FileSystem, error) {
 
 func newCluster(
 	settings config.Cluster,
-	logger *mlog.Logger,
+	logger *logging.Logger,
 	discovery store.ClusterDiscoveryStore,
 	serverVersion string,
 ) (cluster.Transport, error) {
 	switch settings.Backend {
 	case "local":
-		return local.New(settings.NodeID, mlogClusterLogger{log: logger.With(
-			mlog.String("component", "cluster"),
-			mlog.String("node_id", settings.NodeID),
+		return local.New(settings.NodeID, loggingClusterLogger{log: logger.With(
+			logging.String("component", "cluster"),
+			logging.String("node_id", settings.NodeID),
 		)})
 	case "memberlist":
 		if discovery == nil {
@@ -520,10 +520,10 @@ func newCluster(
 			ProtocolMax:        settings.Memberlist.ProtocolMax,
 			ServerVersion:      serverVersion,
 			AllowPublicBind:    settings.Memberlist.AllowPublicBind,
-			Logger: mlogClusterLogger{log: logger.With(
-				mlog.String("component", "cluster"),
-				mlog.String("node_id", settings.NodeID),
-				mlog.String("backend", "memberlist"),
+			Logger: loggingClusterLogger{log: logger.With(
+				logging.String("component", "cluster"),
+				logging.String("node_id", settings.NodeID),
+				logging.String("backend", "memberlist"),
 			)},
 		})
 	default:
@@ -579,18 +579,18 @@ func (s storeClusterDiscovery) DeleteExpired(ctx context.Context, now time.Time)
 	return s.store.DeleteExpired(ctx, now.UTC().UnixMilli())
 }
 
-// mlogClusterLogger adapts mlog to cluster.Logger at the composition root.
-type mlogClusterLogger struct {
-	log *mlog.Logger
+// loggingClusterLogger adapts logging to cluster.Logger at the composition root.
+type loggingClusterLogger struct {
+	log *logging.Logger
 }
 
-func (l mlogClusterLogger) ErrorContext(ctx context.Context, message string, err error) {
+func (l loggingClusterLogger) ErrorContext(ctx context.Context, message string, err error) {
 	if l.log == nil {
 		return
 	}
-	fields := []mlog.Field{}
+	fields := []logging.Field{}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	l.log.ErrorContext(ctx, message, fields...)
 }

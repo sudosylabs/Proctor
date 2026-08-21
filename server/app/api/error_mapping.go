@@ -292,7 +292,7 @@ func problemFromApplicationFailure(request *http.Request, failure applicationFai
 	if status < 400 || status > 599 {
 		return internalProblem(request)
 	}
-	title, detail := problemPresentation(status)
+	title, detail := localizedProblemPresentation(request, status)
 	return newProblem(request, failure.Code(), status, title, detail, failure.Fields())
 }
 

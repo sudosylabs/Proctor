@@ -18,7 +18,7 @@ import (
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/i18n"
-	"github.com/sudosylabs/proctor/server/mlog"
+	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
@@ -32,6 +32,7 @@ func applicationDependencies(
 	capabilities constructionCapabilities,
 	cfg config.Config,
 	content app.FileContent,
+	mailRenderer *templates.Renderer,
 ) (app.Dependencies, error) {
 	auth := cfg.Authentication
 	cache := platformAuthenticationCache{cache: capabilities.cache}
@@ -43,9 +44,8 @@ func applicationDependencies(
 	if err != nil {
 		return app.Dependencies{}, err
 	}
-	mailRenderer, err := templates.DefaultRenderer()
-	if err != nil {
-		return app.Dependencies{}, err
+	if mailRenderer == nil {
+		return app.Dependencies{}, errors.New("mail template renderer is nil")
 	}
 	mailer := accountMailerAdapter{mailer: capabilities.mailer}
 	return app.Dependencies{
@@ -117,11 +117,23 @@ func applicationDependencies(
 			NodeID: capabilities.nodeID,
 		},
 		RecentAuthenticationTTL:   auth.RecentAuthenticationTTL.Duration,
-		AuthenticationDiagnostics: mlogAuthenticationDiagnostics{log: log},
-		RealtimeDiagnostics:       mlogRealtimeDiagnostics{log: log},
-		RecoveryDiagnostics:       mlogRecoveryDiagnostics{log: log},
+		AuthenticationDiagnostics: loggingAuthenticationDiagnostics{log: log},
+		RealtimeDiagnostics:       loggingRealtimeDiagnostics{log: log},
+		RecoveryDiagnostics:       loggingRecoveryDiagnostics{log: log},
 	}, nil
 }
+
+type i18nAdapter struct{ bundle *i18n.Bundle }
+
+func (a i18nAdapter) Translate(locale, id string, args any) (string, error) {
+	translated, err := a.bundle.Translate(locale, i18n.Key(id), args)
+	if err != nil {
+		return "", err
+	}
+	return translated.Text, nil
+}
+
+func (a i18nAdapter) SupportedLocales() []string { return a.bundle.SupportedLocales() }
 
 // explicitLoopbackHTTPDevelopment projects the deliberately local HTTP
 // origin into the application without coupling app/model to deployment
@@ -241,7 +253,7 @@ func (a accountMailerAdapter) Probe(ctx context.Context) error {
 type mailTemplateRendererAdapter struct{ renderer *templates.Renderer }
 
 func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale, ActionURL: actionURL})
+	message, err := a.renderer.Render(templates.Request{Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale, ActionURL: actionURL})
 	if err != nil {
 		return appmail.FrozenContent{}, err
 	}
@@ -255,7 +267,7 @@ func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
 	details appmail.PersonalAccessTokenDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		PersonalAccessToken: &templates.PersonalAccessTokenDetails{
 			Description: details.Description, ExpiresAt: details.ExpiresAt,
 			ActionAt: details.ActionAt, ActionCount: details.ActionCount,
@@ -275,7 +287,7 @@ func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
 	details appmail.ExamManagerDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ExamManager: &templates.ExamManagerDetails{
 			Title: details.Title, Relationship: templates.ExamManagerRelationship(details.Relationship), ActionAt: details.ActionAt,
 		},
@@ -293,7 +305,7 @@ func (a mailTemplateRendererAdapter) RenderClassTransitionNotice(
 	details appmail.ClassTransitionDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ClassTransition: &templates.ClassTransitionDetails{PreviousClassDisplayName: details.PreviousClassDisplayName,
 			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
 	})
@@ -310,7 +322,7 @@ func (a mailTemplateRendererAdapter) RenderSubmissionReceipt(
 	details appmail.SubmissionReceiptDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		SubmissionReceipt: &templates.SubmissionReceiptDetails{ExamTitle: details.ExamTitle,
 			SittingID: details.SittingID.String(), SubmissionID: details.SubmissionID.String(), SealedAt: details.SealedAt},
 	})
@@ -327,7 +339,7 @@ func (a mailTemplateRendererAdapter) RenderResultRelease(
 	details appmail.ResultReleaseDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		ResultRelease: &templates.ResultReleaseDetails{ExamTitle: details.ExamTitle, ReleasedAt: details.ReleasedAt},
 	})
 	if err != nil {
@@ -343,7 +355,7 @@ func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
 	details appmail.SittingScheduleDetails,
 ) (appmail.FrozenContent, error) {
 	message, err := a.renderer.Render(templates.Request{
-		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
 		SittingSchedule: &templates.SittingScheduleDetails{ExamTitle: details.ExamTitle,
 			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
 	})
@@ -442,37 +454,37 @@ func mapExternalProviderError(err error) error {
 	}
 }
 
-type mlogAuthenticationDiagnostics struct {
+type loggingAuthenticationDiagnostics struct {
 	log runtimeLogger
 }
 
-func (d mlogAuthenticationDiagnostics) WarnContext(ctx context.Context, message string, err error) {
+func (d loggingAuthenticationDiagnostics) WarnContext(ctx context.Context, message string, err error) {
 	if d.log == nil {
 		return
 	}
-	fields := []mlog.Field{}
+	fields := []logging.Field{}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	d.log.WarnContext(ctx, message, fields...)
 }
 
-type mlogRealtimeDiagnostics struct {
+type loggingRealtimeDiagnostics struct {
 	log runtimeLogger
 }
 
-func (d mlogRealtimeDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
+func (d loggingRealtimeDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
 	if d.log == nil {
 		return
 	}
-	fields := []mlog.Field{}
+	fields := []logging.Field{}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	d.log.ErrorContext(ctx, message, fields...)
 }
 
-func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
+func (d loggingRealtimeDiagnostics) ErrorContextWithEvent(
 	ctx context.Context,
 	message, event string,
 	err error,
@@ -480,14 +492,14 @@ func (d mlogRealtimeDiagnostics) ErrorContextWithEvent(
 	if d.log == nil {
 		return
 	}
-	fields := []mlog.Field{mlog.String("event", event)}
+	fields := []logging.Field{logging.String("event", event)}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	d.log.ErrorContext(ctx, message, fields...)
 }
 
-type mlogRecoveryDiagnostics struct {
+type loggingRecoveryDiagnostics struct {
 	log runtimeLogger
 }
 
@@ -568,11 +580,11 @@ func (r *operationalMailTelemetry) RecordMailDelivery(ctx context.Context, metri
 	r.mu.Unlock()
 	if r.log != nil {
 		r.log.InfoContext(ctx, "mail delivery outcome",
-			mlog.String("template_key", string(metric.TemplateKey)),
-			mlog.String("state", string(metric.State)),
-			mlog.String("outcome_code", metric.OutcomeCode),
-			mlog.Int("attempt_count", metric.AttemptCount),
-			mlog.Duration("processing_latency", metric.ProcessingLatency),
+			logging.String("template_key", string(metric.TemplateKey)),
+			logging.String("state", string(metric.State)),
+			logging.String("outcome_code", metric.OutcomeCode),
+			logging.Int("attempt_count", metric.AttemptCount),
+			logging.Duration("processing_latency", metric.ProcessingLatency),
 		)
 	}
 }
@@ -613,13 +625,13 @@ func (r *operationalMailTelemetry) RecordMailQueueSnapshot(ctx context.Context, 
 	for _, metric := range observations {
 		bucket := mailQueueAgeBucket(metric.OldestAge)
 		r.log.InfoContext(ctx, "mail queue observation",
-			mlog.String("template_key", string(metric.TemplateKey)),
-			mlog.String("state", string(metric.State)),
-			mlog.String("outcome_code", metric.OutcomeCode),
-			mlog.Int64("count", metric.Count),
-			mlog.String("oldest_age_bucket", bucket),
-			mlog.String("health_code", metric.HealthCode),
-			mlog.Bool("truncated", metric.Truncated),
+			logging.String("template_key", string(metric.TemplateKey)),
+			logging.String("state", string(metric.State)),
+			logging.String("outcome_code", metric.OutcomeCode),
+			logging.Int64("count", metric.Count),
+			logging.String("oldest_age_bucket", bucket),
+			logging.String("health_code", metric.HealthCode),
+			logging.Bool("truncated", metric.Truncated),
 		)
 	}
 }
@@ -630,7 +642,7 @@ func (r *operationalMailTelemetry) RecordMailHealth(ctx context.Context, metric 
 	r.health = metric.Code
 	r.mu.Unlock()
 	if changed && r.log != nil {
-		r.log.InfoContext(ctx, "mail subsystem health", mlog.String("health_code", metric.Code))
+		r.log.InfoContext(ctx, "mail subsystem health", logging.String("health_code", metric.Code))
 	}
 }
 
@@ -684,19 +696,19 @@ func mailQueueAgeBucket(age time.Duration) string {
 	return "gte_24h"
 }
 
-func (d mlogRecoveryDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
+func (d loggingRecoveryDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
 	if d.log == nil {
 		return
 	}
-	fields := []mlog.Field{}
+	fields := []logging.Field{}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	d.log.ErrorContext(ctx, message, fields...)
 }
 
-// websocketLogger adapts mlog to the narrow websocket.Logger port so the
-// sibling transport package never imports mlog.
+// websocketLogger adapts logging to the narrow websocket.Logger port so the
+// sibling transport package never imports logging.
 type websocketLogger struct {
 	log runtimeLogger
 }
@@ -705,15 +717,15 @@ func (l websocketLogger) WarnContext(ctx context.Context, message string, err er
 	if l.log == nil {
 		return
 	}
-	fields := []mlog.Field{}
+	fields := []logging.Field{}
 	if err != nil {
-		fields = append(fields, mlog.Err(err))
+		fields = append(fields, logging.Err(err))
 	}
 	l.log.WarnContext(ctx, message, fields...)
 }
 
-// apiLogger adapts mlog to the narrow api.Logger port so the HTTP transport
-// package never imports mlog.
+// apiLogger adapts logging to the narrow api.Logger port so the HTTP transport
+// package never imports logging.
 type apiLogger struct {
 	log runtimeLogger
 }
@@ -732,10 +744,10 @@ func (l apiLogger) ErrorContext(ctx context.Context, message string, fields ...a
 	l.log.ErrorContext(ctx, message, apiLogFields(fields)...)
 }
 
-func apiLogFields(fields []api.LogField) []mlog.Field {
-	out := make([]mlog.Field, 0, len(fields))
+func apiLogFields(fields []api.LogField) []logging.Field {
+	out := make([]logging.Field, 0, len(fields))
 	for _, field := range fields {
-		out = append(out, mlog.Any(field.Key, field.Value))
+		out = append(out, logging.Any(field.Key, field.Value))
 	}
 	return out
 }

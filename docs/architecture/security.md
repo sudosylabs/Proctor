@@ -107,10 +107,15 @@ vocabulary, or asserting guilt.
 
 ## Logging and observability
 
-The Proctor-owned `mlog` subsystem supports independently filtered text or JSON
-targets, safe contextual fields, bounded serialization, atomic dynamic
-reconfiguration, test capture, flushing, and shutdown. `platform.Service` owns
-its lifecycle.
+The Proctor-owned `logging` module exposes only bounded scalar fields and hides
+its asynchronous engine. Independently filtered text or JSON targets have
+bounded queues; saturated Trace, Debug, and Info records may be dropped and
+counted, while Warn and Error records block only until the configured enqueue
+deadline. File targets rotate by size with bounded age/backups and optional
+compression. Backend errors and drops remain observable through counters.
+Configuration is built and validated before an atomic swap, and failed changes
+preserve the working targets. Flush and shutdown are deadline-aware;
+`platform.Service` owns both lifecycle operations.
 
 Unexpected failures are logged once at the outer operational boundary.
 Request-driven application services return failures rather than logging them;
@@ -118,6 +123,8 @@ long-lived workers receive a narrow logging port only for otherwise
 unobservable operational events. Context may include component, request ID,
 node ID, and safe entity IDs—never complete users, sessions, configuration,
 credentials, tokens, exam answers, provider payloads, or raw claims.
+Arbitrary maps and structs are never reflectively serialized into ordinary
+logs; unsupported values record only their Go type.
 
 Metrics and tracing instrument HTTP, WebSocket, store, and outbound-adapter
 boundaries through explicit wrappers. Application use cases may expose named

@@ -11,6 +11,7 @@ model ← app/realtime ← {app, websocket}
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 secretseal ← app
 i18n ← templates ← cmd/mailpreview
+logging ← platform
 app ← app/api
 model ← filecontent
 packages/vfs ← filecontent
@@ -34,6 +35,7 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `i18n` | Standard library and embedded server-owned locale catalogs | application, domain, persistence, transports, concrete adapters |
 | `templates` | `i18n`, standard-library HTML and text templating | application, persistence, transport, mail adapters |
+| `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
@@ -41,7 +43,7 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor` | Module-root `server` | Independent infrastructure construction |
-| `cmd/mailpreview` | `templates`, `i18n`, standard library | application, persistence, infrastructure adapters, mail delivery |
+| `cmd/mailpreview` | `templates`, standard library | application, persistence, infrastructure adapters, mail delivery |
 
 Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
 
@@ -73,12 +75,14 @@ product meaning and policy:
   recoverable server application secrets. It has no persistence or
   configuration dependency and is used directly as an in-process module, not
   hidden behind a replaceable cryptography port.
-- `packages/guest` owns the exam-blind execution-host contract: readiness,
-  ensure and revoke, tree projection, one PTY, freeze, capacity, and typed
-  errors. The server owns the Execution Profile, placement, workspace
-  acknowledgement, the Attempt Terminal bridge, and when a grant may exist.
-  The Execution Host binary lives outside this repository and implements the
-  server side of that contract. Isolation machinery stays there.
+- [`github.com/sudosylabs/execenv`](https://github.com/sudosylabs/execenv)
+  owns the exam-blind execution-host contract: readiness, ensure and revoke,
+  tree projection, one PTY, freeze, capacity, and typed errors. The server
+  owns the Execution Profile, placement, workspace acknowledgement, the
+  Attempt Terminal bridge, and when a grant may exist. The Execution Host
+  binary lives in the execenv repository and serves that contract.
+  Isolation machinery stays there. This monorepo requires the module; it
+  does not vendor Firecracker.
 
 Identity, authorization, examinations, WebSockets, clustering, and MFA
 remain server concerns until they have coherent Proctor-independent
