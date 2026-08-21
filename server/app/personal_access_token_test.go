@@ -466,29 +466,13 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 
 type personalAccessTokenActionTimeRenderer struct{}
 
-func (personalAccessTokenActionTimeRenderer) Render(model.MailTemplateKey, string, string) (FrozenMailContent, error) {
-	return FrozenMailContent{Subject: "notice", Text: "notice", HTML: "<p>notice</p>"}, nil
-}
-
-func (personalAccessTokenActionTimeRenderer) RenderPersonalAccessTokenSecurityNotice(_ model.MailTemplateKey, _ string, details PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
+func (personalAccessTokenActionTimeRenderer) Render(request MailRenderRequest) (FrozenMailContent, error) {
+	details, ok := request.Presentation.(PersonalAccessTokenMailDetails)
+	if !ok {
+		return FrozenMailContent{}, errors.New("unexpected mail presentation")
+	}
 	value := details.ActionAt.Format(time.RFC3339Nano)
 	return FrozenMailContent{Subject: "PAT notice", Text: value, HTML: "<p>" + value + "</p>"}, nil
-}
-
-func (personalAccessTokenActionTimeRenderer) RenderExamManagerNotice(model.MailTemplateKey, string, ExamManagerMailDetails) (FrozenMailContent, error) {
-	return FrozenMailContent{}, errors.New("unexpected Exam Manager render")
-}
-
-func (personalAccessTokenActionTimeRenderer) RenderClassTransitionNotice(model.MailTemplateKey, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
-	return FrozenMailContent{}, errors.New("unexpected Class transition render")
-}
-
-func (personalAccessTokenActionTimeRenderer) RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
-	return FrozenMailContent{}, errors.New("unexpected Submission receipt render")
-}
-
-func (personalAccessTokenActionTimeRenderer) RenderResultRelease(model.MailTemplateKey, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
-	return FrozenMailContent{}, errors.New("unexpected result release render")
 }
 
 func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.T) {

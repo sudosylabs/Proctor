@@ -13,10 +13,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type ResultReleaseDirectMailPreparation = appmail.ResultReleasePreparation
-
 type examResultReleaseMailPreparationAdapter struct {
-	preparer  *directMailPreparer
+	preparer  *appmail.Composer
 	users     store.UserStore
 	sittings  store.ExamSittingStore
 	revisions store.ExamRevisionStore
@@ -50,9 +48,9 @@ func (adapter examResultReleaseMailPreparationAdapter) PrepareResultRelease(ctx 
 		revision.Title == "" {
 		return nil, errors.New("result release Exam revision projection is inconsistent")
 	}
-	prepared, err := adapter.preparer.PrepareResultReleaseMail(ResultReleaseDirectMailPreparation{
+	prepared, err := adapter.preparer.PrepareResultReleaseMail(appmail.ResultReleasePreparation{
 		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.ReviewID.String()),
-		Details:    ResultReleaseMailDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
+		Details:    appmail.ResultReleaseDetails{ExamTitle: revision.Title, ReleasedAt: request.ReleasedAt},
 		ReleasedAt: request.ReleasedAt,
 	})
 	if err != nil {

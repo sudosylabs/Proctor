@@ -8,8 +8,6 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type relationshipTransitionMailPreparation = appmail.RelationshipTransitionPreparation
-
 type relationshipTransitionMailPreparer interface {
-	PrepareRelationshipTransition(relationshipTransitionMailPreparation) (*store.PreparedMail, error)
+	PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation) (*store.PreparedMail, error)
 }

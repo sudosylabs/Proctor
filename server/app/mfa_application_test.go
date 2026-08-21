@@ -386,15 +386,25 @@ func (mfaApplicationUserStoreFake) Get(_ context.Context, id string) (*model.Use
 }
 
 type mfaSecurityNoticeMailPreparerFake struct {
-	requests []securityNoticePreparation
+	requests []DirectMailPreparation
 }
 
-func (m *mfaSecurityNoticeMailPreparerFake) PrepareSecurityNotice(request securityNoticePreparation) (*preparedDirectMail, error) {
-	m.requests = append(m.requests, request)
+func (m *mfaSecurityNoticeMailPreparerFake) PrepareMFANotice(request NoticeMailPreparation, kind MFAMailNoticeKind) (*preparedDirectMail, error) {
+	key := model.MailTemplateIdentityMFAEnabled
+	switch kind {
+	case MFAMailNoticeDisabled:
+		key = model.MailTemplateIdentityMFADisabled
+	case MFAMailNoticeRecoveryCodesRegenerated:
+		key = model.MailTemplateIdentityMFARecoveryCodesRegenerated
+	}
+	direct := DirectMailPreparation{Recipient: request.Recipient, OccurrenceID: model.NewMailOccurrenceID(),
+		Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, At: request.At,
+		Deadline: request.At.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver}
+	m.requests = append(m.requests, direct)
 	occurrenceID, deliveryID, jobID := model.NewMailOccurrenceID(), model.NewMailDeliveryID(), model.NewJobID()
 	return &preparedDirectMail{
-		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: request.TemplateKey, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
-		Delivery:   &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: request.Recipient.ID, TemplateKey: request.TemplateKey, Deadline: request.At.Add(securityNoticeDeliveryLifetime)},
+		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, ActorUserID: request.Recipient.ID, CreatedAt: request.At},
+		Delivery:   &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: request.Recipient.ID, TemplateKey: key, Deadline: request.At.Add(24 * time.Hour)},
 		Job:        &model.Job{ID: jobID, Type: model.JobTypeMailDeliver},
 	}, nil
 }

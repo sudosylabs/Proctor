@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -43,13 +44,13 @@ type accountStateService struct {
 	authorization accountStateAuthorizer
 	capabilities  accessPolicyCapabilitySource
 	audit         mutationAuditor
-	mail          securityNoticeMailPreparer
+	mail          accountStateMailPreparer
 	effects       accountStateEffects
 	now           func() time.Time
 }
 
 func newAccountStateService(users accountStateStore, authorization accountStateAuthorizer, capabilities accessPolicyCapabilitySource,
-	audit mutationAuditor, mail securityNoticeMailPreparer, effects accountStateEffects, now func() time.Time,
+	audit mutationAuditor, mail accountStateMailPreparer, effects accountStateEffects, now func() time.Time,
 ) *accountStateService {
 	return &accountStateService{users: users, authorization: authorization, capabilities: capabilities, audit: audit, mail: mail, effects: effects, now: now}
 }
@@ -94,15 +95,9 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 	// whether the state change is a no-op, so make the snapshot mail-eligible
 	// even when a concurrent re-enable could turn a stale no-op into a mutation.
 	recipient.DisabledAt = model.OptionalTime{}
-	templateKey := model.MailTemplateIdentityAccountEnabled
-	if disabled {
-		templateKey = model.MailTemplateIdentityAccountDisabled
-	}
 	prepared := &preparedDirectMail{}
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareSecurityNotice(securityNoticePreparation{
-			Recipient: &recipient, TemplateKey: templateKey, At: now,
-		})
+		prepared, err = s.mail.PrepareAccountStateChanged(appmail.NoticePreparation{Recipient: &recipient, At: now}, command.Enabled)
 		if err != nil {
 			return nil, accountStateError(err)
 		}

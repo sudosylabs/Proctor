@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 )
 
@@ -14,7 +15,7 @@ type examinationConstruction struct {
 	authoring              examUseCases
 	revisions              examRevisionUseCases
 	sittings               examSittingUseCases
-	sittingMail            *sittingMailPreparer
+	sittingMail            *appmail.SittingComposer
 	sittingMailPreparation sittingScheduleMailPreparationAdapter
 	attempts               examAttemptUseCases
 	reviews                examReviewUseCases
@@ -33,12 +34,12 @@ type applicationFoundation struct {
 	invalidator *authenticationCacheInvalidator
 	realtime    *realtimeService
 	audit       *auditService
-	mail        *directMailPreparer
+	mail        *appmail.Composer
 	mailHealth  *MailHealth
 }
 
 type identityConstruction struct {
-	mail                              *directMailPreparer
+	mail                              *appmail.Composer
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
 	selfSessions                      *selfSessionService

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -28,7 +29,12 @@ type preparedDirectMail = store.PreparedMail
 
 type accountTokenMailPreparer interface {
 	Enabled() bool
-	PrepareDirect(DirectMailPreparation) (*preparedDirectMail, error)
+	PrepareEmailVerification(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
+	PreparePasswordReset(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
+	PreparePasswordChanged(appmail.NoticePreparation) (*preparedDirectMail, error)
+	PrepareEmailChangeWarning(appmail.NoticePreparation) (*preparedDirectMail, error)
+	PrepareEmailChangeVerification(appmail.AccountTokenPreparation) (*preparedDirectMail, error)
+	PrepareEmailVerifiedByAdministrator(appmail.NoticePreparation) (*preparedDirectMail, error)
 }
 
 // accountTokenService owns purpose-specific verification and recovery tokens.

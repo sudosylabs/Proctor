@@ -17,7 +17,6 @@ import (
 
 const (
 	FanoutBundleSealingPurpose = "mail.fanout_bundle"
-	sittingDeliveryLifetime    = 72 * time.Hour
 )
 
 type SittingScheduleDetails struct {
@@ -28,14 +27,27 @@ type SittingScheduleDetails struct {
 	EndsAt                time.Time
 }
 
+func (SittingScheduleDetails) mailPresentation() {}
+
 type SittingRenderer interface {
-	RenderSittingScheduleNotice(model.MailTemplateKey, string, SittingScheduleDetails) (FrozenContent, error)
+	Renderer
+	SittingLocales() (string, []string)
 }
 
 type FrozenSittingBundleV1 struct {
 	Version  int                                     `json:"version"`
 	From     Address                                 `json:"from"`
 	Messages map[model.MailTemplateKey]FrozenContent `json:"messages"`
+}
+
+// FrozenSittingBundleV2 freezes every supported locale for one template
+// release. Expansion selects a recipient locale without consulting mutable
+// runtime assets.
+type FrozenSittingBundleV2 struct {
+	Version       int                                                `json:"version"`
+	From          Address                                            `json:"from"`
+	DefaultLocale string                                             `json:"default_locale"`
+	Messages      map[string]map[model.MailTemplateKey]FrozenContent `json:"messages"`
 }
 
 type SittingComposer struct {
@@ -90,7 +102,11 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	if err != nil {
 		return nil, err
 	}
-	prepared := &store.ExamSittingMailFanout{Occurrence: occurrence, ExpansionJob: job, ChangeKind: change, DeliveryLifetime: sittingDeliveryLifetime}
+	deliveryLifetime, ok := defaultLifetimeFor(primaryKey)
+	if !ok {
+		return nil, errors.New("sitting mail definition is invalid")
+	}
+	prepared := &store.ExamSittingMailFanout{Occurrence: occurrence, ExpansionJob: job, ChangeKind: change, DeliveryLifetime: deliveryLifetime}
 	if !p.sender.Enabled() {
 		job, err = job.RequestCancellation(at)
 		if err != nil {
@@ -103,18 +119,27 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	if err = ValidateAddress(from); err != nil {
 		return nil, err
 	}
-	bundle := FrozenSittingBundleV1{Version: 1, From: from, Messages: make(map[model.MailTemplateKey]FrozenContent, 4)}
-	for _, key := range []model.MailTemplateKey{model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled,
-		model.MailTemplateExamSittingCancelled, model.MailTemplateExamSittingAssignmentRemoved} {
-		variant := details
-		if key == model.MailTemplateExamSittingAssignmentRemoved && details.PriorClassDisplayName != "" {
-			variant.ClassDisplayName = details.PriorClassDisplayName
+	defaultLocale, locales := p.renderer.SittingLocales()
+	locales = normalizedSittingLocales(defaultLocale, locales)
+	if len(locales) == 0 || len(locales) > 64 {
+		return nil, errors.New("sitting mail locales are invalid")
+	}
+	bundle := FrozenSittingBundleV2{Version: 2, From: from, DefaultLocale: normalizeSittingLocale(defaultLocale),
+		Messages: make(map[string]map[model.MailTemplateKey]FrozenContent, len(locales))}
+	for _, locale := range locales {
+		messages := make(map[model.MailTemplateKey]FrozenContent, 4)
+		for _, key := range sittingTemplateKeys() {
+			variant := details
+			if key == model.MailTemplateExamSittingAssignmentRemoved && details.PriorClassDisplayName != "" {
+				variant.ClassDisplayName = details.PriorClassDisplayName
+			}
+			rendered, renderErr := p.renderer.Render(RenderRequest{Key: key, Locale: locale, Presentation: variant})
+			if renderErr != nil || rendered.Subject == "" || rendered.Text == "" || rendered.HTML == "" {
+				return nil, errors.New("render sitting mail bundle")
+			}
+			messages[key] = rendered
 		}
-		rendered, renderErr := p.renderer.RenderSittingScheduleNotice(key, "", variant)
-		if renderErr != nil || rendered.Subject == "" || rendered.Text == "" || rendered.HTML == "" {
-			return nil, errors.New("render sitting mail bundle")
-		}
-		bundle.Messages[key] = rendered
+		bundle.Messages[locale] = messages
 	}
 	plaintext, err := json.Marshal(bundle)
 	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes*4 {
@@ -135,8 +160,8 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 	return prepared, nil
 }
 
-func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSittingBundleV1, error) {
-	var result FrozenSittingBundleV1
+func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSittingBundleV2, error) {
+	var result FrozenSittingBundleV2
 	if p == nil || p.sealer == nil || bundle == nil || bundle.Validate() != nil {
 		return result, errors.New("sitting mail bundle is unavailable")
 	}
@@ -148,17 +173,33 @@ func (p *SittingComposer) OpenBundle(bundle *model.MailFanoutBundle) (FrozenSitt
 	if err != nil {
 		return result, err
 	}
-	if err = json.Unmarshal(plaintext, &result); err != nil || result.Version != 1 || len(result.Messages) != 4 || ValidateAddress(result.From) != nil {
-		return FrozenSittingBundleV1{}, errors.New("sitting mail bundle is invalid")
+	var header struct {
+		Version int `json:"version"`
+	}
+	if err = json.Unmarshal(plaintext, &header); err != nil {
+		return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
+	}
+	if header.Version == 1 {
+		var legacy FrozenSittingBundleV1
+		if err = json.Unmarshal(plaintext, &legacy); err != nil || len(legacy.Messages) != 4 || ValidateAddress(legacy.From) != nil {
+			return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
+		}
+		return FrozenSittingBundleV2{Version: 2, From: legacy.From, DefaultLocale: model.DefaultLocale,
+			Messages: map[string]map[model.MailTemplateKey]FrozenContent{model.DefaultLocale: legacy.Messages}}, nil
+	}
+	if err = json.Unmarshal(plaintext, &result); err != nil || !validFrozenSittingBundle(result) {
+		return FrozenSittingBundleV2{}, errors.New("sitting mail bundle is invalid")
 	}
 	return result, nil
 }
 
 func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSnapshot, recipient *model.User,
-	key model.MailTemplateKey, bundle FrozenSittingBundleV1,
+	key model.MailTemplateKey, bundle FrozenSittingBundleV2,
 ) (*model.MailDelivery, *model.Job, error) {
-	content, ok := bundle.Messages[key]
-	if p == nil || p.sealer == nil || fanout == nil || fanout.Occurrence == nil || recipient == nil || !ok ||
+	definition, defined := definitionFor(key)
+	content, ok := bundle.contentFor(recipient.Locale, key)
+	if p == nil || p.sealer == nil || fanout == nil || fanout.Occurrence == nil || recipient == nil || !defined ||
+		definition.presentation != presentationSittingSchedule || !ok ||
 		recipient.Validate() != nil || content.Subject == "" || content.Text == "" || content.HTML == "" {
 		return nil, nil, errors.New("sitting mail recipient is invalid")
 	}
@@ -167,35 +208,104 @@ func (p *SittingComposer) PrepareRecipient(fanout *store.ExamSittingMailFanoutSn
 	if err != nil {
 		return nil, nil, err
 	}
-	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(),
+	job, err := model.NewJob(jobID, definition.jobType, 1, command, deliveryID.String(),
 		fanout.Occurrence.CreatedAt, fanout.Occurrence.CreatedAt, model.MailMaximumAttempts)
 	if err != nil {
 		return nil, nil, err
 	}
-	payload := FrozenPayloadV1{Version: 1, RecipientName: recipient.DisplayName, RecipientAddress: recipient.Email,
-		FromName: bundle.From.Name, FromAddress: bundle.From.Address, Subject: content.Subject, Text: content.Text, HTML: content.HTML,
-		AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
-	plaintext, err := json.Marshal(payload)
-	if err != nil || len(plaintext) > model.MailRenderedPayloadMaximumBytes {
-		return nil, nil, errors.New("sitting mail recipient payload is invalid")
-	}
-	envelope, err := p.sealer.Seal(secretseal.Binding{Purpose: DeliverySealingPurpose, Owner: deliveryID.String()}, plaintext)
-	if err != nil {
-		return nil, nil, err
-	}
-	encrypted, err := json.Marshal(envelope)
+	frozen, err := freezeDeliveryPayload(p.sealer, deliveryID, bundle.From,
+		Address{Name: recipient.DisplayName, Address: recipient.Email}, content)
 	if err != nil {
 		return nil, nil, err
 	}
 	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: fanout.Occurrence.ID, JobID: jobID, TargetUserID: recipient.ID,
-		TemplateKey: key, TemplateDigest: Digest(content.Subject, content.Text, content.HTML), MaskedRecipient: MaskAddress(recipient.Email),
+		TemplateKey: key, TemplateDigest: frozen.templateDigest, MaskedRecipient: MaskAddress(recipient.Email),
 		State: model.MailDeliveryQueued, CreatedAt: fanout.Occurrence.CreatedAt, UpdatedAt: fanout.Occurrence.CreatedAt,
-		MessageDate: fanout.Occurrence.CreatedAt, Deadline: fanout.Deadline, MessageID: StableMessageID(deliveryID, bundle.From.Address),
-		EncryptedPayload: encrypted, Revision: 1}
+		MessageDate: fanout.Occurrence.CreatedAt, Deadline: fanout.Deadline, MessageID: frozen.messageID,
+		EncryptedPayload: frozen.encrypted, Revision: 1}
 	if err = delivery.Validate(); err != nil {
 		return nil, nil, err
 	}
 	return delivery, job, nil
+}
+
+func sittingTemplateKeys() []model.MailTemplateKey {
+	return []model.MailTemplateKey{model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled,
+		model.MailTemplateExamSittingCancelled, model.MailTemplateExamSittingAssignmentRemoved}
+}
+
+func normalizeSittingLocale(locale string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(locale), "_", "-"))
+}
+
+func normalizedSittingLocales(defaultLocale string, locales []string) []string {
+	seen := make(map[string]struct{}, len(locales)+2)
+	result := make([]string, 0, len(locales)+2)
+	values := append([]string(nil), locales...)
+	values = append(values, defaultLocale, model.DefaultLocale)
+	for _, raw := range values {
+		locale := normalizeSittingLocale(raw)
+		if locale == "" {
+			continue
+		}
+		if _, exists := seen[locale]; exists {
+			continue
+		}
+		seen[locale] = struct{}{}
+		result = append(result, locale)
+	}
+	return result
+}
+
+func validFrozenSittingBundle(bundle FrozenSittingBundleV2) bool {
+	if bundle.Version != 2 || ValidateAddress(bundle.From) != nil || bundle.DefaultLocale == "" ||
+		len(bundle.Messages) == 0 || len(bundle.Messages) > 64 {
+		return false
+	}
+	if _, ok := bundle.Messages[bundle.DefaultLocale]; !ok {
+		return false
+	}
+	for locale, messages := range bundle.Messages {
+		if locale != normalizeSittingLocale(locale) || len(messages) != len(sittingTemplateKeys()) {
+			return false
+		}
+		for _, key := range sittingTemplateKeys() {
+			content, ok := messages[key]
+			if !ok || content.Subject == "" || content.Text == "" || content.HTML == "" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (bundle FrozenSittingBundleV2) contentFor(requestedLocale string, key model.MailTemplateKey) (FrozenContent, bool) {
+	requested := normalizeSittingLocale(requestedLocale)
+	locales := make([]string, 0, 4)
+	if requested != "" {
+		locales = append(locales, requested)
+		if base, _, found := strings.Cut(requested, "-"); found {
+			locales = append(locales, base)
+		}
+	}
+	for _, fallback := range []string{bundle.DefaultLocale, model.DefaultLocale} {
+		fallback = normalizeSittingLocale(fallback)
+		if fallback != "" {
+			locales = append(locales, fallback)
+		}
+	}
+	seen := make(map[string]struct{}, len(locales))
+	for _, locale := range locales {
+		if _, exists := seen[locale]; exists {
+			continue
+		}
+		seen[locale] = struct{}{}
+		if messages, ok := bundle.Messages[locale]; ok {
+			content, exists := messages[key]
+			return content, exists
+		}
+	}
+	return FrozenContent{}, false
 }
 
 func validSittingDetails(details SittingScheduleDetails) bool {

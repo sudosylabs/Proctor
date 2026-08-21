@@ -12,6 +12,7 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -26,14 +27,14 @@ func TestAccountMailerAdapterClassifiesPortableAndLegacyFailures(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
-		want app.MailTransportOutcome
+		want appmail.TransportOutcome
 	}{
-		{name: "portable temporary", err: portableMailOutcomeError{outcome: "temporary"}, want: app.MailTransportTemporary},
-		{name: "portable permanent", err: portableMailOutcomeError{outcome: "permanent"}, want: app.MailTransportPermanent},
-		{name: "portable uncertain", err: portableMailOutcomeError{outcome: "acceptance_uncertain"}, want: app.MailTransportAcceptanceUncertain},
-		{name: "legacy temporary", err: mailpkg.ErrConnection, want: app.MailTransportTemporary},
-		{name: "legacy permanent", err: mailpkg.ErrRejected, want: app.MailTransportPermanent},
-		{name: "unknown", err: errors.New("unknown"), want: app.MailTransportUnknown},
+		{name: "portable temporary", err: portableMailOutcomeError{outcome: "temporary"}, want: appmail.TransportTemporary},
+		{name: "portable permanent", err: portableMailOutcomeError{outcome: "permanent"}, want: appmail.TransportPermanent},
+		{name: "portable uncertain", err: portableMailOutcomeError{outcome: "acceptance_uncertain"}, want: appmail.TransportAcceptanceUncertain},
+		{name: "legacy temporary", err: mailpkg.ErrConnection, want: appmail.TransportTemporary},
+		{name: "legacy permanent", err: mailpkg.ErrRejected, want: appmail.TransportPermanent},
+		{name: "unknown", err: errors.New("unknown"), want: appmail.TransportUnknown},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

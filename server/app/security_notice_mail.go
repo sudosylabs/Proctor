@@ -3,16 +3,16 @@
 
 package app
 
-import (
-	"time"
+import appmail "github.com/sudosylabs/proctor/server/app/mail"
 
-	appmail "github.com/sudosylabs/proctor/server/app/mail"
-)
+type accountStateMailPreparer interface {
+	PrepareAccountStateChanged(appmail.NoticePreparation, bool) (*preparedDirectMail, error)
+}
 
-const securityNoticeDeliveryLifetime = 24 * time.Hour
+type sessionAdministrationMailPreparer interface {
+	PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation) (*preparedDirectMail, error)
+}
 
-type securityNoticePreparation = appmail.SecurityNoticePreparation
-
-type securityNoticeMailPreparer interface {
-	PrepareSecurityNotice(securityNoticePreparation) (*preparedDirectMail, error)
+type mfaNoticeMailPreparer interface {
+	PrepareMFANotice(appmail.NoticePreparation, appmail.MFANoticeKind) (*preparedDirectMail, error)
 }

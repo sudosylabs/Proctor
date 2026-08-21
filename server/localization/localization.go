@@ -239,6 +239,15 @@ func (l *Localizer) SupportedLocales() []string {
 	return append([]string(nil), l.locales...)
 }
 
+// DefaultLocale returns the normalized installation locale used before the
+// final English fallback.
+func (l *Localizer) DefaultLocale() string {
+	if l == nil {
+		return ""
+	}
+	return l.defaultLocale
+}
+
 func normalizeLocale(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if !localePattern.MatchString(raw) {

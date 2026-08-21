@@ -173,27 +173,7 @@ func (a *mailAuditFake) Fail(context.Context, string, string) error { a.failCall
 
 type mailRendererFake struct{ content FrozenMailContent }
 
-func (r mailRendererFake) Render(model.MailTemplateKey, string, string) (FrozenMailContent, error) {
-	return r.content, nil
-}
-
-func (r mailRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
-	return r.content, nil
-}
-
-func (r mailRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, ExamManagerMailDetails) (FrozenMailContent, error) {
-	return r.content, nil
-}
-
-func (r mailRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
-	return r.content, nil
-}
-
-func (r mailRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
-	return r.content, nil
-}
-
-func (r mailRendererFake) RenderResultRelease(model.MailTemplateKey, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) Render(MailRenderRequest) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
@@ -265,9 +245,8 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := preparer.PrepareDirect(DirectMailPreparation{Recipient: user, OccurrenceID: model.NewMailOccurrenceID(),
-		Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityVerifyEmail,
-		ActionURL: actionURL, At: at, Deadline: at.Add(time.Hour), JobType: model.JobTypeMailDeliverCredential})
+	prepared, err := preparer.PrepareEmailVerification(AccountTokenMailPreparation{Recipient: user,
+		OccurrenceID: model.NewMailOccurrenceID(), ActionURL: actionURL, At: at, Deadline: at.Add(time.Hour)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,10 +377,7 @@ func TestDirectMailPreparerCreatesTerminalSuppressedIntentWhenDisabled(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := preparer.PrepareDirect(DirectMailPreparation{Recipient: mailTestUser(principal, at),
-		OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
-		TemplateKey: model.MailTemplateIdentityPasswordChanged, At: at,
-		Deadline: at.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
+	prepared, err := preparer.PreparePasswordChanged(NoticeMailPreparation{Recipient: mailTestUser(principal, at), At: at})
 	if err != nil {
 		t.Fatal(err)
 	}

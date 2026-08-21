@@ -73,9 +73,11 @@ type submissionReceiptRendererFake struct {
 	calls   int
 }
 
-func (renderer *submissionReceiptRendererFake) RenderSubmissionReceipt(_ model.MailTemplateKey, _ string,
-	details SubmissionReceiptMailDetails,
-) (FrozenMailContent, error) {
+func (renderer *submissionReceiptRendererFake) Render(request MailRenderRequest) (FrozenMailContent, error) {
+	details, ok := request.Presentation.(SubmissionReceiptMailDetails)
+	if !ok {
+		return renderer.mailRendererFake.Render(request)
+	}
 	renderer.calls++
 	renderer.details = details
 	return FrozenMailContent{Subject: "Receipt", Text: details.SubmissionID.String(), HTML: "<p>Receipt</p>"}, nil

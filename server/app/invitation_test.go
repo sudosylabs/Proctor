@@ -775,14 +775,15 @@ func (f *invitationMailPreparerFake) PrepareInvitationRevocation(invitation *mod
 	prepared.Job, _ = model.NewJob(prepared.Job.ID, model.JobTypeMailDeliver, 1, command, prepared.Delivery.ID.String(), at, at, model.MailMaximumAttempts)
 	return prepared, nil
 }
-func (f *invitationMailPreparerFake) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
+func (f *invitationMailPreparerFake) PrepareInvitationAccepted(request NoticeMailPreparation) (*preparedDirectMail, error) {
 	if f.directErr != nil {
 		return nil, f.directErr
 	}
-	f.directJobType = request.JobType
-	prepared := invitationPreparedMail(request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, request.TemplateKey, request.At, request.Deadline)
+	f.directJobType = model.JobTypeMailDeliver
+	prepared := invitationPreparedMail(request.Recipient.ID, request.Recipient.ID, "", model.NewMailOccurrenceID(),
+		model.MailTemplateAccessInvitationAccepted, request.At, request.At.Add(24*time.Hour))
 	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: prepared.Delivery.ID})
-	prepared.Job, _ = model.NewJob(prepared.Job.ID, request.JobType, 1, command, prepared.Delivery.ID.String(), request.At, request.At, model.MailMaximumAttempts)
+	prepared.Job, _ = model.NewJob(prepared.Job.ID, model.JobTypeMailDeliver, 1, command, prepared.Delivery.ID.String(), request.At, request.At, model.MailMaximumAttempts)
 	if f.disabled {
 		prepared.Job, _ = prepared.Job.RequestCancellation(request.At)
 		prepared.Delivery.State = model.MailDeliverySuppressed

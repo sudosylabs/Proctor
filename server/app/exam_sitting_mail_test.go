@@ -40,16 +40,21 @@ func TestSittingMailPreparerFreezesAllFourSafeRenderVariants(t *testing.T) {
 		}
 	}
 	opened, err := preparer.OpenBundle(prepared.Bundle)
-	if err != nil || len(opened.Messages) != 4 || opened.Messages[model.MailTemplateExamSittingCancelled].Subject == "" {
+	if err != nil || len(opened.Messages) != 1 || opened.Messages["en"][model.MailTemplateExamSittingCancelled].Subject == "" {
 		t.Fatalf("opened bundle=(%#v,%v)", opened, err)
 	}
 }
 
 type sittingMailRendererFake struct{}
 
-func (sittingMailRendererFake) RenderSittingScheduleNotice(key model.MailTemplateKey, _ string,
-	details SittingScheduleMailDetails,
-) (FrozenMailContent, error) {
+func (sittingMailRendererFake) SittingLocales() (string, []string) { return "en", []string{"en"} }
+
+func (sittingMailRendererFake) Render(request MailRenderRequest) (FrozenMailContent, error) {
+	details, ok := request.Presentation.(SittingScheduleMailDetails)
+	if !ok {
+		return FrozenMailContent{}, nil
+	}
+	key := request.Key
 	return FrozenMailContent{Subject: string(key), Text: details.ExamTitle + " " + details.ClassDisplayName,
 		HTML: "<p>" + details.ExamTitle + " " + details.ClassDisplayName + "</p>"}, nil
 }

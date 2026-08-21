@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -60,7 +61,7 @@ type sessionAdministrationService struct {
 	users         sessionAdministrationUserStore
 	authorization sessionAdministrationAuthorizer
 	audit         mutationAuditor
-	mail          securityNoticeMailPreparer
+	mail          sessionAdministrationMailPreparer
 	effects       sessionAdministrationEffects
 	now           func() time.Time
 }
@@ -70,7 +71,7 @@ func newSessionAdministrationService(
 	users sessionAdministrationUserStore,
 	authorization sessionAdministrationAuthorizer,
 	audit mutationAuditor,
-	mail securityNoticeMailPreparer,
+	mail sessionAdministrationMailPreparer,
 	effects sessionAdministrationEffects,
 	now func() time.Time,
 ) *sessionAdministrationService {
@@ -265,9 +266,7 @@ func (s *sessionAdministrationService) RevokeAll(
 }
 
 func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*preparedDirectMail, error) {
-	return s.mail.PrepareSecurityNotice(securityNoticePreparation{
-		Recipient: user, TemplateKey: model.MailTemplateIdentitySessionsRevokedByAdmin, At: at,
-	})
+	return s.mail.PrepareSessionsRevokedByAdministrator(appmail.NoticePreparation{Recipient: user, At: at})
 }
 
 type sessionAdministrationAuthorization struct {

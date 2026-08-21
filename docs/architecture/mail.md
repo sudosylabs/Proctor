@@ -82,7 +82,19 @@ general `server/localization` module, which validates and compiles every
 catalog at startup and resolves each field with per-message fallback.
 `server/app/mail` owns mail-specific rendering and assembles those fields into
 one private typed presentation model before executing either alternative, so
-HTML and text cannot diverge by performing independent lookups.
+HTML and text cannot diverge by performing independent lookups. Its renderer
+accepts one closed typed request whose presentation value is limited to the
+mail families owned by that package; adding a family extends that request
+rather than adding a parallel rendering interface to the parent application.
+
+One complete mail definition registry owns the occurrence meaning, delivery
+Job class, default lifetime, action-link requirement, and presentation family
+for every template key. Application use cases request semantic outcomes such
+as email verification, password reset, account-state change, or Sitting
+schedule communication. They do not select a template key, occurrence kind,
+delivery Job class, or lifetime for those outcomes. Family-specific operations
+which legitimately select among related meanings accept only that bounded
+family choice and validate it against the same registry.
 
 Every message key has a typed data model. Templates do not receive arbitrary
 maps, construct routes, or look up application state. Each MJML and text source
@@ -139,9 +151,11 @@ operation; Proctor never claims inbox delivery. Every delivery has a stable
 Message-ID that survives automatic and operator retry.
 
 The `server/app/mail` child module prepares a validated occurrence, encrypted
-payload and required Job for every catalog family. The originating named Store
-mutation inserts them with the business state and audit in one PostgreSQL
-transaction. A standalone mail or
+payload and required Job for every catalog family. Shared payload freezing owns
+address validation, bounded serialization, sealing, digest, and stable
+Message-ID construction for both direct and fan-out child deliveries. The
+originating named Store mutation inserts them with the business state and audit
+in one PostgreSQL transaction. A standalone mail or
 Job enqueue after the business commit is forbidden. If enabled mail cannot be
 prepared or persisted, the originating mutation rolls back. A missing or
 ineligible recipient instead records an operator-visible terminal suppression;
@@ -249,11 +263,15 @@ Institution/Academic Unit scope label, and bounded action count. The one-time
 credential, stored hash, and complete action list never enter mail content or
 delivery metadata.
 
-A fan-out occurrence freezes a bounded encrypted render bundle containing its
-template sources, localized copy, schema version, and digest. Every child uses
-that bundle so one fan-out cannot mix releases during a deployment. The bundle
-is destroyed when expansion terminates. Later roster reconciliation creates a
-new occurrence using the then-current template release.
+A fan-out occurrence freezes a bounded encrypted render bundle containing the
+rendered text and HTML alternatives for every supported locale, the
+installation default locale, schema version, and sender. Recipient expansion
+selects exact locale, language base, installation default, then English from
+that immutable bundle; it never consults live localization or template assets.
+Every child therefore uses one release without losing recipient-localized
+copy. Version-one English-only bundles remain readable during an upgrade. The
+bundle is destroyed when expansion terminates. Later roster reconciliation
+creates a new occurrence using the then-current template release.
 
 ## Security and privacy
 

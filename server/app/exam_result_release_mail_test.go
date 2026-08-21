@@ -69,9 +69,11 @@ type resultReleaseRendererFake struct {
 	details ResultReleaseMailDetails
 }
 
-func (renderer *resultReleaseRendererFake) RenderResultRelease(_ model.MailTemplateKey, _ string,
-	details ResultReleaseMailDetails,
-) (FrozenMailContent, error) {
+func (renderer *resultReleaseRendererFake) Render(request MailRenderRequest) (FrozenMailContent, error) {
+	details, ok := request.Presentation.(ResultReleaseMailDetails)
+	if !ok {
+		return renderer.mailRendererFake.Render(request)
+	}
 	renderer.details = details
 	return FrozenMailContent{Subject: "Result available", Text: details.ExamTitle, HTML: "<p>Result available</p>"}, nil
 }

@@ -638,16 +638,40 @@ type accountTokenMailerFake struct {
 
 func (m *accountTokenMailerFake) Enabled() bool { return m.enabled }
 
-func (m *accountTokenMailerFake) PrepareDirect(request DirectMailPreparation) (*preparedDirectMail, error) {
+func (m *accountTokenMailerFake) prepareAccountToken(request AccountTokenMailPreparation, key model.MailTemplateKey) (*preparedDirectMail, error) {
 	m.messages = append(m.messages, request.ActionURL)
 	if m.err != nil {
 		return nil, m.err
 	}
 	return &preparedDirectMail{
-		Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: request.Kind, TemplateKey: request.TemplateKey, CreatedAt: request.At},
+		Occurrence: &model.MailOccurrence{ID: request.OccurrenceID, Kind: model.MailOccurrenceAccountToken, TemplateKey: key, CreatedAt: request.At},
 		Delivery:   &model.MailDelivery{Deadline: request.Deadline},
-		Job:        &model.Job{Type: request.JobType},
+		Job:        &model.Job{Type: model.JobTypeMailDeliverCredential},
 	}, nil
+}
+
+func (m *accountTokenMailerFake) PrepareEmailVerification(request AccountTokenMailPreparation) (*preparedDirectMail, error) {
+	return m.prepareAccountToken(request, model.MailTemplateIdentityVerifyEmail)
+}
+func (m *accountTokenMailerFake) PreparePasswordReset(request AccountTokenMailPreparation) (*preparedDirectMail, error) {
+	return m.prepareAccountToken(request, model.MailTemplateIdentityPasswordReset)
+}
+func (m *accountTokenMailerFake) PreparePasswordChanged(request NoticeMailPreparation) (*preparedDirectMail, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &preparedDirectMail{Occurrence: &model.MailOccurrence{ID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice,
+		TemplateKey: model.MailTemplateIdentityPasswordChanged, CreatedAt: request.At}, Delivery: &model.MailDelivery{Deadline: request.At.Add(24 * time.Hour)},
+		Job: &model.Job{Type: model.JobTypeMailDeliver}}, nil
+}
+func (m *accountTokenMailerFake) PrepareEmailChangeWarning(NoticeMailPreparation) (*preparedDirectMail, error) {
+	return nil, errors.New("unexpected email change warning")
+}
+func (m *accountTokenMailerFake) PrepareEmailChangeVerification(AccountTokenMailPreparation) (*preparedDirectMail, error) {
+	return nil, errors.New("unexpected email change verification")
+}
+func (m *accountTokenMailerFake) PrepareEmailVerifiedByAdministrator(NoticeMailPreparation) (*preparedDirectMail, error) {
+	return nil, errors.New("unexpected privileged email verification")
 }
 
 type accountTokenHasherFake struct {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -133,7 +134,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 		if err != nil {
 			return nil, academicUnitMemberError(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssigned, ActionAt: at,
 		})
@@ -219,7 +220,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		if err != nil {
 			return nil, academicUnitMemberError(err)
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey: model.MailTemplateAcademicUnitAssignmentEnded, ActionAt: at,
 		})

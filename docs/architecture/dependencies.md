@@ -71,10 +71,12 @@ product meaning and policy:
   validation, SMTP, and sender conformance. The server owns templates,
   localization, recipients, rate limits, retries, and durable delivery policy.
   The `app/mail` child module concentrates server-owned composition,
-  suppression, payload freezing/encryption, stable routing metadata, and
-  family-specific meaning. Parent use cases consume narrow preparation ports
-  and persist the result through named aggregate transactions. Mail is not
-  sent synchronously inside a durable business transaction.
+  the complete definition registry, semantic preparation operations,
+  suppression, shared payload freezing/encryption, stable routing metadata,
+  closed typed rendering, and family-specific meaning. Parent use cases
+  consume narrow preparation ports using the child package's contracts
+  directly and persist the result through named aggregate transactions. Mail
+  is not sent synchronously inside a durable business transaction.
 - `secretseal` owns versioned AES-256-GCM envelopes, bounded key rings,
   authenticated purpose/owner binding, and safe cryptographic failures for
   recoverable server application secrets. It has no persistence or

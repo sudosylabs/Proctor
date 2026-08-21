@@ -259,7 +259,8 @@ func (r *templateRenderer) render(request renderRequest) (renderedMessage, error
 			Timezone:     copy.SubmissionReceipt.TimezoneUTC,
 		}
 	}
-	resultReleaseKey := request.Key == model.MailTemplateExamResultReleased
+	definition, definitionOK := definitionFor(request.Key)
+	resultReleaseKey := definitionOK && definition.presentation == presentationResultRelease
 	if resultReleaseKey != (request.ResultRelease != nil) {
 		return renderedMessage{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
 	}
@@ -298,56 +299,30 @@ func (r *templateRenderer) render(request renderRequest) (renderedMessage, error
 	}, nil
 }
 
-func (r *templateRenderer) Render(key model.MailTemplateKey, locale, actionURL string) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, ActionURL: actionURL})
+func (r *templateRenderer) Render(request RenderRequest) (FrozenContent, error) {
+	internal := renderRequest{Key: request.Key, RecipientLocale: request.Locale, ActionURL: request.ActionURL}
+	switch presentation := request.Presentation.(type) {
+	case nil:
+	case PersonalAccessTokenDetails:
+		internal.PersonalAccessToken = &presentation
+	case ExamManagerDetails:
+		internal.ExamManager = &presentation
+	case SittingScheduleDetails:
+		internal.SittingSchedule = &presentation
+	case ClassTransitionDetails:
+		internal.ClassTransition = &presentation
+	case SubmissionReceiptDetails:
+		internal.SubmissionReceipt = &presentation
+	case ResultReleaseDetails:
+		internal.ResultRelease = &presentation
+	default:
+		return FrozenContent{}, errors.New("mail presentation is invalid")
+	}
+	return r.renderContent(internal)
 }
 
-func (r *templateRenderer) RenderPersonalAccessTokenSecurityNotice(
-	key model.MailTemplateKey,
-	locale string,
-	details PersonalAccessTokenDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, PersonalAccessToken: &details})
-}
-
-func (r *templateRenderer) RenderExamManagerNotice(
-	key model.MailTemplateKey,
-	locale string,
-	details ExamManagerDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, ExamManager: &details})
-}
-
-func (r *templateRenderer) RenderClassTransitionNotice(
-	key model.MailTemplateKey,
-	locale string,
-	details ClassTransitionDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, ClassTransition: &details})
-}
-
-func (r *templateRenderer) RenderSubmissionReceipt(
-	key model.MailTemplateKey,
-	locale string,
-	details SubmissionReceiptDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, SubmissionReceipt: &details})
-}
-
-func (r *templateRenderer) RenderResultRelease(
-	key model.MailTemplateKey,
-	locale string,
-	details ResultReleaseDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, ResultRelease: &details})
-}
-
-func (r *templateRenderer) RenderSittingScheduleNotice(
-	key model.MailTemplateKey,
-	locale string,
-	details SittingScheduleDetails,
-) (FrozenContent, error) {
-	return r.renderContent(renderRequest{Key: key, RecipientLocale: locale, SittingSchedule: &details})
+func (r *templateRenderer) SittingLocales() (string, []string) {
+	return r.localizer.DefaultLocale(), r.localizer.SupportedLocales()
 }
 
 func (r *templateRenderer) renderContent(request renderRequest) (FrozenContent, error) {
@@ -359,15 +334,8 @@ func (r *templateRenderer) renderContent(request renderRequest) (FrozenContent, 
 }
 
 func isPersonalAccessTokenTemplate(key model.MailTemplateKey) bool {
-	switch key {
-	case model.MailTemplateIdentityPersonalAccessTokenCreated,
-		model.MailTemplateIdentityPersonalAccessTokenEnabled,
-		model.MailTemplateIdentityPersonalAccessTokenDisabled,
-		model.MailTemplateIdentityPersonalAccessTokenRevoked:
-		return true
-	default:
-		return false
-	}
+	definition, ok := definitionFor(key)
+	return ok && definition.presentation == presentationPersonalAccessToken
 }
 
 func validPersonalAccessTokenDetails(details *PersonalAccessTokenDetails) bool {
@@ -386,15 +354,8 @@ func validPersonalAccessTokenDetails(details *PersonalAccessTokenDetails) bool {
 }
 
 func isExamManagerTemplate(key model.MailTemplateKey) bool {
-	switch key {
-	case model.MailTemplateExamManagerAdded,
-		model.MailTemplateExamManagerRemoved,
-		model.MailTemplateExamOwnershipTransferredToYou,
-		model.MailTemplateExamOwnershipTransferredFromYou:
-		return true
-	default:
-		return false
-	}
+	definition, ok := definitionFor(key)
+	return ok && definition.presentation == presentationExamManager
 }
 
 func validExamManagerDetails(details *ExamManagerDetails) bool {
@@ -419,13 +380,8 @@ func validExamManagerDetails(details *ExamManagerDetails) bool {
 }
 
 func isSittingScheduleTemplate(key model.MailTemplateKey) bool {
-	switch key {
-	case model.MailTemplateExamSittingScheduled, model.MailTemplateExamSittingRescheduled,
-		model.MailTemplateExamSittingCancelled, model.MailTemplateExamSittingAssignmentRemoved:
-		return true
-	default:
-		return false
-	}
+	definition, ok := definitionFor(key)
+	return ok && definition.presentation == presentationSittingSchedule
 }
 
 func validSittingScheduleDetails(details *SittingScheduleDetails) bool {
@@ -447,17 +403,13 @@ func validSittingScheduleDetails(details *SittingScheduleDetails) bool {
 }
 
 func isClassTransitionTemplate(key model.MailTemplateKey) bool {
-	switch key {
-	case model.MailTemplateAcademicClassEnrolled, model.MailTemplateAcademicClassEnrollmentEnded,
-		model.MailTemplateAcademicClassTransferred:
-		return true
-	default:
-		return false
-	}
+	definition, ok := definitionFor(key)
+	return ok && definition.presentation == presentationClassTransition
 }
 
 func isSubmissionReceiptTemplate(key model.MailTemplateKey) bool {
-	return key == model.MailTemplateExamSubmissionReceived || key == model.MailTemplateExamSubmissionAutomaticallySealed
+	definition, ok := definitionFor(key)
+	return ok && definition.presentation == presentationSubmissionReceipt
 }
 
 func validSubmissionReceiptDetails(details *SubmissionReceiptDetails) bool {

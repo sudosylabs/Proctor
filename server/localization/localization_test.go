@@ -23,6 +23,14 @@ func TestLocalizerFallsBackPerMessageAndInterpolates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	locales := localizer.SupportedLocales()
+	if localizer.DefaultLocale() != "en" || len(locales) != 2 || locales[0] != "en" || locales[1] != "fr" {
+		t.Fatalf("locale metadata = default %q supported %#v", localizer.DefaultLocale(), locales)
+	}
+	locales[0] = "changed"
+	if localizer.SupportedLocales()[0] != "en" {
+		t.Fatal("supported locales exposed mutable localizer state")
+	}
 	translated, err := localizer.Resolve("fr-CA", "greeting", struct{ Name string }{"Ada"})
 	if err != nil {
 		t.Fatal(err)

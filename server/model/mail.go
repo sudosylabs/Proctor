@@ -30,6 +30,44 @@ func (key MailTemplateKey) IsValid() bool {
 	_, ok := validMailTemplateKeys[key]
 	return ok
 }
+
+// OccurrenceKind returns the one durable occurrence meaning permitted for the
+// template key.
+func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
+	switch key {
+	case MailTemplateSystemTest:
+		return MailOccurrenceOperatorTest, true
+	case MailTemplateIdentityVerifyEmail, MailTemplateIdentityPasswordReset, MailTemplateIdentityEmailChangeVerifyNew:
+		return MailOccurrenceAccountToken, true
+	case MailTemplateIdentityPasswordChanged, MailTemplateIdentityEmailChangeWarningOld, MailTemplateIdentityEmailVerifiedByAdmin,
+		MailTemplateIdentityAccountDisabled, MailTemplateIdentityAccountEnabled, MailTemplateIdentitySessionsRevokedByAdmin,
+		MailTemplateIdentityMFAEnabled, MailTemplateIdentityMFADisabled, MailTemplateIdentityMFARecoveryCodesRegenerated,
+		MailTemplateIdentityPersonalAccessTokenCreated, MailTemplateIdentityPersonalAccessTokenEnabled,
+		MailTemplateIdentityPersonalAccessTokenDisabled, MailTemplateIdentityPersonalAccessTokenRevoked:
+		return MailOccurrenceSecurityNotice, true
+	case MailTemplateAccessStudentClassInvitation, MailTemplateAccessTeacherAcademicUnitInvitation,
+		MailTemplateAccessAcademicUnitRoleInvitation, MailTemplateAccessInstitutionRoleInvitation,
+		MailTemplateAccessInvitationAccepted, MailTemplateAccessInvitationRevoked:
+		return MailOccurrenceInvitation, true
+	case MailTemplateAcademicClassEnrolled, MailTemplateAcademicClassEnrollmentEnded, MailTemplateAcademicClassTransferred,
+		MailTemplateAcademicUnitAssigned, MailTemplateAcademicUnitAssignmentEnded, MailTemplateAuthorizationScopedRoleAssigned,
+		MailTemplateAuthorizationScopedRoleEnded, MailTemplateAuthorizationInstitutionRoleAssigned,
+		MailTemplateAuthorizationInstitutionRoleEnded:
+		return MailOccurrenceAcademicAdministration, true
+	case MailTemplateExamSittingScheduled, MailTemplateExamSittingRescheduled, MailTemplateExamSittingCancelled,
+		MailTemplateExamSittingAssignmentRemoved:
+		return MailOccurrenceSittingSchedule, true
+	case MailTemplateExamManagerAdded, MailTemplateExamManagerRemoved, MailTemplateExamOwnershipTransferredToYou,
+		MailTemplateExamOwnershipTransferredFromYou:
+		return MailOccurrenceExamManagement, true
+	case MailTemplateExamSubmissionReceived, MailTemplateExamSubmissionAutomaticallySealed:
+		return MailOccurrenceSubmissionReceipt, true
+	case MailTemplateExamResultReleased:
+		return MailOccurrenceResultRelease, true
+	default:
+		return "", false
+	}
+}
 func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
 
 const (
@@ -188,40 +226,8 @@ func (o *MailOccurrence) Validate() error {
 }
 
 func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bool {
-	switch kind {
-	case MailOccurrenceOperatorTest:
-		return key == MailTemplateSystemTest
-	case MailOccurrenceAccountToken:
-		return key == MailTemplateIdentityVerifyEmail || key == MailTemplateIdentityPasswordReset || key == MailTemplateIdentityEmailChangeVerifyNew
-	case MailOccurrenceSecurityNotice:
-		return key == MailTemplateIdentityPasswordChanged || key == MailTemplateIdentityEmailChangeWarningOld || key == MailTemplateIdentityEmailVerifiedByAdmin ||
-			key == MailTemplateIdentityAccountDisabled || key == MailTemplateIdentityAccountEnabled || key == MailTemplateIdentitySessionsRevokedByAdmin ||
-			key == MailTemplateIdentityMFAEnabled || key == MailTemplateIdentityMFADisabled || key == MailTemplateIdentityMFARecoveryCodesRegenerated ||
-			key == MailTemplateIdentityPersonalAccessTokenCreated || key == MailTemplateIdentityPersonalAccessTokenEnabled ||
-			key == MailTemplateIdentityPersonalAccessTokenDisabled || key == MailTemplateIdentityPersonalAccessTokenRevoked
-	case MailOccurrenceInvitation:
-		return key == MailTemplateAccessStudentClassInvitation || key == MailTemplateAccessTeacherAcademicUnitInvitation ||
-			key == MailTemplateAccessAcademicUnitRoleInvitation || key == MailTemplateAccessInstitutionRoleInvitation ||
-			key == MailTemplateAccessInvitationAccepted || key == MailTemplateAccessInvitationRevoked
-	case MailOccurrenceAcademicAdministration:
-		return key == MailTemplateAcademicClassEnrolled || key == MailTemplateAcademicClassEnrollmentEnded ||
-			key == MailTemplateAcademicClassTransferred || key == MailTemplateAcademicUnitAssigned ||
-			key == MailTemplateAcademicUnitAssignmentEnded || key == MailTemplateAuthorizationScopedRoleAssigned ||
-			key == MailTemplateAuthorizationScopedRoleEnded || key == MailTemplateAuthorizationInstitutionRoleAssigned ||
-			key == MailTemplateAuthorizationInstitutionRoleEnded
-	case MailOccurrenceSittingSchedule:
-		return key == MailTemplateExamSittingScheduled || key == MailTemplateExamSittingRescheduled ||
-			key == MailTemplateExamSittingCancelled || key == MailTemplateExamSittingAssignmentRemoved
-	case MailOccurrenceExamManagement:
-		return key == MailTemplateExamManagerAdded || key == MailTemplateExamManagerRemoved ||
-			key == MailTemplateExamOwnershipTransferredToYou || key == MailTemplateExamOwnershipTransferredFromYou
-	case MailOccurrenceSubmissionReceipt:
-		return key == MailTemplateExamSubmissionReceived || key == MailTemplateExamSubmissionAutomaticallySealed
-	case MailOccurrenceResultRelease:
-		return key == MailTemplateExamResultReleased
-	default:
-		return false
-	}
+	want, ok := key.OccurrenceKind()
+	return ok && kind == want
 }
 
 // MailDelivery contains only bounded routing metadata plus an opaque encrypted

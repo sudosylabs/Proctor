@@ -15,6 +15,7 @@ import (
 	"sort"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -409,7 +410,7 @@ func (s *personalAccessTokenAdministrationService) prepareSecurityNotice(
 	if err != nil || user == nil || user.ID != userID {
 		return store.PersonalAccessTokenSecurityNotice{}, personalAccessTokenFailure("user", err)
 	}
-	prepared, err := s.mail.PreparePersonalAccessTokenSecurityNotice(personalAccessTokenSecurityNoticePreparation{
+	prepared, err := s.mail.PreparePersonalAccessTokenSecurityNotice(appmail.PersonalAccessTokenPreparation{
 		Recipient: user, TemplateKey: key, Description: token.Description,
 		ExpiresAt: token.ExpiresAt, ActionAt: at, ActionCount: len(token.Scopes),
 		AcademicUnitScoped: !token.AcademicUnitID.IsZero(),

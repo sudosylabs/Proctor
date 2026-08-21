@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -283,7 +284,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			return nil, classMemberError(err)
 		}
 	}
-	details := ClassTransitionMailDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
+	details := appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: candidate.StartsAt}
 	if candidate.EndsAt.Valid {
 		details.EndsAt = candidate.EndsAt.Time
 	}
@@ -294,7 +295,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	}
 	var prepared *preparedDirectMail
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
+		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key,
 			Details: details, ActionAt: at})
 		if err != nil {
@@ -429,10 +430,10 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 	at := model.TimeFromMillis(model.MillisFromTime(s.now()))
 	prepared := &preparedDirectMail{}
 	if !command.batchRetainedOutcome {
-		prepared, err = s.mail.PrepareClassTransition(ClassTransitionMailPreparation{Recipient: recipient,
+		prepared, err = s.mail.PrepareClassTransition(appmail.ClassTransitionPreparation{Recipient: recipient,
 			OccurrenceID: model.NewMailOccurrenceID(),
 			TemplateKey:  model.MailTemplateAcademicClassEnrollmentEnded,
-			Details:      ClassTransitionMailDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
+			Details:      appmail.ClassTransitionDetails{ClassDisplayName: class.DisplayName, StartsAt: current.StartsAt, EndsAt: at}, ActionAt: at})
 		if err != nil {
 			return nil, NewError("mail.unavailable").Wrap(err)
 		}

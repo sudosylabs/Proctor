@@ -15,12 +15,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SittingScheduleMailDetails = appmail.SittingScheduleDetails
-type SittingMailTemplateRenderer = appmail.SittingRenderer
-type sittingMailPreparer = appmail.SittingComposer
-
 type sittingScheduleMailPreparationAdapter struct {
-	preparer  *sittingMailPreparer
+	preparer  *appmail.SittingComposer
 	revisions store.ExamRevisionStore
 	classes   store.ClassStore
 }
@@ -54,14 +50,14 @@ func (adapter sittingScheduleMailPreparationAdapter) Prepare(ctx context.Context
 		sitting.State = model.ExamSittingCanceled
 		sitting.ReasonCode = model.ExamSittingReasonManagerCanceled
 	}
-	return adapter.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, SittingScheduleMailDetails{
+	return adapter.preparer.Prepare(request.ActorUserID, sitting, request.ChangeKind, appmail.SittingScheduleDetails{
 		ExamTitle: revision.Title, ClassDisplayName: class.DisplayName, PriorClassDisplayName: priorClassName,
 		StartsAt: request.StartsAt, EndsAt: request.EndsAt,
 	})
 }
 
-func newSittingMailPreparer(renderer SittingMailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer,
+func newSittingMailPreparer(renderer appmail.SittingRenderer, sender appmail.Sender, sealer *secretseal.Sealer,
 	now func() time.Time,
-) (*sittingMailPreparer, error) {
+) (*appmail.SittingComposer, error) {
 	return appmail.NewSittingComposer(renderer, sender, sealer, now)
 }

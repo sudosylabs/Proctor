@@ -13,10 +13,8 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SubmissionReceiptMailPreparation = appmail.SubmissionReceiptPreparation
-
 type examSubmissionMailPreparationAdapter struct {
-	preparer  *directMailPreparer
+	preparer  *appmail.Composer
 	users     store.UserStore
 	sittings  store.ExamSittingStore
 	revisions store.ExamRevisionStore
@@ -53,9 +51,9 @@ func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx
 	if request.Automatic {
 		key = model.MailTemplateExamSubmissionAutomaticallySealed
 	}
-	prepared, err := adapter.preparer.PrepareSubmissionReceiptMail(SubmissionReceiptMailPreparation{
+	prepared, err := adapter.preparer.PrepareSubmissionReceiptMail(appmail.SubmissionReceiptPreparation{
 		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.SubmissionID.String()), TemplateKey: key,
-		Details: SubmissionReceiptMailDetails{ExamTitle: revision.Title, SittingID: request.SittingID,
+		Details: appmail.SubmissionReceiptDetails{ExamTitle: revision.Title, SittingID: request.SittingID,
 			SubmissionID: request.SubmissionID, SealedAt: request.SealedAt}, ActionAt: request.SealedAt,
 	})
 	if err != nil {

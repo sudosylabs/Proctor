@@ -41,24 +41,39 @@ func (e *accountStateEffectsFake) SessionsRevoked(context.Context, string, []*mo
 
 type securityNoticeMailerFake struct {
 	events   *[]string
-	requests []securityNoticePreparation
+	requests []DirectMailPreparation
 	err      error
 }
 
-func (m *securityNoticeMailerFake) PrepareSecurityNotice(request securityNoticePreparation) (*preparedDirectMail, error) {
+func (m *securityNoticeMailerFake) prepare(request NoticeMailPreparation, key model.MailTemplateKey) (*preparedDirectMail, error) {
 	if m.events != nil {
 		*m.events = append(*m.events, "prepare-mail")
 	}
-	m.requests = append(m.requests, request)
+	direct := DirectMailPreparation{Recipient: request.Recipient, OccurrenceID: model.NewMailOccurrenceID(),
+		Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key, At: request.At,
+		Deadline: request.At.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver}
+	m.requests = append(m.requests, direct)
 	if m.err != nil {
 		return nil, m.err
 	}
 	occurrenceID := model.NewMailOccurrenceID()
 	return &preparedDirectMail{
-		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: request.TemplateKey},
-		Delivery:   &model.MailDelivery{ID: model.NewMailDeliveryID(), OccurrenceID: occurrenceID, TemplateKey: request.TemplateKey},
+		Occurrence: &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSecurityNotice, TemplateKey: key},
+		Delivery:   &model.MailDelivery{ID: model.NewMailDeliveryID(), OccurrenceID: occurrenceID, TemplateKey: key},
 		Job:        &model.Job{ID: model.NewJobID(), Type: model.JobTypeMailDeliver},
 	}, nil
+}
+
+func (m *securityNoticeMailerFake) PrepareAccountStateChanged(request NoticeMailPreparation, enabled bool) (*preparedDirectMail, error) {
+	key := model.MailTemplateIdentityAccountDisabled
+	if enabled {
+		key = model.MailTemplateIdentityAccountEnabled
+	}
+	return m.prepare(request, key)
+}
+
+func (m *securityNoticeMailerFake) PrepareSessionsRevokedByAdministrator(request NoticeMailPreparation) (*preparedDirectMail, error) {
+	return m.prepare(request, model.MailTemplateIdentitySessionsRevokedByAdmin)
 }
 
 func TestAccountDisableCommitsBeforePublishingRevocation(t *testing.T) {

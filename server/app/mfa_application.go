@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -33,7 +34,7 @@ type mfaApplicationService struct {
 	institutions            store.InstitutionStore
 	audit                   mfaAudit
 	effects                 mfaEffects
-	mail                    securityNoticeMailPreparer
+	mail                    mfaNoticeMailPreparer
 	mechanics               *mfaMechanics
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
@@ -46,7 +47,7 @@ func newMFAApplicationService(
 	institutions store.InstitutionStore,
 	audit mfaAudit,
 	effects mfaEffects,
-	mail securityNoticeMailPreparer,
+	mail mfaNoticeMailPreparer,
 	mechanics *mfaMechanics,
 	recentAuthenticationTTL time.Duration,
 	now func() time.Time,
@@ -213,7 +214,7 @@ func (s *mfaApplicationService) Activate(
 		return nil, authenticationUnavailable(err)
 	}
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, model.MailTemplateIdentityMFAEnabled, now,
+		ctx, principal.UserID, appmail.MFANoticeEnabled, now,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -318,7 +319,7 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, model.MailTemplateIdentityMFARecoveryCodesRegenerated, now,
+		ctx, principal.UserID, appmail.MFANoticeRecoveryCodesRegenerated, now,
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -357,7 +358,7 @@ func (s *mfaApplicationService) Disable(
 	}
 	now := model.TimeFromMillis(s.now().UnixMilli())
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, model.MailTemplateIdentityMFADisabled, now,
+		ctx, principal.UserID, appmail.MFANoticeDisabled, now,
 	)
 	if appErr != nil {
 		return appErr
@@ -386,16 +387,14 @@ func (s *mfaApplicationService) Disable(
 func (s *mfaApplicationService) prepareSecurityNotice(
 	ctx context.Context,
 	userID model.UserID,
-	key model.MailTemplateKey,
+	kind appmail.MFANoticeKind,
 	at time.Time,
 ) (*preparedDirectMail, error) {
 	user, err := s.users.Get(ctx, userID.String())
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
-	prepared, err := s.mail.PrepareSecurityNotice(securityNoticePreparation{
-		Recipient: user, TemplateKey: key, At: at,
-	})
+	prepared, err := s.mail.PrepareMFANotice(appmail.NoticePreparation{Recipient: user, At: at}, kind)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}

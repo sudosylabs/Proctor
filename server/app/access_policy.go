@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -40,7 +41,7 @@ type accessPolicyCapabilitySource interface {
 // from the live registry and mail transport. Secrets never enter policy code.
 type deploymentAccessPolicyCapabilities struct {
 	providers externalProviderSource
-	mail      MailDeliverySender
+	mail      appmail.Sender
 	health    interface{ Code() string }
 }
 

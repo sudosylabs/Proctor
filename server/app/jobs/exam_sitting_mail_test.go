@@ -99,9 +99,14 @@ func TestSittingMailExpansionLeaseLossReplaysRecipientCommitsWithoutDuplicates(t
 
 type sittingMailRendererFake struct{}
 
-func (sittingMailRendererFake) RenderSittingScheduleNotice(key model.MailTemplateKey, _ string,
-	details appmail.SittingScheduleDetails,
-) (appmail.FrozenContent, error) {
+func (sittingMailRendererFake) SittingLocales() (string, []string) { return "en", []string{"en"} }
+
+func (sittingMailRendererFake) Render(request appmail.RenderRequest) (appmail.FrozenContent, error) {
+	details, ok := request.Presentation.(appmail.SittingScheduleDetails)
+	if !ok {
+		return appmail.FrozenContent{}, nil
+	}
+	key := request.Key
 	return appmail.FrozenContent{Subject: string(key), Text: details.ExamTitle + " " + details.ClassDisplayName,
 		HTML: "<p>" + details.ExamTitle + " " + details.ClassDisplayName + "</p>"}, nil
 }

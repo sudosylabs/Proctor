@@ -47,10 +47,6 @@ func run(args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("construct mail renderer: %w", err)
 	}
-	sittingRenderer, ok := renderer.(appmail.SittingRenderer)
-	if !ok {
-		return errors.New("mail renderer does not support Sitting templates")
-	}
 	if err := os.MkdirAll(*output, 0o755); err != nil {
 		return fmt.Errorf("create preview directory: %w", err)
 	}
@@ -59,17 +55,18 @@ func run(args []string, stderr io.Writer) error {
 	index.WriteString("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>Proctor mail previews</title></head><body>\n")
 	index.WriteString("<h1>Proctor transactional-mail previews</h1>\n<ul>\n")
 	for _, key := range model.AllMailTemplateKeys() {
-		var message appmail.FrozenContent
-		var renderErr error
+		request := appmail.RenderRequest{Key: key, Locale: "en",
+			ActionURL: "https://proctor.example.test/representative#token=not-a-credential"}
 		switch key {
 		case model.MailTemplateIdentityPersonalAccessTokenCreated,
 			model.MailTemplateIdentityPersonalAccessTokenEnabled,
 			model.MailTemplateIdentityPersonalAccessTokenDisabled,
 			model.MailTemplateIdentityPersonalAccessTokenRevoked:
-			message, renderErr = renderer.RenderPersonalAccessTokenSecurityNotice(key, "en", appmail.PersonalAccessTokenDetails{
+			request.Presentation = appmail.PersonalAccessTokenDetails{
 				Description: "Representative automation", ExpiresAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC), ActionCount: 2,
-			})
+			}
+			request.ActionURL = ""
 		case model.MailTemplateExamManagerAdded,
 			model.MailTemplateExamManagerRemoved,
 			model.MailTemplateExamOwnershipTransferredToYou,
@@ -80,19 +77,21 @@ func run(args []string, stderr io.Writer) error {
 			} else if key == model.MailTemplateExamOwnershipTransferredToYou {
 				relationship = "owner"
 			}
-			message, renderErr = renderer.RenderExamManagerNotice(key, "en", appmail.ExamManagerDetails{
+			request.Presentation = appmail.ExamManagerDetails{
 				Title: "Representative programming exam", Relationship: relationship,
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
-			})
+			}
+			request.ActionURL = ""
 		case model.MailTemplateExamSittingScheduled,
 			model.MailTemplateExamSittingRescheduled,
 			model.MailTemplateExamSittingCancelled,
 			model.MailTemplateExamSittingAssignmentRemoved:
-			message, renderErr = sittingRenderer.RenderSittingScheduleNotice(key, "en", appmail.SittingScheduleDetails{
+			request.Presentation = appmail.SittingScheduleDetails{
 				ExamTitle: "Representative programming exam", ClassDisplayName: "Year 2 · Class A",
 				StartsAt: time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
 				EndsAt:   time.Date(2026, 9, 20, 11, 30, 0, 0, time.UTC),
-			})
+			}
+			request.ActionURL = ""
 		case model.MailTemplateAcademicClassEnrolled,
 			model.MailTemplateAcademicClassEnrollmentEnded,
 			model.MailTemplateAcademicClassTransferred:
@@ -105,18 +104,20 @@ func run(args []string, stderr io.Writer) error {
 			} else if key == model.MailTemplateAcademicClassTransferred {
 				details.PreviousClassDisplayName = "Year 2 · Class A"
 			}
-			message, renderErr = renderer.RenderClassTransitionNotice(key, "en", details)
+			request.Presentation = details
+			request.ActionURL = ""
 		case model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionAutomaticallySealed:
-			message, renderErr = renderer.RenderSubmissionReceipt(key, "en", appmail.SubmissionReceiptDetails{
+			request.Presentation = appmail.SubmissionReceiptDetails{
 				ExamTitle: "Representative programming exam", SittingID: model.ExamSittingID(strings.Repeat("y", model.IdLength)),
 				SubmissionID: model.SubmissionID(strings.Repeat("b", model.IdLength)),
-				SealedAt:     time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)})
+				SealedAt:     time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
+			request.ActionURL = ""
 		case model.MailTemplateExamResultReleased:
-			message, renderErr = renderer.RenderResultRelease(key, "en", appmail.ResultReleaseDetails{ExamTitle: "Representative programming exam",
-				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)})
-		default:
-			message, renderErr = renderer.Render(key, "en", "https://proctor.example.test/representative#token=not-a-credential")
+			request.Presentation = appmail.ResultReleaseDetails{ExamTitle: "Representative programming exam",
+				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
+			request.ActionURL = ""
 		}
+		message, renderErr := renderer.Render(request)
 		if renderErr != nil {
 			return fmt.Errorf("render preview %q: %w", key, renderErr)
 		}

@@ -16,6 +16,7 @@ import (
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -31,7 +32,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	sittingRenderer, ok := deps.MailTemplateRenderer.(SittingMailTemplateRenderer)
+	sittingRenderer, ok := deps.MailTemplateRenderer.(appmail.SittingRenderer)
 	if !ok {
 		return examinationConstruction{}, errors.New("Sitting mail template renderer is unavailable")
 	}

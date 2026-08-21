@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -106,11 +107,12 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 	}
 	oldRecipient, newRecipient := *current, *current
 	newRecipient.Email, newRecipient.EmailVerified = newEmail, false
-	warning, err := s.mail.PrepareDirect(DirectMailPreparation{Recipient: &oldRecipient, OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice, TemplateKey: model.MailTemplateIdentityEmailChangeWarningOld, At: now, Deadline: now.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
+	warning, err := s.mail.PrepareEmailChangeWarning(appmail.NoticePreparation{Recipient: &oldRecipient, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
-	verification, err := s.mail.PrepareDirect(DirectMailPreparation{Recipient: &newRecipient, OccurrenceID: model.MailOccurrenceID(token.ID.String()), Kind: model.MailOccurrenceAccountToken, TemplateKey: model.MailTemplateIdentityEmailChangeVerifyNew, ActionURL: link, At: now, Deadline: token.ExpiresAt, JobType: model.JobTypeMailDeliverCredential})
+	verification, err := s.mail.PrepareEmailChangeVerification(appmail.AccountTokenPreparation{Recipient: &newRecipient,
+		OccurrenceID: model.MailOccurrenceID(token.ID.String()), ActionURL: link, At: now, Deadline: token.ExpiresAt})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}
@@ -126,7 +128,7 @@ func (s *accountTokenService) changeUserEmail(ctx context.Context, current *mode
 }
 
 func (s *accountTokenService) verifyUserEmailPrivileged(ctx context.Context, current *model.User, now time.Time, reference mutationAttemptReference) (*model.User, error) {
-	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{Recipient: current, OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceSecurityNotice, TemplateKey: model.MailTemplateIdentityEmailVerifiedByAdmin, At: now, Deadline: now.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
+	prepared, err := s.mail.PrepareEmailVerifiedByAdministrator(appmail.NoticePreparation{Recipient: current, At: now})
 	if err != nil {
 		return nil, accountRecoveryUnavailable(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -221,7 +222,7 @@ func (s *roleBindingService) Create(ctx context.Context, invocation Invocation, 
 		if candidate.ScopeType == model.RoleScopeInstitution {
 			key = model.MailTemplateAuthorizationInstitutionRoleAssigned
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {
@@ -329,7 +330,7 @@ func (s *roleBindingService) End(ctx context.Context, invocation Invocation, com
 		if current.ScopeType == model.RoleScopeInstitution {
 			key = model.MailTemplateAuthorizationInstitutionRoleEnded
 		}
-		notice, err = s.mail.PrepareRelationshipTransition(relationshipTransitionMailPreparation{
+		notice, err = s.mail.PrepareRelationshipTransition(appmail.RelationshipTransitionPreparation{
 			Recipient: recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: key, ActionAt: mailAt,
 		})
 		if err != nil {

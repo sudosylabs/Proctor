@@ -11,11 +11,10 @@ import (
 	"strings"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
-
-const invitationAcceptanceMailLifetime = 24 * time.Hour
 
 type IssueStudentClassInvitationCommand struct {
 	TargetEmail, ClassID                                                      string
@@ -297,7 +296,7 @@ type invitationMailPreparer interface {
 	PrepareInvitation(*model.Invitation, string) (*preparedDirectMail, error)
 	PrepareInvitationResend(*model.Invitation, string, model.UserID, time.Time) (*preparedDirectMail, error)
 	PrepareInvitationRevocation(*model.Invitation, model.UserID, time.Time) (*preparedDirectMail, error)
-	PrepareDirect(DirectMailPreparation) (*preparedDirectMail, error)
+	PrepareInvitationAccepted(appmail.NoticePreparation) (*preparedDirectMail, error)
 }
 
 type invitationService struct {
@@ -1841,11 +1840,7 @@ func (s *invitationService) AcceptStudentClass(ctx context.Context, invocation I
 	member := &model.ClassMember{ClassID: invitation.ClassID, AcademicPeriodID: invitation.AcademicPeriodID,
 		UserID: user.ID, StartsAt: effectiveStart, EndsAt: invitation.IntendedEndsAt}
 	member.PrepareCreate(model.NewClassMemberID(), at)
-	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{
-		Recipient: user, OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceInvitation,
-		TemplateKey: model.MailTemplateAccessInvitationAccepted, At: at,
-		Deadline: at.Add(invitationAcceptanceMailLifetime), JobType: model.JobTypeMailDeliver,
-	})
+	prepared, err := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
 	if err != nil {
 		return nil, NewError("invitation.mail_unavailable").Wrap(err)
 	}
@@ -1908,9 +1903,7 @@ func (s *invitationService) AcceptTeacherAcademicUnit(ctx context.Context, invoc
 		OriginAcademicUnitMemberID: member.ID,
 		ScopeType:                  model.RoleScopeAcademicUnit, ScopeID: invitation.AcademicUnitID.String(), StartsAt: effectiveStart, EndsAt: invitation.IntendedEndsAt}
 	binding.PrepareCreate(model.NewRoleBindingID(), at)
-	prepared, err := s.mail.PrepareDirect(DirectMailPreparation{Recipient: user, OccurrenceID: model.NewMailOccurrenceID(),
-		Kind: model.MailOccurrenceInvitation, TemplateKey: model.MailTemplateAccessInvitationAccepted, At: at,
-		Deadline: at.Add(invitationAcceptanceMailLifetime), JobType: model.JobTypeMailDeliver})
+	prepared, err := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
 	if err != nil {
 		return nil, NewError("invitation.mail_unavailable").Wrap(err)
 	}
@@ -2009,10 +2002,7 @@ func (s *invitationService) AcceptExternalIdentity(ctx context.Context, state *m
 		return nil, store.NewErrInvalidInput("invitation", "purpose", nil)
 	}
 	if invitation.Purpose == model.InvitationPurposeStudentClass || invitation.Purpose == model.InvitationPurposeTeacherAcademicUnit {
-		prepared, prepareErr := s.mail.PrepareDirect(DirectMailPreparation{Recipient: user,
-			OccurrenceID: model.NewMailOccurrenceID(), Kind: model.MailOccurrenceInvitation,
-			TemplateKey: model.MailTemplateAccessInvitationAccepted, At: at,
-			Deadline: at.Add(invitationAcceptanceMailLifetime), JobType: model.JobTypeMailDeliver})
+		prepared, prepareErr := s.mail.PrepareInvitationAccepted(appmail.NoticePreparation{Recipient: user, At: at})
 		if prepareErr == nil {
 			input.Notice = &store.PreparedMail{Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, Job: prepared.Job}
 		}

@@ -20,28 +20,6 @@ const (
 	mailTestRateLimitMaximum   = 3
 )
 
-type FrozenMailContent = appmail.FrozenContent
-type DirectMailPreparation = appmail.DirectPreparation
-type MailAddress = appmail.Address
-type OutboundMail = appmail.Outbound
-type MailTransportOutcome = appmail.TransportOutcome
-type PersonalAccessTokenMailDetails = appmail.PersonalAccessTokenDetails
-type ExamManagerMailDetails = appmail.ExamManagerDetails
-type ClassTransitionMailDetails = appmail.ClassTransitionDetails
-type SubmissionReceiptMailDetails = appmail.SubmissionReceiptDetails
-type ResultReleaseMailDetails = appmail.ResultReleaseDetails
-type DirectMailTemplateRenderer = appmail.Renderer
-type MailDeliverySender = appmail.Sender
-type frozenMailPayloadV1 = appmail.FrozenPayloadV1
-type directMailPreparer = appmail.Composer
-
-const (
-	MailTransportUnknown             = appmail.TransportUnknown
-	MailTransportTemporary           = appmail.TransportTemporary
-	MailTransportPermanent           = appmail.TransportPermanent
-	MailTransportAcceptanceUncertain = appmail.TransportAcceptanceUncertain
-)
-
 type MailDeliveryView struct {
 	ID                                          model.MailDeliveryID
 	OccurrenceID                                model.MailOccurrenceID
@@ -125,8 +103,8 @@ type mailService struct {
 	authorization           mailAuthorizer
 	audit                   mailAuditPreparer
 	attempts                *authenticationAttemptAccounting
-	composer                *directMailPreparer
-	sender                  MailDeliverySender
+	composer                *appmail.Composer
+	sender                  appmail.Sender
 	metrics                 MailDeliveryRecorder
 	sealer                  *secretseal.Sealer
 	recentAuthenticationTTL time.Duration
@@ -134,11 +112,11 @@ type mailService struct {
 	wake                    func()
 }
 
-func newDirectMailPreparer(renderer DirectMailTemplateRenderer, sender MailDeliverySender, sealer *secretseal.Sealer) (*directMailPreparer, error) {
+func newDirectMailPreparer(renderer appmail.Renderer, sender appmail.Sender, sealer *secretseal.Sealer) (*appmail.Composer, error) {
 	return appmail.NewComposer(renderer, sender, sealer)
 }
 
-func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer DirectMailTemplateRenderer, sender MailDeliverySender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
+func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}
@@ -238,9 +216,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 		return MailDeliveryView{}, NewError("mail.recipient_ineligible")
 	}
 	now := model.TimeUTC(s.now())
-	prepared, err := s.composer.PrepareDirect(DirectMailPreparation{Recipient: user, OccurrenceID: model.NewMailOccurrenceID(),
-		Kind: model.MailOccurrenceOperatorTest, TemplateKey: model.MailTemplateSystemTest, At: now,
-		Deadline: now.Add(24 * time.Hour), JobType: model.JobTypeMailDeliver})
+	prepared, err := s.composer.PrepareOperatorTest(appmail.NoticePreparation{Recipient: user, At: now})
 	if err != nil {
 		return MailDeliveryView{}, NewError("mail.unavailable").Wrap(err)
 	}
@@ -258,7 +234,7 @@ func (s *mailService) SendTest(ctx context.Context, invocation Invocation) (Mail
 	return mailDeliveryView(created), nil
 }
 
-func validateMailAddress(address MailAddress) error {
+func validateMailAddress(address appmail.Address) error {
 	return appmail.ValidateAddress(address)
 }
 

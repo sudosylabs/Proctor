@@ -5,8 +5,6 @@ package app
 
 import appmail "github.com/sudosylabs/proctor/server/app/mail"
 
-type ClassTransitionMailPreparation = appmail.ClassTransitionPreparation
-
 type classTransitionMailPreparer interface {
-	PrepareClassTransition(ClassTransitionMailPreparation) (*preparedDirectMail, error)
+	PrepareClassTransition(appmail.ClassTransitionPreparation) (*preparedDirectMail, error)
 }

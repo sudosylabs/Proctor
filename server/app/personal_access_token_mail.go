@@ -5,8 +5,6 @@ package app
 
 import appmail "github.com/sudosylabs/proctor/server/app/mail"
 
-type personalAccessTokenSecurityNoticePreparation = appmail.PersonalAccessTokenPreparation
-
 type personalAccessTokenSecurityNoticeMailPreparer interface {
-	PreparePersonalAccessTokenSecurityNotice(personalAccessTokenSecurityNoticePreparation) (*preparedDirectMail, error)
+	PreparePersonalAccessTokenSecurityNotice(appmail.PersonalAccessTokenPreparation) (*preparedDirectMail, error)
 }

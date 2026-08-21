@@ -256,6 +256,13 @@ The transactional-mail service is implemented for the complete closed 43-key
 catalog. One dedicated `server/app/mail` child module now owns composition for
 all system, identity/security, access/onboarding, academic administration,
 Exam-management, Sitting, Submission, and Result-release families.
+Its complete definition registry owns occurrence meaning, delivery Job class,
+default lifetime, action-link policy, and presentation family for every key.
+Parent use cases call semantic preparation methods through direct child-package
+contracts; they no longer select generic template/kind/Job combinations or
+mirror the mail package's production types. Rendering crosses one closed typed
+request, and direct and fan-out children share the same frozen-payload
+construction.
 The transactional-mail product and delivery architecture are accepted. The
 transport now exposes portable temporary, permanent, and acceptance-uncertain
 outcomes; the server has an independently configured versioned secret-sealing
@@ -316,7 +323,11 @@ single semantic message. Each transition advances the affected Classes'
 durable audience revisions so bounded multi-node reconciliation adds, updates,
 or removes candidate projections for upcoming Sittings. Sitting
 scheduling, rescheduling, cancellation, and assignment removal now use
-an atomic frozen fan-out bundle plus bounded expansion Job. Per-candidate
+an atomic locale-indexed frozen fan-out bundle plus bounded expansion Job. The
+bundle freezes every supported locale and the installation default; expansion
+selects exact locale, language base, installation default, then English without
+consulting mutable assets. Legacy English-only bundles remain readable during
+upgrade. Per-candidate
 last-communicated projections coalesce unsent changes, authoritative pre-send
 fences suppress stale or post-start work, and bounded multi-node
 reconciliation converges later Class-audience changes without loading a roster
@@ -345,10 +356,9 @@ The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
 Recovery, Invitation, Class, Exam-management, Submission, and Result-release
 transitions record encrypted per-recipient delivery intent and durable Jobs
-atomically. The remaining Academic Unit and Role transitions will use the same
-contract, with bounded fan-out, relevance fencing,
-deadline-aware retries, safe operator control, and no user opt-outs. The
-complete contract and remaining delivery order are in
+atomically. Academic Unit and Role transitions use the same contract, with
+bounded fan-out, relevance fencing, deadline-aware retries, safe operator
+control, and no user opt-outs. The complete contract is in
 [Transactional mail](../architecture/mail.md).
 
 The current verification and reset links name server-hosted routes whose pages
