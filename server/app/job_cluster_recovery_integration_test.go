@@ -274,7 +274,14 @@ func openClusteredJobIntegrationStore(t *testing.T) *sqlstore.SQLStore {
 			t.Errorf("close clustered Job integration store: %v", err)
 		}
 	})
-	if _, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE users, file_entries, job_permanent_occurrences, jobs CASCADE`); err != nil {
+	if _, err = persistence.GetMaster().Exec(context.Background(), `TRUNCATE TABLE
+		mail_key_state, mail_fanout_bundles, mail_payload_keys, mail_deliveries, mail_occurrences,
+		audit_events, institutions, users, file_entries, job_permanent_occurrences, jobs CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = persistence.GetMaster().Exec(context.Background(), `INSERT INTO mail_key_state(
+		singleton, required_primary_key_id, active_rekey_job_id, updated_at
+	) VALUES (TRUE, NULL, NULL, clock_timestamp())`); err != nil {
 		t.Fatal(err)
 	}
 	return persistence

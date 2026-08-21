@@ -29,7 +29,7 @@ import (
 
 func TestLocalCacheLayerConformance(t *testing.T) {
 	sqlStore := openTestStore(t)
-	runLayerConformance(t, sqlStore, newLocalCacheConformanceStore(t, sqlStore))
+	runLayerConformance(t, sqlStore, newLocalCacheConformanceStore)
 }
 
 func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
@@ -53,7 +53,7 @@ func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store
 
 func TestRetryLayerConformance(t *testing.T) {
 	sqlStore := openTestStore(t)
-	runLayerConformance(t, sqlStore, newRetryConformanceStore(t, sqlStore))
+	runLayerConformance(t, sqlStore, newRetryConformanceStore)
 }
 
 func newRetryConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
@@ -67,7 +67,7 @@ func newRetryConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 
 func TestTimerLayerConformance(t *testing.T) {
 	sqlStore := openTestStore(t)
-	runLayerConformance(t, sqlStore, newTimerConformanceStore(t, sqlStore))
+	runLayerConformance(t, sqlStore, newTimerConformanceStore)
 }
 
 func newTimerConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
@@ -156,7 +156,11 @@ func TestAccessAndOnboardingDecoratedLayerConformance(t *testing.T) {
 	}
 }
 
-func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store) {
+func runLayerConformance(
+	t *testing.T,
+	sqlStore *SQLStore,
+	decorate func(*testing.T, *SQLStore) store.Store,
+) {
 	t.Helper()
 	tests := []struct {
 		name string
@@ -232,6 +236,11 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 			switch test.name {
 			case "Installation", "AccessPolicy":
 				resetPristineTestStore(t, sqlStore)
+			case "PasswordCredential":
+				resetPristineTestStore(t, sqlStore)
+				seedTestAuthenticationPolicy(t, sqlStore, map[string]model.ProviderAdmissionMode{
+					"campus-cas": model.ProviderAdmissionLinkedOnly,
+				})
 			case "ExternalIdentity":
 				resetPristineTestStore(t, sqlStore)
 				seedTestAuthenticationPolicy(t, sqlStore, map[string]model.ProviderAdmissionMode{
@@ -240,7 +249,7 @@ func runLayerConformance(t *testing.T, sqlStore *SQLStore, decorated store.Store
 			default:
 				resetTestStore(t, sqlStore)
 			}
-			test.run(t, decorated)
+			test.run(t, decorate(t, sqlStore))
 		})
 	}
 }
@@ -1146,7 +1155,7 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 		if _, stageErr := content.StageStarterWorkspaceObject(ctx, neighbor.ID, bytes.NewReader(neighborBytes), int64(len(neighborBytes)), "text/plain"); stageErr != nil {
 			t.Fatal(stageErr)
 		}
-		if _, advanceErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects SET reclaim_after=CURRENT_TIMESTAMP-INTERVAL '1 hour' WHERE id=?`, fixture.OldWorkspaceObjectID.String()); advanceErr != nil {
+		if _, advanceErr := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects SET reclaim_after=created_at WHERE id=?`, fixture.OldWorkspaceObjectID.String()); advanceErr != nil {
 			t.Fatal(advanceErr)
 		}
 

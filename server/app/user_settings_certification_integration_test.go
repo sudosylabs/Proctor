@@ -65,6 +65,7 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	primaryStore := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, primaryStore)
 	secondaryStore := openAdditionalUserSettingsStore(t, dataSource)
 	primaryCluster := &userSettingsRecordingCluster{nodeID: "settings-node-a"}
 	secondaryCluster := &userSettingsRecordingCluster{nodeID: "settings-node-b"}
@@ -84,7 +85,7 @@ func TestUserSettingsTwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint(
 		t.Fatal(err)
 	}
 	login, err := primary.App.Login(ctx, application.Invocation{}, application.LoginCommand{
-		LoginID: user.Username, Password: password, ClientType: model.SessionClientDesktop, Source: "127.0.0.1:1",
+		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +208,7 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	uncertain := &userSettingsUnknownOutcomeStore{Store: persistence}
 	helper := testlib.Setup(t, testlib.WithStore(uncertain))
 	ctx := context.Background()
@@ -223,7 +225,7 @@ func TestUserSettingsUnknownOutcomeReconcilesByReadWithoutContentLeak(t *testing
 		t.Fatal(err)
 	}
 	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
-		LoginID: user.Username, Password: password, ClientType: model.SessionClientDesktop, Source: "127.0.0.1:1",
+		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb, Source: "127.0.0.1:1",
 	})
 	if err != nil {
 		t.Fatal(err)

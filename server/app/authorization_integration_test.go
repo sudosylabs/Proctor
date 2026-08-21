@@ -963,7 +963,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	createdToken := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/users/me/tokens", map[string]any{
 		"description": "academic audit automation",
 		"scopes":      []string{string(model.ActionAcademicAuditView)},
-		"expires_at":  model.GetMillis() + 3_600_000,
+		"expires_at":  model.GetMillis() + 2*60*60*1000,
 	}, institutionAcademicLogin.Tokens.AccessToken)
 	if createdToken.Code != http.StatusCreated {
 		t.Fatalf("create academic audit PAT status = %d: %s", createdToken.Code, createdToken.Body.String())

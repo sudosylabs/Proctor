@@ -664,7 +664,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 		"/api/v1/auth/login",
 		map[string]any{
 			"login_id": user.Username, "password": password,
-			"client_type": model.SessionClientDesktop,
+			"client_type": model.SessionClientWeb,
 		},
 		"",
 	)

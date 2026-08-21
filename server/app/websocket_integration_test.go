@@ -276,7 +276,9 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clusterKey := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	clusterKeyMaterial := make([]byte, 32)
+	clusterKeyMaterial[0] = 1
+	clusterKey := base64.StdEncoding.EncodeToString(clusterKeyMaterial)
 	// Distinct loopback ports so both nodes can bind Memberlist in one process.
 	portA := freeTCPPort(t)
 	portB := freeTCPPort(t)

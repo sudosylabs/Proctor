@@ -62,8 +62,9 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 		EndBindingBeforeAccept: func(t *testing.T, ctx context.Context, binding *model.RoleBinding, operation func() error) error {
 			audit := saveInvitationAuthorityAudit(t, ctx, secondary, binding.UserID, string(model.ActionRoleBindingManage), model.ResourceClass, binding.ScopeID, binding.ScopeType, binding.ScopeID)
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_binding_end", "role_bindings", "UPDATE role_bindings", 8154700260823, func() error {
+				endedAt := model.GetMillis() - 1_000
 				_, err := secondary.RoleBinding().EndWithAudit(ctx, &store.RoleBindingEnd{
-					ID: binding.ID.String(), EndAt: model.GetMillis(), AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+					ID: binding.ID.String(), EndAt: endedAt, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				})
 				return err

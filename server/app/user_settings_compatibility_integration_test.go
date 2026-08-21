@@ -23,6 +23,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is not set")
 	}
 	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	ctx := context.Background()
 	if _, err := persistence.Institution().Save(ctx, &model.Institution{
@@ -39,7 +40,7 @@ func TestUserSettingsUnsupportedFormatIsOpaqueAndReadOnlyAfterRollback(t *testin
 		t.Fatal(err)
 	}
 	login, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
-		LoginID: user.Username, Password: password, ClientType: model.SessionClientDesktop,
+		LoginID: user.Username, Password: password, ClientType: model.SessionClientWeb,
 		Source: "127.0.0.1:1",
 	})
 	if err != nil {

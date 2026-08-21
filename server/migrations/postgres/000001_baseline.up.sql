@@ -2310,7 +2310,7 @@ CREATE TABLE submission_review_release_preparations (
     CONSTRAINT submission_review_release_preparations_review_submission_fkey
         FOREIGN KEY (submission_review_id, submission_id)
         REFERENCES submission_reviews(id, submission_id),
-    CONSTRAINT submission_review_release_preparations_review_id_canonical_check
+    CONSTRAINT submission_review_release_preparations_submission_review_id_canonical_check
         CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     CONSTRAINT submission_review_release_preparations_submission_id_canonical_check
         CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
@@ -3065,6 +3065,14 @@ ALTER TABLE onboarding_imports
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_imports_scope_id_canonical_check
     CHECK (scope_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_source_period_id_canonical_check
+    CHECK (source_period_id IS NULL OR source_period_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_source_class_id_canonical_check
+    CHECK (source_class_id IS NULL OR source_class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_destination_period_id_canonical_check
+    CHECK (destination_period_id IS NULL OR destination_period_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT onboarding_imports_destination_class_id_canonical_check
+    CHECK (destination_class_id IS NULL OR destination_class_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_imports_role_id_canonical_check
     CHECK (role_id IS NULL OR role_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT onboarding_imports_actor_user_id_canonical_check

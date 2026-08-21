@@ -94,6 +94,7 @@ var baselineTables = []string{
 	"submission_review_inventory_discrepancies",
 	"submission_review_inventory_evidence",
 	"submission_review_inventory_flags",
+	"submission_review_release_preparations",
 	"submission_reviews",
 	"upload_leases",
 	"user_settings_documents",

@@ -53,7 +53,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	requireNoError(t, err)
 	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, sitting.Revision, startAt, endAt)
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob,
-		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "correction-sitting", "correction-sitting-command"))
 	requireNoError(t, err)
 	scheduledOnly, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID, fixture.class.ID,
@@ -61,7 +62,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	requireNoError(t, err)
 	scheduledOpen, scheduledDeadline := newExamSittingLifecycleJobs(t, scheduledOnly.ID, scheduledOnly.Revision, scheduledOnly.ScheduledStartAt, scheduledOnly.ScheduledEndAt)
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: scheduledOnly, OpenJob: scheduledOpen, DeadlineJob: scheduledDeadline,
-		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis()},
+		ActorUserID: fixture.actor.ID, AuditEventID: saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, fixture.actor.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(fixture.actor.ID, "exam.sitting.schedule.v1", "correction-scheduled-control", "correction-scheduled-control-command"))
 	requireNoError(t, err)
 	forbiddenInstructions := "Cannot correct before opening"

@@ -96,7 +96,7 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read user email change database time: %w", err)
 		}
-		at := databaseNow.Truncate(time.Millisecond)
+		at := model.TimeUTC(databaseNow)
 		token.CreatedAt, token.UpdatedAt = at, at
 		token.ArchivedAt, token.ConsumedAt = model.OptionalTime{}, model.OptionalTime{}
 		token.ExpiresAt = at.Add(input.TokenLifetime)

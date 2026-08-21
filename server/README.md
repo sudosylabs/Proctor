@@ -456,6 +456,34 @@ make -C server mail-preview OUTPUT=/tmp/proctor-mail-preview
 The exact property and maintenance contract lives in
 [`templates/README.md`](templates/README.md).
 
+### Production SMTP and deliverability
+
+The checked-in [`config.example.json`](config.example.json) documents every
+mail setting. A production installation enables the `smtp` backend, uses
+`starttls` or `tls` for the relay, configures authentication only over TLS,
+sets a stable sender and Message-ID domain, and supplies an independent
+standard-base64 32-byte `mail.secret_sealing.encryption_key`. The equivalent
+deployment overrides use the `PROCTOR_MAIL_` environment prefix. Cleartext
+SMTP without authentication is for a loopback capture server such as Mailpit,
+not a production relay.
+
+The operator of the sender domain must authorize the selected relay through
+SPF, arrange DKIM signing at that relay, and publish an aligned DMARC policy.
+Proctor composes MIME and submits it to SMTP; it is not a DKIM signer and does
+not interpret SMTP acceptance as inbox delivery. After configuration, send the
+controlled operator test message, confirm its stable Message-ID and `accepted`
+state through the safe mail views, then verify receipt and authentication
+results at an external mailbox. Monitor `GET /api/v1/mail/metrics` together
+with the relay's delivery diagnostics; Proctor logs deliberately contain no
+recipient, body, ciphertext, or SMTP dialogue.
+
+During a transient relay outage, keep mail enabled so bounded retries and the
+mail-health projection retain the normal recovery path. Setting `mail.enabled`
+to false is an explicit terminal suppression operation: outstanding work
+converges to suppressed and is not resurrected by later re-enablement. Use the
+documented rekey sequence above for payload-key rotation; never remove a
+fallback until the durable zero-reference proof succeeds.
+
 The controlled operator tracer uses `POST /api/v1/mail/test` with no request
 body. Operators with `mail.view` can inspect safe bounded delivery metadata at
 `GET /api/v1/mail/deliveries` and
@@ -561,6 +589,25 @@ server protocol and domain phase, not the deferred hosted pages or Desktop UI:
 
 ```sh
 make -C server phase-access-onboarding
+```
+
+The transactional-mail phase gate combines the hermetic server gate,
+PostgreSQL integration and Store conformance, independent module builds/tests,
+template freshness/rendering, reusable SMTP sender conformance, and a real
+application-through-Mailpit flow for representative credential, security, and
+Sitting fan-out messages:
+
+```sh
+make -C server phase-transactional-mail
+```
+
+For local SMTP inspection only, the same pinned Mailpit service is available
+at SMTP `127.0.0.1:11025` and HTTP `http://127.0.0.1:18025` through:
+
+```sh
+make -C server mailpit-up
+make -C server mailpit-logs
+make -C server mailpit-down
 ```
 
 The individual `test`, `test-race`, `vet`, and `build` targets use the root

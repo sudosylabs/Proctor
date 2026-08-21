@@ -24,15 +24,15 @@ import (
 )
 
 type setupOptions struct {
-	updateConfig func(*config.Config)
-	persistence  store.Store
-	cluster      platform.Cluster
-	buildInfo    api.BuildInfo
+	updateConfig     func(*config.Config)
+	persistence      store.Store
+	cluster          platform.Cluster
+	configuredMailer bool
+	buildInfo        api.BuildInfo
 }
 
-// Option customizes the test graph. Each option replaces exactly one
-// capability; everything else is constructed from configuration as in
-// production.
+// Option customizes one concern in the test graph; everything else is
+// constructed from configuration as in production.
 type Option func(*setupOptions)
 
 // WithConfig mutates the in-memory deployment configuration before the graph
@@ -55,6 +55,16 @@ func WithStore(persistence store.Store) Option {
 func WithCluster(cluster platform.Cluster) Option {
 	return func(options *setupOptions) {
 		options.cluster = cluster
+	}
+}
+
+// WithConfiguredMailer keeps the production configuration-selected mail
+// adapter instead of replacing it with testlib's captured in-memory sender.
+// Integration tests use this to exercise the real SMTP adapter while keeping
+// the rest of the production graph assembled through the same root.
+func WithConfiguredMailer() Option {
+	return func(options *setupOptions) {
+		options.configuredMailer = true
 	}
 }
 
@@ -81,7 +91,9 @@ type Helper struct {
 	// stub. It is nil when the graph was constructed with WithStore.
 	PersistenceClose *LifecycleStore
 	Cache            *Cache
-	Mailer           *Mailer
+	// Mailer is the captured in-memory sender when testlib supplied it. It is
+	// nil when WithConfiguredMailer selects the production-configured adapter.
+	Mailer *Mailer
 	VFS              *memoryvfs.FS
 	handler          http.Handler
 }
@@ -148,9 +160,14 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 	if err != nil {
 		tb.Fatalf("create test cache: %v", err)
 	}
-	mailer, err := newMailer()
-	if err != nil {
-		tb.Fatalf("create test mailer: %v", err)
+	var mailer *Mailer
+	var mailerOverride platform.Mailer
+	if !settings.configuredMailer {
+		mailer, err = newMailer()
+		if err != nil {
+			tb.Fatalf("create test mailer: %v", err)
+		}
+		mailerOverride = mailer
 	}
 	filesystem := memoryvfs.New()
 	if settings.cluster == nil && store.Get().Cluster.Backend == "local" {
@@ -172,7 +189,7 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		Persistence:      persistenceOverride,
 		Cache:            cache,
 		Cluster:          settings.cluster,
-		Mailer:           mailer,
+		Mailer:           mailerOverride,
 		Filesystem:       filesystem,
 		AllowMissingJobs: lifecycle != nil,
 		BuildInfo:        settings.buildInfo,

@@ -780,7 +780,7 @@ func testInvitationBatchDuplicateRechecksCurrentInviterAuthority(t *testing.T, s
 	candidate := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, issuedAt).Invitation
 	candidate.TargetEmail = "duplicate-authority-" + model.NewId() + "@example.edu"
 	requireNoError(t, candidate.Validate())
-	endedAt := model.GetMillis()
+	endedAt := model.GetMillis() - 1_000
 	if _, err := ss.RoleBinding().End(ctx, binding.ID.String(), endedAt); err != nil {
 		t.Fatalf("end inviter authority: %v", err)
 	}

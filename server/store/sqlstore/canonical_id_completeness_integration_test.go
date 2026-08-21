@@ -22,6 +22,16 @@ type canonicalIDConstraint struct {
 	Definition string `db:"definition"`
 }
 
+const postgresIdentifierMaxBytes = 63
+
+func canonicalIDConstraintName(table, column string) string {
+	name := fmt.Sprintf("%s_%s_canonical_check", table, column)
+	if len(name) > postgresIdentifierMaxBytes {
+		return name[:postgresIdentifierMaxBytes]
+	}
+	return name
+}
+
 func TestCanonicalIDConstraintCompleteness(t *testing.T) {
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
@@ -43,7 +53,7 @@ func TestCanonicalIDConstraintCompleteness(t *testing.T) {
 
 	for _, column := range columns {
 		qualified := column.Table + "." + column.Column
-		constraintName := fmt.Sprintf("%s_%s_canonical_check", column.Table, column.Column)
+		constraintName := canonicalIDConstraintName(column.Table, column.Column)
 		var constraint canonicalIDConstraint
 		if err := persistence.GetMaster().Get(ctx, &constraint, `
 			SELECT con.conname AS constraint_name,
@@ -53,7 +63,7 @@ func TestCanonicalIDConstraintCompleteness(t *testing.T) {
 			  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
 			 WHERE namespace.nspname = 'public'
 			   AND relation.relname = ?
-			   AND con.conname = ?
+			   AND con.conname::text = ?
 			   AND con.contype = 'c'`, column.Table, constraintName); err != nil {
 			t.Errorf("%s lacks named canonical-ID constraint %s: %v", qualified, constraintName, err)
 			continue

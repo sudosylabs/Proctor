@@ -244,8 +244,14 @@ VFS owns opaque bytes. Candidate access is protected in-application use, with
 no candidate download/export surface. The complete accepted contract and
 delivery order are in [Examinations](../architecture/examinations.md).
 
-## Transactional-mail foundation
+## Transactional mail
 
+The transactional-mail delivery phase is implemented and certified for its
+31-key system, identity/security, Class, Exam-management, Sitting, Submission,
+and Result-release slice. The six access-and-onboarding Invitation messages
+are also implemented. The complete 43-key presentation catalog remains
+authoritative, while the six Academic Unit and Role relationship transitions
+are presentation-only until their ordinary named aggregates record mail.
 The transactional-mail product and delivery architecture are accepted. The
 transport now exposes portable temporary, permanent, and acceptance-uncertain
 outcomes; the server has an independently configured versioned secret-sealing
@@ -321,14 +327,17 @@ audit. The message freezes only the published Exam title and PostgreSQL release
 time; it contains no score, outcome, remarks, evidence, rationale, Submission
 content, or invented result link. Exact release replay records no second
 message, and disabled or ineligible candidates retain terminal suppression.
-The remaining catalog transitions are not yet implemented.
+The phase gate certifies the full hermetic server gate, PostgreSQL Store and
+application integration, independent module builds/tests, all 43 English
+template triplets and previews, reusable SMTP conformance, and a real
+application-through-Mailpit credential, security, and Sitting-fan-out flow.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
-Recovery, Class, Exam-management, Submission, and Result-release transitions
-record encrypted per-recipient delivery intent and durable Jobs atomically;
-remaining application transitions will use the same contract, with
-bounded fan-out, relevance fencing,
+Recovery, Invitation, Class, Exam-management, Submission, and Result-release
+transitions record encrypted per-recipient delivery intent and durable Jobs
+atomically. The remaining Academic Unit and Role transitions will use the same
+contract, with bounded fan-out, relevance fencing,
 deadline-aware retries, safe operator control, and no user opt-outs. The
 complete contract and remaining delivery order are in
 [Transactional mail](../architecture/mail.md).
@@ -601,8 +610,8 @@ contract is in [Execution environments](../architecture/execution.md).
 
 - Implement the deferred server-hosted account, Invitation, and Desktop
   authorization pages with the design system, plus the Desktop LaunchWindow.
-- Continue the accepted transactional-mail architecture as verified vertical
-  slices after the durable operator tracer and account-recovery delivery. The
+- Integrate the six remaining Academic Unit membership and Role Binding
+  transitions with the accepted transactional-mail aggregate contract. The
   recovery landing pages remain a separately visible dependency of the future
   server-hosted design system.
 - Resource search remains deferred because an Exam initially has at most ten

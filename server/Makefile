@@ -3,13 +3,17 @@ COMPOSE := docker compose -f compose.yaml
 PROCTOR_POSTGRES_PORT ?= 15432
 PROCTOR_REDIS_PORT ?= 16379
 PROCTOR_MINIO_PORT ?= 19000
+PROCTOR_MAILPIT_SMTP_PORT ?= 11025
+PROCTOR_MAILPIT_HTTP_PORT ?= 18025
 PROCTOR_TEST_DATABASE_URL ?= postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable
 PROCTOR_TEST_REDIS_ADDRESS ?= 127.0.0.1:$(PROCTOR_REDIS_PORT)
 PROCTOR_TEST_S3_ENDPOINT ?= 127.0.0.1:$(PROCTOR_MINIO_PORT)
+PROCTOR_TEST_MAIL_SMTP_ADDRESS ?= 127.0.0.1:$(PROCTOR_MAILPIT_SMTP_PORT)
+PROCTOR_TEST_MAILPIT_HTTP_URL ?= http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)
 
-export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT
+export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT
 
-.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding conformance-postgres conformance-realtime
+.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
 check: architecture openapi-agreement test test-race vet
 
@@ -71,13 +75,24 @@ minio-up:
 minio-logs:
 	$(COMPOSE) logs minio
 
+mailpit-up:
+	$(COMPOSE) up --detach --wait mailpit
+
+mailpit-down:
+	$(COMPOSE) down --remove-orphans
+
+mailpit-logs:
+	$(COMPOSE) logs mailpit
+
 integration-all:
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
 	trap cleanup EXIT INT TERM; \
-	$(COMPOSE) up --detach --wait postgres redis; \
+	$(COMPOSE) up --detach --wait postgres redis mailpit; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
+	PROCTOR_TEST_MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
+	PROCTOR_TEST_MAILPIT_HTTP_URL='$(PROCTOR_TEST_MAILPIT_HTTP_URL)' \
 		go test -tags=integration -p=1 ./... -count=1
 
 integration-postgres:
@@ -127,7 +142,11 @@ integration-s3:
 independent-modules:
 	@set -eu; \
 	for module in ../packages/cache ../packages/mail ../packages/vfs .; do \
-		(cd "$$module" && GOWORK=off go test ./... && GOWORK=off go build ./...); \
+		(cd "$$module" && \
+			GOWORK=off go test ./... && \
+			GOWORK=off go test -race ./... && \
+			GOWORK=off go vet ./... && \
+			GOWORK=off go build ./...); \
 	done
 
 phase-file-jobs: check integration-postgres integration-s3 independent-modules
@@ -155,6 +174,20 @@ phase-access-onboarding: check
 		go test -tags=integration ./store/sqlstore -run '^(TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder|TestDisabledSittingReconciliationAndInvitationAcceptanceUseUserSingletonClassOrder)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test -tags=integration ./store/sqlstore -run '^TestMigrationsRoundTrip$$' -count=1
+
+phase-transactional-mail: check integration-postgres independent-modules mail-templates-check mail-templates-test
+	@set -eu; \
+	cleanup() { $(COMPOSE) down --remove-orphans; }; \
+	trap cleanup EXIT INT TERM; \
+	$(COMPOSE) up --detach --wait postgres mailpit; \
+	cd ../packages/mail; \
+	MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
+		GOWORK=off go test ./smtp -run '^TestIntegrationConformance$$' -count=1; \
+	cd ../../server; \
+	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+	PROCTOR_TEST_MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
+	PROCTOR_TEST_MAILPIT_HTTP_URL='$(PROCTOR_TEST_MAILPIT_HTTP_URL)' \
+		go test -tags=integration ./app -run '^TestTransactionalMailPhaseCertification$$' -count=1
 
 integration-providers:
 	@set -eu; \

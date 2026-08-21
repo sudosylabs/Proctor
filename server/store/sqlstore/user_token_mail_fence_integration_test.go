@@ -348,7 +348,11 @@ func TestRecoveryDeliveryRelevanceUsesPostgreSQLTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET expires_at=created_at + interval '1 microsecond' WHERE id=?`, token.ID.String()); err != nil {
+	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE user_tokens SET
+		created_at=clock_timestamp()-interval '2 seconds',
+		updated_at=clock_timestamp()-interval '2 seconds',
+		expires_at=clock_timestamp()-interval '1 second'
+		WHERE id=?`, token.ID.String()); err != nil {
 		t.Fatal(err)
 	}
 	var expiredAtDatabase bool

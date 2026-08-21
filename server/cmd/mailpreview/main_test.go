@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sudosylabs/proctor/server/i18n"
 )
 
 func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
@@ -36,17 +38,20 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	if bytes.Contains(firstIndex, []byte("@")) {
 		t.Fatal("preview index appears to contain a production-like email address")
 	}
-	for _, key := range []string{
-		"identity.verify_email", "identity.password_reset", "identity.password_changed",
-		"identity.mfa_enabled", "identity.mfa_disabled", "identity.mfa_recovery_codes_regenerated",
-		"identity.personal_access_token_created", "identity.personal_access_token_enabled",
-		"identity.personal_access_token_disabled", "identity.personal_access_token_revoked",
-	} {
+	keys := i18n.AllKeys()
+	if len(keys) != 43 {
+		t.Fatalf("preview catalog keys = %d, want 43", len(keys))
+	}
+	for _, catalogKey := range keys {
+		key := string(catalogKey)
 		if _, err := os.Stat(filepath.Join(first, key+".html")); err != nil {
 			t.Fatalf("%s HTML preview: %v", key, err)
 		}
 		if _, err := os.Stat(filepath.Join(first, key+".txt")); err != nil {
 			t.Fatalf("%s text preview: %v", key, err)
+		}
+		if bytes.Count(firstIndex, []byte(key+".html")) != 1 || bytes.Count(firstIndex, []byte(key+".txt")) != 1 {
+			t.Fatalf("%s preview links are incomplete or duplicated", key)
 		}
 	}
 }
