@@ -8,7 +8,7 @@ matches the work instead of loading every document.
 - [Architecture guide](./architecture/) — system boundaries and durable
   engineering decisions
 - [Domain language](../CONTEXT.md) — implementation-free canonical glossary
-- [HTTP API contract](../server/app/api/CONTRACT.md) — exact public API rules
+- [HTTP API contract](../server/httpapi/CONTRACT.md) — exact public API rules
 - [Cluster guarantees](../server/cluster/GUARANTEES.md) — delivery and recovery
   contract
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -83,8 +84,8 @@ func TestCredentialMailDescriptorUsesDedicatedPoolAndReserve(t *testing.T) {
 	job.Type = model.JobTypeMailDeliverCredential
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
-	handler := mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return at.Add(time.Second) }}
-	descriptor := mailCredentialDeliveryDescriptor(handler)
+	descriptor := appjobs.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant,
+		func() time.Time { return at.Add(time.Second) }, true)
 	if descriptor.Type != model.JobTypeMailDeliverCredential || descriptor.Concurrency != 4 {
 		t.Fatalf("credential descriptor = type %q concurrency %d", descriptor.Type, descriptor.Concurrency)
 	}
@@ -277,7 +278,7 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	if strings.Contains(string(prepared.Delivery.EncryptedPayload), "credential-secret") || strings.Contains(string(prepared.Delivery.EncryptedPayload), user.Email) {
 		t.Fatalf("persisted payload exposes credential or recipient: %s", prepared.Delivery.EncryptedPayload)
 	}
-	opened, err := openFrozenMailPayload(mailTestSealer(t), prepared.Delivery)
+	opened, err := appjobs.OpenFrozenMailPayload(mailTestSealer(t), prepared.Delivery)
 	if err != nil || opened.Text != content.Text || opened.RecipientAddress != user.Email {
 		t.Fatalf("opened payload = %#v, %v", opened, err)
 	}
@@ -604,13 +605,13 @@ func TestMailDeliveryHandlerUsesStableMessageIDAndRecordsAcceptance(t *testing.T
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: payload.FromAddress}}
 	now := at.Add(time.Second)
-	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { now = now.Add(time.Second); return now }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { now = now.Add(time.Second); return now }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 || sender.messages[0].MessageID != delivery.MessageID ||
 		sender.messages[0].Headers["Auto-Submitted"][0] != payload.AutoSubmitted || sender.messages[0].Headers["X-Auto-Response-Suppress"][0] != payload.AutoResponseSuppress ||
 		persistence.delivery.State != model.MailDeliveryAccepted || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 	}
-	second := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: time.Now}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	second := runMailDeliveryJob(persistence, sender, sealer, time.Now, job)
 	if second.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 {
 		t.Fatalf("terminal replay resent: %#v", second)
 	}
@@ -621,7 +622,7 @@ func TestMailDeliveryHandlerExpiresQueuedDeliveryWithoutSending(t *testing.T) {
 	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Second)
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
-	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return delivery.Deadline }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return delivery.Deadline }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
 		persistence.delivery.PublicFailureCode != model.MailDeliveryExpiredCode || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
@@ -633,7 +634,7 @@ func TestMailDeliveryHandlerSuppressesDisabledWorkWithoutSealerOrSend(t *testing
 	_, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
 	persistence := &mailStoreFake{delivery: delivery}
 	sender := &mailSenderFake{enabled: false}
-	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, now: func() time.Time { return at.Add(time.Second) }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	outcome := runMailDeliveryJob(persistence, sender, nil, func() time.Time { return at.Add(time.Second) }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
 		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
@@ -649,7 +650,7 @@ func TestMailDeliveryHandlerRechecksDisabledStateAfterWaitingForPermit(t *testin
 		sender.enabled = false
 		return &store.MailSendPermit{Allowed: true}
 	}
-	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return at.Add(time.Second) }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 0 || persistence.delivery.State != model.MailDeliverySuppressed ||
 		persistence.delivery.PublicFailureCode != model.MailDeliveryDisabledCode || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
@@ -666,7 +667,7 @@ func TestMailDeliveryHandlerExpiresRetryWhenSMTPReturnsAfterDeadline(t *testing.
 		outcome: MailTransportTemporary, err: errors.New("temporary SMTP failure"),
 		afterSend: func() { now = delivery.Deadline },
 	}
-	outcome := (mailDeliveryHandler{deliveries: persistence, sender: sender, sealer: sealer, now: func() time.Time { return now }}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return now }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 || persistence.delivery.State != model.MailDeliverySuppressed ||
 		persistence.delivery.PublicFailureCode != model.MailDeliveryExpiredCode || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
@@ -687,12 +688,19 @@ func mailDeliveryHandlerFixture(t *testing.T, at time.Time, deadlineAfter time.D
 	return sealer, job, delivery
 }
 
+func runMailDeliveryJob(persistence appjobs.MailDeliveryLifecycleStore, sender MailDeliverySender,
+	sealer *secretseal.Sealer, now func() time.Time, job *model.Job,
+) jobengine.Outcome {
+	descriptor := appjobs.NewMailDeliveryDescriptor(persistence, sender, sealer, nil, nil, jobMailDeliveryIsRelevant, now, false)
+	return descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+}
+
 func TestMailDeliveryHandlerClassifiesRetryableAndPermanentFailures(t *testing.T) {
-	if mailTransportFailureCode(MailTransportAcceptanceUncertain) != "mail.transport.acceptance_uncertain" {
+	if appjobs.MailTransportFailureCode(MailTransportAcceptanceUncertain) != "mail.transport.acceptance_uncertain" {
 		t.Fatal("uncertain outcome lost")
 	}
 	for outcome, want := range map[MailTransportOutcome]string{MailTransportTemporary: "mail.transport.temporary", MailTransportPermanent: "mail.transport.permanent", MailTransportUnknown: "mail.transport.unknown"} {
-		if got := mailTransportFailureCode(outcome); got != want {
+		if got := appjobs.MailTransportFailureCode(outcome); got != want {
 			t.Fatalf("code(%s)=%s", outcome, got)
 		}
 	}

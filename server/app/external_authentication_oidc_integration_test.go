@@ -23,8 +23,8 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	"golang.org/x/oauth2"
 
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
@@ -181,7 +181,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 	var bindingCookie *http.Cookie
 	for _, cookie := range begin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			bindingCookie = cookie
 		}
 	}
@@ -286,7 +286,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	transactionMutex.Unlock()
 	var invitationBinding *http.Cookie
 	for _, cookie := range invitationBegin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			invitationBinding = cookie
 		}
 	}
@@ -366,7 +366,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	}
 	var deniedBindingCookie *http.Cookie
 	for _, cookie := range deniedBegin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			deniedBindingCookie = cookie
 		}
 	}
@@ -427,7 +427,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		transactionMutex.Unlock()
 		var repeatBinding *http.Cookie
 		for _, cookie := range begin.Result().Cookies() {
-			if cookie.Name == api.BrowserExternalLoginCookieName {
+			if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 				repeatBinding = cookie
 			}
 		}

@@ -110,7 +110,7 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
 		{name: "Exam child cannot import parent application", from: serverModule + "/app/exam", imported: serverModule + "/app"},
-		{name: "Exam child cannot import HTTP transport", from: serverModule + "/app/exam", imported: serverModule + "/app/api"},
+		{name: "Exam child cannot import HTTP transport", from: serverModule + "/app/exam", imported: serverModule + "/httpapi"},
 		{name: "Exam child cannot import platform", from: serverModule + "/app/exam", imported: serverModule + "/platform"},
 		{name: "Exam child cannot import SQL adapter", from: serverModule + "/app/exam", imported: serverModule + "/store/sqlstore"},
 		{name: "Realtime child cannot import parent application", from: serverModule + "/app/realtime", imported: serverModule + "/app"},
@@ -118,15 +118,19 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "Realtime child cannot import WebSocket", from: serverModule + "/app/realtime", imported: serverModule + "/websocket"},
 		{name: "Realtime child cannot import platform", from: serverModule + "/app/realtime", imported: serverModule + "/platform"},
 		{name: "Mail child cannot import parent application", from: serverModule + "/app/mail", imported: serverModule + "/app"},
-		{name: "Mail child cannot import HTTP transport", from: serverModule + "/app/mail", imported: serverModule + "/app/api"},
+		{name: "Mail child cannot import HTTP transport", from: serverModule + "/app/mail", imported: serverModule + "/httpapi"},
 		{name: "Mail child cannot import platform", from: serverModule + "/app/mail", imported: serverModule + "/platform"},
 		{name: "Mail child cannot import SQL adapter", from: serverModule + "/app/mail", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import Redis client", from: serverModule + "/app", imported: "github.com/redis/go-redis/v9"},
 		{name: "Job engine descendants cannot import application", from: serverModule + "/app/job/internal", imported: serverModule + "/app"},
-		{name: "Job engine cannot import HTTP transport", from: serverModule + "/app/job", imported: serverModule + "/app/api"},
+		{name: "Job engine cannot import HTTP transport", from: serverModule + "/app/job", imported: serverModule + "/httpapi"},
 		{name: "Job engine cannot import platform", from: serverModule + "/app/job", imported: serverModule + "/platform"},
 		{name: "Job engine cannot import SQL adapter", from: serverModule + "/app/job", imported: serverModule + "/store/sqlstore"},
 		{name: "Job engine descendants cannot import Argon2", from: serverModule + "/app/job/internal", imported: "golang.org/x/crypto/argon2"},
+		{name: "concrete Jobs cannot import parent application", from: serverModule + "/app/jobs", imported: serverModule + "/app"},
+		{name: "concrete Jobs cannot import HTTP transport", from: serverModule + "/app/jobs", imported: serverModule + "/httpapi"},
+		{name: "concrete Jobs cannot import platform", from: serverModule + "/app/jobs", imported: serverModule + "/platform"},
+		{name: "concrete Jobs cannot import SQL adapter", from: serverModule + "/app/jobs", imported: serverModule + "/store/sqlstore"},
 		{name: "File Content cannot import persistence", from: serverModule + "/filecontent", imported: serverModule + "/store"},
 		{name: "File Content cannot import HTTP", from: serverModule + "/filecontent", imported: "net/http"},
 		{name: "File Content cannot import WebSocket", from: serverModule + "/filecontent", imported: serverModule + "/websocket"},
@@ -135,14 +139,14 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "File Content cannot run Jobs", from: serverModule + "/filecontent", imported: serverModule + "/app/job"},
 		{name: "File Content cannot select a VFS backend", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs/local"},
 		{name: "File Content cannot select S3", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs/s3"},
-		{name: "HTTP cannot import persistence", from: serverModule + "/app/api", imported: serverModule + "/store"},
-		{name: "HTTP cannot import platform services", from: serverModule + "/app/api", imported: serverModule + "/platform"},
-		{name: "HTTP cannot import SQL driver", from: serverModule + "/app/api", imported: "database/sql"},
+		{name: "HTTP cannot import persistence", from: serverModule + "/httpapi", imported: serverModule + "/store"},
+		{name: "HTTP cannot import platform services", from: serverModule + "/httpapi", imported: serverModule + "/platform"},
+		{name: "HTTP cannot import SQL driver", from: serverModule + "/httpapi", imported: "database/sql"},
 		{name: "SQL adapter cannot import application policy", from: serverModule + "/store/sqlstore", imported: serverModule + "/app"},
 		{name: "store layer cannot import application policy", from: serverModule + "/store/retrylayer", imported: serverModule + "/app"},
 		{name: "cluster adapter cannot import platform", from: serverModule + "/cluster/memberlist", imported: serverModule + "/platform"},
 		{name: "cluster adapter cannot import persistence", from: serverModule + "/cluster/memberlist", imported: serverModule + "/store"},
-		{name: "external adapter cannot import HTTP", from: serverModule + "/platform/externalauth/oidc", imported: serverModule + "/app/api"},
+		{name: "external adapter cannot import HTTP", from: serverModule + "/platform/externalauth/oidc", imported: serverModule + "/httpapi"},
 		{name: "platform cannot select concrete adapters", from: serverModule + "/platform", imported: "github.com/sudosylabs/proctor/packages/cache/redis"},
 		{name: "command cannot bypass root composition", from: serverModule + "/cmd/proctor", imported: serverModule + "/app"},
 		{name: "command cannot open SQL directly", from: serverModule + "/cmd/proctor", imported: "database/sql"},
@@ -176,6 +180,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "configuration may import identity-provider constraints", from: serverModule + "/config", imported: serverModule + "/identityprovider"},
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},
+		{name: "application may import concrete Jobs", from: serverModule + "/app", imported: serverModule + "/app/jobs"},
 		{name: "application may import Realtime child", from: serverModule + "/app", imported: serverModule + "/app/realtime"},
 		{name: "application may import Exam child", from: serverModule + "/app", imported: serverModule + "/app/exam"},
 		{name: "application may import Exam resource child", from: serverModule + "/app", imported: serverModule + "/app/exam/resource"},
@@ -192,6 +197,9 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "Exam children may import shared safe Markdown", from: serverModule + "/app/exam/review", imported: serverModule + "/app/exam/safemarkdown"},
 		{name: "Realtime child may import domain models", from: serverModule + "/app/realtime", imported: serverModule + "/model"},
 		{name: "Job engine may import store contracts", from: serverModule + "/app/job", imported: serverModule + "/store"},
+		{name: "concrete Jobs may import Job engine", from: serverModule + "/app/jobs", imported: serverModule + "/app/job"},
+		{name: "concrete Jobs may import Mail capabilities", from: serverModule + "/app/jobs", imported: serverModule + "/app/mail"},
+		{name: "concrete Jobs may import Exam capabilities", from: serverModule + "/app/jobs", imported: serverModule + "/app/exam/attempt"},
 		{name: "File Content may import domain models", from: serverModule + "/filecontent", imported: serverModule + "/model"},
 		{name: "File Content may import application content contracts", from: serverModule + "/filecontent", imported: serverModule + "/app"},
 		{name: "File Content may import VFS contracts", from: serverModule + "/filecontent", imported: repositoryModule + "/packages/vfs"},
@@ -200,9 +208,9 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "File Content may register supported image decoders", from: serverModule + "/filecontent", imported: "golang.org/x/image/webp"},
 		{name: "File Content may structurally validate PDFs", from: serverModule + "/filecontent", imported: "github.com/pdfcpu/pdfcpu/pkg/api"},
 		{name: "File Content may use private temporary spools", from: serverModule + "/filecontent", imported: "os"},
-		{name: "HTTP may import application", from: serverModule + "/app/api", imported: serverModule + "/app"},
+		{name: "HTTP may import application", from: serverModule + "/httpapi", imported: serverModule + "/app"},
 		{name: "WebSocket may import Realtime child", from: serverModule + "/websocket", imported: serverModule + "/app/realtime"},
-		{name: "HTTP may import router library", from: serverModule + "/app/api", imported: "github.com/gorilla/mux"},
+		{name: "HTTP may import router library", from: serverModule + "/httpapi", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
 		{name: "cache store layer may import cache contract", from: serverModule + "/store/localcachelayer", imported: repositoryModule + "/packages/cache"},
 		{name: "cluster adapter may import cluster contracts", from: serverModule + "/cluster/memberlist", imported: serverModule + "/cluster"},
@@ -306,6 +314,11 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/store"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
+	case packageOrBelow(from, serverModule+"/app/jobs"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(imported,
+				serverModule+"/model", serverModule+"/store", serverModule+"/secretseal",
+				serverModule+"/app/job", serverModule+"/app/mail", serverModule+"/app/exam/attempt")
 	case packageOrBelow(from, serverModule+"/app/job"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
@@ -340,7 +353,7 @@ func forbiddenImport(from, imported string) bool {
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
 				imported != serverModule+"/model" && imported != serverModule+"/store" &&
-				imported != serverModule+"/app/job" && imported != serverModule+"/app/realtime" &&
+				imported != serverModule+"/app/job" && imported != serverModule+"/app/jobs" && imported != serverModule+"/app/realtime" &&
 				imported != serverModule+"/app/mail" &&
 				imported != serverModule+"/secretseal" &&
 				!packageOrBelow(imported, serverModule+"/app/exam"))
@@ -364,6 +377,7 @@ func forbiddenImport(from, imported string) bool {
 	case from == serverModule+"/platform":
 		return thirdPartyImport(imported) || concreteInfrastructureImport(imported) ||
 			packageOrBelow(imported, serverModule+"/app") ||
+			packageOrBelow(imported, serverModule+"/httpapi") ||
 			packageOrBelow(imported, serverModule+"/websocket")
 	case strings.HasPrefix(from, serverModule+"/cmd/"):
 		if from == serverModule+"/cmd/mailpreview" {
@@ -426,12 +440,11 @@ func forbiddenProjectImportExcept(importPath string, allowed ...string) bool {
 }
 
 func applicationPackage(packagePath string) bool {
-	return packageOrBelow(packagePath, serverModule+"/app") &&
-		!packageOrBelow(packagePath, serverModule+"/app/api")
+	return packageOrBelow(packagePath, serverModule+"/app")
 }
 
 func httpOrWebSocketPackage(packagePath string) bool {
-	return packageOrBelow(packagePath, serverModule+"/app/api") ||
+	return packageOrBelow(packagePath, serverModule+"/httpapi") ||
 		packageOrBelow(packagePath, serverModule+"/websocket")
 }
 

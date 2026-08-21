@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -158,7 +158,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	}
 	var bindingCookie *http.Cookie
 	for _, cookie := range begin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			bindingCookie = cookie
 			break
 		}
@@ -191,7 +191,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 
 	var accessCookie *http.Cookie
 	for _, cookie := range callback.Result().Cookies() {
-		if cookie.Name == api.BrowserAccessCookieName {
+		if cookie.Name == httpapi.BrowserAccessCookieName {
 			accessCookie = cookie
 		}
 	}
@@ -293,7 +293,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		query.Set("ticket", ticket)
 		request := httptest.NewRequest(http.MethodGet, service.Path+"?"+query.Encode(), nil)
 		for _, cookie := range begin.Result().Cookies() {
-			if cookie.Name == api.BrowserExternalLoginCookieName {
+			if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 				request.AddCookie(cookie)
 			}
 		}
@@ -346,7 +346,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	disabledCallbackRequest := httptest.NewRequest(http.MethodGet,
 		disabledServiceURL.Path+"?"+disabledQuery.Encode(), nil)
 	for _, cookie := range disabledBegin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			disabledCallbackRequest.AddCookie(cookie)
 		}
 	}
@@ -388,7 +388,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	invitationCallbackRequest := httptest.NewRequest(http.MethodGet,
 		invitationServiceURL.Path+"?"+invitationQuery.Encode(), nil)
 	for _, cookie := range invitationBegin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			invitationCallbackRequest.AddCookie(cookie)
 		}
 	}
@@ -476,7 +476,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	connectionCallbackRequest := httptest.NewRequest(http.MethodGet,
 		connectionService.Path+"?"+connectionQuery.Encode(), nil)
 	for _, cookie := range connect.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			connectionCallbackRequest.AddCookie(cookie)
 		}
 	}
@@ -560,7 +560,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	removalCallbackPath := removalServiceURL.Path + "?" + removalQuery.Encode()
 	var removalBinding *http.Cookie
 	for _, cookie := range removalBegin.Result().Cookies() {
-		if cookie.Name == api.BrowserExternalLoginCookieName {
+		if cookie.Name == httpapi.BrowserExternalLoginCookieName {
 			removalBinding = cookie
 		}
 	}

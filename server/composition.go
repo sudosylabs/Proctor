@@ -12,11 +12,11 @@ import (
 	"os"
 
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
@@ -32,7 +32,7 @@ var errDurableJobRuntimeUnavailable = errors.New("application Job runtime is una
 
 type composedWebSocket interface {
 	runtimeWebSocket
-	api.WebSocketTransport
+	httpapi.WebSocketTransport
 	apprealtime.Sink
 }
 
@@ -47,7 +47,7 @@ type consumerConstructors struct {
 	attachRealtime func(*app.App, apprealtime.ClusterFanout) error
 	websocket      func(*app.App, runtimeLogger, string, string) (composedWebSocket, error)
 	attachSink     func(*app.App, apprealtime.Sink) error
-	http           func(api.Options) (runtimeTransport, http.Handler, error)
+	http           func(httpapi.Options) (runtimeTransport, http.Handler, error)
 	jobs           func(*app.App) runtimeJobs
 }
 
@@ -88,9 +88,9 @@ func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, 
 		attachSink: func(application *app.App, sink apprealtime.Sink) error {
 			return application.AttachRealtimeSink(sink)
 		},
-		http: func(options api.Options) (runtimeTransport, http.Handler, error) {
+		http: func(options httpapi.Options) (runtimeTransport, http.Handler, error) {
 			options.Localizer = localizer
-			transport, err := api.New(options)
+			transport, err := httpapi.New(options)
 			return transport, transport, err
 		},
 		jobs: func(application *app.App) runtimeJobs {
@@ -188,9 +188,9 @@ func composeConsumers(
 
 	readiness := &app.Health{}
 	buildInfo := input.overrides.BuildInfo
-	if buildInfo == (api.BuildInfo{}) {
+	if buildInfo == (httpapi.BuildInfo{}) {
 		current := app.CurrentBuildInfo()
-		buildInfo = api.BuildInfo{
+		buildInfo = httpapi.BuildInfo{
 			Version: current.Version, Commit: current.Commit,
 			BuildTime: current.BuildTime, GoVersion: current.GoVersion,
 		}
@@ -208,7 +208,7 @@ func composeConsumers(
 			webSocketHub.Close(), applicationPlatform.Close(),
 		)
 	}
-	httpTransport, httpAPI, err := constructors.http(api.Options{
+	httpTransport, httpAPI, err := constructors.http(httpapi.Options{
 		Logger: apiLogger{log: capabilities.logger}, Health: readiness,
 		Application: application, AcademicUnits: application, Institutions: application,
 		Programmes: application, ProgrammeLevels: application, AcademicPeriods: application,

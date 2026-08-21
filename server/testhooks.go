@@ -10,8 +10,8 @@ import (
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
@@ -48,7 +48,7 @@ type TestingOverrides struct {
 	// construction always requires durable Job persistence and a Job runtime.
 	AllowMissingJobs bool
 	// BuildInfo replaces the served build information when any field is set.
-	BuildInfo api.BuildInfo
+	BuildInfo httpapi.BuildInfo
 	// BootstrapSecretWriter captures the explicit loopback-development secret.
 	// Production writes it directly to the controlling terminal.
 	BootstrapSecretWriter io.Writer

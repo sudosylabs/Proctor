@@ -18,9 +18,9 @@ import (
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
@@ -730,7 +730,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	refresh := performBrowserJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh",
 		nil, loginCookies, "",
-		loginCookies[api.BrowserCSRFCookieName].Value,
+		loginCookies[httpapi.BrowserCSRFCookieName].Value,
 	)
 	if refresh.Code != http.StatusOK {
 		t.Fatalf("browser refresh status = %d: %s", refresh.Code, refresh.Body.String())
@@ -768,7 +768,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	logout := performBrowserJSONRequest(
 		helper.Handler(), http.MethodPost, "/api/v1/auth/logout",
 		nil, refreshedCookies, "",
-		refreshedCookies[api.BrowserCSRFCookieName].Value,
+		refreshedCookies[httpapi.BrowserCSRFCookieName].Value,
 	)
 	if logout.Code != http.StatusNoContent {
 		t.Fatalf("browser logout status = %d: %s", logout.Code, logout.Body.String())
@@ -1208,7 +1208,7 @@ func performBrowserJSONRequest(
 		request.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	if csrf != "" {
-		request.Header.Set(api.BrowserCSRFHeader, csrf)
+		request.Header.Set(httpapi.BrowserCSRFHeader, csrf)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -1228,11 +1228,11 @@ func assertBrowserCookieContract(
 	cookies map[string]*http.Cookie,
 ) {
 	t.Helper()
-	if api.BrowserAccessCookieName != "PROCTOR_ACCESS" ||
-		api.BrowserRefreshCookieName != "PROCTOR_REFRESH" ||
-		api.BrowserCSRFBindingCookieName != "PROCTOR_CSRF_BINDING" ||
-		api.BrowserCSRFCookieName != "PROCTOR_CSRF" ||
-		api.BrowserCSRFHeader != "X-Proctor-CSRF-Token" {
+	if httpapi.BrowserAccessCookieName != "PROCTOR_ACCESS" ||
+		httpapi.BrowserRefreshCookieName != "PROCTOR_REFRESH" ||
+		httpapi.BrowserCSRFBindingCookieName != "PROCTOR_CSRF_BINDING" ||
+		httpapi.BrowserCSRFCookieName != "PROCTOR_CSRF" ||
+		httpapi.BrowserCSRFHeader != "X-Proctor-CSRF-Token" {
 		t.Fatal("browser cookie or CSRF public name changed")
 	}
 	if len(cookies) != 4 {
@@ -1268,7 +1268,7 @@ func assertProblemCode(
 	if response.Header().Get("Content-Type") != "application/problem+json" {
 		t.Fatalf("problem Content-Type = %q", response.Header().Get("Content-Type"))
 	}
-	var problem api.Problem
+	var problem httpapi.Problem
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}

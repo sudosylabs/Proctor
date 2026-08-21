@@ -4,7 +4,8 @@
 
 ~~~text
 identityprovider ← {model, config}
-model ← store ← app/job ← app
+model ← store ← app/job
+{model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
@@ -12,14 +13,18 @@ app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
 logging ← platform
-app ← app/api
+app ← httpapi
 model ← filecontent
 packages/vfs ← filecontent
 app ← filecontent
-{app, app/api, app/realtime, websocket, filecontent} ← server ← cmd/proctor
+{app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor
 ~~~
 
 Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
+
+The physical layout reflects that graph: `httpapi` sits beside `app` because it
+is an outer adapter depending inward on application capabilities. Packages
+inside `app/` are application-owned modules, not transports.
 
 | Package | Allowed production dependencies | Forbidden examples |
 | --- | --- | --- |
@@ -27,7 +32,8 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `model` | Standard library, `identityprovider`, and narrowly justified domain libraries | `app`, HTTP, SQL, cluster, WebSocket |
 | `config` | Standard library and `identityprovider` | Domain models, application, persistence, transports |
 | `store` | `model` | `sqlstore`, HTTP, application services |
-| `app/job` | `model`, `store.JobStore`, standard library | parent `app`, transports, concrete adapters |
+| `app/job` | `model`, `store.JobStore`, standard library | parent `app`, concrete Jobs, transports, concrete adapters |
+| `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
@@ -35,9 +41,9 @@ Infrastructure adapters sit to the side and point inward at their contracts. The
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `localization` | Standard library and caller-supplied catalog filesystems | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
-| `app` | `model`, `store`, `app/job`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `app/api`, `sqlstore` |
+| `app` | `model`, `store`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
-| `app/api` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
+| `httpapi` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `app/realtime`, `model`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `server` | Construction dependencies | Business rules |

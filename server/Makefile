@@ -21,10 +21,10 @@ architecture:
 	go test ./architecture
 
 openapi-validate:
-	go test ./app/api -run 'OpenAPISchemaIsValid$$'
+	go test ./httpapi -run 'OpenAPISchemaIsValid$$'
 
 openapi-agreement: openapi-validate
-	go test ./app/api -run 'OpenAPI'
+	go test ./httpapi -run 'OpenAPI'
 
 test:
 	go test ./...

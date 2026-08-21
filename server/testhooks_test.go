@@ -20,9 +20,9 @@ import (
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	server "github.com/sudosylabs/proctor/server"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
@@ -725,7 +725,7 @@ func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
 	t.Parallel()
 
 	overrides, _, _, _ := newHookOverrides(t)
-	buildInfo := api.BuildInfo{
+	buildInfo := httpapi.BuildInfo{
 		Version:   "test-version",
 		Commit:    "test-commit",
 		BuildTime: "test-time",
@@ -745,7 +745,7 @@ func TestNewForTestingServesTheProvidedBuildInfo(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("version status = %d, want 200", response.Code)
 	}
-	var served api.BuildInfo
+	var served httpapi.BuildInfo
 	if err := json.Unmarshal(response.Body.Bytes(), &served); err != nil {
 		t.Fatal(err)
 	}

@@ -15,9 +15,10 @@
 // mechanics, not the meaning of a Job type, command, checkpoint, progress
 // stage, result, public error code, or recurring occurrence.
 //
-// Domain-specific handlers and recurrence proposers remain in the parent app
-// package beside their owning use cases. App constructs Engine from those
-// adapters through immutable Descriptors, Recurrences, and PeriodicTasks. The module-root
+// Domain-specific handlers, commands, and recurrence proposers live in the
+// sibling app/jobs package. Parent app supplies narrow use-case adapters and
+// constructs Engine from the immutable app/jobs catalog plus domain-owned
+// PeriodicTasks. The module-root
 // server retains the constructed Engine and owns when it starts and closes;
 // construction itself is inert.
 //
@@ -28,7 +29,7 @@
 // it depends inward only on model and store.JobStore.
 //
 // Tests at this boundary cover registration, execution, fencing, recovery,
-// recurrence, projections, controls, races, and shutdown. Handler tests remain
-// with their application adapters, while PostgreSQL and root-lifecycle tests
-// provide cross-component recovery and wiring evidence.
+// recurrence, projections, controls, races, and shutdown. Concrete handler
+// tests live in app/jobs, while PostgreSQL and root-lifecycle tests provide
+// cross-component recovery and wiring evidence.
 package job

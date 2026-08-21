@@ -2,11 +2,11 @@
 
 ## HTTP
 
-`app/api` owns routing, request/response DTOs, strict decoding, authentication/assurance wrappers, Problem Details, and OpenAPI agreement.
+`httpapi` owns routing, request/response DTOs, strict decoding, authentication/assurance wrappers, Problem Details, and OpenAPI agreement. It is a sibling of `app`, not an `app` child, because HTTP is an outer transport that consumes application capabilities; the directory layout now communicates the same dependency direction enforced by architecture tests.
 
-`api.New` compiles and seals one immutable route catalog before exposing the HTTP handler. Cohesive resource modules declare typed paths, operations, authentication requirements, DTO mappings, and allowed public errors without receiving mutable router types. Every HTTP entry point, including the named WebSocket upgrade, uses this catalog. There is no post-construction registration surface or mutable resource-router tree. Every route has an explicit authentication classification.
+`httpapi.New` compiles and seals one immutable route catalog before exposing the HTTP handler. `resource_catalog.go` is the single production resource inventory; each cohesive resource module declares typed paths, operations, authentication requirements, DTO mappings, and allowed public errors without receiving mutable router types. Every HTTP entry point, including the named WebSocket upgrade, uses this catalog. There is no post-construction registration surface or mutable resource-router tree. Every route has an explicit authentication classification.
 
-Construction receives the application-facing capabilities selected by the sole composition root and immediately projects them through each resource constructor's narrow consumer-owned interface. A resource retains only that focused application capability; `app/api` does not import or reach through `store`, SQL, `platform.Service`, or concrete infrastructure. This preserves transport ownership without turning the HTTP boundary into an application or infrastructure service locator.
+Construction receives the application-facing capabilities selected by the sole composition root and immediately projects them through each resource constructor's narrow consumer-owned interface. A resource retains only that focused application capability; `httpapi` does not import or reach through `store`, SQL, `platform.Service`, or concrete infrastructure. This preserves transport ownership without turning the HTTP boundary into an application or infrastructure service locator.
 
 Ordinary handlers return a typed status/body result and `error`. Central code validates the complete result before writing JSON, headers, cookies, or Problem Details. Redirects, bounded uploads, and binary downloads use named, protocol-specific result types recorded in the route manifest. The WebSocket handshake is the sole raw response exception because the sibling transport must take ownership of the upgraded connection; it remains a named, session-authenticated catalog operation with kernel-owned parameters, metadata, and declared pre-upgrade failures. After a successful upgrade, the sibling transport owns the connection lifecycle.
 
@@ -48,7 +48,7 @@ application result through the current transport and do not repeat
 post-commit effects or expose whether execution occurred on this request.
 
 The exact route, authentication, DTO, error, and OpenAPI agreement rules live
-in the component-owned [HTTP API contract](../../server/app/api/CONTRACT.md).
+in the component-owned [HTTP API contract](../../server/httpapi/CONTRACT.md).
 
 ## WebSocket
 

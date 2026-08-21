@@ -12,6 +12,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -433,7 +434,7 @@ func TestOnboardingImportExecutionJobResumesSafeTerminalCheckpointAcrossWorkers(
 	job.CheckpointVersion = 1
 	job.Checkpoint = json.RawMessage(`{"after_row":41,"processed":37}`)
 	service := &onboardingImportService{imports: onboardingImportPersistenceFake{value: &store.OnboardingImport{ID: id, State: model.OnboardingImportCompleted, ValidRows: 37}}}
-	handler := onboardingImportExecuteHandler{service: service}
+	handler := appjobs.NewOnboardingImportExecuteDescriptor(onboardingImportJobs{service: service}).Handler
 	for worker := 0; worker < 2; worker++ {
 		outcome := handler.Run(context.Background(), jobengine.NewExecution(job, &model.JobAttempt{ID: model.NewJobAttemptID()}, func(context.Context, jobengine.CheckpointValue) error {
 			t.Fatal("terminal recovery must not write another checkpoint")

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -172,13 +173,14 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 		{FanoutsTerminalized: 4, DeliveriesSuppressed: 2, More: true},
 		{FanoutsTerminalized: 1, DeliveriesSuppressed: 1},
 	}}
-	command, _ := modelJSON(MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
+	command, _ := json.Marshal(appjobs.MailCleanupCommandV1{PageSize: 10, MaxPages: 2})
 	job, err := model.NewJob(model.NewJobID(), model.JobTypeMailCleanup, 1, command, "cleanup", time.Now(), time.Now(), 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 	metrics := &recordingMailMetrics{}
-	outcome := (mailCleanupHandler{mail: mail, sittings: sittings, recorder: metrics}).Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	descriptor := appjobs.NewMailCleanupDescriptor(mail, sittings, jobMailDeliveryRecorder{recorder: metrics})
+	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
 	if outcome.Kind != jobengine.OutcomeSucceeded || string(outcome.Result) != `{"fanouts_terminalized":5,"fanout_deliveries_suppressed":3,"expired":3,"deleted":3}` {
 		t.Fatalf("cleanup outcome = %#v", outcome)
 	}
@@ -191,33 +193,4 @@ func TestMailCleanupJobBoundsPagesAndReportsSafeCounts(t *testing.T) {
 	if len(metrics.deliveries) != 1 || metrics.deliveries[0].OutcomeCode != model.MailDeliveryExpiredCode {
 		t.Fatalf("cleanup delivery metrics = %#v", metrics.deliveries)
 	}
-}
-
-func TestMailCleanupProposalRequiresDependenciesAndUsesPermanentDailyDedupe(t *testing.T) {
-	occurrence := time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC)
-	if err := (mailCleanupProposer{}).Propose(context.Background(), occurrence); err == nil {
-		t.Fatal("mail cleanup proposal accepted missing dependencies")
-	}
-	jobs := &deduplicatingJobEnqueuerFake{jobs: map[string]*model.Job{}}
-	for index := 0; index < 2; index++ {
-		proposer := mailCleanupProposer{jobs: jobs, now: func() time.Time { return occurrence.Add(time.Duration(index) * time.Second) }}
-		if err := proposer.Propose(context.Background(), occurrence); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if len(jobs.jobs) != 1 {
-		t.Fatalf("mail cleanup logical Jobs = %d", len(jobs.jobs))
-	}
-	job := jobs.jobs[string(model.JobTypeMailCleanup)+":"+"mail-cleanup:2026-08-17"]
-	if job == nil || job.Type != model.JobTypeMailCleanup || job.DedupePolicy != model.JobDedupePermanent {
-		t.Fatalf("mail cleanup Job = %#v", job)
-	}
-	var command MailCleanupCommandV1
-	if err := json.Unmarshal(job.Command, &command); err != nil || command.PageSize != mailCleanupPageSize || command.MaxPages != mailCleanupMaximumPages {
-		t.Fatalf("mail cleanup command = %#v, %v", command, err)
-	}
-}
-
-func modelJSON(value any) ([]byte, error) {
-	return json.Marshal(value)
 }

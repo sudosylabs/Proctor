@@ -14,9 +14,9 @@ import (
 
 	mailpkg "github.com/sudosylabs/proctor/packages/mail"
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -595,27 +595,27 @@ func (l websocketLogger) WarnContext(ctx context.Context, message string, err er
 	l.log.WarnContext(ctx, message, fields...)
 }
 
-// apiLogger adapts logging to the narrow api.Logger port so the HTTP transport
+// apiLogger adapts logging to the narrow httpapi.Logger port so the HTTP transport
 // package never imports logging.
 type apiLogger struct {
 	log runtimeLogger
 }
 
-func (l apiLogger) InfoContext(ctx context.Context, message string, fields ...api.LogField) {
+func (l apiLogger) InfoContext(ctx context.Context, message string, fields ...httpapi.LogField) {
 	if l.log == nil {
 		return
 	}
 	l.log.InfoContext(ctx, message, apiLogFields(fields)...)
 }
 
-func (l apiLogger) ErrorContext(ctx context.Context, message string, fields ...api.LogField) {
+func (l apiLogger) ErrorContext(ctx context.Context, message string, fields ...httpapi.LogField) {
 	if l.log == nil {
 		return
 	}
 	l.log.ErrorContext(ctx, message, apiLogFields(fields)...)
 }
 
-func apiLogFields(fields []api.LogField) []logging.Field {
+func apiLogFields(fields []httpapi.LogField) []logging.Field {
 	out := make([]logging.Field, 0, len(fields))
 	for _, field := range fields {
 		out = append(out, logging.Any(field.Key, field.Value))

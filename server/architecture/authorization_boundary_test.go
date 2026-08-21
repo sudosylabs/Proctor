@@ -45,7 +45,7 @@ func TestTransportCannotOwnApplicationAuthorizationCompatibility(t *testing.T) {
 		"PrincipalHasPermissionToAcademicUnitMemberForRequest":  {},
 		"PrincipalHasPermissionToUserForRequest":                {},
 	}
-	inspectProductionGoFiles(t, []string{"app/api", "websocket"}, func(path string, file *ast.File) {
+	inspectProductionGoFiles(t, []string{"httpapi", "websocket"}, func(path string, file *ast.File) {
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch candidate := node.(type) {
 			case *ast.Ident:

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -643,7 +644,7 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 		t.Fatal(err)
 	}
 	generator := newProfilePictureServiceForTest(persistence, persistence, &pictureContentFake{}, nil, nil, nil, nil, nil, func() time.Time { return at })
-	handler := defaultProfilePictureHandler{generator: generator}
+	handler := appjobs.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: generator}).Handler
 	outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
 	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || persistence.defaultPublication == nil || len(persistence.defaultPublication.Renditions) != 3 || persistence.defaultPublication.UserID != user.ID {
 		t.Fatalf("handler outcome/store = %#v / %#v", outcome, persistence)

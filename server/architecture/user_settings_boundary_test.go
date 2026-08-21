@@ -17,7 +17,7 @@ import (
 
 // TestUserSettingsApplicationBoundary keeps the portable User Settings
 // Document independent of delivery adapters, deployment configuration, file
-// storage, and examination state. HTTP translation remains in app/api and the
+// storage, and examination state. HTTP translation remains in httpapi and the
 // desktop-owned interpretation registry remains outside this repository.
 func TestUserSettingsApplicationBoundary(t *testing.T) {
 	t.Parallel()

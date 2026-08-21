@@ -45,7 +45,7 @@ module README:
   rationale;
 - [`docs/project/status.md`](../docs/project/status.md) records implemented
   capability areas and unresolved decisions;
-- [`app/api/CONTRACT.md`](app/api/CONTRACT.md) defines the HTTP contract; and
+- [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md) defines the HTTP contract; and
 - [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md) defines cluster delivery and
   recovery behavior.
 

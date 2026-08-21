@@ -12,6 +12,7 @@ import (
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
@@ -26,9 +27,9 @@ type FileContent interface {
 	ProfilePictureReadFiles
 	DefaultProfilePictureRenderFiles
 	DefaultProfilePictureGenerationFiles
-	FileRevisionContentPurger
-	starterWorkspaceObjectPurger
-	attemptWorkspaceObjectPurger
+	appjobs.FileRevisionContentPurger
+	appjobs.StarterWorkspaceObjectPurger
+	appjobs.AttemptWorkspaceObjectPurger
 	examattempt.Content
 	examresource.FileContent
 	examcorrection.Content

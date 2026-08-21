@@ -14,7 +14,7 @@ Before changing the server, load the relevant architecture topic from
 [`docs/architecture/`](../docs/architecture/) and any exact component contract:
 
 - HTTP routes, DTOs, errors, or OpenAPI:
-  [`app/api/CONTRACT.md`](app/api/CONTRACT.md)
+  [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md)
 - cluster delivery or recovery: [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md)
 - current capabilities and open decisions:
   [`docs/project/status.md`](../docs/project/status.md)

@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/cluster"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -98,7 +98,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 					return compositionWebSocket{closer: websocketCloser}, nil
 				},
 				attachSink: func(*app.App, apprealtime.Sink) error { return nil },
-				http: func(api.Options) (runtimeTransport, http.Handler, error) {
+				http: func(httpapi.Options) (runtimeTransport, http.Handler, error) {
 					return compositionTransport{closer: transportCloser}, nil, nil
 				},
 				jobs: func(*app.App) runtimeJobs { return compositionJobs{} },
@@ -121,7 +121,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			case "attach-sink":
 				constructors.attachSink = func(*app.App, apprealtime.Sink) error { return primaryErr }
 			case "http":
-				constructors.http = func(api.Options) (runtimeTransport, http.Handler, error) { return nil, nil, primaryErr }
+				constructors.http = func(httpapi.Options) (runtimeTransport, http.Handler, error) { return nil, nil, primaryErr }
 			case "jobs":
 				constructors.jobs = func(*app.App) runtimeJobs { return nil }
 				primaryErr = errDurableJobRuntimeUnavailable

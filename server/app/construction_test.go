@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -258,8 +259,8 @@ func TestJobRecipeConnectsRuntimeOperationsAndProfileWake(t *testing.T) {
 	if jobs.runtime == nil || jobs.operations == nil {
 		t.Fatalf("constructed Jobs = %#v, want runtime and operations", jobs)
 	}
-	proposer, ok := profiles.profilePictures.reads.defaultJobs.(*defaultProfilePictureJobProposer)
-	if !ok || proposer.wake == nil {
+	_, ok := profiles.profilePictures.reads.defaultJobs.(*appjobs.DefaultProfilePictureJobs)
+	if !ok {
 		t.Fatalf("profile default Jobs = %#v, want attached proposer with wake backlink", profiles.profilePictures.reads.defaultJobs)
 	}
 	application := assembleApplication(
@@ -286,7 +287,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 		},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
 		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}}, profiles,
-		&defaultProfilePictureJobProposer{jobs: constructionJobStoreStub{}},
+		appjobs.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),
 		newMailHealth(false),
 	)
 	if _, err := jobengine.NewRegistry(definitions.descriptors); err != nil {
@@ -300,34 +301,28 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if !exists {
 		t.Fatal("Exam Sitting lifecycle descriptor is absent from the application Job graph")
 	}
-	if handler, ok := lifecycle.Handler.(examSittingLifecycleHandler); !ok || handler.reconciler == nil {
+	if lifecycle.Handler == nil {
 		t.Fatalf("lifecycle handler = %#v", lifecycle.Handler)
 	}
 	sealing, exists := descriptors[model.JobTypeExamSittingSealing]
 	if !exists {
 		t.Fatal("Exam Sitting sealing descriptor is absent from the application Job graph")
 	}
-	handler, ok := sealing.Handler.(examSittingSealingHandler)
-	if !ok || handler.service == nil {
+	if sealing.Handler == nil {
 		t.Fatalf("sealing handler = %#v", sealing.Handler)
-	}
-	sealingUseCases, ok := handler.service.(examSittingSealingJobUseCases)
-	if !ok || sealingUseCases.sittings == nil || sealingUseCases.attempts == nil || sealingUseCases.jobs == nil ||
-		sealingUseCases.now == nil || sealingUseCases.newID == nil {
-		t.Fatalf("sealing use cases = %#v", handler.service)
 	}
 	recovery, exists := descriptors[model.JobTypeExamSittingLifecycleRecovery]
 	if !exists {
 		t.Fatal("Exam Sitting lifecycle recovery descriptor is absent from the application Job graph")
 	}
-	if handler, ok := recovery.Handler.(examSittingLifecycleRecoveryHandler); !ok || handler.service == nil {
+	if recovery.Handler == nil {
 		t.Fatalf("recovery handler = %#v", recovery.Handler)
 	}
 	invitationMaintenance, exists := descriptors[model.JobTypeInvitationMaintenance]
 	if !exists {
 		t.Fatal("Invitation maintenance descriptor is absent from the application Job graph")
 	}
-	if handler, ok := invitationMaintenance.Handler.(invitationMaintenanceHandler); !ok || handler.invitations == nil || handler.imports == nil || handler.content == nil || handler.now == nil {
+	if invitationMaintenance.Handler == nil {
 		t.Fatalf("Invitation maintenance handler = %#v", invitationMaintenance.Handler)
 	}
 	if descriptor, ok := descriptors[model.JobTypeOnboardingImportParse]; !ok || !descriptor.Cancelable {
@@ -345,8 +340,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	for _, recurrence := range definitions.recurrences {
 		if recurrence.Name == "invitation-maintenance" {
 			invitationMaintenanceRecurrenceCount++
-			proposer, ok := recurrence.Proposer.(invitationMaintenanceProposer)
-			if !ok || proposer.jobs == nil || proposer.now == nil {
+			if recurrence.Proposer == nil {
 				t.Fatalf("Invitation maintenance proposer = %#v", recurrence.Proposer)
 			}
 		}
@@ -354,8 +348,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 			continue
 		}
 		recurrenceCount++
-		proposer, ok := recurrence.Proposer.(examSittingLifecycleRecoveryProposer)
-		if !ok || proposer.jobs == nil || proposer.now == nil {
+		if recurrence.Proposer == nil {
 			t.Fatalf("recovery proposer = %#v", recurrence.Proposer)
 		}
 	}
@@ -411,18 +404,8 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 	if !exists {
 		t.Fatal("Job cleanup descriptor is absent")
 	}
-	cleanupHandler, ok := cleanup.Handler.(jobHistoryCleanupHandler)
-	if !ok {
+	if cleanup.Handler == nil {
 		t.Fatalf("cleanup handler = %#v", cleanup.Handler)
-	}
-	retained := map[model.JobType]bool{}
-	for _, policy := range cleanupHandler.policies {
-		retained[policy.Type] = true
-	}
-	if !retained[model.JobTypeExamSittingLifecycle] || !retained[model.JobTypeExamSittingLifecycleRecovery] ||
-		!retained[model.JobTypeExamSittingSealing] || !retained[model.JobTypeInvitationMaintenance] ||
-		!retained[model.JobTypeOnboardingImportParse] || !retained[model.JobTypeOnboardingImportExecute] || !retained[model.JobTypeStudentProgressionPreview] {
-		t.Fatalf("cleanup retention types = %#v", retained)
 	}
 }
 

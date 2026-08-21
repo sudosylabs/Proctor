@@ -17,13 +17,18 @@ named domain Store operation remains responsible for cross-node convergence.
 `model.JobAttempt` records every execution claim and outcome so retries do not
 erase evidence. `store.JobStore` owns atomic enqueue, claim, fencing,
 checkpoint, terminal, and retention contracts. Application use cases own job
-creation, actor-sensitive cancellation authorization, progress meaning, and
-type-specific handlers. The application constructs the `app/job` engine from
-those domain handler adapters and immutable recurrence definitions. The
+creation and actor-sensitive cancellation authorization. The `app/jobs`
+package owns concrete handlers, typed payloads, progress meaning, descriptor
+policy, recurrence proposers, and the explicit durable-work catalog. Parent
+`app` supplies narrow use-case adapters and constructs the generic `app/job`
+engine from that catalog. The
 module-root server then owns the engine's start and close order as part of the
 runtime lifecycle. Root ownership therefore means lifecycle ownership, not
-that the root defines Job types or application policy. Handlers call
-application use cases rather than manipulating unrelated stores.
+that the root defines Job types or application policy. A worker receives only
+the capabilities declared by its handler contract; it never receives `App`,
+`Dependencies`, `store.Catalog`, or a general-purpose Job server. Handlers call
+application use cases or bounded per-model store contracts rather than
+discovering and manipulating unrelated services.
 
 ## Delivery and claiming
 
@@ -120,14 +125,14 @@ transition belong to the engine. An opaque prepared control target carries the
 engine's validated transition and revision across that audit boundary without
 exposing persistence mechanics.
 
-The composition root constructs one immutable instance-scoped handler
-registry. Every descriptor declares supported payload versions, timeout,
+`app/jobs.NewCatalog` constructs one immutable instance-scoped handler
+registry from capability-oriented dependencies. Every descriptor declares supported payload versions, timeout,
 per-node concurrency, retry/backoff, cancelability, retention, and handler.
 Startup rejects duplicate types and missing handlers; there is no process-global
 mutable registration.
 
 Daily recurrence definitions are immutable constructor input to the same
-engine. Application slices own each recurrence name, typed command, stable
+engine. `app/jobs` owns each recurrence name, typed command, stable
 date-keyed identity, deduplication policy, and bounded work definition. The
 engine owns UTC timing, bounded retry of transient proposal failures, the
 post-proposal local wake, and recurrence shutdown. Every node may propose; the
@@ -153,12 +158,14 @@ The initial registered work covers:
 - `file.purge_expired_content`, a bounded cleanup of expired Upload Leases,
   partial renditions, and retention-eligible archived content;
 - delayed and recovery-driven Exam Sitting lifecycle work, plus bounded
-  non-cancelable sealing of Closing Sittings;
+  non-cancelable sealing of Closing Sittings; and
 - ordinary bounded Exam Sitting mail expansion, with a stable User cursor,
   permanent recipient deduplication, and per-node reconciliation of upcoming
   audience drift; expired, failed, or orphaned expansion is terminalized by
   bounded PostgreSQL-clock mail maintenance so it cannot retain a bundle or
   block later reconciliation; and
+- ordinary transactional-mail delivery plus permanently deduplicated daily
+  expiry and 90/180-day metadata cleanup; and
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
   running, or its own active work.
 
@@ -192,3 +199,25 @@ Installation bootstrap, local account creation, external-provider provisioning,
 and future imports commit the User and deduplicated default-generation Job in
 one named aggregate operation. A missing-default read renders the deterministic
 fallback and enqueues work; GET never synchronously persists content.
+
+## Administrative onboarding batches
+
+Accepted onboarding and progression batches reuse the Job engine for finite
+execution but keep their own preview, scope, row, and report state; generic Job
+payloads are not the product API. Upload creates no domain effects. A bounded
+parse Job produces a content-digested immutable preview, explicit commit creates
+one execution Job, and each row runs one named atomic aggregate transaction.
+
+Submission and every row reauthorize against current actor, target, scope, and
+credential type. Cancellation prevents new row claims, lets a committing row
+finish, and never rolls back completed work. The checkpoint records the next
+row while append-only row outcomes make retry and lease recovery idempotent.
+One executing batch of the same kind and target scope is admitted at a time.
+
+Domain-specific `onboarding_batch.*` and progression actions protect safe
+projections and report downloads. They neither grant `job.view` nor expose
+commands, complete rows, recipient lists, or internal errors. Preview and row
+reports expire after seven days; retained Job identity prevents the same
+preview from executing twice after report cleanup. The complete catalog, CSV
+contract, partial-success behavior, and privacy rules live in
+[Access and onboarding](./access-and-onboarding.md#administrative-batches-and-csv).

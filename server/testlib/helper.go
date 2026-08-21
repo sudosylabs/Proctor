@@ -15,9 +15,9 @@ import (
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	server "github.com/sudosylabs/proctor/server"
 	"github.com/sudosylabs/proctor/server/app"
-	"github.com/sudosylabs/proctor/server/app/api"
 	"github.com/sudosylabs/proctor/server/cluster/local"
 	"github.com/sudosylabs/proctor/server/config"
+	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
@@ -28,7 +28,7 @@ type setupOptions struct {
 	persistence      store.Store
 	cluster          platform.Cluster
 	configuredMailer bool
-	buildInfo        api.BuildInfo
+	buildInfo        httpapi.BuildInfo
 }
 
 // Option customizes one concern in the test graph; everything else is
@@ -69,7 +69,7 @@ func WithConfiguredMailer() Option {
 }
 
 // WithBuildInfo replaces the build information served by the HTTP API.
-func WithBuildInfo(buildInfo api.BuildInfo) Option {
+func WithBuildInfo(buildInfo httpapi.BuildInfo) Option {
 	return func(options *setupOptions) {
 		options.buildInfo = buildInfo
 	}
@@ -93,9 +93,9 @@ type Helper struct {
 	Cache            *Cache
 	// Mailer is the captured in-memory sender when testlib supplied it. It is
 	// nil when WithConfiguredMailer selects the production-configured adapter.
-	Mailer *Mailer
-	VFS              *memoryvfs.FS
-	handler          http.Handler
+	Mailer  *Mailer
+	VFS     *memoryvfs.FS
+	handler http.Handler
 }
 
 // BootstrapSecret is the explicit deployment-owned value used by real-graph

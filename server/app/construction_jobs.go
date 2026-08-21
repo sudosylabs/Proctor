@@ -10,6 +10,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -29,7 +30,7 @@ func constructJobs(
 		return jobConstruction{}, errors.New("Examination lifecycle use cases are required when Jobs are enabled")
 	}
 
-	defaultJobs := &defaultProfilePictureJobProposer{jobs: deps.Store.Job()}
+	defaultJobs := appjobs.NewDefaultProfilePictureJobs(deps.Store.Job())
 	// Enabled workers must be able to open every active payload before runtime
 	// construction. Disabled workers suppress payloads before decryption, so a
 	// deliberately absent or retired ring must not prevent that convergence.
@@ -53,7 +54,7 @@ func constructJobs(
 	if err != nil {
 		return jobConstruction{}, err
 	}
-	defaultJobs.wake = runtime.Wake
+	defaultJobs.SetWake(runtime.Wake)
 	if identity.onboardingImports != nil {
 		identity.onboardingImports.wake = runtime.Wake
 	}
@@ -142,58 +143,33 @@ func buildApplicationJobDefinitions(
 	identity identityConstruction,
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
-	defaultJobs *defaultProfilePictureJobProposer,
+	defaultJobs *appjobs.DefaultProfilePictureJobs,
 	mailHealth *MailHealth,
 ) applicationJobDefinitions {
 	if mailHealth == nil {
 		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
-	defaultHandler := defaultProfilePictureHandler{generator: profiles.profilePictures}
-	reconciliationHandler := defaultProfilePictureReconciliationHandler{
-		users: deps.Store.User(), defaults: defaultJobs, now: time.Now,
-	}
-	purgeHandler := newFilePurgeExpiredContentHandler(deps.Store.File(), deps.FileContent,
-		deps.Store.ExamStarterWorkspace(), deps.FileContent,
-		deps.Store.ExamAttemptWorkspace(), deps.FileContent)
 	lifecycleUseCases := examSittingLifecycleJobUseCases{sittings: examinations.sittings}
 	sealingUseCases := examSittingSealingJobUseCases{sittings: examinations.sittings, attempts: examinations.attempts,
 		jobs: deps.Store.Job(), now: time.Now, newID: model.NewJobID}
-	descriptors := []jobengine.Descriptor{
-		defaultProfilePictureDescriptor(defaultHandler),
-		defaultProfilePictureReconciliationDescriptor(reconciliationHandler),
-		filePurgeExpiredContentDescriptor(purgeHandler),
-		commandOutcomeCleanupDescriptor(commandOutcomeCleanupHandler{outcomes: deps.Store.CommandOutcome()}),
-		mailDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
-		mailCredentialDeliveryDescriptor(mailDeliveryHandler{deliveries: deps.Store.Mail(), sender: deps.MailDeliverySender, sealer: deps.MailSecretSealer, recorder: deps.MailDeliveryRecorder, health: mailHealth, now: time.Now}),
-		sittingMailExpansionDescriptor(sittingMailExpansionHandler{sittings: deps.Store.ExamSitting(), mail: examinations.sittingMail}),
-		mailCleanupDescriptor(mailCleanupHandler{mail: deps.Store.Mail(), sittings: deps.Store.ExamSitting(), recorder: deps.MailDeliveryRecorder}),
-		mailRekeyDescriptor(mailRekeyHandler{mail: deps.Store.Mail(), sealer: deps.MailSecretSealer}),
-		invitationMaintenanceDescriptor(invitationMaintenanceHandler{invitations: deps.Store.Invitation(), imports: deps.Store.OnboardingImport(), content: deps.FileContent, now: time.Now}),
-		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: lifecycleUseCases}),
-		examSittingSealingDescriptor(examSittingSealingHandler{service: sealingUseCases}),
-		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: lifecycleUseCases}),
-	}
+	var onboarding appjobs.OnboardingImportService
 	if identity.onboardingImports != nil {
-		descriptors = append(descriptors,
-			onboardingImportParseDescriptor(onboardingImportParseHandler{service: identity.onboardingImports}),
-			studentProgressionPreviewDescriptor(studentProgressionPreviewHandler{service: identity.onboardingImports}),
-			onboardingImportExecuteDescriptor(onboardingImportExecuteHandler{service: identity.onboardingImports}),
-		)
+		onboarding = onboardingImportJobs{service: identity.onboardingImports}
 	}
-	retentionPolicies := jobRetentionPolicies(descriptors)
-	cleanupHandler := jobHistoryCleanupHandler{jobs: deps.Store.Job(), policies: append(retentionPolicies, store.JobRetentionPolicy{
-		Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
-	})}
-	descriptors = append(descriptors, jobHistoryCleanupDescriptor(cleanupHandler))
-	recurrences := []jobengine.Recurrence{
-		{Name: "profile-picture-default-reconciliation", Proposer: defaultProfilePictureReconciliationJobProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "file-purge-expired-content", Proposer: filePurgeExpiredContentProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "job-history-cleanup", Proposer: jobHistoryCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "command-outcome-cleanup", Proposer: commandOutcomeCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "mail-cleanup", Proposer: mailCleanupProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "invitation-maintenance", Proposer: invitationMaintenanceProposer{jobs: deps.Store.Job(), now: time.Now}},
-		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.Store.Job(), now: time.Now}},
-	}
+	catalog := appjobs.NewCatalog(appjobs.CatalogDependencies{
+		JobStore:                       deps.Store.Job(),
+		DefaultProfilePictureGenerator: jobDefaultProfilePictureGenerator{service: profiles.profilePictures}, Users: deps.Store.User(), DefaultProfilePictureJobs: defaultJobs,
+		Files: deps.Store.File(), FileContent: deps.FileContent,
+		StarterWorkspaces: deps.Store.ExamStarterWorkspace(), StarterWorkspaceContent: deps.FileContent,
+		AttemptWorkspaces: deps.Store.ExamAttemptWorkspace(), AttemptWorkspaceContent: deps.FileContent,
+		CommandOutcomes: deps.Store.CommandOutcome(),
+		MailDeliveries:  deps.Store.Mail(), MailSender: deps.MailDeliverySender, MailSealer: deps.MailSecretSealer,
+		MailRecorder: jobMailDeliveryRecorder{recorder: deps.MailDeliveryRecorder}, MailHealth: jobMailHealth{health: mailHealth},
+		MailRelevance: jobMailDeliveryIsRelevant, SittingMailStore: deps.Store.ExamSitting(), SittingMail: examinations.sittingMail,
+		MailCleanup: deps.Store.Mail(), SittingMailMaintenance: deps.Store.ExamSitting(), MailRekey: deps.Store.Mail(),
+		Invitations: deps.Store.Invitation(), OnboardingImports: deps.Store.OnboardingImport(), OnboardingFiles: deps.FileContent,
+		ExamSittingLifecycle: lifecycleUseCases, ExamSittingSealing: sealingUseCases, Onboarding: onboarding, Now: time.Now,
+	})
 	periodicTasks := []jobengine.PeriodicTask{
 		{Name: examAttemptExpiryPeriodicTaskName, Interval: examAttemptExpiryScanInterval, Runner: examAttemptExpiryPeriodicRunner{attempts: examinations.attempts}},
 		{Name: "desktop-authorization-maintenance", Interval: desktopAuthorizationMaintenanceInterval,
@@ -208,15 +184,5 @@ func buildApplicationJobDefinitions(
 	if deps.Store.Mail() != nil && deps.MailDeliverySender != nil {
 		periodicTasks = append(periodicTasks, jobengine.PeriodicTask{Name: "mail-maintenance-monitor", Interval: time.Minute, Runner: mailMaintenanceMonitor{mail: deps.Store.Mail(), sender: deps.MailDeliverySender, health: mailHealth, recorder: deps.MailDeliveryRecorder, now: time.Now}})
 	}
-	return applicationJobDefinitions{descriptors: descriptors, recurrences: recurrences, periodicTasks: periodicTasks}
-}
-
-func jobRetentionPolicies(descriptors []jobengine.Descriptor) []store.JobRetentionPolicy {
-	policies := make([]store.JobRetentionPolicy, 0, len(descriptors))
-	for _, descriptor := range descriptors {
-		policies = append(policies, store.JobRetentionPolicy{
-			Type: descriptor.Type, SucceededCanceledAge: descriptor.SuccessRetention, FailedAge: descriptor.FailureRetention,
-		})
-	}
-	return policies
+	return applicationJobDefinitions{descriptors: catalog.Descriptors, recurrences: catalog.Recurrences, periodicTasks: periodicTasks}
 }

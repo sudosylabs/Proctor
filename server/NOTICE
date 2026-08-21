@@ -279,12 +279,12 @@ Corresponding Proctor paths:
 - server/app/personal_access_token.go
 - server/app/mfa.go
 - server/app/mfa_integration_test.go
-- server/app/api/authentication.go
-- server/app/api/cookies.go
-- server/app/api/handler.go
-- server/app/api/session.go
-- server/app/api/personal_access_token.go
-- server/app/api/mfa.go
+- server/httpapi/authentication.go
+- server/httpapi/cookies.go
+- server/httpapi/handler.go
+- server/httpapi/session.go
+- server/httpapi/personal_access_token.go
+- server/httpapi/mfa.go
 - server/store/sqlstore/user_store.go
 - server/store/sqlstore/user_token_store.go
 - server/store/sqlstore/user_token_store_test.go
@@ -366,7 +366,7 @@ The provider-neutral external-authentication flow, instance-scoped factory
 registry, and CAS/OIDC adapters in:
 
 - `server/app/external_authentication.go`;
-- `server/app/api/external_authentication.go`;
+- `server/httpapi/external_authentication.go`;
 - `server/platform/externalauth/provider.go`;
 - `server/platform/externalauth/cas/provider.go`;
 - `server/platform/externalauth/oidc/provider.go`;
@@ -455,23 +455,23 @@ Corresponding Proctor paths:
 - server/app/audit.go
 - server/app/authorization_test.go
 - server/app/authorization_integration_test.go
-- server/app/api/audit.go
-- server/app/api/bootstrap.go
-- server/app/api/role.go
-- server/app/api/role_binding.go
-- server/app/api/system.go
-- server/app/api/api.go
-- server/app/api/handler.go
-- server/app/api/authentication.go
-- server/app/api/middleware.go
-- server/app/api/params.go
-- server/app/api/institution.go
-- server/app/api/programme.go
-- server/app/api/academic_period.go
-- server/app/api/class.go
-- server/app/api/membership.go
-- server/app/api/user_administration.go
-- server/app/api/user_profile.go
+- server/httpapi/audit.go
+- server/httpapi/bootstrap.go
+- server/httpapi/role.go
+- server/httpapi/role_binding.go
+- server/httpapi/system.go
+- server/httpapi/api.go
+- server/httpapi/handler.go
+- server/httpapi/authentication.go
+- server/httpapi/middleware.go
+- server/httpapi/params.go
+- server/httpapi/institution.go
+- server/httpapi/programme.go
+- server/httpapi/academic_period.go
+- server/httpapi/class.go
+- server/httpapi/membership.go
+- server/httpapi/user_administration.go
+- server/httpapi/user_profile.go
 - server/store/store.go
 - server/store/sqlstore/role_store.go
 - server/store/sqlstore/role_binding_store.go
@@ -535,8 +535,9 @@ Modifications:
   flow into audited Proctor institution, hierarchy, programme, period, class,
   affiliation, membership, enrollment-transfer, and user-administration
   vertical slices;
-- retained direct, resource-specific permission checks in each API handler and
-  applied the same authorization independently in application use cases;
+- removed the temporary duplicated transport permission checks after every
+  owning application use case became the authoritative action/resource
+  authorization and audit boundary;
 - replaced default-deny placeholder user visibility with current,
   effective-dated student-class relationships and inherited
   `class.members.view`, without granting permissions from membership itself.
@@ -582,8 +583,8 @@ Corresponding Proctor paths:
 - server/app/realtime/
 - server/server.go
 - server/websocket/
-- server/app/api/websocket.go
-- server/app/api/middleware.go
+- server/httpapi/websocket.go
+- server/httpapi/middleware.go
 
 Modifications:
 
