@@ -459,6 +459,9 @@ The first four commands delegate to the maintainer interface in
 
 The exact property and maintenance contract lives in
 [`templates/README.md`](templates/README.md).
+`i18n/` and `templates/` contain data and build tooling only. General
+translation behavior lives in `localization/`; mail-specific rendering lives
+beside composition in `app/mail/`.
 
 ### Production SMTP and deliverability
 

@@ -47,7 +47,7 @@ func TestSittingMailPreparerFreezesAllFourSafeRenderVariants(t *testing.T) {
 
 type sittingMailRendererFake struct{}
 
-func (sittingMailRendererFake) RenderSittingScheduleNotice(key model.MailTemplateKey, _, _ string,
+func (sittingMailRendererFake) RenderSittingScheduleNotice(key model.MailTemplateKey, _ string,
 	details SittingScheduleMailDetails,
 ) (FrozenMailContent, error) {
 	return FrozenMailContent{Subject: string(key), Text: details.ExamTitle + " " + details.ClassDisplayName,

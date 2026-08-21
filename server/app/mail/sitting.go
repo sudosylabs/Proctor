@@ -29,7 +29,7 @@ type SittingScheduleDetails struct {
 }
 
 type SittingRenderer interface {
-	RenderSittingScheduleNotice(model.MailTemplateKey, string, string, SittingScheduleDetails) (FrozenContent, error)
+	RenderSittingScheduleNotice(model.MailTemplateKey, string, SittingScheduleDetails) (FrozenContent, error)
 }
 
 type FrozenSittingBundleV1 struct {
@@ -110,7 +110,7 @@ func (p *SittingComposer) Prepare(actorID model.UserID, sitting *model.ExamSitti
 		if key == model.MailTemplateExamSittingAssignmentRemoved && details.PriorClassDisplayName != "" {
 			variant.ClassDisplayName = details.PriorClassDisplayName
 		}
-		rendered, renderErr := p.renderer.RenderSittingScheduleNotice(key, model.DefaultLocale, model.DefaultLocale, variant)
+		rendered, renderErr := p.renderer.RenderSittingScheduleNotice(key, "", variant)
 		if renderErr != nil || rendered.Subject == "" || rendered.Text == "" || rendered.HTML == "" {
 			return nil, errors.New("render sitting mail bundle")
 		}

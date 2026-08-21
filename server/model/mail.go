@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -26,54 +27,8 @@ type MailOccurrenceKind string
 type MailDeliveryState string
 
 func (key MailTemplateKey) IsValid() bool {
-	switch key {
-	case MailTemplateSystemTest,
-		MailTemplateIdentityVerifyEmail,
-		MailTemplateIdentityEmailChangeVerifyNew,
-		MailTemplateIdentityEmailChangeWarningOld,
-		MailTemplateIdentityEmailVerifiedByAdmin,
-		MailTemplateIdentityAccountDisabled,
-		MailTemplateIdentityAccountEnabled,
-		MailTemplateIdentitySessionsRevokedByAdmin,
-		MailTemplateIdentityMFAEnabled,
-		MailTemplateIdentityMFADisabled,
-		MailTemplateIdentityMFARecoveryCodesRegenerated,
-		MailTemplateIdentityPersonalAccessTokenCreated,
-		MailTemplateIdentityPersonalAccessTokenEnabled,
-		MailTemplateIdentityPersonalAccessTokenDisabled,
-		MailTemplateIdentityPersonalAccessTokenRevoked,
-		MailTemplateIdentityPasswordReset,
-		MailTemplateIdentityPasswordChanged,
-		MailTemplateAccessStudentClassInvitation,
-		MailTemplateAccessTeacherAcademicUnitInvitation,
-		MailTemplateAccessAcademicUnitRoleInvitation,
-		MailTemplateAccessInstitutionRoleInvitation,
-		MailTemplateAccessInvitationAccepted,
-		MailTemplateAccessInvitationRevoked,
-		MailTemplateAcademicClassEnrolled,
-		MailTemplateAcademicClassEnrollmentEnded,
-		MailTemplateAcademicClassTransferred,
-		MailTemplateAcademicUnitAssigned,
-		MailTemplateAcademicUnitAssignmentEnded,
-		MailTemplateAuthorizationScopedRoleAssigned,
-		MailTemplateAuthorizationScopedRoleEnded,
-		MailTemplateAuthorizationInstitutionRoleAssigned,
-		MailTemplateAuthorizationInstitutionRoleEnded,
-		MailTemplateExamSittingScheduled,
-		MailTemplateExamSittingRescheduled,
-		MailTemplateExamSittingCancelled,
-		MailTemplateExamSittingAssignmentRemoved,
-		MailTemplateExamManagerAdded,
-		MailTemplateExamManagerRemoved,
-		MailTemplateExamOwnershipTransferredToYou,
-		MailTemplateExamOwnershipTransferredFromYou,
-		MailTemplateExamSubmissionReceived,
-		MailTemplateExamSubmissionAutomaticallySealed,
-		MailTemplateExamResultReleased:
-		return true
-	default:
-		return false
-	}
+	_, ok := validMailTemplateKeys[key]
+	return ok
 }
 func (state MailDeliveryState) IsValid() bool { return validMailDeliveryState(state) }
 
@@ -146,6 +101,67 @@ const (
 	MailDeliveryCanceledCode            = "mail.delivery.canceled"
 	MailDeliveryOperatorRetryCode       = "mail.operator.retry"
 )
+
+var mailTemplateKeys = []MailTemplateKey{
+	MailTemplateSystemTest,
+	MailTemplateIdentityVerifyEmail,
+	MailTemplateIdentityPasswordReset,
+	MailTemplateIdentityPasswordChanged,
+	MailTemplateIdentityEmailChangeWarningOld,
+	MailTemplateIdentityEmailChangeVerifyNew,
+	MailTemplateIdentityEmailVerifiedByAdmin,
+	MailTemplateIdentityAccountDisabled,
+	MailTemplateIdentityAccountEnabled,
+	MailTemplateIdentitySessionsRevokedByAdmin,
+	MailTemplateIdentityMFAEnabled,
+	MailTemplateIdentityMFADisabled,
+	MailTemplateIdentityMFARecoveryCodesRegenerated,
+	MailTemplateIdentityPersonalAccessTokenCreated,
+	MailTemplateIdentityPersonalAccessTokenEnabled,
+	MailTemplateIdentityPersonalAccessTokenDisabled,
+	MailTemplateIdentityPersonalAccessTokenRevoked,
+	MailTemplateAccessStudentClassInvitation,
+	MailTemplateAccessTeacherAcademicUnitInvitation,
+	MailTemplateAccessAcademicUnitRoleInvitation,
+	MailTemplateAccessInstitutionRoleInvitation,
+	MailTemplateAccessInvitationAccepted,
+	MailTemplateAccessInvitationRevoked,
+	MailTemplateAcademicClassEnrolled,
+	MailTemplateAcademicClassEnrollmentEnded,
+	MailTemplateAcademicClassTransferred,
+	MailTemplateAcademicUnitAssigned,
+	MailTemplateAcademicUnitAssignmentEnded,
+	MailTemplateAuthorizationScopedRoleAssigned,
+	MailTemplateAuthorizationScopedRoleEnded,
+	MailTemplateAuthorizationInstitutionRoleAssigned,
+	MailTemplateAuthorizationInstitutionRoleEnded,
+	MailTemplateExamSittingScheduled,
+	MailTemplateExamSittingRescheduled,
+	MailTemplateExamSittingCancelled,
+	MailTemplateExamSittingAssignmentRemoved,
+	MailTemplateExamManagerAdded,
+	MailTemplateExamManagerRemoved,
+	MailTemplateExamOwnershipTransferredToYou,
+	MailTemplateExamOwnershipTransferredFromYou,
+	MailTemplateExamSubmissionReceived,
+	MailTemplateExamSubmissionAutomaticallySealed,
+	MailTemplateExamResultReleased,
+}
+
+var validMailTemplateKeys = func() map[MailTemplateKey]struct{} {
+	keys := make(map[MailTemplateKey]struct{}, len(mailTemplateKeys))
+	for _, key := range mailTemplateKeys {
+		keys[key] = struct{}{}
+	}
+	return keys
+}()
+
+// AllMailTemplateKeys returns the closed mail catalog in lexical order.
+func AllMailTemplateKeys() []MailTemplateKey {
+	keys := append([]MailTemplateKey(nil), mailTemplateKeys...)
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
+}
 
 var (
 	mailDigestPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)

@@ -69,7 +69,7 @@ type resultReleaseRendererFake struct {
 	details ResultReleaseMailDetails
 }
 
-func (renderer *resultReleaseRendererFake) RenderResultRelease(_ model.MailTemplateKey, _, _ string,
+func (renderer *resultReleaseRendererFake) RenderResultRelease(_ model.MailTemplateKey, _ string,
 	details ResultReleaseMailDetails,
 ) (FrozenMailContent, error) {
 	renderer.details = details

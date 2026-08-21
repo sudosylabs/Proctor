@@ -1,14 +1,14 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package i18n
+package localization
 
 import (
 	"testing"
 	"testing/fstest"
 )
 
-func TestBundleFallsBackPerMessageAndInterpolates(t *testing.T) {
+func TestLocalizerFallsBackPerMessageAndInterpolates(t *testing.T) {
 	t.Parallel()
 	files := fstest.MapFS{
 		"en.json": {Data: []byte(`[
@@ -19,18 +19,18 @@ func TestBundleFallsBackPerMessageAndInterpolates(t *testing.T) {
   {"id":"greeting","translation":"Bonjour {{.Name}}"}
 ]`)},
 	}
-	bundle, err := LoadBundle(files, "en")
+	localizer, err := New(files, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
-	translated, err := bundle.Translate("fr-CA", Key("greeting"), struct{ Name string }{"Ada"})
+	translated, err := localizer.Resolve("fr-CA", "greeting", struct{ Name string }{"Ada"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if translated.Locale != "fr" || translated.Text != "Bonjour Ada" {
 		t.Fatalf("translation = %#v", translated)
 	}
-	fallback, err := bundle.Translate("fr", Key("only.english"), nil)
+	fallback, err := localizer.Resolve("fr", "only.english", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestBundleFallsBackPerMessageAndInterpolates(t *testing.T) {
 	}
 }
 
-func TestBundleRejectsInvalidCatalogContracts(t *testing.T) {
+func TestLocalizerRejectsInvalidCatalogContracts(t *testing.T) {
 	t.Parallel()
 	tests := map[string]fstest.MapFS{
 		"nested shape": {"en.json": {Data: []byte(`{"greeting":"hello"}`)}},
@@ -60,27 +60,9 @@ func TestBundleRejectsInvalidCatalogContracts(t *testing.T) {
 		name, files := name, files
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := LoadBundle(files, "en"); err == nil {
+			if _, err := New(files, "en"); err == nil {
 				t.Fatal("invalid catalog was accepted")
 			}
 		})
-	}
-}
-
-func TestDefaultBundleLoadsFlatEmbeddedCatalog(t *testing.T) {
-	t.Parallel()
-	bundle, err := DefaultBundle("en")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(bundle.Keys()) < 300 {
-		t.Fatalf("embedded keys = %d", len(bundle.Keys()))
-	}
-	translation, err := bundle.Translate("en", Key("mail.identity.verify_email.subject"), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if translation.Text == "" {
-		t.Fatal("embedded translation is empty")
 	}
 }

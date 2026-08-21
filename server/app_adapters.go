@@ -17,12 +17,10 @@ import (
 	"github.com/sudosylabs/proctor/server/app/api"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/config"
-	"github.com/sudosylabs/proctor/server/i18n"
 	"github.com/sudosylabs/proctor/server/logging"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
-	"github.com/sudosylabs/proctor/server/templates"
 )
 
 // applicationDependencies projects platform capabilities and deployment
@@ -32,7 +30,7 @@ func applicationDependencies(
 	capabilities constructionCapabilities,
 	cfg config.Config,
 	content app.FileContent,
-	mailRenderer *templates.Renderer,
+	mailRenderer appmail.Renderer,
 ) (app.Dependencies, error) {
 	auth := cfg.Authentication
 	cache := platformAuthenticationCache{cache: capabilities.cache}
@@ -52,7 +50,7 @@ func applicationDependencies(
 		Store:                   capabilities.persistence,
 		Cache:                   cache,
 		MailDeliverySender:      mailer,
-		MailTemplateRenderer:    mailTemplateRendererAdapter{renderer: mailRenderer},
+		MailTemplateRenderer:    mailRenderer,
 		MailDeliveryRecorder:    newMailDeliveryRecorder(log, nil),
 		MailSecretSealer:        mailSecretSealer,
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
@@ -122,18 +120,6 @@ func applicationDependencies(
 		RecoveryDiagnostics:       loggingRecoveryDiagnostics{log: log},
 	}, nil
 }
-
-type i18nAdapter struct{ bundle *i18n.Bundle }
-
-func (a i18nAdapter) Translate(locale, id string, args any) (string, error) {
-	translated, err := a.bundle.Translate(locale, i18n.Key(id), args)
-	if err != nil {
-		return "", err
-	}
-	return translated.Text, nil
-}
-
-func (a i18nAdapter) SupportedLocales() []string { return a.bundle.SupportedLocales() }
 
 // explicitLoopbackHTTPDevelopment projects the deliberately local HTTP
 // origin into the application without coupling app/model to deployment
@@ -248,121 +234,6 @@ func classifyMailTransportError(err error) appmail.TransportOutcome {
 
 func (a accountMailerAdapter) Probe(ctx context.Context) error {
 	return a.mailer.Test(ctx)
-}
-
-type mailTemplateRendererAdapter struct{ renderer *templates.Renderer }
-
-func (a mailTemplateRendererAdapter) Render(key model.MailTemplateKey, recipientLocale, installationLocale, actionURL string) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale, ActionURL: actionURL})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderPersonalAccessTokenSecurityNotice(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.PersonalAccessTokenDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		PersonalAccessToken: &templates.PersonalAccessTokenDetails{
-			Description: details.Description, ExpiresAt: details.ExpiresAt,
-			ActionAt: details.ActionAt, ActionCount: details.ActionCount,
-			AcademicUnitScoped: details.AcademicUnitScoped,
-		},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderExamManagerNotice(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.ExamManagerDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		ExamManager: &templates.ExamManagerDetails{
-			Title: details.Title, Relationship: templates.ExamManagerRelationship(details.Relationship), ActionAt: details.ActionAt,
-		},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderClassTransitionNotice(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.ClassTransitionDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		ClassTransition: &templates.ClassTransitionDetails{PreviousClassDisplayName: details.PreviousClassDisplayName,
-			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderSubmissionReceipt(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.SubmissionReceiptDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		SubmissionReceipt: &templates.SubmissionReceiptDetails{ExamTitle: details.ExamTitle,
-			SittingID: details.SittingID.String(), SubmissionID: details.SubmissionID.String(), SealedAt: details.SealedAt},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderResultRelease(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.ResultReleaseDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		ResultRelease: &templates.ResultReleaseDetails{ExamTitle: details.ExamTitle, ReleasedAt: details.ReleasedAt},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
-}
-
-func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
-	key model.MailTemplateKey,
-	recipientLocale string,
-	installationLocale string,
-	details appmail.SittingScheduleDetails,
-) (appmail.FrozenContent, error) {
-	message, err := a.renderer.Render(templates.Request{
-		Key: templates.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
-		SittingSchedule: &templates.SittingScheduleDetails{ExamTitle: details.ExamTitle,
-			ClassDisplayName: details.ClassDisplayName, StartsAt: details.StartsAt, EndsAt: details.EndsAt},
-	})
-	if err != nil {
-		return appmail.FrozenContent{}, err
-	}
-	return appmail.FrozenContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
 // externalProviderRegistryAdapter exposes the platform registry through the

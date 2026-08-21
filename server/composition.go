@@ -13,11 +13,11 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/api"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/filecontent"
-	"github.com/sudosylabs/proctor/server/i18n"
-	"github.com/sudosylabs/proctor/server/templates"
+	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/websocket"
 )
 
@@ -52,15 +52,22 @@ type consumerConstructors struct {
 }
 
 func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, error) {
-	bundle, err := i18n.DefaultBundle(snapshot.Localization.DefaultLocale)
+	catalogFiles, err := runtimeAssetDirectory("i18n")
 	if err != nil {
-		return consumerConstructors{}, fmt.Errorf("construct localization bundle: %w", err)
+		return consumerConstructors{}, fmt.Errorf("open localization catalogs: %w", err)
 	}
-	mailRenderer, err := templates.NewRenderer(bundle)
+	localizer, err := localization.New(catalogFiles, snapshot.Localization.DefaultLocale)
 	if err != nil {
-		return consumerConstructors{}, fmt.Errorf("construct mail template renderer: %w", err)
+		return consumerConstructors{}, fmt.Errorf("construct localizer: %w", err)
 	}
-	localizer := i18nAdapter{bundle: bundle}
+	templateFiles, err := runtimeAssetDirectory("templates")
+	if err != nil {
+		return consumerConstructors{}, fmt.Errorf("open mail templates: %w", err)
+	}
+	mailRenderer, err := appmail.NewRenderer(templateFiles, localizer)
+	if err != nil {
+		return consumerConstructors{}, fmt.Errorf("construct mail renderer: %w", err)
+	}
 	return consumerConstructors{
 		fileContent: func(capabilities constructionCapabilities) (app.FileContent, error) {
 			return filecontent.New(capabilities.filesystem)

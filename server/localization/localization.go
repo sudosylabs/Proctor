@@ -1,9 +1,9 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package i18n owns immutable server-side localization catalogs and lookup.
-// It has no transport, application, domain, persistence, or HTML concerns.
-package i18n
+// Package localization validates and resolves server-owned translations.
+// Catalog storage is supplied by the composition root.
+package localization
 
 import (
 	"bytes"
@@ -33,12 +33,8 @@ var (
 	placeholderPattern = regexp.MustCompile(`\{\{\s*\.([A-Za-z][A-Za-z0-9_]*)\s*\}\}`)
 )
 
-// Key is a stable, locale-independent message identifier.
-type Key string
-
-// Entry is the only supported on-disk catalog shape.
-type Entry struct {
-	ID          Key    `json:"id"`
+type entry struct {
+	ID          string `json:"id"`
 	Translation string `json:"translation"`
 }
 
@@ -54,27 +50,19 @@ type Translation struct {
 	Text   string
 }
 
-// Bundle is an immutable, concurrently safe set of validated locale catalogs.
-type Bundle struct {
+// Localizer is an immutable, concurrently safe set of validated locale catalogs.
+type Localizer struct {
 	defaultLocale string
-	catalogs      map[string]map[Key]message
+	catalogs      map[string]map[string]message
 	locales       []string
-	keys          []Key
 }
 
-// DefaultBundle loads the catalogs embedded in the server binary.
-func DefaultBundle(defaultLocale string) (*Bundle, error) {
-	return LoadBundle(catalogFiles, defaultLocale)
-}
-
-// LoadBundle constructs and validates an immutable bundle from top-level JSON
-// files in source. It is exported so tests and tooling cross the same seam as
-// production without writing files or mutating package globals.
-func LoadBundle(source fs.FS, defaultLocale string) (*Bundle, error) {
+// New validates top-level JSON catalogs and constructs a localizer.
+func New(source fs.FS, defaultLocale string) (*Localizer, error) {
 	if source == nil {
 		return nil, errors.New("i18n catalog filesystem is nil")
 	}
-	defaultLocale, ok := NormalizeLocale(defaultLocale)
+	defaultLocale, ok := normalizeLocale(defaultLocale)
 	if !ok {
 		return nil, fmt.Errorf("invalid default locale %q", defaultLocale)
 	}
@@ -82,12 +70,12 @@ func LoadBundle(source fs.FS, defaultLocale string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read i18n catalogs: %w", err)
 	}
-	catalogs := make(map[string]map[Key]message)
+	catalogs := make(map[string]map[string]message)
 	for _, file := range files {
 		if file.IsDir() || path.Ext(file.Name()) != ".json" {
 			continue
 		}
-		locale, valid := NormalizeLocale(strings.TrimSuffix(file.Name(), path.Ext(file.Name())))
+		locale, valid := normalizeLocale(strings.TrimSuffix(file.Name(), path.Ext(file.Name())))
 		if !valid {
 			return nil, fmt.Errorf("i18n catalog %q has an invalid locale filename", file.Name())
 		}
@@ -98,8 +86,8 @@ func LoadBundle(source fs.FS, defaultLocale string) (*Bundle, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		messages := make(map[Key]message, len(entries))
-		previous := Key("")
+		messages := make(map[string]message, len(entries))
+		previous := ""
 		for index, entry := range entries {
 			if !keyPattern.MatchString(string(entry.ID)) {
 				return nil, fmt.Errorf("i18n catalog %q entry %d has invalid id %q", file.Name(), index, entry.ID)
@@ -145,15 +133,10 @@ func LoadBundle(source fs.FS, defaultLocale string) (*Bundle, error) {
 		locales = append(locales, locale)
 	}
 	sort.Strings(locales)
-	keys := make([]Key, 0, len(english))
-	for key := range english {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	return &Bundle{defaultLocale: defaultLocale, catalogs: catalogs, locales: locales, keys: keys}, nil
+	return &Localizer{defaultLocale: defaultLocale, catalogs: catalogs, locales: locales}, nil
 }
 
-func readEntries(source fs.FS, name string) ([]Entry, error) {
+func readEntries(source fs.FS, name string) ([]entry, error) {
 	file, err := source.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open i18n catalog %q: %w", name, err)
@@ -161,7 +144,7 @@ func readEntries(source fs.FS, name string) ([]Entry, error) {
 	defer file.Close()
 	decoder := json.NewDecoder(io.LimitReader(file, 8<<20))
 	decoder.DisallowUnknownFields()
-	var entries []Entry
+	var entries []entry
 	if err := decoder.Decode(&entries); err != nil {
 		return nil, fmt.Errorf("decode i18n catalog %q: %w", name, err)
 	}
@@ -175,7 +158,7 @@ func readEntries(source fs.FS, name string) ([]Entry, error) {
 	return entries, nil
 }
 
-func compileMessage(key Key, value string) (message, error) {
+func compileMessage(key string, value string) (message, error) {
 	if strings.TrimSpace(value) == "" {
 		return message{}, errors.New("translation is empty")
 	}
@@ -211,19 +194,19 @@ func compileMessage(key Key, value string) (message, error) {
 
 // Translate resolves one message through requested-locale, installation
 // default, then English fallback and performs bounded interpolation.
-func (b *Bundle) Translate(requestedLocale string, key Key, args any) (Translation, error) {
-	if b == nil {
-		return Translation{}, errors.New("i18n bundle is nil")
+func (l *Localizer) Resolve(requestedLocale, id string, args any) (Translation, error) {
+	if l == nil {
+		return Translation{}, errors.New("localizer is nil")
 	}
-	if _, exists := b.catalogs[EnglishLocale][key]; !exists {
-		return Translation{}, fmt.Errorf("unknown i18n id %q", key)
+	if _, exists := l.catalogs[EnglishLocale][id]; !exists {
+		return Translation{}, fmt.Errorf("unknown localization id %q", id)
 	}
-	for _, locale := range localeCandidates(requestedLocale, b.defaultLocale, EnglishLocale) {
-		catalog, exists := b.catalogs[locale]
+	for _, locale := range localeCandidates(requestedLocale, l.defaultLocale, EnglishLocale) {
+		catalog, exists := l.catalogs[locale]
 		if !exists {
 			continue
 		}
-		candidate, exists := catalog[key]
+		candidate, exists := catalog[id]
 		if !exists {
 			continue
 		}
@@ -232,34 +215,31 @@ func (b *Bundle) Translate(requestedLocale string, key Key, args any) (Translati
 		}
 		var output bytes.Buffer
 		if err := candidate.template.Execute(&output, args); err != nil {
-			return Translation{}, fmt.Errorf("render i18n id %q: %w", key, err)
+			return Translation{}, fmt.Errorf("render localization id %q: %w", id, err)
 		}
 		if output.Len() > maxRenderedMessageBytes {
-			return Translation{}, fmt.Errorf("rendered i18n id %q exceeds %d bytes", key, maxRenderedMessageBytes)
+			return Translation{}, fmt.Errorf("rendered localization id %q exceeds %d bytes", id, maxRenderedMessageBytes)
 		}
 		return Translation{Locale: locale, Text: output.String()}, nil
 	}
-	return Translation{}, fmt.Errorf("i18n id %q is unavailable", key)
+	return Translation{}, fmt.Errorf("localization id %q is unavailable", id)
+}
+
+// Translate resolves text for callers that do not need the supplying locale.
+func (l *Localizer) Translate(requestedLocale, id string, args any) (string, error) {
+	translation, err := l.Resolve(requestedLocale, id, args)
+	return translation.Text, err
 }
 
 // SupportedLocales returns a stable copy of the locales included in the bundle.
-func (b *Bundle) SupportedLocales() []string {
-	if b == nil {
+func (l *Localizer) SupportedLocales() []string {
+	if l == nil {
 		return nil
 	}
-	return append([]string(nil), b.locales...)
+	return append([]string(nil), l.locales...)
 }
 
-// Keys returns the canonical English ids in lexical order.
-func (b *Bundle) Keys() []Key {
-	if b == nil {
-		return nil
-	}
-	return append([]Key(nil), b.keys...)
-}
-
-// NormalizeLocale returns the canonical catalog form of a supported locale syntax.
-func NormalizeLocale(raw string) (string, bool) {
+func normalizeLocale(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if !localePattern.MatchString(raw) {
 		return "", false
@@ -271,7 +251,7 @@ func localeCandidates(values ...string) []string {
 	seen := make(map[string]struct{})
 	result := make([]string, 0, len(values)*2)
 	for _, raw := range values {
-		locale, ok := NormalizeLocale(raw)
+		locale, ok := normalizeLocale(raw)
 		if !ok {
 			continue
 		}
@@ -286,7 +266,7 @@ func localeCandidates(values ...string) []string {
 	return result
 }
 
-func hasCatalogCandidate(catalogs map[string]map[Key]message, locale string) bool {
+func hasCatalogCandidate(catalogs map[string]map[string]message, locale string) bool {
 	for _, candidate := range localeCandidates(locale) {
 		if _, exists := catalogs[candidate]; exists {
 			return true

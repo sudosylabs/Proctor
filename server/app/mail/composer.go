@@ -94,32 +94,32 @@ type ResultReleaseDetails struct {
 }
 
 type Renderer interface {
-	Render(model.MailTemplateKey, string, string, string) (FrozenContent, error)
-	RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, string, PersonalAccessTokenDetails) (FrozenContent, error)
-	RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerDetails) (FrozenContent, error)
-	RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionDetails) (FrozenContent, error)
-	RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptDetails) (FrozenContent, error)
-	RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseDetails) (FrozenContent, error)
+	Render(model.MailTemplateKey, string, string) (FrozenContent, error)
+	RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, PersonalAccessTokenDetails) (FrozenContent, error)
+	RenderExamManagerNotice(model.MailTemplateKey, string, ExamManagerDetails) (FrozenContent, error)
+	RenderClassTransitionNotice(model.MailTemplateKey, string, ClassTransitionDetails) (FrozenContent, error)
+	RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptDetails) (FrozenContent, error)
+	RenderResultRelease(model.MailTemplateKey, string, ResultReleaseDetails) (FrozenContent, error)
 }
 
 type details interface {
-	render(Renderer, model.MailTemplateKey, string, string) (FrozenContent, error)
+	render(Renderer, model.MailTemplateKey, string) (FrozenContent, error)
 }
 
-func (value PersonalAccessTokenDetails) render(r Renderer, key model.MailTemplateKey, locale, fallback string) (FrozenContent, error) {
-	return r.RenderPersonalAccessTokenSecurityNotice(key, locale, fallback, value)
+func (value PersonalAccessTokenDetails) render(r Renderer, key model.MailTemplateKey, locale string) (FrozenContent, error) {
+	return r.RenderPersonalAccessTokenSecurityNotice(key, locale, value)
 }
-func (value ExamManagerDetails) render(r Renderer, key model.MailTemplateKey, locale, fallback string) (FrozenContent, error) {
-	return r.RenderExamManagerNotice(key, locale, fallback, value)
+func (value ExamManagerDetails) render(r Renderer, key model.MailTemplateKey, locale string) (FrozenContent, error) {
+	return r.RenderExamManagerNotice(key, locale, value)
 }
-func (value ClassTransitionDetails) render(r Renderer, key model.MailTemplateKey, locale, fallback string) (FrozenContent, error) {
-	return r.RenderClassTransitionNotice(key, locale, fallback, value)
+func (value ClassTransitionDetails) render(r Renderer, key model.MailTemplateKey, locale string) (FrozenContent, error) {
+	return r.RenderClassTransitionNotice(key, locale, value)
 }
-func (value SubmissionReceiptDetails) render(r Renderer, key model.MailTemplateKey, locale, fallback string) (FrozenContent, error) {
-	return r.RenderSubmissionReceipt(key, locale, fallback, value)
+func (value SubmissionReceiptDetails) render(r Renderer, key model.MailTemplateKey, locale string) (FrozenContent, error) {
+	return r.RenderSubmissionReceipt(key, locale, value)
 }
-func (value ResultReleaseDetails) render(r Renderer, key model.MailTemplateKey, locale, fallback string) (FrozenContent, error) {
-	return r.RenderResultRelease(key, locale, fallback, value)
+func (value ResultReleaseDetails) render(r Renderer, key model.MailTemplateKey, locale string) (FrozenContent, error) {
+	return r.RenderResultRelease(key, locale, value)
 }
 
 type FrozenPayloadV1 struct {
@@ -443,9 +443,6 @@ func (p *Composer) prepareRecipient(recipientName, recipientAddress, locale stri
 		!deadline.After(at) || jobType != model.JobTypeMailDeliver && jobType != model.JobTypeMailDeliverCredential {
 		return nil, errors.New("direct mail recipient is invalid")
 	}
-	if locale == "" {
-		locale = model.DefaultLocale
-	}
 	at, deadline = model.TimeUTC(at), model.TimeUTC(deadline)
 	if !p.sender.Enabled() {
 		return p.prepareSuppressedRecipient(recipientAddress, actorUserID, targetUserID, targetInvitationID, occurrenceID,
@@ -463,9 +460,9 @@ func (p *Composer) prepareRecipient(recipientName, recipientAddress, locale stri
 	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: kind, TemplateKey: key, ActorUserID: actorUserID, CreatedAt: at}
 	var rendered FrozenContent
 	if detail == nil {
-		rendered, err = p.renderer.Render(key, locale, model.DefaultLocale, actionURL)
+		rendered, err = p.renderer.Render(key, locale, actionURL)
 	} else {
-		rendered, err = detail.render(p.renderer, key, locale, model.DefaultLocale)
+		rendered, err = detail.render(p.renderer, key, locale)
 	}
 	if err != nil {
 		return nil, err

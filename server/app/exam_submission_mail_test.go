@@ -73,7 +73,7 @@ type submissionReceiptRendererFake struct {
 	calls   int
 }
 
-func (renderer *submissionReceiptRendererFake) RenderSubmissionReceipt(_ model.MailTemplateKey, _, _ string,
+func (renderer *submissionReceiptRendererFake) RenderSubmissionReceipt(_ model.MailTemplateKey, _ string,
 	details SubmissionReceiptMailDetails,
 ) (FrozenMailContent, error) {
 	renderer.calls++

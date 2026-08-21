@@ -75,23 +75,23 @@ type classTransitionRendererFake struct {
 	calls   int
 }
 
-func (r *classTransitionRendererFake) Render(model.MailTemplateKey, string, string, string) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) Render(model.MailTemplateKey, string, string) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
-func (r *classTransitionRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
-func (r *classTransitionRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, ExamManagerMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
-func (r *classTransitionRendererFake) RenderClassTransitionNotice(_ model.MailTemplateKey, _, _ string, details ClassTransitionMailDetails) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) RenderClassTransitionNotice(_ model.MailTemplateKey, _ string, details ClassTransitionMailDetails) (FrozenMailContent, error) {
 	r.calls++
 	r.details = details
 	return FrozenMailContent{Subject: "Class changed", Text: details.ClassDisplayName, HTML: "<p>Class changed</p>"}, nil
 }
-func (r *classTransitionRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
-func (r *classTransitionRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+func (r *classTransitionRendererFake) RenderResultRelease(model.MailTemplateKey, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }

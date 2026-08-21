@@ -76,11 +76,13 @@ flat JSON array of `{ "id", "translation" }` records. IDs are stable dotted
 meanings such as `mail.identity.verify_email.subject`; nested catalog objects
 are forbidden. English is canonical and complete. Other locales may be partial,
 but may contain neither unknown IDs nor placeholder signatures that differ
-from English. The localization module validates and compiles every embedded
-catalog at startup, then resolves each field with per-message fallback. The
-mail renderer assembles those fields into one complete typed copy model before
-executing either alternative, so HTML and text cannot diverge by performing
-independent lookups.
+from English. `server/i18n` is a data directory, not a Go package. The root
+composition package privately embeds its files and supplies them to the
+general `server/localization` module, which validates and compiles every
+catalog at startup and resolves each field with per-message fallback.
+`server/app/mail` owns mail-specific rendering and assembles those fields into
+one private typed presentation model before executing either alternative, so
+HTML and text cannot diverge by performing independent lookups.
 
 Every message key has a typed data model. Templates do not receive arbitrary
 maps, construct routes, or look up application state. Each MJML and text source
@@ -94,11 +96,13 @@ MJML generation uses a repository-pinned toolchain and produces committed
 HTML. CI rejects stale generated output and renders every production template
 with representative typed data. A deterministic preview command renders all
 templates and an index into a caller-selected directory without production
-data or mail delivery. Templates are embedded, parsed, and validated when the
-mail renderer is constructed; production composition must construct that
-renderer before readiness once delivery is wired. Edits require regeneration,
-rebuild, and restart. The exact source layout, property contract, generation,
-freshness, and preview commands are maintained in the
+data or mail delivery. `server/templates` is likewise an asset and
+build-tooling directory, not a Go package. The root privately embeds generated
+HTML and authored text, then `server/app/mail` parses and validates them when
+its renderer is constructed; production composition constructs that renderer
+before readiness. Edits require regeneration, rebuild, and restart. The exact
+source layout, property contract, generation, freshness, and preview commands
+are maintained in the
 [transactional-mail template workflow](../../server/templates/README.md).
 Template-local install, generation, freshness, and test targets live in
 `server/templates/Makefile`; the server Makefile provides delegating aliases.

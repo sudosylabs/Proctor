@@ -1,5 +1,5 @@
 {{/*
-Template properties (templates.Properties):
+Template properties (server/app/mail renderer):
   .Copy.Subject — localized message subject
   .Copy.Preheader — localized inbox preview
   .Copy.Heading — localized visible heading

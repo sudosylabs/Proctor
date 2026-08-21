@@ -16,8 +16,9 @@ the code and component contracts for that detail.
 - Typed deployment configuration, bounded asynchronous structured logging with
   rotated targets and failure/drop diagnostics, health/readiness, graceful
   shutdown, and the shared `testlib` graph are operational.
-- General server localization uses immutable embedded flat `{id, translation}`
-  catalogs directly under `server/i18n`, installation/English fallback, strict
+- General server localization keeps flat `{id, translation}` data directly
+  under the data-only `server/i18n` directory; the root embeds it and the
+  `server/localization` module provides installation/English fallback, strict
   catalog and placeholder validation, and HTTP Problem Details localization
   without changing stable machine codes.
 - PostgreSQL schema management, the root/per-model store architecture, SQL

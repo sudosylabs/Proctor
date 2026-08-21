@@ -1,26 +1,36 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package templates
+package mail
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
-	"github.com/sudosylabs/proctor/server/i18n"
+	"github.com/sudosylabs/proctor/server/localization"
+	"github.com/sudosylabs/proctor/server/model"
 )
+
+func testRenderer() (*templateRenderer, error) {
+	localizer, err := localization.New(os.DirFS("../../i18n"), localization.EnglishLocale)
+	if err != nil {
+		return nil, err
+	}
+	return newRenderer(os.DirFS("../../templates"), localizer, true)
+}
 
 func TestRendererEscapesBoundedPersonalAccessTokenDetailsWithoutScopes(t *testing.T) {
 	t.Parallel()
 
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
-	message, err := renderer.Render(Request{
-		Key: IdentityPersonalAccessTokenCreated,
+	message, err := renderer.render(renderRequest{
+		Key: model.MailTemplateIdentityPersonalAccessTokenCreated,
 		PersonalAccessToken: &PersonalAccessTokenDetails{
 			Description:        `<script>automation & reports</script>`,
 			ExpiresAt:          time.Date(2026, 9, 20, 9, 30, 0, 0, time.UTC),
@@ -56,15 +66,15 @@ func TestRendererEscapesBoundedPersonalAccessTokenDetailsWithoutScopes(t *testin
 func TestRendererEscapesBoundedExamManagerDetails(t *testing.T) {
 	t.Parallel()
 
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
-	message, err := renderer.Render(Request{
-		Key: ExamOwnershipTransferredFromYou,
+	message, err := renderer.render(renderRequest{
+		Key: model.MailTemplateExamOwnershipTransferredFromYou,
 		ExamManager: &ExamManagerDetails{
 			Title:        `<script>Algorithms & data</script>`,
-			Relationship: ExamManagerRelationshipManager,
+			Relationship: "manager",
 			ActionAt:     time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
 		},
 	})
@@ -92,11 +102,11 @@ func TestRendererEscapesBoundedExamManagerDetails(t *testing.T) {
 
 func TestRendererIncludesTimezoneExplicitSafeSittingFacts(t *testing.T) {
 	t.Parallel()
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: ExamSittingRescheduled, SittingSchedule: &SittingScheduleDetails{
+	message, err := renderer.render(renderRequest{Key: model.MailTemplateExamSittingRescheduled, SittingSchedule: &SittingScheduleDetails{
 		ExamTitle: "Algorithms & structures", ClassDisplayName: "CS 2A",
 		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
 		EndsAt:   time.Date(2026, 9, 1, 10, 30, 0, 0, time.FixedZone("node", 7200)),
@@ -118,11 +128,11 @@ func TestRendererIncludesTimezoneExplicitSafeSittingFacts(t *testing.T) {
 
 func TestRendererEscapesCompleteClassTransitionFacts(t *testing.T) {
 	t.Parallel()
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: AcademicClassTransferred, ClassTransition: &ClassTransitionDetails{
+	message, err := renderer.render(renderRequest{Key: model.MailTemplateAcademicClassTransferred, ClassTransition: &ClassTransitionDetails{
 		PreviousClassDisplayName: `Old <Class> & A`, ClassDisplayName: `New <Class> & B`,
 		StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.FixedZone("node", 7200)),
 		EndsAt:   time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC),
@@ -147,19 +157,20 @@ func TestRendererEscapesCompleteClassTransitionFacts(t *testing.T) {
 
 func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
 	t.Parallel()
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []Key{ExamSubmissionReceived, ExamSubmissionAutomaticallySealed} {
-		message, renderErr := renderer.Render(Request{Key: key, SubmissionReceipt: &SubmissionReceiptDetails{
-			ExamTitle: "Algorithms <Final> & proofs", SittingID: "sitting-safe-id",
-			SubmissionID: "submission-safe-id", SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
+	sittingID, submissionID := model.NewExamSittingID(), model.NewSubmissionID()
+	for _, key := range []model.MailTemplateKey{model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionAutomaticallySealed} {
+		message, renderErr := renderer.render(renderRequest{Key: key, SubmissionReceipt: &SubmissionReceiptDetails{
+			ExamTitle: "Algorithms <Final> & proofs", SittingID: sittingID,
+			SubmissionID: submissionID, SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
 		}})
 		if renderErr != nil {
 			t.Fatalf("Render(%q): %v", key, renderErr)
 		}
-		for _, want := range []string{"Algorithms &lt;Final&gt; &amp; proofs", "sitting-safe-id", "submission-safe-id", "2026-08-21T07:30:00Z", "UTC"} {
+		for _, want := range []string{"Algorithms &lt;Final&gt; &amp; proofs", sittingID.String(), submissionID.String(), "2026-08-21T07:30:00Z", "UTC"} {
 			if !strings.Contains(message.HTML, want) {
 				t.Errorf("Render(%q) HTML does not contain %q", key, want)
 			}
@@ -174,11 +185,11 @@ func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
 
 func TestRendererIncludesOnlySafeReleasedResultFacts(t *testing.T) {
 	t.Parallel()
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatal(err)
 	}
-	message, err := renderer.Render(Request{Key: ExamResultReleased, ResultRelease: &ResultReleaseDetails{
+	message, err := renderer.render(renderRequest{Key: model.MailTemplateExamResultReleased, ResultRelease: &ResultReleaseDetails{
 		ExamTitle:  "Algorithms <Final> & proofs",
 		ReleasedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
 	}})
@@ -200,24 +211,24 @@ func TestRendererIncludesOnlySafeReleasedResultFacts(t *testing.T) {
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
-	key := IdentityVerifyEmail
-	catalog, err := i18n.LoadBundle(fstest.MapFS{"en.json": {Data: []byte(`[
+	key := model.MailTemplateIdentityVerifyEmail
+	localizer, err := localization.New(fstest.MapFS{"en.json": {Data: []byte(`[
   {"id":"mail.identity.verify_email.action_label","translation":"Verify >"},
   {"id":"mail.identity.verify_email.body","translation":"A & B"},
   {"id":"mail.identity.verify_email.footer","translation":"No reply <needed>"},
   {"id":"mail.identity.verify_email.heading","translation":"<script>alert(1)</script>"},
   {"id":"mail.identity.verify_email.preheader","translation":"Use this & only this link"},
   {"id":"mail.identity.verify_email.subject","translation":"Verify <account>"}
-]`)}}, i18n.EnglishLocale)
+]`)}}, localization.EnglishLocale)
 	if err != nil {
 		t.Fatalf("LoadBundle: %v", err)
 	}
-	renderer, err := newRenderer(catalog, false)
+	renderer, err := newRenderer(os.DirFS("../../templates"), localizer, false)
 	if err != nil {
 		t.Fatalf("NewRenderer: %v", err)
 	}
 
-	message, err := renderer.Render(Request{
+	message, err := renderer.render(renderRequest{
 		Key:       key,
 		ActionURL: "https://proctor.example.test/account/verify-email?one=1&two=2",
 	})
@@ -240,12 +251,12 @@ func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 func TestRendererRejectsUnsafeActionURL(t *testing.T) {
 	t.Parallel()
 
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
-	_, err = renderer.Render(Request{
-		Key:       IdentityVerifyEmail,
+	_, err = renderer.render(renderRequest{
+		Key:       model.MailTemplateIdentityVerifyEmail,
 		ActionURL: "javascript:alert(1)",
 	})
 	if err == nil {
@@ -256,16 +267,15 @@ func TestRendererRejectsUnsafeActionURL(t *testing.T) {
 func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 	t.Parallel()
 
-	renderer, err := DefaultRenderer()
+	renderer, err := testRenderer()
 	if err != nil {
 		t.Fatalf("DefaultRenderer: %v", err)
 	}
-	for _, key := range AllKeys() {
-		request := Request{
-			Key:                key,
-			RecipientLocale:    "zz-ZZ",
-			InstallationLocale: "en",
-			ActionURL:          "https://proctor.example.test/action#token=representative",
+	for _, key := range model.AllMailTemplateKeys() {
+		request := renderRequest{
+			Key:             key,
+			RecipientLocale: "zz-ZZ",
+			ActionURL:       "https://proctor.example.test/action#token=representative",
 		}
 		if isPersonalAccessTokenTemplate(key) {
 			request.PersonalAccessToken = &PersonalAccessTokenDetails{
@@ -275,7 +285,7 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		}
 		if isExamManagerTemplate(key) {
 			request.ExamManager = &ExamManagerDetails{
-				Title: "Representative exam", Relationship: ExamManagerRelationshipManager,
+				Title: "Representative exam", Relationship: "manager",
 				ActionAt: time.Date(2026, 8, 20, 8, 15, 0, 0, time.UTC),
 			}
 		}
@@ -286,20 +296,20 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		if isClassTransitionTemplate(key) {
 			request.ClassTransition = &ClassTransitionDetails{PreviousClassDisplayName: "Class A", ClassDisplayName: "Class B",
 				StartsAt: time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC), EndsAt: time.Date(2027, 6, 30, 16, 0, 0, 0, time.UTC)}
-			if key != AcademicClassTransferred {
+			if key != model.MailTemplateAcademicClassTransferred {
 				request.ClassTransition.PreviousClassDisplayName = ""
 			}
 		}
 		if isSubmissionReceiptTemplate(key) {
 			request.SubmissionReceipt = &SubmissionReceiptDetails{ExamTitle: "Representative exam",
-				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
+				SittingID: model.NewExamSittingID(), SubmissionID: model.NewSubmissionID(),
 				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 		}
-		if key == ExamResultReleased {
+		if key == model.MailTemplateExamResultReleased {
 			request.ResultRelease = &ResultReleaseDetails{ExamTitle: "Representative exam",
 				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 		}
-		message, err := renderer.Render(request)
+		message, err := renderer.render(request)
 		if err != nil {
 			t.Errorf("Render(%q): %v", key, err)
 			continue

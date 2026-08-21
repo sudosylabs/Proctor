@@ -146,8 +146,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "platform cannot select concrete adapters", from: serverModule + "/platform", imported: "github.com/sudosylabs/proctor/packages/cache/redis"},
 		{name: "command cannot bypass root composition", from: serverModule + "/cmd/proctor", imported: serverModule + "/app"},
 		{name: "command cannot open SQL directly", from: serverModule + "/cmd/proctor", imported: "database/sql"},
-		{name: "localization cannot import application", from: serverModule + "/i18n", imported: serverModule + "/app"},
-		{name: "mail templates cannot import transport", from: serverModule + "/templates", imported: repositoryModule + "/packages/mail"},
+		{name: "localization cannot import application", from: serverModule + "/localization", imported: serverModule + "/app"},
+		{name: "mail rendering cannot import transport", from: serverModule + "/app/mail", imported: repositoryModule + "/packages/mail"},
 		{name: "mail preview cannot import application", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app"},
 		{name: "reusable module cannot import server", from: repositoryModule + "/packages/cache", imported: serverModule + "/model"},
 		{name: "unknown package is fail closed", from: serverModule + "/services", imported: "context"},
@@ -185,6 +185,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "Mail child may import store contracts", from: serverModule + "/app/mail", imported: serverModule + "/store"},
 		{name: "Mail child may import secret sealing", from: serverModule + "/app/mail", imported: serverModule + "/secretseal"},
 		{name: "Mail child may import Exam mail contracts", from: serverModule + "/app/mail", imported: serverModule + "/app/exam"},
+		{name: "Mail child may import localization", from: serverModule + "/app/mail", imported: serverModule + "/localization"},
+		{name: "Mail child may accept presentation filesystems", from: serverModule + "/app/mail", imported: "io/fs"},
 		{name: "Exam child may import domain models", from: serverModule + "/app/exam", imported: serverModule + "/model"},
 		{name: "Exam child may import store contracts", from: serverModule + "/app/exam", imported: serverModule + "/store"},
 		{name: "Exam children may import shared safe Markdown", from: serverModule + "/app/exam/review", imported: serverModule + "/app/exam/safemarkdown"},
@@ -206,8 +208,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "cluster adapter may import cluster contracts", from: serverModule + "/cluster/memberlist", imported: serverModule + "/cluster"},
 		{name: "application may import password hashing library", from: serverModule + "/app", imported: "golang.org/x/crypto/argon2"},
 		{name: "root composition may import platform", from: serverModule, imported: serverModule + "/platform"},
-		{name: "mail templates may import localization", from: serverModule + "/templates", imported: serverModule + "/i18n"},
-		{name: "mail preview may import templates", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/templates"},
+		{name: "mail preview may import mail rendering", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app/mail"},
+		{name: "mail preview may import localization", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/localization"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},
 		{name: "model build tools may import standard library", from: serverModule + "/model/internal/idgen", imported: "go/format"},
 	}
@@ -311,9 +313,9 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model")
 	case packageOrBelow(from, serverModule+"/app/mail"):
-		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+		return standardInfrastructureImport(imported) && imported != "io/fs" || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
-				serverModule+"/secretseal", serverModule+"/app/exam")
+				serverModule+"/secretseal", serverModule+"/app/exam", serverModule+"/localization")
 	case packageOrBelow(from, serverModule+"/app/exam"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
@@ -330,12 +332,9 @@ func forbiddenImport(from, imported string) bool {
 	case from == serverModule+"/secretseal":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
-	case from == serverModule+"/i18n":
+	case from == serverModule+"/localization":
 		return standardInfrastructureImport(imported) && imported != "io/fs" || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
-	case from == serverModule+"/templates":
-		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
-			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/i18n")
 	case applicationPackage(from):
 		return standardInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/argon2") ||
@@ -370,7 +369,8 @@ func forbiddenImport(from, imported string) bool {
 		if from == serverModule+"/cmd/mailpreview" {
 			return thirdPartyImport(imported) ||
 				(strings.HasPrefix(imported, repositoryModule+"/") &&
-					imported != serverModule+"/i18n" && imported != serverModule+"/templates")
+					imported != serverModule+"/app/mail" && imported != serverModule+"/localization" &&
+					imported != serverModule+"/model")
 		}
 		return commandInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
@@ -455,8 +455,7 @@ func knownProductionPackage(packagePath string) bool {
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/logging" || packagePath == serverModule+"/migrations" ||
-		packagePath == serverModule+"/secretseal" ||
-		packagePath == serverModule+"/i18n" || packagePath == serverModule+"/templates" ||
+		packagePath == serverModule+"/secretseal" || packagePath == serverModule+"/localization" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||
 		packagePath == serverModule+"/cmd/mailpreview" {
 		return true

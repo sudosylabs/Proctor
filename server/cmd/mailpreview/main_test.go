@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	mailtemplates "github.com/sudosylabs/proctor/server/templates"
+	"github.com/sudosylabs/proctor/server/model"
 )
 
 func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
@@ -19,7 +19,7 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	second := filepath.Join(t.TempDir(), "second")
 	for _, output := range []string{first, second} {
 		var stderr bytes.Buffer
-		if err := run([]string{"-output", output}, &stderr); err != nil {
+		if err := run([]string{"-output", output, "-catalogs", "../../i18n", "-templates", "../../templates"}, &stderr); err != nil {
 			t.Fatalf("run(%q): %v (%s)", output, err, stderr.String())
 		}
 	}
@@ -38,7 +38,7 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	if bytes.Contains(firstIndex, []byte("@")) {
 		t.Fatal("preview index appears to contain a production-like email address")
 	}
-	keys := mailtemplates.AllKeys()
+	keys := model.AllMailTemplateKeys()
 	if len(keys) != 43 {
 		t.Fatalf("preview catalog keys = %d, want 43", len(keys))
 	}

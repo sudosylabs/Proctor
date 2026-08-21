@@ -42,6 +42,7 @@ server/
 ├── cmd/proctor/              # thin CLI boundary
 ├── model/                    # cohesive domain types and invariants
 ├── app/                      # commands, queries, policy, orchestration
+│   ├── mail/                 # transactional-mail meaning and rendering
 │   └── api/                  # HTTP routes, DTOs, handlers, mappings
 ├── websocket/                # hub and versioned WebSocket protocol
 ├── cluster/
@@ -55,8 +56,9 @@ server/
 │   └── storetest/            # conformance suites
 ├── platform/                 # infrastructure lifecycle and health
 ├── config/
-├── i18n/                     # flat embedded locale catalogs and lookup
-├── templates/                # transactional-mail presentation
+├── i18n/                     # flat locale-catalog data only
+├── localization/             # general catalog validation and lookup
+├── templates/                # mail presentation assets and build tooling only
 ├── logging/                  # bounded asynchronous operational logging
 ├── migrations/
 └── testlib/

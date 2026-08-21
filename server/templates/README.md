@@ -1,9 +1,10 @@
 # Transactional-mail template workflow
 
-This directory is the exact maintainer contract for Proctor transactional-mail
-presentation. It contains one authored MJML source, one authored plain-text
-source, and one tracked generated HTML file for every closed mail key. Human
-copy is not authored here; the flat server-owned catalogs under
+This data-only directory is the exact maintainer contract for Proctor
+transactional-mail presentation. It contains no Go implementation: only build
+tooling, one authored MJML source, one authored plain-text source, and one
+tracked generated HTML file for every closed mail key. Human copy is not
+authored here; the flat server-owned catalogs under
 [`../i18n`](../i18n) supply localized fields to
 both alternatives.
 
@@ -16,7 +17,7 @@ accessibility, and privacy constraints in the
 ## Typed properties
 
 Every MJML and text source starts with a non-rendering comment listing the
-exact `templates.Properties` fields it receives:
+exact private `server/app/mail` renderer properties it receives:
 
 - `.Copy.Subject`
 - `.Copy.Preheader`
@@ -29,7 +30,7 @@ exact `templates.Properties` fields it receives:
 The four Personal Access Token security notices additionally receive the
 closed `.Copy.PersonalAccessToken` label set and these bounded fields under
 `.PersonalAccessToken`: `.Description`, `.ExpiresAt`, `.ActionAt`,
-`.ScopeContext`, and `.ActionCount`. They never receive the one-time
+`.Scope`, and `.ActionCount`. They never receive the one-time
 credential, stored token hash, or complete action list.
 
 The four Exam Sitting schedule messages additionally receive the closed
@@ -99,7 +100,7 @@ must not be written below this source directory.
 
 ## Adding or translating a message
 
-1. Add the key to the closed Go mail-template catalog and add the required
+1. Add the key to the closed `model.MailTemplateKey` catalog and add the required
    lexically sorted flat `mail.<key>.<field>` entries to `../i18n/en.json`.
 2. Add matching `<key>.mjml` and `<key>.txt` sources with the exact property
    comment.

@@ -40,26 +40,26 @@ func TestExamManagerMailPreparerCreatesOneOrdinaryBoundedNotice(t *testing.T) {
 
 type examManagerRendererFake struct{ details ExamManagerMailDetails }
 
-func (r *examManagerRendererFake) Render(model.MailTemplateKey, string, string, string) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) Render(model.MailTemplateKey, string, string) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
 
-func (r *examManagerRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
 
-func (r *examManagerRendererFake) RenderExamManagerNotice(_ model.MailTemplateKey, _, _ string, details ExamManagerMailDetails) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) RenderExamManagerNotice(_ model.MailTemplateKey, _ string, details ExamManagerMailDetails) (FrozenMailContent, error) {
 	r.details = details
 	return FrozenMailContent{Subject: "Exam changed", Text: details.Title, HTML: "<p>Exam changed</p>"}, nil
 }
 
-func (r *examManagerRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
 
-func (r *examManagerRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
-func (r *examManagerRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+func (r *examManagerRendererFake) RenderResultRelease(model.MailTemplateKey, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }

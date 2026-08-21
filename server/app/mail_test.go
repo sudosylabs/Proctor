@@ -172,27 +172,27 @@ func (a *mailAuditFake) Fail(context.Context, string, string) error { a.failCall
 
 type mailRendererFake struct{ content FrozenMailContent }
 
-func (r mailRendererFake) Render(model.MailTemplateKey, string, string, string) (FrozenMailContent, error) {
+func (r mailRendererFake) Render(model.MailTemplateKey, string, string) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
-func (r mailRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) RenderPersonalAccessTokenSecurityNotice(model.MailTemplateKey, string, PersonalAccessTokenMailDetails) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
-func (r mailRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, string, ExamManagerMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) RenderExamManagerNotice(model.MailTemplateKey, string, ExamManagerMailDetails) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
-func (r mailRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, string, ClassTransitionMailDetails) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
-func (r mailRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
-func (r mailRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+func (r mailRendererFake) RenderResultRelease(model.MailTemplateKey, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
 	return r.content, nil
 }
 
