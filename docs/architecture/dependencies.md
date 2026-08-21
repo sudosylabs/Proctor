@@ -8,6 +8,7 @@ model ← store ← app/job
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
+{model, store} ← app/execution ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 secretseal ← app
@@ -18,6 +19,7 @@ model ← filecontent
 packages/vfs ← filecontent
 app ← filecontent
 {app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor
+execenv ← executionhost ← server
 ~~~
 
 Infrastructure adapters sit to the side and point inward at their contracts. The root `server` package imports the components needed to assemble the graph.
@@ -36,6 +38,7 @@ inside `app/` are application-owned modules, not transports.
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
+| `app/execution` | `model`, the bounded Execution Grant store, standard library, and consumer-owned host/content ports | parent `app`, execenv, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
@@ -46,6 +49,7 @@ inside `app/` are application-owned modules, not transports.
 | `httpapi` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `websocket` | `app`, `app/realtime`, `model`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
+| `executionhost` | `app/execution` ports, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor` | Module-root `server` | Independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |

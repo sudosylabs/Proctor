@@ -35,6 +35,15 @@ type OwnedResources struct {
 	Mailer                 Mailer
 	VFS                    vfspkg.FileSystem
 	ExternalAuthentication *externalauth.Registry
+	ExecutionHosts         ExecutionHosts
+}
+
+// ExecutionHosts is the lifecycle-only platform view of the configured
+// outbound execution-host directory. Application behavior is projected at the
+// composition root and does not turn Platform into a service locator.
+type ExecutionHosts interface {
+	Check(context.Context) error
+	Close() error
 }
 
 type Service struct {
@@ -46,6 +55,7 @@ type Service struct {
 	mailer                 Mailer
 	vfs                    vfspkg.FileSystem
 	externalAuthentication *externalauth.Registry
+	executionHosts         ExecutionHosts
 	configListener         string
 	shutdownOnce           sync.Once
 	shutdownErr            error
@@ -127,6 +137,7 @@ func newService(
 	filesystem := resources.VFS
 	clusterTransport := resources.Cluster
 	externalAuthentication := resources.ExternalAuthentication
+	executionHosts := resources.ExecutionHosts
 	if err := externalAuthentication.Configure(
 		snapshot.Authentication.External,
 	); err != nil {
@@ -142,6 +153,7 @@ func newService(
 		mailer:                 mailer,
 		vfs:                    filesystem,
 		externalAuthentication: externalAuthentication,
+		executionHosts:         executionHosts,
 	}
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
@@ -212,6 +224,10 @@ func closeOwnedResources(resources OwnedResources) error {
 	if resources.Persistence != nil {
 		persistenceErr = resources.Persistence.Close()
 	}
+	var executionErr error
+	if resources.ExecutionHosts != nil {
+		executionErr = resources.ExecutionHosts.Close()
+	}
 	var loggerErr error
 	if resources.Logger != nil {
 		loggerErr = resources.Logger.Shutdown(stopCtx)
@@ -226,6 +242,7 @@ func closeOwnedResources(resources OwnedResources) error {
 		mailerErr,
 		cacheErr,
 		persistenceErr,
+		executionErr,
 		loggerErr,
 		configurationErr,
 	)
@@ -251,6 +268,11 @@ func (s *Service) CheckDependencies(ctx context.Context) error {
 	}
 	if err := checkVFS(ctx, s.vfs); err != nil {
 		return fmt.Errorf("vfs: %w", err)
+	}
+	if s.executionHosts != nil {
+		if err := s.executionHosts.Check(ctx); err != nil {
+			return fmt.Errorf("execution hosts: %w", err)
+		}
 	}
 	return nil
 }
@@ -283,7 +305,15 @@ func (s *Service) closeInfrastructure() error {
 		vfsErr,
 		s.mailer.Close(),
 		s.cache.Close(),
+		closeExecutionHosts(s.executionHosts),
 	)
+}
+
+func closeExecutionHosts(hosts ExecutionHosts) error {
+	if hosts == nil {
+		return nil
+	}
+	return hosts.Close()
 }
 
 func configureLogger(logger *logging.Logger, settings config.Log) error {

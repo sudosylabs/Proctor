@@ -24,6 +24,15 @@ narrow application or persistence contracts.
 - `PersonalAccessToken` is finite, hashed, revocable, explicitly action-scoped,
   and optionally constrained to an academic-unit subtree.
 - `UserToken` is purpose-specific, hashed, expiring, and single-use.
+- `Invitation` is a separate durable pre-User aggregate; account-purpose tokens
+  never double as invitations.
+- `AccessPolicy` is the revisioned application authority for available login,
+  credential-enrollment, provider-admission, invitation, and desktop handoff
+  capabilities.
+
+The complete accepted access, hosted-browser, desktop authorization,
+Invitation, and batch-onboarding contract is
+[Access and onboarding](./access-and-onboarding.md).
 
 ## Application ownership
 
@@ -109,11 +118,22 @@ use cases.
 ## Installation bootstrap
 
 Bootstrap is an explicit one-time aggregate, never a first-user side effect.
-A PostgreSQL-serialized transaction requires a pristine installation and
-creates the institution, first local administrator, encoded password,
-protected `system_admin` role, institution binding, installation marker, and
-successful audit event atomically. Losing or failed attempts leave no partial
-state and bootstrap never mints a special session.
+A PostgreSQL-serialized transaction requires a pristine installation and a
+high-entropy deployment-owned one-time secret. It creates the Institution,
+first local administrator, encoded password, protected `system_admin` role,
+Institution binding, Access Policy revision 1, installation marker, successful
+audit, and secret consumption atomically. Losing or failed attempts leave no
+partial state and bootstrap never mints a special Session. The administrator's
+email begins unverified because deployment authority does not prove mailbox
+control.
+
+Every installation begins with this local administrator. External-only is a
+post-bootstrap operating policy: an administrator first verifies email, tests
+mail and a configured provider, links their provider identity, and only then
+may disable local login. Current-state invariants prevent removal of the last
+usable system-administrator authentication path. Host-level emergency recovery
+is an offline audited operation, not a network endpoint or hidden local-login
+bypass.
 
 Built-in roles are server-owned. System-administrator bindings exist only at
 institution scope, and ending one is serialized so another active binding
@@ -133,7 +153,7 @@ credential, provider, assurance, client, and authentication-time context. It
 does not snapshot roles, permissions, or academic memberships. Route matrix
 tests reject unclassified handlers.
 
-## Sessions and browser transport
+## Sessions, browser transport, and desktop handoff
 
 Interactive sessions use random opaque access and rotating refresh
 credentials whose hashes alone are persisted. Idle and absolute expiry are
@@ -148,9 +168,15 @@ Refresh rotates access, refresh, and CSRF credentials. Mixed bearer/cookie
 sources and duplicate credential cookies are rejected rather than resolved by
 precedence.
 
-This contract assumes the Electron renderer uses the installation origin. A
-different-origin renderer requires a reviewed main-process or cross-origin
-handoff; SameSite and CORS protections are not weakened opportunistically.
+Proctor Desktop does not render authentication pages or reuse browser cookies.
+It discovers the installation, opens server-hosted authentication in the
+system browser, and receives a purpose-built native-public-client handoff. The
+server validates an exact IP-literal loopback callback, high-entropy state, a
+short-lived single-use code, and an S256 PKCE verifier before issuing one
+ordinary Desktop Session. Access and refresh credentials never appear in URLs;
+provider credentials and tokens terminate at the server. Exact discovery,
+transaction, storage, concurrency, and callback rules live in
+[Access and onboarding](./access-and-onboarding.md#desktop-authorization).
 
 ## CLI and purpose-specific credentials
 
@@ -162,9 +188,12 @@ query parameters.
 Password-reset and email-verification tokens bind to the normalized account
 email at issuance. Reissuance invalidates the prior active token, browser links
 carry raw credentials in a fragment, and completion consumes the token
-transactionally. Password-reset requests return a generic accepted response;
-successful completion changes the password, revokes all sessions, and records
-the terminal audit atomically.
+transactionally. Issuance atomically persists the token hash, successful audit,
+encrypted frozen message, occurrence, and reserved credential-delivery Job;
+reissue also suppresses the prior unsent delivery. Password-reset requests
+return a generic accepted response; successful completion atomically changes
+the password, revokes all sessions, consumes the token, records the terminal
+audit, and queues only the password-changed security notice.
 
 ## MFA
 
@@ -187,9 +216,23 @@ are redacted from logs and audits.
 
 External login state is random, hashed, expiring, one-use, PostgreSQL-backed,
 and bound to a separate host-only SameSite=Lax browser-proof cookie. Successful
-providers create ordinary Proctor sessions. Auto-provisioning never links an
+provider authentication resolves one purpose-aware browser transaction. Web
+login creates a Web Session; desktop authorization prepares a one-use code;
+Invitation acceptance applies its package; provider connection links the
+identity to an already authenticated User. Auto-provisioning never links an
 existing account because email or username matches, and released affiliation
 claims never create roles or memberships.
+
+One User may link several external identities and may also retain a local
+password when policy permits. Linking to an existing User requires current
+proof from both the existing User context and provider transaction. A valid
+Invitation claim may instead admit a new relationship-free User and exact
+identity link; it does not itself accept the Invitation or attach that identity
+to another existing User.
+Provider profile changes do not silently overwrite established Proctor fields.
+Provider-driven profile synchronization, relationship reconciliation, and
+deprovisioning require a separately reported policy; a failed provider account
+does not silently disable the Proctor User.
 
 ### CAS
 

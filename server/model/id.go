@@ -56,6 +56,10 @@ type ExamCorrectionResourceStageID string
 // ExamAttemptID identifies one candidate's stable work identity for a Sitting.
 type ExamAttemptID string
 
+// ExecutionGrantID identifies one durable placement of an Attempt on an
+// execenv host. The same opaque value is used as the host-side grant ID.
+type ExecutionGrantID string
+
 // ExamAttemptWorkspaceID identifies the private Workspace owned by one Attempt.
 type ExamAttemptWorkspaceID string
 

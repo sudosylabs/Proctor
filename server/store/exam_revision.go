@@ -40,6 +40,7 @@ type ExamRevisionSummary struct {
 	Title                   string
 	PolicySchemaVersion     int
 	PolicyDigest            string
+	ExecutionProfileDigest  string
 	StarterWorkspaceDigest  string
 	ContentDigest           string
 	ResourceCount           int

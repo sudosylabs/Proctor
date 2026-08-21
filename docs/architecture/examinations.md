@@ -18,6 +18,8 @@ Academic Unit
             ├── sequential Attempt Participations
             │   └── Attempt Connections
             ├── one Attempt Workspace
+            ├── optional Execution Environment
+            │   └── one Attempt Terminal
             ├── Integrity Flags and Evidence
             └── one Submission
                 └── one Submission Review
@@ -54,8 +56,8 @@ monotonically numbered Exam Revision, selects it as the future default, rebases
 the Draft, records audit and idempotent outcome, and only then emits transient
 effects. An unchanged Draft does not produce a redundant revision. A Revision
 freezes title, instructions, policy, resource snapshots, Starter Workspace,
-publisher, publication time, optional base revision, and whether it is a
-standard publication or live correction.
+Execution Profile, publisher, publication time, optional base revision, and
+whether it is a standard publication or live correction.
 
 Manager-facing Revision discovery is a separate bounded metadata projection.
 It exposes immutable identity, ordering, provenance, digests and aggregate
@@ -70,9 +72,9 @@ operation creates a live-correction Revision from that Sitting's current
 Revision and atomically retargets only the affected Sitting. It records the
 old/new revisions, actor, reason, and effective time. Other Sittings remain on
 their selected revisions. The operation requires the new and current policy
-digests and Starter Workspace digests to match, so only instructions and Exam
-Resources can change; eligibility, schedule, policy, and starter files cannot
-change through this path. Selecting the correction as the future default is
+digests, Starter Workspace digests, and Execution Profile digests to match, so
+only instructions and Exam Resources can change; eligibility, schedule,
+policy, starter files, and execution cannot change through this path. Selecting the correction as the future default is
 explicit, and changing the reusable Draft remains a separate operation.
 
 Resource bytes for a correction are first staged against the exact Sitting,
@@ -216,7 +218,9 @@ the deadline; recovery after the whole window elapsed cancels with
 `schedule_elapsed`. Managers may close early with a reason. Schedule fields may
 change before opening; after opening the end may only be extended. Pause blocks
 new Attempts, workspace mutation, execution, and submission while retaining
-read-only candidate presentation and integrity monitoring. In version 1,
+read-only candidate presentation and integrity monitoring. Execution means an
+enabled Execution Profile's Attempt Terminal and its Execution Environment;
+the accepted contract is in [Execution environments](./execution.md). In version 1,
 `ScheduledEndAt` is the sole delivery deadline: paused duration does not extend
 it and there is no separate effective-deadline field or pause-extension policy.
 Manager pause, resume, extension, and early close are exposed as distinct
@@ -572,10 +576,13 @@ Each slice includes model, application, named persistence, HTTP/OpenAPI,
 authorization, audit, effects, and proportionate unit, race, integration, VFS,
 multi-node, and Docker-backed verification.
 
-The initial scope excludes grading, scoring, questions/rubrics, code execution,
-runners/terminals, dedicated proctor assignment, accommodations, Exam copying
-or templates, resource search, configurable retention/export/deletion, binary
-integrity capture, arbitrary policies, and offline participation. Exact
+The initial implemented scope excludes grading, scoring, questions/rubrics,
+dedicated proctor assignment,
+accommodations, Exam copying or templates, resource search, configurable
+retention/export/deletion, binary integrity capture, arbitrary policies, and
+offline participation. Execution Environments and the Attempt Terminal server
+contract are implemented as described in [Execution environments](./execution.md);
+the candidate UI remains a separate client slice. Exact
 workspace quotas, close-work budgets, and record retention remain explicit
 decisions for their owning slices. The
 pre-release schema extends the single version-1 baseline and requires

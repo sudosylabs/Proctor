@@ -84,6 +84,21 @@ func (c *connectionRuntime) enqueueEvent(event *Event) {
 	}
 }
 
+// enqueueEphemeralEvent deliberately excludes terminal output from replay
+// history. It still receives a monotonic connection sequence for ordering.
+func (c *connectionRuntime) enqueueEphemeralEvent(event *Event) {
+	c.mu.Lock()
+	c.nextSequence++
+	candidate := event.Clone()
+	candidate.Sequence = c.nextSequence
+	queued := c.tryEnqueueOutbound(outboundMessage{event: candidate})
+	c.mu.Unlock()
+	if !queued {
+		c.closeTerminal()
+		c.closeForBackpressure()
+	}
+}
+
 func (c *connectionRuntime) enqueueResponse(sequence int64, data json.RawMessage) {
 	response := &Response{
 		Status: "ok", Sequence: sequence, Data: append(json.RawMessage(nil), data...),

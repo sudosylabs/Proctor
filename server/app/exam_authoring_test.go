@@ -140,6 +140,41 @@ func TestConfigureExamDraftFocusLossRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestConfigureExamDraftExecutionProfileBuildsTypedIdempotentChildCommand(t *testing.T) {
+	t.Parallel()
+	userID := model.NewUserID()
+	child := &examUseCasesFake{}
+	application := &App{exams: child}
+	examID := model.NewExamID()
+	view, err := application.ConfigureExamDraftExecutionProfile(context.Background(), NewInvocation(testExamPrincipal(userID), model.RequestMetadata{RequestID: "execution-profile"}), ConfigureExamDraftExecutionProfileCommand{
+		ExamID: examID, ExpectedDraftRevision: 7, Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkAllowlist,
+		IdempotencyKey: "configure-execution-once",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := child.executionProfile
+	if view != child.view || got.ExamID != examID || got.ExpectedDraftRevision != 7 || got.Profile != (model.ExecutionProfile{
+		Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkAllowlist,
+	}) {
+		t.Fatalf("view/command = %#v / %#v", view, got)
+	}
+	if got.Idempotency == nil || got.Idempotency.Operation != "exam.draft.execution_profile.configure.v1" || got.Idempotency.UserID != userID {
+		t.Fatalf("idempotency = %#v", got.Idempotency)
+	}
+}
+
+func TestConfigureExamDraftExecutionProfileRequiresIdempotencyKey(t *testing.T) {
+	t.Parallel()
+	application := &App{exams: &examUseCasesFake{}}
+	_, err := application.ConfigureExamDraftExecutionProfile(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ConfigureExamDraftExecutionProfileCommand{
+		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone,
+	})
+	if !Is(err, "idempotency.key_required") {
+		t.Fatalf("error = %v, want idempotency.key_required", err)
+	}
+}
+
 func TestAuthorizeWebSocketExamSubscriptionUsesExamRelationshipGate(t *testing.T) {
 	t.Parallel()
 	child := &examUseCasesFake{}
@@ -181,21 +216,22 @@ func TestGetExamConcealsMissingAndDeniedTargets(t *testing.T) {
 }
 
 type examUseCasesFake struct {
-	call            examengine.Call
-	create          examengine.CreateCommand
-	edit            examengine.EditDraftTextCommand
-	focusLoss       examengine.ConfigureDraftFocusLossCommand
-	list            examengine.ListQuery
-	catalog         examengine.CatalogPage
-	archive         examengine.ArchiveCommand
-	managerList     examengine.ListManagersQuery
-	managerCommand  examengine.AddManagerCommand
-	managerPage     examengine.ManagerPage
-	managerChange   examengine.ManagerChange
-	archived        model.Exam
-	authorizeExamID model.ExamID
-	view            ExamView
-	err             error
+	call             examengine.Call
+	create           examengine.CreateCommand
+	edit             examengine.EditDraftTextCommand
+	focusLoss        examengine.ConfigureDraftFocusLossCommand
+	executionProfile examengine.ConfigureDraftExecutionProfileCommand
+	list             examengine.ListQuery
+	catalog          examengine.CatalogPage
+	archive          examengine.ArchiveCommand
+	managerList      examengine.ListManagersQuery
+	managerCommand   examengine.AddManagerCommand
+	managerPage      examengine.ManagerPage
+	managerChange    examengine.ManagerChange
+	archived         model.Exam
+	authorizeExamID  model.ExamID
+	view             ExamView
+	err              error
 }
 
 func (f *examUseCasesFake) ListManagers(_ context.Context, call examengine.Call, query examengine.ListManagersQuery) (examengine.ManagerPage, error) {
@@ -247,6 +283,11 @@ func (f *examUseCasesFake) EditDraftText(_ context.Context, call examengine.Call
 
 func (f *examUseCasesFake) ConfigureDraftFocusLoss(_ context.Context, call examengine.Call, command examengine.ConfigureDraftFocusLossCommand) (examengine.View, error) {
 	f.call, f.focusLoss = call, command
+	return f.view, f.err
+}
+
+func (f *examUseCasesFake) ConfigureDraftExecutionProfile(_ context.Context, call examengine.Call, command examengine.ConfigureDraftExecutionProfileCommand) (examengine.View, error) {
+	f.call, f.executionProfile = call, command
 	return f.view, f.err
 }
 

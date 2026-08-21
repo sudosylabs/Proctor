@@ -121,6 +121,9 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "Mail child cannot import HTTP transport", from: serverModule + "/app/mail", imported: serverModule + "/httpapi"},
 		{name: "Mail child cannot import platform", from: serverModule + "/app/mail", imported: serverModule + "/platform"},
 		{name: "Mail child cannot import SQL adapter", from: serverModule + "/app/mail", imported: serverModule + "/store/sqlstore"},
+		{name: "Execution child cannot import execenv", from: serverModule + "/app/execution", imported: "github.com/sudosylabs/execenv"},
+		{name: "Execution child cannot import platform", from: serverModule + "/app/execution", imported: serverModule + "/platform"},
+		{name: "Execution host adapter cannot import persistence", from: serverModule + "/executionhost", imported: serverModule + "/store"},
 		{name: "application cannot import Redis client", from: serverModule + "/app", imported: "github.com/redis/go-redis/v9"},
 		{name: "Job engine descendants cannot import application", from: serverModule + "/app/job/internal", imported: serverModule + "/app"},
 		{name: "Job engine cannot import HTTP transport", from: serverModule + "/app/job", imported: serverModule + "/httpapi"},
@@ -191,6 +194,10 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "Mail child may import secret sealing", from: serverModule + "/app/mail", imported: serverModule + "/secretseal"},
 		{name: "Mail child may import Exam mail contracts", from: serverModule + "/app/mail", imported: serverModule + "/app/exam"},
 		{name: "Mail child may import localization", from: serverModule + "/app/mail", imported: serverModule + "/localization"},
+		{name: "application may import Execution child", from: serverModule + "/app", imported: serverModule + "/app/execution"},
+		{name: "Execution child may import domain models", from: serverModule + "/app/execution", imported: serverModule + "/model"},
+		{name: "Execution child may import store contracts", from: serverModule + "/app/execution", imported: serverModule + "/store"},
+		{name: "Execution host adapter may import execenv", from: serverModule + "/executionhost", imported: "github.com/sudosylabs/execenv/remote"},
 		{name: "Mail child may accept presentation filesystems", from: serverModule + "/app/mail", imported: "io/fs"},
 		{name: "Exam child may import domain models", from: serverModule + "/app/exam", imported: serverModule + "/model"},
 		{name: "Exam child may import store contracts", from: serverModule + "/app/exam", imported: serverModule + "/store"},
@@ -325,6 +332,9 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/app/realtime"):
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model")
+	case packageOrBelow(from, serverModule+"/app/execution"):
+		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
+			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store")
 	case packageOrBelow(from, serverModule+"/app/mail"):
 		return standardInfrastructureImport(imported) && imported != "io/fs" || thirdPartyImport(imported) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/model", serverModule+"/store",
@@ -355,6 +365,7 @@ func forbiddenImport(from, imported string) bool {
 				imported != serverModule+"/model" && imported != serverModule+"/store" &&
 				imported != serverModule+"/app/job" && imported != serverModule+"/app/jobs" && imported != serverModule+"/app/realtime" &&
 				imported != serverModule+"/app/mail" &&
+				imported != serverModule+"/app/execution" &&
 				imported != serverModule+"/secretseal" &&
 				!packageOrBelow(imported, serverModule+"/app/exam"))
 	case httpOrWebSocketPackage(from):
@@ -379,6 +390,9 @@ func forbiddenImport(from, imported string) bool {
 			packageOrBelow(imported, serverModule+"/app") ||
 			packageOrBelow(imported, serverModule+"/httpapi") ||
 			packageOrBelow(imported, serverModule+"/websocket")
+	case from == serverModule+"/executionhost":
+		return (thirdPartyImport(imported) && !packageOrBelow(imported, "github.com/sudosylabs/execenv")) ||
+			forbiddenProjectImportExcept(imported, serverModule+"/app/execution")
 	case strings.HasPrefix(from, serverModule+"/cmd/"):
 		if from == serverModule+"/cmd/mailpreview" {
 			return thirdPartyImport(imported) ||
@@ -469,6 +483,7 @@ func knownProductionPackage(packagePath string) bool {
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/logging" || packagePath == serverModule+"/migrations" ||
 		packagePath == serverModule+"/secretseal" || packagePath == serverModule+"/localization" ||
+		packagePath == serverModule+"/executionhost" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||
 		packagePath == serverModule+"/cmd/mailpreview" {
 		return true

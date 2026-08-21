@@ -1,7 +1,7 @@
 # Execution environments
 
-This document owns the accepted Execution Environment design. It is a
-contract, not an implementation claim; current capability status lives in
+This document owns the accepted Execution Environment design and records the
+implemented server/execenv boundary. Current capability status lives in
 [Project status](../project/status.md). Canonical terms are defined in
 [`CONTEXT.md`](../../CONTEXT.md).
 
@@ -14,11 +14,13 @@ not a second workspace, not a local folder, and not an academic grader.
 The server owns product meaning: the Execution Profile, when a grant may
 exist, placement across hosts, Attempt Workspace acknowledgement, the
 Attempt Terminal bridge on the Attempt Connection, pause and revocation, and
-audit. The reusable `packages/guest` module owns the exam-blind host
-contract: readiness, ensure and revoke, tree projection, one PTY, freeze,
-capacity, and typed errors. The Execution Host binary lives in a separate
-repository, implements the server side of that contract, and owns isolation
-machinery. Reusable modules never import the Proctor server.
+audit. The reusable module
+[`github.com/sudosylabs/execenv`](https://github.com/sudosylabs/execenv)
+owns the exam-blind host contract: readiness, ensure and revoke, tree
+projection, one PTY, freeze, capacity, and typed errors. The Execution Host
+binary lives in that same repository, serves the contract, and owns
+isolation machinery. This monorepo requires execenv; it does not contain
+it. Reusable modules never import the Proctor server.
 
 Students never learn host addresses. Hosts never receive Attempt, Sitting,
 Participation, Session, or general VFS credentials.
@@ -38,9 +40,17 @@ terminal, and the host is never contacted. Enabling the terminal is an
 authored choice, not an installation default.
 
 Creators pick an image from the installation catalog. They do not upload
-rootfs blobs, kernels, or Dockerfiles, and they do not install packages into
-a running guest. The selected image is the guest rootfs and must already be
-present on any host that may receive the grant.
+kernels or disks, and they do not install packages into a running guest.
+An Execution Image is a baked Firecracker disk (kernel + root filesystem)
+already on the host, not a Docker tag. The default published disk is a
+broad toolchain image in the class of GitHub Codespaces' universal
+devcontainer, produced by a bake step that also installs the execenv guest
+agent. Operators may bake further catalog ids. The daemon never pulls at
+grant time.
+
+The authoring API exposes the deduplicated image ids and network modes from
+currently usable isolated configured hosts. It never exposes host ids,
+addresses, credentials, release details, or live capacity.
 
 Network modes are `none` (default) and `allowlist`. Allowlist destinations
 are installation-defined on the host, not arbitrary creator URLs. Creator-
@@ -50,7 +60,7 @@ chosen open internet is out of the initial contract.
 
 Production isolation is Firecracker. Warmup and readiness fail closed when
 usable KVM is absent. There is no container fallback in the initial
-contract. The in-memory `packages/guest` adapter exists for tests and must
+contract. The in-memory execenv adapter exists for tests and must
 not be selected for production.
 
 The microVM is the escape boundary. The guest rootfs is visible and
@@ -62,7 +72,7 @@ boundary.
 
 ## Client module
 
-`packages/guest` talks to exactly one host. Placement across hosts stays in
+execenv talks to exactly one host. Placement across hosts stays in
 the server. The application programs a small `Host` / `Env` interface:
 
 - `Ready` reports whether the host is usable, which image ids it has, and
@@ -86,17 +96,21 @@ interface does not name Firecracker, jailer, vsock, or KVM. Required
 adapters are `memory` and `remote`, plus a conformance suite. Production
 composition refuses a non-isolated adapter.
 
-The host repository imports these types and serves the same contract. The
-client does not expose a hypervisor control surface.
+The execenv daemon serves the same contract the Proctor client dials. The
+interface does not expose a hypervisor control surface.
 
 ## Topology
 
 Only the installation talks to hosts. The exam client talks only to Proctor.
 
-An operator installs the host binary on a supported Linux KVM machine, gives
-it the installation host token and API address, and the host registers. It
-advertises health, remaining capacity, and present images. Creators never
-name hosts. Candidates never see them.
+An operator installs the host binary on a supported Linux KVM machine and
+configures each Proctor node with the host's stable operator ID, address, and
+TLS/mTLS or token credentials. Hosts never call Proctor and there is no host
+registration endpoint. Proctor makes outbound authenticated connections and
+reads live health, remaining capacity, present images, networks, and release
+compatibility from execenv. Every Proctor node in one installation must use
+the same stable host-ID catalog. Creators never name hosts. Candidates never
+see them.
 
 At first terminal open the server places the Attempt onto one host that has
 the profile's image and enough capacity, then pins that choice. If the
@@ -104,15 +118,23 @@ pinned host is dead on reconnect, the server places again and rebuilds the
 guest from the Attempt Workspace. Unacknowledged guest bytes do not move
 with the Attempt.
 
+PostgreSQL stores the chosen grant ID, stable host ID, image, network, state,
+revision, and release/revocation progress. It deliberately does not index live
+host readiness or capacity: those observations expire with the connection and
+are recomputed from the bounded configured host set. Reassignment releases the
+old placement and reserves its replacement atomically before either transient
+host effect runs. A partial unique index permits only one active placement per
+Attempt while retaining placement history.
+
 ## Lifetime
 
 Admission does not boot a guest. An Execution Environment is created on the
 first authorized Attempt Terminal open and only when the frozen profile
-enables one. Pause freezes the environment without destroying it. Submit
-and sitting close revoke it after the durable Attempt state commits.
-Confirmed connection loss revokes after a short grace. Reconnect after
-freeze or grace always replaces the tree from acknowledged workspace state
-before attaching a PTY.
+enables one. Pause freezes the environment without destroying it, and Resume
+thaws that same environment. Submit and sitting close revoke after the durable
+Attempt state commits. Confirmed connection loss revokes after a short grace.
+Reconnect after freeze or grace always replaces the tree from acknowledged
+workspace state before attaching a PTY.
 
 ## Projection
 
@@ -137,8 +159,8 @@ are ephemeral.
 ## Attempt Terminal transport
 
 PTY bytes are not workspace mutations. They travel student to Proctor on
-the existing Attempt Connection, then Proctor to the host through
-`packages/guest`. The reverse path is the same. Pause, lease expiry, kick,
+the existing Attempt Connection, then Proctor to the host through execenv.
+The reverse path is the same. Pause, lease expiry, kick,
 and manager-cannot-see-live-work apply because the Attempt Connection
 already owns those gates.
 
@@ -149,17 +171,48 @@ to exclude terminal output and source code.
 ## Resources
 
 CPU, memory, disk, and process caps are installation-defined defaults and
-maxima. The Execution Profile does not request hardware. The host
-advertises remaining slots and memory. The server refuses `Ensure` when no
-host fits. The host reports capacity; it does not pick winners.
+maxima. The Execution Profile does not request hardware. execenv v0.2 reports
+remaining slots; each host enforces its configured memory and other resource
+caps and returns typed capacity refusal from `Ensure`. The server tries only
+hosts advertising a free slot and re-places on a typed capacity refusal. The
+host reports or enforces capacity; it does not pick winners. Advertising
+remaining memory separately is deferred until the reusable execenv contract
+exposes it.
 
-## Deferred
+## Implemented boundary
 
-Implementation of this contract, the host binary, the exam-client terminal
-surface, exact default resource numbers, an authored ignore list, an
-installation image registry, and an installation-gated open-internet mode
-remain later slices. Multiple PTYs, in-guest exec besides the one shell,
-and guest-disk snapshots are not in the initial interface.
+The server integration is implemented against execenv v0.2.0: typed multi-host
+deployment configuration and secret redaction, TLS 1.3/mTLS or loopback-only
+development dialing, connection recovery, fail-closed readiness, deterministic
+capability/capacity placement, durable assignment and cleanup history,
+authoritative PostgreSQL/VFS workspace projection, acknowledged IDE-change
+resynchronization, submission revocation, and bounded desired-state
+reconciliation that repairs missed open/pause/resume/release effects from
+authoritative Attempt and Sitting state as well as pending revocations. Each
+grant records the applied Sitting lifecycle state and revision; PostgreSQL
+conditionally accepts an effect acknowledgement only while that exact state
+and revision remain current. A PostgreSQL advisory lease serializes host
+lifecycle effects for the exact grant across application nodes; after acquiring
+it, the worker rereads authoritative Attempt and Sitting state instead of using
+its triggering snapshot. The worker validates that same dedicated connection
+before preparing and immediately after every host effect. Preparation persists
+a pending state/revision before Freeze or Thaw; completion clears it atomically
+with the applied marker. Connection loss releases/revokes the exact grant, and
+process loss leaves the pending marker for the next lease holder to release,
+so an orphaned host request cannot be mistaken for convergence,
+persisted Draft authoring and immutable Revision freezing,
+authorized Attempt WebSocket terminal open/input/resize/close with non-replayable
+bounded output, guest-write acknowledgement through the existing Workspace
+commands, durable candidate terminal-open audit, audit-correlated lifecycle
+release, pause/resume/release hooks, and periodic cleanup. The independent
+execenv repository supplies the host binary,
+remote protocol, in-memory adapter, and conformance suite.
+
+Exact default resource numbers, an authored ignore list, and an operator image
+catalog UI remain later product slices. The initial server ignore set is fixed
+to `.proctor`, `.git`, `node_modules`, `target`, and `__pycache__`. Multiple PTYs, in-guest exec
+besides the one shell, and guest-disk snapshots are not in the initial
+interface.
 
 ## Rationale
 
@@ -170,7 +223,6 @@ into every exam use case. An exam-aware host would split the examination
 module across a network and could not live in `packages/`. A student-direct
 or relay topology would create a second enforcement plane. Firecracker
 without a supported-host profile would promise an iroh-style empty-VPS
-install that KVM cannot keep. The independent `packages/guest` contract is
-the extractable seam `dependencies.md` requires; isolation stays in the
-host repository because it has no Proctor-independent callers inside this
-monorepo.
+install that KVM cannot keep. The independent execenv contract is the extractable
+seam `dependencies.md` requires; isolation stays in that repository
+because it has no callers inside this monorepo.

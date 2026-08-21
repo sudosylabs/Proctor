@@ -15,18 +15,24 @@ import (
 	examreview "github.com/sudosylabs/proctor/server/app/exam/review"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 func constructExaminations(deps Dependencies, foundation applicationFoundation, access accessAcademicConstruction) (examinationConstruction, error) {
+	execution, err := appexecution.New(deps.Store.ExecutionGrant(), deps.ExecutionHosts, deps.FileContent, time.Now, model.NewExecutionGrantID)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
 	effects := examRealtimeEffects{realtime: foundation.realtime}
 	authoring, err := examengine.NewAuthoring(
 		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(), deps.Store.User(),
 		foundation.mail,
 		examAuthorizationAdapter{authorization: access.authorization},
 		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		deps.Store.CommandOutcome(), examExecutionProfileCatalog{execution: execution},
 		effects, effects, time.Now, model.NewExamID,
 	)
 	if err != nil {
@@ -56,7 +62,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examSittingAuthorizationAdapter{authorization: access.authorization},
 		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		examSittingSystemAuditAdapter{audit: foundation.audit},
-		examSittingRealtimeEffects{realtime: foundation.realtime},
+		examSittingRealtimeEffects{realtime: foundation.realtime, execution: execution},
 		examSittingRealtimeEffects{realtime: foundation.realtime},
 		appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
 		sittingMailPreparation,
@@ -65,7 +71,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
+	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime, execution: execution}
 	submissionMail := examSubmissionMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
 	attempts, err := examattempt.New(examattempt.Dependencies{
@@ -136,7 +142,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	return examinationConstruction{authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
+	return examinationConstruction{execution: execution, authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
 		sittingMailPreparation: sittingMailPreparation, attempts: attempts, reviews: reviews,
 		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }

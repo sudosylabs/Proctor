@@ -4,13 +4,19 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -86,6 +92,161 @@ func TestConnectExamAttemptFingerprintBindsSessionAndNeverStoresRawCredential(t 
 	second := fake.connects[1].Idempotency
 	if first.Fingerprint == second.Fingerprint {
 		t.Fatal("Connect fingerprint did not bind the authenticated Session")
+	}
+}
+
+type terminalObservationStub struct {
+	lost    bool
+	started chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func newTerminalObservationStub(lost bool) *terminalObservationStub {
+	return &terminalObservationStub{lost: lost, started: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (stub *terminalObservationStub) Cursor() appexecution.Cursor { return "cursor" }
+func (stub *terminalObservationStub) Next(ctx context.Context) (appexecution.Event, error) {
+	stub.once.Do(func() { close(stub.started) })
+	if stub.lost {
+		return appexecution.Event{}, appexecution.ErrObservationLost
+	}
+	select {
+	case <-ctx.Done():
+		return appexecution.Event{}, ctx.Err()
+	case <-stub.closed:
+		return appexecution.Event{}, io.EOF
+	}
+}
+func (stub *terminalObservationStub) Close() error {
+	select {
+	case <-stub.closed:
+	default:
+		close(stub.closed)
+	}
+	return nil
+}
+
+type candidateTerminalStub struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newCandidateTerminalStub() *candidateTerminalStub {
+	return &candidateTerminalStub{closed: make(chan struct{})}
+}
+func (stub *candidateTerminalStub) Read([]byte) (int, error)                     { <-stub.closed; return 0, io.EOF }
+func (*candidateTerminalStub) Write(data []byte) (int, error)                    { return len(data), nil }
+func (*candidateTerminalStub) Resize(context.Context, appexecution.Window) error { return nil }
+func (stub *candidateTerminalStub) Close() error {
+	stub.once.Do(func() { close(stub.closed) })
+	return nil
+}
+
+type terminalAuditStoreStub struct {
+	store.AuditStore
+	mu        sync.Mutex
+	saved     *model.AuditEvent
+	completed model.AuditStatus
+}
+
+func (stub *terminalAuditStoreStub) Save(_ context.Context, event *model.AuditEvent) (*model.AuditEvent, error) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	copy := event.Clone()
+	copy.PrepareCreate(model.NewAuditEventID(), time.Now().UTC())
+	stub.saved = copy.Clone()
+	return copy, nil
+}
+
+func (stub *terminalAuditStoreStub) Complete(_ context.Context, _ string, status model.AuditStatus, _ string, _ []byte, _ int64) (*model.AuditEvent, error) {
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	stub.completed = status
+	copy := stub.saved.Clone()
+	copy.Status = status
+	return copy, nil
+}
+
+func TestOpenCandidateExamTerminalAuditsPlacementAndRecoversLostObservation(t *testing.T) {
+	t.Parallel()
+	attemptID, sittingID, classID := model.NewExamAttemptID(), model.NewExamSittingID(), model.NewClassID()
+	first, resumed := newTerminalObservationStub(true), newTerminalObservationStub(false)
+	nativeTerminal := newCandidateTerminalStub()
+	execution := &executionUseCasesStub{
+		placement:    &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: attemptID, Ready: true},
+		observations: []appexecution.Observation{first, resumed}, terminal: nativeTerminal,
+	}
+	attempts := &examAttemptUseCasesFake{presentation: examattempt.Presentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
+		ExecutionProfile: model.ExecutionProfile{Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone}}}
+	audits := &terminalAuditStoreStub{}
+	application := &App{examAttempts: attempts, execution: execution,
+		audit: &auditService{audits: audits, nodeID: "node-terminal", now: time.Now}}
+	principal := examAttemptPrincipal()
+	access := CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: model.NewAttemptConnectionID(), ContinuityCredential: model.NewCredentialToken()}
+	terminal, err := application.OpenCandidateExamTerminal(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "terminal-open"}), OpenCandidateExamTerminalCommand{
+		Access: access, SittingID: sittingID, ClassID: classID, ParticipationID: model.NewAttemptParticipationID(), Generation: 2,
+		Window: CandidateExamTerminalWindow{Cols: 100, Rows: 30},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-resumed.started:
+	case <-time.After(time.Second):
+		t.Fatal("lost observation was not resynchronized")
+	}
+	if err := terminal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	execution.mu.Lock()
+	ensure, synchronized, watchCalls := append([]appexecution.Request(nil), execution.ensure...), append([]model.ExamAttemptID(nil), execution.synchronized...), execution.watchCalls
+	execution.mu.Unlock()
+	if len(ensure) != 1 || ensure[0].AttemptID != attemptID || len(synchronized) != 1 || synchronized[0] != attemptID || watchCalls != 2 {
+		t.Fatalf("execution calls = ensure %#v sync %#v watches %d", ensure, synchronized, watchCalls)
+	}
+	audits.mu.Lock()
+	saved, completed := audits.saved.Clone(), audits.completed
+	audits.mu.Unlock()
+	if saved == nil || saved.Action != string(model.ActionExamSittingParticipate) || saved.Resource.ID != sittingID.String() ||
+		saved.ScopeType != model.RoleScopeClass || saved.ScopeID != classID.String() || completed != model.AuditStatusSuccess {
+		t.Fatalf("terminal audit = %#v completed=%s", saved, completed)
+	}
+}
+
+func TestCandidateExecutionCreatePersistsThroughAuthoritativeWorkspaceCommand(t *testing.T) {
+	t.Parallel()
+	body := []byte("package main\n")
+	attempts := &examAttemptUseCasesFake{workspacePage: examattempt.WorkspacePage{}}
+	execution := &executionUseCasesStub{openBody: io.NopCloser(bytes.NewReader(body))}
+	application := &App{examAttempts: attempts, execution: execution}
+	access := CandidateExamAttemptAccess{AttemptID: model.NewExamAttemptID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredential: model.NewCredentialToken()}
+	command := OpenCandidateExamTerminalCommand{Access: access, ParticipationID: model.NewAttemptParticipationID(), Generation: 3}
+	event := appexecution.Event{Cursor: "guest-cursor-1", Operation: appexecution.OperationCreate, Path: "main.go"}
+	if err := application.applyCandidateExecutionEvent(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command, event); err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts.workspaceFiles) != 1 || len(attempts.workspaceFileBodies) != 1 || !bytes.Equal(attempts.workspaceFileBodies[0], body) {
+		t.Fatalf("workspace file calls/bodies = %#v / %#v", attempts.workspaceFiles, attempts.workspaceFileBodies)
+	}
+	digest := sha256.Sum256(body)
+	created := attempts.workspaceFiles[0]
+	if created.Path != "main.go" || created.ExpectedSHA256 != hex.EncodeToString(digest[:]) || created.Size != int64(len(body)) ||
+		created.Access.ParticipationID != command.ParticipationID || created.Access.Generation != command.Generation || created.Idempotency == nil {
+		t.Fatalf("workspace create = %#v", created)
+	}
+}
+
+func TestIgnoredExecutionPathRejectsReservedAndDependencySegments(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]bool{
+		".proctor/state": true, "src/.git/index": true, "web/node_modules/pkg": true,
+		"target/debug/app": true, "pkg/__pycache__/x": true, "src/main.go": false,
+	} {
+		if got := ignoredExecutionPath(path); got != want {
+			t.Fatalf("ignoredExecutionPath(%q) = %t, want %t", path, got, want)
+		}
 	}
 }
 
@@ -375,16 +536,22 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 		Attempt: model.ExamAttempt{Revision: 2}, SuspensionCreated: true,
 		Suspension: store.ExamAttemptSuspensionView{ID: model.NewAttemptSuspensionID(), FlagID: flagID,
 			CandidateReason: model.AttemptSuspensionCandidateReasonFocusLossPolicy}}
-	if err := (examAttemptRealtimeEffects{realtime: realtime}).FocusLossEvaluated(context.Background(), result); err != nil {
+	execution := &executionUseCasesStub{}
+	if err := (examAttemptRealtimeEffects{realtime: realtime, execution: execution}).FocusLossEvaluated(context.Background(), result); err != nil {
 		t.Fatal(err)
 	}
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
+	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
+	execution.mu.Lock()
+	released := append([]model.ExamAttemptID(nil), execution.released...)
+	execution.mu.Unlock()
 	if len(events) != 4 || events[0].Name != "exam_attempt_connection_closed" ||
 		events[1].Name != "exam_attempt_integrity_flagged" || events[2].Name != "exam_attempt_suspended" ||
-		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() {
-		t.Fatalf("events=%#v", events)
+		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() ||
+		len(released) != 1 || released[0] != result.AttemptID || len(unbound) != 1 || unbound[0] != result.Connection.ID {
+		t.Fatalf("events=%#v released=%#v unbound=%#v", events, released, unbound)
 	}
 	if encoded := string(events[3].Data); !strings.Contains(encoded, `"reason_code":"focus_policy_review_required"`) {
 		t.Fatalf("candidate suspension lacks neutral reason: %s", encoded)
@@ -443,6 +610,10 @@ type examAttemptUseCasesFake struct {
 	reallows             []examattempt.ReallowCommand
 	err                  error
 	workspaceDirectories []examattempt.CreateWorkspaceDirectoryCommand
+	presentation         examattempt.Presentation
+	workspacePage        examattempt.WorkspacePage
+	workspaceFiles       []examattempt.CreateWorkspaceFileCommand
+	workspaceFileBodies  [][]byte
 }
 
 func (fake *examAttemptUseCasesFake) Connect(_ context.Context, _ examattempt.Call, command examattempt.ConnectCommand) (examattempt.ConnectionResult, error) {
@@ -476,11 +647,11 @@ func (fake *examAttemptUseCasesFake) CloseConnection(context.Context, examattemp
 }
 
 func (fake *examAttemptUseCasesFake) GetPresentation(context.Context, examattempt.Call, examattempt.CandidateAccess) (examattempt.Presentation, error) {
-	return examattempt.Presentation{}, fake.err
+	return fake.presentation, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) ListWorkspace(context.Context, examattempt.Call, examattempt.WorkspaceQuery) (examattempt.WorkspacePage, error) {
-	return examattempt.WorkspacePage{}, fake.err
+	return fake.workspacePage, fake.err
 }
 
 func (fake *examAttemptUseCasesFake) ListWorkspaceJournal(context.Context, examattempt.Call, examattempt.WorkspaceJournalQuery) (examattempt.WorkspaceJournalPage, error) {
@@ -492,7 +663,13 @@ func (fake *examAttemptUseCasesFake) CreateWorkspaceDirectory(_ context.Context,
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 
-func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(context.Context, examattempt.Call, examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+func (fake *examAttemptUseCasesFake) CreateWorkspaceFile(_ context.Context, _ examattempt.Call, command examattempt.CreateWorkspaceFileCommand) (examattempt.WorkspaceMutationResult, error) {
+	fake.workspaceFiles = append(fake.workspaceFiles, command)
+	body, err := io.ReadAll(command.Body)
+	if err != nil {
+		return examattempt.WorkspaceMutationResult{}, err
+	}
+	fake.workspaceFileBodies = append(fake.workspaceFileBodies, body)
 	return examattempt.WorkspaceMutationResult{}, fake.err
 }
 

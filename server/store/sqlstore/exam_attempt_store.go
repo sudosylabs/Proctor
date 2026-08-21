@@ -1629,6 +1629,7 @@ func (row examAttemptManagerRow) snapshot() (*store.ExamAttemptManagerSnapshot, 
 type candidateAttemptGuard struct {
 	AttemptID           string `db:"attempt_id"`
 	SittingID           string `db:"sitting_id"`
+	ClassID             string `db:"class_id"`
 	AdmissionRevisionID string `db:"admission_revision_id"`
 	RevisionID          string `db:"revision_id"`
 }
@@ -1638,7 +1639,7 @@ func (s *sqlExamAttemptStore) candidateGuard(ctx context.Context, access store.C
 		return candidateAttemptGuard{}, store.NewErrInvalidInput("exam_attempt", "candidate_access", nil)
 	}
 	var guard candidateAttemptGuard
-	err := s.GetMaster().Get(ctx, &guard, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,a.admission_revision_id,s.exam_revision_id AS revision_id
+	err := s.GetMaster().Get(ctx, &guard, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,s.class_id,a.admission_revision_id,s.exam_revision_id AS revision_id
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id AND p.state='active'
 		JOIN exam_attempt_connections c ON c.participation_id=p.id AND c.exam_attempt_id=a.id AND c.state='open'
@@ -1676,7 +1677,7 @@ func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTx
 		UserArchivedAt     sql.NullTime `db:"user_archived_at"`
 		UserDisabledAt     sql.NullTime `db:"user_disabled_at"`
 	}
-	err := tx.Get(ctx, &row, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,
+	err := tx.Get(ctx, &row, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,s.class_id,
 		a.admission_revision_id,s.exam_revision_id AS revision_id,a.state AS attempt_state,
 		s.state AS sitting_state,s.scheduled_end_at,p.state AS participation_state,
 		p.continuity_credential_hash,p.lease_expires_at,c.state AS connection_state,
@@ -1721,16 +1722,21 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, err
 		}
 		var header struct {
-			Title        string `db:"title"`
-			Instructions string `db:"instructions_markdown"`
-			Policy       []byte `db:"policy_canonical"`
+			Title            string `db:"title"`
+			Instructions     string `db:"instructions_markdown"`
+			Policy           []byte `db:"policy_canonical"`
+			ExecutionProfile []byte `db:"execution_profile_canonical"`
 		}
-		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
+		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical,execution_profile_canonical FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
 			return nil, translateError("exam_revision", guard.RevisionID, err)
 		}
 		policy, err := model.DecodeExamPolicySet(header.Policy)
 		if err != nil {
 			return nil, invalidPersistedState("exam_revision", "policy_canonical", err)
+		}
+		executionProfile, err := model.DecodeExecutionProfile(header.ExecutionProfile)
+		if err != nil {
+			return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
 		}
 		var rows []struct {
 			ResourceID  string `db:"resource_id"`
@@ -1753,6 +1759,10 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", parseErr)
 		}
+		classID, parseErr := model.ParseClassID(guard.ClassID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_sitting", "class_id", parseErr)
+		}
 		admissionRevisionID, parseErr := model.ParseExamRevisionID(guard.AdmissionRevisionID)
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_attempt", "admission_revision_id", parseErr)
@@ -1761,8 +1771,9 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
 		}
-		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, AdmissionRevisionID: admissionRevisionID,
+		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID, AdmissionRevisionID: admissionRevisionID,
 			CurrentRevisionID: revisionID, Title: header.Title, InstructionsMarkdown: header.Instructions,
+			ExecutionProfile:           executionProfile,
 			FocusLossCollectionEnabled: policy.FocusLoss.Enabled, Resources: make([]store.CandidateExamResource, 0, len(rows))}
 		for _, row := range rows {
 			resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)

@@ -38,6 +38,7 @@ type examRevisionResponse struct {
 	Title                      string `json:"title"`
 	PolicySchemaVersion        int    `json:"policy_schema_version"`
 	PolicyDigest               string `json:"policy_digest"`
+	ExecutionProfileDigest     string `json:"execution_profile_digest"`
 	StarterWorkspaceDigest     string `json:"starter_workspace_digest"`
 	ContentDigest              string `json:"content_digest"`
 	ResourceCount              int    `json:"resource_count"`
@@ -185,6 +186,7 @@ func examRevisionResponseFromSummary(summary application.ExamRevisionSummary) ex
 		ID: summary.ID.String(), ExamID: summary.ExamID.String(), Number: summary.Number,
 		SourceDraftRevision: summary.SourceDraftRevision, Title: summary.Title,
 		PolicySchemaVersion: summary.PolicySchemaVersion, PolicyDigest: summary.PolicyDigest,
+		ExecutionProfileDigest: summary.ExecutionProfileDigest,
 		StarterWorkspaceDigest: summary.StarterWorkspaceDigest, ContentDigest: summary.ContentDigest,
 		ResourceCount: summary.ResourceCount, StarterWorkspaceEntryCount: summary.StarterWorkspaceEntries,
 		StarterWorkspaceTotalBytes: summary.StarterWorkspaceBytes, PublishedByUserID: summary.PublishedByUserID.String(),

@@ -257,6 +257,9 @@ func (s *LifecycleStore) ExamCorrection() store.ExamCorrectionStore {
 func (s *LifecycleStore) ExamAttempt() store.ExamAttemptStore {
 	return lifecycleExamAttemptStore{}
 }
+func (s *LifecycleStore) ExecutionGrant() store.ExecutionGrantStore {
+	return lifecycleExecutionGrantStore{}
+}
 func (s *LifecycleStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 	return lifecycleExamAttemptWorkspaceStore{}
 }
@@ -388,6 +391,7 @@ type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
 type lifecycleAcademicPeriodStore struct{ store.AcademicPeriodStore }
 type lifecycleAcademicUnitMemberStore struct{ store.AcademicUnitMemberStore }
 type lifecycleExamAuthoringStore struct{ store.ExamAuthoringStore }
+type lifecycleExecutionGrantStore struct{ store.ExecutionGrantStore }
 type lifecycleExamResourceStore struct{ store.ExamResourceStore }
 type lifecycleExamCorrectionStore struct{ store.ExamCorrectionStore }
 type lifecycleExamAttemptStore struct{ store.ExamAttemptStore }

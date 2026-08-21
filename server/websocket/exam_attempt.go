@@ -16,9 +16,16 @@ import (
 )
 
 const (
-	examAttemptConnectAction   = "exam_attempt.connect"
-	examAttemptRenewAction     = "exam_attempt.renew"
-	examAttemptFocusLossAction = "exam_attempt.focus_loss"
+	examAttemptConnectAction        = "exam_attempt.connect"
+	examAttemptRenewAction          = "exam_attempt.renew"
+	examAttemptFocusLossAction      = "exam_attempt.focus_loss"
+	examAttemptTerminalOpenAction   = "exam_attempt.terminal.open"
+	examAttemptTerminalInputAction  = "exam_attempt.terminal.input"
+	examAttemptTerminalResizeAction = "exam_attempt.terminal.resize"
+	examAttemptTerminalCloseAction  = "exam_attempt.terminal.close"
+	examAttemptTerminalOutputEvent  = "exam_attempt.terminal.output"
+	examAttemptTerminalClosedEvent  = "exam_attempt.terminal.closed"
+	examAttemptTerminalChunkMaximum = 32 * 1024
 )
 
 type examAttemptApplication interface {
@@ -26,6 +33,31 @@ type examAttemptApplication interface {
 	RenewExamAttemptParticipation(context.Context, app.Invocation, app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error)
 	EvaluateExamAttemptFocusLoss(context.Context, app.Invocation, app.EvaluateExamAttemptFocusLossCommand) (app.ExamAttemptFocusLossEvaluation, error)
 	CloseExamAttemptConnection(context.Context, app.Invocation, app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error)
+	OpenCandidateExamTerminal(context.Context, app.Invocation, app.OpenCandidateExamTerminalCommand) (app.CandidateExamTerminal, error)
+}
+
+type examAttemptTerminalOpenRequest struct {
+	Generation           int64  `json:"generation"`
+	ContinuityCredential string `json:"continuity_credential"`
+	Cols                 uint16 `json:"cols"`
+	Rows                 uint16 `json:"rows"`
+}
+
+type examAttemptTerminalInputRequest struct {
+	Data string `json:"data"`
+}
+
+type examAttemptTerminalResizeRequest struct {
+	Cols uint16 `json:"cols"`
+	Rows uint16 `json:"rows"`
+}
+
+type examAttemptTerminalOutput struct {
+	Data string `json:"data"`
+}
+
+type examAttemptTerminalClosed struct {
+	Reason string `json:"reason"`
 }
 
 type examAttemptConnectRequest struct {

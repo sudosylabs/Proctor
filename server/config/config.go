@@ -172,6 +172,31 @@ type VFS struct {
 	S3      VFSS3    `json:"s3"`
 }
 
+// ExecutionHost is one operator-configured outbound execenv endpoint. ID is
+// the stable placement identity persisted with grants; changing Address does
+// not change that identity. Token and client-key material never enter
+// application state.
+type ExecutionHost struct {
+	ID                    string `json:"id"`
+	Address               string `json:"address"`
+	Security              string `json:"security"`
+	Token                 string `json:"token,omitempty"`
+	ServerName            string `json:"server_name,omitempty"`
+	CAFile                string `json:"ca_file,omitempty"`
+	ClientCertificateFile string `json:"client_certificate_file,omitempty"`
+	ClientKeyFile         string `json:"client_key_file,omitempty"`
+}
+
+// Execution configures the installation's bounded set of execenv hosts.
+// Host changes require a node restart so every node uses one immutable
+// placement catalog for its lifetime.
+type Execution struct {
+	Enabled          bool            `json:"enabled"`
+	DialTimeout      Duration        `json:"dial_timeout"`
+	OperationTimeout Duration        `json:"operation_timeout"`
+	Hosts            []ExecutionHost `json:"hosts"`
+}
+
 type Password struct {
 	MinimumLength    int `json:"minimum_length"`
 	MaximumLength    int `json:"maximum_length"`
@@ -256,6 +281,7 @@ type Config struct {
 	Cluster        Cluster        `json:"cluster"`
 	Mail           Mail           `json:"mail"`
 	VFS            VFS            `json:"vfs"`
+	Execution      Execution      `json:"execution"`
 	Authentication Authentication `json:"authentication"`
 	Localization   Localization   `json:"localization"`
 	Log            Log            `json:"log"`
@@ -323,6 +349,12 @@ func Default() Config {
 			Backend: "local",
 			Local:   VFSLocal{Root: "./data"},
 			S3:      VFSS3{Secure: true},
+		},
+		Execution: Execution{
+			Enabled:          false,
+			DialTimeout:      Duration{Duration: 10 * time.Second},
+			OperationTimeout: Duration{Duration: 30 * time.Second},
+			Hosts:            []ExecutionHost{},
 		},
 		Authentication: Authentication{
 			Bootstrap: Bootstrap{DevelopmentMode: true},
@@ -397,6 +429,7 @@ func (c Config) Clone() Config {
 	cloned := c
 	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
 	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
+	cloned.Execution.Hosts = append([]ExecutionHost{}, c.Execution.Hosts...)
 	cloned.Cluster.Memberlist.SeedAddresses = append(
 		[]string(nil),
 		c.Cluster.Memberlist.SeedAddresses...,
@@ -464,6 +497,9 @@ func (c Config) Redacted() Config {
 	redacted.VFS.S3.AccessKey = redactSecret(redacted.VFS.S3.AccessKey)
 	redacted.VFS.S3.SecretKey = redactSecret(redacted.VFS.S3.SecretKey)
 	redacted.VFS.S3.SessionToken = redactSecret(redacted.VFS.S3.SessionToken)
+	for index := range redacted.Execution.Hosts {
+		redacted.Execution.Hosts[index].Token = redactSecret(redacted.Execution.Hosts[index].Token)
+	}
 	redacted.Authentication.MFA.EncryptionKey = redactSecret(
 		redacted.Authentication.MFA.EncryptionKey,
 	)
@@ -557,6 +593,7 @@ func (c Config) Validate() error {
 	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
+	validateExecution(c.Execution, add)
 	if c.Cluster.Backend == "memberlist" {
 		if c.VFS.Backend == "local" {
 			add("vfs.backend", "must be shared when cluster.backend is multi-node")
@@ -945,6 +982,96 @@ func validateVFS(vfsConfig VFS, add func(string, string)) {
 	default:
 		add("vfs.backend", "must be local or s3")
 	}
+}
+
+func validateExecution(execution Execution, add func(string, string)) {
+	if execution.DialTimeout.Duration <= 0 || execution.DialTimeout.Duration > time.Minute {
+		add("execution.dial_timeout", "must be positive and no greater than one minute")
+	}
+	if execution.OperationTimeout.Duration <= 0 || execution.OperationTimeout.Duration > 5*time.Minute {
+		add("execution.operation_timeout", "must be positive and no greater than five minutes")
+	}
+	if len(execution.Hosts) > 64 {
+		add("execution.hosts", "must contain at most 64 hosts")
+	}
+	if execution.Enabled && len(execution.Hosts) == 0 {
+		add("execution.hosts", "must contain at least one host when execution is enabled")
+	}
+	seen := make(map[string]struct{}, len(execution.Hosts))
+	for index, host := range execution.Hosts {
+		prefix := fmt.Sprintf("execution.hosts[%d]", index)
+		if !validExecutionHostID(host.ID) {
+			add(prefix+".id", "must contain 1 to 64 URL-safe identifier characters")
+		} else if _, exists := seen[host.ID]; exists {
+			add(prefix+".id", "must be unique")
+		} else {
+			seen[host.ID] = struct{}{}
+		}
+		if !validHostPort(host.Address) {
+			add(prefix+".address", "must be a host:port TCP address")
+		}
+		if strings.ContainsAny(host.Token, "\x00\r\n") || len(host.Token) > 512 {
+			add(prefix+".token", "must contain at most 512 bytes without control characters")
+		}
+		for field, value := range map[string]string{
+			"server_name": host.ServerName, "ca_file": host.CAFile,
+			"client_certificate_file": host.ClientCertificateFile, "client_key_file": host.ClientKeyFile,
+		} {
+			if strings.ContainsAny(value, "\x00\r\n") {
+				add(prefix+"."+field, "must not contain control characters")
+			}
+		}
+		clientCertificate := host.ClientCertificateFile != "" || host.ClientKeyFile != ""
+		if (host.ClientCertificateFile == "") != (host.ClientKeyFile == "") {
+			add(prefix+".client_certificate_file", "must be configured together with client_key_file")
+		}
+		switch host.Security {
+		case "tls":
+			if host.ServerName == "" {
+				add(prefix+".server_name", "is required for TLS hostname verification")
+			}
+			if host.Token == "" && !clientCertificate {
+				add(prefix+".token", "or a client certificate is required for TLS authentication")
+			}
+		case "insecure_local":
+			if !loopbackHostPort(host.Address) {
+				add(prefix+".address", "must be loopback when security is insecure_local")
+			}
+			if host.Token == "" {
+				add(prefix+".token", "is required for insecure_local authentication")
+			}
+			if host.ServerName != "" || host.CAFile != "" || clientCertificate {
+				add(prefix+".security", "insecure_local cannot configure TLS material")
+			}
+		default:
+			add(prefix+".security", "must be tls or insecure_local")
+		}
+	}
+}
+
+func validExecutionHostID(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') && character != '.' && character != '_' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func loopbackHostPort(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func validateAuthentication(authentication Authentication, add func(string, string)) {

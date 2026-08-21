@@ -7,10 +7,12 @@ sharing its state are nodes of that installation, not separate tenants.
 
 ~~~text
 Institution
+├── AcademicPeriod (institution scope)
 └── AcademicUnit (hierarchical)
+    ├── AcademicPeriod (unit scope, inherited by descendants)
     └── Programme
         └── ProgrammeLevel
-            └── Class ── AcademicPeriod
+            └── Class ── exact applicable AcademicPeriod
 ~~~
 
 `AcademicUnit` is a generic hierarchical node rather than a fixed department,
@@ -22,13 +24,23 @@ The durable invariants are:
 - academic-unit cycles are forbidden;
 - a programme belongs to one academic unit;
 - a programme level belongs to one programme;
-- a class belongs to one programme level and academic period;
+- an academic period is owned by the institution or one academic unit;
+- an institution period applies to every unit, while a unit period applies to
+  its owner and descendants without implicitly overriding another period;
+- a class belongs to one programme level and one exact period applicable to
+  that programme's academic unit;
 - a student has at most one active class membership in an academic period;
 - progression and transfer close/replace active enrollment transactionally
   while retaining history;
 - a user may have several simultaneous affiliations;
 - teachers may hold different role bindings in several academic units; and
 - affiliation and membership grant no permission by themselves.
+
+Period canonical names are unique within the owner scope and dates may overlap.
+Progression and transfer always name exact source and destination periods;
+there is no inferred global current period. The access, administration, and
+batch consequences are in
+[Access and onboarding](./access-and-onboarding.md#administrative-batches-and-csv).
 
 ## Examination structure
 
@@ -52,6 +64,9 @@ permission without becoming managers or bypassing structural invariants.
 
 Each Attempt has one mutable, remotely authoritative code workspace and may
 have sequential fenced Participation generations and transport Connections.
+An enabled Execution Profile may attach one Execution Environment as a
+non-authoritative projection of that workspace; see
+[Execution environments](./execution.md).
 Manual kick or automatic policy enforcement may suspend an active Attempt;
 authorized re-allow preserves evidence and resumes the same Attempt through a
 new generation where required. Submission is terminal: exactly one immutable

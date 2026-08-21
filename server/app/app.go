@@ -6,12 +6,25 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 )
+
+type executionUseCases interface {
+	Ensure(context.Context, appexecution.Request) (*appexecution.Placement, error)
+	Images(context.Context) ([]appexecution.ImageOption, error)
+	Watch(context.Context, model.ExamAttemptID, appexecution.Cursor) (appexecution.Observation, error)
+	Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error)
+	OpenFile(context.Context, model.ExamAttemptID, string) (io.ReadCloser, error)
+	Sync(context.Context, model.ExamAttemptID) error
+	SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
+	Release(context.Context, model.ExamAttemptID) error
+}
 
 // App is the long-lived application facade. Construction receives only the
 // explicit Dependencies bundle; infrastructure getters and platform location
@@ -44,6 +57,7 @@ type App struct {
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
 	examAttempts                      examAttemptUseCases
+	execution                         executionUseCases
 	examReviews                       examReviewUseCases
 	examResources                     examResourceUseCases
 	examCorrections                   examCorrectionUseCases

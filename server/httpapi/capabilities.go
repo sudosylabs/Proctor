@@ -116,6 +116,8 @@ type ExamApplication interface {
 	GetExam(context.Context, application.Invocation, application.GetExamQuery) (application.ExamView, error)
 	EditExamDraftText(context.Context, application.Invocation, application.EditExamDraftTextCommand) (application.ExamView, error)
 	ConfigureExamDraftFocusLoss(context.Context, application.Invocation, application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error)
+	ConfigureExamDraftExecutionProfile(context.Context, application.Invocation, application.ConfigureExamDraftExecutionProfileCommand) (application.ExamView, error)
+	ListExamExecutionImages(context.Context, application.Invocation, application.GetExamQuery) ([]application.ExamExecutionImage, error)
 	ListExams(context.Context, application.Invocation, application.ListExamsQuery) (application.ExamCatalogPage, error)
 	ArchiveExam(context.Context, application.Invocation, application.ArchiveExamCommand) (model.Exam, error)
 	ListExamManagers(context.Context, application.Invocation, application.ListExamManagersQuery) (application.ExamManagerPage, error)

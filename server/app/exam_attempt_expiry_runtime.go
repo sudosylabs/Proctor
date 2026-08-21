@@ -8,7 +8,11 @@ import (
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 )
+
+const executionReconciliationPeriodicTaskName = "execution-reconciliation"
+const executionReconciliationInterval = 10 * time.Second
 
 const (
 	examAttemptExpiryPeriodicTaskName = "exam-attempt-participation-expiry"
@@ -27,5 +31,12 @@ type examAttemptExpiryPeriodicRunner struct{ attempts examAttemptExpiryUseCases 
 
 func (runner examAttemptExpiryPeriodicRunner) Run(ctx context.Context) error {
 	_, err := runner.attempts.ScanExpiredParticipations(ctx, examAttemptExpiryBatchLimit)
+	return err
+}
+
+type executionReconciliationPeriodicRunner struct{ execution *appexecution.Service }
+
+func (runner executionReconciliationPeriodicRunner) Run(ctx context.Context) error {
+	_, err := runner.execution.Reconcile(ctx)
 	return err
 }

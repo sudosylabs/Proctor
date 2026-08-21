@@ -55,6 +55,7 @@ func applicationDependencies(
 		MailSecretSealer:        mailSecretSealer,
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
+		ExecutionHosts:          capabilities.executionHosts,
 		NodeID:                  capabilities.nodeID,
 		PublicURL:               cfg.Server.PublicURL,
 		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),

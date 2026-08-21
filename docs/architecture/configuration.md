@@ -4,8 +4,8 @@ Deployment configuration is operator-owned; institution application settings
 are durable application data changed through authorized use cases.
 
 Deployment configuration includes listeners/public URL, PostgreSQL, cache,
-cluster, VFS, SMTP, external identity providers, logging, secrets, and process
-limits. `localization.default_locale` selects the installed catalog fallback
+cluster, VFS, SMTP, execution hosts, external identity providers, logging,
+secrets, and process limits. `localization.default_locale` selects the installed catalog fallback
 and is validated against the embedded catalogs during root composition.
 Application settings include institution presentation, branding,
 academic policy, exam defaults, invitation rules, and other administrator
@@ -61,8 +61,21 @@ whole `config.Config` or `config.Store`.
 
 Runtime reconfiguration is capability-specific. Logging and the external
 provider registry reconfigure dynamically; listener addresses, HTTP limits,
-cluster backend, and node identity require restart. Structural validation and
+cluster backend, node identity, and the execution-host catalog require restart. Structural validation and
 external connectivity diagnostics remain separate.
+
+`execution.enabled` activates the bounded outbound execenv host directory.
+Each entry under `execution.hosts` has a stable `id`, a TCP `address`, and
+either production `tls` security or loopback-only `insecure_local` security.
+TLS requires a verified `server_name` and either a token or client certificate;
+an optional CA file extends the system roots. Client certificate and key files
+must be configured together. Cleartext development requires a token and
+rejects all non-loopback addresses. Host tokens are redacted. Dial and
+operation timeouts have environment overrides
+`PROCTOR_EXECUTION_DIAL_TIMEOUT` and
+`PROCTOR_EXECUTION_OPERATION_TIMEOUT`; enablement has
+`PROCTOR_EXECUTION_ENABLED`. The host list itself remains structured file
+configuration so credentials and stable identities are reviewed together.
 
 Logging configuration bounds the engine and per-target queues, enqueue/flush/
 shutdown deadlines, field size, target level/format, and file rotation. A

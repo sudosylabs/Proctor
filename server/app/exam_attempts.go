@@ -4,14 +4,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+	"sync"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -30,6 +36,19 @@ type OpenedExamAttemptContent = examattempt.OpenedContent
 type ExamAttemptWorkspaceMutationAccess = examattempt.WorkspaceMutationAccess
 type ExamAttemptWorkspaceMutationResult = examattempt.WorkspaceMutationResult
 type CandidateExamWorkspaceJournalPage = examattempt.WorkspaceJournalPage
+type CandidateExamTerminal = appexecution.Terminal
+type CandidateExamTerminalWindow = appexecution.Window
+
+type OpenCandidateExamTerminalCommand struct {
+	Access          CandidateExamAttemptAccess
+	SittingID       model.ExamSittingID
+	ClassID         model.ClassID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	Window          appexecution.Window
+}
+
+type guestExecutionMutationContextKey struct{}
 
 type ConnectExamAttemptCommand struct {
 	SittingID            model.ExamSittingID
@@ -179,6 +198,316 @@ func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation 
 		return CandidateExamWorkspaceJournalPage{}, examAttemptError(err, true)
 	}
 	return result, nil
+}
+
+// OpenCandidateExamTerminal authorizes the immutable principal and current
+// Attempt connection before any host is selected or terminal is attached.
+// The caller owns and must close the returned terminal.
+func (a *App) OpenCandidateExamTerminal(ctx context.Context, invocation Invocation, command OpenCandidateExamTerminalCommand) (CandidateExamTerminal, error) {
+	if a.execution == nil || a.audit == nil || !command.SittingID.IsValid() || !command.ClassID.IsValid() ||
+		!command.ParticipationID.IsValid() || command.Generation < 1 || command.Window.Cols < 1 || command.Window.Rows < 1 {
+		return nil, NewError("exam.attempt.terminal_unavailable")
+	}
+	presentation, err := a.examAttempts.GetPresentation(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command.Access)
+	if err != nil {
+		return nil, examAttemptError(err, true)
+	}
+	if presentation.AttemptID != command.Access.AttemptID || presentation.SittingID != command.SittingID || presentation.ClassID != command.ClassID {
+		return nil, NewError("exam.attempt.terminal_unavailable")
+	}
+	profile := presentation.ExecutionProfile
+	if !profile.Enabled {
+		return nil, NewError("exam.attempt.terminal_disabled")
+	}
+	auditEvent, auditErr := a.audit.BeginCriticalActionAtScope(ctx, invocation.Principal(), model.ActionExamSittingParticipate,
+		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, command.ClassID.String(),
+		invocation.RequestMetadata(), map[string]any{"operation": "open_attempt_terminal", "value": map[string]any{
+			"exam_attempt_id": presentation.AttemptID.String(), "generation": command.Generation,
+			"image": profile.Image, "network": string(profile.Network),
+		}}, nil)
+	if auditErr != nil {
+		return nil, auditErr
+	}
+	placement, err := a.execution.Ensure(ctx, appexecution.Request{AttemptID: presentation.AttemptID, Image: profile.Image, Network: appexecution.Network(profile.Network)})
+	if err != nil {
+		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
+	}
+	if placement == nil || !placement.GrantID.IsValid() || placement.AttemptID != presentation.AttemptID || !placement.Ready {
+		_ = a.execution.Release(ctx, presentation.AttemptID)
+		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), NewError("exam.attempt.terminal_unavailable"))
+	}
+	observation, err := a.execution.Watch(ctx, presentation.AttemptID, "")
+	if err != nil || observation == nil {
+		_ = a.execution.Release(ctx, presentation.AttemptID)
+		if err == nil {
+			err = appexecution.ErrUnavailable
+		}
+		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
+	}
+	terminal, err := a.execution.Attach(ctx, presentation.AttemptID, command.Window)
+	if err != nil || terminal == nil {
+		_ = observation.Close()
+		_ = a.execution.Release(ctx, presentation.AttemptID)
+		if err == nil {
+			err = appexecution.ErrUnavailable
+		}
+		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
+	}
+	if _, err := a.audit.CompleteCriticalAction(ctx, auditEvent.ID.String(), model.AuditStatusSuccess, "", map[string]any{
+		"exam_attempt_id": presentation.AttemptID.String(), "execution_grant_id": placement.GrantID.String(),
+	}); err != nil {
+		_ = observation.Close()
+		_ = terminal.Close()
+		_ = a.execution.Release(ctx, presentation.AttemptID)
+		return nil, err
+	}
+	watchCtx, cancel := context.WithCancel(ctx)
+	wrapped := &candidateExamTerminal{Terminal: terminal, cancel: cancel, observation: observation}
+	go a.synchronizeCandidateTerminalWorkspace(watchCtx, invocation, command, observation, wrapped)
+	return wrapped, nil
+}
+
+func (a *App) failCandidateTerminalAudit(ctx context.Context, auditID string, failure error) error {
+	code := "exam.attempt.terminal_unavailable"
+	if appErr, ok := As(failure); ok {
+		code = appErr.Code()
+	}
+	if _, err := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusFail, code, nil); err != nil {
+		return err
+	}
+	return failure
+}
+
+type candidateExamTerminal struct {
+	appexecution.Terminal
+	cancel      context.CancelFunc
+	observation appexecution.Observation
+	once        sync.Once
+	failureMu   sync.Mutex
+	failure     error
+}
+
+func (terminal *candidateExamTerminal) Read(buffer []byte) (int, error) {
+	count, err := terminal.Terminal.Read(buffer)
+	if err != nil {
+		terminal.failureMu.Lock()
+		failure := terminal.failure
+		terminal.failureMu.Unlock()
+		if failure != nil {
+			return count, failure
+		}
+	}
+	return count, err
+}
+
+func (terminal *candidateExamTerminal) fail(err error) {
+	terminal.failureMu.Lock()
+	terminal.failure = err
+	terminal.failureMu.Unlock()
+	_ = terminal.Terminal.Close()
+}
+
+func (terminal *candidateExamTerminal) Close() error {
+	var result error
+	terminal.once.Do(func() {
+		terminal.cancel()
+		result = errors.Join(terminal.observation.Close(), terminal.Terminal.Close())
+	})
+	return result
+}
+
+func (a *App) synchronizeCandidateTerminalWorkspace(ctx context.Context, invocation Invocation,
+	command OpenCandidateExamTerminalCommand, observation appexecution.Observation, terminal appexecution.Terminal,
+) {
+	defer func() { _ = observation.Close() }()
+	for {
+		event, err := observation.Next(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if errors.Is(err, appexecution.ErrObservationLost) {
+				if syncErr := a.execution.Sync(ctx, command.Access.AttemptID); syncErr == nil {
+					_ = observation.Close()
+					observation, err = a.execution.Watch(ctx, command.Access.AttemptID, "")
+					if err == nil {
+						continue
+					}
+				}
+			}
+			if wrapped, ok := terminal.(*candidateExamTerminal); ok {
+				wrapped.fail(err)
+			} else {
+				_ = terminal.Close()
+			}
+			return
+		}
+		if ignoredExecutionPath(event.Path) || ignoredExecutionPath(event.From) {
+			continue
+		}
+		if err := a.applyCandidateExecutionEvent(ctx, invocation, command, event); err != nil {
+			if wrapped, ok := terminal.(*candidateExamTerminal); ok {
+				wrapped.fail(err)
+			} else {
+				_ = terminal.Close()
+			}
+			return
+		}
+	}
+}
+
+func ignoredExecutionPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	for _, segment := range strings.Split(path, "/") {
+		switch segment {
+		case ".proctor", ".git", "node_modules", "target", "__pycache__":
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) applyCandidateExecutionEvent(ctx context.Context, invocation Invocation,
+	command OpenCandidateExamTerminalCommand, event appexecution.Event,
+) error {
+	ctx = context.WithValue(ctx, guestExecutionMutationContextKey{}, true)
+	items, err := a.candidateWorkspaceManifest(ctx, invocation, command.Access)
+	if err != nil {
+		return err
+	}
+	byPath := make(map[string]CandidateExamWorkspaceItem, len(items))
+	for _, item := range items {
+		byPath[item.Path] = item
+	}
+	access := ExamAttemptWorkspaceMutationAccess{CandidateAccess: command.Access,
+		ParticipationID: command.ParticipationID, Generation: command.Generation}
+	idempotency := executionEventIdempotency(event)
+	switch event.Operation {
+	case appexecution.OperationCreate:
+		if _, exists := byPath[event.Path]; exists {
+			return errors.New("execution create conflicts with authoritative workspace")
+		}
+		body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+		if errors.Is(openErr, appexecution.ErrNotFound) {
+			_, err = a.CreateCandidateExamWorkspaceDirectory(ctx, invocation, CreateCandidateExamWorkspaceDirectoryCommand{Access: access, Path: event.Path, IdempotencyKey: idempotency})
+			return err
+		}
+		if openErr != nil {
+			return openErr
+		}
+		return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, CandidateExamWorkspaceItem{}, body, idempotency, false)
+	case appexecution.OperationReplace:
+		item, exists := byPath[event.Path]
+		if !exists || item.Kind != model.StarterWorkspaceEntryFile {
+			return errors.New("execution replace target is not an authoritative file")
+		}
+		body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+		if openErr != nil {
+			return openErr
+		}
+		return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, item, body, idempotency, true)
+	case appexecution.OperationMove:
+		item, exists := byPath[event.From]
+		if !exists {
+			return errors.New("execution move source is not authoritative")
+		}
+		// execenv v0.2 reports a create without a kind. A file that moved
+		// before its create was harvested may therefore have been conservatively
+		// acknowledged as a directory. Open at the destination repairs that
+		// bounded race without guessing from a path or extension.
+		if item.Kind == model.StarterWorkspaceEntryDirectory {
+			body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+			if openErr == nil {
+				if _, deleteErr := a.DeleteCandidateExamWorkspaceEntry(ctx, invocation, DeleteCandidateExamWorkspaceEntryCommand{Access: access,
+					EntryID: item.EntryID, ExpectedPath: event.From, IdempotencyKey: idempotency + "-delete"}); deleteErr != nil {
+					_ = body.Close()
+					return deleteErr
+				}
+				return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, CandidateExamWorkspaceItem{}, body, idempotency+"-create", false)
+			}
+			if !errors.Is(openErr, appexecution.ErrNotFound) {
+				return openErr
+			}
+		}
+		_, err = a.MoveCandidateExamWorkspaceEntry(ctx, invocation, MoveCandidateExamWorkspaceEntryCommand{Access: access,
+			EntryID: item.EntryID, ExpectedPath: event.From, DestinationPath: event.Path, IdempotencyKey: idempotency})
+		return err
+	case appexecution.OperationDelete:
+		item, exists := byPath[event.Path]
+		if !exists {
+			return errors.New("execution delete target is not authoritative")
+		}
+		_, err = a.DeleteCandidateExamWorkspaceEntry(ctx, invocation, DeleteCandidateExamWorkspaceEntryCommand{Access: access,
+			EntryID: item.EntryID, ExpectedPath: event.Path, ExpectedContentVersion: item.ContentVersion, IdempotencyKey: idempotency})
+		return err
+	default:
+		return errors.New("unsupported execution workspace event")
+	}
+}
+
+func (a *App) candidateWorkspaceManifest(ctx context.Context, invocation Invocation, access CandidateExamAttemptAccess) ([]CandidateExamWorkspaceItem, error) {
+	result := make([]CandidateExamWorkspaceItem, 0)
+	expected := int64(-1)
+	var after model.AttemptWorkspaceEntryID
+	for {
+		page, err := a.ListCandidateExamWorkspace(ctx, invocation, ListCandidateExamWorkspaceQuery{Access: access,
+			ExpectedCursor: expected, AfterEntryID: after, Limit: model.AttemptWorkspaceJournalReadMaximum})
+		if err != nil {
+			return nil, err
+		}
+		if page.RefreshRequired {
+			return nil, errors.New("execution workspace manifest changed during read")
+		}
+		result = append(result, page.Items...)
+		if !page.HasMore {
+			return result, nil
+		}
+		if len(page.Items) == 0 {
+			return nil, errors.New("execution workspace pagination made no progress")
+		}
+		expected, after = page.Cursor, page.Items[len(page.Items)-1].EntryID
+	}
+}
+
+func (a *App) persistCandidateExecutionFile(ctx context.Context, invocation Invocation, access ExamAttemptWorkspaceMutationAccess,
+	path string, item CandidateExamWorkspaceItem, body io.ReadCloser, idempotency string, replace bool,
+) error {
+	defer body.Close()
+	data, err := io.ReadAll(io.LimitReader(body, model.AttemptWorkspaceMaximumFileBytes+1))
+	if err != nil || int64(len(data)) > model.AttemptWorkspaceMaximumFileBytes {
+		return errors.Join(err, errors.New("execution file exceeds workspace limit"))
+	}
+	digest := sha256.Sum256(data)
+	sha := hex.EncodeToString(digest[:])
+	if replace {
+		_, err = a.ReplaceCandidateExamWorkspaceFile(ctx, invocation, ReplaceCandidateExamWorkspaceFileCommand{Access: access,
+			EntryID: item.EntryID, ExpectedPath: path, ExpectedContentVersion: item.ContentVersion,
+			MediaType: "application/octet-stream", ExpectedSHA256: sha, Body: bytes.NewReader(data), Size: int64(len(data)), IdempotencyKey: idempotency})
+	} else {
+		_, err = a.CreateCandidateExamWorkspaceFile(ctx, invocation, CreateCandidateExamWorkspaceFileCommand{Access: access,
+			Path: path, MediaType: "application/octet-stream", ExpectedSHA256: sha, Body: bytes.NewReader(data), Size: int64(len(data)), IdempotencyKey: idempotency})
+	}
+	return err
+}
+
+func executionEventIdempotency(event appexecution.Event) string {
+	digest := sha256.Sum256([]byte(event.Cursor))
+	return "execution-" + hex.EncodeToString(digest[:])
+}
+
+func executionError(err error) error {
+	switch {
+	case errors.Is(err, appexecution.ErrInvalid):
+		return NewError("exam.attempt.terminal_invalid").Wrap(err)
+	case errors.Is(err, appexecution.ErrConflict):
+		return NewError("exam.attempt.terminal_conflict").Wrap(err)
+	case errors.Is(err, appexecution.ErrCapacity):
+		return NewError("exam.attempt.terminal_capacity").Wrap(err)
+	default:
+		return NewError("exam.attempt.terminal_unavailable").Wrap(err)
+	}
 }
 
 func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
@@ -497,7 +826,13 @@ func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id, code string
 	return adapter.audit.Fail(ctx, id, code)
 }
 
-type examAttemptRealtimeEffects struct{ realtime *realtimeService }
+type examAttemptRealtimeEffects struct {
+	realtime  *realtimeService
+	execution interface {
+		Release(context.Context, model.ExamAttemptID) error
+		SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
+	}
+}
 
 func (effects examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result examattempt.ConnectionResult) error {
 	event, err := apprealtime.NewExamAttemptConnectionOpenedEvent(result.Attempt.SittingID,
@@ -529,15 +864,23 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 		return err
 	}
 	if !result.ConnectionClosed {
-		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent))
+		var executionErr error
+		if effects.execution != nil {
+			executionErr = effects.execution.Release(ctx, result.Attempt.ID)
+		}
+		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent), executionErr)
 	}
 	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
 	if err != nil {
 		return err
 	}
+	var executionErr error
+	if effects.execution != nil {
+		executionErr = effects.execution.Release(ctx, result.Attempt.ID)
+	}
 	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
-		effects.realtime.Publish(ctx, candidateEvent))
+		effects.realtime.Publish(ctx, candidateEvent), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result examattempt.ReallowResult) error {
@@ -560,7 +903,12 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	var executionErr error
+	guestMutation, _ := ctx.Value(guestExecutionMutationContextKey{}).(bool)
+	if effects.execution != nil && !guestMutation {
+		executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
+	}
+	return errors.Join(effects.realtime.Publish(ctx, event), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context, result examattempt.FocusLossEvaluation) error {
@@ -616,6 +964,12 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 	for _, event := range events {
 		joined = errors.Join(joined, effects.realtime.Publish(ctx, event))
 	}
+	if result.SuspensionCreated && effects.execution != nil {
+		joined = errors.Join(joined, effects.execution.Release(ctx, result.AttemptID))
+	}
+	if result.ConnectionClosed {
+		joined = errors.Join(joined, effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID))
+	}
 	return joined
 }
 
@@ -624,7 +978,11 @@ func (effects examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, 
 	if constructionErr != nil {
 		return constructionErr
 	}
-	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
+	var executionErr error
+	if effects.execution != nil {
+		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
+	}
+	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context.Context,
@@ -659,7 +1017,11 @@ func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx conte
 		}
 		publishErr = errors.Join(publishErr, effects.realtime.Publish(ctx, connectionEvent))
 	}
-	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID))
+	var executionErr error
+	if effects.execution != nil {
+		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
+	}
+	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

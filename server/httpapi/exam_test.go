@@ -308,6 +308,59 @@ func TestExamHTTPConfigureDraftFocusLossRequiresExplicitEnabledAndRejectsRawPoli
 	}
 }
 
+func TestExamHTTPConfigureDraftExecutionProfileUsesTypedApplicationCommand(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	fake := &examHTTPApplication{principal: principal, view: view}
+	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/execution-profile", bytes.NewReader([]byte(`{"expected_draft_revision":1,"enabled":true,"image":"golang-1.24","network":"allowlist"}`)))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "execution-profile")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("put status = %d: %s", response.Code, response.Body.String())
+	}
+	command := fake.configureExecutionProfile
+	if command.ExamID != view.Exam.ID || command.ExpectedDraftRevision != 1 || !command.Enabled || command.Image != "golang-1.24" || command.Network != model.ExecutionNetworkAllowlist || command.IdempotencyKey != "execution-profile" {
+		t.Fatalf("configure execution profile command = %#v", command)
+	}
+}
+
+func TestExamHTTPConfigureDraftExecutionProfileRejectsAmbiguousOrInvalidProfiles(t *testing.T) {
+	t.Parallel()
+	principal := testExamHTTPPrincipal()
+	view := testExamHTTPView(t, principal.UserID)
+	for name, body := range map[string]string{
+		"enabled omitted":     `{"expected_draft_revision":1,"image":"golang-1.24","network":"none"}`,
+		"duplicate enabled":   `{"expected_draft_revision":1,"enabled":true,"enabled":false,"image":"golang-1.24","network":"none"}`,
+		"disabled capability": `{"expected_draft_revision":1,"enabled":false,"image":"golang-1.24","network":"none"}`,
+		"unknown network":     `{"expected_draft_revision":1,"enabled":true,"image":"golang-1.24","network":"open"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			logger, _ := newTestLogger(t)
+			fake := &examHTTPApplication{principal: principal, view: view}
+			httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
+			request := httptest.NewRequest(http.MethodPut, "/api/v1/exams/"+view.Exam.ID.String()+"/draft/execution-profile", bytes.NewReader([]byte(body)))
+			request.Header.Set("Authorization", "Bearer credential")
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Idempotency-Key", "invalid-execution-profile")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || !bytes.Contains(response.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
+				t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+			}
+			if fake.configureExecutionProfile.ExamID.IsValid() {
+				t.Fatalf("application received invalid request: %#v", fake.configureExecutionProfile)
+			}
+		})
+	}
+}
+
 func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 	t.Parallel()
 	view := testExamHTTPView(t, model.NewUserID())
@@ -352,20 +405,22 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 
 type examHTTPApplication struct {
 	Application
-	principal          model.Principal
-	view               application.ExamView
-	create             application.CreateExamCommand
-	edit               application.EditExamDraftTextCommand
-	configureFocusLoss application.ConfigureExamDraftFocusLossCommand
-	list               application.ListExamsQuery
-	catalog            application.ExamCatalogPage
-	archive            application.ArchiveExamCommand
-	archived           model.Exam
-	get                application.GetExamQuery
-	managerList        application.ListExamManagersQuery
-	managerCommand     application.AddExamManagerCommand
-	managerPage        application.ExamManagerPage
-	managerChange      application.ExamManagerChange
+	principal                 model.Principal
+	view                      application.ExamView
+	create                    application.CreateExamCommand
+	edit                      application.EditExamDraftTextCommand
+	configureFocusLoss        application.ConfigureExamDraftFocusLossCommand
+	configureExecutionProfile application.ConfigureExamDraftExecutionProfileCommand
+	executionImages           []application.ExamExecutionImage
+	list                      application.ListExamsQuery
+	catalog                   application.ExamCatalogPage
+	archive                   application.ArchiveExamCommand
+	archived                  model.Exam
+	get                       application.GetExamQuery
+	managerList               application.ListExamManagersQuery
+	managerCommand            application.AddExamManagerCommand
+	managerPage               application.ExamManagerPage
+	managerChange             application.ExamManagerChange
 }
 
 func (a *examHTTPApplication) ListExamManagers(_ context.Context, _ application.Invocation, query application.ListExamManagersQuery) (application.ExamManagerPage, error) {
@@ -417,6 +472,15 @@ func (a *examHTTPApplication) EditExamDraftText(_ context.Context, _ application
 func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error) {
 	a.configureFocusLoss = command
 	return a.view, nil
+}
+
+func (a *examHTTPApplication) ConfigureExamDraftExecutionProfile(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftExecutionProfileCommand) (application.ExamView, error) {
+	a.configureExecutionProfile = command
+	return a.view, nil
+}
+
+func (a *examHTTPApplication) ListExamExecutionImages(_ context.Context, _ application.Invocation, _ application.GetExamQuery) ([]application.ExamExecutionImage, error) {
+	return append([]application.ExamExecutionImage(nil), a.executionImages...), nil
 }
 
 func testExamHTTPPrincipal() model.Principal {

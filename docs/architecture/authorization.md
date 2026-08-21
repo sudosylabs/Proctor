@@ -6,15 +6,66 @@ Authentication alone never grants resource access.
 ## Roles and scopes
 
 Roles are additive and access is denied by default. Bindings may apply at
-institution, academic-unit, or class scope; programme, programme-level, and
-exam scopes remain product decisions. Academic-unit permissions inherit to
-descendant resources only when the action's inheritance rule allows it. Do not
-introduce explicit deny rules without a documented precedence model.
+institution, academic-unit, or class scope. Programme, Programme Level,
+Academic Period, Exam, and other resources resolve to those binding scopes
+rather than introducing additional Role Binding kinds. Academic-unit
+permissions inherit to descendant resources only when the action's inheritance
+rule allows it. Do not introduce explicit deny rules without a documented
+precedence model.
 
 Action names are stable domain contracts such as `class.members.view`, not
 HTTP verbs or route names. The built-in system-administrator role contains
 every recognized action and is protected as described in
 [Identity](./identity.md#installation-bootstrap).
+
+`system_admin` remains the only built-in Role. Institutions construct Teacher,
+Faculty Administrator, Reviewer, Roster Manager, and other roles from the
+closed action catalog. Role definitions are Institution-wide and reusable;
+their bindings provide scope. Adding a grantable action requires versioned,
+idempotent reconciliation of the protected built-in role for existing
+installations and never mutates custom roles.
+
+Role-definition administration and Role Binding administration are separate.
+`role.view` exposes only safe roles usable at the caller's scope;
+Institution-scoped `role.manage` creates, changes, or archives definitions.
+`role_binding.view` and `role_binding.manage` operate within the caller's
+authorized scope. A caller cannot create a broader binding, delegate an action
+they do not possess, or delegate protected system, role-management,
+access-policy, or administrative-delegation authority without the separately
+required parent or Institution authority.
+
+## Academic and onboarding actions
+
+The accepted granular catalog distinguishes:
+
+- `academic_unit.view` and `academic_unit.manage`;
+- `academic_unit.members.view` and `academic_unit.members.manage`;
+- `academic_period.view` and `academic_period.manage`;
+- `programme.view` and `programme.manage`;
+- `programme_level.view` and `programme_level.manage`;
+- `class.view` and `class.manage`;
+- `class.members.view` and `class.members.manage`;
+- `academic.progression.manage`;
+- `access_policy.view` and `access_policy.manage`;
+- `invitation.view`, `invitation.create`, and `invitation.manage`;
+- `onboarding_batch.view` and `onboarding_batch.manage`;
+- `external_identity.manage`;
+- `role.view`, `role_binding.view`, and `role_binding.manage`.
+
+Programme, Programme Level, and Academic Period are actual authorization
+resources. The scope resolver maps each to its owning Academic Unit or
+Institution. An Institution-owned Academic Period applies everywhere; a
+unit-owned period applies to that unit's subtree. A Class authorizes through
+its exact Programme lineage and applicable Period without granting a sibling
+or parent scope.
+
+Invitation and batch permissions never imply their packaged effects. Issuing
+or executing one also requires every Affiliation, membership, progression,
+Role Binding, and User action represented by the row. Generic `job.view` and
+`job.manage` do not grant onboarding authority or domain payload visibility.
+Ordinary student/teacher automation may use an appropriately scoped PAT;
+Access Policy, identity reconciliation, administrative Role Binding, and
+credential intervention require a strong recent interactive Session.
 
 ## Enforcement
 

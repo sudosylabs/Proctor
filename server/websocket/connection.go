@@ -11,6 +11,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -33,6 +34,7 @@ type connectionRuntime struct {
 	closeOnce     sync.Once
 	attemptClose  sync.Once
 	attempt       *examAttemptBinding
+	terminal      app.CandidateExamTerminal
 
 	activityMu sync.Mutex
 	activities sync.WaitGroup

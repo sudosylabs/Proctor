@@ -46,6 +46,9 @@ func NewExamCorrectionResourceStageID() ExamCorrectionResourceStageID {
 // NewExamAttemptID returns a freshly generated exam-attempt identifier.
 func NewExamAttemptID() ExamAttemptID { return ExamAttemptID(NewId()) }
 
+// NewExecutionGrantID returns a freshly generated execution-grant identifier.
+func NewExecutionGrantID() ExecutionGrantID { return ExecutionGrantID(NewId()) }
+
 // NewExamAttemptWorkspaceID returns a freshly generated exam-attempt-workspace identifier.
 func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWorkspaceID(NewId()) }
 
@@ -230,6 +233,11 @@ func ParseExamCorrectionResourceStageID(value string) (ExamCorrectionResourceSta
 // ParseExamAttemptID validates and converts the shared identifier representation.
 func ParseExamAttemptID(value string) (ExamAttemptID, error) {
 	return parseID[ExamAttemptID](value, "exam_attempt_id")
+}
+
+// ParseExecutionGrantID validates and converts the shared identifier representation.
+func ParseExecutionGrantID(value string) (ExecutionGrantID, error) {
+	return parseID[ExecutionGrantID](value, "execution_grant_id")
 }
 
 // ParseExamAttemptWorkspaceID validates and converts the shared identifier representation.
@@ -466,6 +474,9 @@ func (id ExamCorrectionResourceStageID) IsZero() bool { return id == "" }
 // IsZero reports whether the exam-attempt is the empty zero value.
 func (id ExamAttemptID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the execution-grant is the empty zero value.
+func (id ExecutionGrantID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the exam-attempt-workspace is the empty zero value.
 func (id ExamAttemptWorkspaceID) IsZero() bool { return id == "" }
 
@@ -621,6 +632,9 @@ func (id ExamCorrectionResourceStageID) IsValid() bool { return IsValidId(string
 
 // IsValid reports whether the exam-attempt is a canonical non-zero ID.
 func (id ExamAttemptID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the execution-grant is a canonical non-zero ID.
+func (id ExecutionGrantID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the exam-attempt-workspace is a canonical non-zero ID.
 func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidId(string(id)) }
@@ -778,6 +792,9 @@ func (id ExamCorrectionResourceStageID) String() string { return string(id) }
 // String returns the exam-attempt wire/database representation.
 func (id ExamAttemptID) String() string { return string(id) }
 
+// String returns the execution-grant wire/database representation.
+func (id ExecutionGrantID) String() string { return string(id) }
+
 // String returns the exam-attempt-workspace wire/database representation.
 func (id ExamAttemptWorkspaceID) String() string { return string(id) }
 
@@ -933,6 +950,9 @@ func (id ExamCorrectionResourceStageID) MarshalText() ([]byte, error) { return m
 
 // MarshalText encodes the exam-attempt as its canonical string.
 func (id ExamAttemptID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the execution-grant as its canonical string.
+func (id ExecutionGrantID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the exam-attempt-workspace as its canonical string.
 func (id ExamAttemptWorkspaceID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -1114,6 +1134,11 @@ func (id *ExamCorrectionResourceStageID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the exam-attempt when non-empty.
 func (id *ExamAttemptID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseExamAttemptID)
+}
+
+// UnmarshalText decodes and validates the execution-grant when non-empty.
+func (id *ExecutionGrantID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExecutionGrantID)
 }
 
 // UnmarshalText decodes and validates the exam-attempt-workspace when non-empty.
@@ -1350,6 +1375,9 @@ func (id ExamCorrectionResourceStageID) MarshalJSON() ([]byte, error) { return m
 // MarshalJSON encodes the exam-attempt as a JSON string.
 func (id ExamAttemptID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the execution-grant as a JSON string.
+func (id ExecutionGrantID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the exam-attempt-workspace as a JSON string.
 func (id ExamAttemptWorkspaceID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1530,6 +1558,11 @@ func (id *ExamCorrectionResourceStageID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the exam-attempt.
 func (id *ExamAttemptID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseExamAttemptID)
+}
+
+// UnmarshalJSON decodes a JSON string into the execution-grant.
+func (id *ExecutionGrantID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExecutionGrantID)
 }
 
 // UnmarshalJSON decodes a JSON string into the exam-attempt-workspace.

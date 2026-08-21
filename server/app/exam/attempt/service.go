@@ -697,10 +697,12 @@ type CandidateAccess struct {
 type Presentation struct {
 	AttemptID                  model.ExamAttemptID
 	SittingID                  model.ExamSittingID
+	ClassID                    model.ClassID
 	AdmissionRevisionID        model.ExamRevisionID
 	CurrentRevisionID          model.ExamRevisionID
 	Title                      string
 	InstructionsMarkdown       string
+	ExecutionProfile           model.ExecutionProfile
 	FocusLossCollectionEnabled bool
 	Resources                  []Resource
 }
@@ -727,9 +729,10 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 	if stored == nil {
 		return Presentation{}, unavailable(errors.New("missing candidate presentation"))
 	}
-	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID,
+	result := Presentation{AttemptID: stored.AttemptID, SittingID: stored.SittingID, ClassID: stored.ClassID,
 		AdmissionRevisionID: stored.AdmissionRevisionID, CurrentRevisionID: stored.CurrentRevisionID,
 		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown),
+		ExecutionProfile:           stored.ExecutionProfile,
 		FocusLossCollectionEnabled: stored.FocusLossCollectionEnabled, Resources: make([]Resource, len(stored.Resources))}
 	for index, item := range stored.Resources {
 		result.Resources[index] = Resource{ResourceID: item.ResourceID, DisplayName: item.DisplayName,

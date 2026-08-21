@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
@@ -26,6 +27,7 @@ type constructionMailDeliverySenderStub struct{ MailDeliverySender }
 type constructionMailTemplateRendererStub struct{ DirectMailTemplateRenderer }
 type constructionRegistryStub struct{ externalProviderSource }
 type constructionFileContentStub struct{ FileContent }
+type constructionExecutionHostsStub struct{ appexecution.HostDirectory }
 type constructionAuthenticationDiagnosticsStub struct{ authenticationDiagnostics }
 type constructionRealtimeDiagnosticsStub struct{ realtimeDiagnostics }
 type constructionRecoveryDiagnosticsStub struct{ recoveryDiagnostics }
@@ -87,6 +89,7 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 		MailTemplateRenderer:      constructionMailTemplateRendererStub{},
 		Registry:                  constructionRegistryStub{},
 		FileContent:               constructionFileContentStub{},
+		ExecutionHosts:            constructionExecutionHostsStub{},
 		NodeID:                    "node-a",
 		AuthenticationDiagnostics: constructionAuthenticationDiagnosticsStub{},
 		RealtimeDiagnostics:       constructionRealtimeDiagnosticsStub{},
@@ -107,6 +110,7 @@ func TestApplicationDependencyValidationIsFailFastAndOrdered(t *testing.T) {
 		{name: "mail template renderer", missing: func(deps *Dependencies) { deps.MailTemplateRenderer = nil }, want: "mail template renderer is required"},
 		{name: "provider registry", missing: func(deps *Dependencies) { deps.Registry = nil }, want: "external provider registry is required"},
 		{name: "file content", missing: func(deps *Dependencies) { deps.FileContent = nil }, want: "file content is required"},
+		{name: "execution hosts", missing: func(deps *Dependencies) { deps.ExecutionHosts = nil }, want: "execution hosts are required"},
 		{name: "node ID", missing: func(deps *Dependencies) { deps.NodeID = "" }, want: "node ID is required"},
 		{name: "authentication diagnostics", missing: func(deps *Dependencies) { deps.AuthenticationDiagnostics = nil }, want: "authentication diagnostics is required"},
 		{name: "realtime diagnostics", missing: func(deps *Dependencies) { deps.RealtimeDiagnostics = nil }, want: "realtime diagnostics is required"},

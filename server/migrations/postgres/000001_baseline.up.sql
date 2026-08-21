@@ -818,13 +818,15 @@ CREATE TABLE exam_drafts (
     title text NOT NULL,
     instructions_markdown text NOT NULL DEFAULT '',
     policy jsonb NOT NULL,
+    execution_profile jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false,"image":"","network":"none"}'::jsonb,
     base_revision_id varchar(26),
     updated_at timestamptz NOT NULL,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     CONSTRAINT exam_drafts_title_check CHECK (char_length(title) BETWEEN 1 AND 200),
     CONSTRAINT exam_drafts_instructions_markdown_check
         CHECK (octet_length(instructions_markdown) <= 65536),
-    CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536)
+    CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536),
+    CONSTRAINT exam_drafts_execution_profile_size_check CHECK (octet_length(execution_profile::text) <= 1024)
 );
 
 CREATE TABLE exam_managers (
@@ -1000,6 +1002,9 @@ CREATE TABLE exam_revisions (
     policy_document jsonb NOT NULL,
     policy_canonical bytea NOT NULL CHECK (octet_length(policy_canonical) BETWEEN 1 AND 65536),
     policy_digest char(64) NOT NULL CHECK (policy_digest ~ '^[0-9a-f]{64}$'),
+    execution_profile_document jsonb NOT NULL,
+    execution_profile_canonical bytea NOT NULL CHECK (octet_length(execution_profile_canonical) BETWEEN 1 AND 1024),
+    execution_profile_digest char(64) NOT NULL CHECK (execution_profile_digest ~ '^[0-9a-f]{64}$'),
     starter_workspace_digest char(64) NOT NULL CHECK (starter_workspace_digest ~ '^[0-9a-f]{64}$'),
     content_digest char(64) NOT NULL CHECK (content_digest ~ '^[0-9a-f]{64}$'),
     resource_count smallint NOT NULL CHECK (resource_count BETWEEN 0 AND 10),
@@ -1518,6 +1523,42 @@ CREATE INDEX exam_attempts_sitting_created_id_idx
     ON exam_attempts (exam_sitting_id, created_at DESC, id DESC);
 CREATE INDEX exam_attempts_candidate_created_id_idx
     ON exam_attempts (candidate_user_id, created_at DESC, id DESC);
+
+-- An Execution Grant records only authoritative placement and cleanup state.
+-- Live host readiness and capacity are deliberately not indexed in PostgreSQL.
+CREATE TABLE execution_grants (
+    id varchar(26) PRIMARY KEY,
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    host_id varchar(64) NOT NULL CHECK (host_id ~ '^[A-Za-z0-9._-]{1,64}$'),
+    image varchar(255) NOT NULL CHECK (image <> ''),
+    network varchar(16) NOT NULL CHECK (network IN ('none', 'allowlist')),
+    state varchar(16) NOT NULL CHECK (state IN ('reserved', 'ready', 'released')),
+    applied_sitting_state varchar(16) NOT NULL CHECK (applied_sitting_state IN ('open', 'paused')),
+    applied_sitting_revision bigint NOT NULL CHECK (applied_sitting_revision > 0),
+    lifecycle_pending boolean NOT NULL DEFAULT false,
+    pending_sitting_state varchar(16) CHECK (pending_sitting_state IN ('open', 'paused')),
+    pending_sitting_revision bigint CHECK (pending_sitting_revision > 0),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    released_at timestamptz,
+    revoked_at timestamptz,
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+    CONSTRAINT execution_grants_lifecycle_check CHECK (
+        updated_at >= created_at AND
+        ((state IN ('reserved', 'ready') AND released_at IS NULL AND revoked_at IS NULL) OR
+         (state = 'released' AND released_at IS NOT NULL AND released_at >= created_at AND
+          (revoked_at IS NULL OR revoked_at >= released_at)))
+    ),
+    CONSTRAINT execution_grants_pending_lifecycle_check CHECK (
+        (lifecycle_pending AND pending_sitting_state IS NOT NULL AND pending_sitting_revision IS NOT NULL) OR
+        (NOT lifecycle_pending AND pending_sitting_state IS NULL AND pending_sitting_revision IS NULL)
+    )
+);
+
+CREATE UNIQUE INDEX execution_grants_one_active_attempt_idx
+    ON execution_grants (exam_attempt_id) WHERE state IN ('reserved', 'ready');
+CREATE INDEX execution_grants_pending_revocation_idx
+    ON execution_grants (released_at, id) WHERE state = 'released' AND revoked_at IS NULL;
 
 CREATE TABLE exam_attempt_workspaces (
     id varchar(26) PRIMARY KEY,
@@ -3278,6 +3319,10 @@ ALTER TABLE exam_attempts
     ADD CONSTRAINT exam_attempts_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempts_candidate_user_id_canonical_check CHECK (candidate_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_attempts_admission_revision_id_canonical_check CHECK (admission_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE execution_grants
+    ADD CONSTRAINT execution_grants_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT execution_grants_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_workspaces
     ADD CONSTRAINT exam_attempt_workspaces_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),

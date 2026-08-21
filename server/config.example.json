@@ -75,6 +75,12 @@
       "secure": true
     }
   },
+  "execution": {
+    "enabled": false,
+    "dial_timeout": "10s",
+    "operation_timeout": "30s",
+    "hosts": []
+  },
   "authentication": {
     "bootstrap": {
       "secret": "",

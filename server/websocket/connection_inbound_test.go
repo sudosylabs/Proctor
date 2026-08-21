@@ -5,6 +5,7 @@ package websocket
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -42,6 +43,8 @@ type inboundTestApplication struct {
 	closeContextErr error
 	closePrincipal  model.Principal
 	closeMetadata   model.RequestMetadata
+	terminal        app.CandidateExamTerminal
+	terminalCommand app.OpenCandidateExamTerminalCommand
 	authorizations  []inboundAuthorizationCall
 	validations     []model.Principal
 }
@@ -67,6 +70,16 @@ func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Inv
 	defer a.mu.Unlock()
 	a.connectCalls = append(a.connectCalls, command)
 	return a.connectResult, a.connectErr
+}
+
+func (a *inboundTestApplication) OpenCandidateExamTerminal(_ context.Context, _ app.Invocation, command app.OpenCandidateExamTerminalCommand) (app.CandidateExamTerminal, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.terminalCommand = command
+	if a.terminal == nil {
+		return nil, app.NewError("exam.attempt.terminal_unavailable")
+	}
+	return a.terminal, nil
 }
 
 func (a *inboundTestApplication) CloseExamAttemptConnection(ctx context.Context, invocation app.Invocation, command app.CloseExamAttemptConnectionCommand) (app.ExamAttemptConnectionClosed, error) {
@@ -917,6 +930,78 @@ func TestConnectionRuntimeSubscriptionMembershipIsConcurrentSafe(t *testing.T) {
 	if !runtime.hasSubscription(subscription) {
 		t.Fatal("final authorized subscription is not visible to publication")
 	}
+}
+
+type inboundTerminalFake struct {
+	mu     sync.Mutex
+	writes []byte
+	window app.CandidateExamTerminalWindow
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newInboundTerminalFake() *inboundTerminalFake {
+	return &inboundTerminalFake{closed: make(chan struct{})}
+}
+func (terminal *inboundTerminalFake) Read([]byte) (int, error) { <-terminal.closed; return 0, io.EOF }
+func (terminal *inboundTerminalFake) Write(data []byte) (int, error) {
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	terminal.writes = append(terminal.writes, data...)
+	return len(data), nil
+}
+func (terminal *inboundTerminalFake) Resize(_ context.Context, window app.CandidateExamTerminalWindow) error {
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	terminal.window = window
+	return nil
+}
+func (terminal *inboundTerminalFake) Close() error {
+	terminal.once.Do(func() { close(terminal.closed) })
+	return nil
+}
+
+func TestConnectionRuntimeBridgesBoundCandidateTerminal(t *testing.T) {
+	t.Parallel()
+	terminal := newInboundTerminalFake()
+	application := &inboundTestApplication{terminal: terminal}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(time.Now()))
+	binding := &examAttemptBinding{attemptID: model.NewExamAttemptID(), sittingID: model.NewExamSittingID(),
+		classID: model.NewClassID(), connectionID: model.NewAttemptConnectionID(),
+		participationID: model.NewAttemptParticipationID(), generation: 3}
+	runtime.attempt = binding
+	credential := model.NewCredentialToken()
+	runtime.handleRequest(context.Background(), requestWithData(t, 100, examAttemptTerminalOpenAction,
+		examAttemptTerminalOpenRequest{Generation: 3, ContinuityCredential: credential, Cols: 120, Rows: 40}))
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("terminal open response = %#v", response)
+	}
+	application.mu.Lock()
+	command := application.terminalCommand
+	application.mu.Unlock()
+	if command.Access.AttemptID != binding.attemptID || command.Access.ConnectionID != binding.connectionID ||
+		command.Access.ContinuityCredential != credential || command.ParticipationID != binding.participationID ||
+		command.SittingID != binding.sittingID || command.ClassID != binding.classID || command.Generation != 3 ||
+		command.Window != (app.CandidateExamTerminalWindow{Cols: 120, Rows: 40}) {
+		t.Fatalf("terminal command = %#v", command)
+	}
+	runtime.handleRequest(context.Background(), requestWithData(t, 101, examAttemptTerminalInputAction,
+		examAttemptTerminalInputRequest{Data: base64.StdEncoding.EncodeToString([]byte("go test\n"))}))
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("terminal input response = %#v", response)
+	}
+	runtime.handleRequest(context.Background(), requestWithData(t, 102, examAttemptTerminalResizeAction,
+		examAttemptTerminalResizeRequest{Cols: 90, Rows: 30}))
+	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
+		t.Fatalf("terminal resize response = %#v", response)
+	}
+	terminal.mu.Lock()
+	writes, window := string(terminal.writes), terminal.window
+	terminal.mu.Unlock()
+	if writes != "go test\n" || window != (app.CandidateExamTerminalWindow{Cols: 90, Rows: 30}) {
+		t.Fatalf("terminal writes=%q window=%#v", writes, window)
+	}
+	runtime.closeTerminal()
 }
 
 func TestConnectionRuntimeJoinsSimultaneousInboundTermination(t *testing.T) {

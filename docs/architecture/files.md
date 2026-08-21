@@ -296,12 +296,14 @@ paths never enter URLs or access logs. If the pinned manifest advances, or a
 journal cursor falls behind retention, the response explicitly requires a
 full manifest refresh and returns no partial page.
 
-Future execution environments are synchronized projections rather than durable
+Execution environments are synchronized projections rather than durable
 authorities. Losing a client, node, or execution environment cannot discard an
 acknowledged change. The client exposes the workspace only inside the protected
 Exam IDE; recovery storage is encrypted and opaque, and candidate export or
 ordinary local-folder access is prohibited. Execution environments never
-receive general VFS credentials.
+receive general VFS credentials. The accepted host contract, dual-writer
+ingest, and Attempt Terminal path are in
+[Execution environments](./execution.md).
 
 Only acknowledged state at an expected Workspace Cursor may be submitted.
 Normal submission settles workspace changes and integrity source watermarks,

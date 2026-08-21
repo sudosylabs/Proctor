@@ -10,6 +10,7 @@ import (
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
@@ -39,11 +40,12 @@ type TestingOverrides struct {
 	StoreCacheMetrics localcachelayer.Recorder
 	// MailMetrics captures bounded mail outcome, queue, and health observations.
 	// A nil value keeps the production bounded operational telemetry recorder.
-	MailMetrics app.MailDeliveryRecorder
-	Cache       platform.Cache
-	Cluster     platform.Cluster
-	Mailer      platform.Mailer
-	Filesystem  vfspkg.FileSystem
+	MailMetrics    app.MailDeliveryRecorder
+	Cache          platform.Cache
+	Cluster        platform.Cluster
+	Mailer         platform.Mailer
+	Filesystem     vfspkg.FileSystem
+	ExecutionHosts ExecutionHostDirectory
 	// AllowMissingJobs is an explicit lifecycle-only test policy. Production
 	// construction always requires durable Job persistence and a Job runtime.
 	AllowMissingJobs bool
@@ -52,6 +54,13 @@ type TestingOverrides struct {
 	// BootstrapSecretWriter captures the explicit loopback-development secret.
 	// Production writes it directly to the controlling terminal.
 	BootstrapSecretWriter io.Writer
+}
+
+// ExecutionHostDirectory is the complete testing seam for the execution host
+// adapter. Ownership transfers to the runtime exactly as in production.
+type ExecutionHostDirectory interface {
+	appexecution.HostDirectory
+	platform.ExecutionHosts
 }
 
 // TestingRuntime is a non-owning behavioral projection. Server owns lifecycle

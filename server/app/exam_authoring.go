@@ -11,6 +11,7 @@ import (
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -46,11 +47,26 @@ type ConfigureExamDraftFocusLossCommand struct {
 	IdempotencyKey        string
 }
 
+type ConfigureExamDraftExecutionProfileCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	Enabled               bool
+	Image                 string
+	Network               model.ExecutionNetwork
+	IdempotencyKey        string
+}
+
+type ExamExecutionImage struct {
+	ID       string
+	Networks []model.ExecutionNetwork
+}
+
 type examUseCases interface {
 	Create(context.Context, examengine.Call, examengine.CreateCommand) (examengine.View, error)
 	Get(context.Context, examengine.Call, model.ExamID) (examengine.View, error)
 	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
 	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
+	ConfigureDraftExecutionProfile(context.Context, examengine.Call, examengine.ConfigureDraftExecutionProfileCommand) (examengine.View, error)
 	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
 	Archive(context.Context, examengine.Call, examengine.ArchiveCommand) (model.Exam, error)
 	ListManagers(context.Context, examengine.Call, examengine.ListManagersQuery) (examengine.ManagerPage, error)
@@ -149,6 +165,83 @@ func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invoca
 		return ExamView{}, examError(err, true)
 	}
 	return view, nil
+}
+
+func (a *App) ConfigureExamDraftExecutionProfile(ctx context.Context, invocation Invocation, command ConfigureExamDraftExecutionProfileCommand) (ExamView, error) {
+	if command.IdempotencyKey == "" {
+		return ExamView{}, NewError("idempotency.key_required")
+	}
+	profile := model.ExecutionProfile{Enabled: command.Enabled, Image: strings.TrimSpace(command.Image), Network: command.Network}
+	if err := profile.Validate(); err != nil {
+		return ExamView{}, NewError("exam.invalid").Wrap(err)
+	}
+	idempotency, err := newCommandIdempotency(invocation, "exam.draft.execution_profile.configure.v1", command.IdempotencyKey, struct {
+		ExamID                string                 `json:"exam_id"`
+		ExpectedDraftRevision int64                  `json:"expected_draft_revision"`
+		Profile               model.ExecutionProfile `json:"profile"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, profile})
+	if err != nil {
+		return ExamView{}, err
+	}
+	view, err := a.exams.ConfigureDraftExecutionProfile(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftExecutionProfileCommand{
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Profile: profile, Idempotency: idempotency,
+	})
+	if err != nil {
+		return ExamView{}, examError(err, true)
+	}
+	return view, nil
+}
+
+func (a *App) ListExamExecutionImages(ctx context.Context, invocation Invocation, query GetExamQuery) ([]ExamExecutionImage, error) {
+	if a.execution == nil {
+		return nil, NewError("exam.unavailable")
+	}
+	if _, err := a.exams.Get(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), query.ExamID); err != nil {
+		return nil, examError(err, true)
+	}
+	images, err := a.execution.Images(ctx)
+	if err != nil {
+		return nil, NewError("exam.unavailable").Wrap(err)
+	}
+	result := make([]ExamExecutionImage, len(images))
+	for index, image := range images {
+		result[index].ID = image.ID
+		result[index].Networks = make([]model.ExecutionNetwork, len(image.Networks))
+		for networkIndex, network := range image.Networks {
+			result[index].Networks[networkIndex] = model.ExecutionNetwork(network)
+		}
+	}
+	return result, nil
+}
+
+func executionCatalogSupports(images []appexecution.ImageOption, profile model.ExecutionProfile) bool {
+	for _, image := range images {
+		if image.ID != profile.Image {
+			continue
+		}
+		for _, network := range image.Networks {
+			if model.ExecutionNetwork(network) == profile.Network {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type examExecutionProfileCatalog struct{ execution executionUseCases }
+
+func (catalog examExecutionProfileCatalog) Supports(ctx context.Context, profile model.ExecutionProfile) (bool, error) {
+	if !profile.Enabled {
+		return true, nil
+	}
+	if catalog.execution == nil {
+		return false, errors.New("execution catalog is unavailable")
+	}
+	images, err := catalog.execution.Images(ctx)
+	if err != nil {
+		return false, err
+	}
+	return executionCatalogSupports(images, profile), nil
 }
 
 func examError(err error, conceal bool) error {

@@ -246,6 +246,19 @@ type ExamDraftFocusLossUpdate struct {
 	AuditAt          int64
 }
 
+// ExamDraftExecutionProfileUpdate replaces the complete authored terminal
+// choice. Installation resources and host addresses never enter this value.
+type ExamDraftExecutionProfileUpdate struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	Profile          model.ExecutionProfile
+	UpdatedAt        int64
+	AuditEventID     string
+	AuditAt           int64
+}
+
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
 // Create commits the Exam, its one Draft, creator-manager relation, audit
 // success, and retry outcome together. Draft updates recheck the current
@@ -258,6 +271,7 @@ type ExamAuthoringStore interface {
 	Create(context.Context, *ExamAuthoringCreation, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	UpdateDraftExecutionProfile(context.Context, *ExamDraftExecutionProfileUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	// List returns at most Limit summaries in descending (UpdatedAt, ExamID)
 	// order, strictly before the optional complete cursor pair. The adapter must
 	// apply exact-unit, archive-state, role-scope, current exact Academic Unit
@@ -308,6 +322,7 @@ type Catalog interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
+	ExecutionGrant() ExecutionGrantStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore
@@ -354,6 +369,7 @@ type Store interface {
 	ExamRevision() ExamRevisionStore
 	ExamSitting() ExamSittingStore
 	ExamAttempt() ExamAttemptStore
+	ExecutionGrant() ExecutionGrantStore
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore

@@ -134,6 +134,7 @@ type ExamRevisionSpecification struct {
 	Title                string
 	InstructionsMarkdown string
 	Policy               ExamRevisionPolicy
+	ExecutionProfile     ExecutionProfile
 	Resources            []ExamRevisionResource
 	StarterWorkspace     []ExamRevisionStarterWorkspaceEntry
 	PublishedByUserID    UserID
@@ -154,6 +155,8 @@ type ExamRevision struct {
 	InstructionsMarkdown   string
 	Policy                 ExamRevisionPolicy
 	PolicyDigest           string
+	ExecutionProfile       ExecutionProfile
+	ExecutionProfileDigest string
 	Resources              []ExamRevisionResource
 	StarterWorkspace       []ExamRevisionStarterWorkspaceEntry
 	StarterWorkspaceDigest string
@@ -165,10 +168,15 @@ type ExamRevision struct {
 }
 
 func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
+	profile := spec.ExecutionProfile
+	if !profile.Enabled && profile.Image == "" && profile.Network == "" {
+		profile = DefaultExecutionProfile()
+	}
 	revision := &ExamRevision{
 		ID: spec.ID, ExamID: spec.ExamID, Number: spec.Number, SourceDraftRevision: spec.SourceDraftRevision,
 		Title: spec.Title, InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy: cloneExamRevisionPolicy(spec.Policy), PolicyDigest: spec.Policy.SHA256,
+		ExecutionProfile:  profile,
 		Resources:         append([]ExamRevisionResource(nil), spec.Resources...),
 		StarterWorkspace:  append([]ExamRevisionStarterWorkspaceEntry(nil), spec.StarterWorkspace...),
 		PublishedByUserID: spec.PublishedByUserID, PublishedAt: TimeUTC(spec.PublishedAt),
@@ -180,6 +188,11 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 		}
 		return strings.Compare(left.EntryID.String(), right.EntryID.String())
 	})
+	var err error
+	revision.ExecutionProfileDigest, err = ExecutionProfileDigest(revision.ExecutionProfile)
+	if err != nil {
+		return nil, err
+	}
 	workspaceDigest, contentDigest, err := revision.computeDigests()
 	if err != nil {
 		return nil, err
@@ -211,6 +224,7 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, id ExamRevisionID, number
 		Title:                base.Title,
 		InstructionsMarkdown: instructionsMarkdown,
 		Policy:               cloneExamRevisionPolicy(base.Policy),
+		ExecutionProfile:     base.ExecutionProfile,
 		Resources:            append([]ExamRevisionResource(nil), resources...),
 		StarterWorkspace:     append([]ExamRevisionStarterWorkspaceEntry(nil), base.StarterWorkspace...),
 		PublishedByUserID:    publishedBy,
@@ -227,12 +241,17 @@ func (revision *ExamRevision) Validate() error {
 		return errors.New("model: invalid Exam Revision metadata")
 	}
 	draft := &ExamDraft{ExamID: revision.ExamID, Title: revision.Title, InstructionsMarkdown: revision.InstructionsMarkdown,
-		Policy: DefaultExamPolicySet(), UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
+		Policy: DefaultExamPolicySet(), ExecutionProfile: revision.ExecutionProfile,
+		UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
 	if err := draft.Validate(); err != nil {
 		return fmt.Errorf("model: invalid Exam Revision authored text: %w", err)
 	}
 	if err := revision.Policy.Validate(); err != nil || revision.PolicyDigest != revision.Policy.SHA256 {
 		return errors.New("model: invalid Exam Revision policy")
+	}
+	profileDigest, err := ExecutionProfileDigest(revision.ExecutionProfile)
+	if err != nil || revision.ExecutionProfileDigest != profileDigest {
+		return errors.New("model: invalid Exam Revision Execution Profile")
 	}
 	if err := validateExamRevisionResources(revision.Resources); err != nil {
 		return err
@@ -371,6 +390,10 @@ type examRevisionWorkspaceWire struct {
 }
 
 func (revision *ExamRevision) computeDigests() (string, string, error) {
+	profile, err := EncodeExecutionProfile(revision.ExecutionProfile)
+	if err != nil {
+		return "", "", err
+	}
 	resources := make([]examRevisionResourceWire, len(revision.Resources))
 	for index, resource := range revision.Resources {
 		resources[index] = examRevisionResourceWire{resource.ResourceID.String(), resource.FileEntryID.String(), resource.FileRevisionID.String(), resource.RenditionID.String(), resource.DisplayName, resource.DescriptionMarkdown, resource.Position, resource.MediaType, resource.SizeBytes, resource.SHA256}
@@ -394,10 +417,14 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 		InstructionsMarkdown   string                      `json:"instructions_markdown"`
 		PolicySchemaVersion    int                         `json:"policy_schema_version"`
 		Policy                 json.RawMessage             `json:"policy"`
+		ExecutionProfile       json.RawMessage             `json:"execution_profile"`
+		ExecutionProfileDigest string                      `json:"execution_profile_digest"`
 		Resources              []examRevisionResourceWire  `json:"resources"`
 		StarterWorkspaceDigest string                      `json:"starter_workspace_digest"`
 		StarterWorkspace       []examRevisionWorkspaceWire `json:"starter_workspace"`
-	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion, json.RawMessage(revision.Policy.Bytes), resources, workspaceDigest, workspace})
+	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion,
+		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest,
+		resources, workspaceDigest, workspace})
 	if err != nil {
 		return "", "", err
 	}

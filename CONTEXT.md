@@ -32,7 +32,9 @@ Year 2.
 _Avoid_: Year, grade as universal core types
 
 **Academic Period**:
-An institution-defined enrollment period, such as an academic year.
+An enrollment period owned by the institution or one academic unit and
+applicable throughout that owner's academic-unit subtree, such as an academic
+year or semester.
 _Avoid_: School year, semester as universal core types
 
 **Class**:
@@ -122,6 +124,26 @@ _Avoid_: Exam resource, shared workspace
 The isolated, remotely authoritative hierarchy of mutable working files
 belonging to one exam attempt.
 _Avoid_: Shared workspace, local folder
+
+**Execution Environment**:
+The isolated, non-authoritative projection of one attempt workspace in which
+a candidate may use an attempt terminal.
+_Avoid_: Code runner, coderunner, microVM, sandbox, local folder
+
+**Attempt Terminal**:
+One interactive PTY attached to an execution environment for one exam
+attempt.
+_Avoid_: SSH session, local terminal, code runner
+
+**Execution Profile**:
+The authored, revision-frozen choice of whether an exam offers an attempt
+terminal, which catalog image it uses, and which network mode applies.
+_Avoid_: Devcontainer, Dockerfile, deployment configuration, executable policy
+
+**Execution Image**:
+A named, installation-provided guest runtime a creator may select in an
+execution profile.
+_Avoid_: Dockerfile, devcontainer, rootfs
 
 **Workspace Entry**:
 A stable logical file or directory in one attempt workspace whose identity
@@ -236,6 +258,21 @@ _Avoid_: User type, role
 A link between a user and an opaque subject asserted by a configured external
 identity provider.
 _Avoid_: SSO user, provider account
+
+**Access Policy**:
+The revisioned institution application policy selecting which configured
+authentication and account-admission capabilities are currently available.
+_Avoid_: Authentication mode, deployment configuration, client settings
+
+**Invitation**:
+A durable pre-user authorization for one person to claim an account and one
+explicit institutional relationship or scoped role package.
+_Avoid_: User token, pending user, email message
+
+**Desktop Authorization**:
+One short-lived browser-to-desktop handoff that may create a Proctor desktop
+session after exact callback, state, and proof verification.
+_Avoid_: Device token, external-provider token, desktop login page
 
 **Principal**:
 The authenticated security identity acting in a request or operation,

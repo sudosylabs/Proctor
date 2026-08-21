@@ -17,6 +17,7 @@ require (
 	github.com/mattermost/morph v1.1.0
 	github.com/pdfcpu/pdfcpu v0.13.0
 	github.com/redis/rueidis v1.0.76
+	github.com/sudosylabs/execenv v0.2.0
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260726111247-11f8bdd6cebe
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260726114928-8a166a08b663
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260726110112-233c3e43a771
@@ -80,7 +81,7 @@ require (
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

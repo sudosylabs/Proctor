@@ -11,8 +11,11 @@ package websocket
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
@@ -35,6 +38,167 @@ func (c *connectionRuntime) readPump(ctx context.Context) {
 			continue
 		}
 		c.handleRequest(ctx, &request)
+	}
+}
+
+func (c *connectionRuntime) handleExamAttemptTerminalOpen(ctx context.Context, request *Request) {
+	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalOpenRequest](request.Data, "Exam Attempt terminal open request", 4)
+	if err != nil || decoded.Generation < 1 || decoded.Cols < 1 || decoded.Rows < 1 ||
+		!model.IsValidCredentialToken(decoded.ContinuityCredential) {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt terminal request.")
+		return
+	}
+	c.mu.Lock()
+	if c.attempt == nil || c.attempt.generation != decoded.Generation {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		return
+	}
+	if c.terminal != nil {
+		c.mu.Unlock()
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_conflict", "A terminal is already open.")
+		return
+	}
+	binding := *c.attempt
+	c.mu.Unlock()
+	attempts, ok := c.application.(examAttemptApplication)
+	if !ok {
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal is unavailable.")
+		return
+	}
+	metadata := c.metadata
+	metadata.RequestID = fmt.Sprintf("%s:%d", c.id, request.Sequence)
+	terminal, err := attempts.OpenCandidateExamTerminal(ctx, app.NewInvocation(c.principal, metadata), app.OpenCandidateExamTerminalCommand{
+		Access: app.CandidateExamAttemptAccess{AttemptID: binding.attemptID, ConnectionID: binding.connectionID,
+			ContinuityCredential: decoded.ContinuityCredential},
+		SittingID: binding.sittingID, ClassID: binding.classID,
+		ParticipationID: binding.participationID, Generation: binding.generation,
+		Window: app.CandidateExamTerminalWindow{Cols: decoded.Cols, Rows: decoded.Rows},
+	})
+	if err != nil {
+		code := "exam.attempt.terminal_unavailable"
+		if failure, exists := app.As(err); exists {
+			code = failure.Code()
+		}
+		c.enqueueError(request.Sequence, code, "Terminal could not be opened.")
+		return
+	}
+	c.mu.Lock()
+	if c.attempt == nil || *c.attempt != binding || c.terminal != nil {
+		c.mu.Unlock()
+		_ = terminal.Close()
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		return
+	}
+	c.terminal = terminal
+	c.mu.Unlock()
+	c.enqueueResponse(request.Sequence, json.RawMessage(`{"opened":true}`))
+	go c.readExamAttemptTerminal(terminal)
+}
+
+func (c *connectionRuntime) handleExamAttemptTerminalInput(_ context.Context, request *Request) {
+	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalInputRequest](request.Data, "Exam Attempt terminal input request", 1)
+	if err != nil {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal input.")
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(decoded.Data)
+	if err != nil || len(data) == 0 || len(data) > examAttemptTerminalChunkMaximum {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal input.")
+		return
+	}
+	c.mu.Lock()
+	terminal := c.terminal
+	c.mu.Unlock()
+	if terminal == nil {
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", "Terminal is not open.")
+		return
+	}
+	for len(data) > 0 {
+		written, writeErr := terminal.Write(data)
+		if writeErr != nil || written < 1 || written > len(data) {
+			c.closeTerminal()
+			c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal input failed.")
+			return
+		}
+		data = data[written:]
+	}
+	c.enqueueResponse(request.Sequence, nil)
+}
+
+func (c *connectionRuntime) handleExamAttemptTerminalResize(ctx context.Context, request *Request) {
+	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalResizeRequest](request.Data, "Exam Attempt terminal resize request", 2)
+	if err != nil || decoded.Cols < 1 || decoded.Rows < 1 {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal size.")
+		return
+	}
+	c.mu.Lock()
+	terminal := c.terminal
+	c.mu.Unlock()
+	if terminal == nil {
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", "Terminal is not open.")
+		return
+	}
+	if err := terminal.Resize(ctx, app.CandidateExamTerminalWindow{Cols: decoded.Cols, Rows: decoded.Rows}); err != nil {
+		c.closeTerminal()
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal resize failed.")
+		return
+	}
+	c.enqueueResponse(request.Sequence, nil)
+}
+
+func (c *connectionRuntime) handleExamAttemptTerminalClose(request *Request) {
+	if _, err := decodeStrictExamAttemptObject[struct{}](request.Data, "Exam Attempt terminal close request", 0); err != nil {
+		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal close request.")
+		return
+	}
+	c.closeTerminal()
+	c.enqueueResponse(request.Sequence, nil)
+}
+
+func (c *connectionRuntime) readExamAttemptTerminal(terminal app.CandidateExamTerminal) {
+	buffer := make([]byte, examAttemptTerminalChunkMaximum)
+	reason := "closed"
+	for {
+		count, err := terminal.Read(buffer)
+		if count > 0 {
+			data, marshalErr := json.Marshal(examAttemptTerminalOutput{Data: base64.StdEncoding.EncodeToString(buffer[:count])})
+			if marshalErr != nil {
+				reason = "unavailable"
+				break
+			}
+			c.enqueueEphemeralEvent(&Event{Id: model.NewId(), Event: examAttemptTerminalOutputEvent,
+				UserID: c.principal.UserID.String(), Data: data})
+		}
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				reason = "unavailable"
+			}
+			break
+		}
+		if count == 0 {
+			reason = "unavailable"
+			break
+		}
+	}
+	c.mu.Lock()
+	if c.terminal == terminal {
+		c.terminal = nil
+	}
+	c.mu.Unlock()
+	_ = terminal.Close()
+	data, _ := json.Marshal(examAttemptTerminalClosed{Reason: reason})
+	c.enqueueEphemeralEvent(&Event{Id: model.NewId(), Event: examAttemptTerminalClosedEvent,
+		UserID: c.principal.UserID.String(), Data: data})
+}
+
+func (c *connectionRuntime) closeTerminal() {
+	c.mu.Lock()
+	terminal := c.terminal
+	c.terminal = nil
+	c.mu.Unlock()
+	if terminal != nil {
+		_ = terminal.Close()
 	}
 }
 
@@ -125,6 +289,14 @@ func (c *connectionRuntime) handleRequest(
 		c.handleExamAttemptRenew(ctx, request)
 	case examAttemptFocusLossAction:
 		c.handleExamAttemptFocusLoss(ctx, request)
+	case examAttemptTerminalOpenAction:
+		c.handleExamAttemptTerminalOpen(ctx, request)
+	case examAttemptTerminalInputAction:
+		c.handleExamAttemptTerminalInput(ctx, request)
+	case examAttemptTerminalResizeAction:
+		c.handleExamAttemptTerminalResize(ctx, request)
+	case examAttemptTerminalCloseAction:
+		c.handleExamAttemptTerminalClose(request)
 	default:
 		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
 	}
@@ -289,11 +461,17 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 	}
 	if result.ConnectionClosed || result.SuspensionCreated {
 		c.mu.Lock()
+		var terminal app.CandidateExamTerminal
 		if c.attempt != nil && *c.attempt == binding {
 			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
 			c.attempt = nil
+			terminal = c.terminal
+			c.terminal = nil
 		}
 		c.mu.Unlock()
+		if terminal != nil {
+			_ = terminal.Close()
+		}
 	}
 	c.enqueueResponse(request.Sequence, encoded)
 }
@@ -308,12 +486,18 @@ func (c *connectionRuntime) examAttemptSubscriptionLocked() Subscription {
 
 func (c *connectionRuntime) unbindExamAttemptConnection(connectionID model.AttemptConnectionID) bool {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.attempt == nil || c.attempt.connectionID != connectionID {
+		c.mu.Unlock()
 		return false
 	}
 	delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
 	c.attempt = nil
+	terminal := c.terminal
+	c.terminal = nil
+	c.mu.Unlock()
+	if terminal != nil {
+		_ = terminal.Close()
+	}
 	return true
 }
 
@@ -321,11 +505,16 @@ func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
 	c.attemptClose.Do(func() {
 		c.mu.Lock()
 		binding := c.attempt
+		terminal := c.terminal
+		c.terminal = nil
 		if binding != nil {
 			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
 			c.attempt = nil
 		}
 		c.mu.Unlock()
+		if terminal != nil {
+			_ = terminal.Close()
+		}
 		if binding == nil {
 			return
 		}

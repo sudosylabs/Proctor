@@ -344,6 +344,96 @@ func TestConfigureDraftFocusLossReplayDoesNotRepublish(t *testing.T) {
 	}
 }
 
+func TestConfigureDraftExecutionProfileOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	profile := model.ExecutionProfile{Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkAllowlist}
+	command := &store.CommandIdempotency{UserID: fixture.userID, Operation: "exam.draft.execution_profile.configure.v1"}
+	view, err := fixture.service.ConfigureDraftExecutionProfile(context.Background(), fixture.call, ConfigureDraftExecutionProfileCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Profile: profile, Idempotency: command,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Draft.ExecutionProfile != profile || view.Draft.Revision != 2 {
+		t.Fatalf("view = %#v", view)
+	}
+	update := fixture.persistence.executionProfileUpdate
+	if fixture.authorizer.action != model.ActionExamManage || update == nil || update.Profile != profile || fixture.persistence.idempotency != command {
+		t.Fatalf("authorization/update = %s / %#v", fixture.authorizer.action, update)
+	}
+	if len(fixture.auditor.value) != 4 || fixture.auditor.value["exam_id"] != fixture.examID.String() || fixture.auditor.value["expected_draft_revision"] != int64(1) || fixture.auditor.value["draft_revision"] != int64(2) || fixture.auditor.value["execution_enabled"] != true || fixture.effects.updatedRevision != 2 {
+		t.Fatalf("unsafe audit/effect = %#v / %d", fixture.auditor.value, fixture.effects.updatedRevision)
+	}
+	want := []string{"store.access", "membership", "authorize", "store.get", "audit.begin", "store.update_execution_profile", "effect.updated"}
+	if !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestConfigureDraftExecutionProfileNoChangeSkipsAuditPersistenceAndEffect(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	_, err := fixture.service.ConfigureDraftExecutionProfile(context.Background(), fixture.call, ConfigureDraftExecutionProfileCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Profile: model.DefaultExecutionProfile(), Idempotency: &store.CommandIdempotency{},
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.draft.no_changes" {
+		t.Fatalf("error = %v, want exam.draft.no_changes", err)
+	}
+	if want := []string{"store.access", "membership", "authorize", "store.get"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
+func TestConfigureDraftExecutionProfileRejectsUnsupportedFreshChoice(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	fixture.profiles.supported = false
+	profile := model.ExecutionProfile{Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone}
+	_, err := fixture.service.ConfigureDraftExecutionProfile(context.Background(), fixture.call, ConfigureDraftExecutionProfileCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Profile: profile, Idempotency: &store.CommandIdempotency{},
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.invalid" {
+		t.Fatalf("error = %v, want exam.invalid", err)
+	}
+	if fixture.outcomes.calls != 2 || fixture.profiles.calls != 1 || fixture.profiles.profile != profile ||
+		fixture.persistence.executionProfileUpdate != nil || fixture.auditor.failedCode != "exam.invalid" {
+		t.Fatalf("outcomes/catalog/update/audit = %d/%d/%#v/%q", fixture.outcomes.calls, fixture.profiles.calls,
+			fixture.persistence.executionProfileUpdate, fixture.auditor.failedCode)
+	}
+}
+
+func TestConfigureDraftExecutionProfileReplaysWhenCatalogBecomesUnavailable(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	fixture.persistence.replayed = true
+	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
+	fixture.outcomes.found = true
+	fixture.profiles.err = errors.New("catalog offline")
+	_, err := fixture.service.ConfigureDraftExecutionProfile(context.Background(), fixture.call, ConfigureDraftExecutionProfileCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1,
+		Profile:     model.ExecutionProfile{Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone},
+		Idempotency: &store.CommandIdempotency{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fixture.outcomes.calls != 1 || fixture.profiles.calls != 0 || fixture.persistence.executionProfileUpdate == nil ||
+		fixture.effects.updatedRevision != 0 || fixture.auditor.failedCode != "" {
+		t.Fatalf("outcomes/catalog/update/effect/audit = %d/%d/%#v/%d/%q", fixture.outcomes.calls, fixture.profiles.calls,
+			fixture.persistence.executionProfileUpdate, fixture.effects.updatedRevision, fixture.auditor.failedCode)
+	}
+}
+
 func TestAuthorizeViewSelectsCurrentManagerOrExplicitOverride(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
@@ -457,6 +547,8 @@ type authoringFixture struct {
 	users       *usersFake
 	mail        *managerMailPreparerFake
 	auditor     *auditorFake
+	outcomes    *commandOutcomesFake
+	profiles    *executionProfileCatalogFake
 	persistence *authoringStoreFake
 	effects     *effectsFake
 }
@@ -470,15 +562,41 @@ func newAuthoringFixture(t *testing.T) authoringFixture {
 	users := &usersFake{order: &order, user: activeTestUser(userID)}
 	mail := &managerMailPreparerFake{order: &order}
 	auditor := &auditorFake{order: &order}
+	outcomes := &commandOutcomesFake{}
+	profiles := &executionProfileCatalogFake{supported: true}
 	persistence := &authoringStoreFake{order: &order, examID: examID, unitID: unitID, actorID: userID}
 	effects := &effectsFake{order: &order}
-	service, err := NewAuthoring(persistence, memberships, users, mail, authorizer, auditor, effects, effects, func() time.Time {
+	service, err := NewAuthoring(persistence, memberships, users, mail, authorizer, auditor, outcomes, profiles, effects, effects, func() time.Time {
 		return time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
 	}, func() model.ExamID { return examID })
 	if err != nil {
 		t.Fatal(err)
 	}
-	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, mail: mail, auditor: auditor, persistence: persistence, effects: effects}
+	return authoringFixture{service: service, call: NewCall(testPrincipal(userID), model.RequestMetadata{}), unitID: unitID, examID: examID, userID: userID, order: &order, authorizer: authorizer, memberships: memberships, users: users, mail: mail, auditor: auditor, outcomes: outcomes, profiles: profiles, persistence: persistence, effects: effects}
+}
+
+type commandOutcomesFake struct {
+	found bool
+	err   error
+	calls int
+}
+
+func (fake *commandOutcomesFake) Has(context.Context, *store.CommandIdempotency) (bool, error) {
+	fake.calls++
+	return fake.found, fake.err
+}
+
+type executionProfileCatalogFake struct {
+	supported bool
+	err       error
+	calls     int
+	profile   model.ExecutionProfile
+}
+
+func (fake *executionProfileCatalogFake) Supports(_ context.Context, profile model.ExecutionProfile) (bool, error) {
+	fake.calls++
+	fake.profile = profile
+	return fake.supported, fake.err
 }
 
 func testPrincipal(userID model.UserID) model.Principal {
@@ -575,25 +693,26 @@ func (f *auditorFake) Fail(_ context.Context, _ string, code string) error {
 }
 
 type authoringStoreFake struct {
-	order              *[]string
-	examID             model.ExamID
-	unitID             model.AcademicUnitID
-	actorID            model.UserID
-	actorIsManager     bool
-	archived           bool
-	replayed           bool
-	creation           *store.ExamAuthoringCreation
-	textUpdate         *store.ExamDraftTextUpdate
-	focusLossUpdate    *store.ExamDraftFocusLossUpdate
-	archive            *store.ExamArchive
-	listOptions        store.ExamListOptions
-	summaries          []store.ExamSummary
-	managerSummaries   []store.ExamManagerSummary
-	managerListOptions store.ExamManagerListOptions
-	managerMutation    *store.ExamManagerMutation
-	idempotency        *store.CommandIdempotency
-	err                error
-	managerErr         error
+	order                  *[]string
+	examID                 model.ExamID
+	unitID                 model.AcademicUnitID
+	actorID                model.UserID
+	actorIsManager         bool
+	archived               bool
+	replayed               bool
+	creation               *store.ExamAuthoringCreation
+	textUpdate             *store.ExamDraftTextUpdate
+	focusLossUpdate        *store.ExamDraftFocusLossUpdate
+	executionProfileUpdate *store.ExamDraftExecutionProfileUpdate
+	archive                *store.ExamArchive
+	listOptions            store.ExamListOptions
+	summaries              []store.ExamSummary
+	managerSummaries       []store.ExamManagerSummary
+	managerListOptions     store.ExamManagerListOptions
+	managerMutation        *store.ExamManagerMutation
+	idempotency            *store.CommandIdempotency
+	err                    error
+	managerErr             error
 }
 
 func (f *authoringStoreFake) ListManagers(_ context.Context, options store.ExamManagerListOptions) ([]store.ExamManagerSummary, error) {
@@ -718,6 +837,34 @@ func (f *authoringStoreFake) UpdateDraftFocusLoss(_ context.Context, input *stor
 		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
 	}
 	if _, err := snapshot.Draft.ApplyFocusLossPolicy(input.FocusLoss, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
+}
+func (f *authoringStoreFake) UpdateDraftExecutionProfile(_ context.Context, input *store.ExamDraftExecutionProfileUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	*f.order = append(*f.order, "store.update_execution_profile")
+	f.executionProfileUpdate, f.idempotency = input, command
+	if f.err != nil {
+		return nil, f.err
+	}
+	snapshot, err := f.Get(context.Background(), input.ExamID, input.ActorUserID)
+	*f.order = (*f.order)[:len(*f.order)-1]
+	if err != nil {
+		return nil, err
+	}
+	if f.replayed {
+		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
+	}
+	if !snapshot.ActorIsManager && !input.ManagerOverride {
+		return nil, store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if snapshot.Exam.IsArchived() {
+		return nil, store.NewErrConflict("exam", "exam_archived", nil)
+	}
+	if snapshot.Draft.Revision != input.ExpectedRevision {
+		return nil, store.NewErrConflict("exam_draft", "exam_draft_revision", nil)
+	}
+	if _, err := snapshot.Draft.ApplyExecutionProfile(input.Profile, model.TimeFromMillis(input.UpdatedAt)); err != nil {
 		return nil, err
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil

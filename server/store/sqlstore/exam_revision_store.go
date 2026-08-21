@@ -22,27 +22,30 @@ func newSQLExamRevisionStore(sqlStore *SQLStore) store.ExamRevisionStore {
 }
 
 type examRevisionHeaderRow struct {
-	ID                     string         `db:"id"`
-	ExamID                 string         `db:"exam_id"`
-	Number                 int64          `db:"number"`
-	SnapshotSchemaVersion  int            `db:"snapshot_schema_version"`
-	SourceDraftRevision    int64          `db:"source_draft_revision"`
-	Title                  string         `db:"title"`
-	InstructionsMarkdown   string         `db:"instructions_markdown"`
-	PolicySchemaVersion    int            `db:"policy_schema_version"`
-	PolicyDocument         jsonValue      `db:"policy_document"`
-	PolicyCanonical        []byte         `db:"policy_canonical"`
-	PolicyDigest           string         `db:"policy_digest"`
-	StarterWorkspaceDigest string         `db:"starter_workspace_digest"`
-	ContentDigest          string         `db:"content_digest"`
-	ResourceCount          int            `db:"resource_count"`
-	StarterEntryCount      int            `db:"starter_entry_count"`
-	StarterTotalBytes      int64          `db:"starter_total_bytes"`
-	PublishedByUserID      string         `db:"published_by_user_id"`
-	PublishedAt            time.Time      `db:"published_at"`
-	BaseRevisionID         sql.NullString `db:"base_revision_id"`
-	PublicationKind        string         `db:"publication_kind"`
-	Sealed                 bool           `db:"sealed"`
+	ID                        string         `db:"id"`
+	ExamID                    string         `db:"exam_id"`
+	Number                    int64          `db:"number"`
+	SnapshotSchemaVersion     int            `db:"snapshot_schema_version"`
+	SourceDraftRevision       int64          `db:"source_draft_revision"`
+	Title                     string         `db:"title"`
+	InstructionsMarkdown      string         `db:"instructions_markdown"`
+	PolicySchemaVersion       int            `db:"policy_schema_version"`
+	PolicyDocument            jsonValue      `db:"policy_document"`
+	PolicyCanonical           []byte         `db:"policy_canonical"`
+	PolicyDigest              string         `db:"policy_digest"`
+	ExecutionProfileDocument  jsonValue      `db:"execution_profile_document"`
+	ExecutionProfileCanonical []byte         `db:"execution_profile_canonical"`
+	ExecutionProfileDigest    string         `db:"execution_profile_digest"`
+	StarterWorkspaceDigest    string         `db:"starter_workspace_digest"`
+	ContentDigest             string         `db:"content_digest"`
+	ResourceCount             int            `db:"resource_count"`
+	StarterEntryCount         int            `db:"starter_entry_count"`
+	StarterTotalBytes         int64          `db:"starter_total_bytes"`
+	PublishedByUserID         string         `db:"published_by_user_id"`
+	PublishedAt               time.Time      `db:"published_at"`
+	BaseRevisionID            sql.NullString `db:"base_revision_id"`
+	PublicationKind           string         `db:"publication_kind"`
+	Sealed                    bool           `db:"sealed"`
 }
 
 type examRevisionResourceRow struct {
@@ -80,6 +83,7 @@ type examRevisionPublicationOutcomeRow struct {
 
 const examRevisionHeaderSelect = `SELECT id,exam_id,number,snapshot_schema_version,source_draft_revision,
 	title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
+	execution_profile_document,execution_profile_canonical,execution_profile_digest,
 	starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 	published_by_user_id,published_at,base_revision_id,publication_kind,sealed FROM exam_revisions`
 
@@ -153,6 +157,7 @@ type examRevisionDraftRow struct {
 	Title                string         `db:"title"`
 	InstructionsMarkdown string         `db:"instructions_markdown"`
 	Policy               jsonValue      `db:"policy"`
+	ExecutionProfile     jsonValue      `db:"execution_profile"`
 	BaseRevisionID       sql.NullString `db:"base_revision_id"`
 	DraftRevision        int64          `db:"draft_revision"`
 }
@@ -161,7 +166,7 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	var draft examRevisionDraftRow
 	if err := tx.Get(ctx, &draft, `SELECT e.academic_unit_id,e.archived_at,e.revision AS exam_revision,
 		EXISTS (SELECT 1 FROM exam_managers m WHERE m.exam_id=e.id AND m.user_id=?) AS actor_is_manager,
-		d.title,d.instructions_markdown,d.policy,d.base_revision_id,d.revision AS draft_revision
+		d.title,d.instructions_markdown,d.policy,d.execution_profile,d.base_revision_id,d.revision AS draft_revision
 		FROM exams e JOIN exam_drafts d ON d.exam_id=e.id WHERE e.id=? FOR UPDATE OF e,d`,
 		input.ActorUserID.String(), input.ExamID.String()); err != nil {
 		return examRevisionPublicationOutcomeRow{}, translateError("exam", input.ExamID.String(), err)
@@ -178,6 +183,10 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	policy, err := model.CanonicalizeExamRevisionPolicy([]byte(draft.Policy))
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_draft", "policy", err)
+	}
+	executionProfile, err := model.DecodeExecutionProfile([]byte(draft.ExecutionProfile))
+	if err != nil {
+		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_draft", "execution_profile", err)
 	}
 	resources, err := listExamResourceRecords(ctx, tx, input.ExamID)
 	if err != nil {
@@ -231,7 +240,7 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: input.RevisionID, ExamID: input.ExamID,
 		Number: number, SourceDraftRevision: draft.DraftRevision, Title: draft.Title, InstructionsMarkdown: draft.InstructionsMarkdown,
-		Policy: policy, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
+		Policy: policy, ExecutionProfile: executionProfile, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
 		PublishedByUserID: input.ActorUserID, PublishedAt: input.PublishedAt, BaseRevisionID: baseRevisionID, Kind: input.Kind})
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_revision", "snapshot", err)
@@ -281,13 +290,19 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 	for _, entry := range revision.StarterWorkspace {
 		starterBytes += entry.SizeBytes
 	}
+	profile, err := model.EncodeExecutionProfile(revision.ExecutionProfile)
+	if err != nil {
+		return fmt.Errorf("encode Exam Revision execution profile: %w", err)
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,
 		title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
+		execution_profile_document,execution_profile_canonical,execution_profile_digest,
 		starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 		published_by_user_id,published_at,base_revision_id,publication_kind)
-		VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID.String(), revision.ExamID.String(), revision.Number,
+		VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?::jsonb,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID.String(), revision.ExamID.String(), revision.Number,
 		model.ExamRevisionSnapshotSchemaVersion, revision.SourceDraftRevision, revision.Title, revision.InstructionsMarkdown,
 		revision.Policy.SchemaVersion, string(revision.Policy.Bytes), revision.Policy.Bytes, revision.PolicyDigest,
+		string(profile), profile, revision.ExecutionProfileDigest,
 		revision.StarterWorkspaceDigest, revision.ContentDigest, len(revision.Resources), len(revision.StarterWorkspace), starterBytes,
 		revision.PublishedByUserID.String(), revision.PublishedAt, nullableString(revision.BaseRevisionID.String()), string(revision.Kind)); err != nil {
 		return fmt.Errorf("insert Exam Revision: %w", translateError("exam_revision", revision.ID.String(), err))
@@ -443,9 +458,17 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 	if err != nil || !bytes.Equal(documentPolicy.Bytes, policy.Bytes) {
 		return nil, invalidPersistedState("exam_revision", "policy_document", errors.New("canonical policy mismatch"))
 	}
+	profile, err := model.DecodeExecutionProfile(header.ExecutionProfileCanonical)
+	if err != nil {
+		return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
+	}
+	documentProfile, err := model.DecodeExecutionProfile([]byte(header.ExecutionProfileDocument))
+	if err != nil || documentProfile != profile {
+		return nil, invalidPersistedState("exam_revision", "execution_profile_document", errors.New("canonical execution profile mismatch"))
+	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: id, ExamID: examID, Number: header.Number,
 		SourceDraftRevision: header.SourceDraftRevision, Title: header.Title, InstructionsMarkdown: header.InstructionsMarkdown,
-		Policy: policy, Resources: resources, StarterWorkspace: workspace, PublishedByUserID: publisherID,
+		Policy: policy, ExecutionProfile: profile, Resources: resources, StarterWorkspace: workspace, PublishedByUserID: publisherID,
 		PublishedAt: header.PublishedAt, BaseRevisionID: baseID, Kind: model.ExamRevisionPublicationKind(header.PublicationKind)})
 	if err != nil {
 		return nil, invalidPersistedState("exam_revision", "snapshot", err)
@@ -455,7 +478,7 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 		starterBytes += entry.SizeBytes
 	}
 	if !header.Sealed || header.SnapshotSchemaVersion != model.ExamRevisionSnapshotSchemaVersion || header.PolicySchemaVersion != policy.SchemaVersion ||
-		header.PolicyDigest != revision.PolicyDigest || header.StarterWorkspaceDigest != revision.StarterWorkspaceDigest || header.ContentDigest != revision.ContentDigest ||
+		header.PolicyDigest != revision.PolicyDigest || header.ExecutionProfileDigest != revision.ExecutionProfileDigest || header.StarterWorkspaceDigest != revision.StarterWorkspaceDigest || header.ContentDigest != revision.ContentDigest ||
 		header.ResourceCount != len(resources) || header.StarterEntryCount != len(workspace) || header.StarterTotalBytes != starterBytes {
 		return nil, invalidPersistedState("exam_revision", "header", errors.New("snapshot metadata mismatch"))
 	}
@@ -485,7 +508,7 @@ func (row examRevisionHeaderRow) summary() (*store.ExamRevisionSummary, error) {
 		return nil, invalidPersistedState("exam_revision", "summary", errors.New("invalid summary"))
 	}
 	return &store.ExamRevisionSummary{ID: id, ExamID: examID, Number: row.Number, SourceDraftRevision: row.SourceDraftRevision, Title: row.Title,
-		PolicySchemaVersion: row.PolicySchemaVersion, PolicyDigest: row.PolicyDigest, StarterWorkspaceDigest: row.StarterWorkspaceDigest,
+		PolicySchemaVersion: row.PolicySchemaVersion, PolicyDigest: row.PolicyDigest, ExecutionProfileDigest: row.ExecutionProfileDigest, StarterWorkspaceDigest: row.StarterWorkspaceDigest,
 		ContentDigest: row.ContentDigest, ResourceCount: row.ResourceCount, StarterWorkspaceEntries: row.StarterEntryCount,
 		StarterWorkspaceBytes: row.StarterTotalBytes, PublishedByUserID: publisherID, PublishedAt: model.TimeUTC(row.PublishedAt),
 		BaseRevisionID: baseID, Kind: model.ExamRevisionPublicationKind(row.PublicationKind)}, nil

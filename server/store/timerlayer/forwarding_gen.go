@@ -39,6 +39,8 @@ type timedStores struct {
 	examStarterWorkspaceOnce sync.Once
 	examSubmission           store.ExamSubmissionStore
 	examSubmissionOnce       sync.Once
+	executionGrant           store.ExecutionGrantStore
+	executionGrantOnce       sync.Once
 	servingNodeLease         store.ServingNodeLeaseStore
 	servingNodeLeaseOnce     sync.Once
 	examAuthoring            store.ExamAuthoringStore
@@ -161,6 +163,11 @@ type timedExamStarterWorkspaceStore struct {
 type timedExamSubmissionStore struct {
 	layer *Layer
 	next  store.ExamSubmissionStore
+}
+
+type timedExecutionGrantStore struct {
+	layer *Layer
+	next  store.ExecutionGrantStore
 }
 
 type timedServingNodeLeaseStore struct {
@@ -406,6 +413,16 @@ func (l *Layer) ExamAttempt() store.ExamAttemptStore {
 		}
 	})
 	return l.stores.examAttempt
+}
+
+func (l *Layer) ExecutionGrant() store.ExecutionGrantStore {
+	l.stores.executionGrantOnce.Do(func() {
+		next := l.next.ExecutionGrant()
+		if next != nil {
+			l.stores.executionGrant = &timedExecutionGrantStore{layer: l, next: next}
+		}
+	})
+	return l.stores.executionGrant
 }
 
 func (l *Layer) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
@@ -1408,6 +1425,96 @@ func (s *timedExamSubmissionStore) ResolveFile(arg0 context.Context, arg1 model.
 	})
 }
 
+func (s *timedExecutionGrantStore) Current(arg0 context.Context, arg1 model.ExamAttemptID) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodCurrent), func() (*model.ExecutionGrant, error) {
+		return s.next.Current(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) Reserve(arg0 context.Context, arg1 store.ExecutionGrantReservation) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodReserve), func() (*model.ExecutionGrant, error) {
+		return s.next.Reserve(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) Reassign(arg0 context.Context, arg1 store.ExecutionGrantReassignment) (*store.ExecutionGrantReassignmentResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodReassign), func() (*store.ExecutionGrantReassignmentResult, error) {
+		return s.next.Reassign(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) MarkReady(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodMarkReady), func() (*model.ExecutionGrant, error) {
+		return s.next.MarkReady(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExecutionGrantStore) PrepareSittingStateEffect(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 model.ExamSittingState, arg4 int64, arg5 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodPrepareSittingStateEffect), func() (*model.ExecutionGrant, error) {
+		return s.next.PrepareSittingStateEffect(arg0, arg1, arg2, arg3, arg4, arg5)
+	})
+}
+
+func (s *timedExecutionGrantStore) MarkSittingStateApplied(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 model.ExamSittingState, arg4 int64, arg5 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodMarkSittingStateApplied), func() (*model.ExecutionGrant, error) {
+		return s.next.MarkSittingStateApplied(arg0, arg1, arg2, arg3, arg4, arg5)
+	})
+}
+
+func (s *timedExecutionGrantStore) Release(arg0 context.Context, arg1 model.ExamAttemptID, arg2 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodRelease), func() (*model.ExecutionGrant, error) {
+		return s.next.Release(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExecutionGrantStore) ReleaseGrant(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodReleaseGrant), func() (*model.ExecutionGrant, error) {
+		return s.next.ReleaseGrant(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExecutionGrantStore) MarkRevoked(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodMarkRevoked), func() (*model.ExecutionGrant, error) {
+		return s.next.MarkRevoked(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExecutionGrantStore) ListPendingRevocations(arg0 context.Context, arg1 int) ([]*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodListPendingRevocations), func() ([]*model.ExecutionGrant, error) {
+		return s.next.ListPendingRevocations(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) AcquireLifecycleLease(arg0 context.Context, arg1 model.ExecutionGrantID) (store.ExecutionLifecycleLease, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodAcquireLifecycleLease), func() (store.ExecutionLifecycleLease, error) {
+		return s.next.AcquireLifecycleLease(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) CurrentForReconciliation(arg0 context.Context, arg1 model.ExecutionGrantID) (*store.ExecutionGrantConvergence, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodCurrentForReconciliation), func() (*store.ExecutionGrantConvergence, error) {
+		return s.next.CurrentForReconciliation(arg0, arg1)
+	})
+}
+
+func (s *timedExecutionGrantStore) ListCurrentForReconciliation(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int) ([]store.ExecutionGrantConvergence, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodListCurrentForReconciliation), func() ([]store.ExecutionGrantConvergence, error) {
+		return s.next.ListCurrentForReconciliation(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExecutionGrantStore) ListCurrentForSitting(arg0 context.Context, arg1 model.ExamSittingID, arg2 model.ExecutionGrantID, arg3 int) ([]*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodListCurrentForSitting), func() ([]*model.ExecutionGrant, error) {
+		return s.next.ListCurrentForSitting(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExecutionGrantStore) WorkspaceSnapshot(arg0 context.Context, arg1 model.ExamAttemptID) (*store.ExecutionWorkspaceSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodWorkspaceSnapshot), func() (*store.ExecutionWorkspaceSnapshot, error) {
+		return s.next.WorkspaceSnapshot(arg0, arg1)
+	})
+}
+
 func (s *timedServingNodeLeaseStore) Upsert(arg0 context.Context, arg1 *store.ServingNodeLeaseClaim) (*store.ServingNodeLease, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateServingNodeLease, methodUpsert), func() (*store.ServingNodeLease, error) {
 		return s.next.Upsert(arg0, arg1)
@@ -1435,6 +1542,12 @@ func (s *timedExamAuthoringStore) UpdateDraftText(arg0 context.Context, arg1 *st
 func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg1 *store.ExamDraftFocusLossUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftFocusLoss), func() (*store.ExamAuthoringCommandResult, error) {
 		return s.next.UpdateDraftFocusLoss(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftExecutionProfile(arg0 context.Context, arg1 *store.ExamDraftExecutionProfileUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftExecutionProfile), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftExecutionProfile(arg0, arg1, arg2)
 	})
 }
 
@@ -3060,6 +3173,7 @@ var (
 	_ store.ExamSittingStore          = (*timedExamSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore       = (*timedExamSubmissionStore)(nil)
+	_ store.ExecutionGrantStore       = (*timedExecutionGrantStore)(nil)
 	_ store.ServingNodeLeaseStore     = (*timedServingNodeLeaseStore)(nil)
 	_ store.ExamAuthoringStore        = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore       = (*timedCommandOutcomeStore)(nil)

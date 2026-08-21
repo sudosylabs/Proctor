@@ -287,6 +287,12 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_MAIL_SMTP_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Mail.SMTP.Timeout
 	}),
+	durationEnvironmentOverride("PROCTOR_EXECUTION_DIAL_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Execution.DialTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_EXECUTION_OPERATION_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Execution.OperationTimeout
+	}),
 	durationEnvironmentOverride("PROCTOR_AUTHENTICATION_SESSIONS_ACCESS_TTL", func(cfg *Config) *Duration {
 		return &cfg.Authentication.Sessions.AccessTTL
 	}),
@@ -403,6 +409,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	boolEnvironmentOverride("PROCTOR_MAIL_ENABLED", func(cfg *Config) *bool {
 		return &cfg.Mail.Enabled
+	}),
+	boolEnvironmentOverride("PROCTOR_EXECUTION_ENABLED", func(cfg *Config) *bool {
+		return &cfg.Execution.Enabled
 	}),
 	boolEnvironmentOverride("PROCTOR_VFS_S3_SECURE", func(cfg *Config) *bool {
 		return &cfg.VFS.S3.Secure

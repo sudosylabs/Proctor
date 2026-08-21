@@ -381,10 +381,12 @@ type CandidateExamResource struct {
 type CandidateExamPresentation struct {
 	AttemptID            model.ExamAttemptID
 	SittingID            model.ExamSittingID
+	ClassID              model.ClassID
 	AdmissionRevisionID  model.ExamRevisionID
 	CurrentRevisionID    model.ExamRevisionID
 	Title                string
 	InstructionsMarkdown string
+	ExecutionProfile     model.ExecutionProfile
 	Resources            []CandidateExamResource
 	// FocusLossCollectionEnabled is the only Focus Loss policy detail exposed
 	// to candidates. It comes from the Sitting's current frozen Revision and

@@ -6,12 +6,14 @@ package app
 import (
 	"errors"
 
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 )
 
 type examinationConstruction struct {
+	execution              *appexecution.Service
 	authoring              examUseCases
 	revisions              examRevisionUseCases
 	sittings               examSittingUseCases
@@ -109,6 +111,9 @@ func validateApplicationDependencies(deps Dependencies) error {
 	}
 	if deps.FileContent == nil {
 		return errors.New("file content is required")
+	}
+	if deps.ExecutionHosts == nil {
+		return errors.New("execution hosts are required")
 	}
 	if deps.NodeID == "" {
 		return errors.New("node ID is required")
@@ -214,6 +219,7 @@ func assembleApplication(
 		academicUnitMembers:               access.academicUnitMembers,
 		classMembers:                      access.classMembers,
 		exams:                             examinations.authoring,
+		execution:                         examinations.execution,
 		examRevisions:                     examinations.revisions,
 		examSittings:                      examinations.sittings,
 		examAttempts:                      examinations.attempts,

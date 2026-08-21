@@ -54,6 +54,7 @@ var baselineTables = []string{
 	"exam_submission_manifest_entries",
 	"exam_submissions",
 	"exams",
+	"execution_grants",
 	"external_identities",
 	"external_login_states",
 	"file_entries",

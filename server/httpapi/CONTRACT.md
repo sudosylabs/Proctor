@@ -538,6 +538,20 @@ publisher, time, base Revision, and publication kind. They never return
 instructions, canonical policy bytes, resource metadata or content identities,
 Starter Workspace paths, object identities, or source bytes.
 
+`PUT /api/v1/exams/{exam_id}/draft/execution-profile` replaces the complete
+Draft execution choice under the normal manager authorization, Draft revision
+fence, audit, and required idempotency contract. Its strict JSON body contains
+`expected_draft_revision`, `enabled`, `image`, and `network`. Disabled profiles
+carry an empty image and `none`; enabled profiles require a bounded catalog
+image identifier and either `none` or `allowlist`. Publication freezes the
+exact profile and digest into the immutable Exam Revision. Live correction
+cannot change it.
+
+`GET /api/v1/exams/{exam_id}/draft/execution-images` applies the same Exam
+authoring authorization and returns only sorted, deduplicated image ids and
+their supported `none`/`allowlist` modes. Host ids, addresses, credentials,
+release versions, and capacity are not public API fields.
+
 ## Exam Sitting schedule
 
 An Exam Sitting delivers one immutable Exam Revision to one exact Class over a
@@ -802,6 +816,16 @@ and Review manager notes are returned only on manager-authorized Review
 responses and are excluded from ordinary audit values and realtime events.
 Mutation JSON is strict, duplicate-free, closed, and requires
 `Idempotency-Key`.
+
+The existing authenticated Attempt WebSocket carries the terminal; there is no
+candidate-to-host endpoint. After `exam_attempt.connect`, the client may send
+`exam_attempt.terminal.open` with the current generation, continuity
+credential, and non-zero window, followed by bounded base64
+`exam_attempt.terminal.input`, `exam_attempt.terminal.resize`, and
+`exam_attempt.terminal.close` actions. The server emits bounded base64
+`exam_attempt.terminal.output` and a terminal `exam_attempt.terminal.closed`
+event. PTY events are deliberately excluded from replay history and terminal
+bytes, credentials, host identities, and paths are never logged or audited.
 
 The candidate result route is concealed until explicit release. Its response
 contains only Review, Submission, and Attempt identities, sanitized approved

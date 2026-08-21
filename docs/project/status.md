@@ -16,6 +16,23 @@ the code and component contracts for that detail.
 - Typed deployment configuration, bounded asynchronous structured logging with
   rotated targets and failure/drop diagnostics, health/readiness, graceful
   shutdown, and the shared `testlib` graph are operational.
+- The execenv v0.2.0 server foundation is operational behind `app/execution`:
+  a bounded static multi-host catalog supports TLS 1.3/mTLS or loopback-only
+  development authentication, fail-closed readiness, reconnecting outbound
+  clients, deterministic image/network/capacity placement, and durable
+  PostgreSQL assignment/reassignment/release history. PostgreSQL and VFS remain
+  authoritative for the Attempt Workspace; full verified snapshots and
+  acknowledged IDE changes converge the ephemeral host tree, submission
+  releases commit before host revocation, and bounded reconciliation repairs
+  missed open, freeze, thaw, release, and revocation effects from authoritative
+  Attempt and Sitting state. Applied Sitting state/revision, exact-grant host
+  operations, and a connection-owned PostgreSQL advisory lease fence cross-node
+  lifecycle races; a durable pre-effect pending marker makes process-loss
+  uncertainty visible to reconciliation. Draft/Revision
+  Execution Profiles, the authorized
+  Attempt WebSocket terminal, guest-write acknowledgement, pause/resume/lease
+  hooks, and periodic cleanup scheduling are implemented through the API
+  boundary; the UI remains a separate product slice.
 - General server localization keeps flat `{id, translation}` data directly
   under the data-only `server/i18n` directory; the root embeds it and the
   `server/localization` module provides installation/English fallback, strict
@@ -615,12 +632,21 @@ widen the User Settings module.
 - Decide whether generated client SDKs belong in this monorepo and which
   desktop languages are required.
 
-## Accepted execution-environment design
+## Execution-environment foundation
 
-The Execution Environment design is accepted but not implemented. An
-Execution Profile is authored on the Draft, frozen in the Revision, and
-defaults to off. The Attempt Workspace remains the durable authority; the
-environment is a Firecracker-isolated projection with one Attempt Terminal.
+The execenv server integration is implemented through the API boundary.
+Execution Profiles are authored on Drafts and frozen into immutable Revisions;
+the authenticated Attempt WebSocket exposes bounded terminal open, input,
+resize, close, output, and closed messages; guest writes are acknowledged
+through the existing Workspace commands; and pause, resume, lease loss,
+submission, Sitting close, and periodic cleanup converge host state. The UI is
+still a separate product slice. The profile remains off by default, the Attempt
+Workspace remains durable authority, and the environment is a
+Firecracker-isolated projection with one Attempt Terminal.
+execenv v0.2 advertises remaining slots while enforcing configured memory,
+disk, CPU, and process limits inside `Ensure`; a separate remaining-memory
+advertisement is deferred until the reusable execenv readiness contract grows
+that field.
 [`execenv`](https://github.com/sudosylabs/execenv) is the exam-blind
 client contract and the host daemon repository; only the installation talks
 to hosts. The complete contract is in

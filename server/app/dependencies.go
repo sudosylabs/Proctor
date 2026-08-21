@@ -12,6 +12,7 @@ import (
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
+	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
@@ -59,6 +60,7 @@ type Dependencies struct {
 	MailSecretSealer *secretseal.Sealer
 	Registry         externalProviderSource
 	FileContent      FileContent
+	ExecutionHosts   appexecution.HostDirectory
 
 	NodeID    string
 	PublicURL string
