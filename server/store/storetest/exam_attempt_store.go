@@ -733,7 +733,8 @@ func newExamAttemptFixtureWithFocusLoss(t *testing.T, ctx context.Context, ss st
 	requireNoError(t, err)
 	openJob, deadlineJob := newExamSittingLifecycleJobs(t, sitting.ID, 1, start, end)
 	_, err = ss.ExamSitting().Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: manager.ID,
-		AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID.String(), AuditAt: model.GetMillis()},
+		AuditEventID: saveExamSittingAudit(t, ctx, ss, manager.ID, created.Value.Exam.ID, programme.AcademicUnitID).ID.String(), AuditAt: model.GetMillis(),
+		Mail: newExamSittingMailFanout(t, manager.ID, store.ExamSittingMailScheduled, model.MailTemplateExamSittingScheduled)},
 		examCommand(manager.ID, "exam.sitting.schedule.v1", "attempt-sitting", "attempt-sitting"))
 	requireNoError(t, err)
 	time.Sleep(1100 * time.Millisecond)

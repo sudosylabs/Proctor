@@ -521,7 +521,7 @@ CREATE INDEX onboarding_import_rows_execution_idx
 -- independent because an administrator may notify a pre-User Invitation.
 CREATE TABLE mail_occurrences (
     id varchar(26) PRIMARY KEY,
-    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'academic_administration', 'sitting_schedule', 'exam_management')),
+    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'academic_administration', 'sitting_schedule', 'exam_management', 'submission_receipt')),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
@@ -539,7 +539,8 @@ CREATE TABLE mail_occurrences (
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
-        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you'
+        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
+        'exam.submission_received', 'exam.submission_automatically_sealed'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     created_at timestamptz NOT NULL,
@@ -580,7 +581,8 @@ CREATE TABLE mail_deliveries (
         'exam.sitting_scheduled', 'exam.sitting_rescheduled',
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
-        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you'
+        'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
+        'exam.submission_received', 'exam.submission_automatically_sealed'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
     masked_recipient varchar(254) NOT NULL

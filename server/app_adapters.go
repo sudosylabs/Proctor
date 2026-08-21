@@ -302,6 +302,23 @@ func (a mailTemplateRendererAdapter) RenderClassTransitionNotice(
 	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
 }
 
+func (a mailTemplateRendererAdapter) RenderSubmissionReceipt(
+	key model.MailTemplateKey,
+	recipientLocale string,
+	installationLocale string,
+	details app.SubmissionReceiptMailDetails,
+) (app.FrozenMailContent, error) {
+	message, err := a.renderer.Render(templates.Request{
+		Key: i18n.Key(key), RecipientLocale: recipientLocale, InstallationLocale: installationLocale,
+		SubmissionReceipt: &templates.SubmissionReceiptDetails{ExamTitle: details.ExamTitle,
+			SittingID: details.SittingID.String(), SubmissionID: details.SubmissionID.String(), SealedAt: details.SealedAt},
+	})
+	if err != nil {
+		return app.FrozenMailContent{}, err
+	}
+	return app.FrozenMailContent{Subject: message.Subject, Text: message.Text, HTML: message.HTML}, nil
+}
+
 func (a mailTemplateRendererAdapter) RenderSittingScheduleNotice(
 	key model.MailTemplateKey,
 	recipientLocale string,

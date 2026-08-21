@@ -1366,6 +1366,12 @@ func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context
 	})
 }
 
+func (s *timedExamSubmissionStore) PrepareAutomaticSeal(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareAutomaticSeal), func() (*store.ExamSubmissionAutomaticSealPreparation, error) {
+		return s.next.PrepareAutomaticSeal(arg0, arg1)
+	})
+}
+
 func (s *timedExamSubmissionStore) SealForSittingClose(arg0 context.Context, arg1 *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodSealForSittingClose), func() (*store.ExamSubmissionAutomaticSealResult, error) {
 		return s.next.SealForSittingClose(arg0, arg1)

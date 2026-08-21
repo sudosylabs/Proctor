@@ -1010,6 +1010,7 @@ type fixture struct {
 	persistence               *attemptStoreFake
 	workspace                 *attemptWorkspaceStoreFake
 	submissions               *submissionStoreFake
+	mail                      *submissionMailFake
 	audit                     *auditFake
 	systemAudit               *systemAuditFake
 	effects                   *effectsFake
@@ -1037,13 +1038,14 @@ func newFixture(t *testing.T) *fixture {
 	f.persistence = &attemptStoreFake{f: f, firstAdmission: true, connectionOpened: true}
 	f.workspace = &attemptWorkspaceStoreFake{f: f}
 	f.submissions = &submissionStoreFake{f: f}
+	f.mail = &submissionMailFake{f: f}
 	f.audit = &auditFake{f: f}
 	f.systemAudit = &systemAuditFake{f: f}
 	f.effects = &effectsFake{f: f}
 	f.content = &contentFake{f: f}
 	service, err := New(Dependencies{
 		Persistence: f.persistence, Workspace: f.workspace, Submissions: f.submissions, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
-		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content,
+		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content, Mail: f.mail,
 		Now: func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: func() model.IntegrityFlagID {

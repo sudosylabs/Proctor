@@ -483,6 +483,10 @@ func (personalAccessTokenActionTimeRenderer) RenderClassTransitionNotice(model.M
 	return FrozenMailContent{}, errors.New("unexpected Class transition render")
 }
 
+func (personalAccessTokenActionTimeRenderer) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, errors.New("unexpected Submission receipt render")
+}
+
 func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.T) {
 	t.Parallel()
 

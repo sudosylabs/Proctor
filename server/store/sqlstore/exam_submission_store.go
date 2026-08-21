@@ -80,11 +80,17 @@ func (s *SQLExamSubmissionStore) ResolveSealTarget(ctx context.Context, access s
 		return nil, store.NewErrInvalidInput("exam_submission", "seal_access", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve Exam Submission seal target", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamSubmissionSealTarget, error) {
-		row, _, _, err := lockExamSubmissionSealAccess(ctx, tx, access, true)
+		row, _, databaseNow, err := lockExamSubmissionSealAccess(ctx, tx, access, true)
 		if err != nil {
 			return nil, err
 		}
-		return examSubmissionSealTarget(row)
+		target, targetErr := examSubmissionSealTarget(row)
+		if targetErr != nil {
+			return nil, targetErr
+		}
+		target.Replayed = row.AttemptState == string(model.ExamAttemptSubmitted)
+		target.SealAt = model.TimeFromMillis(model.MillisFromTime(databaseNow))
+		return target, nil
 	})
 }
 
@@ -337,12 +343,33 @@ type examSubmissionManifestPersistenceRow struct {
 
 func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamSubmissionSeal) (examSubmissionSealOutcomeV1, error) {
 	var zero examSubmissionSealOutcomeV1
+	recipient, err := lockMailRecipientUser(ctx, tx, input.Access.CandidateUserID)
+	if err != nil {
+		return zero, err
+	}
 	row, integrityTail, databaseNow, err := lockExamSubmissionSealAccess(ctx, tx, input.Access, false)
 	if err != nil {
 		return zero, err
 	}
 	if input.Access.FinalFocusLossSequence < integrityTail.AcceptedSequence {
 		return zero, store.NewErrConflict("focus_loss_signal", "focus_loss_sequence", nil)
+	}
+	sealAt := model.TimeFromMillis(input.AuditAt)
+	if sealAt.After(databaseNow) {
+		return zero, store.NewErrConflict("exam_submission", "seal_time", nil)
+	}
+	if input.ExpectedRecipientRevision < 1 || recipient.Revision != input.ExpectedRecipientRevision {
+		return zero, store.NewErrConflict("exam_submission", "receipt_recipient_changed", nil)
+	}
+	payloadKeyID, err := validateExamSubmissionReceiptMail(input.Notice, recipient, input.SubmissionID, input.AuditAt,
+		model.MailTemplateExamSubmissionReceived)
+	if err != nil {
+		return zero, err
+	}
+	if payloadKeyID != "" {
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return zero, err
+		}
 	}
 	tail := input.Access.FinalFocusLossSequence - integrityTail.AcceptedSequence
 	if tail > math.MaxInt64-integrityTail.TotalUnresolved {
@@ -361,7 +388,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	if err != nil {
 		return zero, err
 	}
-	if err = model.SubmitExamAttempt(attempt, participation, connection, databaseNow); err != nil {
+	if err = model.SubmitExamAttempt(attempt, participation, connection, sealAt); err != nil {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", err)
 	}
 	workspaceID, err := model.ParseExamAttemptWorkspaceID(row.WorkspaceID)
@@ -370,7 +397,7 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: input.SubmissionID,
 		AttemptID: input.Access.AttemptID, WorkspaceID: workspaceID, Manifest: manifest,
-		FinalFocusLossSequence: input.Access.FinalFocusLossSequence, UnresolvedIntegrityCount: unresolved, SubmittedAt: databaseNow})
+		FinalFocusLossSequence: input.Access.FinalFocusLossSequence, UnresolvedIntegrityCount: unresolved, SubmittedAt: sealAt})
 	if err != nil {
 		return zero, store.NewErrInvalidInput("exam_submission", "value", nil).Wrap(err)
 	}
@@ -431,6 +458,9 @@ func sealExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		SittingID: target.SittingID.String(), ClassID: target.ClassID.String(), CandidateID: target.CandidateUserID.String(),
 		ParticipationID: participation.ID.String(), Generation: participation.Generation, ConnectionID: connection.ID.String()}
 	if err = completeExamSubmissionAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
+		return zero, err
+	}
+	if err = insertExamSubmissionReceiptMail(ctx, tx, input.Notice, payloadKeyID); err != nil {
 		return zero, err
 	}
 	return outcome, nil

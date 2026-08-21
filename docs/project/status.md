@@ -309,12 +309,19 @@ in the request transaction. Daily bounded maintenance now terminalizes
 expired, permanently failed, or orphaned expansion, destroys its encrypted
 bundle, suppresses remaining child work, and releases reconciliation; terminal
 retention preserves only the last-communicated candidate projection. The
-remaining catalog transitions are not yet implemented.
+Submission sealing now records one candidate-safe direct receipt atomically
+with the Submission and audit. Voluntary and automatic sealing use distinct
+wording and templates; both freeze only the published Exam title, safe Sitting
+and Submission receipt identities, and a UTC seal time. Exact and crash
+replays recover the retained Submission without rendering or recording a
+second message, while disabled or ineligible recipients retain a terminal
+suppression. The remaining catalog transitions are not yet implemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
-Recovery transitions record encrypted per-recipient delivery intent and durable
-Jobs atomically; later application transitions will use the same contract, with
+Recovery, Class, Exam-management, and Submission transitions record encrypted
+per-recipient delivery intent and durable Jobs atomically; later application
+transitions will use the same contract, with
 bounded fan-out, relevance fencing,
 deadline-aware retries, safe operator control, and no user opt-outs. The
 complete contract and remaining delivery order are in

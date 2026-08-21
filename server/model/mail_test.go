@@ -66,6 +66,29 @@ func TestClassTransitionMailMeaningsAreClosed(t *testing.T) {
 	}
 }
 
+func TestExamSubmissionReceiptMailMeaningsAreClosed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	for _, key := range []MailTemplateKey{
+		MailTemplateExamSubmissionReceived,
+		MailTemplateExamSubmissionAutomaticallySealed,
+	} {
+		if !key.IsValid() {
+			t.Errorf("MailTemplateKey(%q) is invalid", key)
+		}
+		occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSubmissionReceipt,
+			TemplateKey: key, ActorUserID: NewUserID(), CreatedAt: at}
+		if err := occurrence.Validate(); err != nil {
+			t.Errorf("MailOccurrence(%q): %v", key, err)
+		}
+	}
+	invalid := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceSubmissionReceipt,
+		TemplateKey: MailTemplateExamSittingScheduled, ActorUserID: NewUserID(), CreatedAt: at}
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("Submission receipt occurrence accepted a Sitting schedule template")
+	}
+}
+
 func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)

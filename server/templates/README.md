@@ -50,6 +50,13 @@ The three Class membership notices additionally receive the closed
 previous Class; open-ended enrollment omits the end time. They never receive
 the actor, roster contents, authorization grants, or private audit detail.
 
+The two Exam Submission receipt messages additionally receive the closed
+`.Copy.SubmissionReceipt` label set and these bounded fields under
+`.SubmissionReceipt`: `.ExamTitle`, `.SittingID`, `.SubmissionID`, `.SealedAt`,
+and `.Timezone`. They never receive answers, workspace paths or selectors,
+manifest contents, integrity signals, Session or continuity credentials,
+candidate profile fields, or private review state.
+
 The renderer accepts no arbitrary map and registers no custom template
 functions. Copy is markup-free and HTML is parsed with Go `html/template`, so
 localized and dynamic values are contextually escaped. Action URLs are

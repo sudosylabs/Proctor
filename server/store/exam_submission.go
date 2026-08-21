@@ -42,6 +42,8 @@ type ExamSubmissionSealTarget struct {
 	ClassID         model.ClassID
 	CandidateUserID model.UserID
 	WorkspaceID     model.ExamAttemptWorkspaceID
+	Replayed        bool
+	SealAt          time.Time
 }
 
 // ExamSubmissionSeal supplies the server-proposed identity and safe audit
@@ -49,10 +51,12 @@ type ExamSubmissionSealTarget struct {
 // semantic command fingerprint: an outcome-unknown retry returns the single
 // retained Submission rather than creating a second one.
 type ExamSubmissionSeal struct {
-	SubmissionID model.SubmissionID
-	Access       ExamSubmissionSealAccess
-	AuditEventID string
-	AuditAt      int64
+	SubmissionID              model.SubmissionID
+	Access                    ExamSubmissionSealAccess
+	AuditEventID              string
+	AuditAt                   int64
+	Notice                    *PreparedMail
+	ExpectedRecipientRevision int64
 }
 
 // ExamSubmissionReceipt is the complete candidate-safe immutable response. It
@@ -114,10 +118,12 @@ type ExamSubmissionAutomaticSealTarget struct {
 // concurrent or crash replay returns the one retained Submission and completes
 // the new audit without duplicating the immutable manifest.
 type ExamSubmissionAutomaticSeal struct {
-	Target       ExamSubmissionAutomaticSealTarget
-	SubmissionID model.SubmissionID
-	AuditEventID string
-	AuditAt      int64
+	Target                    ExamSubmissionAutomaticSealTarget
+	SubmissionID              model.SubmissionID
+	AuditEventID              string
+	AuditAt                   int64
+	Notice                    *PreparedMail
+	ExpectedRecipientRevision int64
 }
 
 // ExamSubmissionAutomaticSealResult is the safe post-commit projection used
@@ -125,6 +131,14 @@ type ExamSubmissionAutomaticSeal struct {
 type ExamSubmissionAutomaticSealResult struct {
 	ExamSubmissionSealResult
 	ConnectionClosed bool
+}
+
+// ExamSubmissionAutomaticSealPreparation reserves the PostgreSQL action time
+// used by a fresh automatic receipt and reports whether the terminal aggregate
+// already exists. The terminal mutation still rechecks all lifecycle state.
+type ExamSubmissionAutomaticSealPreparation struct {
+	Replayed bool
+	SealAt   time.Time
 }
 
 // ExamSubmissionAuthorization is the minimal immutable ownership projection
@@ -187,17 +201,24 @@ type ExamSubmissionFileSelector struct {
 // selector of a committed Submission for replay-audit preflight. It cannot
 // authorize a different command through terminal state.
 //
-// Seal is one named atomic operation. It first locks the Attempt and Workspace
-// so no new mutation can pass, then rechecks the Open Sitting, active Attempt,
-// current exact-Class membership, active unexpired Participation generation,
-// owning open Connection and credential, exact Workspace Cursor, and final
-// Focus Loss high-water. It reconciles accepted Workspace and integrity tails;
-// builds the canonical manifest from authoritative current Entry/object rows,
-// never a client list; creates the sole Submission and its retained content
-// references; marks the Attempt Submitted; ends Participation and Connection;
-// terminates integrity collection as Settled or Gapped; completes the supplied
-// audit; and retains the bounded command outcome in the same transaction.
-// A failed transaction changes none of those facts.
+// ResolveSealTarget reserves one millisecond PostgreSQL action time for the
+// command. Seal is one named atomic operation. It first locks and revalidates
+// the receipt User, including the expected recipient revision and active or
+// ineligible lifecycle represented by the prepared notice, then follows the
+// canonical Class/Attempt/Workspace order so no new mutation can pass. Under
+// those locks it rechecks the Open Sitting, active Attempt, current exact-Class
+// membership, active unexpired Participation generation, owning open
+// Connection and credential, exact Workspace Cursor, and final Focus Loss
+// high-water. It reconciles accepted Workspace and integrity tails; builds the
+// canonical manifest from authoritative current Entry/object rows, never a
+// client list; creates the sole Submission and its retained content references
+// at the reserved action time; marks the Attempt Submitted; ends Participation
+// and Connection; terminates integrity collection as Settled or Gapped;
+// completes the supplied audit; inserts exactly one semantic receipt
+// occurrence and queued or terminally suppressed delivery; and retains the
+// bounded command outcome in the same transaction. Encrypted receipt payloads
+// hold the durable primary-key fence through commit. A failed transaction
+// changes none of those facts.
 //
 // An exact outcome replay rechecks the exact retained causal Access selector
 // and returns the original receipt even though the committed transition is
@@ -209,6 +230,15 @@ type ExamSubmissionFileSelector struct {
 // exam_sitting_state, attempt_participation_credential,
 // attempt_participation_generation, attempt_participation_expired, and
 // attempt_connection_closed.
+// Fresh voluntary and automatic seals require the matching prepared notice
+// and expected recipient revision; exact replay requires neither and never
+// inserts another occurrence, delivery, or Job. PrepareAutomaticSeal performs
+// no transition: it locks and resolves the exact automatic target, reports a
+// retained replay, and reserves the PostgreSQL action time used by a fresh
+// automatic seal. SealForSittingClose repeats the User-first recipient and
+// lifecycle checks before the Attempt/Workspace transition, uses that same
+// action time for Submission, audit, and receipt, and otherwise has the same
+// atomic mail, audit, rollback, rekey-fence, and replay guarantees as Seal.
 //
 // Manager callers authorize externally through Resolve before Get,
 // ListManifest, or ResolveFile. Get returns only the immutable aggregate
@@ -220,6 +250,7 @@ type ExamSubmissionStore interface {
 	ResolveSealTarget(context.Context, ExamSubmissionSealAccess) (*ExamSubmissionSealTarget, error)
 	Seal(context.Context, *ExamSubmissionSeal, *CommandIdempotency) (*ExamSubmissionSealResult, error)
 	ListAutomaticSealTargets(context.Context, ExamSubmissionAutomaticSealListOptions) ([]ExamSubmissionAutomaticSealTarget, error)
+	PrepareAutomaticSeal(context.Context, ExamSubmissionAutomaticSealTarget) (*ExamSubmissionAutomaticSealPreparation, error)
 	SealForSittingClose(context.Context, *ExamSubmissionAutomaticSeal) (*ExamSubmissionAutomaticSealResult, error)
 	Resolve(context.Context, model.SubmissionID) (*ExamSubmissionAuthorization, error)
 	Get(context.Context, model.SubmissionID) (*model.ExamSubmission, error)

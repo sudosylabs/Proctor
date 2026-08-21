@@ -97,6 +97,10 @@ func run(args []string, stderr io.Writer) error {
 				details.PreviousClassDisplayName = "Year 2 · Class A"
 			}
 			request.ClassTransition = details
+		case i18n.ExamSubmissionReceived, i18n.ExamSubmissionAutomaticallySealed:
+			request.SubmissionReceipt = &mailtemplates.SubmissionReceiptDetails{ExamTitle: "Representative programming exam",
+				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
+				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 		}
 		message, renderErr := renderer.Render(request)
 		if renderErr != nil {

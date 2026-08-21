@@ -188,6 +188,10 @@ func (r mailRendererFake) RenderClassTransitionNotice(model.MailTemplateKey, str
 	return r.content, nil
 }
 
+func (r mailRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+	return r.content, nil
+}
+
 type mailSenderFake struct {
 	enabled   bool
 	from      MailAddress

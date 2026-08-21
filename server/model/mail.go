@@ -60,7 +60,9 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateExamManagerAdded,
 		MailTemplateExamManagerRemoved,
 		MailTemplateExamOwnershipTransferredToYou,
-		MailTemplateExamOwnershipTransferredFromYou:
+		MailTemplateExamOwnershipTransferredFromYou,
+		MailTemplateExamSubmissionReceived,
+		MailTemplateExamSubmissionAutomaticallySealed:
 		return true
 	default:
 		return false
@@ -103,6 +105,8 @@ const (
 	MailTemplateExamManagerRemoved                  MailTemplateKey = "exam.manager_removed"
 	MailTemplateExamOwnershipTransferredToYou       MailTemplateKey = "exam.ownership_transferred_to_you"
 	MailTemplateExamOwnershipTransferredFromYou     MailTemplateKey = "exam.ownership_transferred_from_you"
+	MailTemplateExamSubmissionReceived              MailTemplateKey = "exam.submission_received"
+	MailTemplateExamSubmissionAutomaticallySealed   MailTemplateKey = "exam.submission_automatically_sealed"
 
 	MailOccurrenceOperatorTest           MailOccurrenceKind = "operator_test"
 	MailOccurrenceAccountToken           MailOccurrenceKind = "account_token"
@@ -111,6 +115,7 @@ const (
 	MailOccurrenceAcademicAdministration MailOccurrenceKind = "academic_administration"
 	MailOccurrenceSittingSchedule        MailOccurrenceKind = "sitting_schedule"
 	MailOccurrenceExamManagement         MailOccurrenceKind = "exam_management"
+	MailOccurrenceSubmissionReceipt      MailOccurrenceKind = "submission_receipt"
 
 	MailDeliveryQueued     MailDeliveryState = "queued"
 	MailDeliverySending    MailDeliveryState = "sending"
@@ -176,6 +181,8 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 	case MailOccurrenceExamManagement:
 		return key == MailTemplateExamManagerAdded || key == MailTemplateExamManagerRemoved ||
 			key == MailTemplateExamOwnershipTransferredToYou || key == MailTemplateExamOwnershipTransferredFromYou
+	case MailOccurrenceSubmissionReceipt:
+		return key == MailTemplateExamSubmissionReceived || key == MailTemplateExamSubmissionAutomaticallySealed
 	default:
 		return false
 	}

@@ -145,9 +145,42 @@ func (s *SQLExamSubmissionStore) SealForSittingClose(ctx context.Context,
 	})
 }
 
+func (s *SQLExamSubmissionStore) PrepareAutomaticSeal(ctx context.Context,
+	target store.ExamSubmissionAutomaticSealTarget,
+) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+	if !validAutomaticExamSubmissionTarget(target) {
+		return nil, store.NewErrInvalidInput("exam_submission", "automatic_seal_target", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "resolve automatic Exam Submission replay", func(ctx context.Context,
+		tx *sqlxTxWrapper,
+	) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+		row, err := lockAutomaticExamSubmission(ctx, tx, target.AttemptID)
+		if err != nil {
+			return nil, err
+		}
+		current, err := automaticExamSubmissionTarget(row.automaticExamSubmissionTargetRow)
+		if err != nil {
+			return nil, err
+		}
+		if current != target {
+			return nil, store.NewErrNotFound("exam_submission_automatic_target", target.AttemptID.String())
+		}
+		var databaseNow time.Time
+		if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read automatic Exam Submission preparation time: %w", err)
+		}
+		return &store.ExamSubmissionAutomaticSealPreparation{Replayed: row.AttemptState == string(model.ExamAttemptSubmitted),
+			SealAt: model.TimeFromMillis(model.MillisFromTime(databaseNow))}, nil
+	})
+}
+
 func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	input *store.ExamSubmissionAutomaticSeal,
 ) (*store.ExamSubmissionAutomaticSealResult, error) {
+	recipient, err := lockMailRecipientUser(ctx, tx, input.Target.CandidateUserID)
+	if err != nil {
+		return nil, err
+	}
 	row, err := lockAutomaticExamSubmission(ctx, tx, input.Target.AttemptID)
 	if err != nil {
 		return nil, err
@@ -161,6 +194,19 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	if row.AttemptState == string(model.ExamAttemptSubmitted) {
 		return replayAutomaticExamSubmission(ctx, tx, input, target)
+	}
+	if input.ExpectedRecipientRevision < 1 || recipient.Revision != input.ExpectedRecipientRevision {
+		return nil, store.NewErrConflict("exam_submission", "receipt_recipient_changed", nil)
+	}
+	payloadKeyID, err := validateExamSubmissionReceiptMail(input.Notice, recipient, input.SubmissionID, input.AuditAt,
+		model.MailTemplateExamSubmissionAutomaticallySealed)
+	if err != nil {
+		return nil, err
+	}
+	if payloadKeyID != "" {
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return nil, err
+		}
 	}
 	if row.SittingState != string(model.ExamSittingClosing) ||
 		(row.AttemptState != string(model.ExamAttemptActive) && row.AttemptState != string(model.ExamAttemptSuspended)) {
@@ -199,12 +245,16 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 		return nil, fmt.Errorf("read automatic Exam Submission time: %w", err)
 	}
 	databaseNow = model.TimeUTC(databaseNow)
-	if err = model.SealExamAttemptForSittingClose(attempt, participation, connection, databaseNow); err != nil {
+	sealAt := model.TimeFromMillis(input.AuditAt)
+	if sealAt.After(databaseNow) {
+		return nil, store.NewErrConflict("exam_submission", "seal_time", nil)
+	}
+	if err = model.SealExamAttemptForSittingClose(attempt, participation, connection, sealAt); err != nil {
 		return nil, store.NewErrConflict("exam_attempt", "exam_attempt_state", err)
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: input.SubmissionID,
 		AttemptID: target.AttemptID, WorkspaceID: target.WorkspaceID, Manifest: manifest,
-		FinalFocusLossSequence: integrity.LatestAcceptedSequence, UnresolvedIntegrityCount: unresolved, SubmittedAt: databaseNow})
+		FinalFocusLossSequence: integrity.LatestAcceptedSequence, UnresolvedIntegrityCount: unresolved, SubmittedAt: sealAt})
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_submission", "value", nil).Wrap(err)
 	}
@@ -219,6 +269,9 @@ func sealAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper,
 	}
 	outcome := automaticExamSubmissionOutcome(submission, target)
 	if err = completeExamSubmissionAudit(ctx, tx, outcome, input.AuditEventID, input.AuditAt, false, ""); err != nil {
+		return nil, err
+	}
+	if err = insertExamSubmissionReceiptMail(ctx, tx, input.Notice, payloadKeyID); err != nil {
 		return nil, err
 	}
 	result, err := examSubmissionSealResult(outcome)

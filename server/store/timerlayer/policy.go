@@ -195,6 +195,7 @@ const (
 	methodReleaseObjectCleanup          methodName = "release_object_cleanup"
 	methodResolve                       methodName = "resolve"
 	methodResolveSealTarget             methodName = "resolve_seal_target"
+	methodPrepareAutomaticSeal          methodName = "prepare_automatic_seal"
 	methodResolveCandidateResource      methodName = "resolve_candidate_resource"
 	methodConnect                       methodName = "connect"
 	methodRenewParticipation            methodName = "renew_participation"

@@ -110,6 +110,27 @@ type Content interface {
 	OpenAttemptWorkspaceObject(context.Context, model.AttemptWorkspaceObjectID) (io.ReadCloser, error)
 }
 
+// SubmissionMailPreparation contains only the safe identity needed to freeze
+// a candidate receipt. The implementation resolves recipient and published
+// Exam title without exposing them to the Attempt package.
+type SubmissionMailPreparation struct {
+	CandidateUserID model.UserID
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	SubmissionID    model.SubmissionID
+	SealedAt        time.Time
+	Automatic       bool
+}
+
+type PreparedSubmissionMail struct {
+	Notice                    *store.PreparedMail
+	ExpectedRecipientRevision int64
+}
+
+type SubmissionMailPreparer interface {
+	PrepareSubmissionReceipt(context.Context, SubmissionMailPreparation) (*PreparedSubmissionMail, error)
+}
+
 type Dependencies struct {
 	Persistence         store.ExamAttemptStore
 	Workspace           store.ExamAttemptWorkspaceStore
@@ -121,6 +142,7 @@ type Dependencies struct {
 	Effects             Effects
 	EffectFailures      EffectFailures
 	Content             Content
+	Mail                SubmissionMailPreparer
 	Now                 func() time.Time
 	NewAttemptID        func() model.ExamAttemptID
 	NewWorkspaceID      func() model.ExamAttemptWorkspaceID
@@ -141,7 +163,7 @@ type Service struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Workspace == nil || deps.Submissions == nil || deps.Sittings == nil || deps.Managers == nil || deps.Auditor == nil || deps.SystemAuditor == nil || deps.Effects == nil ||
-		deps.EffectFailures == nil || deps.Content == nil || deps.Now == nil || deps.NewAttemptID == nil ||
+		deps.EffectFailures == nil || deps.Content == nil || deps.Mail == nil || deps.Now == nil || deps.NewAttemptID == nil ||
 		deps.NewWorkspaceID == nil || deps.NewParticipation == nil || deps.NewConnection == nil || deps.NewEvidence == nil ||
 		deps.NewFlag == nil || deps.NewSuspension == nil || deps.NewFocusLossSignal == nil || deps.NewDiscrepancy == nil || deps.NewWorkspaceEntry == nil || deps.NewWorkspaceObject == nil || deps.NewWorkspaceVersion == nil || deps.NewSubmission == nil {
 		return nil, errors.New("Exam Attempt dependencies are required")

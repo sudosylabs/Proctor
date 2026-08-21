@@ -244,9 +244,25 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
+	at := target.SealAt
+	var notice *store.PreparedMail
+	var expectedRecipientRevision int64
+	if !target.Replayed {
+		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
+			CandidateUserID: target.CandidateUserID, ExamID: target.ExamID, SittingID: target.SittingID,
+			SubmissionID: submissionID, SealedAt: at,
+		})
+		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
+			if prepareErr == nil {
+				prepareErr = errors.New("invalid Submission receipt mail preparation")
+			}
+			return SubmissionResult{}, service.failAudit(ctx, auditID, unavailable(prepareErr))
+		}
+		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
+	}
 	stored, err := service.deps.Submissions.Seal(ctx, &store.ExamSubmissionSeal{SubmissionID: submissionID,
-		Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+		Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
+		ExpectedRecipientRevision: expectedRecipientRevision}, command.Idempotency)
 	if err != nil {
 		return SubmissionResult{}, service.failAudit(ctx, auditID, err)
 	}
@@ -264,7 +280,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 
 func validSubmissionTarget(target *store.ExamSubmissionSealTarget, access store.ExamSubmissionSealAccess) bool {
 	return target != nil && target.ExamID.IsValid() && target.SittingID.IsValid() && target.ClassID.IsValid() &&
-		target.CandidateUserID == access.CandidateUserID && target.WorkspaceID.IsValid()
+		target.CandidateUserID == access.CandidateUserID && target.WorkspaceID.IsValid() && !target.SealAt.IsZero()
 }
 
 func projectSubmissionResult(stored *store.ExamSubmissionSealResult, target *store.ExamSubmissionSealTarget,

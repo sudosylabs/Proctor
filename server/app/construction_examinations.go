@@ -64,13 +64,15 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		return examinationConstruction{}, err
 	}
 	attemptEffects := examAttemptRealtimeEffects{realtime: foundation.realtime}
+	submissionMail := examSubmissionMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
+		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
 	attempts, err := examattempt.New(examattempt.Dependencies{
 		Persistence: deps.Store.ExamAttempt(), Workspace: deps.Store.ExamAttemptWorkspace(),
 		Submissions: deps.Store.ExamSubmission(), Sittings: deps.Store.ExamSitting(),
 		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings, submissions: deps.Store.ExamSubmission()},
 		Auditor:       examAttemptAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		SystemAuditor: examAttemptSystemAuditAdapter{audit: foundation.audit},
-		Effects:       attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent,
+		Effects:       attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent, Mail: submissionMail,
 		Now: time.Now, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID,

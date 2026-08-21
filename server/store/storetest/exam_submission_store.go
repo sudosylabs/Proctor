@@ -31,6 +31,49 @@ type SubmissionIntegrityPersistence struct {
 	UnresolvedMissing int64
 }
 
+func attachSubmissionReceipt(t *testing.T, candidate *model.User, input *store.ExamSubmissionSeal) {
+	t.Helper()
+	input.Notice = submissionReceiptNotice(t, candidate, input.SubmissionID, input.AuditAt,
+		model.MailTemplateExamSubmissionReceived)
+	input.ExpectedRecipientRevision = candidate.Revision
+}
+
+func attachAutomaticSubmissionReceipt(t *testing.T, candidate *model.User, input *store.ExamSubmissionAutomaticSeal) {
+	t.Helper()
+	input.Notice = submissionReceiptNotice(t, candidate, input.SubmissionID, input.AuditAt,
+		model.MailTemplateExamSubmissionAutomaticallySealed)
+	input.ExpectedRecipientRevision = candidate.Revision
+}
+
+func submissionReceiptNotice(t *testing.T, candidate *model.User, submissionID model.SubmissionID, auditAt int64,
+	key model.MailTemplateKey,
+) *store.PreparedMail {
+	t.Helper()
+	at := model.TimeFromMillis(auditAt)
+	occurrenceID := model.MailOccurrenceID(submissionID.String())
+	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	requireNoError(t, err)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at, model.MailMaximumAttempts)
+	requireNoError(t, err)
+	job, err = job.RequestCancellation(at)
+	requireNoError(t, err)
+	occurrence := &model.MailOccurrence{ID: occurrenceID, Kind: model.MailOccurrenceSubmissionReceipt,
+		TemplateKey: key, ActorUserID: candidate.ID, CreatedAt: at}
+	delivery := &model.MailDelivery{ID: deliveryID, OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: candidate.ID,
+		TemplateKey: key, TemplateDigest: strings.Repeat("0", 64), MaskedRecipient: "c***@example.edu",
+		State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at, MessageDate: at,
+		Deadline: at.Add(72 * time.Hour), MessageID: "<receipt." + deliveryID.String() + "@example.test>",
+		PublicFailureCode: model.MailDeliveryDisabledCode, Revision: 1}
+	if err = occurrence.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err = delivery.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return &store.PreparedMail{Occurrence: occurrence, Delivery: delivery, Job: job}
+}
+
 // TestExamSubmissionStore verifies voluntary terminal sealing and protected
 // manager inspection through the public Submission Store contract.
 func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.ExamSubmissionStore, probes ...ExamSubmissionSQLProbe) {
@@ -78,25 +121,38 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 	requireNoError(t, err)
 	if target == nil || target.ExamID != fixture.examID || target.SittingID != fixture.sitting.ID ||
 		target.ClassID != fixture.class.ID || target.CandidateUserID != fixture.candidate.ID ||
-		target.WorkspaceID != connected.Workspace.ID {
+		target.WorkspaceID != connected.Workspace.ID || target.SealAt.IsZero() {
 		t.Fatalf("ResolveSealTarget() = %#v", target)
 	}
 
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
-		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.MillisFromTime(target.SealAt)}
+	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-seal", "submission-seal")
 	sealed, err := submissions.Seal(ctx, input, command)
 	requireNoError(t, err)
 	if sealed == nil || sealed.Replayed || sealed.Receipt.SubmissionID != input.SubmissionID ||
 		sealed.Receipt.AttemptID != connected.Attempt.ID || sealed.Receipt.State != model.ExamAttemptSubmitted ||
 		sealed.Receipt.WorkspaceCursor != mutation.Change.Cursor || !validStoretestDigest(sealed.Receipt.ManifestDigest) ||
-		sealed.Receipt.SubmittedAt.IsZero() || sealed.ExamID != fixture.examID || sealed.SittingID != fixture.sitting.ID ||
+		!sealed.Receipt.SubmittedAt.Equal(input.Notice.Occurrence.CreatedAt) ||
+		sealed.ExamID != fixture.examID || sealed.SittingID != fixture.sitting.ID ||
 		sealed.ClassID != fixture.class.ID || sealed.CandidateUserID != fixture.candidate.ID ||
 		sealed.ParticipationID != connected.Participation.ID || sealed.Generation != connected.Participation.Generation ||
 		sealed.ConnectionID != connected.Connection.ID {
 		t.Fatalf("Seal() = %#v", sealed)
 	}
 	requireSuccessfulAudit(t, ctx, ss, input.AuditEventID)
+	replayTarget, err := submissions.ResolveSealTarget(ctx, access)
+	requireNoError(t, err)
+	if replayTarget == nil || !replayTarget.Replayed {
+		t.Fatalf("ResolveSealTarget(after seal) = %#v", replayTarget)
+	}
+	receiptDelivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID)
+	requireNoError(t, err)
+	if receiptDelivery.OccurrenceID != model.MailOccurrenceID(input.SubmissionID.String()) ||
+		receiptDelivery.TemplateKey != model.MailTemplateExamSubmissionReceived || receiptDelivery.TargetUserID != fixture.candidate.ID {
+		t.Fatalf("voluntary Submission receipt delivery = %#v", receiptDelivery)
+	}
 	audit, err := ss.Audit().Get(ctx, input.AuditEventID)
 	requireNoError(t, err)
 	for _, secret := range []string{credentialHash, fixture.session.ID.String(), "cmd/main.go"} {
@@ -198,6 +254,21 @@ func TestExamSubmissionStore(t *testing.T, ss store.Store, submissions store.Exa
 		t.Fatalf("Seal(exact replay) = %#v, first = %#v", replayed, sealed)
 	}
 	requireSuccessfulAudit(t, ctx, ss, replay.AuditEventID)
+	receipts, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
+		TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamSubmissionReceived}, Limit: 200})
+	requireNoError(t, err)
+	matchingReceipts := 0
+	for _, delivery := range receipts {
+		if delivery.OccurrenceID == model.MailOccurrenceID(input.SubmissionID.String()) {
+			matchingReceipts++
+		}
+		if delivery.OccurrenceID == model.MailOccurrenceID(replay.SubmissionID.String()) {
+			t.Fatalf("replay created a second Submission receipt: %#v", delivery)
+		}
+	}
+	if matchingReceipts != 1 {
+		t.Fatalf("voluntary receipt count=%d, deliveries=%#v", matchingReceipts, receipts)
+	}
 
 	different := *input
 	different.SubmissionID = model.NewSubmissionID()
@@ -261,6 +332,7 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		submittedSealAccess := submissionAccess(submittedAccess, submitted.Workspace.Cursor, 0)
 		submittedInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: submittedSealAccess,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, submittedFixture).ID.String(), AuditAt: model.GetMillis()}
+		attachSubmissionReceipt(t, submittedFixture.candidate, submittedInput)
 		alreadySubmitted, err := submissions.Seal(ctx, submittedInput,
 			examCommand(submittedFixture.candidate.ID, store.ExamSubmissionSealOperation,
 				"automatic-existing-submission", "automatic-existing-submission"))
@@ -327,13 +399,40 @@ func testAutomaticExamSubmissionSealing(t *testing.T, ctx context.Context, ss st
 		if !activeResult.ConnectionClosed {
 			t.Fatalf("active automatic seal did not close Connection: %#v", activeResult)
 		}
+		automaticPreparation, replayErr := submissions.PrepareAutomaticSeal(ctx, activeTarget)
+		requireNoError(t, replayErr)
+		if automaticPreparation == nil || !automaticPreparation.Replayed || automaticPreparation.SealAt.IsZero() {
+			t.Fatalf("PrepareAutomaticSeal(after seal) = %#v", automaticPreparation)
+		}
 		suspendedAudit := saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID)
-		suspendedResult, err := submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
+		suspendedPreparation, preparationErr := submissions.PrepareAutomaticSeal(ctx, suspendedTarget)
+		requireNoError(t, preparationErr)
+		if suspendedPreparation == nil || suspendedPreparation.Replayed || suspendedPreparation.SealAt.IsZero() {
+			t.Fatalf("PrepareAutomaticSeal(suspended) = %#v", suspendedPreparation)
+		}
+		rollbackInput := &store.ExamSubmissionAutomaticSeal{Target: suspendedTarget, SubmissionID: model.NewSubmissionID(),
+			AuditEventID: model.NewAuditEventID().String(), AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
+		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, rollbackInput)
+		if _, rollbackErr := submissions.SealForSittingClose(ctx, rollbackInput); rollbackErr == nil {
+			t.Fatal("automatic Seal(with missing audit) succeeded")
+		}
+		if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, rollbackInput.Notice.Delivery.ID); !store.IsNotFound(deliveryErr) || delivery != nil {
+			t.Fatalf("automatic rolled-back receipt = %#v, %v", delivery, deliveryErr)
+		}
+		suspendedInput := &store.ExamSubmissionAutomaticSeal{
 			Target: suspendedTarget, SubmissionID: model.NewSubmissionID(), AuditEventID: suspendedAudit.ID.String(),
-			AuditAt: model.GetMillis()})
+			AuditAt: model.MillisFromTime(suspendedPreparation.SealAt)}
+		attachAutomaticSubmissionReceipt(t, suspendedFixture.candidate, suspendedInput)
+		suspendedResult, err := submissions.SealForSittingClose(ctx, suspendedInput)
 		requireNoError(t, err)
 		if suspendedResult.Replayed || suspendedResult.ConnectionClosed {
 			t.Fatalf("suspended automatic seal = %#v", suspendedResult)
+		}
+		automaticReceipts, listErr := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
+			TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamSubmissionAutomaticallySealed}, Limit: 200})
+		requireNoError(t, listErr)
+		if len(automaticReceipts) != 2 {
+			t.Fatalf("automatic receipt deliveries=%#v", automaticReceipts)
 		}
 		requireSuccessfulAudit(t, ctx, ss, suspendedAudit.ID.String())
 
@@ -417,15 +516,27 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 	if len(probes) != 0 && probes[0].ConcurrentPeer != nil {
 		peer = probes[0].ConcurrentPeer
 	}
+	adapters := [2]store.ExamSubmissionStore{primary, peer}
 	inputs := [2]*store.ExamSubmissionAutomaticSeal{}
+	candidate, err := ss.User().Get(ctx, target.CandidateUserID.String())
+	requireNoError(t, err)
 	for index := range inputs {
 		audit := saveExamSittingSystemAudit(t, ctx, ss, target.SittingID, target.AcademicUnitID)
+		preparation, preparationErr := adapters[index].PrepareAutomaticSeal(ctx, target)
+		requireNoError(t, preparationErr)
+		if preparation == nil || preparation.Replayed || preparation.SealAt.IsZero() {
+			t.Fatalf("PrepareAutomaticSeal(fresh) = %#v", preparation)
+		}
 		inputs[index] = &store.ExamSubmissionAutomaticSeal{Target: target, SubmissionID: model.NewSubmissionID(),
-			AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+			AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(preparation.SealAt)}
+		attachAutomaticSubmissionReceipt(t, candidate, inputs[index])
 	}
-	adapters := [2]store.ExamSubmissionStore{primary, peer}
 	start := make(chan struct{})
-	results := make(chan *store.ExamSubmissionAutomaticSealResult, 2)
+	type indexedAutomaticResult struct {
+		index  int
+		result *store.ExamSubmissionAutomaticSealResult
+	}
+	results := make(chan indexedAutomaticResult, 2)
 	errorsFound := make(chan error, 2)
 	var wait sync.WaitGroup
 	for index := range inputs {
@@ -434,7 +545,7 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 			defer wait.Done()
 			<-start
 			result, err := adapters[index].SealForSittingClose(ctx, inputs[index])
-			results <- result
+			results <- indexedAutomaticResult{index: index, result: result}
 			errorsFound <- err
 		}(index)
 	}
@@ -446,8 +557,13 @@ func raceAutomaticExamSubmissionSeal(t *testing.T, ctx context.Context, ss store
 		requireNoError(t, err)
 	}
 	values := make([]*store.ExamSubmissionAutomaticSealResult, 0, 2)
-	for result := range results {
-		values = append(values, result)
+	for indexed := range results {
+		if indexed.result != nil && !indexed.result.Replayed &&
+			!indexed.result.Receipt.SubmittedAt.Equal(inputs[indexed.index].Notice.Occurrence.CreatedAt) {
+			t.Fatalf("automatic seal time=%s, receipt occurrence=%s", indexed.result.Receipt.SubmittedAt,
+				inputs[indexed.index].Notice.Occurrence.CreatedAt)
+		}
+		values = append(values, indexed.result)
 	}
 	if len(values) != 2 || values[0] == nil || values[1] == nil || values[0].Replayed == values[1].Replayed ||
 		values[0].Receipt != values[1].Receipt || values[0].ConnectionClosed == values[1].ConnectionClosed {
@@ -500,12 +616,16 @@ func testExamSubmissionRollback(t *testing.T, ctx context.Context, ss store.Stor
 	access := submissionAccess(focusAccess, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: model.NewAuditEventID().String(), AuditAt: model.GetMillis()}
+	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-rollback", "submission-rollback")
 	if _, err := submissions.Seal(ctx, input, command); err == nil {
 		t.Fatal("Seal(with missing audit) succeeded")
 	}
 	if got, err := submissions.Get(ctx, input.SubmissionID); !store.IsNotFound(err) || got != nil {
 		t.Fatalf("Get(rolled-back Submission) = %#v, %v", got, err)
+	}
+	if delivery, err := ss.Mail().GetDelivery(ctx, input.Notice.Delivery.ID); !store.IsNotFound(err) || delivery != nil {
+		t.Fatalf("GetDelivery(rolled-back voluntary receipt) = %#v, %v", delivery, err)
 	}
 	if _, err := submissions.ResolveSealTarget(ctx, access); err != nil {
 		t.Fatalf("ResolveSealTarget(after rollback) error = %v", err)
@@ -547,6 +667,7 @@ func testExamSubmissionIntegrityGap(t *testing.T, ctx context.Context, ss store.
 	access := submissionAccess(focusAccess, connected.Workspace.Cursor, 5)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	attachSubmissionReceipt(t, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-gapped", "submission-gapped"))
 	requireNoError(t, err)
@@ -609,6 +730,7 @@ func testExamSubmissionHistoricalIntegrityGap(t *testing.T, ctx context.Context,
 		FinalFocusLossSequence: 2}
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	attachSubmissionReceipt(t, fixture.candidate, input)
 	sealed, err := submissions.Seal(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation, "submission-history-seal", "submission-history-seal"))
 	requireNoError(t, err)
@@ -741,6 +863,7 @@ func testIndependentExamSubmissionReplay(t *testing.T, ctx context.Context, ss s
 	access := submissionAccess(focusAccess, connected.Workspace.Cursor, 0)
 	input := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	attachSubmissionReceipt(t, fixture.candidate, input)
 	command := examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 		"submission-peer-replay", "submission-peer-replay")
 	sealed, err := first.Seal(ctx, input, command)
@@ -769,6 +892,7 @@ func testConcurrentExamSubmission(t *testing.T, ctx context.Context, ss store.St
 	for index := range inputs {
 		inputs[index] = &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: access,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+		attachSubmissionReceipt(t, fixture.candidate, inputs[index])
 		commands[index] = examCommand(fixture.candidate.ID, store.ExamSubmissionSealOperation,
 			"submission-concurrent-"+string(rune('a'+index)), "submission-concurrent-"+string(rune('a'+index)))
 	}

@@ -31,6 +31,7 @@ type Properties struct {
 	ExamManager         *ExamManagerProperties
 	SittingSchedule     *SittingScheduleProperties
 	ClassTransition     *ClassTransitionProperties
+	SubmissionReceipt   *SubmissionReceiptProperties
 }
 
 // PersonalAccessTokenDetails is the bounded, scope-safe dynamic input for a
@@ -110,6 +111,24 @@ type ClassTransitionProperties struct {
 	Timezone                 string
 }
 
+// SubmissionReceiptDetails is the complete candidate-safe receipt input.
+// Manifest data, Workspace content, answers, paths, and integrity state have
+// no representation in this type.
+type SubmissionReceiptDetails struct {
+	ExamTitle    string
+	SittingID    string
+	SubmissionID string
+	SealedAt     time.Time
+}
+
+type SubmissionReceiptProperties struct {
+	ExamTitle    string
+	SittingID    string
+	SubmissionID string
+	SealedAt     string
+	Timezone     string
+}
+
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
 	Key                 i18n.Key
@@ -120,6 +139,7 @@ type Request struct {
 	ExamManager         *ExamManagerDetails
 	SittingSchedule     *SittingScheduleDetails
 	ClassTransition     *ClassTransitionDetails
+	SubmissionReceipt   *SubmissionReceiptDetails
 }
 
 // Message is one safe, fully rendered multipart-alternative payload.
@@ -279,6 +299,22 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			Timezone: resolved.Copy.ClassTransition.TimezoneUTC,
 		}
 	}
+	submissionReceiptKey := isSubmissionReceiptTemplate(request.Key)
+	if submissionReceiptKey != (request.SubmissionReceipt != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
+	}
+	if request.SubmissionReceipt != nil {
+		if resolved.Copy.SubmissionReceipt == nil || !validSubmissionReceiptDetails(request.SubmissionReceipt) {
+			return Message{}, fmt.Errorf("mail template %q has invalid Submission receipt details", request.Key)
+		}
+		properties.SubmissionReceipt = &SubmissionReceiptProperties{
+			ExamTitle:    strings.TrimSpace(request.SubmissionReceipt.ExamTitle),
+			SittingID:    strings.TrimSpace(request.SubmissionReceipt.SittingID),
+			SubmissionID: strings.TrimSpace(request.SubmissionReceipt.SubmissionID),
+			SealedAt:     request.SubmissionReceipt.SealedAt.UTC().Format(time.RFC3339),
+			Timezone:     resolved.Copy.SubmissionReceipt.TimezoneUTC,
+		}
+	}
 
 	htmlValue, ok := r.html[request.Key]
 	if !ok {
@@ -399,6 +435,28 @@ func isClassTransitionTemplate(key i18n.Key) bool {
 	default:
 		return false
 	}
+}
+
+func isSubmissionReceiptTemplate(key i18n.Key) bool {
+	return key == i18n.ExamSubmissionReceived || key == i18n.ExamSubmissionAutomaticallySealed
+}
+
+func validSubmissionReceiptDetails(details *SubmissionReceiptDetails) bool {
+	if details == nil || details.SealedAt.IsZero() || !validBoundedMailLabel(details.ExamTitle) {
+		return false
+	}
+	for _, value := range []string{details.SittingID, details.SubmissionID} {
+		value = strings.TrimSpace(value)
+		if value == "" || !utf8.ValidString(value) || utf8.RuneCountInString(value) > 128 {
+			return false
+		}
+		for _, character := range value {
+			if unicode.IsControl(character) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validClassTransitionDetails(key i18n.Key, details *ClassTransitionDetails) bool {

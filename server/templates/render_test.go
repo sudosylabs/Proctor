@@ -144,6 +144,33 @@ func TestRendererEscapesCompleteClassTransitionFacts(t *testing.T) {
 	}
 }
 
+func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
+	t.Parallel()
+	renderer, err := DefaultRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []i18n.Key{i18n.ExamSubmissionReceived, i18n.ExamSubmissionAutomaticallySealed} {
+		message, renderErr := renderer.Render(Request{Key: key, SubmissionReceipt: &SubmissionReceiptDetails{
+			ExamTitle: "Algorithms <Final> & proofs", SittingID: "sitting-safe-id",
+			SubmissionID: "submission-safe-id", SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
+		}})
+		if renderErr != nil {
+			t.Fatalf("Render(%q): %v", key, renderErr)
+		}
+		for _, want := range []string{"Algorithms &lt;Final&gt; &amp; proofs", "sitting-safe-id", "submission-safe-id", "2026-08-21T07:30:00Z", "UTC"} {
+			if !strings.Contains(message.HTML, want) {
+				t.Errorf("Render(%q) HTML does not contain %q", key, want)
+			}
+		}
+		for _, forbidden := range []string{"manifest", "workspace", "answer", "integrity", "path/inside"} {
+			if strings.Contains(strings.ToLower(message.HTML), forbidden) || strings.Contains(strings.ToLower(message.Text), forbidden) {
+				t.Fatalf("Render(%q) leaked forbidden content %q", key, forbidden)
+			}
+		}
+	}
+}
+
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +267,11 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 			if key != i18n.AcademicClassTransferred {
 				request.ClassTransition.PreviousClassDisplayName = ""
 			}
+		}
+		if isSubmissionReceiptTemplate(key) {
+			request.SubmissionReceipt = &SubmissionReceiptDetails{ExamTitle: "Representative exam",
+				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
+				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
 		}
 		message, err := renderer.Render(request)
 		if err != nil {

@@ -89,3 +89,6 @@ func (r *classTransitionRendererFake) RenderClassTransitionNotice(_ model.MailTe
 	r.details = details
 	return FrozenMailContent{Subject: "Class changed", Text: details.ClassDisplayName, HTML: "<p>Class changed</p>"}, nil
 }
+func (r *classTransitionRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, nil
+}

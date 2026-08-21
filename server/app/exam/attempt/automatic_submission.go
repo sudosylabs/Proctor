@@ -53,6 +53,13 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	if !call.valid() || !validAutomaticSealTarget(target, target.SittingID) {
 		return AutomaticSubmissionResult{}, invalid("automatic_seal")
 	}
+	preparation, err := service.deps.Submissions.PrepareAutomaticSeal(ctx, target)
+	if err != nil {
+		return AutomaticSubmissionResult{}, mapStore(err)
+	}
+	if preparation == nil || preparation.SealAt.IsZero() {
+		return AutomaticSubmissionResult{}, unavailable(errors.New("invalid automatic Submission preparation"))
+	}
 	auditID, err := service.deps.SystemAuditor.Begin(ctx, model.ActionExamSittingManage,
 		model.Resource{Type: model.ResourceExamSitting, ID: target.SittingID.String()}, model.RoleScopeClass,
 		target.ClassID.String(), store.ExamSubmissionAutomaticSealOperation, map[string]any{
@@ -63,13 +70,29 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	if err != nil {
 		return AutomaticSubmissionResult{}, err
 	}
-	at := model.TimeUTC(service.deps.Now())
+	at := preparation.SealAt
 	proposed := service.deps.NewSubmission()
 	if !proposed.IsValid() {
 		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, invalid("submission_id"))
 	}
+	var notice *store.PreparedMail
+	var expectedRecipientRevision int64
+	if !preparation.Replayed {
+		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
+			CandidateUserID: target.CandidateUserID, ExamID: target.ExamID, SittingID: target.SittingID,
+			SubmissionID: proposed, SealedAt: at, Automatic: true,
+		})
+		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
+			if prepareErr == nil {
+				prepareErr = errors.New("invalid automatic Submission receipt mail preparation")
+			}
+			return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, unavailable(prepareErr))
+		}
+		notice, expectedRecipientRevision = preparedMail.Notice, preparedMail.ExpectedRecipientRevision
+	}
 	stored, err := service.deps.Submissions.SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
-		Target: target, SubmissionID: proposed, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+		Target: target, SubmissionID: proposed, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
+		ExpectedRecipientRevision: expectedRecipientRevision,
 	})
 	if err != nil {
 		return AutomaticSubmissionResult{}, service.failSystemAudit(ctx, auditID, mapStore(err))

@@ -7,6 +7,11 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .SubmissionReceipt.ExamTitle — bounded published Exam title
+  .SubmissionReceipt.SittingID — safe Sitting receipt identity
+  .SubmissionReceipt.SubmissionID — safe Submission receipt identity
+  .SubmissionReceipt.SealedAt — UTC RFC 3339 automatic seal time
+  .SubmissionReceipt.Timezone — localized explicit timezone label
 -->
 <mjml>
   <mj-head>
@@ -16,5 +21,6 @@ Template properties (templates.Properties):
   </mj-head>
   <mj-body background-color="#f4f5f7">
     <mj-include path="./partials/foundation-message.mjml" />
+    <mj-section background-color="#ffffff" padding="0 24px 24px"><mj-column><mj-text><strong>{{.Copy.SubmissionReceipt.ExamLabel}}:</strong> {{.SubmissionReceipt.ExamTitle}}<br /><strong>{{.Copy.SubmissionReceipt.SittingIDLabel}}:</strong> {{.SubmissionReceipt.SittingID}}<br /><strong>{{.Copy.SubmissionReceipt.SubmissionLabel}}:</strong> {{.SubmissionReceipt.SubmissionID}}<br /><strong>{{.Copy.SubmissionReceipt.SealedAtLabel}}:</strong> {{.SubmissionReceipt.SealedAt}}<br /><strong>{{.Copy.SubmissionReceipt.TimezoneLabel}}:</strong> {{.SubmissionReceipt.Timezone}}</mj-text></mj-column></mj-section>
   </mj-body>
 </mjml>

@@ -101,6 +101,7 @@ type Copy struct {
 	ExamManager         *ExamManagerCopy         `json:"exam_manager,omitempty"`
 	SittingSchedule     *SittingScheduleCopy     `json:"sitting_schedule,omitempty"`
 	ClassTransition     *ClassTransitionCopy     `json:"class_transition,omitempty"`
+	SubmissionReceipt   *SubmissionReceiptCopy   `json:"submission_receipt,omitempty"`
 }
 
 // PersonalAccessTokenCopy contains the localized labels and closed scope
@@ -148,6 +149,17 @@ type ClassTransitionCopy struct {
 	TimezoneLabel      string `json:"timezone_label"`
 	TimezoneUTC        string `json:"timezone_utc"`
 	NoScheduledEnd     string `json:"no_scheduled_end"`
+}
+
+// SubmissionReceiptCopy contains localized labels for the candidate-safe
+// identity of one sealed Submission. It has no label for protected content.
+type SubmissionReceiptCopy struct {
+	ExamLabel       string `json:"exam_label"`
+	SittingIDLabel  string `json:"sitting_id_label"`
+	SubmissionLabel string `json:"submission_id_label"`
+	SealedAtLabel   string `json:"sealed_at_label"`
+	TimezoneLabel   string `json:"timezone_label"`
+	TimezoneUTC     string `json:"timezone_utc"`
 }
 
 // ResolvedCopy records which locale supplied a complete copy model.
@@ -338,6 +350,26 @@ func (c Copy) validate() error {
 			{name: "sitting_schedule.timezone_utc", value: c.SittingSchedule.TimezoneUTC},
 		}
 		for _, field := range sittingFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
+			}
+		}
+	}
+	if c.SubmissionReceipt != nil {
+		receiptFields := []struct{ name, value string }{
+			{name: "submission_receipt.exam_label", value: c.SubmissionReceipt.ExamLabel},
+			{name: "submission_receipt.sitting_id_label", value: c.SubmissionReceipt.SittingIDLabel},
+			{name: "submission_receipt.submission_id_label", value: c.SubmissionReceipt.SubmissionLabel},
+			{name: "submission_receipt.sealed_at_label", value: c.SubmissionReceipt.SealedAtLabel},
+			{name: "submission_receipt.timezone_label", value: c.SubmissionReceipt.TimezoneLabel},
+			{name: "submission_receipt.timezone_utc", value: c.SubmissionReceipt.TimezoneUTC},
+		}
+		for _, field := range receiptFields {
 			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
 				return fmt.Errorf("%s is empty or invalid", field.name)
 			}

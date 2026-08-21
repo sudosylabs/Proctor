@@ -7,10 +7,20 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .SubmissionReceipt.ExamTitle — bounded published Exam title
+  .SubmissionReceipt.SittingID — safe Sitting receipt identity
+  .SubmissionReceipt.SubmissionID — safe Submission receipt identity
+  .SubmissionReceipt.SealedAt — UTC RFC 3339 automatic seal time
+  .SubmissionReceipt.Timezone — localized explicit timezone label
 */}}
 {{.Copy.Heading}}
 
 {{.Copy.Body}}
+{{.Copy.SubmissionReceipt.ExamLabel}}: {{.SubmissionReceipt.ExamTitle}}
+{{.Copy.SubmissionReceipt.SittingIDLabel}}: {{.SubmissionReceipt.SittingID}}
+{{.Copy.SubmissionReceipt.SubmissionLabel}}: {{.SubmissionReceipt.SubmissionID}}
+{{.Copy.SubmissionReceipt.SealedAtLabel}}: {{.SubmissionReceipt.SealedAt}}
+{{.Copy.SubmissionReceipt.TimezoneLabel}}: {{.SubmissionReceipt.Timezone}}
 {{if .ActionURL}}
 {{.Copy.ActionLabel}}: {{.ActionURL}}
 {{end}}

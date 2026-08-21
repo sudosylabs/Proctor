@@ -29,6 +29,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	digest := strings.Repeat("d", 64)
 	f.submissions.target = &store.ExamSubmissionSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.submissions.target.SealAt = f.at
 	f.submissions.sealResult = &store.ExamSubmissionSealResult{Receipt: store.ExamSubmissionReceipt{
 		SubmissionID: submissionID, AttemptID: f.attemptID, State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 11, ManifestDigest: digest, SubmittedAt: f.at}, ExamID: f.sitting.ExamID,
@@ -61,7 +62,13 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	if len(f.audit.values) != 1 || f.audit.values["exam_attempt_id"] != f.attemptID.String() {
 		t.Fatalf("Submission audit fields=%#v", f.audit.values)
 	}
-	if got := strings.Join(f.order, ","); got != "submission.resolve,audit,submission.seal,effect.submit" {
+	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ExamID != f.sitting.ExamID ||
+		f.mail.request.SittingID != f.sitting.ID || f.mail.request.SubmissionID != submissionID ||
+		!f.mail.request.SealedAt.Equal(f.at) || f.mail.request.Automatic || f.submissions.seal.Notice == nil ||
+		f.submissions.seal.ExpectedRecipientRevision != 2 || f.submissions.seal.AuditAt != model.MillisFromTime(f.at) {
+		t.Fatalf("mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
+	}
+	if got := strings.Join(f.order, ","); got != "submission.resolve,audit,submission.mail,submission.seal,effect.submit" {
 		t.Fatalf("order=%s", got)
 	}
 }
@@ -74,7 +81,7 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 	f.submissionID = proposedID
 	access := validWorkspaceMutationAccess(f)
 	f.submissions.target = &store.ExamSubmissionSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
-		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: model.NewExamAttemptWorkspaceID()}
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: model.NewExamAttemptWorkspaceID(), Replayed: true, SealAt: f.at}
 	f.submissions.sealResult = &store.ExamSubmissionSealResult{Receipt: store.ExamSubmissionReceipt{SubmissionID: retainedID,
 		AttemptID: f.attemptID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 0,
 		ManifestDigest: strings.Repeat("e", 64), SubmittedAt: f.at}, ExamID: f.sitting.ExamID,
@@ -87,7 +94,8 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Receipt.SubmissionID != retainedID || f.submissions.seal.SubmissionID != proposedID ||
-		!result.Replayed || f.effects.submitted != 0 {
+		!result.Replayed || f.effects.submitted != 0 || f.submissions.seal.Notice != nil ||
+		f.submissions.seal.ExpectedRecipientRevision != 0 || f.mail.request.SubmissionID.IsValid() {
 		t.Fatalf("result=%#v seal=%#v effects=%#v", result, f.submissions.seal, f.effects)
 	}
 }
@@ -117,6 +125,11 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 	if err != nil || result.Receipt.SubmissionID != retained || !result.ConnectionClosed || f.effects.submitted != 1 ||
 		f.submissions.automaticInput == nil || f.submissions.automaticInput.Target != target {
 		t.Fatalf("result=%#v input=%#v effects=%d err=%v", result, f.submissions.automaticInput, f.effects.submitted, err)
+	}
+	if !f.mail.request.Automatic || f.mail.request.SubmissionID != retained || !f.mail.request.SealedAt.Equal(f.at) ||
+		f.submissions.automaticInput.AuditAt != model.MillisFromTime(f.at) || f.submissions.automaticInput.Notice == nil ||
+		f.submissions.automaticInput.ExpectedRecipientRevision != 2 {
+		t.Fatalf("automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
 	}
 	if f.systemAudit.values["job_id"] != jobID.String() || f.systemAudit.values["job_attempt_id"] != jobAttemptID.String() ||
 		f.systemAudit.values["exam_attempt_id"] != target.AttemptID.String() {
@@ -314,9 +327,30 @@ type submissionStoreFake struct {
 	automaticResult  *store.ExamSubmissionAutomaticSealResult
 }
 
+type submissionMailFake struct {
+	f       *fixture
+	request SubmissionMailPreparation
+	err     error
+}
+
+func (fake *submissionMailFake) PrepareSubmissionReceipt(_ context.Context, request SubmissionMailPreparation) (*PreparedSubmissionMail, error) {
+	fake.f.order = append(fake.f.order, "submission.mail")
+	fake.request = request
+	if fake.err != nil {
+		return nil, fake.err
+	}
+	return &PreparedSubmissionMail{Notice: &store.PreparedMail{Occurrence: &model.MailOccurrence{},
+		Delivery: &model.MailDelivery{}, Job: &model.Job{}}, ExpectedRecipientRevision: 2}, nil
+}
+
 func (fake *submissionStoreFake) ListAutomaticSealTargets(_ context.Context, options store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	fake.automaticOptions = options
 	return fake.automaticTargets, fake.err
+}
+
+func (fake *submissionStoreFake) PrepareAutomaticSeal(context.Context, store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
+	return &store.ExamSubmissionAutomaticSealPreparation{Replayed: fake.automaticResult != nil && fake.automaticResult.Replayed,
+		SealAt: fake.f.at}, fake.err
 }
 
 func (fake *submissionStoreFake) SealForSittingClose(_ context.Context, input *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {
