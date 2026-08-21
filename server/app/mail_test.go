@@ -192,6 +192,10 @@ func (r mailRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string,
 	return r.content, nil
 }
 
+func (r mailRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+	return r.content, nil
+}
+
 type mailSenderFake struct {
 	enabled   bool
 	from      MailAddress

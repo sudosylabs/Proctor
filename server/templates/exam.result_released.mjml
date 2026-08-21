@@ -7,6 +7,9 @@ Template properties (templates.Properties):
   .Copy.ActionLabel — localized action label; empty when no action is offered
   .Copy.Footer — localized closing and safety copy
   .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .ResultRelease.ExamTitle — bounded published Exam title
+  .ResultRelease.ReleasedAt — UTC RFC 3339 release time
+  .ResultRelease.Timezone — localized explicit timezone label
 -->
 <mjml>
   <mj-head>
@@ -16,5 +19,6 @@ Template properties (templates.Properties):
   </mj-head>
   <mj-body background-color="#f4f5f7">
     <mj-include path="./partials/foundation-message.mjml" />
+    <mj-section background-color="#ffffff" padding="0 24px 24px"><mj-column><mj-text><strong>{{.Copy.ResultRelease.ExamLabel}}:</strong> {{.ResultRelease.ExamTitle}}<br /><strong>{{.Copy.ResultRelease.ReleasedAtLabel}}:</strong> {{.ResultRelease.ReleasedAt}}<br /><strong>{{.Copy.ResultRelease.TimezoneLabel}}:</strong> {{.ResultRelease.Timezone}}</mj-text></mj-column></mj-section>
   </mj-body>
 </mjml>

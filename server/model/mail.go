@@ -62,7 +62,8 @@ func (key MailTemplateKey) IsValid() bool {
 		MailTemplateExamOwnershipTransferredToYou,
 		MailTemplateExamOwnershipTransferredFromYou,
 		MailTemplateExamSubmissionReceived,
-		MailTemplateExamSubmissionAutomaticallySealed:
+		MailTemplateExamSubmissionAutomaticallySealed,
+		MailTemplateExamResultReleased:
 		return true
 	default:
 		return false
@@ -107,6 +108,7 @@ const (
 	MailTemplateExamOwnershipTransferredFromYou     MailTemplateKey = "exam.ownership_transferred_from_you"
 	MailTemplateExamSubmissionReceived              MailTemplateKey = "exam.submission_received"
 	MailTemplateExamSubmissionAutomaticallySealed   MailTemplateKey = "exam.submission_automatically_sealed"
+	MailTemplateExamResultReleased                  MailTemplateKey = "exam.result_released"
 
 	MailOccurrenceOperatorTest           MailOccurrenceKind = "operator_test"
 	MailOccurrenceAccountToken           MailOccurrenceKind = "account_token"
@@ -116,6 +118,7 @@ const (
 	MailOccurrenceSittingSchedule        MailOccurrenceKind = "sitting_schedule"
 	MailOccurrenceExamManagement         MailOccurrenceKind = "exam_management"
 	MailOccurrenceSubmissionReceipt      MailOccurrenceKind = "submission_receipt"
+	MailOccurrenceResultRelease          MailOccurrenceKind = "result_release"
 
 	MailDeliveryQueued     MailDeliveryState = "queued"
 	MailDeliverySending    MailDeliveryState = "sending"
@@ -183,6 +186,8 @@ func validMailOccurrenceMeaning(kind MailOccurrenceKind, key MailTemplateKey) bo
 			key == MailTemplateExamOwnershipTransferredToYou || key == MailTemplateExamOwnershipTransferredFromYou
 	case MailOccurrenceSubmissionReceipt:
 		return key == MailTemplateExamSubmissionReceived || key == MailTemplateExamSubmissionAutomaticallySealed
+	case MailOccurrenceResultRelease:
+		return key == MailTemplateExamResultReleased
 	default:
 		return false
 	}

@@ -171,6 +171,31 @@ func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
 	}
 }
 
+func TestRendererIncludesOnlySafeReleasedResultFacts(t *testing.T) {
+	t.Parallel()
+	renderer, err := DefaultRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := renderer.Render(Request{Key: i18n.ExamResultReleased, ResultRelease: &ResultReleaseDetails{
+		ExamTitle:  "Algorithms <Final> & proofs",
+		ReleasedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Algorithms &lt;Final&gt; &amp; proofs", "2026-08-21T07:30:00Z", "UTC"} {
+		if !strings.Contains(message.HTML, want) {
+			t.Errorf("HTML does not contain %q", want)
+		}
+	}
+	for _, forbidden := range []string{"score", "outcome", "remark", "evidence", "submission", "workspace", "rationale"} {
+		if strings.Contains(strings.ToLower(message.HTML), forbidden) || strings.Contains(strings.ToLower(message.Text), forbidden) {
+			t.Fatalf("released-result mail leaked forbidden content %q", forbidden)
+		}
+	}
+}
+
 func TestRendererContextuallyEscapesLocalizedCopyAndActionURL(t *testing.T) {
 	t.Parallel()
 
@@ -272,6 +297,10 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 			request.SubmissionReceipt = &SubmissionReceiptDetails{ExamTitle: "Representative exam",
 				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
 				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
+		}
+		if key == i18n.ExamResultReleased {
+			request.ResultRelease = &ResultReleaseDetails{ExamTitle: "Representative exam",
+				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 		}
 		message, err := renderer.Render(request)
 		if err != nil {

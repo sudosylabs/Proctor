@@ -126,14 +126,25 @@ type ExamIntegrityReviewFinalize struct {
 }
 
 type ExamIntegrityReviewRelease struct {
-	SubmissionID           model.SubmissionID
-	ReviewID               model.SubmissionReviewID
-	ActorUserID            model.UserID
-	ManagerOverride        bool
-	ExpectedReviewRevision int64
-	ChangedAt              time.Time
-	AuditEventID           string
-	AuditAt                int64
+	SubmissionID              model.SubmissionID
+	ReviewID                  model.SubmissionReviewID
+	ActorUserID               model.UserID
+	ManagerOverride           bool
+	ExpectedReviewRevision    int64
+	ChangedAt                 time.Time
+	AuditEventID              string
+	AuditAt                   int64
+	CandidateUserID           model.UserID
+	Notice                    *PreparedMail
+	ExpectedRecipientRevision int64
+}
+
+// ExamIntegrityReviewReleasePreparation reserves the PostgreSQL release time
+// for a fresh transition and identifies an already-retained one-way release so
+// the application never prepares another candidate notification on replay.
+type ExamIntegrityReviewReleasePreparation struct {
+	Replayed  bool
+	ReleaseAt time.Time
 }
 
 type ExamIntegrityReviewMutationResult struct {
@@ -155,9 +166,18 @@ type ExamIntegrityReviewMutationResult struct {
 // Review, and decisions; requires one decision per Flag; rejects any missing,
 // changed, or over-limit inventory; snapshots immutable inventory rows and a
 // canonical digest; freezes the Review; and commits audit/outcome atomically.
-// Release is a distinct one-way authorized transaction on a finalized Review.
-// Exact replays repeat current authorization/audit and return the retained
-// result without repeating effects. GetReleasedStudentResult exposes only the
+// PrepareRelease locks the exact finalized Review, distinguishes its retained
+// one-way release, and durably reserves a millisecond PostgreSQL release time
+// without changing Review state. Release is a distinct one-way authorized
+// transaction that locks and consumes that exact preparation. Fresh
+// release first locks and revalidates the canonical candidate User and frozen
+// recipient revision, then the authorization hierarchy, Submission/Attempt,
+// and Review. It commits the released Review, safe audit result, one semantic
+// candidate occurrence, queued or terminally suppressed delivery, delivery
+// Job, and retained command outcome atomically. Encrypted mail holds the
+// primary-key fence through commit. Failure commits none of them. Exact
+// replays repeat current authorization/audit, return the retained result, and
+// require or insert no notice. GetReleasedStudentResult exposes only the
 // candidate-owned released projection and conceals all pre-release state.
 type ExamIntegrityReviewStore interface {
 	Resolve(context.Context, model.SubmissionID) (*ExamIntegrityReviewAuthorization, error)
@@ -168,6 +188,7 @@ type ExamIntegrityReviewStore interface {
 	SaveDecision(context.Context, *ExamIntegrityReviewDecisionMutation, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	UpdateDraft(context.Context, *ExamIntegrityReviewDraftMutation, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	Finalize(context.Context, *ExamIntegrityReviewFinalize, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
+	PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID, int64) (*ExamIntegrityReviewReleasePreparation, error)
 	Release(context.Context, *ExamIntegrityReviewRelease, *CommandIdempotency) (*ExamIntegrityReviewMutationResult, error)
 	GetReleasedStudentResult(context.Context, model.ExamAttemptID, model.UserID) (*model.StudentResult, error)
 }

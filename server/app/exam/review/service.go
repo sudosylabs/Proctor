@@ -72,12 +72,30 @@ type EffectFailures interface {
 	Report(context.Context, string, error)
 }
 
+type ResultReleaseMailPreparation struct {
+	CandidateUserID model.UserID
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	ReviewID        model.SubmissionReviewID
+	ReleasedAt      time.Time
+}
+
+type PreparedResultReleaseMail struct {
+	Notice                    *store.PreparedMail
+	ExpectedRecipientRevision int64
+}
+
+type ResultReleaseMailPreparer interface {
+	PrepareResultRelease(context.Context, ResultReleaseMailPreparation) (*PreparedResultReleaseMail, error)
+}
+
 type Dependencies struct {
 	Persistence    store.ExamIntegrityReviewStore
 	Authorizer     Authorizer
 	Auditor        Auditor
 	Effects        Effects
 	EffectFailures EffectFailures
+	Mail           ResultReleaseMailPreparer
 	Now            func() time.Time
 	NewReviewID    func() model.SubmissionReviewID
 	NewDecisionID  func() model.IntegrityReviewDecisionID
@@ -87,7 +105,7 @@ type Service struct{ deps Dependencies }
 
 func New(deps Dependencies) (*Service, error) {
 	if deps.Persistence == nil || deps.Authorizer == nil || deps.Auditor == nil || deps.Effects == nil ||
-		deps.EffectFailures == nil || deps.Now == nil || deps.NewReviewID == nil || deps.NewDecisionID == nil {
+		deps.EffectFailures == nil || deps.Mail == nil || deps.Now == nil || deps.NewReviewID == nil || deps.NewDecisionID == nil {
 		return nil, errors.New("Exam Integrity Review dependencies are required")
 	}
 	return &Service{deps: deps}, nil
@@ -283,6 +301,17 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 		return Result{}, err
 	}
 	at := model.TimeUTC(service.deps.Now())
+	var releasePreparation *store.ExamIntegrityReviewReleasePreparation
+	if kind == terminalRelease {
+		releasePreparation, err = service.deps.Persistence.PrepareRelease(ctx, submissionID, reviewID, expectedRevision)
+		if err != nil {
+			return Result{}, mapStore(err)
+		}
+		if releasePreparation == nil || releasePreparation.ReleaseAt.IsZero() {
+			return Result{}, unavailable(errors.New("invalid result release preparation"))
+		}
+		at = model.TimeUTC(releasePreparation.ReleaseAt)
+	}
 	action, operation := model.ActionSubmissionReview, store.ExamIntegrityReviewFinalizeOperation
 	if kind == terminalRelease {
 		action, operation = model.ActionSubmissionRelease, store.ExamIntegrityReviewReleaseOperation
@@ -296,9 +325,26 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 	}
 	var stored *store.ExamIntegrityReviewMutationResult
 	if kind == terminalRelease {
+		var notice *store.PreparedMail
+		var expectedRecipientRevision int64
+		if !releasePreparation.Replayed {
+			prepared, prepareErr := service.deps.Mail.PrepareResultRelease(ctx, ResultReleaseMailPreparation{
+				CandidateUserID: authorization.CandidateUserID, ExamID: authorization.ExamID,
+				SittingID: authorization.SittingID, ReviewID: reviewID, ReleasedAt: at,
+			})
+			if prepareErr != nil || prepared == nil || prepared.Notice == nil || prepared.ExpectedRecipientRevision < 1 {
+				if prepareErr == nil {
+					prepareErr = errors.New("invalid result release mail preparation")
+				}
+				return Result{}, service.failAudit(ctx, auditID, unavailable(prepareErr))
+			}
+			notice, expectedRecipientRevision = prepared.Notice, prepared.ExpectedRecipientRevision
+		}
 		stored, err = service.deps.Persistence.Release(ctx, &store.ExamIntegrityReviewRelease{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,
-			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+			ExpectedReviewRevision: expectedRevision, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+			CandidateUserID: authorization.CandidateUserID, Notice: notice,
+			ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	} else {
 		stored, err = service.deps.Persistence.Finalize(ctx, &store.ExamIntegrityReviewFinalize{SubmissionID: submissionID,
 			ReviewID: reviewID, ActorUserID: principal.UserID, ManagerOverride: override,

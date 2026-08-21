@@ -32,6 +32,7 @@ type Properties struct {
 	SittingSchedule     *SittingScheduleProperties
 	ClassTransition     *ClassTransitionProperties
 	SubmissionReceipt   *SubmissionReceiptProperties
+	ResultRelease       *ResultReleaseProperties
 }
 
 // PersonalAccessTokenDetails is the bounded, scope-safe dynamic input for a
@@ -129,6 +130,20 @@ type SubmissionReceiptProperties struct {
 	Timezone     string
 }
 
+// ResultReleaseDetails is the entire inbox-safe result availability fact.
+// Scores, outcomes, remarks, evidence, rationale, and Submission data are
+// absent by construction.
+type ResultReleaseDetails struct {
+	ExamTitle  string
+	ReleasedAt time.Time
+}
+
+type ResultReleaseProperties struct {
+	ExamTitle  string
+	ReleasedAt string
+	Timezone   string
+}
+
 // Request selects localized copy and the already constructed optional action.
 type Request struct {
 	Key                 i18n.Key
@@ -140,6 +155,7 @@ type Request struct {
 	SittingSchedule     *SittingScheduleDetails
 	ClassTransition     *ClassTransitionDetails
 	SubmissionReceipt   *SubmissionReceiptDetails
+	ResultRelease       *ResultReleaseDetails
 }
 
 // Message is one safe, fully rendered multipart-alternative payload.
@@ -314,6 +330,19 @@ func (r *Renderer) Render(request Request) (Message, error) {
 			SealedAt:     request.SubmissionReceipt.SealedAt.UTC().Format(time.RFC3339),
 			Timezone:     resolved.Copy.SubmissionReceipt.TimezoneUTC,
 		}
+	}
+	resultReleaseKey := request.Key == i18n.ExamResultReleased
+	if resultReleaseKey != (request.ResultRelease != nil) {
+		return Message{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
+	}
+	if request.ResultRelease != nil {
+		if resolved.Copy.ResultRelease == nil || request.ResultRelease.ReleasedAt.IsZero() ||
+			!validBoundedMailLabel(request.ResultRelease.ExamTitle) {
+			return Message{}, fmt.Errorf("mail template %q has invalid result release details", request.Key)
+		}
+		properties.ResultRelease = &ResultReleaseProperties{ExamTitle: strings.TrimSpace(request.ResultRelease.ExamTitle),
+			ReleasedAt: request.ResultRelease.ReleasedAt.UTC().Format(time.RFC3339),
+			Timezone:   resolved.Copy.ResultRelease.TimezoneUTC}
 	}
 
 	htmlValue, ok := r.html[request.Key]

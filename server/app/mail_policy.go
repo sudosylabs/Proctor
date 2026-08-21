@@ -63,7 +63,8 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateExamOwnershipTransferredToYou,
 		model.MailTemplateExamOwnershipTransferredFromYou,
 		model.MailTemplateExamSubmissionReceived,
-		model.MailTemplateExamSubmissionAutomaticallySealed:
+		model.MailTemplateExamSubmissionAutomaticallySealed,
+		model.MailTemplateExamResultReleased:
 		// Purpose-bound credential deliveries receive their authoritative
 		// multi-node relevance fence in MailStore.StartDelivery. The remaining
 		// immutable notifications are relevant until their deadline.

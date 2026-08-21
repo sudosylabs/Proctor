@@ -487,6 +487,10 @@ func (personalAccessTokenActionTimeRenderer) RenderSubmissionReceipt(model.MailT
 	return FrozenMailContent{}, errors.New("unexpected Submission receipt render")
 }
 
+func (personalAccessTokenActionTimeRenderer) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, errors.New("unexpected result release render")
+}
+
 func TestPersonalAccessTokenAdministrationTerminalReplayIsSuccessful(t *testing.T) {
 	t.Parallel()
 

@@ -24,7 +24,7 @@ func (p *directMailPreparer) PrepareManagerMail(request examengine.ManagerMailPr
 		request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
 		request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID,
 		model.MailOccurrenceExamManagement, request.TemplateKey, "", request.ActionAt,
-		request.ActionAt.Add(examManagerMailLifetime), model.JobTypeMailDeliver, nil, &details, nil, nil,
+		request.ActionAt.Add(examManagerMailLifetime), model.JobTypeMailDeliver, details,
 	)
 	if err != nil {
 		return nil, err

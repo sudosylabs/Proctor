@@ -89,6 +89,23 @@ func TestExamSubmissionReceiptMailMeaningsAreClosed(t *testing.T) {
 	}
 }
 
+func TestExamResultReleaseMailMeaningIsClosed(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 21, 13, 0, 0, 0, time.UTC)
+	if !MailTemplateExamResultReleased.IsValid() {
+		t.Fatal("result-release mail template is invalid")
+	}
+	occurrence := &MailOccurrence{ID: NewMailOccurrenceID(), Kind: MailOccurrenceResultRelease,
+		TemplateKey: MailTemplateExamResultReleased, ActorUserID: NewUserID(), CreatedAt: at}
+	if err := occurrence.Validate(); err != nil {
+		t.Fatalf("result-release occurrence: %v", err)
+	}
+	occurrence.TemplateKey = MailTemplateExamSubmissionReceived
+	if err := occurrence.Validate(); err == nil {
+		t.Fatal("result-release occurrence accepted a Submission receipt template")
+	}
+}
+
 func TestScopedRoleInvitationMailMeaningsAreClosed(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)

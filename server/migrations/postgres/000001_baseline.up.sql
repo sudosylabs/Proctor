@@ -521,7 +521,7 @@ CREATE INDEX onboarding_import_rows_execution_idx
 -- independent because an administrator may notify a pre-User Invitation.
 CREATE TABLE mail_occurrences (
     id varchar(26) PRIMARY KEY,
-    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'academic_administration', 'sitting_schedule', 'exam_management', 'submission_receipt')),
+    kind varchar(32) NOT NULL CHECK (kind IN ('operator_test', 'account_token', 'security_notice', 'invitation', 'academic_administration', 'sitting_schedule', 'exam_management', 'submission_receipt', 'result_release')),
     template_key varchar(128) NOT NULL CHECK (template_key IN (
         'system.mail_test', 'identity.verify_email', 'identity.password_reset',
         'identity.password_changed', 'identity.email_change_warning_old',
@@ -540,7 +540,8 @@ CREATE TABLE mail_occurrences (
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
-        'exam.submission_received', 'exam.submission_automatically_sealed'
+        'exam.submission_received', 'exam.submission_automatically_sealed',
+        'exam.result_released'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     created_at timestamptz NOT NULL,
@@ -582,7 +583,8 @@ CREATE TABLE mail_deliveries (
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
-        'exam.submission_received', 'exam.submission_automatically_sealed'
+        'exam.submission_received', 'exam.submission_automatically_sealed',
+        'exam.result_released'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
     masked_recipient varchar(254) NOT NULL
@@ -2276,6 +2278,7 @@ CREATE TABLE submission_reviews (
     released_at timestamptz,
     released_by_user_id varchar(26) REFERENCES users(id),
     UNIQUE (id, exam_attempt_id),
+    UNIQUE (id, submission_id),
     UNIQUE (id, submission_id, exam_attempt_id),
     CONSTRAINT submission_reviews_submission_fkey
         FOREIGN KEY (submission_id, exam_attempt_id)
@@ -2294,6 +2297,23 @@ CREATE TABLE submission_reviews (
          ((release_state = 'withheld' AND released_at IS NULL AND released_by_user_id IS NULL) OR
           (release_state = 'released' AND released_at >= finalized_at AND released_by_user_id IS NOT NULL)))
     )
+);
+
+-- A fresh Result release reserves one PostgreSQL timestamp before rendering
+-- its candidate notice. The terminal aggregate consumes this bounded row so
+-- callers cannot substitute a node-supplied release time.
+CREATE TABLE submission_review_release_preparations (
+    submission_review_id varchar(26) PRIMARY KEY REFERENCES submission_reviews(id) ON DELETE CASCADE,
+    submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id) ON DELETE CASCADE,
+    expected_review_revision bigint NOT NULL CHECK (expected_review_revision > 0),
+    release_at timestamptz NOT NULL,
+    CONSTRAINT submission_review_release_preparations_review_submission_fkey
+        FOREIGN KEY (submission_review_id, submission_id)
+        REFERENCES submission_reviews(id, submission_id),
+    CONSTRAINT submission_review_release_preparations_review_id_canonical_check
+        CHECK (submission_review_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    CONSTRAINT submission_review_release_preparations_submission_id_canonical_check
+        CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
 );
 
 CREATE TABLE integrity_review_decisions (

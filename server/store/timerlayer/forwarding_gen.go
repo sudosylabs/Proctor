@@ -1072,6 +1072,12 @@ func (s *timedExamIntegrityReviewStore) Finalize(arg0 context.Context, arg1 *sto
 	})
 }
 
+func (s *timedExamIntegrityReviewStore) PrepareRelease(arg0 context.Context, arg1 model.SubmissionID, arg2 model.SubmissionReviewID, arg3 int64) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodPrepareRelease), func() (*store.ExamIntegrityReviewReleasePreparation, error) {
+		return s.next.PrepareRelease(arg0, arg1, arg2, arg3)
+	})
+}
+
 func (s *timedExamIntegrityReviewStore) Release(arg0 context.Context, arg1 *store.ExamIntegrityReviewRelease, arg2 *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodRelease), func() (*store.ExamIntegrityReviewMutationResult, error) {
 		return s.next.Release(arg0, arg1, arg2)

@@ -38,7 +38,7 @@ func (p *directMailPreparer) PrepareSubmissionReceiptMail(request SubmissionRece
 	return p.prepareRecipient(request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
 		request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID, model.MailOccurrenceSubmissionReceipt,
 		request.TemplateKey, "", at, at.Add(submissionReceiptMailLifetime), model.JobTypeMailDeliver,
-		nil, nil, nil, &details)
+		details)
 }
 
 func validSubmissionReceiptMailMeaning(key model.MailTemplateKey, details SubmissionReceiptMailDetails) bool {

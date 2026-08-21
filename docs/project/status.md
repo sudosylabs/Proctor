@@ -315,13 +315,19 @@ wording and templates; both freeze only the published Exam title, safe Sitting
 and Submission receipt identities, and a UTC seal time. Exact and crash
 replays recover the retained Submission without rendering or recording a
 second message, while disabled or ineligible recipients retain a terminal
-suppression. The remaining catalog transitions are not yet implemented.
+suppression. Explicit one-way Student Result release now records one canonical
+candidate availability notice in the same transaction as Review state and
+audit. The message freezes only the published Exam title and PostgreSQL release
+time; it contains no score, outcome, remarks, evidence, rationale, Submission
+content, or invented result link. Exact release replay records no second
+message, and disabled or ineligible candidates retain terminal suppression.
+The remaining catalog transitions are not yet implemented.
 
 The closed initial catalog includes identity, security, access-and-onboarding,
 academic, examination, candidate, and controlled operator-test messages.
-Recovery, Class, Exam-management, and Submission transitions record encrypted
-per-recipient delivery intent and durable Jobs atomically; later application
-transitions will use the same contract, with
+Recovery, Class, Exam-management, Submission, and Result-release transitions
+record encrypted per-recipient delivery intent and durable Jobs atomically;
+remaining application transitions will use the same contract, with
 bounded fan-out, relevance fencing,
 deadline-aware retries, safe operator control, and no user opt-outs. The
 complete contract and remaining delivery order are in

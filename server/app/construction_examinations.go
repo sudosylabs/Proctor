@@ -86,10 +86,12 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		return examinationConstruction{}, err
 	}
 	reviewEffects := examIntegrityReviewRealtimeEffects{realtime: foundation.realtime}
+	resultReleaseMail := examResultReleaseMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
+		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
 	reviews, err := examreview.New(examreview.Dependencies{Persistence: deps.Store.ExamIntegrityReview(),
 		Authorizer: examIntegrityReviewAuthorizationAdapter{reviews: deps.Store.ExamIntegrityReview(), sittings: sittings},
 		Auditor:    examIntegrityReviewAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		Effects:    reviewEffects, EffectFailures: reviewEffects, Now: time.Now,
+		Effects:    reviewEffects, EffectFailures: reviewEffects, Mail: resultReleaseMail, Now: time.Now,
 		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
 	if err != nil {
 		return examinationConstruction{}, err

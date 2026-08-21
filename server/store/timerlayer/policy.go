@@ -244,6 +244,7 @@ const (
 	methodUpdateDraft                   methodName = "update_draft"
 	methodFinalize                      methodName = "finalize"
 	methodRelease                       methodName = "release"
+	methodPrepareRelease                methodName = "prepare_release"
 	methodGetReleasedStudentResult      methodName = "get_released_student_result"
 	methodUpdateMetadata                methodName = "update_metadata"
 	methodUpdateDraftFocusLoss          methodName = "update_draft_focus_loss"

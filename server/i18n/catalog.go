@@ -102,6 +102,7 @@ type Copy struct {
 	SittingSchedule     *SittingScheduleCopy     `json:"sitting_schedule,omitempty"`
 	ClassTransition     *ClassTransitionCopy     `json:"class_transition,omitempty"`
 	SubmissionReceipt   *SubmissionReceiptCopy   `json:"submission_receipt,omitempty"`
+	ResultRelease       *ResultReleaseCopy       `json:"result_release,omitempty"`
 }
 
 // PersonalAccessTokenCopy contains the localized labels and closed scope
@@ -158,6 +159,15 @@ type SubmissionReceiptCopy struct {
 	SittingIDLabel  string `json:"sitting_id_label"`
 	SubmissionLabel string `json:"submission_id_label"`
 	SealedAtLabel   string `json:"sealed_at_label"`
+	TimezoneLabel   string `json:"timezone_label"`
+	TimezoneUTC     string `json:"timezone_utc"`
+}
+
+// ResultReleaseCopy contains labels for the only safe dynamic facts in a
+// released-result availability notice. Academic outcomes have no vocabulary.
+type ResultReleaseCopy struct {
+	ExamLabel       string `json:"exam_label"`
+	ReleasedAtLabel string `json:"released_at_label"`
 	TimezoneLabel   string `json:"timezone_label"`
 	TimezoneUTC     string `json:"timezone_utc"`
 }
@@ -370,6 +380,24 @@ func (c Copy) validate() error {
 			{name: "submission_receipt.timezone_utc", value: c.SubmissionReceipt.TimezoneUTC},
 		}
 		for _, field := range receiptFields {
+			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
+				return fmt.Errorf("%s is empty or invalid", field.name)
+			}
+			for _, character := range field.value {
+				if unicode.IsControl(character) {
+					return fmt.Errorf("%s contains a control character", field.name)
+				}
+			}
+		}
+	}
+	if c.ResultRelease != nil {
+		resultFields := []struct{ name, value string }{
+			{name: "result_release.exam_label", value: c.ResultRelease.ExamLabel},
+			{name: "result_release.released_at_label", value: c.ResultRelease.ReleasedAtLabel},
+			{name: "result_release.timezone_label", value: c.ResultRelease.TimezoneLabel},
+			{name: "result_release.timezone_utc", value: c.ResultRelease.TimezoneUTC},
+		}
+		for _, field := range resultFields {
 			if strings.TrimSpace(field.value) == "" || !utf8.ValidString(field.value) || len(field.value) > 1024 {
 				return fmt.Errorf("%s is empty or invalid", field.name)
 			}

@@ -57,6 +57,13 @@ and `.Timezone`. They never receive answers, workspace paths or selectors,
 manifest contents, integrity signals, Session or continuity credentials,
 candidate profile fields, or private review state.
 
+The released-result availability message additionally receives the closed
+`.Copy.ResultRelease` label set and these bounded fields under
+`.ResultRelease`: `.ExamTitle`, `.ReleasedAt`, and `.Timezone`. It never
+receives a score, academic outcome, candidate remarks, manager notes,
+decisions, evidence, rationale, Submission or Workspace data, or an action
+link.
+
 The renderer accepts no arbitrary map and registers no custom template
 functions. Copy is markup-free and HTML is parsed with Go `html/template`, so
 localized and dynamic values are contextually escaped. Action URLs are

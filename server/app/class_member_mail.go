@@ -40,7 +40,7 @@ func (p *directMailPreparer) PrepareClassTransition(request ClassTransitionMailP
 	return p.prepareRecipient(request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
 		request.Recipient.ID, request.Recipient.ID, "", request.OccurrenceID,
 		model.MailOccurrenceAcademicAdministration, request.TemplateKey, "", at,
-		at.Add(classTransitionMailLifetime), model.JobTypeMailDeliver, nil, nil, &details, nil)
+		at.Add(classTransitionMailLifetime), model.JobTypeMailDeliver, details)
 }
 
 func validClassTransitionMailMeaning(key model.MailTemplateKey, details ClassTransitionMailDetails) bool {

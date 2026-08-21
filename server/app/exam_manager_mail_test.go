@@ -60,3 +60,6 @@ func (r *examManagerRendererFake) RenderClassTransitionNotice(model.MailTemplate
 func (r *examManagerRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
+func (r *examManagerRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, nil
+}

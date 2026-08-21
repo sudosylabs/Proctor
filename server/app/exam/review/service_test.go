@@ -66,6 +66,24 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	if err != nil || released.Review.ReleaseState != model.SubmissionReviewReleased || f.authorizer.releaseCalls != 1 || f.effects.released != 1 {
 		t.Fatalf("released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
 	}
+	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ReviewID != f.reviewID ||
+		!f.mail.request.ReleasedAt.Equal(f.at.Add(time.Minute)) || f.persistence.release == nil ||
+		f.persistence.release.Notice == nil || f.persistence.release.ExpectedRecipientRevision != 2 {
+		t.Fatalf("mail=%#v release=%#v", f.mail.request, f.persistence.release)
+	}
+}
+
+func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
+	t.Parallel()
+	f := newReviewFixture(t)
+	f.persistence.mode, f.persistence.replayed = "release", true
+	released, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
+		ReviewID: f.reviewID, ExpectedReviewRevision: 3, Idempotency: &store.CommandIdempotency{}})
+	if err != nil || !released.Replayed || f.effects.released != 0 || f.mail.calls != 0 ||
+		f.persistence.release == nil || f.persistence.release.Notice != nil {
+		t.Fatalf("released=%#v error=%v effects=%#v mail=%#v release=%#v", released, err, f.effects,
+			f.mail, f.persistence.release)
+	}
 }
 
 func TestCandidateResultRequiresSessionOwnershipAndSanitizesRemarks(t *testing.T) {
@@ -101,6 +119,7 @@ type reviewFixture struct {
 	authorizer   *reviewAuthorizerFake
 	auditor      *reviewAuditorFake
 	effects      *reviewEffectsFake
+	mail         *reviewMailFake
 	userID       model.UserID
 	submissionID model.SubmissionID
 	reviewID     model.SubmissionReviewID
@@ -117,8 +136,9 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 	f.authorizer = &reviewAuthorizerFake{}
 	f.auditor = &reviewAuditorFake{}
 	f.effects = &reviewEffectsFake{}
+	f.mail = &reviewMailFake{f: f}
 	service, err := New(Dependencies{Persistence: f.persistence, Authorizer: f.authorizer, Auditor: f.auditor,
-		Effects: f.effects, EffectFailures: f.effects, Now: func() time.Time { return f.at },
+		Effects: f.effects, EffectFailures: f.effects, Mail: f.mail, Now: func() time.Time { return f.at },
 		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +156,13 @@ type reviewStoreFake struct {
 	replayed bool
 	mode     string
 	student  *model.StudentResult
+	release  *store.ExamIntegrityReviewRelease
+}
+
+func (fake *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
+	int64,
+) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	return &store.ExamIntegrityReviewReleasePreparation{Replayed: fake.replayed, ReleaseAt: fake.f.at.Add(time.Minute)}, nil
 }
 
 func (fake *reviewStoreFake) Resolve(context.Context, model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
@@ -169,9 +196,11 @@ func (fake *reviewStoreFake) Finalize(context.Context, *store.ExamIntegrityRevie
 	_ = review.Finalize(2, fake.f.userID, 0, 0, 0, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", fake.f.at)
 	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review}, nil
 }
-func (fake *reviewStoreFake) Release(context.Context, *store.ExamIntegrityReviewRelease, *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+func (fake *reviewStoreFake) Release(_ context.Context, input *store.ExamIntegrityReviewRelease, _ *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	fake.release = input
 	result, _ := fake.Finalize(context.Background(), nil, nil)
 	_ = result.Review.Release(3, fake.f.userID, fake.f.at.Add(time.Minute))
+	result.Replayed = fake.replayed
 	return result, nil
 }
 func (fake *reviewStoreFake) GetReleasedStudentResult(_ context.Context, attemptID model.ExamAttemptID, candidateID model.UserID) (*model.StudentResult, error) {
@@ -214,6 +243,21 @@ func (fake *reviewAuditorFake) Begin(_ context.Context, _ Call, _ model.Action, 
 func (*reviewAuditorFake) Fail(context.Context, string, string) error { return nil }
 
 type reviewEffectsFake struct{ changed, finalized, released int }
+
+type reviewMailFake struct {
+	f       *reviewFixture
+	request ResultReleaseMailPreparation
+	calls   int
+}
+
+func (fake *reviewMailFake) PrepareResultRelease(_ context.Context,
+	request ResultReleaseMailPreparation,
+) (*PreparedResultReleaseMail, error) {
+	fake.calls++
+	fake.request = request
+	return &PreparedResultReleaseMail{Notice: &store.PreparedMail{Occurrence: &model.MailOccurrence{},
+		Delivery: &model.MailDelivery{}, Job: &model.Job{}}, ExpectedRecipientRevision: 2}, nil
+}
 
 func (fake *reviewEffectsFake) ReviewChanged(context.Context, Result) error {
 	fake.changed++

@@ -101,6 +101,9 @@ func run(args []string, stderr io.Writer) error {
 			request.SubmissionReceipt = &mailtemplates.SubmissionReceiptDetails{ExamTitle: "Representative programming exam",
 				SittingID: "sitting-safe-id", SubmissionID: "submission-safe-id",
 				SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.UTC)}
+		case i18n.ExamResultReleased:
+			request.ResultRelease = &mailtemplates.ResultReleaseDetails{ExamTitle: "Representative programming exam",
+				ReleasedAt: time.Date(2026, 8, 21, 10, 30, 0, 0, time.UTC)}
 		}
 		message, renderErr := renderer.Render(request)
 		if renderErr != nil {

@@ -6,12 +6,38 @@ package storetest
 import (
 	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+func attachResultReleaseMail(t *testing.T, candidate *model.User, input *store.ExamIntegrityReviewRelease) {
+	t.Helper()
+	at := input.ChangedAt
+	occurrenceID := model.MailOccurrenceID(input.ReviewID.String())
+	deliveryID, jobID := model.NewMailDeliveryID(), model.NewJobID()
+	command, err := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: deliveryID})
+	requireNoError(t, err)
+	job, err := model.NewJob(jobID, model.JobTypeMailDeliver, 1, command, deliveryID.String(), at, at,
+		model.MailMaximumAttempts)
+	requireNoError(t, err)
+	job, err = job.RequestCancellation(at)
+	requireNoError(t, err)
+	input.CandidateUserID = candidate.ID
+	input.ExpectedRecipientRevision = candidate.Revision
+	input.Notice = &store.PreparedMail{Occurrence: &model.MailOccurrence{ID: occurrenceID,
+		Kind: model.MailOccurrenceResultRelease, TemplateKey: model.MailTemplateExamResultReleased,
+		ActorUserID: candidate.ID, CreatedAt: at}, Delivery: &model.MailDelivery{ID: deliveryID,
+		OccurrenceID: occurrenceID, JobID: jobID, TargetUserID: candidate.ID,
+		TemplateKey: model.MailTemplateExamResultReleased, TemplateDigest: strings.Repeat("0", 64),
+		MaskedRecipient: "c***@example.edu", State: model.MailDeliverySuppressed, CreatedAt: at, UpdatedAt: at,
+		MessageDate: at, Deadline: at.Add(72 * time.Hour), MessageID: "<result." + deliveryID.String() + "@example.test>",
+		PublicFailureCode: model.MailDeliveryDisabledCode, Revision: 1}, Job: job}
+}
 
 // ExamIntegrityReviewSQLProbe exposes only the independent adapter needed to
 // characterize multi-node command convergence.
@@ -186,18 +212,114 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 		t.Fatal("SaveDecision(after finalization) succeeded")
 	}
 
+	releasePreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
+		finalized.Review.Revision)
+	requireNoError(t, err)
+	if releasePreparation == nil || releasePreparation.Replayed || releasePreparation.ReleaseAt.IsZero() {
+		t.Fatalf("PrepareRelease(fresh) = %#v", releasePreparation)
+	}
+	retriedReleasePreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
+		finalized.Review.Revision)
+	requireNoError(t, err)
+	if retriedReleasePreparation == nil || retriedReleasePreparation.Replayed ||
+		!retriedReleasePreparation.ReleaseAt.Equal(releasePreparation.ReleaseAt) {
+		t.Fatalf("PrepareRelease(fresh retry) = %#v, want reserved time %v",
+			retriedReleasePreparation, releasePreparation.ReleaseAt)
+	}
 	releaseInput := &store.ExamIntegrityReviewRelease{
 		SubmissionID: sealed.Receipt.SubmissionID, ReviewID: reviewID, ActorUserID: fixture.manager.ID,
-		ExpectedReviewRevision: finalized.Review.Revision, ChangedAt: model.NowUTC().Add(4 * time.Millisecond),
+		ExpectedReviewRevision: finalized.Review.Revision, ChangedAt: releasePreparation.ReleaseAt,
 		AuditEventID: saveIntegrityReviewAudit(t, ctx, ss, fixture,
-			sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String(), AuditAt: model.GetMillis(),
+			sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String(),
+		AuditAt: model.MillisFromTime(releasePreparation.ReleaseAt),
+	}
+	attachResultReleaseMail(t, fixture.candidate, releaseInput)
+	beforeRelease, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{
+		TemplateKeys: []model.MailTemplateKey{model.MailTemplateExamResultReleased}, Limit: 200})
+	requireNoError(t, err)
+	if len(beforeRelease) != 0 {
+		t.Fatalf("pre-release review activity created result mail: %#v", beforeRelease)
+	}
+	changedReleaseTime := *releaseInput
+	changedReleaseTime.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, fixture,
+		sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String()
+	changedReleaseTime.ChangedAt = changedReleaseTime.ChangedAt.Add(24 * time.Hour)
+	changedReleaseTime.AuditAt = model.MillisFromTime(changedReleaseTime.ChangedAt)
+	attachResultReleaseMail(t, fixture.candidate, &changedReleaseTime)
+	if _, changedTimeErr := reviews.Release(ctx, &changedReleaseTime, examCommand(fixture.manager.ID,
+		store.ExamIntegrityReviewReleaseOperation, "review-release-changed-time", "review-release-changed-time")); changedTimeErr == nil {
+		t.Fatal("Release(with self-consistent forged future PostgreSQL time) succeeded")
+	} else {
+		var conflict *store.ErrConflict
+		if !errors.As(changedTimeErr, &conflict) || conflict.Constraint != "result_release_time" {
+			t.Fatalf("Release(with self-consistent forged future PostgreSQL time) error = %v", changedTimeErr)
+		}
+	}
+	staleRecipient := *releaseInput
+	staleRecipient.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, fixture,
+		sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String()
+	staleRecipient.ExpectedRecipientRevision++
+	if _, staleErr := reviews.Release(ctx, &staleRecipient, examCommand(fixture.manager.ID,
+		store.ExamIntegrityReviewReleaseOperation, "review-release-stale-recipient", "review-release-stale-recipient")); staleErr == nil {
+		t.Fatal("Release(with stale candidate revision) succeeded")
+	}
+	if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, staleRecipient.Notice.Delivery.ID); !store.IsNotFound(deliveryErr) || delivery != nil {
+		t.Fatalf("stale-recipient result mail = %#v, %v", delivery, deliveryErr)
+	}
+	rollbackInput := *releaseInput
+	rollbackInput.AuditEventID = model.NewAuditEventID().String()
+	if _, rollbackErr := reviews.Release(ctx, &rollbackInput, examCommand(fixture.manager.ID,
+		store.ExamIntegrityReviewReleaseOperation, "review-release-rollback", "review-release-rollback")); rollbackErr == nil {
+		t.Fatal("Release(with missing audit) succeeded")
+	}
+	if delivery, deliveryErr := ss.Mail().GetDelivery(ctx, rollbackInput.Notice.Delivery.ID); !store.IsNotFound(deliveryErr) || delivery != nil {
+		t.Fatalf("rolled-back result mail = %#v, %v", delivery, deliveryErr)
+	}
+	stillWithheld, err := reviews.Get(ctx, sealed.Receipt.SubmissionID)
+	requireNoError(t, err)
+	if stillWithheld.Review.ReleaseState != model.SubmissionReviewWithheld {
+		t.Fatalf("rollback released Review: %#v", stillWithheld.Review)
 	}
 	released, err := reviews.Release(ctx, releaseInput, examCommand(fixture.manager.ID,
 		store.ExamIntegrityReviewReleaseOperation, "review-release", "review-release"))
 	requireNoError(t, err)
 	if released == nil || released.Review == nil || released.Review.ReleaseState != model.SubmissionReviewReleased ||
-		released.Review.Revision != 4 || !released.Review.ReleasedAt.Valid {
+		released.Review.Revision != 4 || !released.Review.ReleasedAt.Valid ||
+		!released.Review.ReleasedAt.Time.Equal(releaseInput.Notice.Occurrence.CreatedAt) {
 		t.Fatalf("Release() = %#v", released)
+	}
+	releaseDelivery, err := ss.Mail().GetDelivery(ctx, releaseInput.Notice.Delivery.ID)
+	requireNoError(t, err)
+	if releaseDelivery.OccurrenceID != model.MailOccurrenceID(reviewID.String()) ||
+		releaseDelivery.TargetUserID != fixture.candidate.ID ||
+		releaseDelivery.TemplateKey != model.MailTemplateExamResultReleased {
+		t.Fatalf("released-result delivery = %#v", releaseDelivery)
+	}
+	replayPreparation, err := reviews.PrepareRelease(ctx, sealed.Receipt.SubmissionID, reviewID,
+		finalized.Review.Revision)
+	requireNoError(t, err)
+	if replayPreparation == nil || !replayPreparation.Replayed {
+		t.Fatalf("PrepareRelease(replay) = %#v", replayPreparation)
+	}
+	replayRelease := *releaseInput
+	replayRelease.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, fixture,
+		sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String()
+	replayRelease.ChangedAt, replayRelease.AuditAt = replayPreparation.ReleaseAt,
+		model.MillisFromTime(replayPreparation.ReleaseAt)
+	replayRelease.Notice, replayRelease.ExpectedRecipientRevision = nil, 0
+	replayedRelease, err := reviews.Release(ctx, &replayRelease, examCommand(fixture.manager.ID,
+		store.ExamIntegrityReviewReleaseOperation, "review-release", "review-release"))
+	requireNoError(t, err)
+	if replayedRelease == nil || !replayedRelease.Replayed || replayedRelease.Review.ID != released.Review.ID {
+		t.Fatalf("Release(replay) = %#v", replayedRelease)
+	}
+	revokeIntegrityReviewManager(t, ctx, ss, fixture)
+	revokedReplay := replayRelease
+	revokedReplay.AuditEventID = saveIntegrityReviewAudit(t, ctx, ss, fixture,
+		sealed.Receipt.SubmissionID, model.ActionSubmissionRelease).ID.String()
+	if _, revokedErr := reviews.Release(ctx, &revokedReplay, examCommand(fixture.manager.ID,
+		store.ExamIntegrityReviewReleaseOperation, "review-release", "review-release")); revokedErr == nil {
+		t.Fatal("Release(retained replay after Manager authority revocation) succeeded")
 	}
 	result, err := reviews.GetReleasedStudentResult(ctx, connected.Attempt.ID, fixture.candidate.ID)
 	requireNoError(t, err)
@@ -249,6 +371,47 @@ func TestExamIntegrityReviewStore(t *testing.T, ss store.Store, reviews store.Ex
 	}
 }
 
+func revokeIntegrityReviewManager(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture) {
+	t.Helper()
+	replacement := saveUser(t, ctx, ss)
+	_, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: fixture.unitID, UserID: replacement.ID, StartsAt: model.NowUTC().Add(-time.Hour),
+	})
+	requireNoError(t, err)
+	access, err := ss.ExamAuthoring().Access(ctx, fixture.examID, fixture.manager.ID)
+	requireNoError(t, err)
+	at := model.NowUTC()
+	add := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.manager.ID, replacement.ID,
+		access.Exam.Revision, at, false)
+	add.Notices = examManagerMailNotices(t, at,
+		examManagerMailRecipient{replacement.ID, model.MailTemplateExamManagerAdded})
+	added, err := ss.ExamAuthoring().AddManager(ctx, add,
+		examCommand(fixture.manager.ID, "exam.manager.add.v1", "review-release-authority-add", "review-release-authority-add"))
+	requireNoError(t, err)
+	transferAt := at.Add(time.Millisecond)
+	transfer := newExamManagerMutation(t, ctx, ss, fixture.examID, fixture.manager.ID, replacement.ID,
+		added.Exam.Revision, transferAt, false)
+	transfer.Notices = examManagerMailNotices(t, transferAt,
+		examManagerMailRecipient{fixture.manager.ID, model.MailTemplateExamOwnershipTransferredFromYou},
+		examManagerMailRecipient{replacement.ID, model.MailTemplateExamOwnershipTransferredToYou})
+	transferred, err := ss.ExamAuthoring().TransferOwner(ctx, transfer,
+		examCommand(fixture.manager.ID, "exam.owner.transfer.v1", "review-release-authority-transfer", "review-release-authority-transfer"))
+	requireNoError(t, err)
+	removeAt := transferAt.Add(time.Millisecond)
+	remove := newExamManagerMutation(t, ctx, ss, fixture.examID, replacement.ID, fixture.manager.ID,
+		transferred.Exam.Revision, removeAt, false)
+	remove.Notices = examManagerMailNotices(t, removeAt,
+		examManagerMailRecipient{fixture.manager.ID, model.MailTemplateExamManagerRemoved})
+	_, err = ss.ExamAuthoring().RemoveManager(ctx, remove,
+		examCommand(replacement.ID, "exam.manager.remove.v1", "review-release-authority-remove", "review-release-authority-remove"))
+	requireNoError(t, err)
+	revoked, err := ss.ExamAuthoring().Access(ctx, fixture.examID, fixture.manager.ID)
+	requireNoError(t, err)
+	if revoked.ActorIsManager || revoked.Exam.OwnerUserID == fixture.manager.ID {
+		t.Fatalf("Manager authority was not revoked: %#v", revoked)
+	}
+}
+
 func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss store.Store) {
 	t.Helper()
 	newSuspended := func(prefix string) (examAttemptFixture, *store.ExamAttemptFocusLossResult,
@@ -288,9 +451,12 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 			t.Fatalf("automatic late-discrepancy targets = %#v; want attempt %s", targets, attemptID)
 		}
 		audit := saveExamSittingSystemAudit(t, ctx, ss, fixture.sitting.ID, fixture.unitID)
-		sealed, err := ss.ExamSubmission().SealForSittingClose(ctx, &store.ExamSubmissionAutomaticSeal{
-			Target: targets[0], SubmissionID: model.NewSubmissionID(), AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
-		})
+		preparation, err := ss.ExamSubmission().PrepareAutomaticSeal(ctx, targets[0])
+		requireNoError(t, err)
+		input := &store.ExamSubmissionAutomaticSeal{Target: targets[0], SubmissionID: model.NewSubmissionID(),
+			AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(preparation.SealAt)}
+		attachAutomaticSubmissionReceipt(t, fixture.candidate, input)
+		sealed, err := ss.ExamSubmission().SealForSittingClose(ctx, input)
 		requireNoError(t, err)
 		return sealed
 	}
@@ -362,13 +528,19 @@ func newIntegrityReviewFixtureWithFinalSequence(t *testing.T, ctx context.Contex
 	if flagged.Flag == nil || !flagged.FlagCreated || !flagged.ThresholdCrossed {
 		t.Fatalf("Focus Loss review fixture = %#v", flagged)
 	}
-	sealInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: store.ExamSubmissionSealAccess{
+	sealAccess := store.ExamSubmissionSealAccess{
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
 		ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedWorkspaceCursor: connected.Workspace.Cursor,
 		FinalFocusLossSequence: finalSequence,
-	}, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	}
+	sealTarget, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
+	requireNoError(t, err)
+	sealInput := &store.ExamSubmissionSeal{SubmissionID: model.NewSubmissionID(), Access: sealAccess,
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(),
+		AuditAt:      model.MillisFromTime(sealTarget.SealAt)}
+	attachSubmissionReceipt(t, fixture.candidate, sealInput)
 	sealed, err := ss.ExamSubmission().Seal(ctx, sealInput, examCommand(fixture.candidate.ID,
 		store.ExamSubmissionSealOperation, prefix+"-seal", prefix+"-seal"))
 	requireNoError(t, err)

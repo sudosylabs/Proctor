@@ -508,7 +508,7 @@ func (s *SQLExamIntegrityReviewStore) Finalize(ctx context.Context, input *store
 }
 
 func (s *SQLExamIntegrityReviewStore) Release(ctx context.Context, input *store.ExamIntegrityReviewRelease, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	if input == nil {
+	if input == nil || !input.CandidateUserID.IsValid() {
 		return nil, store.NewErrInvalidInput("submission_review", "release", nil)
 	}
 	probe := &store.ExamIntegrityReviewFinalize{SubmissionID: input.SubmissionID, ReviewID: input.ReviewID, ActorUserID: input.ActorUserID, ManagerOverride: input.ManagerOverride, ExpectedReviewRevision: input.ExpectedReviewRevision, ChangedAt: input.ChangedAt, AuditEventID: input.AuditEventID, AuditAt: input.AuditAt}
@@ -525,6 +525,54 @@ func (s *SQLExamIntegrityReviewStore) Release(ctx context.Context, input *store.
 			}
 			return completeIntegrityReviewAudit(ctx, tx, value, input.AuditEventID, input.AuditAt, true, original)
 		})
+}
+
+func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submissionID model.SubmissionID,
+	reviewID model.SubmissionReviewID, expectedRevision int64,
+) (*store.ExamIntegrityReviewReleasePreparation, error) {
+	if !submissionID.IsValid() || !reviewID.IsValid() || expectedRevision < 1 {
+		return nil, store.NewErrInvalidInput("submission_review", "release_preparation", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "prepare Student Result release", func(ctx context.Context,
+		tx *sqlxTxWrapper,
+	) (*store.ExamIntegrityReviewReleasePreparation, error) {
+		review, err := loadReviewForMutation(ctx, tx, submissionID)
+		if err != nil {
+			return nil, err
+		}
+		if review.ID != reviewID {
+			return nil, store.NewErrConflict("submission_review", "integrity_review_revision", nil)
+		}
+		replayed := review.State == model.SubmissionReviewFinalized &&
+			review.ReleaseState == model.SubmissionReviewReleased && review.Revision == expectedRevision+1
+		fresh := review.State == model.SubmissionReviewFinalized &&
+			review.ReleaseState == model.SubmissionReviewWithheld && review.Revision == expectedRevision
+		if !fresh && !replayed {
+			return nil, store.NewErrConflict("submission_review", "integrity_review_state", nil)
+		}
+		var databaseNow time.Time
+		if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read Student Result release time: %w", err)
+		}
+		releaseAt := model.TimeFromMillis(model.MillisFromTime(databaseNow))
+		if replayed {
+			return &store.ExamIntegrityReviewReleasePreparation{Replayed: true, ReleaseAt: releaseAt}, nil
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO submission_review_release_preparations
+			(submission_review_id,submission_id,expected_review_revision,release_at)
+			VALUES (?,?,?,?) ON CONFLICT (submission_review_id) DO NOTHING`,
+			reviewID.String(), submissionID.String(), expectedRevision, releaseAt); err != nil {
+			return nil, fmt.Errorf("reserve Student Result release time: %w", err)
+		}
+		preparation, err := lockResultReleasePreparation(ctx, tx, reviewID)
+		if err != nil {
+			return nil, err
+		}
+		if preparation.SubmissionID != submissionID.String() || preparation.ExpectedReviewRevision != expectedRevision {
+			return nil, store.NewErrConflict("submission_review", "result_release_time", nil)
+		}
+		return &store.ExamIntegrityReviewReleasePreparation{ReleaseAt: model.TimeUTC(preparation.ReleaseAt)}, nil
+	})
 }
 
 func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, name string, command *store.CommandIdempotency, auditID string, auditAt int64,
@@ -898,6 +946,10 @@ func finalizeReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInt
 }
 
 func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamIntegrityReviewRelease) (examIntegrityReviewOutcome, error) {
+	recipient, err := lockMailRecipientUser(ctx, tx, input.CandidateUserID)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
 	auth, err := lockReviewScope(ctx, tx, input.SubmissionID, input.ActorUserID, input.ManagerOverride)
 	if err != nil {
 		return examIntegrityReviewOutcome{}, err
@@ -909,7 +961,34 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if review.ID != input.ReviewID || review.Revision != input.ExpectedReviewRevision {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "integrity_review_revision", nil)
 	}
-	if err = review.Release(input.ExpectedReviewRevision, input.ActorUserID, input.ChangedAt); err != nil {
+	preparation, err := lockResultReleasePreparation(ctx, tx, input.ReviewID)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	var databaseNow time.Time
+	if err = tx.Get(ctx, &databaseNow, `SELECT statement_timestamp()`); err != nil {
+		return examIntegrityReviewOutcome{}, fmt.Errorf("read terminal Student Result release time: %w", err)
+	}
+	releaseAt := model.TimeUTC(preparation.ReleaseAt)
+	if preparation.SubmissionID != input.SubmissionID.String() ||
+		preparation.ExpectedReviewRevision != input.ExpectedReviewRevision ||
+		!releaseAt.Equal(model.TimeFromMillis(input.AuditAt)) || !releaseAt.Equal(input.ChangedAt) ||
+		releaseAt.After(model.TimeUTC(databaseNow)) {
+		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_time", nil)
+	}
+	if auth.CandidateUserID != input.CandidateUserID || recipient.Revision != input.ExpectedRecipientRevision {
+		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "result_release_recipient_changed", nil)
+	}
+	payloadKeyID, err := validateResultReleaseMail(input.Notice, recipient, input.ReviewID, releaseAt)
+	if err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	if payloadKeyID != "" {
+		if err = requireMailPayloadPrimary(ctx, tx, payloadKeyID); err != nil {
+			return examIntegrityReviewOutcome{}, err
+		}
+	}
+	if err = review.Release(input.ExpectedReviewRevision, input.ActorUserID, releaseAt); err != nil {
 		return examIntegrityReviewOutcome{}, store.NewErrConflict("submission_review", "integrity_review_state", err)
 	}
 	if err = persistReview(ctx, tx, review, input.ExpectedReviewRevision); err != nil {
@@ -919,7 +998,46 @@ func releaseReview(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamInte
 	if err = completeIntegrityReviewAudit(ctx, tx, out, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
+	if err = insertResultReleaseMail(ctx, tx, input.Notice, payloadKeyID); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
+	if err = deleteResultReleasePreparation(ctx, tx, input.ReviewID); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
 	return out, nil
+}
+
+type resultReleasePreparationRow struct {
+	SubmissionID           string    `db:"submission_id"`
+	ExpectedReviewRevision int64     `db:"expected_review_revision"`
+	ReleaseAt              time.Time `db:"release_at"`
+}
+
+func lockResultReleasePreparation(ctx context.Context, tx *sqlxTxWrapper,
+	reviewID model.SubmissionReviewID,
+) (*resultReleasePreparationRow, error) {
+	var row resultReleasePreparationRow
+	if err := tx.Get(ctx, &row, `SELECT submission_id,expected_review_revision,release_at
+		FROM submission_review_release_preparations WHERE submission_review_id=? FOR UPDATE`, reviewID.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.NewErrConflict("submission_review", "result_release_time", nil)
+		}
+		return nil, translateError("submission_review_release_preparation", reviewID.String(), err)
+	}
+	return &row, nil
+}
+
+func deleteResultReleasePreparation(ctx context.Context, tx *sqlxTxWrapper,
+	reviewID model.SubmissionReviewID,
+) error {
+	result, err := tx.Exec(ctx, `DELETE FROM submission_review_release_preparations WHERE submission_review_id=?`, reviewID.String())
+	if err != nil {
+		return fmt.Errorf("consume Student Result release preparation: %w", err)
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
+		return store.NewErrConflict("submission_review", "result_release_time", rowsErr)
+	}
+	return nil
 }
 
 func completeIntegrityReviewAudit(ctx context.Context, tx *sqlxTxWrapper, out examIntegrityReviewOutcome, auditID string, auditAt int64, replayed bool, original string) error {

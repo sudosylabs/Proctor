@@ -92,3 +92,6 @@ func (r *classTransitionRendererFake) RenderClassTransitionNotice(_ model.MailTe
 func (r *classTransitionRendererFake) RenderSubmissionReceipt(model.MailTemplateKey, string, string, SubmissionReceiptMailDetails) (FrozenMailContent, error) {
 	return FrozenMailContent{}, nil
 }
+func (r *classTransitionRendererFake) RenderResultRelease(model.MailTemplateKey, string, string, ResultReleaseMailDetails) (FrozenMailContent, error) {
+	return FrozenMailContent{}, nil
+}

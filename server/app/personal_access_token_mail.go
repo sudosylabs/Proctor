@@ -41,7 +41,7 @@ func (p *directMailPreparer) PreparePersonalAccessTokenSecurityNotice(
 		request.Recipient.DisplayName, request.Recipient.Email, request.Recipient.Locale,
 		request.Recipient.ID, request.Recipient.ID, "", model.NewMailOccurrenceID(),
 		model.MailOccurrenceSecurityNotice, request.TemplateKey, "", at,
-		at.Add(securityNoticeDeliveryLifetime), model.JobTypeMailDeliver, &details, nil, nil, nil,
+		at.Add(securityNoticeDeliveryLifetime), model.JobTypeMailDeliver, details,
 	)
 }
 

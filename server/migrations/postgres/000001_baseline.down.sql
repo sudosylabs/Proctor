@@ -45,6 +45,7 @@ DROP TABLE IF EXISTS submission_review_inventory_discrepancies;
 DROP TABLE IF EXISTS submission_review_inventory_evidence;
 DROP TABLE IF EXISTS submission_review_inventory_flags;
 DROP TABLE IF EXISTS integrity_review_decisions;
+DROP TABLE IF EXISTS submission_review_release_preparations;
 DROP TABLE IF EXISTS submission_reviews;
 DROP FUNCTION IF EXISTS reject_submission_review_inventory_mutation();
 DROP FUNCTION IF EXISTS guard_integrity_review_decision_mutation();
