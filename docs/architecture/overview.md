@@ -39,7 +39,8 @@ The server is not promised as a reusable Go library, but direct readable package
 server/
 ├── server.go                 # package server: runtime and composition
 ├── infrastructure.go        # cohesive root construction helpers
-├── cmd/proctor/              # thin CLI boundary
+├── cmd/proctor/              # thin host-operator executable
+│   └── commands/             # explicit Cobra tree and command-family presentation
 ├── model/                    # cohesive domain types and invariants
 ├── app/                      # commands, queries, policy, orchestration
 │   ├── mail/                 # transactional-mail meaning and rendering

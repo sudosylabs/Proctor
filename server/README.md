@@ -34,7 +34,10 @@ locator. The projection is discarded before construction returns.
 
 The facade intentionally exposes construction, start, close, readiness, and
 the narrow operator-command capabilities used by the CLI. The CLI remains a
-thin caller of this API. `testlib` uses the same private composition recipe
+thin caller of this API. Its Cobra tree is assembled explicitly under
+`cmd/proctor/commands`, creates fresh command state for each execution, and
+keeps concrete infrastructure construction in this module-root facade.
+`testlib` uses the same private composition recipe
 through concrete typed overrides and receives only Server, the application
 facade and an HTTP handler; it retains its supplied adapters for assertions.
 
@@ -268,6 +271,10 @@ Validate a configuration without starting the server:
 ```sh
 go run ./server/cmd/proctor config validate --config ./server/config.example.json
 ```
+
+`--config` is a persistent operator flag and may also precede the command.
+Run `proctor --help` for the command tree or `proctor completion --help` for
+shell-completion generation.
 
 Configuration is loaded in this order: built-in defaults, an optional strict
 JSON file, then `PROCTOR_` environment variables. Unknown JSON fields and

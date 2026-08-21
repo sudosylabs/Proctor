@@ -151,8 +151,10 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "cluster adapter cannot import persistence", from: serverModule + "/cluster/memberlist", imported: serverModule + "/store"},
 		{name: "external adapter cannot import HTTP", from: serverModule + "/platform/externalauth/oidc", imported: serverModule + "/httpapi"},
 		{name: "platform cannot select concrete adapters", from: serverModule + "/platform", imported: "github.com/sudosylabs/proctor/packages/cache/redis"},
-		{name: "command cannot bypass root composition", from: serverModule + "/cmd/proctor", imported: serverModule + "/app"},
-		{name: "command cannot open SQL directly", from: serverModule + "/cmd/proctor", imported: "database/sql"},
+		{name: "operator executable cannot bypass its command tree", from: serverModule + "/cmd/proctor", imported: serverModule},
+		{name: "command tree cannot bypass root composition", from: serverModule + "/cmd/proctor/commands", imported: serverModule + "/app"},
+		{name: "command tree cannot open SQL directly", from: serverModule + "/cmd/proctor/commands", imported: "database/sql"},
+		{name: "unknown operator child package fails closed", from: serverModule + "/cmd/proctor/helpers", imported: "context"},
 		{name: "localization cannot import application", from: serverModule + "/localization", imported: serverModule + "/app"},
 		{name: "mail rendering cannot import transport", from: serverModule + "/app/mail", imported: repositoryModule + "/packages/mail"},
 		{name: "mail preview cannot import application", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app"},
@@ -223,6 +225,9 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "cluster adapter may import cluster contracts", from: serverModule + "/cluster/memberlist", imported: serverModule + "/cluster"},
 		{name: "application may import password hashing library", from: serverModule + "/app", imported: "golang.org/x/crypto/argon2"},
 		{name: "root composition may import platform", from: serverModule, imported: serverModule + "/platform"},
+		{name: "operator executable may import its command tree", from: serverModule + "/cmd/proctor", imported: serverModule + "/cmd/proctor/commands"},
+		{name: "operator command tree may import the root server facade", from: serverModule + "/cmd/proctor/commands", imported: serverModule},
+		{name: "operator command tree may import Cobra", from: serverModule + "/cmd/proctor/commands", imported: "github.com/spf13/cobra"},
 		{name: "mail preview may import mail rendering", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app/mail"},
 		{name: "mail preview may import localization", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/localization"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},
@@ -393,15 +398,20 @@ func forbiddenImport(from, imported string) bool {
 	case from == serverModule+"/executionhost":
 		return (thirdPartyImport(imported) && !packageOrBelow(imported, "github.com/sudosylabs/execenv")) ||
 			forbiddenProjectImportExcept(imported, serverModule+"/app/execution")
-	case strings.HasPrefix(from, serverModule+"/cmd/"):
-		if from == serverModule+"/cmd/mailpreview" {
-			return thirdPartyImport(imported) ||
-				(strings.HasPrefix(imported, repositoryModule+"/") &&
-					imported != serverModule+"/app/mail" && imported != serverModule+"/localization" &&
-					imported != serverModule+"/model")
-		}
-		return commandInfrastructureImport(imported) || thirdPartyImport(imported) ||
+	case from == serverModule+"/cmd/proctor":
+		return thirdPartyImport(imported) ||
+			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/cmd/proctor/commands")
+	case packageOrBelow(from, serverModule+"/cmd/proctor/commands"):
+		return commandInfrastructureImport(imported) ||
+			(thirdPartyImport(imported) && imported != "github.com/spf13/cobra") ||
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
+	case from == serverModule+"/cmd/mailpreview":
+		return thirdPartyImport(imported) ||
+			(strings.HasPrefix(imported, repositoryModule+"/") &&
+				imported != serverModule+"/app/mail" && imported != serverModule+"/localization" &&
+				imported != serverModule+"/model")
+	case strings.HasPrefix(from, serverModule+"/cmd/"):
+		return true
 	case from == serverModule+"/config":
 		return strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/identityprovider"
 	case from == serverModule+"/logging", from == serverModule+"/migrations":
@@ -485,6 +495,7 @@ func knownProductionPackage(packagePath string) bool {
 		packagePath == serverModule+"/secretseal" || packagePath == serverModule+"/localization" ||
 		packagePath == serverModule+"/executionhost" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||
+		packageOrBelow(packagePath, serverModule+"/cmd/proctor/commands") ||
 		packagePath == serverModule+"/cmd/mailpreview" {
 		return true
 	}

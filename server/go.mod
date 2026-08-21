@@ -17,6 +17,7 @@ require (
 	github.com/mattermost/morph v1.1.0
 	github.com/pdfcpu/pdfcpu v0.13.0
 	github.com/redis/rueidis v1.0.76
+	github.com/spf13/cobra v1.10.2
 	github.com/sudosylabs/execenv v0.2.0
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260726111247-11f8bdd6cebe
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260726114928-8a166a08b663
@@ -51,6 +52,7 @@ require (
 	github.com/hhrutter/lzw v1.0.0 // indirect
 	github.com/hhrutter/pkcs7 v0.2.2 // indirect
 	github.com/hhrutter/tiff v1.0.3 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
@@ -74,6 +76,7 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/wiggin77/merror v1.0.2 // indirect

@@ -18,7 +18,7 @@ app ← httpapi
 model ← filecontent
 packages/vfs ← filecontent
 app ← filecontent
-{app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor
+{app, httpapi, app/realtime, websocket, filecontent} ← server ← cmd/proctor/commands ← cmd/proctor
 execenv ← executionhost ← server
 ~~~
 
@@ -51,7 +51,8 @@ inside `app/` are application-owned modules, not transports.
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `executionhost` | `app/execution` ports, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
 | `server` | Construction dependencies | Business rules |
-| `cmd/proctor` | Module-root `server` | Independent infrastructure construction |
+| `cmd/proctor` | `cmd/proctor/commands` and standard-library process lifecycle | Server, application, persistence, and concrete infrastructure |
+| `cmd/proctor/commands` | Module-root `server`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
 
 Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
