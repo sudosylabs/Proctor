@@ -72,8 +72,8 @@ func newSystemDiscoveryMaintenance(cfg Config) *discoveryMaintenance {
 		discovery:          cfg.Discovery,
 		discoveryTTL:       cfg.DiscoveryTTL,
 		discoveryHeartbeat: cfg.DiscoveryHeartbeat,
-		protocolMin:        cfg.ProtocolMin,
-		protocolMax:        cfg.ProtocolMax,
+		protocolMin:        supportedProtocolMin,
+		protocolMax:        supportedProtocolMax,
 		diagnostics:        cfg.Logger,
 		now:                time.Now,
 		newTicker:          newDiscoveryTicker,
@@ -88,13 +88,19 @@ func (m *discoveryMaintenance) prepare(ctx context.Context) ([]string, error) {
 	if err := m.advertiseAt(ctx, now); err != nil {
 		return nil, err
 	}
-
-	live, err := m.cfg.discovery.ListLive(ctx, now)
+	seeds, err := m.seedsAt(ctx, now)
 	if err != nil {
 		m.rollback(ctx)
+		return nil, err
+	}
+	return seeds, nil
+}
+
+func (m *discoveryMaintenance) seedsAt(ctx context.Context, now time.Time) ([]string, error) {
+	live, err := m.cfg.discovery.ListLive(ctx, now)
+	if err != nil {
 		return nil, fmt.Errorf("list discovery peers: %w", err)
 	}
-
 	seeds := append([]string(nil), m.cfg.seedAddresses...)
 	for _, peer := range live {
 		if peer.NodeID == m.cfg.nodeID {
@@ -105,13 +111,20 @@ func (m *discoveryMaintenance) prepare(ctx context.Context) ([]string, error) {
 		}
 		seeds = append(seeds, peer.AdvertiseAddress)
 	}
-	return uniqueStrings(seeds), nil
+	seeds = uniqueStrings(seeds)
+	if len(seeds) > maximumJoinCandidates {
+		seeds = seeds[:maximumJoinCandidates]
+	}
+	return seeds, nil
 }
 
 // run refreshes and cleans discovery until its transport-owned context is
 // canceled. Schedule construction happens here rather than during module or
 // transport construction.
-func (m *discoveryMaintenance) run(ctx context.Context) {
+func (m *discoveryMaintenance) run(
+	ctx context.Context,
+	rejoin func(context.Context, []string) error,
+) {
 	ticker := m.cfg.newTicker(m.cfg.discoveryHeartbeat)
 	defer ticker.Stop()
 	for {
@@ -119,7 +132,16 @@ func (m *discoveryMaintenance) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C():
-			m.maintainAt(ctx, m.cfg.now().UTC())
+			now := m.cfg.now().UTC()
+			m.maintainAt(ctx, now)
+			seeds, err := m.seedsAt(ctx, now)
+			if err != nil {
+				m.cfg.diagnostics.ErrorContext(ctx, "cluster discovery peer listing failed", err)
+				continue
+			}
+			if err := rejoin(ctx, seeds); err != nil && ctx.Err() == nil {
+				m.cfg.diagnostics.ErrorContext(ctx, "memberlist rejoin incomplete", err)
+			}
 		}
 	}
 }

@@ -64,7 +64,9 @@ the code and component contracts for that detail.
   and audit projections omit account-security and request-security metadata.
 - Realtime behavior includes authenticated WebSockets, authorized
   subscriptions, bounded local replay, explicit resynchronization, local and
-  Memberlist cluster transports, and best-effort cross-node fan-out.
+  Memberlist cluster transports, continuous PostgreSQL-lease rediscovery,
+  compiled protocol admission, rotatable gossip keyrings, and best-effort
+  cross-node fan-out.
 - The first server-owned file-management slice supports authorized custom
   profile-picture upload and retrieval, immutable file revisions and
   renditions, bounded upload leases, PostgreSQL-owned metadata, private

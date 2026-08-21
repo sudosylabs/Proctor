@@ -27,12 +27,11 @@ type Event string
 // deliberately owned by their application modules and need no transport-level
 // duplicate declaration.
 const (
-	EventNone                      Event = "none"
-	EventAcademicPeriodInvalidated Event = "store.academic_period.invalidated"
+	EventNone Event = "none"
 )
 
 // Message is the application-facing inter-node payload. Transports own wire
-// metadata such as protocol version, message ID, source, and target node.
+// metadata such as protocol version, source, and target node.
 // Delivery is always best-effort; there is no durable/reliable send class.
 type Message struct {
 	Event Event             `json:"event"`

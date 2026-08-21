@@ -182,6 +182,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_CLUSTER_MEMBERLIST_ENCRYPTION_KEY", func(cfg *Config) *string {
 		return &cfg.Cluster.Memberlist.EncryptionKey
 	}),
+	stringListEnvironmentOverride("PROCTOR_CLUSTER_MEMBERLIST_DECRYPTION_KEYS", func(cfg *Config) *[]string {
+		return &cfg.Cluster.Memberlist.DecryptionKeys
+	}),
 	stringListEnvironmentOverride("PROCTOR_CLUSTER_MEMBERLIST_SEED_ADDRESSES", func(cfg *Config) *[]string {
 		return &cfg.Cluster.Memberlist.SeedAddresses
 	}),
@@ -346,12 +349,6 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	intEnvironmentOverride("PROCTOR_CACHE_REDIS_DATABASE", func(cfg *Config) *int {
 		return &cfg.Cache.Redis.Database
-	}),
-	intEnvironmentOverride("PROCTOR_CLUSTER_MEMBERLIST_PROTOCOL_MIN", func(cfg *Config) *int {
-		return &cfg.Cluster.Memberlist.ProtocolMin
-	}),
-	intEnvironmentOverride("PROCTOR_CLUSTER_MEMBERLIST_PROTOCOL_MAX", func(cfg *Config) *int {
-		return &cfg.Cluster.Memberlist.ProtocolMax
 	}),
 	intEnvironmentOverride("PROCTOR_MAIL_SMTP_MAX_RECIPIENTS", func(cfg *Config) *int {
 		return &cfg.Mail.SMTP.MaxRecipients

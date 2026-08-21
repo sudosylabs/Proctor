@@ -98,11 +98,13 @@ Memberlist mode:
   configured static seeds first with compatible live discovery seeds;
   discovery uses a narrow store contract and never SQL adapter types or
   application-message payloads;
-- requires authenticated gossip encryption, an explicit shared key, safe
-  bind/advertise addresses, and key rotation through Memberlist's keyring;
+- requires authenticated gossip encryption, an explicit primary key, safe
+  bind/advertise addresses, and a bounded fallback decryption ring for rolling
+  key rotation;
 - validates the key, addresses, discovery, shared VFS, and other prerequisites
   before readiness;
-- advertises the server version and supported cluster-protocol range;
+- advertises the server version and the cluster-protocol range compiled into
+  the binary; operators cannot claim wire versions the binary does not encode;
 - carries a protocol version on every message, rejects incompatible peers
   before readiness, and tolerates safe unknown message types/fields between
   adjacent compatible versions for rolling upgrades; and
@@ -110,23 +112,46 @@ Memberlist mode:
 
 The Memberlist adapter contains a private discovery-maintenance module. It owns
 lease construction, initial advertisement and rollback, compatible discovery
-seed selection, periodic renewal, expired-row cleanup, and graceful
-withdrawal. The transport remains the sole lifecycle owner: it creates and
-joins Memberlist, owns cancellation and the maintenance goroutine, and waits
-for owned maintenance to terminate before persistence can close. The supplied
+seed selection, periodic renewal, expired-row cleanup, rediscovery, and
+graceful withdrawal. The transport remains the sole lifecycle owner: it
+creates and joins Memberlist, owns cancellation and the single maintenance
+goroutine, and waits for owned maintenance to terminate before persistence can
+close. Rediscovery re-lists compatible live leases and attempts a rotating
+batch of at most three candidate addresses per tick; configured seeds take
+precedence and the combined candidate set is bounded at 64. The supplied
 deadline bounds graceful leave and lease withdrawal and is reported when
 exhausted; the concrete Memberlist shutdown call is synchronous and is not
 abandoned merely to return at the deadline.
 
 Startup creates Memberlist, advertises the local lease, selects seeds, attempts
 the join, and validates joined node identities and protocol ranges before
-readiness. Initial advertisement and seed-listing failures are fatal. A join
-failure is diagnostic and nonfatal because discovery is eventual; this does
-not imply a background rediscovery or rejoin loop. A failure after the initial
-advertisement succeeds—including seed listing or admission—withdraws the local
-lease best-effort and shuts Memberlist down before returning the primary error.
-Maintenance renews before cleaning expired rows on each tick, continues after
-either disposable-store failure, and does not determine readiness.
+readiness. Initial advertisement and seed-listing failures are fatal. A network
+join failure is diagnostic and nonfatal because periodic rediscovery retries
+candidate peers. An admission rejection remains fatal during startup. A failure
+after the initial advertisement succeeds—including seed listing or
+admission—withdraws the local lease best-effort and shuts Memberlist down
+before returning the primary error. Maintenance renews before cleaning expired
+rows, re-lists compatible peers, then attempts bounded rejoin on each tick.
+Disposable-store and rejoin failures are diagnosed independently and later
+ticks continue; they do not determine readiness.
+
+Peer admission is continuous rather than startup-only. Memberlist alive and
+merge callbacks reject malformed metadata, identity mismatches, duplicate
+remote identities in a merge, blank server versions, and protocol ranges that
+do not include a wire version supported by this binary. Memberlist's
+incarnation logic resolves a stable node ID's old address during immediate
+restart; conflicting live addresses are refused and diagnosed without exposing
+peer metadata. After a crash, a dead node name becomes reclaimable at a new
+address only after one full discovery TTL; periodic rediscovery retries during
+that safety window. Local metadata that cannot fit Memberlist's fixed bound is
+rejected during construction and is never truncated into malformed JSON.
+
+Memberlist `encryption_key` is the primary key used for new gossip traffic and
+`decryption_keys` contains at most eight fallback keys. Rotation is a staged,
+restart-required deployment operation: first add the new key as a fallback on
+every node; then make it primary while retaining the old key as a fallback on
+every node; finally remove the old fallback after the fleet is converged.
+Skipping the overlap stage partitions nodes that cannot decrypt one another.
 
 Shutdown first makes transport operations terminal, cancels and waits for
 maintenance, leaves and shuts down Memberlist, and then withdraws the lease
@@ -137,7 +162,13 @@ graceful withdrawal remains best-effort.
 One handler owns each typed event on a node. `Broadcast` sends to peers only;
 `SendToNode` may target the current node. Messages are bounded and cloned for
 handlers; panics are contained and payload data is not logged. Handlers are
-idempotent and cluster-received realtime events are never rebroadcast.
+idempotent, perform bounded local work, and do not place durable or network
+work on Memberlist's receive path. Cluster-received realtime events are never
+rebroadcast. Broadcast is an O(peer-count) best-effort loop with context
+cancellation checked between peers; there is no generic outbound queue or hard
+membership limit. The transport is intended for modest institutional node
+counts, and larger topologies require capacity testing against their actual
+event rate and network.
 
 Realtime peer event names and JSON payloads are stable application-propagation
 contracts carried inside the versioned cluster envelope. The Realtime child

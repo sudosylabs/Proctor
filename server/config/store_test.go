@@ -480,6 +480,8 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	cfg.Database.DataSource = "postgres://proctor:secret@db.example/proctor?sslmode=require"
 	cfg.Cache.Redis.Password = "cache-secret"
 	cfg.Cluster.Memberlist.EncryptionKey = "dGVzdC1tZW1iZXJsaXN0LWtleS0zMmJ5dGVzISE="
+	cfg.Cluster.Memberlist.DecryptionKeys = []string{base64.StdEncoding.
+		EncodeToString([]byte("cluster-fallback-key-material-32b"))}
 	cfg.Mail.SMTP.Password = "mail-secret"
 	cfg.VFS.S3.AccessKey = "vfs-access-key"
 	cfg.VFS.S3.SecretKey = "vfs-secret-key"
@@ -495,6 +497,7 @@ func TestRedactedConfigurationHidesInfrastructureCredentials(t *testing.T) {
 	for _, forbidden := range []string{
 		"cache-secret",
 		"dGVzdC1tZW1iZXJsaXN0LWtleS0zMmJ5dGVzISE=",
+		cfg.Cluster.Memberlist.DecryptionKeys[0],
 		"mail-secret",
 		"db.example",
 		"vfs-access-key",

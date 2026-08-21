@@ -104,11 +104,10 @@ type ClusterMemberlist struct {
 	BindAddress        string   `json:"bind_address"`
 	AdvertiseAddress   string   `json:"advertise_address"`
 	EncryptionKey      string   `json:"encryption_key,omitempty"`
+	DecryptionKeys     []string `json:"decryption_keys,omitempty"`
 	SeedAddresses      []string `json:"seed_addresses,omitempty"`
 	DiscoveryTTL       Duration `json:"discovery_ttl"`
 	DiscoveryHeartbeat Duration `json:"discovery_heartbeat"`
-	ProtocolMin        int      `json:"protocol_min"`
-	ProtocolMax        int      `json:"protocol_max"`
 	AllowPublicBind    bool     `json:"allow_public_bind"`
 }
 
@@ -326,8 +325,6 @@ func Default() Config {
 				AdvertiseAddress:   "127.0.0.1:7946",
 				DiscoveryTTL:       Duration{Duration: 30 * time.Second},
 				DiscoveryHeartbeat: Duration{Duration: 10 * time.Second},
-				ProtocolMin:        1,
-				ProtocolMax:        1,
 			},
 		},
 		Mail: Mail{
@@ -434,6 +431,10 @@ func (c Config) Clone() Config {
 		[]string(nil),
 		c.Cluster.Memberlist.SeedAddresses...,
 	)
+	cloned.Cluster.Memberlist.DecryptionKeys = append(
+		[]string(nil),
+		c.Cluster.Memberlist.DecryptionKeys...,
+	)
 	cloned.Mail.SecretSealing.DecryptionKeys = append(
 		[]string(nil),
 		c.Mail.SecretSealing.DecryptionKeys...,
@@ -485,6 +486,11 @@ func (c Config) Redacted() Config {
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
 	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
+	for index := range redacted.Cluster.Memberlist.DecryptionKeys {
+		redacted.Cluster.Memberlist.DecryptionKeys[index] = redactSecret(
+			redacted.Cluster.Memberlist.DecryptionKeys[index],
+		)
+	}
 	redacted.Mail.SMTP.Password = redactSecret(redacted.Mail.SMTP.Password)
 	redacted.Mail.SecretSealing.EncryptionKey = redactSecret(
 		redacted.Mail.SecretSealing.EncryptionKey,
@@ -691,11 +697,7 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 		if !validHostPort(cluster.Memberlist.AdvertiseAddress) {
 			add("cluster.memberlist.advertise_address", "must be a host:port TCP address")
 		}
-		if strings.TrimSpace(cluster.Memberlist.EncryptionKey) == "" {
-			add("cluster.memberlist.encryption_key", "is required")
-		} else if _, err := decodeMemberlistKey(cluster.Memberlist.EncryptionKey); err != nil {
-			add("cluster.memberlist.encryption_key", err.Error())
-		}
+		validateMemberlistKeyring(cluster.Memberlist, add)
 		if cluster.Memberlist.DiscoveryTTL.Duration < 3*time.Second {
 			add("cluster.memberlist.discovery_ttl", "must be at least 3s")
 		}
@@ -703,9 +705,8 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 			cluster.Memberlist.DiscoveryHeartbeat.Duration*2 >= cluster.Memberlist.DiscoveryTTL.Duration {
 			add("cluster.memberlist.discovery_heartbeat", "must be greater than zero and less than half the discovery TTL")
 		}
-		if cluster.Memberlist.ProtocolMin <= 0 ||
-			cluster.Memberlist.ProtocolMax < cluster.Memberlist.ProtocolMin {
-			add("cluster.memberlist.protocol_min", "must form a valid inclusive protocol range with protocol_max")
+		if len(cluster.Memberlist.SeedAddresses) > 32 {
+			add("cluster.memberlist.seed_addresses", "must contain at most 32 entries")
 		}
 		for index, address := range cluster.Memberlist.SeedAddresses {
 			if !validHostPort(address) {
@@ -735,6 +736,34 @@ func validateCluster(cluster Cluster, add func(string, string)) {
 			add("cluster.node_id", "contains an invalid character")
 			return
 		}
+	}
+}
+
+func validateMemberlistKeyring(settings ClusterMemberlist, add func(string, string)) {
+	const maximumFallbackKeys = 8
+	if len(settings.DecryptionKeys) > maximumFallbackKeys {
+		add("cluster.memberlist.decryption_keys", "must contain at most 8 fallback keys")
+	}
+	if strings.TrimSpace(settings.EncryptionKey) == "" {
+		add("cluster.memberlist.encryption_key", "is required")
+	}
+	keys := append([]string{settings.EncryptionKey}, settings.DecryptionKeys...)
+	seen := make(map[string]struct{}, len(keys))
+	for index, encoded := range keys {
+		field := "cluster.memberlist.encryption_key"
+		if index > 0 {
+			field = fmt.Sprintf("cluster.memberlist.decryption_keys[%d]", index-1)
+		}
+		key, err := decodeMemberlistKey(encoded)
+		if err != nil {
+			add(field, err.Error())
+			continue
+		}
+		if _, duplicate := seen[string(key)]; duplicate {
+			add("cluster.memberlist.decryption_keys", "must not contain duplicate decoded keys")
+			continue
+		}
+		seen[string(key)] = struct{}{}
 	}
 }
 
@@ -893,9 +922,16 @@ func validateSecretKeySeparation(c Config, add func(string, string)) {
 			reserved[material] = struct{}{}
 		}
 	}
-	memberlistKey := strings.TrimSpace(c.Cluster.Memberlist.EncryptionKey)
-	if len(memberlistKey) == base64.StdEncoding.EncodedLen(32) ||
-		len(memberlistKey) == base64.RawStdEncoding.EncodedLen(32) {
+	memberlistKeys := append(
+		[]string{c.Cluster.Memberlist.EncryptionKey},
+		c.Cluster.Memberlist.DecryptionKeys...,
+	)
+	for _, memberlistKey := range memberlistKeys {
+		memberlistKey = strings.TrimSpace(memberlistKey)
+		if len(memberlistKey) != base64.StdEncoding.EncodedLen(32) &&
+			len(memberlistKey) != base64.RawStdEncoding.EncodedLen(32) {
+			continue
+		}
 		decoded, err := decodeMemberlistKey(memberlistKey)
 		if err == nil && len(decoded) == 32 {
 			var material [32]byte

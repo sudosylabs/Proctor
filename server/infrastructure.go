@@ -540,7 +540,10 @@ func newCluster(
 		if discovery == nil {
 			return nil, fmt.Errorf("cluster discovery store is required for memberlist")
 		}
-		key, err := clustermemberlist.DecodeEncryptionKey(settings.Memberlist.EncryptionKey)
+		key, decryptionKeys, err := clustermemberlist.DecodeEncryptionKeyring(
+			settings.Memberlist.EncryptionKey,
+			settings.Memberlist.DecryptionKeys,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -552,12 +555,11 @@ func newCluster(
 			BindAddress:        settings.Memberlist.BindAddress,
 			AdvertiseAddress:   settings.Memberlist.AdvertiseAddress,
 			EncryptionKey:      key,
+			DecryptionKeys:     decryptionKeys,
 			SeedAddresses:      append([]string(nil), settings.Memberlist.SeedAddresses...),
 			Discovery:          storeClusterDiscovery{store: discovery},
 			DiscoveryTTL:       settings.Memberlist.DiscoveryTTL.Duration,
 			DiscoveryHeartbeat: settings.Memberlist.DiscoveryHeartbeat.Duration,
-			ProtocolMin:        settings.Memberlist.ProtocolMin,
-			ProtocolMax:        settings.Memberlist.ProtocolMax,
 			ServerVersion:      serverVersion,
 			AllowPublicBind:    settings.Memberlist.AllowPublicBind,
 			Logger: loggingClusterLogger{log: logger.With(

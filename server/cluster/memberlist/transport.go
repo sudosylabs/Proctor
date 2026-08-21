@@ -20,23 +20,30 @@ import (
 )
 
 const (
-	wireProtocolVersion = 1
-	maxWireBytes        = cluster.MaxMessageBytes + 4096
+	wireProtocolVersion       = 1
+	supportedProtocolMin      = wireProtocolVersion
+	supportedProtocolMax      = wireProtocolVersion
+	maximumDecryptionKeys     = 8
+	maximumConfiguredSeeds    = 32
+	maximumJoinCandidates     = 64
+	maximumJoinAttemptsPerRun = 3
+	maxWireBytes              = cluster.MaxMessageBytes + 4096
 )
 
-// Config configures the Memberlist transport. EncryptionKey must be 16, 24, or
-// 32 bytes. BindAddress and AdvertiseAddress are host:port values.
+// Config configures the Memberlist transport. EncryptionKey is the primary
+// encryption key; DecryptionKeys are bounded fallback keys used during a
+// rolling rotation. Every key must be 16, 24, or 32 bytes. BindAddress and
+// AdvertiseAddress are host:port values.
 type Config struct {
 	NodeID             string
 	BindAddress        string
 	AdvertiseAddress   string
 	EncryptionKey      []byte
+	DecryptionKeys     [][]byte
 	SeedAddresses      []string
 	Discovery          cluster.DiscoveryStore
 	DiscoveryTTL       time.Duration
 	DiscoveryHeartbeat time.Duration
-	ProtocolMin        int
-	ProtocolMax        int
 	ServerVersion      string
 	AllowPublicBind    bool
 	Logger             cluster.Logger
@@ -85,6 +92,9 @@ func New(cfg Config) (*Transport, error) {
 	if err := validateConfig(cfg); err != nil {
 		return nil, err
 	}
+	cfg.EncryptionKey = append([]byte(nil), cfg.EncryptionKey...)
+	cfg.DecryptionKeys = cloneKeys(cfg.DecryptionKeys)
+	cfg.SeedAddresses = append([]string(nil), cfg.SeedAddresses...)
 	return &Transport{
 		cfg:       cfg,
 		discovery: newSystemDiscoveryMaintenance(cfg),
@@ -103,8 +113,8 @@ func validateConfig(cfg Config) error {
 	if cfg.Discovery == nil {
 		return errors.New("cluster discovery store is required")
 	}
-	if len(cfg.EncryptionKey) != 16 && len(cfg.EncryptionKey) != 24 && len(cfg.EncryptionKey) != 32 {
-		return errors.New("cluster encryption key must be 16, 24, or 32 bytes")
+	if err := validateEncryptionKeys(cfg.EncryptionKey, cfg.DecryptionKeys); err != nil {
+		return err
 	}
 	if err := validateHostPort("bind_address", cfg.BindAddress); err != nil {
 		return err
@@ -123,18 +133,82 @@ func validateConfig(cfg Config) error {
 	if cfg.DiscoveryHeartbeat <= 0 || cfg.DiscoveryHeartbeat*2 >= cfg.DiscoveryTTL {
 		return errors.New("discovery heartbeat must be greater than zero and less than half the discovery ttl")
 	}
-	if cfg.ProtocolMin <= 0 || cfg.ProtocolMax < cfg.ProtocolMin {
-		return errors.New("protocol range is invalid")
-	}
 	if strings.TrimSpace(cfg.ServerVersion) == "" {
 		return errors.New("server version is required")
+	}
+	probeAt := time.Unix(1, 0).UTC()
+	if err := (cluster.DiscoveryNode{
+		NodeID:           cfg.NodeID,
+		AdvertiseAddress: cfg.AdvertiseAddress,
+		ServerVersion:    cfg.ServerVersion,
+		ProtocolMin:      supportedProtocolMin,
+		ProtocolMax:      supportedProtocolMax,
+		UpdatedAt:        probeAt,
+		ExpiresAt:        probeAt.Add(time.Second),
+	}).Validate(); err != nil {
+		return fmt.Errorf("cluster node metadata: %w", err)
+	}
+	if len(cfg.SeedAddresses) > maximumConfiguredSeeds {
+		return fmt.Errorf("seed addresses must contain at most %d entries", maximumConfiguredSeeds)
 	}
 	for _, seed := range cfg.SeedAddresses {
 		if err := validateHostPort("seed_address", seed); err != nil {
 			return err
 		}
 	}
+	meta, err := json.Marshal(localNodeMeta(cfg))
+	if err != nil {
+		return fmt.Errorf("encode local node metadata: %w", err)
+	}
+	if len(meta) > hashimemberlist.MetaMaxSize {
+		return fmt.Errorf("local node metadata exceeds %d bytes", hashimemberlist.MetaMaxSize)
+	}
 	return nil
+}
+
+func validateEncryptionKeys(primary []byte, fallbacks [][]byte) error {
+	if err := validateEncryptionKey(primary); err != nil {
+		return err
+	}
+	if len(fallbacks) > maximumDecryptionKeys {
+		return fmt.Errorf("cluster decryption keys must contain at most %d entries", maximumDecryptionKeys)
+	}
+	seen := make(map[string]struct{}, 1+len(fallbacks))
+	seen[string(primary)] = struct{}{}
+	for index, key := range fallbacks {
+		if err := validateEncryptionKey(key); err != nil {
+			return fmt.Errorf("cluster decryption key %d: %w", index, err)
+		}
+		if _, exists := seen[string(key)]; exists {
+			return errors.New("cluster encryption keyring contains duplicate keys")
+		}
+		seen[string(key)] = struct{}{}
+	}
+	return nil
+}
+
+func validateEncryptionKey(key []byte) error {
+	if len(key) != 16 && len(key) != 24 && len(key) != 32 {
+		return errors.New("cluster encryption key must be 16, 24, or 32 bytes")
+	}
+	return nil
+}
+
+func cloneKeys(keys [][]byte) [][]byte {
+	cloned := make([][]byte, len(keys))
+	for index := range keys {
+		cloned[index] = append([]byte(nil), keys[index]...)
+	}
+	return cloned
+}
+
+func localNodeMeta(cfg Config) nodeMeta {
+	return nodeMeta{
+		NodeID:        cfg.NodeID,
+		ServerVersion: cfg.ServerVersion,
+		ProtocolMin:   supportedProtocolMin,
+		ProtocolMax:   supportedProtocolMax,
+	}
 }
 
 func validateHostPort(field, value string) error {
@@ -201,14 +275,30 @@ func (t *Transport) Start(ctx context.Context) error {
 	}
 
 	config := hashimemberlist.DefaultLANConfig()
+	// A crashed process cannot announce StateLeft. Once peers have declared it
+	// dead, wait one full discovery lease before allowing the stable name to
+	// move to another address; periodic rediscovery keeps retrying during that
+	// safety window.
+	config.DeadNodeReclaimTime = t.cfg.DiscoveryTTL
 	config.Name = t.cfg.NodeID
 	config.BindAddr = bindHost
 	config.BindPort = bindPortNumber
 	config.AdvertiseAddr = advertiseHost
 	config.AdvertisePort = advertisePortNumber
-	config.SecretKey = append([]byte(nil), t.cfg.EncryptionKey...)
+	keyring, err := hashimemberlist.NewKeyring(cloneKeys(t.cfg.DecryptionKeys), append([]byte(nil), t.cfg.EncryptionKey...))
+	if err != nil {
+		return fmt.Errorf("create memberlist keyring: %w", err)
+	}
+	admission := newAdmissionDelegate(t)
+	config.Keyring = keyring
 	config.Delegate = &delegate{transport: t}
 	config.Events = &eventDelegate{transport: t}
+	config.Alive = admission
+	config.Merge = admission
+	config.Conflict = admission
+	config.DelegateProtocolVersion = uint8(wireProtocolVersion)
+	config.DelegateProtocolMin = uint8(supportedProtocolMin)
+	config.DelegateProtocolMax = uint8(supportedProtocolMax)
 	config.Logger = newMemberlistLogger(t.cfg.Logger)
 
 	list, err := hashimemberlist.Create(config)
@@ -223,10 +313,13 @@ func (t *Transport) Start(ctx context.Context) error {
 	}
 	if len(seeds) > 0 {
 		if _, err := list.Join(seeds); err != nil {
-			// Join failure is not always fatal when discovery is eventual; keep
-			// running so later heartbeats and gossip can still form a mesh.
 			t.cfg.Logger.ErrorContext(ctx, "memberlist join incomplete", err)
 		}
+	}
+	if err := admission.finishStartup(); err != nil {
+		t.discovery.rollback(ctx)
+		_ = list.Shutdown()
+		return err
 	}
 	if err := t.admitJoinedPeers(list.LocalNode(), list.Members()); err != nil {
 		t.discovery.rollback(ctx)
@@ -240,9 +333,12 @@ func (t *Transport) Start(ctx context.Context) error {
 	t.done = make(chan struct{})
 	t.state = stateStarted
 	done := t.done
+	reconciler := newSeedReconciler(list)
 	go func() {
 		defer close(done)
-		t.discovery.run(runCtx)
+		t.discovery.run(runCtx, func(ctx context.Context, seeds []string) error {
+			return reconciler.rejoin(ctx, seeds)
+		})
 	}()
 	return nil
 }
@@ -380,12 +476,31 @@ func (t *Transport) Broadcast(ctx context.Context, message *cluster.Message) err
 	if list == nil {
 		return cluster.ErrNotStarted
 	}
+	return broadcastMembers(
+		ctx,
+		t.cfg.NodeID,
+		list.Members(),
+		payload,
+		list.SendBestEffort,
+	)
+}
+
+func broadcastMembers(
+	ctx context.Context,
+	localNodeID string,
+	members []*hashimemberlist.Node,
+	payload []byte,
+	send func(*hashimemberlist.Node, []byte) error,
+) error {
 	var result error
-	for _, member := range list.Members() {
-		if member.Name == t.cfg.NodeID {
+	for _, member := range members {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(result, err)
+		}
+		if member.Name == localNodeID {
 			continue
 		}
-		if err := list.SendBestEffort(member, payload); err != nil {
+		if err := send(member, payload); err != nil {
 			result = errors.Join(result, fmt.Errorf("send to %s: %w", member.Name, err))
 		}
 	}
@@ -512,6 +627,26 @@ func DecodeEncryptionKey(encoded string) ([]byte, error) {
 		return nil, errors.New("cluster encryption key must decode to 16, 24, or 32 bytes")
 	}
 	return key, nil
+}
+
+// DecodeEncryptionKeyring parses the primary key and bounded fallback keys.
+func DecodeEncryptionKeyring(primary string, fallbacks []string) ([]byte, [][]byte, error) {
+	primaryKey, err := DecodeEncryptionKey(primary)
+	if err != nil {
+		return nil, nil, err
+	}
+	decodedFallbacks := make([][]byte, 0, len(fallbacks))
+	for index, encoded := range fallbacks {
+		key, decodeErr := DecodeEncryptionKey(encoded)
+		if decodeErr != nil {
+			return nil, nil, fmt.Errorf("decode cluster decryption key %d: %w", index, decodeErr)
+		}
+		decodedFallbacks = append(decodedFallbacks, key)
+	}
+	if err := validateEncryptionKeys(primaryKey, decodedFallbacks); err != nil {
+		return nil, nil, err
+	}
+	return primaryKey, decodedFallbacks, nil
 }
 
 var _ cluster.Transport = (*Transport)(nil)

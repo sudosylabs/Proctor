@@ -396,8 +396,9 @@ func (s *cancellationBlockingDiscoveryStore) Upsert(ctx context.Context, _ clust
 	return ctx.Err()
 }
 
-func (*cancellationBlockingDiscoveryStore) ListLive(context.Context, time.Time) ([]cluster.DiscoveryNode, error) {
-	panic("ListLive is not part of periodic maintenance")
+func (s *cancellationBlockingDiscoveryStore) ListLive(ctx context.Context, _ time.Time) ([]cluster.DiscoveryNode, error) {
+	s.operations = append(s.operations, "list")
+	return nil, ctx.Err()
 }
 
 func (s *cancellationBlockingDiscoveryStore) Delete(_ context.Context, _ string) error {
@@ -413,7 +414,7 @@ func (s *cancellationBlockingDiscoveryStore) DeleteExpired(ctx context.Context, 
 func TestDiscoveryMaintenanceRunOwnsScheduleUntilCancellation(t *testing.T) {
 	t.Parallel()
 
-	events := make(chan string, 2)
+	events := make(chan string, 3)
 	store := &recordingDiscoveryStore{events: events}
 	diagnostics := &recordingDiscoveryDiagnostics{}
 	ticker := &manualDiscoveryTicker{ticks: make(chan time.Time)}
@@ -429,7 +430,7 @@ func TestDiscoveryMaintenanceRunOwnsScheduleUntilCancellation(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		maintenance.run(runCtx)
+		maintenance.run(runCtx, func(context.Context, []string) error { return nil })
 	}()
 
 	if interval := <-scheduled; interval != 10*time.Second {
@@ -442,13 +443,16 @@ func TestDiscoveryMaintenanceRunOwnsScheduleUntilCancellation(t *testing.T) {
 	if operation := <-events; operation != "cleanup" {
 		t.Fatalf("second tick operation = %q, want cleanup", operation)
 	}
+	if operation := <-events; operation != "list" {
+		t.Fatalf("third tick operation = %q, want list", operation)
+	}
 
 	cancel()
 	<-done
 	if ticker.stops != 1 {
 		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
 	}
-	if !reflect.DeepEqual(store.operations, []string{"upsert", "cleanup"}) {
+	if !reflect.DeepEqual(store.operations, []string{"upsert", "cleanup", "list"}) {
 		t.Fatalf("loop operations = %v", store.operations)
 	}
 	if got := store.upserts[0].UpdatedAt; !got.Equal(now) {
@@ -459,6 +463,59 @@ func TestDiscoveryMaintenanceRunOwnsScheduleUntilCancellation(t *testing.T) {
 	}
 	if len(diagnostics.messages) != 0 {
 		t.Fatalf("unexpected diagnostics = %v", diagnostics.messages)
+	}
+}
+
+func TestDiscoveryMaintenanceRunRetriesRejoinAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingDiscoveryStore{live: []cluster.DiscoveryNode{{
+		NodeID:           "node-peer",
+		AdvertiseAddress: "127.0.0.1:7001",
+		ProtocolMin:      2,
+		ProtocolMax:      4,
+	}}}
+	diagnostics := &recordingDiscoveryDiagnostics{}
+	ticker := &manualDiscoveryTicker{ticks: make(chan time.Time)}
+	scheduled := make(chan time.Duration, 1)
+	maintenance, _ := newDiscoveryMaintenanceForTest(store, diagnostics, time.Now(), nil)
+	maintenance.cfg.newTicker = func(interval time.Duration) discoveryTicker {
+		scheduled <- interval
+		return ticker
+	}
+
+	rejoinErr := errors.New("join unavailable")
+	attempts := make(chan []string, 2)
+	callCount := 0
+	runCtx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		maintenance.run(runCtx, func(_ context.Context, seeds []string) error {
+			callCount++
+			attempts <- append([]string(nil), seeds...)
+			if callCount == 1 {
+				return rejoinErr
+			}
+			return nil
+		})
+	}()
+	<-scheduled
+
+	ticker.ticks <- time.Time{}
+	if got := <-attempts; !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
+		t.Fatalf("first retry seeds = %v", got)
+	}
+	ticker.ticks <- time.Time{}
+	if got := <-attempts; !reflect.DeepEqual(got, []string{"127.0.0.1:7001"}) {
+		t.Fatalf("second retry seeds = %v", got)
+	}
+	cancel()
+	<-done
+
+	if !reflect.DeepEqual(diagnostics.messages, []string{"memberlist rejoin incomplete"}) ||
+		!reflect.DeepEqual(diagnostics.errors, []error{rejoinErr}) {
+		t.Fatalf("retry diagnostics = %v / %v", diagnostics.messages, diagnostics.errors)
 	}
 }
 
@@ -484,7 +541,7 @@ func TestTransportStopOwnsMaintenanceTerminationAndWithdrawal(t *testing.T) {
 	}
 	go func() {
 		defer close(done)
-		maintenance.run(runCtx)
+		maintenance.run(runCtx, func(context.Context, []string) error { return nil })
 	}()
 	<-scheduled
 
@@ -539,7 +596,7 @@ func TestTransportStopReportsExpiredDeadlineAfterTerminatingOwnedMaintenance(t *
 	}
 	go func() {
 		defer close(done)
-		maintenance.run(runCtx)
+		maintenance.run(runCtx, func(context.Context, []string) error { return nil })
 	}()
 	<-scheduled
 
@@ -592,7 +649,7 @@ func TestTransportStopCancellationReleasesInFlightDiscoveryWithoutAbandonment(t 
 	}
 	go func() {
 		defer close(done)
-		maintenance.run(runCtx)
+		maintenance.run(runCtx, func(context.Context, []string) error { return nil })
 	}()
 	<-scheduled
 	ticker.ticks <- time.Time{}
@@ -615,15 +672,18 @@ func TestTransportStopCancellationReleasesInFlightDiscoveryWithoutAbandonment(t 
 	if ticker.stops != 1 {
 		t.Fatalf("ticker stops = %d, want 1", ticker.stops)
 	}
-	wantOperations := []string{"upsert", "cleanup"}
+	wantOperations := []string{"upsert", "cleanup", "list"}
 	if !reflect.DeepEqual(store.operations, wantOperations) {
 		t.Fatalf("shutdown operations = %v, want %v", store.operations, wantOperations)
 	}
-	wantDiagnostics := []string{"cluster discovery heartbeat failed", "cluster discovery cleanup failed"}
+	wantDiagnostics := []string{"cluster discovery heartbeat failed", "cluster discovery cleanup failed", "cluster discovery peer listing failed"}
 	if !reflect.DeepEqual(diagnostics.messages, wantDiagnostics) {
 		t.Fatalf("maintenance diagnostics = %v, want %v", diagnostics.messages, wantDiagnostics)
 	}
-	if !reflect.DeepEqual(diagnostics.errors, []error{context.Canceled, context.Canceled}) {
+	if len(diagnostics.errors) != 3 ||
+		!errors.Is(diagnostics.errors[0], context.Canceled) ||
+		!errors.Is(diagnostics.errors[1], context.Canceled) ||
+		!errors.Is(diagnostics.errors[2], context.Canceled) {
 		t.Fatalf("maintenance diagnostic errors = %v", diagnostics.errors)
 	}
 	if err := transport.Stop(context.Background()); err != nil {

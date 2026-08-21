@@ -38,17 +38,28 @@ func mustTransport(
 	key []byte,
 ) *memberlist.Transport {
 	t.Helper()
+	return mustTransportWithKeyring(t, nodeID, port, discovery, key, nil)
+}
+
+func mustTransportWithKeyring(
+	t *testing.T,
+	nodeID string,
+	port int,
+	discovery cluster.DiscoveryStore,
+	key []byte,
+	decryptionKeys [][]byte,
+) *memberlist.Transport {
+	t.Helper()
 	address := net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port))
 	transport, err := memberlist.New(memberlist.Config{
 		NodeID:             nodeID,
 		BindAddress:        address,
 		AdvertiseAddress:   address,
 		EncryptionKey:      append([]byte(nil), key...),
+		DecryptionKeys:     decryptionKeys,
 		Discovery:          discovery,
 		DiscoveryTTL:       5 * time.Second,
 		DiscoveryHeartbeat: time.Second,
-		ProtocolMin:        1,
-		ProtocolMax:        1,
 		ServerVersion:      "test",
 		Logger:             testLogger{},
 	})
@@ -138,8 +149,6 @@ func TestMemberlistRejectsPublicBindByDefault(t *testing.T) {
 		Discovery:          memberlist.NewMemoryDiscovery(),
 		DiscoveryTTL:       5 * time.Second,
 		DiscoveryHeartbeat: time.Second,
-		ProtocolMin:        1,
-		ProtocolMax:        1,
 		ServerVersion:      "test",
 		Logger:             testLogger{},
 	})

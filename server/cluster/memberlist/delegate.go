@@ -19,17 +19,12 @@ type delegate struct {
 }
 
 func (d *delegate) NodeMeta(limit int) []byte {
-	meta, err := json.Marshal(nodeMeta{
-		NodeID:        d.transport.cfg.NodeID,
-		ServerVersion: d.transport.cfg.ServerVersion,
-		ProtocolMin:   d.transport.cfg.ProtocolMin,
-		ProtocolMax:   d.transport.cfg.ProtocolMax,
-	})
+	meta, err := json.Marshal(localNodeMeta(d.transport.cfg))
 	if err != nil {
 		return nil
 	}
 	if len(meta) > limit {
-		return meta[:limit]
+		return nil
 	}
 	return meta
 }
@@ -60,8 +55,8 @@ func (d *delegate) NotifyMsg(message []byte) {
 }
 
 func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte { return nil }
-func (d *delegate) LocalState(join bool) []byte                 { return nil }
-func (d *delegate) MergeRemoteState(buf []byte, join bool)      {}
+func (d *delegate) LocalState(join bool) []byte                { return nil }
+func (d *delegate) MergeRemoteState(buf []byte, join bool)     {}
 
 type eventDelegate struct {
 	transport *Transport
@@ -84,7 +79,7 @@ func (e *eventDelegate) NotifyJoin(node *hashimemberlist.Node) {
 	}
 }
 
-func (e *eventDelegate) NotifyLeave(*hashimemberlist.Node) {}
+func (e *eventDelegate) NotifyLeave(*hashimemberlist.Node)  {}
 func (e *eventDelegate) NotifyUpdate(*hashimemberlist.Node) {}
 
 type memberlistLogWriter struct {

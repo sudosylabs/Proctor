@@ -44,6 +44,16 @@ environment overrides are
 `PROCTOR_MAIL_SECRET_SEALING_DECRYPTION_KEYS`. Configuration display redacts
 every entry, and neither MFA nor Memberlist keys may substitute for it.
 
+Memberlist gossip uses its own `cluster.memberlist` key ring. `encryption_key`
+is the primary key and `decryption_keys` contains at most eight distinct
+fallbacks for rolling rotation; entries decode from standard base64 to 16, 24,
+or 32 bytes. Its environment overrides are
+`PROCTOR_CLUSTER_MEMBERLIST_ENCRYPTION_KEY` and
+`PROCTOR_CLUSTER_MEMBERLIST_DECRYPTION_KEYS`. Every entry is cloned and
+redacted. The cluster protocol range is compiled into the binary rather than
+operator-configurable. Cluster key changes require restart and use the staged
+overlap procedure in [Runtime](./runtime.md#cluster-transport).
+
 Configuration precedence is defaults, typed configuration backing, then
 `PROCTOR_` environment overrides. Unknown fields are rejected, validation
 errors are aggregated where possible, URLs/durations are parsed at the

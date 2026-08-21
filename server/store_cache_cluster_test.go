@@ -50,7 +50,7 @@ func TestLocalCacheClusterAdapterRegistersValidatedLoopSafeInvalidation(t *testi
 		t.Fatal("peer-only broadcast re-entered the local invalidation handler")
 	}
 	if err := transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
-		Event: cluster.EventAcademicPeriodInvalidated,
+		Event: academicPeriodInvalidatedEvent,
 		Data:  []byte(`{"id":"` + id + `"}`),
 	}); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestLocalCacheClusterAdapterRegistersValidatedLoopSafeInvalidation(t *testi
 		t.Fatalf("handled invalidations = %d, want 1", handled.Load())
 	}
 	if err := transport.SendToNode(context.Background(), transport.NodeID(), &cluster.Message{
-		Event: cluster.EventAcademicPeriodInvalidated,
+		Event: academicPeriodInvalidatedEvent,
 		Data:  []byte(`{"id":"invalid"}`),
 	}); err == nil {
 		t.Fatal("invalid peer invalidation was accepted")

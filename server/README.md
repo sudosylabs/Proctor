@@ -432,11 +432,20 @@ gossip membership, PostgreSQL discovery heartbeats for bootstrap seeds, and
 best-effort direct peer messaging. There is no durable cluster delivery class:
 session and authorization correctness recover from PostgreSQL and bounded
 authentication-cache TTLs when messages are delayed or lost. Handlers must be
-idempotent under duplicates. The cache backend is selected independently: each
-node may use its own memory cache or optional Redis as a shared disposable
-cache. Clustering does not require Redis. Multi-node configuration requires
-shared VFS rather than node-local storage, plus a shared encryption key and
-explicit bind/advertise addresses.
+idempotent under duplicates. Discovery is continuous: an isolated node
+periodically re-lists compatible leases and retries a bounded rotating seed
+batch without adding another lifecycle goroutine. Peer metadata advertises the
+wire protocol compiled into the binary, and alive/merge admission rejects
+malformed metadata, duplicate remote merge identities, or incompatible peers
+after startup as well as during initial join. The cache backend is selected
+independently: each node may use
+its own memory cache or optional Redis as a shared disposable cache. Clustering
+does not require Redis. Multi-node configuration requires shared VFS rather
+than node-local storage, plus a shared primary encryption key, explicit
+bind/advertise addresses, and optional `decryption_keys` during staged rotation.
+Add the new fallback to every node, promote it while retaining the old primary
+on every node, then remove the old fallback only after convergence; each stage
+requires restart.
 
 ### Transactional-mail templates
 

@@ -202,7 +202,7 @@ integration-realtime:
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
-	go test -tags=integration ./cluster/memberlist -run '^TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal$$' -count=1; \
+	go test -tags=integration ./cluster/memberlist -run '^(TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal|TestLateIncompatiblePeerIsRejectedByContinuousAdmission|TestAbruptStableIDRestartReclaimsDeadAddress|TestMemberlistKeyringSupportsRollingPrimaryRotation|TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test -tags=integration ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1
 

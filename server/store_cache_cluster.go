@@ -22,6 +22,8 @@ type academicPeriodInvalidationMessage struct {
 	ID string `json:"id"`
 }
 
+const academicPeriodInvalidatedEvent cluster.Event = "store.academic_period.invalidated"
+
 func newLocalCacheClusterAdapter(transport cluster.Transport) (*localCacheClusterAdapter, error) {
 	if transport == nil {
 		return nil, errors.New("cluster is nil")
@@ -36,7 +38,7 @@ func (a *localCacheClusterAdapter) RegisterAcademicPeriod(
 		return errors.New("academic-period invalidation handler is nil")
 	}
 	return a.cluster.RegisterHandler(
-		cluster.EventAcademicPeriodInvalidated,
+		academicPeriodInvalidatedEvent,
 		func(ctx context.Context, message *cluster.Message) error {
 			if message == nil {
 				return errors.New("cluster message is nil")
@@ -65,7 +67,7 @@ func (a *localCacheClusterAdapter) BroadcastAcademicPeriod(ctx context.Context, 
 		return fmt.Errorf("encode academic-period cache invalidation: %w", err)
 	}
 	return a.cluster.Broadcast(ctx, &cluster.Message{
-		Event: cluster.EventAcademicPeriodInvalidated,
+		Event: academicPeriodInvalidatedEvent,
 		Data:  data,
 	})
 }

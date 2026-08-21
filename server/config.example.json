@@ -37,11 +37,10 @@
       "bind_address": "127.0.0.1:7946",
       "advertise_address": "127.0.0.1:7946",
       "encryption_key": "",
+      "decryption_keys": [],
       "seed_addresses": [],
       "discovery_ttl": "30s",
       "discovery_heartbeat": "10s",
-      "protocol_min": 1,
-      "protocol_max": 1,
       "allow_public_bind": false
     }
   },

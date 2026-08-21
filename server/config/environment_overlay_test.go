@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 102 {
-		t.Fatalf("environment override definitions = %d, want 102", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 101 {
+		t.Fatalf("environment override definitions = %d, want 101", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
