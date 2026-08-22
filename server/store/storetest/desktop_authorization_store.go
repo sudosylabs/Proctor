@@ -214,7 +214,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	disableAudit := saveUserProfileAuditAttempt(t, ctx, ss, disabledUser.ID.String())
 	disabled, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledUser.ID.String(), ExpectedRevision: disabledUser.Revision, Disabled: true,
-		ChangedAt: model.GetMillis(), RevocationReason: "test disabled user", AuditEventID: disableAudit.ID.String(),
+		ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(),
 		AuditAt: model.GetMillis(), Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	}))
 	requireNoError(t, err)

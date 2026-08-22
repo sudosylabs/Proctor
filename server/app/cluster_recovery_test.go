@@ -53,7 +53,7 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	if sessionID == "" {
 		t.Fatal("session not found")
 	}
-	hashes, err := storeFake.Session().Revoke(ctx, sessionID, user.ID.String(), time.Now().UnixMilli(), "test")
+	hashes, err := storeFake.Session().Revoke(ctx, sessionID, user.ID.String(), time.Now().UnixMilli(), model.SessionRevocationUserSession)
 	if err != nil {
 		t.Fatal(err)
 	}

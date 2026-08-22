@@ -567,7 +567,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 	if _, err := persistence.User().SetDisabledWithAudit(context.Background(), storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: currentUser.Revision, Disabled: true,
-		ChangedAt: disabledAt, RevocationReason: "authentication integration disabled account",
+		ChangedAt: disabledAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: auditAttempt.ID.String(), AuditAt: disabledAt,
 	})); err != nil {
 		t.Fatal(err)
@@ -1087,6 +1087,7 @@ type wireSessionResponse struct {
 	IdleExpiresAt          int64  `json:"idle_expires_at"`
 	ExpiresAt              int64  `json:"expires_at"`
 	RevokedAt              int64  `json:"revoked_at"`
+	RevocationReasonCode   string `json:"revocation_reason_code"`
 	RevocationReason       string `json:"revocation_reason"`
 }
 
@@ -1124,7 +1125,7 @@ func (w *wireSessionResponse) model() *model.Session {
 		MFACompletedAt:         model.OptionalTimeFromMillis(w.MFACompletedAt),
 		LastActivityAt:         model.TimeFromMillis(w.LastActivityAt),
 		IdleExpiresAt:          model.TimeFromMillis(w.IdleExpiresAt), ExpiresAt: model.TimeFromMillis(w.ExpiresAt),
-		RevokedAt: model.OptionalTimeFromMillis(w.RevokedAt), RevocationReason: w.RevocationReason,
+		RevokedAt: model.OptionalTimeFromMillis(w.RevokedAt), RevocationReason: model.SessionRevocationReason(w.RevocationReasonCode),
 	}
 }
 

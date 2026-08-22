@@ -26,7 +26,7 @@ func TestSessionRowConversion(t *testing.T) {
 		IdleExpiresAt:          now.Add(5 * time.Millisecond),
 		ExpiresAt:              now.Add(6 * time.Millisecond),
 		RevokedAt:              model.OptionalTimeFrom(now.Add(7 * time.Millisecond)),
-		RevocationReason:       "reason",
+		RevocationReason:       model.SessionRevocationUserSession,
 	}
 	row := newSessionRow(session)
 	got, err := row.model()

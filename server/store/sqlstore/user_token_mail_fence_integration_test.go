@@ -525,7 +525,7 @@ func TestUserDisableAndEmailChangeShareUserEligibilityLockOrder(t *testing.T) {
 	}
 	disable := storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: disableAt,
-		RevocationReason: "administrative disable", AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
+		RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
 	})
 
 	controller, err := persistence.GetMaster().DB().Conn(ctx)

@@ -14,11 +14,11 @@ import (
 
 type buildInfoExecutor func() server.BuildInfo
 
-func newVersionCommand(current buildInfoExecutor) *cobra.Command {
+func newVersionCommand(current buildInfoExecutor, text commandText) *cobra.Command {
 	var asJSON bool
 	command := &cobra.Command{
 		Use:   "version",
-		Short: "Display Proctor build information",
+		Short: text.value("cli.version.short", "Display Proctor build information", nil),
 		Args:  noArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			info := current()
@@ -27,17 +27,19 @@ func newVersionCommand(current buildInfoExecutor) *cobra.Command {
 				encoder.SetIndent("", "  ")
 				return encoder.Encode(info)
 			}
-			_, err := fmt.Fprintf(
-				command.OutOrStdout(),
-				"proctor %s (commit %s, built %s, %s)\n",
-				info.Version,
-				info.Commit,
-				info.BuildTime,
-				info.GoVersion,
-			)
+			_, err := fmt.Fprintln(command.OutOrStdout(), text.value(
+				"cli.version.output",
+				"proctor {{.Version}} (commit {{.Commit}}, built {{.BuildTime}}, {{.GoVersion}})",
+				map[string]any{
+					"Version":   info.Version,
+					"Commit":    info.Commit,
+					"BuildTime": info.BuildTime,
+					"GoVersion": info.GoVersion,
+				},
+			))
 			return err
 		},
 	}
-	command.Flags().BoolVar(&asJSON, "json", false, "write build information as JSON")
+	command.Flags().BoolVar(&asJSON, "json", false, text.value("cli.version.flag.json", "write build information as JSON", nil))
 	return command
 }

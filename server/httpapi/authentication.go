@@ -91,6 +91,7 @@ type sessionResponse struct {
 	IdleExpiresAt          int64  `json:"idle_expires_at"`
 	ExpiresAt              int64  `json:"expires_at"`
 	RevokedAt              int64  `json:"revoked_at,omitempty"`
+	RevocationReasonCode   string `json:"revocation_reason_code,omitempty"`
 	RevocationReason       string `json:"revocation_reason,omitempty"`
 }
 
@@ -101,7 +102,7 @@ type authenticationTokensResponse struct {
 	RefreshExpiresAt int64  `json:"refresh_expires_at"`
 }
 
-func sessionResponseFromModel(session *model.Session) *sessionResponse {
+func sessionResponseFromModel(request *http.Request, session *model.Session) *sessionResponse {
 	if session == nil {
 		return nil
 	}
@@ -122,7 +123,49 @@ func sessionResponseFromModel(session *model.Session) *sessionResponse {
 		IdleExpiresAt:          model.MillisFromTime(session.IdleExpiresAt),
 		ExpiresAt:              model.MillisFromTime(session.ExpiresAt),
 		RevokedAt:              session.RevokedAt.Millis(),
-		RevocationReason:       session.RevocationReason,
+		RevocationReasonCode:   string(session.RevocationReason),
+		RevocationReason:       localizedSessionRevocationReason(request, session.RevocationReason),
+	}
+}
+
+func localizedSessionRevocationReason(request *http.Request, reason model.SessionRevocationReason) string {
+	if !reason.IsValid() {
+		return ""
+	}
+	fallback := sessionRevocationReasonPresentation(reason)
+	return translatedRequestText(request, sessionRevocationLocalizationID(reason), fallback)
+}
+
+func sessionRevocationReasonPresentation(reason model.SessionRevocationReason) string {
+	switch reason {
+	case model.SessionRevocationUserLogout:
+		return "Signed out by the user."
+	case model.SessionRevocationUserSession:
+		return "Revoked by the user."
+	case model.SessionRevocationUserAllSessions:
+		return "All sessions were revoked by the user."
+	case model.SessionRevocationAdministratorSession:
+		return "Revoked by an administrator."
+	case model.SessionRevocationAdministratorAllSessions:
+		return "All sessions were revoked by an administrator."
+	case model.SessionRevocationAccountDisabled:
+		return "The account was disabled."
+	case model.SessionRevocationPasswordRemoved:
+		return "Password authentication was removed."
+	case model.SessionRevocationExternalIdentityUnlinked:
+		return "The external identity was unlinked."
+	case model.SessionRevocationPasswordReset:
+		return "The password was reset."
+	case model.SessionRevocationRefreshReplay:
+		return "Refresh credential replay was detected."
+	case model.SessionRevocationInactiveUser:
+		return "The account is inactive."
+	case model.SessionRevocationAuthenticationAuditFailed:
+		return "Authentication audit completion failed."
+	case model.SessionRevocationAccessPolicyChanged:
+		return "The authentication access policy changed."
+	default:
+		return ""
 	}
 }
 
@@ -138,7 +181,7 @@ func authenticationTokensResponseFromModel(tokens *model.AuthenticationTokens) *
 	}
 }
 
-func authenticationResponseFromLogin(result *application.LoginResult) authenticationResponse {
+func authenticationResponseFromLogin(request *http.Request, result *application.LoginResult) authenticationResponse {
 	if result == nil {
 		return authenticationResponse{}
 	}
@@ -149,17 +192,18 @@ func authenticationResponseFromLogin(result *application.LoginResult) authentica
 	}
 	return authenticationResponse{
 		User:    user,
-		Session: sessionResponseFromModel(result.Session),
+		Session: sessionResponseFromModel(request, result.Session),
 		Tokens:  authenticationTokensResponseFromModel(result.Tokens),
 	}
 }
 
 func authenticationResponseFromRefresh(
+	request *http.Request,
 	session *model.Session,
 	tokens *model.AuthenticationTokens,
 ) authenticationResponse {
 	return authenticationResponse{
-		Session: sessionResponseFromModel(session),
+		Session: sessionResponseFromModel(request, session),
 		Tokens:  authenticationTokensResponseFromModel(tokens),
 	}
 }
@@ -296,7 +340,7 @@ func (module authenticationResourceModule) login(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := authenticationResponseFromLogin(result)
+	response := authenticationResponseFromLogin(request.request, result)
 	headers := http.Header{"Cache-Control": {"no-store"}}
 	if usesBrowserCookieTransport(input.ClientType) {
 		headers = combineResponseHeaders(headers, captureResponseHeaders(func(writer http.ResponseWriter) {
@@ -325,7 +369,7 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 		}
 		return operationResult{}, err
 	}
-	response := authenticationResponseFromRefresh(session, tokens)
+	response := authenticationResponseFromRefresh(request.request, session, tokens)
 	headers := http.Header{"Cache-Control": {"no-store"}}
 	if credential.source == credentialSourceCookie {
 		response.Tokens = nil

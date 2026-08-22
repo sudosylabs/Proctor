@@ -619,7 +619,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 			ExpectedRevision: currentUser.Revision,
 			Disabled:         true,
 			ChangedAt:        disabledAt,
-			RevocationReason: "external authentication integration disabled account",
+			RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID:     auditAttempt.ID.String(),
 			AuditAt:          disabledAt,
 		}),

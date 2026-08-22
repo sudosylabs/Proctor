@@ -130,7 +130,7 @@ func (s *selfSessionService) RevokeOne(
 		session.ID.String(),
 		principal.UserID.String(),
 		s.now().UnixMilli(),
-		"user session revocation",
+		model.SessionRevocationUserSession,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {
@@ -167,7 +167,7 @@ func (s *selfSessionService) RevokeAll(
 		ctx,
 		principal.UserID.String(),
 		s.now().UnixMilli(),
-		"user revoked all sessions",
+		model.SessionRevocationUserAllSessions,
 	)
 	if err != nil {
 		return authenticationUnavailable(err)

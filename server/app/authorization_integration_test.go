@@ -766,7 +766,7 @@ func TestAcademicUnitVisibilityIsBoundedAcrossUsersBindingsAndAudits(t *testing.
 	}
 	if _, err = persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: unitUser.ID.String(), ExpectedRevision: unitUser.Revision, Disabled: true,
-		ChangedAt: disableAt, RevocationReason: "visibility regression fixture",
+		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAudit.ID.String(), AuditAt: disableAt,
 	})); err != nil {
 		t.Fatal(err)

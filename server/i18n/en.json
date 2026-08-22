@@ -1,5 +1,157 @@
 [
   {
+    "id": "authorization.role.system_admin.description",
+    "translation": "Protected administrator role for this Proctor installation."
+  },
+  {
+    "id": "authorization.role.system_admin.name",
+    "translation": "System Administrator"
+  },
+  {
+    "id": "cli.administrator.error.invalid_flags",
+    "translation": "administrator recover contains an invalid flag or flag value"
+  },
+  {
+    "id": "cli.administrator.error.no_result",
+    "translation": "administrator recovery returned no result"
+  },
+  {
+    "id": "cli.administrator.error.requires_recover",
+    "translation": "administrator requires the recover subcommand"
+  },
+  {
+    "id": "cli.administrator.error.requires_recovery_input",
+    "translation": "administrator recover requires --institution-id, --user-id, and at least one recovery action"
+  },
+  {
+    "id": "cli.administrator.error.requires_subcommand",
+    "translation": "administrator requires a subcommand"
+  },
+  {
+    "id": "cli.administrator.error.unexpected_arguments",
+    "translation": "administrator recover does not accept positional arguments or passwords"
+  },
+  {
+    "id": "cli.administrator.flag.enable_local_login",
+    "translation": "re-enable local login"
+  },
+  {
+    "id": "cli.administrator.flag.institution_id",
+    "translation": "exact Institution identifier to confirm"
+  },
+  {
+    "id": "cli.administrator.flag.rotate_password",
+    "translation": "read and rotate the password from private input"
+  },
+  {
+    "id": "cli.administrator.flag.user_id",
+    "translation": "active system-administrator User identifier"
+  },
+  {
+    "id": "cli.administrator.recover.short",
+    "translation": "Recover an administrator's local authentication path while all nodes are stopped"
+  },
+  {
+    "id": "cli.administrator.recover.success",
+    "translation": "administrator recovery recorded; restart Proctor normally to reconcile its audit record"
+  },
+  {
+    "id": "cli.administrator.short",
+    "translation": "Perform host-only administrator operations"
+  },
+  {
+    "id": "cli.config.error.read_flag",
+    "translation": "read config flag"
+  },
+  {
+    "id": "cli.config.error.requires_subcommand",
+    "translation": "config requires a subcommand"
+  },
+  {
+    "id": "cli.config.flag.path",
+    "translation": "path to a JSON configuration file"
+  },
+  {
+    "id": "cli.config.short",
+    "translation": "Inspect Proctor deployment configuration"
+  },
+  {
+    "id": "cli.config.validate.short",
+    "translation": "Validate configuration without starting the server"
+  },
+  {
+    "id": "cli.config.validate.success",
+    "translation": "configuration is valid"
+  },
+  {
+    "id": "cli.migrate.error.requires_subcommand",
+    "translation": "migrate requires an up or status subcommand"
+  },
+  {
+    "id": "cli.migrate.short",
+    "translation": "Manage the Proctor database schema"
+  },
+  {
+    "id": "cli.migrate.status.short",
+    "translation": "Report applied and pending database migrations"
+  },
+  {
+    "id": "cli.migrate.status.success",
+    "translation": "database schema version {{.DatabaseVersion}}; server schema version {{.ServerVersion}}; pending migrations {{.PendingMigrations}}"
+  },
+  {
+    "id": "cli.migrate.up.short",
+    "translation": "Apply pending database migrations"
+  },
+  {
+    "id": "cli.migrate.up.success",
+    "translation": "database schema migrated to version {{.Version}}"
+  },
+  {
+    "id": "cli.password.error.inspect_input",
+    "translation": "inspect private password input"
+  },
+  {
+    "id": "cli.password.error.invalid_length",
+    "translation": "private password input has invalid length"
+  },
+  {
+    "id": "cli.password.error.read_input",
+    "translation": "read private password"
+  },
+  {
+    "id": "cli.password.error.terminal_input",
+    "translation": "private password input must be redirected from a non-terminal source"
+  },
+  {
+    "id": "cli.password.error.unavailable",
+    "translation": "private password input is unavailable"
+  },
+  {
+    "id": "cli.root.error.command_required",
+    "translation": "a command is required"
+  },
+  {
+    "id": "cli.root.short",
+    "translation": "Run and maintain a Proctor installation"
+  },
+  {
+    "id": "cli.serve.short",
+    "translation": "Run the Proctor server"
+  },
+  {
+    "id": "cli.version.flag.json",
+    "translation": "write build information as JSON"
+  },
+  {
+    "id": "cli.version.output",
+    "translation": "proctor {{.Version}} (commit {{.Commit}}, built {{.BuildTime}}, {{.GoVersion}})"
+  },
+  {
+    "id": "cli.version.short",
+    "translation": "Display Proctor build information"
+  },
+  {
     "id": "mail.academic.academic_unit_assigned.body",
     "translation": "An administrator assigned you to an academic unit. Open the Proctor client to view your current academic relationships."
   },
@@ -1392,12 +1544,36 @@
     "translation": "Internal server error"
   },
   {
+    "id": "problem.method_not_allowed.detail",
+    "translation": "The request method is not allowed for this resource."
+  },
+  {
+    "id": "problem.method_not_allowed.title",
+    "translation": "Method not allowed"
+  },
+  {
     "id": "problem.not_found.detail",
     "translation": "The requested resource was not found."
   },
   {
     "id": "problem.not_found.title",
     "translation": "Resource not found"
+  },
+  {
+    "id": "problem.not_live.detail",
+    "translation": "The process is not healthy."
+  },
+  {
+    "id": "problem.not_live.title",
+    "translation": "Service unavailable"
+  },
+  {
+    "id": "problem.not_ready.detail",
+    "translation": "The service is not ready to accept requests."
+  },
+  {
+    "id": "problem.not_ready.title",
+    "translation": "Service unavailable"
   },
   {
     "id": "problem.service_unavailable.detail",
@@ -1422,5 +1598,197 @@
   {
     "id": "problem.unauthorized.title",
     "translation": "Authentication required"
+  },
+  {
+    "id": "session.revocation.access_policy_changed",
+    "translation": "The authentication access policy changed."
+  },
+  {
+    "id": "session.revocation.account_disabled",
+    "translation": "The account was disabled."
+  },
+  {
+    "id": "session.revocation.administrator_all_sessions",
+    "translation": "All sessions were revoked by an administrator."
+  },
+  {
+    "id": "session.revocation.administrator_session",
+    "translation": "Revoked by an administrator."
+  },
+  {
+    "id": "session.revocation.authentication_audit_failed",
+    "translation": "Authentication audit completion failed."
+  },
+  {
+    "id": "session.revocation.external_identity_unlinked",
+    "translation": "The external identity was unlinked."
+  },
+  {
+    "id": "session.revocation.inactive_user",
+    "translation": "The account is inactive."
+  },
+  {
+    "id": "session.revocation.password_removed",
+    "translation": "Password authentication was removed."
+  },
+  {
+    "id": "session.revocation.password_reset",
+    "translation": "The password was reset."
+  },
+  {
+    "id": "session.revocation.refresh_replay",
+    "translation": "Refresh credential replay was detected."
+  },
+  {
+    "id": "session.revocation.user_all_sessions",
+    "translation": "All sessions were revoked by the user."
+  },
+  {
+    "id": "session.revocation.user_logout",
+    "translation": "Signed out by the user."
+  },
+  {
+    "id": "session.revocation.user_session",
+    "translation": "Revoked by the user."
+  },
+  {
+    "id": "websocket.close.authorization_changed",
+    "translation": "authorization changed"
+  },
+  {
+    "id": "websocket.close.backpressure",
+    "translation": "client is too slow"
+  },
+  {
+    "id": "websocket.close.connection_closed",
+    "translation": "connection closed"
+  },
+  {
+    "id": "websocket.close.connection_limit",
+    "translation": "connection limit reached"
+  },
+  {
+    "id": "websocket.close.server_shutdown",
+    "translation": "server shutting down"
+  },
+  {
+    "id": "websocket.close.session_revoked",
+    "translation": "session no longer valid"
+  },
+  {
+    "id": "websocket.error.action.unknown",
+    "translation": "Unknown WebSocket action."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.already_established",
+    "translation": "Exam Attempt connection is already established."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.denied",
+    "translation": "Exam Attempt connection denied."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.failed",
+    "translation": "Exam Attempt connection failed."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.inactive",
+    "translation": "Exam Attempt connection is not active."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.lost",
+    "translation": "Secure connectivity could not be renewed. Ask a manager to re-allow access."
+  },
+  {
+    "id": "websocket.error.exam_attempt.connection.request_invalid",
+    "translation": "Invalid Exam Attempt connection request."
+  },
+  {
+    "id": "websocket.error.exam_attempt.focus_loss.conflict",
+    "translation": "Focus Loss signal conflicts with an accepted sequence."
+  },
+  {
+    "id": "websocket.error.exam_attempt.focus_loss.denied",
+    "translation": "Focus Loss signal was denied."
+  },
+  {
+    "id": "websocket.error.exam_attempt.focus_loss.failed",
+    "translation": "Focus Loss signal could not be accepted."
+  },
+  {
+    "id": "websocket.error.exam_attempt.focus_loss.signal_invalid",
+    "translation": "Invalid Focus Loss signal."
+  },
+  {
+    "id": "websocket.error.exam_attempt.renewal.denied",
+    "translation": "Exam Attempt renewal denied."
+  },
+  {
+    "id": "websocket.error.exam_attempt.renewal.failed",
+    "translation": "Exam Attempt renewal failed."
+  },
+  {
+    "id": "websocket.error.exam_attempt.renewal.request_invalid",
+    "translation": "Invalid Exam Attempt renewal request."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.already_open",
+    "translation": "A terminal is already open."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.close_request_invalid",
+    "translation": "Invalid terminal close request."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.input_failed",
+    "translation": "Terminal input failed."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.input_invalid",
+    "translation": "Invalid terminal input."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.not_open",
+    "translation": "Terminal is not open."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.open_failed",
+    "translation": "Terminal could not be opened."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.open_request_invalid",
+    "translation": "Invalid Exam Attempt terminal request."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.resize_failed",
+    "translation": "Terminal resize failed."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.size_invalid",
+    "translation": "Invalid terminal size."
+  },
+  {
+    "id": "websocket.error.exam_attempt.terminal.unavailable",
+    "translation": "Terminal is unavailable."
+  },
+  {
+    "id": "websocket.error.request.invalid",
+    "translation": "Invalid WebSocket request."
+  },
+  {
+    "id": "websocket.error.subscription.denied",
+    "translation": "WebSocket subscription denied."
+  },
+  {
+    "id": "websocket.error.subscription.failed",
+    "translation": "WebSocket subscription failed."
+  },
+  {
+    "id": "websocket.error.subscription.invalid",
+    "translation": "Invalid subscription."
+  },
+  {
+    "id": "websocket.error.subscription.limit",
+    "translation": "WebSocket subscription limit reached."
   }
 ]

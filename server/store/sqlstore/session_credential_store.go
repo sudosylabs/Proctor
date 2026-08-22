@@ -330,7 +330,7 @@ func revokeReplayedSession(
 		 WHERE id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		now,
 		now,
-		"refresh credential replay detected",
+		string(model.SessionRevocationRefreshReplay),
 		session.ID.String(),
 	); err != nil {
 		return nil, fmt.Errorf("revoke replayed session: %w", err)
@@ -339,7 +339,7 @@ func revokeReplayedSession(
 		session.UpdatedAt = now
 	}
 	session.RevokedAt = model.OptionalTimeFrom(now)
-	session.RevocationReason = "refresh credential replay detected"
+	session.RevocationReason = model.SessionRevocationRefreshReplay
 	return hashes, nil
 }
 

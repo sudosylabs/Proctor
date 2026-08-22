@@ -44,7 +44,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 			<-start
 			_, unlinkErr = ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: identity.ID,
 				UserID: user.ID, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
-				ChangedAt: model.GetMillis(), RevocationReason: "external identity unlinked", AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
+				ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()})
 		}()
 		close(start)
 		wait.Wait()
@@ -148,7 +148,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")
 		result, err := ss.ExternalIdentity().UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{
 			ID: linked.Identity.ID, UserID: user.ID, Capabilities: capabilities, ChangedAt: model.GetMillis(),
-			RevocationReason: "external identity unlinked", AuditEventID: unlinkAttempt.ID.String(), AuditAt: model.GetMillis(),
+			RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: unlinkAttempt.ID.String(), AuditAt: model.GetMillis(),
 		})
 		requireNoError(t, err)
 		if len(result.RevokedSessions) != 1 || result.RevokedSessions[0].ID != providerSession.ID || len(result.RevokedTokenHashes) != 2 {
@@ -166,7 +166,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		}
 		revoked, err := ss.Session().Get(ctx, providerSession.ID.String())
 		requireNoError(t, err)
-		if !revoked.RevokedAt.Valid || revoked.RevocationReason != "external identity unlinked" {
+		if !revoked.RevokedAt.Valid || revoked.RevocationReason != model.SessionRevocationExternalIdentityUnlinked {
 			t.Fatalf("provider Session was not revoked = %#v", revoked)
 		}
 	})

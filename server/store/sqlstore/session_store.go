@@ -14,7 +14,6 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
-	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -347,8 +346,11 @@ func (s SQLSessionStore) Revoke(
 	id string,
 	userID string,
 	revokedAt int64,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]string, error) {
+	if !reason.IsValid() {
+		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
+	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "session revocation", func(ctx context.Context, tx *sqlxTxWrapper) ([]string, error) {
 		if err := lockUserSessions(ctx, tx, userID); err != nil {
 			return nil, err
@@ -365,8 +367,8 @@ func (s SQLSessionStore) RevokeWithAudit(
 		input.RevokedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("session", "revocation", nil)
 	}
-	reason := model.SanitizeUnicode(input.Reason)
-	if utf8.RuneCountInString(reason) > model.SessionRevocationMaxRunes {
+	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))
+	if !reason.IsValid() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
@@ -433,8 +435,11 @@ func (s SQLSessionStore) RevokeAllForUser(
 	ctx context.Context,
 	userID string,
 	revokedAt int64,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]*model.Session, []string, error) {
+	if !reason.IsValid() {
+		return nil, nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
+	}
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "user session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*userSessionRevocationTransactionResult, error) {
 		if err := lockUserSessions(ctx, tx, userID); err != nil {
 			return nil, err
@@ -465,8 +470,8 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("session", "user_revocation", nil)
 	}
-	reason := model.SanitizeUnicode(input.Reason)
-	if utf8.RuneCountInString(reason) > model.SessionRevocationMaxRunes {
+	reason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.Reason)))
+	if !reason.IsValid() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	mailUnprepared := input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
@@ -579,7 +584,7 @@ func revokeOneUserSession(
 	id string,
 	userID string,
 	revokedAt int64,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]string, error) {
 	at := model.TimeFromMillis(revokedAt)
 	var matchedSessionID string
@@ -604,7 +609,7 @@ func revokeOneUserSession(
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		at,
 		at,
-		model.SanitizeUnicode(reason),
+		string(reason),
 		id,
 		userID,
 	)
@@ -632,7 +637,7 @@ func revokeAllUserSessions(
 	executor sqlxExecutor,
 	userID string,
 	revokedAt int64,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]sessionRow, []string, error) {
 	return revokeAllUserSessionsAt(ctx, executor, userID, model.TimeFromMillis(revokedAt), reason)
 }
@@ -642,7 +647,7 @@ func revokeAllUserSessionsAt(
 	executor sqlxExecutor,
 	userID string,
 	at time.Time,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]sessionRow, []string, error) {
 	at = model.TimeUTC(at)
 	hashes := []string{}
@@ -698,7 +703,7 @@ func revokeAllUserSessionsAt(
 		 WHERE user_id = ? AND archived_at IS NULL AND revoked_at IS NULL`,
 		at,
 		at,
-		model.SanitizeUnicode(reason),
+		string(reason),
 		userID,
 	); err != nil {
 		return nil, nil, fmt.Errorf("revoke user sessions: %w", err)
@@ -709,7 +714,7 @@ func revokeAllUserSessionsAt(
 func revokedSessionModels(
 	rows []sessionRow,
 	revokedAt int64,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]*model.Session, error) {
 	return revokedSessionModelsAt(rows, model.TimeFromMillis(revokedAt), reason)
 }
@@ -717,7 +722,7 @@ func revokedSessionModels(
 func revokedSessionModelsAt(
 	rows []sessionRow,
 	at time.Time,
-	reason string,
+	reason model.SessionRevocationReason,
 ) ([]*model.Session, error) {
 	sessions := make([]*model.Session, 0, len(rows))
 	at = model.TimeUTC(at)
@@ -730,7 +735,7 @@ func revokedSessionModelsAt(
 			session.UpdatedAt = at
 		}
 		session.RevokedAt = model.OptionalTimeFrom(at)
-		session.RevocationReason = model.SanitizeUnicode(reason)
+		session.RevocationReason = reason
 		sessions = append(sessions, session)
 	}
 	return sessions, nil
@@ -790,7 +795,7 @@ func newSessionRow(session *model.Session) sessionRow {
 		IdleExpiresAt:            UTCTime(session.IdleExpiresAt),
 		ExpiresAt:                UTCTime(session.ExpiresAt),
 		RevokedAt:                NullTimeFromOptional(session.RevokedAt),
-		RevocationReason:         session.RevocationReason,
+		RevocationReason:         string(session.RevocationReason),
 	}
 }
 
@@ -821,7 +826,7 @@ func (row sessionRow) model() (*model.Session, error) {
 		IdleExpiresAt:            row.IdleExpiresAt.UTC(),
 		ExpiresAt:                row.ExpiresAt.UTC(),
 		RevokedAt:                OptionalTimeFromNullTime(row.RevokedAt),
-		RevocationReason:         row.RevocationReason,
+		RevocationReason:         model.SessionRevocationReason(row.RevocationReason),
 	}
 	if row.ExternalIdentityID.Valid {
 		session.ExternalIdentityID, err = model.ParseExternalIdentityID(row.ExternalIdentityID.String)

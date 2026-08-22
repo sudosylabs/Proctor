@@ -376,7 +376,7 @@ func (s *accountTokenService) CompletePasswordReset(
 	}
 	result, err := s.tokens.ConsumePasswordReset(ctx, &store.PasswordResetCompletion{
 		TokenHash: model.HashToken(command.Token), PasswordHash: passwordHash, At: now.UnixMilli(),
-		RevocationReason: "password reset", AuditEvent: event, Occurrence: prepared.Occurrence,
+		RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: event, Occurrence: prepared.Occurrence,
 		Delivery: prepared.Delivery, Job: prepared.Job,
 	})
 	if err != nil {

@@ -134,7 +134,7 @@ func (s *authenticationMethodService) removePassword(ctx context.Context, invoca
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.passwords.RemoveWithAudit(ctx, &store.PasswordCredentialRemoval{UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
-				RevocationReason: "password removed", AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				RevocationReason: model.SessionRevocationPasswordRemoved, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodMutationError)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)
@@ -156,7 +156,7 @@ func (s *authenticationMethodService) unlink(ctx context.Context, invocation Inv
 		func(ctx context.Context, reference mutationAttemptReference) (*store.AuthenticationMethodMutationResult, error) {
 			return s.identities.UnlinkWithAudit(ctx, &store.ExternalIdentityUnlink{ID: id, UserID: userID,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()), ChangedAt: reference.MutationAtMillis,
-				RevocationReason: "external identity unlinked", AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
+				RevocationReason: model.SessionRevocationExternalIdentityUnlinked, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis})
 		}, authenticationMethodMutationError)
 	if appErr == nil {
 		s.publishRevocations(ctx, userID, result)

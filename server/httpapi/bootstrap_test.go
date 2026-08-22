@@ -160,7 +160,7 @@ func TestBootstrapResponseDTOPreservesHistoricalEnvelope(t *testing.T) {
 		},
 		AccessPolicy: model.NewInitialAccessPolicy(model.NewAccessPolicyID(), model.TimeFromMillis(100)),
 	}
-	encoded, err := json.Marshal(installationBootstrapResponseFromModel(result))
+	encoded, err := json.Marshal(installationBootstrapResponseFromModel(nil, result))
 	if err != nil {
 		t.Fatal(err)
 	}

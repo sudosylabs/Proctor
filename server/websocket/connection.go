@@ -18,6 +18,8 @@ import (
 type connectionRuntime struct {
 	application Application
 	logger      Logger
+	localizer   Localizer
+	locale      string
 	nodeID      string
 	socket      connectionSocket
 	clock       runtimeClock
@@ -54,6 +56,8 @@ type examAttemptBinding struct {
 func newConnectionRuntime(
 	application Application,
 	logger Logger,
+	localizer Localizer,
+	locale string,
 	nodeID string,
 	socket connectionSocket,
 	principal model.Principal,
@@ -67,6 +71,8 @@ func newConnectionRuntime(
 	runtime := &connectionRuntime{
 		application:   application,
 		logger:        logger,
+		localizer:     localizer,
+		locale:        locale,
 		nodeID:        nodeID,
 		socket:        socket,
 		clock:         systemRuntimeClock{},

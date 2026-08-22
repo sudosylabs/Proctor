@@ -256,7 +256,7 @@ type ExamDraftExecutionProfileUpdate struct {
 	Profile          model.ExecutionProfile
 	UpdatedAt        int64
 	AuditEventID     string
-	AuditAt           int64
+	AuditAt          int64
 }
 
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
@@ -1098,7 +1098,7 @@ type UserDisabledStateChange struct {
 	Delivery         *model.MailDelivery
 	DeliveryJob      *model.Job
 	ChangedAt        int64
-	RevocationReason string
+	RevocationReason model.SessionRevocationReason
 	AuditEventID     string
 	AuditAt          int64
 	Command          *CommandIdempotency
@@ -1228,7 +1228,7 @@ type ExternalIdentityUnlink struct {
 	UserID           model.UserID
 	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        int64
-	RevocationReason string
+	RevocationReason model.SessionRevocationReason
 	AuditEventID     string
 	AuditAt          int64
 }
@@ -1348,7 +1348,7 @@ type PasswordResetCompletion struct {
 	TokenHash        string
 	PasswordHash     string
 	At               int64
-	RevocationReason string
+	RevocationReason model.SessionRevocationReason
 	AuditEvent       *model.AuditEvent
 	Occurrence       *model.MailOccurrence
 	Delivery         *model.MailDelivery
@@ -2164,7 +2164,7 @@ type PasswordCredentialRemoval struct {
 	UserID           model.UserID
 	Capabilities     AccessDeploymentCapabilities
 	ChangedAt        int64
-	RevocationReason string
+	RevocationReason model.SessionRevocationReason
 	AuditEventID     string
 	AuditAt          int64
 }
@@ -2179,7 +2179,7 @@ type SessionRevocation struct {
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
 	RevokedAt    int64
-	Reason       string
+	Reason       model.SessionRevocationReason
 	AuditEventID string
 	AuditAt      int64
 }
@@ -2200,7 +2200,7 @@ type UserSessionsRevocation struct {
 	Delivery     *model.MailDelivery
 	DeliveryJob  *model.Job
 	RevokedAt    int64
-	Reason       string
+	Reason       model.SessionRevocationReason
 	AuditEventID string
 	AuditAt      int64
 	Command      *CommandIdempotency
@@ -2227,13 +2227,13 @@ type SessionStore interface {
 	ListByUser(context.Context, string) ([]*model.Session, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
 	UpdateActivity(context.Context, string, int64, int64) error
-	Revoke(context.Context, string, string, int64, string) ([]string, error)
+	Revoke(context.Context, string, string, int64, model.SessionRevocationReason) ([]string, error)
 	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(
 		context.Context,
 		string,
 		int64,
-		string,
+		model.SessionRevocationReason,
 	) ([]*model.Session, []string, error)
 	RevokeAllForUserWithAudit(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
 }

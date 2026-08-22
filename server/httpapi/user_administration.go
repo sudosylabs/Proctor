@@ -115,7 +115,7 @@ func (module userAdministrationResourceModule) listSessions(request operationReq
 	}
 	// Transport-owned DTOs keep the historical bare-array millis wire shape
 	// while domain Session values use typed IDs and UTC times.
-	return jsonResult(http.StatusOK, sessionResponsesFromModels(sessions)), nil
+	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
 }
 
 func (module userAdministrationResourceModule) revokeSession(request operationRequest) (operationResult, error) {

@@ -20,12 +20,12 @@ type revokeSessionRequest struct {
 	SessionID string `json:"session_id"`
 }
 
-func sessionResponsesFromModels(sessions []*model.Session) []sessionResponse {
+func sessionResponsesFromModels(request *http.Request, sessions []*model.Session) []sessionResponse {
 	// Historical self-service listing returns a non-null array body. Prefer
 	// stability over introducing an envelope mid-migration.
 	items := make([]sessionResponse, 0, len(sessions))
 	for _, session := range sessions {
-		if mapped := sessionResponseFromModel(session); mapped != nil {
+		if mapped := sessionResponseFromModel(request, session); mapped != nil {
 			items = append(items, *mapped)
 		}
 	}
@@ -57,7 +57,7 @@ func (module sessionResourceModule) list(request operationRequest) (operationRes
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, sessionResponsesFromModels(sessions)), nil
+	return jsonResult(http.StatusOK, sessionResponsesFromModels(request.request, sessions)), nil
 }
 
 func (module sessionResourceModule) revoke(request operationRequest) (operationResult, error) {

@@ -479,6 +479,17 @@ The exact property and maintenance contract lives in
 translation behavior lives in `localization/`; mail-specific rendering lives
 beside composition in `app/mail/`.
 
+Consumer packages explicitly register every message they own, including
+dynamic families that cannot be found reliably by scanning source literals.
+Validate exact English coverage and placeholder contracts with
+`make -C server i18n-check`. Maintainers can also run the `list`, `missing`, or
+`format` subcommands through `go run ./cmd/ptool i18n`; formatting is an
+explicit write operation and the normal check never rewrites catalogs. The
+operator CLI selects a locale
+from `PROCTOR_LOCALE`, then the standard `LC_ALL`, `LC_MESSAGES`, and `LANG`
+environment variables, while keeping command names, flags, and machine values
+stable.
+
 ### Production SMTP and deliverability
 
 The checked-in [`config.example.json`](config.example.json) documents every

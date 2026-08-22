@@ -200,52 +200,52 @@ func decodeStrictExamAttemptObject[T any](document json.RawMessage, label string
 	return value, nil
 }
 
-func examAttemptConnectError(err error) (string, string) {
+func examAttemptConnectError(err error) (string, websocketErrorPresentation) {
 	code := "exam.attempt.unavailable"
-	message := "Exam Attempt connection failed."
+	presentation := websocketErrorAttemptConnectionFailed
 	if failure, ok := app.As(err); ok {
 		code = failure.Code()
 		if code == "resource.not_found" || code == "authorization.denied" {
-			message = "Exam Attempt connection denied."
+			presentation = websocketErrorAttemptConnectionDenied
 		}
 	}
-	return code, message
+	return code, presentation
 }
 
-func examAttemptRenewError(err error) (string, string) {
+func examAttemptRenewError(err error) (string, websocketErrorPresentation) {
 	code := "exam.attempt.unavailable"
-	message := "Exam Attempt renewal failed."
+	presentation := websocketErrorAttemptRenewalFailed
 	if failure, ok := app.As(err); ok {
 		code = failure.Code()
 		switch code {
 		case "resource.not_found", "authorization.denied":
-			message = "Exam Attempt renewal denied."
+			presentation = websocketErrorAttemptRenewalDenied
 		case "exam.attempt.connection_lost":
-			message = "Secure connectivity could not be renewed. Ask a manager to re-allow access."
+			presentation = websocketErrorAttemptConnectionLost
 		}
 	}
-	return code, message
+	return code, presentation
 }
 
-func examAttemptFocusLossError(err error) (string, string) {
+func examAttemptFocusLossError(err error) (string, websocketErrorPresentation) {
 	failure, ok := app.As(err)
 	if !ok {
-		return "exam.attempt.unavailable", "Focus Loss signal could not be accepted."
+		return "exam.attempt.unavailable", websocketErrorFocusLossFailed
 	}
 	switch failure.Code() {
 	case "authorization.denied", "resource.not_found":
-		return "resource.not_found", "Focus Loss signal was denied."
+		return "resource.not_found", websocketErrorFocusLossDenied
 	case "authentication.invalid_token":
-		return "authentication.invalid_token", "Focus Loss signal was denied."
+		return "authentication.invalid_token", websocketErrorFocusLossDenied
 	case "exam.attempt.connection_closed":
-		return "exam.attempt.connection_closed", "Exam Attempt connection is not active."
+		return "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive
 	case "exam.attempt.connection_lost":
-		return "exam.attempt.connection_lost", "Secure connectivity could not be renewed. Ask a manager to re-allow access."
+		return "exam.attempt.connection_lost", websocketErrorAttemptConnectionLost
 	case "exam.attempt.focus_loss_conflict":
-		return "exam.attempt.focus_loss_conflict", "Focus Loss signal conflicts with an accepted sequence."
+		return "exam.attempt.focus_loss_conflict", websocketErrorFocusLossConflict
 	case "exam.attempt.sitting_unavailable", "exam.attempt.state_conflict":
-		return failure.Code(), "Focus Loss signal could not be accepted."
+		return failure.Code(), websocketErrorFocusLossFailed
 	default:
-		return "exam.attempt.unavailable", "Focus Loss signal could not be accepted."
+		return "exam.attempt.unavailable", websocketErrorFocusLossFailed
 	}
 }

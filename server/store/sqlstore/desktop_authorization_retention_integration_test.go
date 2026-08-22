@@ -145,7 +145,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	go func() {
 		result, disableErr := persistence.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
+			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}
@@ -167,7 +167,7 @@ func TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !storedSession.RevokedAt.Valid || storedSession.RevocationReason != "concurrent disable" {
+	if !storedSession.RevokedAt.Valid || storedSession.RevocationReason != model.SessionRevocationAccountDisabled {
 		t.Fatalf("session escaped concurrent disable: %#v", storedSession)
 	}
 }
@@ -220,7 +220,7 @@ func TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossN
 	go func() {
 		result, disableErr := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-			RevocationReason: "concurrent disable", AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
+			RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: disableAudit.ID.String(), AuditAt: model.GetMillis(),
 			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		}))
 		disableResult <- disableOutcome{result: result, err: disableErr}

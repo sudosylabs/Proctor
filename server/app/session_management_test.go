@@ -130,14 +130,14 @@ func (s *selfSessionStoreFake) ListActiveByUser(context.Context, string, int64) 
 	return []*model.Session{s.session}, nil
 }
 
-func (s *selfSessionStoreFake) Revoke(_ context.Context, _ string, userID string, at int64, _ string) ([]string, error) {
+func (s *selfSessionStoreFake) Revoke(_ context.Context, _ string, userID string, at int64, _ model.SessionRevocationReason) ([]string, error) {
 	*s.events = append(*s.events, "revoke")
 	s.revokeCalls++
 	s.revokedUserID, s.revokedAt = userID, at
 	return append([]string(nil), s.hashes...), nil
 }
 
-func (s *selfSessionStoreFake) RevokeAllForUser(context.Context, string, int64, string) ([]*model.Session, []string, error) {
+func (s *selfSessionStoreFake) RevokeAllForUser(context.Context, string, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
 	return []*model.Session{s.session}, append([]string(nil), s.hashes...), nil
 }
 

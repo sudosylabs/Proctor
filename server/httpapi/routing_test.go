@@ -127,6 +127,7 @@ func newCompiledRoutingTestAPI(t *testing.T, apiURLSuffix string, resources ...r
 	httpAPI := &API{
 		authenticator:           classRouteAuthenticator{},
 		logger:                  logger,
+		localizer:               newTestLocalizer(t),
 		recentAuthenticationTTL: 15 * time.Minute,
 	}
 	if err := httpAPI.buildRoutingKernel(apiURLSuffix, 1<<20, func() error {

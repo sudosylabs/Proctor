@@ -283,7 +283,7 @@ func testUserTokenIssueRechecksCurrentEligibleAccount(t *testing.T, ss store.Sto
 		at := model.GetMillis() + 1
 		_, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 			ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
-			ChangedAt: at, RevocationReason: "account disabled",
+			ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 			AuditEventID: audit.ID.String(), AuditAt: at,
 		}))
 		requireNoError(t, err)
@@ -854,7 +854,7 @@ func passwordResetCompletion(t *testing.T, user *model.User, tokenHash, password
 	t.Helper()
 	when := model.TimeFromMillis(at)
 	occurrence, delivery, job := userTokenMailFixture(t, user.ID, model.NewMailOccurrenceID(), model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityPasswordChanged, model.JobTypeMailDeliver, when, when.Add(24*time.Hour))
-	return &store.PasswordResetCompletion{TokenHash: tokenHash, PasswordHash: passwordHash, At: at, RevocationReason: "password reset", AuditEvent: audit, Occurrence: occurrence, Delivery: delivery, Job: job}
+	return &store.PasswordResetCompletion{TokenHash: tokenHash, PasswordHash: passwordHash, At: at, RevocationReason: model.SessionRevocationPasswordReset, AuditEvent: audit, Occurrence: occurrence, Delivery: delivery, Job: job}
 }
 
 func userTokenMailFixture(t *testing.T, userID model.UserID, occurrenceID model.MailOccurrenceID, kind model.MailOccurrenceKind, key model.MailTemplateKey, jobType model.JobType, at, deadline time.Time) (*model.MailOccurrence, *model.MailDelivery, *model.Job) {

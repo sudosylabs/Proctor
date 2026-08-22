@@ -12,28 +12,28 @@ import (
 
 type configValidateExecutor func(context.Context, string) error
 
-func newConfigCommand(validate configValidateExecutor) *cobra.Command {
+func newConfigCommand(validate configValidateExecutor, text commandText) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "config",
-		Short: "Inspect Proctor deployment configuration",
+		Short: text.value("cli.config.short", "Inspect Proctor deployment configuration", nil),
 		Args:  noArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return newUsageError("config requires a subcommand")
+			return newUsageError(text.value("cli.config.error.requires_subcommand", "config requires a subcommand", nil))
 		},
 	}
 	command.AddCommand(&cobra.Command{
 		Use:   "validate",
-		Short: "Validate configuration without starting the server",
+		Short: text.value("cli.config.validate.short", "Validate configuration without starting the server", nil),
 		Args:  noArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
-			path, err := configPath(command)
+			path, err := configPath(command, text)
 			if err != nil {
 				return err
 			}
 			if err := validate(command.Context(), path); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(command.OutOrStdout(), "configuration is valid")
+			_, err = fmt.Fprintln(command.OutOrStdout(), text.value("cli.config.validate.success", "configuration is valid", nil))
 			return err
 		},
 	})

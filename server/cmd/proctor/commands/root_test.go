@@ -42,6 +42,42 @@ func executeForTest(ctx context.Context, args []string, stdin io.Reader, execute
 	return code, stdout.String(), stderr.String()
 }
 
+type commandTestLocalizer map[string]string
+
+func (localizer commandTestLocalizer) Translate(_ string, id string, _ any) (string, error) {
+	translated, ok := localizer[id]
+	if !ok {
+		return "", errors.New("translation unavailable")
+	}
+	return translated, nil
+}
+
+func (commandTestLocalizer) SupportedLocales() []string { return []string{"en", "fr"} }
+
+func TestRunLocalizesCommandOwnedPresentation(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runWithText(
+		context.Background(),
+		[]string{"config", "validate"},
+		nil,
+		&stdout,
+		&stderr,
+		testExecutors(),
+		commandText{
+			localizer: commandTestLocalizer{
+				"cli.config.validate.success": "configuration valide",
+			},
+			locale: "fr",
+		},
+	)
+	if code != 0 || stdout.String() != "configuration valide\n" || stderr.String() != "" {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunHelpDescribesTheExplicitCommandTree(t *testing.T) {
 	t.Parallel()
 

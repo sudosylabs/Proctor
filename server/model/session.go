@@ -20,6 +20,67 @@ const (
 	SessionAuthenticationMaxLength = 64
 )
 
+// SessionRevocationReason is durable machine state. Values are intentionally
+// presentation-free and closed; HTTP and other user-facing edges translate
+// them when rendering a session.
+type SessionRevocationReason string
+
+const (
+	SessionRevocationUserLogout                SessionRevocationReason = "user_logout"
+	SessionRevocationUserSession               SessionRevocationReason = "user_session"
+	SessionRevocationUserAllSessions           SessionRevocationReason = "user_all_sessions"
+	SessionRevocationAdministratorSession      SessionRevocationReason = "administrator_session"
+	SessionRevocationAdministratorAllSessions  SessionRevocationReason = "administrator_all_sessions"
+	SessionRevocationAccountDisabled           SessionRevocationReason = "account_disabled"
+	SessionRevocationPasswordRemoved           SessionRevocationReason = "password_removed"
+	SessionRevocationExternalIdentityUnlinked  SessionRevocationReason = "external_identity_unlinked"
+	SessionRevocationPasswordReset             SessionRevocationReason = "password_reset"
+	SessionRevocationRefreshReplay             SessionRevocationReason = "refresh_replay"
+	SessionRevocationInactiveUser              SessionRevocationReason = "inactive_user"
+	SessionRevocationAuthenticationAuditFailed SessionRevocationReason = "authentication_audit_failed"
+	SessionRevocationAccessPolicyChanged       SessionRevocationReason = "access_policy_changed"
+)
+
+func (reason SessionRevocationReason) IsValid() bool {
+	switch reason {
+	case SessionRevocationUserLogout,
+		SessionRevocationUserSession,
+		SessionRevocationUserAllSessions,
+		SessionRevocationAdministratorSession,
+		SessionRevocationAdministratorAllSessions,
+		SessionRevocationAccountDisabled,
+		SessionRevocationPasswordRemoved,
+		SessionRevocationExternalIdentityUnlinked,
+		SessionRevocationPasswordReset,
+		SessionRevocationRefreshReplay,
+		SessionRevocationInactiveUser,
+		SessionRevocationAuthenticationAuditFailed,
+		SessionRevocationAccessPolicyChanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// AllSessionRevocationReasons returns the closed vocabulary in lexical order.
+func AllSessionRevocationReasons() []SessionRevocationReason {
+	return []SessionRevocationReason{
+		SessionRevocationAccessPolicyChanged,
+		SessionRevocationAccountDisabled,
+		SessionRevocationAdministratorAllSessions,
+		SessionRevocationAdministratorSession,
+		SessionRevocationAuthenticationAuditFailed,
+		SessionRevocationExternalIdentityUnlinked,
+		SessionRevocationInactiveUser,
+		SessionRevocationPasswordRemoved,
+		SessionRevocationPasswordReset,
+		SessionRevocationRefreshReplay,
+		SessionRevocationUserAllSessions,
+		SessionRevocationUserLogout,
+		SessionRevocationUserSession,
+	}
+}
+
 type SessionClientType string
 
 const (
@@ -64,7 +125,7 @@ type Session struct {
 	IdleExpiresAt            time.Time
 	ExpiresAt                time.Time
 	RevokedAt                OptionalTime
-	RevocationReason         string
+	RevocationReason         SessionRevocationReason
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -99,7 +160,7 @@ func (s *Session) PrepareCreate(id SessionID, at time.Time) {
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
 	s.AuthenticationProviderID = SanitizeUnicode(s.AuthenticationProviderID)
-	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
+	s.RevocationReason = SessionRevocationReason(SanitizeUnicode(string(s.RevocationReason)))
 }
 
 // PrepareUpdate applies the application-selected transition time and normalizes
@@ -113,7 +174,7 @@ func (s *Session) PrepareUpdate(at time.Time) {
 	s.DeviceName = SanitizeUnicode(s.DeviceName)
 	s.AuthenticationMethod = SanitizeUnicode(s.AuthenticationMethod)
 	s.AuthenticationProviderID = SanitizeUnicode(s.AuthenticationProviderID)
-	s.RevocationReason = SanitizeUnicode(s.RevocationReason)
+	s.RevocationReason = SessionRevocationReason(SanitizeUnicode(string(s.RevocationReason)))
 }
 
 // Validate checks rehydrated session state.
@@ -204,7 +265,7 @@ func (s *Session) Validate() error {
 	if s.RevokedAt.Valid && s.RevokedAt.Time.Before(s.CreatedAt) {
 		return invalidModelError(where, "session", "revoked_at", "must not precede create_at", details)
 	}
-	if utf8.RuneCountInString(s.RevocationReason) > SessionRevocationMaxRunes {
+	if utf8.RuneCountInString(string(s.RevocationReason)) > SessionRevocationMaxRunes {
 		return invalidModelError(where, "session", "revocation_reason", "is too long", details)
 	}
 	if !s.RevokedAt.Valid && s.RevocationReason != "" {
@@ -213,6 +274,15 @@ func (s *Session) Validate() error {
 			"session",
 			"revocation_reason",
 			"must be empty when the session is not revoked",
+			details,
+		)
+	}
+	if s.RevokedAt.Valid && !s.RevocationReason.IsValid() {
+		return invalidModelError(
+			where,
+			"session",
+			"revocation_reason",
+			"has an unknown value",
 			details,
 		)
 	}

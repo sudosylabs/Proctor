@@ -227,6 +227,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "root composition may import platform", from: serverModule, imported: serverModule + "/platform"},
 		{name: "operator executable may import its command tree", from: serverModule + "/cmd/proctor", imported: serverModule + "/cmd/proctor/commands"},
 		{name: "operator command tree may import the root server facade", from: serverModule + "/cmd/proctor/commands", imported: serverModule},
+		{name: "operator command tree may import localization", from: serverModule + "/cmd/proctor/commands", imported: serverModule + "/localization"},
 		{name: "operator command tree may import Cobra", from: serverModule + "/cmd/proctor/commands", imported: "github.com/spf13/cobra"},
 		{name: "mail preview may import mail rendering", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/app/mail"},
 		{name: "mail preview may import localization", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/localization"},
@@ -361,7 +362,8 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			strings.HasPrefix(imported, repositoryModule+"/")
 	case from == serverModule+"/localization":
-		return standardInfrastructureImport(imported) && imported != "io/fs" || thirdPartyImport(imported) ||
+		return standardInfrastructureImport(imported) && imported != "io/fs" ||
+			(thirdPartyImport(imported) && !packageOrBelow(imported, "github.com/nicksnyder/go-i18n/v2/i18n") && imported != "golang.org/x/text/language") ||
 			strings.HasPrefix(imported, repositoryModule+"/")
 	case applicationPackage(from):
 		return standardInfrastructureImport(imported) ||
@@ -377,7 +379,8 @@ func forbiddenImport(from, imported string) bool {
 		return standardInfrastructureImportExceptHTTP(imported) ||
 			(thirdPartyImport(imported) && !strings.HasPrefix(imported, "github.com/gorilla/")) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
-				imported != serverModule+"/app" && imported != serverModule+"/app/realtime" && imported != serverModule+"/model")
+				imported != serverModule+"/app" && imported != serverModule+"/app/realtime" &&
+				imported != serverModule+"/model" && imported != serverModule+"/localization")
 	case packageOrBelow(from, serverModule+"/cluster"):
 		if from == serverModule+"/cluster" {
 			return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
@@ -404,7 +407,16 @@ func forbiddenImport(from, imported string) bool {
 	case packageOrBelow(from, serverModule+"/cmd/proctor/commands"):
 		return commandInfrastructureImport(imported) ||
 			(thirdPartyImport(imported) && imported != "github.com/spf13/cobra") ||
-			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule)
+			(strings.HasPrefix(imported, repositoryModule+"/") &&
+				imported != serverModule && imported != serverModule+"/localization")
+	case from == serverModule+"/cmd/ptool":
+		return thirdPartyImport(imported) ||
+			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/cmd/ptool/commands")
+	case packageOrBelow(from, serverModule+"/cmd/ptool/commands"):
+		return (thirdPartyImport(imported) && imported != "github.com/spf13/cobra") ||
+			forbiddenProjectImportExcept(imported,
+				serverModule+"/app/mail", serverModule+"/cmd/proctor/commands", serverModule+"/httpapi",
+				serverModule+"/localization", serverModule+"/websocket")
 	case from == serverModule+"/cmd/mailpreview":
 		return thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") &&
@@ -496,6 +508,7 @@ func knownProductionPackage(packagePath string) bool {
 		packagePath == serverModule+"/executionhost" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||
 		packageOrBelow(packagePath, serverModule+"/cmd/proctor/commands") ||
+		packageOrBelow(packagePath, serverModule+"/cmd/ptool") ||
 		packagePath == serverModule+"/cmd/mailpreview" {
 		return true
 	}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -41,14 +42,12 @@ func New(options Options) (*API, error) {
 	if options.Logger == nil {
 		return nil, errors.New("logger is required")
 	}
-	if options.Localizer != nil {
-		for _, name := range []string{"bad_request", "client_error", "conflict", "forbidden", "internal", "not_found", "service_unavailable", "too_many_requests", "unauthorized"} {
-			for _, field := range []string{"detail", "title"} {
-				id := "problem." + name + "." + field
-				if _, err := options.Localizer.Translate("", id, nil); err != nil {
-					return nil, fmt.Errorf("validate localization %q: %w", id, err)
-				}
-			}
+	if options.Localizer == nil {
+		return nil, errors.New("localizer is required")
+	}
+	for _, definition := range LocalizationDefinitions() {
+		if _, err := options.Localizer.Translate("", definition.ID, nil); err != nil {
+			return nil, fmt.Errorf("validate localization %q: %w", definition.ID, err)
 		}
 	}
 	if options.Health == nil {
@@ -146,7 +145,8 @@ func New(options Options) (*API, error) {
 func (a *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	if a.localizer != nil {
 		request = request.WithContext(withRequestLocalization(
-			request.Context(), a.localizer, preferredLocale(request, a.localizer.SupportedLocales()),
+			request.Context(), a.localizer,
+			localization.PreferredLocale(request.Header.Get("Accept-Language"), a.localizer.SupportedLocales()),
 		))
 	}
 	a.handler.ServeHTTP(writer, request)
@@ -216,11 +216,12 @@ func sortRoutes(routes []Route) {
 }
 
 func (a *API) handleNotFound(writer http.ResponseWriter, request *http.Request) {
+	title, detail := localizedProblemPresentation(request, http.StatusNotFound)
 	WriteProblem(writer, Problem{
 		Type:      "https://proctor.sudosylabs.com/problems/not-found",
-		Title:     "Resource not found",
+		Title:     title,
 		Status:    http.StatusNotFound,
-		Detail:    "The requested resource was not found.",
+		Detail:    detail,
 		Instance:  request.URL.Path,
 		Code:      "not_found",
 		RequestID: RequestID(request.Context()),
@@ -231,11 +232,12 @@ func (a *API) handleMethodNotAllowed(writer http.ResponseWriter, request *http.R
 	if methods := a.allowedMethods(request); len(methods) != 0 {
 		writer.Header().Set("Allow", strings.Join(methods, ", "))
 	}
+	title, detail := localizedNamedProblemPresentation(request, "method_not_allowed")
 	WriteProblem(writer, Problem{
 		Type:      "https://proctor.sudosylabs.com/problems/method-not-allowed",
-		Title:     "Method not allowed",
+		Title:     title,
 		Status:    http.StatusMethodNotAllowed,
-		Detail:    "The request method is not allowed for this resource.",
+		Detail:    detail,
 		Instance:  request.URL.Path,
 		Code:      "method_not_allowed",
 		RequestID: RequestID(request.Context()),

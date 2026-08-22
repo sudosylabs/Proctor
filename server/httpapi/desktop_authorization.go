@@ -104,5 +104,5 @@ func (m desktopAuthorizationResourceModule) exchange(request operationRequest) (
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, authenticationResponse{Session: sessionResponseFromModel(result.Session), Tokens: authenticationTokensResponseFromModel(result.Tokens)}).withHeaders(http.Header{"Cache-Control": {"no-store"}}), nil
+	return jsonResult(http.StatusOK, authenticationResponse{Session: sessionResponseFromModel(request.request, result.Session), Tokens: authenticationTokensResponseFromModel(result.Tokens)}).withHeaders(http.Header{"Cache-Control": {"no-store"}}), nil
 }

@@ -132,8 +132,12 @@ HTTP negotiates presentation language from `Accept-Language` against the
 embedded server catalogs. Problem `type`, `code`, `status`, fields, and request
 correlation remain locale-independent; only `title` and `detail` are resolved
 at the HTTP edge. Missing messages fall back through the installation locale
-and then English. WebSocket codes remain machine-only until a protocol message
-explicitly defines localized presentation.
+and then English. Stable session revocation codes remain durable machine state;
+session responses add localized reason prose without replacing the code.
+Built-in role names and descriptions are likewise translated only in the HTTP
+projection. A WebSocket selects its locale during the HTTP handshake and keeps
+it for the connection; error-envelope messages and bounded close reasons are
+localized while their protocol codes remain locale-independent.
 
 Validation ownership is divided:
 

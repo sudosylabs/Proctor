@@ -51,7 +51,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 	}
 	digest := sha256.Sum256(canonical)
 	gotDigest := hex.EncodeToString(digest[:])
-	const wantDigest = "1cd36ea2b82eaa0129c6fd27dd210283a7fd74e294695254384ea4451c644446"
+	const wantDigest = "64ab74fb3ea56f8193d98fa02ed7a2577eb6a76ca4d46da3ae3669be240f8e19"
 	if gotDigest != wantDigest {
 		t.Fatalf("v1 HTTP contract digest = %s, want %s", gotDigest, wantDigest)
 	}

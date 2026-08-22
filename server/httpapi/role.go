@@ -41,23 +41,28 @@ type roleResponse struct {
 	BuiltIn     bool     `json:"built_in"`
 }
 
-func roleResponseFromModel(role *model.Role) roleResponse {
+func roleResponseFromModel(request *http.Request, role *model.Role) roleResponse {
 	permissions := role.Permissions
 	if permissions == nil {
 		permissions = []string{}
 	}
+	displayName, description := role.DisplayName, role.Description
+	if role.BuiltIn && role.Name == model.SystemAdministratorRoleName {
+		displayName = translatedRequestText(request, systemAdministratorRoleNameID, displayName)
+		description = translatedRequestText(request, systemAdministratorRoleDescriptionID, description)
+	}
 	return roleResponse{
 		ID: role.ID.String(), CreateAt: model.MillisFromTime(role.CreatedAt),
 		UpdateAt: model.MillisFromTime(role.UpdatedAt), DeleteAt: role.ArchivedAt.Millis(),
-		Name: role.Name, DisplayName: role.DisplayName, Description: role.Description,
+		Name: role.Name, DisplayName: displayName, Description: description,
 		Permissions: append([]string(nil), permissions...), BuiltIn: role.BuiltIn,
 	}
 }
 
-func roleResponsesFromModels(roles []*model.Role) []roleResponse {
+func roleResponsesFromModels(request *http.Request, roles []*model.Role) []roleResponse {
 	result := make([]roleResponse, 0, len(roles))
 	for _, role := range roles {
-		result = append(result, roleResponseFromModel(role))
+		result = append(result, roleResponseFromModel(request, role))
 	}
 	return result
 }
@@ -109,7 +114,7 @@ func (module roleResourceModule) list(request operationRequest) (operationResult
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, roleResponsesFromModels(roles)), nil
+	return jsonResult(http.StatusOK, roleResponsesFromModels(request.request, roles)), nil
 }
 
 func (module roleResourceModule) get(request operationRequest) (operationResult, error) {
@@ -125,7 +130,7 @@ func (module roleResourceModule) get(request operationRequest) (operationResult,
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, roleResponseFromModel(role)), nil
+	return jsonResult(http.StatusOK, roleResponseFromModel(request.request, role)), nil
 }
 
 func (module roleResourceModule) create(request operationRequest) (operationResult, error) {
@@ -144,7 +149,7 @@ func (module roleResourceModule) create(request operationRequest) (operationResu
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusCreated, roleResponseFromModel(saved)), nil
+	return jsonResult(http.StatusCreated, roleResponseFromModel(request.request, saved)), nil
 }
 
 func (module roleResourceModule) patch(request operationRequest) (operationResult, error) {
@@ -167,7 +172,7 @@ func (module roleResourceModule) patch(request operationRequest) (operationResul
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, roleResponseFromModel(updated)), nil
+	return jsonResult(http.StatusOK, roleResponseFromModel(request.request, updated)), nil
 }
 
 func (module roleResourceModule) archive(request operationRequest) (operationResult, error) {

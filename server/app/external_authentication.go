@@ -783,7 +783,7 @@ func (s *externalAuthenticationService) revokeUnreportedSession(
 		session.ID.String(),
 		session.UserID.String(),
 		s.now().UnixMilli(),
-		"authentication audit completion failed",
+		model.SessionRevocationAuthenticationAuditFailed,
 	)
 	if err != nil {
 		if s.diagnostics != nil {

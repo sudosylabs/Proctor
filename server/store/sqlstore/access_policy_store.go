@@ -311,7 +311,7 @@ func revokeSessionsForDisabledAccessMethods(ctx context.Context, tx *sqlxTxWrapp
 		WHERE archived_at IS NULL AND revoked_at IS NULL AND expires_at>? AND idle_expires_at>?
 		AND ((? AND authentication_method='password' AND authentication_provider_id='')
 			OR authentication_provider_id=ANY(?))`,
-		at, at, "authentication method disabled by access policy", at, at, localDisabled, providerArray); err != nil {
+		at, at, string(model.SessionRevocationAccessPolicyChanged), at, at, localDisabled, providerArray); err != nil {
 		return nil, fmt.Errorf("revoke access-policy sessions: %w", err)
 	}
 	byUser := make(map[string]*store.AccessPolicySessionRevocation)

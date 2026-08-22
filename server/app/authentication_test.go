@@ -306,7 +306,7 @@ func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID 
 	return nil
 }
 
-func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ string, revokedAt int64, reason string) ([]string, error) {
+func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ string, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
 	session, ok := s.root.sessions[sessionID]
 	if !ok {
 		return nil, store.NewErrNotFound("session", sessionID)
@@ -345,7 +345,7 @@ func (authenticationSessionStore) ListActiveByUser(context.Context, string, int6
 func (authenticationSessionStore) RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationSessionStore) RevokeAllForUser(context.Context, string, int64, string) ([]*model.Session, []string, error) {
+func (authenticationSessionStore) RevokeAllForUser(context.Context, string, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
 	return nil, nil, errors.New("unused")
 }
 func (authenticationSessionStore) RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {

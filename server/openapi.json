@@ -4997,7 +4997,8 @@
           "authenticated_at": {"type": "integer", "format": "int64"}, "mfa_completed_at": {"type": "integer", "format": "int64"},
           "last_activity_at": {"type": "integer", "format": "int64"}, "idle_expires_at": {"type": "integer", "format": "int64"},
           "expires_at": {"type": "integer", "format": "int64"}, "revoked_at": {"type": "integer", "format": "int64"},
-          "revocation_reason": {"type": "string"}
+          "revocation_reason_code": {"type": "string", "enum": ["account_disabled", "access_policy_changed", "administrator_all_sessions", "administrator_session", "authentication_audit_failed", "external_identity_unlinked", "inactive_user", "password_removed", "password_reset", "refresh_replay", "user_all_sessions", "user_logout", "user_session"]},
+          "revocation_reason": {"type": "string", "description": "Localized presentation of revocation_reason_code."}
         }
       },
       "SessionAdministrationListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/SessionAdministrationResponse"}},
@@ -5685,7 +5686,8 @@
           "authenticated_at": {"type": "integer", "format": "int64"}, "mfa_completed_at": {"type": "integer", "format": "int64"},
           "last_activity_at": {"type": "integer", "format": "int64"}, "idle_expires_at": {"type": "integer", "format": "int64"},
           "expires_at": {"type": "integer", "format": "int64"}, "revoked_at": {"type": "integer", "format": "int64"},
-          "revocation_reason": {"type": "string"}
+          "revocation_reason_code": {"type": "string", "enum": ["account_disabled", "access_policy_changed", "administrator_all_sessions", "administrator_session", "authentication_audit_failed", "external_identity_unlinked", "inactive_user", "password_removed", "password_reset", "refresh_replay", "user_all_sessions", "user_logout", "user_session"]},
+          "revocation_reason": {"type": "string", "description": "Localized presentation of revocation_reason_code."}
         }
       },
       "SessionListResponse": {"type": "array", "items": {"$ref": "#/components/schemas/SessionResponse"}},

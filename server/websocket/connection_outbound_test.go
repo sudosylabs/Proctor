@@ -15,6 +15,45 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+type outboundTestLocalizer struct{}
+
+func (outboundTestLocalizer) Translate(locale, id string, _ any) (string, error) {
+	if locale == "fr" {
+		switch id {
+		case "websocket.error.request.invalid":
+			return "Requête WebSocket invalide.", nil
+		case "websocket.error.exam_attempt.terminal.size_invalid":
+			return "Taille du terminal invalide.", nil
+		}
+	}
+	return "", errors.New("translation unavailable")
+}
+
+func (outboundTestLocalizer) SupportedLocales() []string { return []string{"en", "fr"} }
+
+func TestConnectionRuntimeLocalizesErrorWithoutChangingCode(t *testing.T) {
+	t.Parallel()
+	runtime := &connectionRuntime{
+		localizer: outboundTestLocalizer{}, locale: "fr",
+		send: make(chan outboundMessage, 2),
+	}
+	runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
+	runtime.enqueueError(9, "websocket.request.invalid", websocketErrorTerminalSizeInvalid)
+
+	for _, want := range []struct {
+		sequence int64
+		message  string
+	}{
+		{sequence: 8, message: "Requête WebSocket invalide."},
+		{sequence: 9, message: "Taille du terminal invalide."},
+	} {
+		response := (<-runtime.send).response
+		if response.Sequence != want.sequence || response.Error.Code != "websocket.request.invalid" || response.Error.Message != want.message {
+			t.Fatalf("localized response = %#v, want sequence %d and message %q", response, want.sequence, want.message)
+		}
+	}
+}
+
 func TestConnectionRuntimePreservesConcurrentEventSequenceOrder(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +121,7 @@ func TestConnectionRuntimeClosesOnOutboundQueueSaturation(t *testing.T) {
 		{
 			name: "error",
 			enqueue: func(runtime *connectionRuntime) {
-				runtime.enqueueError(8, "websocket.request.invalid", "Invalid WebSocket request.")
+				runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
 			},
 		},
 	}
@@ -131,7 +170,7 @@ func TestConnectionRuntimeWritesOutboundMessagesInQueueOrder(t *testing.T) {
 		UserID: model.NewId(),
 	})
 	runtime.enqueueResponse(7, json.RawMessage(`{"accepted":true}`))
-	runtime.enqueueError(8, "websocket.request.invalid", "Invalid WebSocket request.")
+	runtime.enqueueError(8, "websocket.request.invalid", websocketErrorRequestInvalid)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

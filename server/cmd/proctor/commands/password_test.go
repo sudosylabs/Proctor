@@ -11,16 +11,16 @@ import (
 func TestReadPrivatePasswordBoundsAndNormalizesInput(t *testing.T) {
 	t.Parallel()
 
-	value, err := readPrivatePassword(strings.NewReader("private-value\r\n"))
+	value, err := readPrivatePassword(strings.NewReader("private-value\r\n"), englishCommandText())
 	if err != nil || value != "private-value" {
 		t.Fatalf("value=%q err=%v", value, err)
 	}
 	for _, input := range []string{"", strings.Repeat("x", 4097)} {
-		if _, err := readPrivatePassword(strings.NewReader(input)); err == nil {
+		if _, err := readPrivatePassword(strings.NewReader(input), englishCommandText()); err == nil {
 			t.Fatalf("readPrivatePassword(%d bytes) error = nil", len(input))
 		}
 	}
-	if _, err := readPrivatePassword(nil); err == nil {
+	if _, err := readPrivatePassword(nil, englishCommandText()); err == nil {
 		t.Fatal("readPrivatePassword(nil) error = nil")
 	}
 }

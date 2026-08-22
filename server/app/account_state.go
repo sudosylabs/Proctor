@@ -119,7 +119,7 @@ func (s *accountStateService) SetEnabled(ctx context.Context, invocation Invocat
 				ID: userID, ExpectedRevision: current.Revision, Disabled: disabled,
 				Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),
 				Occurrence:   prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				ChangedAt: reference.MutationAtMillis, RevocationReason: "account disabled by administrator",
+				ChangedAt: reference.MutationAtMillis, RevocationReason: model.SessionRevocationAccountDisabled,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
 			value, storeErr := s.users.SetDisabledWithAudit(ctx, input)

@@ -54,7 +54,8 @@ func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *stor
 
 func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *store.ExternalIdentityUnlink) (*store.AuthenticationMethodMutationResult, error) {
 	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ChangedAt <= 0 ||
-		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+		!input.RevocationReason.IsValid() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("external_identity", "unlink", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "unlink external identity", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AuthenticationMethodMutationResult, error) {
@@ -137,7 +138,8 @@ func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *
 }
 
 func (s SQLPasswordCredentialStore) RemoveWithAudit(ctx context.Context, input *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
-	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
+	if input == nil || !input.UserID.IsValid() || input.ChangedAt <= 0 || !input.RevocationReason.IsValid() ||
+		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 || !validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("password_credential", "remove", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "remove password credential", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AuthenticationMethodMutationResult, error) {
@@ -232,7 +234,7 @@ func getPasswordCredentialForUpdate(ctx context.Context, tx *sqlxTxWrapper, user
 	return row.model()
 }
 
-func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sqlxExecutor, userID, method string, identityID model.ExternalIdentityID, at time.Time, reason string) ([]sessionRow, []string, error) {
+func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sqlxExecutor, userID, method string, identityID model.ExternalIdentityID, at time.Time, reason model.SessionRevocationReason) ([]sessionRow, []string, error) {
 	rows := []sessionRow{}
 	if err := executor.Select(ctx, &rows, `SELECT id, created_at, updated_at, archived_at, user_id, client_type, device_id, device_name, authentication_method, authentication_provider_id, external_identity_id, authentication_strength, authenticated_at, mfa_completed_at, last_activity_at, idle_expires_at, expires_at, revoked_at, revocation_reason FROM sessions WHERE user_id=? AND archived_at IS NULL AND revoked_at IS NULL AND ((?<>'' AND external_identity_id=?) OR (?='' AND authentication_method=? AND authentication_provider_id='')) FOR UPDATE`, userID, identityID.String(), identityID.String(), identityID.String(), method); err != nil {
 		return nil, nil, err
@@ -251,7 +253,7 @@ func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sql
 	if _, err := executor.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at, ?), revoked_at=? WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, pq.Array(ids)); err != nil {
 		return nil, nil, err
 	}
-	if _, err := executor.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=?, revocation_reason=? WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, model.SanitizeUnicode(reason), pq.Array(ids)); err != nil {
+	if _, err := executor.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at, ?), revoked_at=?, revocation_reason=? WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, string(reason), pq.Array(ids)); err != nil {
 		return nil, nil, err
 	}
 	return rows, hashes, nil

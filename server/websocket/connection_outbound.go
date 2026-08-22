@@ -106,10 +106,10 @@ func (c *connectionRuntime) enqueueResponse(sequence int64, data json.RawMessage
 	c.enqueueOutbound(outboundMessage{response: response})
 }
 
-func (c *connectionRuntime) enqueueError(sequence int64, code, message string) {
+func (c *connectionRuntime) enqueueError(sequence int64, code string, presentation websocketErrorPresentation) {
 	response := &Response{
 		Status: "error", Sequence: sequence,
-		Error: &Error{Code: code, Message: message},
+		Error: &Error{Code: code, Message: localizedText(c.localizer, c.locale, websocketErrorMessage(presentation))},
 	}
 	c.enqueueOutbound(outboundMessage{response: response})
 }
@@ -144,7 +144,7 @@ func (c *connectionRuntime) enqueueOutbound(message outboundMessage) {
 }
 
 func (c *connectionRuntime) closeForBackpressure() {
-	c.close(CloseBackpressure, "client is too slow", false)
+	c.close(CloseBackpressure, localizedCloseReason(c.localizer, c.locale, websocketCloseMessages["backpressure"]), false)
 }
 
 func (c *connectionRuntime) tryEnqueueOutbound(message outboundMessage) bool {

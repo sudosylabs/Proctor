@@ -64,10 +64,14 @@ func productionExecutors() executors {
 // failure once, and returns 0 for success, 2 for usage failures, or 1 for
 // operational failures.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	return run(ctx, args, stdin, stdout, stderr, productionExecutors())
+	return runWithText(ctx, args, stdin, stdout, stderr, productionExecutors(), productionCommandText())
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, execute executors) int {
+	return runWithText(ctx, args, stdin, stdout, stderr, execute, englishCommandText())
+}
+
+func runWithText(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, execute executors, text commandText) int {
 	if stdout == nil || stderr == nil {
 		return 1
 	}
@@ -75,7 +79,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		ctx = context.Background()
 	}
 
-	root := newRootCommand(stdin, stdout, stderr, execute)
+	root := newRootCommand(stdin, stdout, stderr, execute, text)
 	root.SetArgs(args)
 	command, err := root.ExecuteContextC(ctx)
 	if err == nil {
@@ -95,15 +99,15 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	return 1
 }
 
-func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors) *cobra.Command {
+func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors, text commandText) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "proctor",
-		Short:         "Run and maintain a Proctor installation",
+		Short:         text.value("cli.root.short", "Run and maintain a Proctor installation", nil),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          noArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return newUsageError("a command is required")
+			return newUsageError(text.value("cli.root.error.command_required", "a command is required", nil))
 		},
 	}
 	root.SetIn(stdin)
@@ -112,22 +116,22 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return wrapUsageError(err)
 	})
-	root.PersistentFlags().StringP("config", "c", "", "path to a JSON configuration file")
+	root.PersistentFlags().StringP("config", "c", "", text.value("cli.config.flag.path", "path to a JSON configuration file", nil))
 
 	root.AddCommand(
-		newServeCommand(execute.serve),
-		newConfigCommand(execute.validateConfig),
-		newMigrateCommand(execute.migrateUp, execute.migrateStatus),
-		newAdministratorCommand(stdin, execute.recoverAdministrator),
-		newVersionCommand(execute.currentBuildInfo),
+		newServeCommand(execute.serve, text),
+		newConfigCommand(execute.validateConfig, text),
+		newMigrateCommand(execute.migrateUp, execute.migrateStatus, text),
+		newAdministratorCommand(stdin, execute.recoverAdministrator, text),
+		newVersionCommand(execute.currentBuildInfo, text),
 	)
 	return root
 }
 
-func configPath(command *cobra.Command) (string, error) {
+func configPath(command *cobra.Command, text commandText) (string, error) {
 	path, err := command.Flags().GetString("config")
 	if err != nil {
-		return "", fmt.Errorf("read config flag: %w", err)
+		return "", fmt.Errorf("%s: %w", text.value("cli.config.error.read_flag", "read config flag", nil), err)
 	}
 	return path, nil
 }

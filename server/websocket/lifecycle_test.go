@@ -46,6 +46,7 @@ func newTestHub(t *testing.T) *websocket.Hub {
 		lifecycleLogger{},
 		"https://proctor.example",
 		"node-a",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewHub() error = %v", err)

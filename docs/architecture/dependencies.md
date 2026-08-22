@@ -10,9 +10,11 @@ model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
 {model, store} ← app/execution ← app
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
+localization ← {httpapi, websocket}
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
 secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
+{localization, app/mail, cmd/proctor/commands, httpapi, websocket} ← cmd/ptool
 logging ← platform
 app ← httpapi
 model ← filecontent
@@ -42,18 +44,19 @@ inside `app/` are application-owned modules, not transports.
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
-| `localization` | Standard library and caller-supplied catalog filesystems | application, domain, persistence, transports, concrete adapters |
+| `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `app` | `model`, `store`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
-| `httpapi` | `app`, `model`, HTTP libraries | `store`, `sqlstore`, `platform` |
-| `websocket` | `app`, `app/realtime`, `model`, WebSocket libraries | SQL and platform service location |
+| `httpapi` | `app`, `model`, `localization`, HTTP libraries | `store`, `sqlstore`, `platform` |
+| `websocket` | `app`, `app/realtime`, `model`, `localization`, WebSocket libraries | SQL and platform service location |
 | concrete adapters | Their inward contracts and implementation libraries | Application policy |
 | `executionhost` | `app/execution` ports, execenv, standard-library TLS and certificate loading | persistence, application policy, transports |
 | `server` | Construction dependencies | Business rules |
 | `cmd/proctor` | `cmd/proctor/commands` and standard-library process lifecycle | Server, application, persistence, and concrete infrastructure |
-| `cmd/proctor/commands` | Module-root `server`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
+| `cmd/proctor/commands` | Module-root `server`, `localization`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
+| `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket` | runtime composition and concrete infrastructure construction |
 
 Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
 

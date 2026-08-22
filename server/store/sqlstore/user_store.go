@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/lib/pq"
@@ -662,8 +661,8 @@ func (s SQLUserStore) SetDisabledWithAudit(
 		!validAccessDeploymentCapabilities(input.Capabilities) {
 		return nil, store.NewErrInvalidInput("user", "disabled_state_change", nil)
 	}
-	revocationReason := model.SanitizeUnicode(input.RevocationReason)
-	if input.Disabled && utf8.RuneCountInString(revocationReason) > model.SessionRevocationMaxRunes {
+	revocationReason := model.SessionRevocationReason(model.SanitizeUnicode(string(input.RevocationReason)))
+	if input.Disabled && !revocationReason.IsValid() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	templateKey := model.MailTemplateIdentityAccountEnabled

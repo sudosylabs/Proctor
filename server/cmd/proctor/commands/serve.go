@@ -13,13 +13,13 @@ import (
 
 type serveExecutor func(context.Context, string) error
 
-func newServeCommand(execute serveExecutor) *cobra.Command {
+func newServeCommand(execute serveExecutor, text commandText) *cobra.Command {
 	return &cobra.Command{
 		Use:   "serve",
-		Short: "Run the Proctor server",
+		Short: text.value("cli.serve.short", "Run the Proctor server", nil),
 		Args:  noArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
-			path, err := configPath(command)
+			path, err := configPath(command, text)
 			if err != nil {
 				return err
 			}

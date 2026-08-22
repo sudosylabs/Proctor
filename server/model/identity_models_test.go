@@ -153,6 +153,16 @@ func TestSessionAndCredentialExpiryAndRotation(t *testing.T) {
 	if err := s.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	revoked := *s
+	revoked.RevokedAt = OptionalTimeFrom(beforeCreate)
+	revoked.RevocationReason = SessionRevocationUserLogout
+	if err := revoked.Validate(); err != nil {
+		t.Fatalf("stable revocation reason rejected: %v", err)
+	}
+	revoked.RevocationReason = "user clicked the logout button"
+	if err := revoked.Validate(); err == nil {
+		t.Fatal("presentation prose was accepted as a revocation reason")
+	}
 	if !s.LastActivityAt.Equal(s.CreatedAt) {
 		t.Fatalf(
 			"PrepareCreate() last_activity_at = %v, created_at = %v",

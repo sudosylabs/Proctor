@@ -29,7 +29,7 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 	}}
 	transport := &academicUnitHTTPApplication{principal: principal}
 	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: transport,
+		Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: transport,
 		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{},
 		ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{},
 		Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
@@ -82,7 +82,7 @@ func TestRoleResponsePreservesExistingWireShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := json.Marshal(roleResponseFromModel(role))
+	got, err := json.Marshal(roleResponseFromModel(nil, role))
 	if err != nil {
 		t.Fatal(err)
 	}

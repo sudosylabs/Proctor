@@ -34,7 +34,7 @@ func (c *connectionRuntime) readPump(ctx context.Context) {
 			return
 		}
 		if err := request.Validate(); err != nil {
-			c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid WebSocket request.")
+			c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorRequestInvalid)
 			continue
 		}
 		c.handleRequest(ctx, &request)
@@ -45,25 +45,25 @@ func (c *connectionRuntime) handleExamAttemptTerminalOpen(ctx context.Context, r
 	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalOpenRequest](request.Data, "Exam Attempt terminal open request", 4)
 	if err != nil || decoded.Generation < 1 || decoded.Cols < 1 || decoded.Rows < 1 ||
 		!model.IsValidCredentialToken(decoded.ContinuityCredential) {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt terminal request.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorTerminalOpenRequestInvalid)
 		return
 	}
 	c.mu.Lock()
 	if c.attempt == nil || c.attempt.generation != decoded.Generation {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive)
 		return
 	}
 	if c.terminal != nil {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.terminal_conflict", "A terminal is already open.")
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_conflict", websocketErrorTerminalAlreadyOpen)
 		return
 	}
 	binding := *c.attempt
 	c.mu.Unlock()
 	attempts, ok := c.application.(examAttemptApplication)
 	if !ok {
-		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal is unavailable.")
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", websocketErrorTerminalUnavailable)
 		return
 	}
 	metadata := c.metadata
@@ -80,14 +80,14 @@ func (c *connectionRuntime) handleExamAttemptTerminalOpen(ctx context.Context, r
 		if failure, exists := app.As(err); exists {
 			code = failure.Code()
 		}
-		c.enqueueError(request.Sequence, code, "Terminal could not be opened.")
+		c.enqueueError(request.Sequence, code, websocketErrorTerminalOpenFailed)
 		return
 	}
 	c.mu.Lock()
 	if c.attempt == nil || *c.attempt != binding || c.terminal != nil {
 		c.mu.Unlock()
 		_ = terminal.Close()
-		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive)
 		return
 	}
 	c.terminal = terminal
@@ -99,26 +99,26 @@ func (c *connectionRuntime) handleExamAttemptTerminalOpen(ctx context.Context, r
 func (c *connectionRuntime) handleExamAttemptTerminalInput(_ context.Context, request *Request) {
 	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalInputRequest](request.Data, "Exam Attempt terminal input request", 1)
 	if err != nil {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal input.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorTerminalInputInvalid)
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(decoded.Data)
 	if err != nil || len(data) == 0 || len(data) > examAttemptTerminalChunkMaximum {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal input.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorTerminalInputInvalid)
 		return
 	}
 	c.mu.Lock()
 	terminal := c.terminal
 	c.mu.Unlock()
 	if terminal == nil {
-		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", "Terminal is not open.")
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", websocketErrorTerminalNotOpen)
 		return
 	}
 	for len(data) > 0 {
 		written, writeErr := terminal.Write(data)
 		if writeErr != nil || written < 1 || written > len(data) {
 			c.closeTerminal()
-			c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal input failed.")
+			c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", websocketErrorTerminalInputFailed)
 			return
 		}
 		data = data[written:]
@@ -129,19 +129,19 @@ func (c *connectionRuntime) handleExamAttemptTerminalInput(_ context.Context, re
 func (c *connectionRuntime) handleExamAttemptTerminalResize(ctx context.Context, request *Request) {
 	decoded, err := decodeStrictExamAttemptObject[examAttemptTerminalResizeRequest](request.Data, "Exam Attempt terminal resize request", 2)
 	if err != nil || decoded.Cols < 1 || decoded.Rows < 1 {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal size.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorTerminalSizeInvalid)
 		return
 	}
 	c.mu.Lock()
 	terminal := c.terminal
 	c.mu.Unlock()
 	if terminal == nil {
-		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", "Terminal is not open.")
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_closed", websocketErrorTerminalNotOpen)
 		return
 	}
 	if err := terminal.Resize(ctx, app.CandidateExamTerminalWindow{Cols: decoded.Cols, Rows: decoded.Rows}); err != nil {
 		c.closeTerminal()
-		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", "Terminal resize failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.terminal_unavailable", websocketErrorTerminalResizeFailed)
 		return
 	}
 	c.enqueueResponse(request.Sequence, nil)
@@ -149,7 +149,7 @@ func (c *connectionRuntime) handleExamAttemptTerminalResize(ctx context.Context,
 
 func (c *connectionRuntime) handleExamAttemptTerminalClose(request *Request) {
 	if _, err := decodeStrictExamAttemptObject[struct{}](request.Data, "Exam Attempt terminal close request", 0); err != nil {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid terminal close request.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorTerminalCloseRequestInvalid)
 		return
 	}
 	c.closeTerminal()
@@ -215,7 +215,7 @@ func (c *connectionRuntime) sessionPump(ctx context.Context) {
 				ctx,
 				c.principal,
 			); appErr != nil {
-				c.close(CloseSessionRevoked, "session no longer valid", false)
+				c.close(CloseSessionRevoked, localizedCloseReason(c.localizer, c.locale, websocketCloseMessages["session_revoked"]), false)
 				return
 			}
 		}
@@ -233,7 +233,7 @@ func (c *connectionRuntime) handleRequest(
 		var subscription Subscription
 		if err := json.Unmarshal(request.Data, &subscription); err != nil ||
 			!subscription.IsValid() {
-			c.enqueueError(request.Sequence, "websocket.subscription.invalid", "Invalid subscription.")
+			c.enqueueError(request.Sequence, "websocket.subscription.invalid", websocketErrorSubscriptionInvalid)
 			return
 		}
 		metadata := c.metadata
@@ -246,14 +246,14 @@ func (c *connectionRuntime) handleRequest(
 			subscription.Resource.model(),
 		); err != nil {
 			code := "authorization.denied"
-			message := "WebSocket subscription denied."
+			presentation := websocketErrorSubscriptionDenied
 			if failure, ok := app.As(err); ok {
 				code = failure.Code()
 				if code != "authorization.denied" {
-					message = "WebSocket subscription failed."
+					presentation = websocketErrorSubscriptionFailed
 				}
 			}
-			c.enqueueError(request.Sequence, code, message)
+			c.enqueueError(request.Sequence, code, presentation)
 			return
 		}
 		c.mu.Lock()
@@ -263,7 +263,7 @@ func (c *connectionRuntime) handleRequest(
 			c.enqueueError(
 				request.Sequence,
 				"websocket.subscription.limit",
-				"WebSocket subscription limit reached.",
+				websocketErrorSubscriptionLimit,
 			)
 			return
 		}
@@ -274,7 +274,7 @@ func (c *connectionRuntime) handleRequest(
 		var subscription Subscription
 		if err := json.Unmarshal(request.Data, &subscription); err != nil ||
 			!subscription.IsValid() {
-			c.enqueueError(request.Sequence, "websocket.subscription.invalid", "Invalid subscription.")
+			c.enqueueError(request.Sequence, "websocket.subscription.invalid", websocketErrorSubscriptionInvalid)
 			return
 		}
 		c.mu.Lock()
@@ -298,14 +298,14 @@ func (c *connectionRuntime) handleRequest(
 	case examAttemptTerminalCloseAction:
 		c.handleExamAttemptTerminalClose(request)
 	default:
-		c.enqueueError(request.Sequence, "websocket.action.unknown", "Unknown WebSocket action.")
+		c.enqueueError(request.Sequence, "websocket.action.unknown", websocketErrorActionUnknown)
 	}
 }
 
 func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, request *Request) {
 	decoded, err := decodeExamAttemptConnectRequest(request.Data)
 	if err != nil {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt connection request.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorAttemptConnectRequestInvalid)
 		return
 	}
 	sittingID, _ := model.ParseExamSittingID(decoded.ExamSittingID)
@@ -313,13 +313,13 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 	c.mu.Lock()
 	if c.attempt != nil && (c.attempt.sittingID != sittingID || c.attempt.requestHash != requestHash) {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.already_connected", "Exam Attempt connection is already established.")
+		c.enqueueError(request.Sequence, "exam.attempt.already_connected", websocketErrorAttemptAlreadyConnected)
 		return
 	}
 	c.mu.Unlock()
 	attempts, ok := c.application.(examAttemptApplication)
 	if !ok {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptConnectionFailed)
 		return
 	}
 	metadata := c.metadata
@@ -328,13 +328,13 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		SittingID: sittingID, ContinuityCredential: decoded.ContinuityCredential, IdempotencyKey: decoded.IdempotencyKey,
 	})
 	if err != nil {
-		code, message := examAttemptConnectError(err)
-		c.enqueueError(request.Sequence, code, message)
+		code, presentation := examAttemptConnectError(err)
+		c.enqueueError(request.Sequence, code, presentation)
 		return
 	}
 	if result.Connection.State != model.AttemptConnectionOpen || result.Attempt.SittingID != sittingID ||
 		result.Connection.AttemptID != result.Attempt.ID || result.Connection.ParticipationID != result.Participation.ID {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptConnectionFailed)
 		return
 	}
 	binding := &examAttemptBinding{attemptID: result.Attempt.ID, sittingID: sittingID,
@@ -345,7 +345,7 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 	c.mu.Lock()
 	if c.attempt != nil && *c.attempt != *binding {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.already_connected", "Exam Attempt connection is already established.")
+		c.enqueueError(request.Sequence, "exam.attempt.already_connected", websocketErrorAttemptAlreadyConnected)
 		return
 	}
 	c.attempt = binding
@@ -361,7 +361,7 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		FirstAdmission:         result.FirstAdmission, Replayed: result.Replayed,
 	})
 	if err != nil {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt connection failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptConnectionFailed)
 		return
 	}
 	c.enqueueResponse(request.Sequence, encoded)
@@ -370,20 +370,20 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request *Request) {
 	decoded, err := decodeExamAttemptRenewRequest(request.Data)
 	if err != nil {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Exam Attempt renewal request.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorAttemptRenewalRequestInvalid)
 		return
 	}
 	c.mu.Lock()
 	if c.attempt == nil || decoded.Generation != c.attempt.generation {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive)
 		return
 	}
 	binding := *c.attempt
 	c.mu.Unlock()
 	attempts, ok := c.application.(examAttemptApplication)
 	if !ok {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
 	}
 	metadata := c.metadata
@@ -393,20 +393,20 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 		Generation: decoded.Generation, Sequence: decoded.Sequence, ContinuityCredential: decoded.ContinuityCredential,
 	})
 	if err != nil {
-		code, message := examAttemptRenewError(err)
-		c.enqueueError(request.Sequence, code, message)
+		code, presentation := examAttemptRenewError(err)
+		c.enqueueError(request.Sequence, code, presentation)
 		return
 	}
 	if result.AttemptID != binding.attemptID || result.ParticipationID != binding.participationID ||
 		result.Generation != binding.generation || result.AcceptedSequence != decoded.Sequence || result.DatabaseTime.IsZero() ||
 		result.LeaseExpiresAt.IsZero() {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
 	}
 	encoded, err := json.Marshal(examAttemptRenewResponse{Generation: result.Generation, AcceptedSequence: result.AcceptedSequence,
 		DatabaseTime: result.DatabaseTime.Format(time.RFC3339Nano), LeaseExpiresAt: result.LeaseExpiresAt.Format(time.RFC3339Nano), Duplicate: result.Duplicate})
 	if err != nil {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Exam Attempt renewal failed.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorAttemptRenewalFailed)
 		return
 	}
 	c.enqueueResponse(request.Sequence, encoded)
@@ -415,20 +415,20 @@ func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request 
 func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, request *Request) {
 	decoded, err := decodeExamAttemptFocusLossRequest(request.Data)
 	if err != nil {
-		c.enqueueError(request.Sequence, "websocket.request.invalid", "Invalid Focus Loss signal.")
+		c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorFocusLossSignalInvalid)
 		return
 	}
 	c.mu.Lock()
 	if c.attempt == nil || decoded.Generation != c.attempt.generation {
 		c.mu.Unlock()
-		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", "Exam Attempt connection is not active.")
+		c.enqueueError(request.Sequence, "exam.attempt.connection_closed", websocketErrorAttemptConnectionInactive)
 		return
 	}
 	binding := *c.attempt
 	c.mu.Unlock()
 	attempts, ok := c.application.(examAttemptApplication)
 	if !ok {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorFocusLossFailed)
 		return
 	}
 	metadata := c.metadata
@@ -440,14 +440,14 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 			DurationMilliseconds: decoded.DurationMilliseconds, Source: model.FocusLossSource(decoded.Source),
 			ContinuityCredential: decoded.ContinuityCredential})
 	if err != nil {
-		code, message := examAttemptFocusLossError(err)
-		c.enqueueError(request.Sequence, code, message)
+		code, presentation := examAttemptFocusLossError(err)
+		c.enqueueError(request.Sequence, code, presentation)
 		return
 	}
 	if result.AttemptID != binding.attemptID || result.ParticipationID != binding.participationID ||
 		result.Generation != binding.generation || result.AcceptedSequence != decoded.Sequence || result.ReceivedAt.IsZero() ||
 		(result.SuspensionCreated && !result.ConnectionClosed) {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorFocusLossFailed)
 		return
 	}
 	encoded, err := json.Marshal(examAttemptFocusLossResponse{Generation: result.Generation,
@@ -456,7 +456,7 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 		WarningCreated: result.CandidateWarningCreated, SuspensionCreated: result.SuspensionCreated,
 		DiscrepancyRecorded: result.DiscrepancyRecorded})
 	if err != nil {
-		c.enqueueError(request.Sequence, "exam.attempt.unavailable", "Focus Loss signal could not be accepted.")
+		c.enqueueError(request.Sequence, "exam.attempt.unavailable", websocketErrorFocusLossFailed)
 		return
 	}
 	if result.ConnectionClosed || result.SuspensionCreated {

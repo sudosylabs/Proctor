@@ -2949,7 +2949,7 @@ func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 string, ar
 	})
 }
 
-func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 string, arg2 string, arg3 int64, arg4 string) ([]string, error) {
+func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 string, arg2 string, arg3 int64, arg4 model.SessionRevocationReason) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevoke), func() ([]string, error) {
 		return s.next.Revoke(arg0, arg1, arg2, arg3, arg4)
 	})
@@ -2961,7 +2961,7 @@ func (s *timedSessionStore) RevokeWithAudit(arg0 context.Context, arg1 *store.Se
 	})
 }
 
-func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 string, arg2 int64, arg3 string) ([]*model.Session, []string, error) {
+func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 string, arg2 int64, arg3 model.SessionRevocationReason) ([]*model.Session, []string, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateSession, methodRevokeAllForUser), func() ([]*model.Session, []string, error) {
 		return s.next.RevokeAllForUser(arg0, arg1, arg2, arg3)
 	})

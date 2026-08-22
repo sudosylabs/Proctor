@@ -83,7 +83,7 @@ func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, 
 			return application.AttachRealtimeClusterFanout(fanout)
 		},
 		websocket: func(application *app.App, logger runtimeLogger, publicURL, nodeID string) (composedWebSocket, error) {
-			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID)
+			return websocket.NewHub(application, websocketLogger{log: logger}, publicURL, nodeID, localizer)
 		},
 		attachSink: func(application *app.App, sink apprealtime.Sink) error {
 			return application.AttachRealtimeSink(sink)

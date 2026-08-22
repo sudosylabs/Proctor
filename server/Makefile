@@ -13,12 +13,15 @@ PROCTOR_TEST_MAILPIT_HTTP_URL ?= http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT
 
-.PHONY: check architecture openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
+.PHONY: check architecture i18n-check openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
-check: architecture openapi-agreement test test-race vet
+check: architecture i18n-check openapi-agreement test test-race vet
 
 architecture:
 	go test ./architecture
+
+i18n-check:
+	go run ./cmd/ptool i18n check
 
 openapi-validate:
 	go test ./httpapi -run 'OpenAPISchemaIsValid$$'

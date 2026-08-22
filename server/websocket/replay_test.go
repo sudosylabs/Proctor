@@ -78,6 +78,8 @@ func TestConnectionRuntimeClonesTheAcceptedPrincipal(t *testing.T) {
 	runtime := newConnectionRuntime(
 		&inboundTestApplication{},
 		replayTestLogger{},
+		nil,
+		"",
 		"node-a",
 		newInboundTestSocket(),
 		principal,
@@ -204,6 +206,7 @@ func newInternalTestHub(t *testing.T) *Hub {
 		replayTestLogger{},
 		"https://proctor.example",
 		"node-a",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("NewHub() error = %v", err)

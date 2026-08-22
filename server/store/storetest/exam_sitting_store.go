@@ -494,7 +494,7 @@ func TestExamSittingDisabledMailReconciliationConverges(t *testing.T, ss store.S
 	disableAt := model.GetMillis() + 1
 	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: disabledCandidate.ID.String(), ExpectedRevision: disabledCandidate.Revision, Disabled: true,
-		ChangedAt: disableAt, RevocationReason: "account disabled", AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: disableAt,
+		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, disabledCandidate.ID.String()).ID.String(), AuditAt: disableAt,
 	}))
 	requireNoError(t, err)
 

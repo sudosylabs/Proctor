@@ -1470,6 +1470,15 @@ CREATE TABLE sessions (
     revoked_at timestamptz,
     revocation_reason varchar(1024) NOT NULL DEFAULT '',
     CONSTRAINT sessions_lifecycle_check CHECK (updated_at >= created_at),
+	CONSTRAINT sessions_revocation_check CHECK (
+		(revoked_at IS NULL AND revocation_reason = '') OR
+		(revoked_at IS NOT NULL AND revocation_reason IN (
+			'access_policy_changed', 'account_disabled', 'administrator_all_sessions',
+			'administrator_session', 'authentication_audit_failed', 'external_identity_unlinked',
+			'inactive_user', 'password_removed', 'password_reset', 'refresh_replay',
+			'user_all_sessions', 'user_logout', 'user_session'
+		))
+	),
 	CONSTRAINT sessions_authentication_identity_check CHECK (
 		(authentication_provider_id = '' AND external_identity_id IS NULL) OR
 		(authentication_provider_id <> '' AND external_identity_id IS NOT NULL)

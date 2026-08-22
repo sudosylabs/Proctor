@@ -174,7 +174,7 @@ func (s *sessionAdministrationService) RevokeOne(
 			return s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
 				SessionID: sessionID, UserID: userID, RevokedAt: reference.MutationAtMillis,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				Reason:       "session revoked by administrator",
+				Reason:       model.SessionRevocationAdministratorSession,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},
@@ -245,7 +245,7 @@ func (s *sessionAdministrationService) RevokeAll(
 			input := &store.UserSessionsRevocation{
 				UserID: userID, RevokedAt: reference.MutationAtMillis,
 				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				Reason:       "sessions revoked by administrator",
+				Reason:       model.SessionRevocationAdministratorAllSessions,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
 			value, storeErr := s.sessions.RevokeAllForUserWithAudit(ctx, input)

@@ -111,7 +111,8 @@ func TestExamAttemptFocusLossErrorPreservesOnlyStableCandidateSafeOutcomes(t *te
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			code, message := examAttemptFocusLossError(app.NewError(test.code))
+			code, presentation := examAttemptFocusLossError(app.NewError(test.code))
+			message := websocketErrorMessage(presentation).fallback
 			if code != test.wantCode || message != test.wantMessage {
 				t.Fatalf("got (%q, %q), want (%q, %q)", code, message, test.wantCode, test.wantMessage)
 			}

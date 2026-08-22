@@ -36,8 +36,19 @@ the code and component contracts for that detail.
 - General server localization keeps flat `{id, translation}` data directly
   under the data-only `server/i18n` directory; the root embeds it and the
   `server/localization` module provides installation/English fallback, strict
-  catalog and placeholder validation, and HTTP Problem Details localization
-  without changing stable machine codes.
+  catalog, placeholder, and CLDR plural-form validation, plus HTTP Problem
+  Details localization without changing stable machine codes. Consumer-owned
+  definition registries make dynamically composed and irregular IDs explicit;
+  `ptool i18n` checks exact English coverage, reports missing locale entries,
+  lists ownership, and performs opt-in deterministic formatting. HTTP
+  negotiation is shared with WebSocket handshakes; each WebSocket retains its
+  selected locale for stable error envelopes and bounded close reasons while
+  protocol codes remain locale-independent. Session revocation now persists a
+  closed machine vocabulary and exposes separate localized presentation;
+  built-in role metadata and command-owned `proctor` CLI help, diagnostics, and
+  success output are localized at their presentation boundaries. Permissions
+  remain stable identifiers until a reviewed permission-catalog use case owns
+  human-facing permission metadata.
 - PostgreSQL schema management, the root/per-model store architecture, SQL
   conformance suites, and constrained timing, retry, and local-cache layers
   are implemented.

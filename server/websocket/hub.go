@@ -23,6 +23,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/app/realtime"
+	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/model"
 )
 
@@ -67,6 +68,7 @@ const (
 type Hub struct {
 	application Application
 	logger      Logger
+	localizer   Localizer
 	publicURL   *url.URL
 	nodeID      string
 	hashSeed    maphash.Seed
@@ -89,6 +91,12 @@ type Logger interface {
 	WarnContext(ctx context.Context, message string, err error)
 }
 
+// Localizer is the narrow presentation port used after the HTTP handshake.
+type Localizer interface {
+	Translate(locale, id string, args any) (string, error)
+	SupportedLocales() []string
+}
+
 // Application is the narrow application surface each connection runtime needs
 // for subscription authorization and principal revalidation.
 type Application interface {
@@ -109,6 +117,7 @@ func NewHub(
 	logger Logger,
 	publicURL string,
 	nodeID string,
+	localizer Localizer,
 ) (*Hub, error) {
 	if application == nil {
 		return nil, errors.New("WebSocket application is required")
@@ -124,6 +133,7 @@ func NewHub(
 	hub := &Hub{
 		application: application,
 		logger:      logger,
+		localizer:   localizer,
 		publicURL:   parsed,
 		nodeID:      nodeID,
 		hashSeed:    maphash.MakeSeed(),
@@ -210,17 +220,22 @@ func (h *Hub) Accept(
 		return nil
 	}
 	runtimeSocket := newGorillaConnectionSocket(socket)
+	locale := ""
+	if h.localizer != nil {
+		locale = localization.PreferredLocale(request.Header.Get("Accept-Language"), h.localizer.SupportedLocales())
+	}
 	connection, resumed := h.register(
 		runtimeSocket,
 		principal,
 		metadata,
 		connectionID,
 		sequence,
+		locale,
 	)
 	if connection == nil {
 		_ = runtimeSocket.WriteControl(
 			websocketCloseMessage,
-			websocket.FormatCloseMessage(CloseLimit, "connection limit reached"),
+			websocket.FormatCloseMessage(CloseLimit, localizedCloseReason(h.localizer, locale, websocketCloseMessages["connection_limit"])),
 			time.Now().Add(writeWait),
 		)
 		_ = runtimeSocket.Close()
@@ -238,6 +253,7 @@ func (h *Hub) register(
 	metadata model.RequestMetadata,
 	requestedID string,
 	requestedSequence int64,
+	locale string,
 ) (*connectionRuntime, bool) {
 	h.mu.RLock()
 	started := h.state == hubStarted
@@ -302,6 +318,8 @@ func (h *Hub) register(
 	connection := newConnectionRuntime(
 		h.application,
 		h.logger,
+		h.localizer,
+		locale,
 		h.nodeID,
 		socket,
 		principal,
@@ -437,14 +455,14 @@ func eventFromRealtime(event realtime.RealtimeEvent) *Event {
 	}
 }
 
-func closeCodeForReason(reason realtime.ConnectionCloseReason) (int, string) {
+func closeCodeForReason(reason realtime.ConnectionCloseReason) (int, localizedMessage) {
 	switch reason {
 	case realtime.ConnectionCloseSessionRevoked:
-		return CloseSessionRevoked, "session revoked"
+		return CloseSessionRevoked, websocketCloseMessages["session_revoked"]
 	case realtime.ConnectionCloseAuthorizationChanged:
-		return CloseAuthorizationChanged, "authorization changed"
+		return CloseAuthorizationChanged, websocketCloseMessages["authorization_changed"]
 	default:
-		return CloseServer, "connection closed"
+		return CloseServer, websocketCloseMessages["connection_closed"]
 	}
 }
 
@@ -452,7 +470,7 @@ var _ realtime.Sink = (*Hub)(nil)
 
 func (h *Hub) closeMatching(
 	code int,
-	reason string,
+	reason localizedMessage,
 	matches func(*connectionRuntime) bool,
 ) {
 	var connections []*connectionRuntime
@@ -466,7 +484,7 @@ func (h *Hub) closeMatching(
 		shard.mu.RUnlock()
 	}
 	for _, connection := range connections {
-		connection.close(code, reason, false)
+		connection.close(code, localizedCloseReason(connection.localizer, connection.locale, reason), false)
 		connection.release()
 	}
 }
@@ -504,7 +522,7 @@ func (h *Hub) Close() error {
 			shard.mu.Unlock()
 		}
 		for _, connection := range connections {
-			connection.close(CloseServer, "server shutting down", false)
+			connection.close(CloseServer, localizedCloseReason(connection.localizer, connection.locale, websocketCloseMessages["server_shutdown"]), false)
 			connection.release()
 		}
 		<-done

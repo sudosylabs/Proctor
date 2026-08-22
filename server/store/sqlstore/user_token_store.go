@@ -608,7 +608,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 ) (*store.PasswordResetResult, error) {
 	if input == nil || !model.IsValidTokenHash(input.TokenHash) ||
 		!model.IsValidPasswordHash(input.PasswordHash) || input.At <= 0 || input.AuditEvent == nil ||
-		input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
+		!input.RevocationReason.IsValid() || input.Occurrence == nil || input.Delivery == nil || input.Job == nil {
 		return nil, store.NewErrInvalidInput("user_token", "password_reset", nil)
 	}
 	if input.Occurrence.Kind != model.MailOccurrenceSecurityNotice || input.Occurrence.TemplateKey != model.MailTemplateIdentityPasswordChanged ||

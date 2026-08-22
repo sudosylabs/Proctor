@@ -53,7 +53,7 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "invitation_disable", "users", "UPDATE users", 8154700260822, func() error {
 				_, err := secondary.User().SetDisabledWithAudit(ctx, storetest.UserDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 					ID: inviter.ID.String(), ExpectedRevision: inviter.Revision, Disabled: true, ChangedAt: model.GetMillis(),
-					RevocationReason: "concurrent Invitation authority change", AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+					RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
 					Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				}))
 				return err

@@ -78,7 +78,7 @@ func installationStateResponseFromModel(state *model.InstallationState) *install
 	}
 }
 
-func installationBootstrapResponseFromModel(result *model.InstallationBootstrapResult) installationBootstrapResponse {
+func installationBootstrapResponseFromModel(request *http.Request, result *model.InstallationBootstrapResult) installationBootstrapResponse {
 	if result == nil {
 		return installationBootstrapResponse{}
 	}
@@ -94,7 +94,7 @@ func installationBootstrapResponseFromModel(result *model.InstallationBootstrapR
 	}
 	var role *roleResponse
 	if result.Role != nil {
-		mapped := roleResponseFromModel(result.Role)
+		mapped := roleResponseFromModel(request, result.Role)
 		role = &mapped
 	}
 	var binding *roleBindingResponse
@@ -188,5 +188,5 @@ func (module bootstrapResourceModule) install(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusCreated, installationBootstrapResponseFromModel(result)), nil
+	return jsonResult(http.StatusCreated, installationBootstrapResponseFromModel(request.request, result)), nil
 }

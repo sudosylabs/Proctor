@@ -277,7 +277,7 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				unit: created, created: created,
 			}
 			httpAPI, err := New(Options{
-				Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
+				Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: fakeApplication,
 				AcademicUnits: fakeApplication, Institutions: fakeApplication,
 				Programmes:          &programmeHTTPApplication{},
 				ProgrammeLevels:     &programmeLevelHTTPApplication{},
@@ -353,7 +353,7 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 	}
 	logger, _ := newTestLogger(t)
 	httpAPI, err := New(Options{
-		Logger: logger, Health: academicUnitHTTPHealth{}, Application: fakeApplication,
+		Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: fakeApplication,
 		AcademicUnits: fakeApplication, Institutions: fakeApplication,
 		Programmes:          &programmeHTTPApplication{},
 		ProgrammeLevels:     &programmeLevelHTTPApplication{},

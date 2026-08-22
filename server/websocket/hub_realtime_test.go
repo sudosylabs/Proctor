@@ -57,8 +57,8 @@ func TestHubUnbindExamAttemptConnectionClearsOnlyExactBindingAndKeepsSocketOpen(
 	defer func() { _ = hub.Close() }()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
 	exactSocket, otherSocket := newRuntimeTestSocket(), newRuntimeTestSocket()
-	exact, _ := hub.register(exactSocket, principal, model.RequestMetadata{}, "", 0)
-	other, _ := hub.register(otherSocket, principal, model.RequestMetadata{}, "", 0)
+	exact, _ := hub.register(exactSocket, principal, model.RequestMetadata{}, "", 0, "")
+	other, _ := hub.register(otherSocket, principal, model.RequestMetadata{}, "", 0, "")
 	if exact == nil || other == nil {
 		t.Fatal("Hub did not register test connections")
 	}
@@ -116,7 +116,7 @@ func TestCloseCodeForRealtimeReason(t *testing.T) {
 			name:       "session revoked",
 			reason:     realtime.ConnectionCloseSessionRevoked,
 			wantCode:   CloseSessionRevoked,
-			wantReason: "session revoked",
+			wantReason: "session no longer valid",
 		},
 		{
 			name:       "authorization changed",
@@ -134,7 +134,7 @@ func TestCloseCodeForRealtimeReason(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			code, reason := closeCodeForReason(test.reason)
-			if code != test.wantCode || reason != test.wantReason {
+			if code != test.wantCode || reason.fallback != test.wantReason {
 				t.Fatalf("close = (%d, %q), want (%d, %q)", code, reason, test.wantCode, test.wantReason)
 			}
 		})

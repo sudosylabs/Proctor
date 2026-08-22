@@ -190,7 +190,7 @@ func TestRoutingKernelAppliesPerRouteBodyLimitsAndProtocolIdempotency(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	httpAPI := &API{authenticator: authenticator, logger: logger, cookies: cookies, recentAuthenticationTTL: time.Minute}
+	httpAPI := &API{authenticator: authenticator, logger: logger, localizer: newTestLocalizer(t), cookies: cookies, recentAuthenticationTTL: time.Minute}
 	if err := httpAPI.buildRoutingKernel(model.APIURLSuffix, 4, func() error {
 		return httpAPI.collectResources(model.APIURLSuffix, resources...)
 	}); err != nil {

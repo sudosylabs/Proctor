@@ -247,7 +247,7 @@ func testUserStoreDisabledMailRecordsTerminalAccountNotice(t *testing.T, ss stor
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	command := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID.String(), AuditAt: at,
 	})
 	command.Delivery, command.DeliveryJob = suppressSecurityNoticeForDisabledMail(t, command.Delivery, command.DeliveryJob)
@@ -349,7 +349,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID.String(), AuditAt: at,
 	}))
 	var conflict *store.ErrConflict
@@ -366,7 +366,7 @@ func testUserStoreProtectLastAdministrator(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	_, err = ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID.String(), AuditAt: at,
 	}))
 	requireNoError(t, err)
@@ -624,7 +624,7 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	attempt := saveUserProfileAuditAttempt(t, ctx, ss, first.ID.String())
 	result, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: first.ID.String(), ExpectedRevision: first.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: attempt.ID.String(), AuditAt: at,
 	}))
 	requireNoError(t, err)
@@ -701,7 +701,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	if _, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
 		ChangedAt:        at,
-		RevocationReason: strings.Repeat("x", model.SessionRevocationMaxRunes+1),
+		RevocationReason: model.SessionRevocationReason(strings.Repeat("x", model.SessionRevocationMaxRunes+1)),
 		AuditEventID:     oversizedAttempt.ID.String(),
 		AuditAt:          at,
 	})); err == nil {
@@ -722,7 +722,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	// session/credential revocation performed before completion was attempted.
 	missingAuditCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: model.NewId(), AuditAt: at,
 	})
 	if _, err := ss.User().SetDisabledWithAudit(ctx, missingAuditCommand); err == nil {
@@ -754,7 +754,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	disableAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	disableCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: user.Revision, Disabled: true,
-		ChangedAt: at, RevocationReason: "administrator disabled account",
+		ChangedAt: at, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: disableAttempt.ID.String(), AuditAt: at,
 	})
 	disabled, err := ss.User().SetDisabledWithAudit(ctx, disableCommand)
@@ -766,7 +766,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	for _, sessionID := range []string{first.ID.String(), second.ID.String()} {
 		revoked, getErr := ss.Session().Get(ctx, sessionID)
 		requireNoError(t, getErr)
-		if revoked.RevokedAt.Millis() != at || revoked.RevocationReason != "administrator disabled account" {
+		if revoked.RevokedAt.Millis() != at || revoked.RevocationReason != model.SessionRevocationAccountDisabled {
 			t.Fatalf("session %s was not revoked with the account: %#v", sessionID, revoked)
 		}
 	}
@@ -790,7 +790,7 @@ func testUserStoreEnablementRevocationAndAuditAreAtomic(t *testing.T, ss store.S
 	replayAttempt := saveUserProfileAuditAttempt(t, ctx, ss, user.ID.String())
 	replayCommand := userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: user.ID.String(), ExpectedRevision: disabled.User.Revision, Disabled: true,
-		ChangedAt: at + 1, RevocationReason: "administrator disabled account",
+		ChangedAt: at + 1, RevocationReason: model.SessionRevocationAccountDisabled,
 		AuditEventID: replayAttempt.ID.String(), AuditAt: at + 1,
 	})
 	if _, replayErr := ss.User().SetDisabledWithAudit(ctx, replayCommand); !store.IsConflict(replayErr) {

@@ -26,11 +26,12 @@ func systemResource(health Health, buildInfo BuildInfo) resource {
 
 func (module systemResourceModule) liveness(request operationRequest) (operationResult, error) {
 	if !module.health.Live() {
+		title, detail := localizedNamedProblemPresentation(request.request, "not_live")
 		return problemResult(Problem{
 			Type:      "https://proctor.sudosylabs.com/problems/not-live",
-			Title:     "Service unavailable",
+			Title:     title,
 			Status:    http.StatusServiceUnavailable,
-			Detail:    "The process is not healthy.",
+			Detail:    detail,
 			Instance:  request.request.URL.Path,
 			Code:      "not_live",
 			RequestID: RequestID(request.context),
@@ -41,11 +42,12 @@ func (module systemResourceModule) liveness(request operationRequest) (operation
 
 func (module systemResourceModule) readiness(request operationRequest) (operationResult, error) {
 	if !module.health.Ready() {
+		title, detail := localizedNamedProblemPresentation(request.request, "not_ready")
 		return problemResult(Problem{
 			Type:      "https://proctor.sudosylabs.com/problems/not-ready",
-			Title:     "Service unavailable",
+			Title:     title,
 			Status:    http.StatusServiceUnavailable,
-			Detail:    "The service is not ready to accept requests.",
+			Detail:    detail,
 			Instance:  request.request.URL.Path,
 			Code:      "not_ready",
 			RequestID: RequestID(request.context),

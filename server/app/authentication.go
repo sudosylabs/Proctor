@@ -698,7 +698,7 @@ func (s *authenticationService) refresh(
 				rotation.Session.ID.String(),
 				rotation.Session.UserID.String(),
 				now,
-				"inactive user",
+				model.SessionRevocationInactiveUser,
 			)
 			if err == nil {
 				s.sessionsRevoked(
@@ -738,7 +738,7 @@ func (s *authenticationService) logout(ctx context.Context, invocation Invocatio
 		principal.SessionID.String(),
 		principal.UserID.String(),
 		s.now().UnixMilli(),
-		"user logout",
+		model.SessionRevocationUserLogout,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {

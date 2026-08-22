@@ -297,7 +297,7 @@ func testAuditedClassMemberLifecycle(
 	disableAt := model.GetMillis()
 	disabledResult, err := ss.User().SetDisabledWithAudit(ctx, userDisabledStateChangeWithNotice(t, &store.UserDisabledStateChange{
 		ID: ineligibleUser.ID.String(), ExpectedRevision: ineligibleUser.Revision, Disabled: true,
-		ChangedAt: disableAt, RevocationReason: "recipient ineligible", AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: disableAt,
+		ChangedAt: disableAt, RevocationReason: model.SessionRevocationAccountDisabled, AuditEventID: saveUserProfileAuditAttempt(t, ctx, ss, ineligibleUser.ID.String()).ID.String(), AuditAt: disableAt,
 	}))
 	requireNoError(t, err)
 	ineligibleUser = disabledResult.User

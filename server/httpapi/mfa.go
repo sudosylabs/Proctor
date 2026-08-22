@@ -135,7 +135,7 @@ func (module mfaResourceModule) challenge(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
-	return jsonResult(http.StatusOK, sessionResponseFromModel(session)).withHeaders(noStoreHeaders()), nil
+	return jsonResult(http.StatusOK, sessionResponseFromModel(request.request, session)).withHeaders(noStoreHeaders()), nil
 }
 
 func (module mfaResourceModule) regenerateRecoveryCodes(request operationRequest) (operationResult, error) {

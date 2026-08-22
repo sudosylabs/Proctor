@@ -122,7 +122,7 @@ func resolveCopy(localizer *localization.Localizer, key model.MailTemplateKey, l
 }
 
 func (r *copyResolver) messageID(field string) string {
-	return "mail." + string(r.key) + "." + field
+	return localizationID(r.key, field)
 }
 
 func (r *copyResolver) required(field string) string {

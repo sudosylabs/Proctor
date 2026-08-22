@@ -15,6 +15,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/mattermost/logr/v2 v2.0.22
 	github.com/mattermost/morph v1.1.0
+	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/pdfcpu/pdfcpu v0.13.0
 	github.com/redis/rueidis v1.0.76
 	github.com/spf13/cobra v1.10.2
@@ -25,6 +26,7 @@ require (
 	golang.org/x/crypto v0.52.0
 	golang.org/x/image v0.41.0
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/text v0.37.0
 )
 
 require (
@@ -85,7 +87,6 @@ require (
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
