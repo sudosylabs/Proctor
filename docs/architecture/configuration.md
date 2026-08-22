@@ -5,7 +5,7 @@ are durable application data changed through authorized use cases.
 
 Deployment configuration includes listeners/public URL, PostgreSQL, cache,
 cluster, VFS, SMTP, execution hosts, external identity providers, logging,
-secrets, and process limits. `localization.default_locale` selects the installed catalog fallback
+secrets, and process limits. `Localization.DefaultLocale` selects the installed catalog fallback
 and is validated against the embedded catalogs during root composition.
 Application settings include institution presentation, branding,
 academic policy, exam defaults, invitation rules, and other administrator
@@ -20,10 +20,10 @@ provider or mail secrets. The exact transition and mismatch behavior is in
 [Access and onboarding](./access-and-onboarding.md#access-policy-and-deployment-configuration).
 
 The one-time public bootstrap is protected by
-`authentication.bootstrap.secret`, with the environment override
+`Authentication.Bootstrap.Secret`, with the environment override
 `PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET`. A non-empty value is 32–512 bytes
 and is always redacted. An uninitialized network-accessible installation fails
-composition without it. `authentication.bootstrap.development_mode` (or
+composition without it. `Authentication.Bootstrap.DevelopmentMode` (or
 `PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE`) permits generation only
 when both the TCP listener and public origin are loopback; the generated value
 is displayed once to the controlling terminal outside structured logs only
@@ -32,8 +32,8 @@ initialization the durable marker prevents replacement or removal of deployment
 configuration from reopening setup.
 
 Recoverable transactional-mail payloads use the independent
-`mail.secret_sealing` deployment key ring. `encryption_key` is the primary key
-for new envelopes and `decryption_keys` is a bounded fallback ring for rotation;
+`Mail.SecretSealing` deployment key ring. `EncryptionKey` is the primary key
+for new envelopes and `DecryptionKeys` is a bounded fallback ring for rotation;
 all entries are canonical standard-base64 encodings of exactly 32 bytes. The
 ring may be absent only while mail delivery is disabled; enabling mail
 activates the durable delivery workflow and requires a primary key.
@@ -44,8 +44,8 @@ environment overrides are
 `PROCTOR_MAIL_SECRET_SEALING_DECRYPTION_KEYS`. Configuration display redacts
 every entry, and neither MFA nor Memberlist keys may substitute for it.
 
-Memberlist gossip uses its own `cluster.memberlist` key ring. `encryption_key`
-is the primary key and `decryption_keys` contains at most eight distinct
+Memberlist gossip uses its own `Cluster.Memberlist` key ring. `EncryptionKey`
+is the primary key and `DecryptionKeys` contains at most eight distinct
 fallbacks for rolling rotation; entries decode from standard base64 to 16, 24,
 or 32 bytes. Its environment overrides are
 `PROCTOR_CLUSTER_MEMBERLIST_ENCRYPTION_KEY` and
@@ -54,16 +54,35 @@ redacted. The cluster protocol range is compiled into the binary rather than
 operator-configurable. Cluster key changes require restart and use the staged
 overlap procedure in [Runtime](./runtime.md#cluster-transport).
 
-Configuration precedence is defaults, typed configuration backing, then
-`PROCTOR_` environment overrides. Unknown fields are rejected, validation
-errors are aggregated where possible, URLs/durations are parsed at the
-boundary, secrets are explicitly redacted, and the schema is versioned.
+Normal startup requires one operator-owned JSON file and never creates it.
+Path precedence is an explicit CLI path, `PROCTOR_CONFIG`, then
+`config/config.json` relative to the process working directory. Release
+bundles carry `config/config.example.json`; operators copy it to the active
+path and edit it. Deployment JSON field names are PascalCase. Value precedence
+is built-in field defaults, the required typed file, then `PROCTOR_`
+environment overrides. Unknown fields are rejected, validation errors are
+aggregated where possible, URLs/durations are parsed at the boundary, secrets
+are explicitly redacted, and the schema is versioned.
+
+`Database.MaxOpenConnections` is at least two because Morph holds one
+connection for migration work and a second for its refreshed named lock during
+startup convergence.
+
+`Cache.Backend` selects either Redis or the process-local encoded LRU. The
+memory adapter enforces both `Cache.Memory.MaxEntries` and
+`Cache.Memory.MaxBytes`; keys and encoded values count toward the byte limit,
+while runtime object overhead does not. Memberlist mode requires Redis because
+installation-wide disposable authentication counters must be coherent across
+nodes. Redis remains non-authoritative and is not the Memberlist message
+transport. The memory limits may be overridden with
+`PROCTOR_CACHE_MEMORY_MAX_ENTRIES` and `PROCTOR_CACHE_MEMORY_MAX_BYTES`.
 
 One concurrency-safe `config.Store` separates persisted configuration from
 cloned effective snapshots. Environment overrides are never persisted.
 Backings implement a shared conformance contract; memory and atomic-file
-backings exist. Successful changes notify listeners with cloned old/current
-values.
+backings exist. Memory backing supports tests and explicit embedding but is not
+the normal server fallback. Successful changes notify listeners with cloned
+old/current values.
 
 The composition root translates configuration into small immutable application
 policies or explicit dynamic ports. Application services never receive the
@@ -74,10 +93,10 @@ provider registry reconfigure dynamically; listener addresses, HTTP limits,
 cluster backend, node identity, and the execution-host catalog require restart. Structural validation and
 external connectivity diagnostics remain separate.
 
-`execution.enabled` activates the bounded outbound execenv host directory.
-Each entry under `execution.hosts` has a stable `id`, a TCP `address`, and
+`Execution.Enabled` activates the bounded outbound execenv host directory.
+Each entry under `Execution.Hosts` has a stable `ID`, a TCP `Address`, and
 either production `tls` security or loopback-only `insecure_local` security.
-TLS requires a verified `server_name` and either a token or client certificate;
+TLS requires a verified `ServerName` and either a token or client certificate;
 an optional CA file extends the system roots. Client certificate and key files
 must be configured together. Cleartext development requires a token and
 rejects all non-loopback addresses. Host tokens are redacted. Dial and

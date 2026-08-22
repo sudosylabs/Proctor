@@ -41,134 +41,143 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 }
 
 type Server struct {
-	ListenAddress     string   `json:"listen_address"`
-	PublicURL         string   `json:"public_url"`
-	ReadHeaderTimeout Duration `json:"read_header_timeout"`
-	ReadTimeout       Duration `json:"read_timeout"`
-	WriteTimeout      Duration `json:"write_timeout"`
-	IdleTimeout       Duration `json:"idle_timeout"`
-	ShutdownTimeout   Duration `json:"shutdown_timeout"`
-	MaxHeaderBytes    int      `json:"max_header_bytes"`
-	MaxBodyBytes      int64    `json:"max_body_bytes"`
+	ListenAddress     string   `json:"ListenAddress"`
+	PublicURL         string   `json:"PublicURL"`
+	ReadHeaderTimeout Duration `json:"ReadHeaderTimeout"`
+	ReadTimeout       Duration `json:"ReadTimeout"`
+	WriteTimeout      Duration `json:"WriteTimeout"`
+	IdleTimeout       Duration `json:"IdleTimeout"`
+	ShutdownTimeout   Duration `json:"ShutdownTimeout"`
+	MaxHeaderBytes    int      `json:"MaxHeaderBytes"`
+	MaxBodyBytes      int64    `json:"MaxBodyBytes"`
 }
 
 type LogTarget struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Level      string `json:"level"`
-	Format     string `json:"format"`
-	File       string `json:"file,omitempty"`
-	QueueSize  int    `json:"queue_size"`
-	MaxSizeMB  int    `json:"max_size_mb,omitempty"`
-	MaxAgeDays int    `json:"max_age_days,omitempty"`
-	MaxBackups int    `json:"max_backups,omitempty"`
-	Compress   bool   `json:"compress,omitempty"`
+	Name       string `json:"Name"`
+	Type       string `json:"Type"`
+	Level      string `json:"Level"`
+	Format     string `json:"Format"`
+	File       string `json:"File,omitempty"`
+	QueueSize  int    `json:"QueueSize"`
+	MaxSizeMB  int    `json:"MaxSizeMB,omitempty"`
+	MaxAgeDays int    `json:"MaxAgeDays,omitempty"`
+	MaxBackups int    `json:"MaxBackups,omitempty"`
+	Compress   bool   `json:"Compress,omitempty"`
 }
 
 type Log struct {
-	MaxFieldBytes   int         `json:"max_field_bytes"`
-	QueueSize       int         `json:"queue_size"`
-	EnqueueTimeout  Duration    `json:"enqueue_timeout"`
-	FlushTimeout    Duration    `json:"flush_timeout"`
-	ShutdownTimeout Duration    `json:"shutdown_timeout"`
-	Targets         []LogTarget `json:"targets"`
+	MaxFieldBytes   int         `json:"MaxFieldBytes"`
+	QueueSize       int         `json:"QueueSize"`
+	EnqueueTimeout  Duration    `json:"EnqueueTimeout"`
+	FlushTimeout    Duration    `json:"FlushTimeout"`
+	ShutdownTimeout Duration    `json:"ShutdownTimeout"`
+	Targets         []LogTarget `json:"Targets"`
 }
 
 type Database struct {
-	DataSource            string   `json:"data_source"`
-	MaxOpenConnections    int      `json:"max_open_connections"`
-	MaxIdleConnections    int      `json:"max_idle_connections"`
-	ConnectionMaxLifetime Duration `json:"connection_max_lifetime"`
-	ConnectionMaxIdleTime Duration `json:"connection_max_idle_time"`
-	QueryTimeout          Duration `json:"query_timeout"`
-	MigrationTimeout      Duration `json:"migration_timeout"`
+	DataSource            string   `json:"DataSource"`
+	MaxOpenConnections    int      `json:"MaxOpenConnections"`
+	MaxIdleConnections    int      `json:"MaxIdleConnections"`
+	ConnectionMaxLifetime Duration `json:"ConnectionMaxLifetime"`
+	ConnectionMaxIdleTime Duration `json:"ConnectionMaxIdleTime"`
+	QueryTimeout          Duration `json:"QueryTimeout"`
+	MigrationTimeout      Duration `json:"MigrationTimeout"`
 }
 
 type CacheRedis struct {
-	Addresses      []string `json:"addresses"`
-	Username       string   `json:"username,omitempty"`
-	Password       string   `json:"password,omitempty"`
-	Database       int      `json:"database"`
-	TLS            bool     `json:"tls"`
-	ConnectTimeout Duration `json:"connect_timeout"`
+	Addresses      []string `json:"Addresses"`
+	Username       string   `json:"Username,omitempty"`
+	Password       string   `json:"Password,omitempty"`
+	Database       int      `json:"Database"`
+	TLS            bool     `json:"TLS"`
+	ConnectTimeout Duration `json:"ConnectTimeout"`
+}
+
+// CacheMemory bounds the process-local disposable cache. MaxBytes accounts for
+// retained key and encoded-value bytes; implementation overhead is additional.
+type CacheMemory struct {
+	MaxEntries int   `json:"MaxEntries"`
+	MaxBytes   int64 `json:"MaxBytes"`
 }
 
 type Cache struct {
-	Backend   string     `json:"backend"`
-	Namespace string     `json:"namespace"`
-	Redis     CacheRedis `json:"redis"`
+	Backend   string      `json:"Backend"`
+	Namespace string      `json:"Namespace"`
+	Memory    CacheMemory `json:"Memory"`
+	Redis     CacheRedis  `json:"Redis"`
 }
 
 // ClusterMemberlist configures the built-in multi-node gossip transport.
 type ClusterMemberlist struct {
-	BindAddress        string   `json:"bind_address"`
-	AdvertiseAddress   string   `json:"advertise_address"`
-	EncryptionKey      string   `json:"encryption_key,omitempty"`
-	DecryptionKeys     []string `json:"decryption_keys,omitempty"`
-	SeedAddresses      []string `json:"seed_addresses,omitempty"`
-	DiscoveryTTL       Duration `json:"discovery_ttl"`
-	DiscoveryHeartbeat Duration `json:"discovery_heartbeat"`
-	AllowPublicBind    bool     `json:"allow_public_bind"`
+	BindAddress        string   `json:"BindAddress"`
+	AdvertiseAddress   string   `json:"AdvertiseAddress"`
+	EncryptionKey      string   `json:"EncryptionKey,omitempty"`
+	DecryptionKeys     []string `json:"DecryptionKeys,omitempty"`
+	SeedAddresses      []string `json:"SeedAddresses,omitempty"`
+	DiscoveryTTL       Duration `json:"DiscoveryTTL"`
+	DiscoveryHeartbeat Duration `json:"DiscoveryHeartbeat"`
+	AllowPublicBind    bool     `json:"AllowPublicBind"`
 }
 
 // Cluster selects the inter-node transport and gives this process its stable
 // runtime identity. "local" is the single-node degenerate transport.
-// "memberlist" is the built-in multi-node backend and requires no Redis service.
+// "memberlist" is the built-in multi-node backend and requires Redis so
+// installation-wide disposable security counters remain coherent.
 type Cluster struct {
-	Backend    string            `json:"backend"`
-	NodeID     string            `json:"node_id"`
-	Memberlist ClusterMemberlist `json:"memberlist"`
+	Backend    string            `json:"Backend"`
+	NodeID     string            `json:"NodeID"`
+	Memberlist ClusterMemberlist `json:"Memberlist"`
 }
 
 type MailSMTP struct {
-	Address         string   `json:"address"`
-	ServerName      string   `json:"server_name,omitempty"`
-	LocalName       string   `json:"local_name,omitempty"`
-	Security        string   `json:"security"`
-	Username        string   `json:"username,omitempty"`
-	Password        string   `json:"password,omitempty"`
-	Authentication  string   `json:"authentication"`
-	Timeout         Duration `json:"timeout"`
-	MessageIDDomain string   `json:"message_id_domain"`
-	MaxMessageBytes int64    `json:"max_message_bytes"`
-	MaxRecipients   int      `json:"max_recipients"`
+	Address         string   `json:"Address"`
+	ServerName      string   `json:"ServerName,omitempty"`
+	LocalName       string   `json:"LocalName,omitempty"`
+	Security        string   `json:"Security"`
+	Username        string   `json:"Username,omitempty"`
+	Password        string   `json:"Password,omitempty"`
+	Authentication  string   `json:"Authentication"`
+	Timeout         Duration `json:"Timeout"`
+	MessageIDDomain string   `json:"MessageIDDomain"`
+	MaxMessageBytes int64    `json:"MaxMessageBytes"`
+	MaxRecipients   int      `json:"MaxRecipients"`
 }
 
 // SecretSealing configures a primary AES-256 encryption key and the bounded
 // fallback ring used to read values written before rotation.
 type SecretSealing struct {
-	EncryptionKey  string   `json:"encryption_key,omitempty"`
-	DecryptionKeys []string `json:"decryption_keys,omitempty"`
+	EncryptionKey  string   `json:"EncryptionKey,omitempty"`
+	DecryptionKeys []string `json:"DecryptionKeys,omitempty"`
 }
 
 type Mail struct {
-	Enabled       bool          `json:"enabled"`
-	Backend       string        `json:"backend"`
-	FromAddress   string        `json:"from_address"`
-	FromName      string        `json:"from_name,omitempty"`
-	SMTP          MailSMTP      `json:"smtp"`
-	SecretSealing SecretSealing `json:"secret_sealing"`
+	Enabled       bool          `json:"Enabled"`
+	Backend       string        `json:"Backend"`
+	FromAddress   string        `json:"FromAddress"`
+	FromName      string        `json:"FromName,omitempty"`
+	SMTP          MailSMTP      `json:"SMTP"`
+	SecretSealing SecretSealing `json:"SecretSealing"`
 }
 
 type VFSLocal struct {
-	Root string `json:"root"`
+	Root string `json:"Root"`
 }
 
 type VFSS3 struct {
-	Endpoint     string `json:"endpoint"`
-	AccessKey    string `json:"access_key,omitempty"`
-	SecretKey    string `json:"secret_key,omitempty"`
-	SessionToken string `json:"session_token,omitempty"`
-	Bucket       string `json:"bucket"`
-	Prefix       string `json:"prefix,omitempty"`
-	Region       string `json:"region,omitempty"`
-	Secure       bool   `json:"secure"`
+	Endpoint     string `json:"Endpoint"`
+	AccessKey    string `json:"AccessKey,omitempty"`
+	SecretKey    string `json:"SecretKey,omitempty"`
+	SessionToken string `json:"SessionToken,omitempty"`
+	Bucket       string `json:"Bucket"`
+	Prefix       string `json:"Prefix,omitempty"`
+	Region       string `json:"Region,omitempty"`
+	Secure       bool   `json:"Secure"`
 }
 
 type VFS struct {
-	Backend string   `json:"backend"`
-	Local   VFSLocal `json:"local"`
-	S3      VFSS3    `json:"s3"`
+	Backend string   `json:"Backend"`
+	Local   VFSLocal `json:"Local"`
+	S3      VFSS3    `json:"S3"`
 }
 
 // ExecutionHost is one operator-configured outbound execenv endpoint. ID is
@@ -176,114 +185,114 @@ type VFS struct {
 // not change that identity. Token and client-key material never enter
 // application state.
 type ExecutionHost struct {
-	ID                    string `json:"id"`
-	Address               string `json:"address"`
-	Security              string `json:"security"`
-	Token                 string `json:"token,omitempty"`
-	ServerName            string `json:"server_name,omitempty"`
-	CAFile                string `json:"ca_file,omitempty"`
-	ClientCertificateFile string `json:"client_certificate_file,omitempty"`
-	ClientKeyFile         string `json:"client_key_file,omitempty"`
+	ID                    string `json:"ID"`
+	Address               string `json:"Address"`
+	Security              string `json:"Security"`
+	Token                 string `json:"Token,omitempty"`
+	ServerName            string `json:"ServerName,omitempty"`
+	CAFile                string `json:"CAFile,omitempty"`
+	ClientCertificateFile string `json:"ClientCertificateFile,omitempty"`
+	ClientKeyFile         string `json:"ClientKeyFile,omitempty"`
 }
 
 // Execution configures the installation's bounded set of execenv hosts.
 // Host changes require a node restart so every node uses one immutable
 // placement catalog for its lifetime.
 type Execution struct {
-	Enabled          bool            `json:"enabled"`
-	DialTimeout      Duration        `json:"dial_timeout"`
-	OperationTimeout Duration        `json:"operation_timeout"`
-	Hosts            []ExecutionHost `json:"hosts"`
+	Enabled          bool            `json:"Enabled"`
+	DialTimeout      Duration        `json:"DialTimeout"`
+	OperationTimeout Duration        `json:"OperationTimeout"`
+	Hosts            []ExecutionHost `json:"Hosts"`
 }
 
 type Password struct {
-	MinimumLength    int `json:"minimum_length"`
-	MaximumLength    int `json:"maximum_length"`
-	ArgonMemoryKiB   int `json:"argon_memory_kib"`
-	ArgonIterations  int `json:"argon_iterations"`
-	ArgonParallelism int `json:"argon_parallelism"`
-	ArgonSaltBytes   int `json:"argon_salt_bytes"`
-	ArgonKeyBytes    int `json:"argon_key_bytes"`
+	MinimumLength    int `json:"MinimumLength"`
+	MaximumLength    int `json:"MaximumLength"`
+	ArgonMemoryKiB   int `json:"ArgonMemoryKiB"`
+	ArgonIterations  int `json:"ArgonIterations"`
+	ArgonParallelism int `json:"ArgonParallelism"`
+	ArgonSaltBytes   int `json:"ArgonSaltBytes"`
+	ArgonKeyBytes    int `json:"ArgonKeyBytes"`
 }
 
 type Sessions struct {
-	AccessTTL              Duration `json:"access_ttl"`
-	RefreshTTL             Duration `json:"refresh_ttl"`
-	IdleTTL                Duration `json:"idle_ttl"`
-	AbsoluteTTL            Duration `json:"absolute_ttl"`
-	ActivityUpdateInterval Duration `json:"activity_update_interval"`
-	MaximumPerUser         int      `json:"maximum_per_user"`
+	AccessTTL              Duration `json:"AccessTTL"`
+	RefreshTTL             Duration `json:"RefreshTTL"`
+	IdleTTL                Duration `json:"IdleTTL"`
+	AbsoluteTTL            Duration `json:"AbsoluteTTL"`
+	ActivityUpdateInterval Duration `json:"ActivityUpdateInterval"`
+	MaximumPerUser         int      `json:"MaximumPerUser"`
 }
 
 type LoginRateLimit struct {
-	Window                Duration `json:"window"`
-	MaximumAttempts       int      `json:"maximum_attempts"`
-	MaximumSourceAttempts int      `json:"maximum_source_attempts"`
+	Window                Duration `json:"Window"`
+	MaximumAttempts       int      `json:"MaximumAttempts"`
+	MaximumSourceAttempts int      `json:"MaximumSourceAttempts"`
 }
 
 type AccountRecovery struct {
-	EmailVerificationTTL Duration       `json:"email_verification_ttl"`
-	PasswordResetTTL     Duration       `json:"password_reset_ttl"`
-	RateLimit            LoginRateLimit `json:"rate_limit"`
+	EmailVerificationTTL Duration       `json:"EmailVerificationTTL"`
+	PasswordResetTTL     Duration       `json:"PasswordResetTTL"`
+	RateLimit            LoginRateLimit `json:"RateLimit"`
 }
 
 type PersonalAccessTokens struct {
-	MinimumLifetime        Duration `json:"minimum_lifetime"`
-	MaximumLifetime        Duration `json:"maximum_lifetime"`
-	LastUsedUpdateInterval Duration `json:"last_used_update_interval"`
-	MaximumPerUser         int      `json:"maximum_per_user"`
+	MinimumLifetime        Duration `json:"MinimumLifetime"`
+	MaximumLifetime        Duration `json:"MaximumLifetime"`
+	LastUsedUpdateInterval Duration `json:"LastUsedUpdateInterval"`
+	MaximumPerUser         int      `json:"MaximumPerUser"`
 }
 
 // Bootstrap protects the one-time public installation initialization route.
 // DevelopmentMode permits process-generated secret material only while the
 // installation is pristine and both listener and public origin are loopback-only.
 type Bootstrap struct {
-	Secret          string `json:"secret,omitempty"`
-	DevelopmentMode bool   `json:"development_mode"`
+	Secret          string `json:"Secret,omitempty"`
+	DevelopmentMode bool   `json:"DevelopmentMode"`
 }
 
 // MFA contains operator-owned cryptographic and policy settings. The primary
 // key encrypts new TOTP secrets; decryption_keys permits online key rotation
 // while existing credentials are re-encrypted.
 type MFA struct {
-	Enabled           bool     `json:"enabled"`
-	Issuer            string   `json:"issuer"`
-	EncryptionKey     string   `json:"encryption_key,omitempty"`
-	DecryptionKeys    []string `json:"decryption_keys,omitempty"`
-	SetupTTL          Duration `json:"setup_ttl"`
-	RecoveryCodeCount int      `json:"recovery_code_count"`
+	Enabled           bool     `json:"Enabled"`
+	Issuer            string   `json:"Issuer"`
+	EncryptionKey     string   `json:"EncryptionKey,omitempty"`
+	DecryptionKeys    []string `json:"DecryptionKeys,omitempty"`
+	SetupTTL          Duration `json:"SetupTTL"`
+	RecoveryCodeCount int      `json:"RecoveryCodeCount"`
 }
 
 type Authentication struct {
-	Bootstrap               Bootstrap              `json:"bootstrap"`
-	Password                Password               `json:"password"`
-	Sessions                Sessions               `json:"sessions"`
-	RecentAuthenticationTTL Duration               `json:"recent_authentication_ttl"`
-	LoginRateLimit          LoginRateLimit         `json:"login_rate_limit"`
-	AccountRecovery         AccountRecovery        `json:"account_recovery"`
-	PersonalAccessTokens    PersonalAccessTokens   `json:"personal_access_tokens"`
-	MFA                     MFA                    `json:"mfa"`
-	External                ExternalAuthentication `json:"external"`
+	Bootstrap               Bootstrap              `json:"Bootstrap"`
+	Password                Password               `json:"Password"`
+	Sessions                Sessions               `json:"Sessions"`
+	RecentAuthenticationTTL Duration               `json:"RecentAuthenticationTTL"`
+	LoginRateLimit          LoginRateLimit         `json:"LoginRateLimit"`
+	AccountRecovery         AccountRecovery        `json:"AccountRecovery"`
+	PersonalAccessTokens    PersonalAccessTokens   `json:"PersonalAccessTokens"`
+	MFA                     MFA                    `json:"MFA"`
+	External                ExternalAuthentication `json:"External"`
 }
 
 // Localization selects the installation-wide fallback locale. Catalog
 // availability is validated by the i18n module during root composition.
 type Localization struct {
-	DefaultLocale string `json:"default_locale"`
+	DefaultLocale string `json:"DefaultLocale"`
 }
 
 type Config struct {
-	Version        int            `json:"version"`
-	Server         Server         `json:"server"`
-	Database       Database       `json:"database"`
-	Cache          Cache          `json:"cache"`
-	Cluster        Cluster        `json:"cluster"`
-	Mail           Mail           `json:"mail"`
-	VFS            VFS            `json:"vfs"`
-	Execution      Execution      `json:"execution"`
-	Authentication Authentication `json:"authentication"`
-	Localization   Localization   `json:"localization"`
-	Log            Log            `json:"log"`
+	Version        int            `json:"Version"`
+	Server         Server         `json:"Server"`
+	Database       Database       `json:"Database"`
+	Cache          Cache          `json:"Cache"`
+	Cluster        Cluster        `json:"Cluster"`
+	Mail           Mail           `json:"Mail"`
+	VFS            VFS            `json:"VFS"`
+	Execution      Execution      `json:"Execution"`
+	Authentication Authentication `json:"Authentication"`
+	Localization   Localization   `json:"Localization"`
+	Log            Log            `json:"Log"`
 }
 
 func Default() Config {
@@ -312,6 +321,10 @@ func Default() Config {
 		Cache: Cache{
 			Backend:   "memory",
 			Namespace: "proctor",
+			Memory: CacheMemory{
+				MaxEntries: 100_000,
+				MaxBytes:   64 << 20,
+			},
 			Redis: CacheRedis{
 				Addresses:      []string{"127.0.0.1:6379"},
 				ConnectTimeout: Duration{Duration: 5 * time.Second},
@@ -601,6 +614,9 @@ func (c Config) Validate() error {
 	validateVFS(c.VFS, add)
 	validateExecution(c.Execution, add)
 	if c.Cluster.Backend == "memberlist" {
+		if c.Cache.Backend != "redis" {
+			add("cache.backend", "must be redis when cluster.backend is memberlist")
+		}
 		if c.VFS.Backend == "local" {
 			add("vfs.backend", "must be shared when cluster.backend is multi-node")
 		}
@@ -786,6 +802,12 @@ func validateNamespace(field, namespace string, add func(string, string)) {
 func validateCache(cache Cache, add func(string, string)) {
 	switch cache.Backend {
 	case "memory":
+		if cache.Memory.MaxEntries < 1 || cache.Memory.MaxEntries > 1_000_000 {
+			add("cache.memory.max_entries", "must be between 1 and 1000000")
+		}
+		if cache.Memory.MaxBytes < 1<<20 || cache.Memory.MaxBytes > 1<<30 {
+			add("cache.memory.max_bytes", "must be between 1048576 and 1073741824")
+		}
 	case "redis":
 		if len(cache.Redis.Addresses) == 0 {
 			add("cache.redis.addresses", "must contain at least one address")
@@ -1353,8 +1375,8 @@ func validateDatabase(database Database, add func(string, string)) {
 			add("database.data_source", "must be a PostgreSQL URL with host and database name")
 		}
 	}
-	if database.MaxOpenConnections <= 0 {
-		add("database.max_open_connections", "must be greater than zero")
+	if database.MaxOpenConnections < 2 {
+		add("database.max_open_connections", "must be at least 2 for locked migrations")
 	}
 	if database.MaxIdleConnections < 0 || database.MaxIdleConnections > database.MaxOpenConnections {
 		add("database.max_idle_connections", "must be between zero and max_open_connections")

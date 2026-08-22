@@ -130,6 +130,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 	if err != nil {
 		return nil, fmt.Errorf("accept platform ownership: %w", err)
 	}
+	logStartupInfrastructure(snapshot, capabilities.logger, capabilities.migration)
 
 	constructors, constructorsErr := defaultConsumerConstructors(snapshot)
 	if constructorsErr != nil {

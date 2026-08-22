@@ -54,8 +54,8 @@ func (s Settings) validate() error {
 	if s.DataSource == "" {
 		return errors.New("database data source is required")
 	}
-	if s.MaxOpenConnections <= 0 {
-		return errors.New("database max open connections must be greater than zero")
+	if s.MaxOpenConnections < 2 {
+		return errors.New("database max open connections must be at least 2 for locked migrations")
 	}
 	if s.MaxIdleConnections < 0 || s.MaxIdleConnections > s.MaxOpenConnections {
 		return errors.New("database max idle connections must be between zero and max open connections")

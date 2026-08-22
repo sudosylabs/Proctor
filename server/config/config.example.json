@@ -1,0 +1,168 @@
+{
+  "Version": 1,
+  "Server": {
+    "ListenAddress": "127.0.0.1:8065",
+    "PublicURL": "http://localhost:8065",
+    "ReadHeaderTimeout": "10s",
+    "ReadTimeout": "30s",
+    "WriteTimeout": "30s",
+    "IdleTimeout": "2m",
+    "ShutdownTimeout": "15s",
+    "MaxHeaderBytes": 1048576,
+    "MaxBodyBytes": 1048576
+  },
+  "Database": {
+    "DataSource": "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
+    "MaxOpenConnections": 50,
+    "MaxIdleConnections": 10,
+    "ConnectionMaxLifetime": "1h",
+    "ConnectionMaxIdleTime": "5m",
+    "QueryTimeout": "10s",
+    "MigrationTimeout": "1m"
+  },
+  "Cache": {
+    "Backend": "memory",
+    "Namespace": "proctor",
+    "Memory": {
+      "MaxEntries": 100000,
+      "MaxBytes": 67108864
+    },
+    "Redis": {
+      "Addresses": [
+        "127.0.0.1:6379"
+      ],
+      "Database": 0,
+      "TLS": false,
+      "ConnectTimeout": "5s"
+    }
+  },
+  "Cluster": {
+    "Backend": "local",
+    "NodeID": "local",
+    "Memberlist": {
+      "BindAddress": "127.0.0.1:7946",
+      "AdvertiseAddress": "127.0.0.1:7946",
+      "EncryptionKey": "",
+      "DecryptionKeys": [],
+      "SeedAddresses": [],
+      "DiscoveryTTL": "30s",
+      "DiscoveryHeartbeat": "10s",
+      "AllowPublicBind": false
+    }
+  },
+  "Mail": {
+    "Enabled": false,
+    "Backend": "smtp",
+    "FromAddress": "no-reply@localhost",
+    "FromName": "Proctor",
+    "SMTP": {
+      "Address": "127.0.0.1:1025",
+      "ServerName": "",
+      "LocalName": "",
+      "Security": "none",
+      "Username": "",
+      "Password": "",
+      "Authentication": "none",
+      "Timeout": "10s",
+      "MessageIDDomain": "localhost",
+      "MaxMessageBytes": 26214400,
+      "MaxRecipients": 100
+    },
+    "SecretSealing": {
+      "EncryptionKey": "",
+      "DecryptionKeys": []
+    }
+  },
+  "VFS": {
+    "Backend": "local",
+    "Local": {
+      "Root": "./data"
+    },
+    "S3": {
+      "Endpoint": "",
+      "Bucket": "",
+      "Secure": true
+    }
+  },
+  "Execution": {
+    "Enabled": false,
+    "DialTimeout": "10s",
+    "OperationTimeout": "30s",
+    "Hosts": []
+  },
+  "Authentication": {
+    "Bootstrap": {
+      "Secret": "",
+      "DevelopmentMode": true
+    },
+    "Password": {
+      "MinimumLength": 12,
+      "MaximumLength": 128,
+      "ArgonMemoryKiB": 65536,
+      "ArgonIterations": 3,
+      "ArgonParallelism": 2,
+      "ArgonSaltBytes": 16,
+      "ArgonKeyBytes": 32
+    },
+    "Sessions": {
+      "AccessTTL": "15m",
+      "RefreshTTL": "720h",
+      "IdleTTL": "168h",
+      "AbsoluteTTL": "720h",
+      "ActivityUpdateInterval": "5m",
+      "MaximumPerUser": 10
+    },
+    "RecentAuthenticationTTL": "15m",
+    "LoginRateLimit": {
+      "Window": "1m",
+      "MaximumAttempts": 10,
+      "MaximumSourceAttempts": 1000
+    },
+    "AccountRecovery": {
+      "EmailVerificationTTL": "24h",
+      "PasswordResetTTL": "1h",
+      "RateLimit": {
+        "Window": "15m",
+        "MaximumAttempts": 3,
+        "MaximumSourceAttempts": 100
+      }
+    },
+    "PersonalAccessTokens": {
+      "MinimumLifetime": "1h",
+      "MaximumLifetime": "2160h",
+      "LastUsedUpdateInterval": "5m",
+      "MaximumPerUser": 50
+    },
+    "MFA": {
+      "Enabled": false,
+      "Issuer": "Proctor",
+      "EncryptionKey": "",
+      "DecryptionKeys": [],
+      "SetupTTL": "10m",
+      "RecoveryCodeCount": 10
+    },
+    "External": {
+      "LoginStateTTL": "10m",
+      "Providers": []
+    }
+  },
+  "Localization": {
+    "DefaultLocale": "en"
+  },
+  "Log": {
+    "MaxFieldBytes": 16384,
+    "QueueSize": 1024,
+    "EnqueueTimeout": "250ms",
+    "FlushTimeout": "5s",
+    "ShutdownTimeout": "10s",
+    "Targets": [
+      {
+        "Name": "console",
+        "Type": "console",
+        "Level": "info",
+        "Format": "text",
+        "QueueSize": 256
+      }
+    ]
+  }
+}

@@ -69,7 +69,7 @@
   },
   {
     "id": "cli.config.flag.path",
-    "translation": "path to a JSON configuration file"
+    "translation": "configuration file path (default config/config.json; env PROCTOR_CONFIG)"
   },
   {
     "id": "cli.config.short",

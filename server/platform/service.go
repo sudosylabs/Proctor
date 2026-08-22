@@ -56,6 +56,9 @@ type Service struct {
 	vfs                    vfspkg.FileSystem
 	externalAuthentication *externalauth.Registry
 	executionHosts         ExecutionHosts
+	clusterBackend         string
+	mailBackend            string
+	mailTestTimeout        time.Duration
 	configListener         string
 	shutdownOnce           sync.Once
 	shutdownErr            error
@@ -154,12 +157,37 @@ func newService(
 		vfs:                    filesystem,
 		externalAuthentication: externalAuthentication,
 		executionHosts:         executionHosts,
+		clusterBackend:         snapshot.Cluster.Backend,
+		mailBackend:            snapshot.Mail.Backend,
+		mailTestTimeout:        snapshot.Mail.SMTP.Timeout.Duration,
 	}
 	checkCtx, cancelCheck := context.WithTimeout(constructionCtx, 15*time.Second)
 	defer cancelCheck()
 	if err := service.CheckDependencies(checkCtx); err != nil {
 		return nil, fmt.Errorf("check platform dependencies: %w", err)
 	}
+	service.logger.Info("database ready", logging.String("backend", "postgresql"))
+	cacheFields := []logging.Field{logging.String("backend", snapshot.Cache.Backend)}
+	if snapshot.Cache.Backend == "memory" {
+		cacheFields = append(cacheFields,
+			logging.String("scope", "process_local"),
+			logging.Int("max_entries", snapshot.Cache.Memory.MaxEntries),
+			logging.Int64("max_bytes", snapshot.Cache.Memory.MaxBytes),
+		)
+	} else {
+		cacheFields = append(cacheFields, logging.String("scope", "installation_shared"))
+	}
+	service.logger.Info("application cache ready", cacheFields...)
+	service.logger.Info("filesystem ready", logging.String("backend", snapshot.VFS.Backend))
+	service.logger.Info(
+		"execution hosts ready",
+		logging.Bool("enabled", snapshot.Execution.Enabled),
+		logging.Int("configured_hosts", len(snapshot.Execution.Hosts)),
+	)
+	service.logger.Info(
+		"external authentication ready",
+		logging.Int("enabled_providers", enabledExternalAuthenticationProviders(snapshot)),
+	)
 	service.configListener = service.configStore.AddListener(func(old, current config.Config) {
 		if !reflect.DeepEqual(
 			old.Authentication.External,
@@ -252,8 +280,38 @@ func (s *Service) Start(ctx context.Context) error {
 	if err := s.cluster.Start(ctx); err != nil {
 		return fmt.Errorf("start cluster transport: %w", err)
 	}
-	s.logger.Info("cluster transport started", logging.String("node_id", s.cluster.NodeID()))
+	s.logger.Info(
+		"cluster transport started",
+		logging.String("node_id", s.cluster.NodeID()),
+		logging.String("backend", s.clusterBackend),
+	)
+	if !s.mailer.Enabled() {
+		s.logger.Info("mail service disabled", logging.String("backend", s.mailBackend))
+		return nil
+	}
+	testCtx, cancelTest := context.WithTimeout(ctx, s.mailTestTimeout)
+	defer cancelTest()
+	if err := s.mailer.Test(testCtx); err != nil {
+		s.logger.Warn(
+			"mail connection test failed; mail delivery may be unavailable",
+			logging.String("backend", s.mailBackend),
+			logging.String("reason", mailTestFailureReason(err)),
+		)
+		return nil
+	}
+	s.logger.Info("mail service ready", logging.String("backend", s.mailBackend))
 	return nil
+}
+
+func mailTestFailureReason(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	default:
+		return "connection_test_failed"
+	}
 }
 
 func (s *Service) CheckDependencies(ctx context.Context) error {
@@ -335,9 +393,19 @@ func configureLogger(logger *logging.Logger, settings config.Log) error {
 
 func logConfigurationChanged(old, current config.Config) bool {
 	for _, change := range config.Diff(old, current) {
-		if change.Path == "log" || strings.HasPrefix(change.Path, "log.") {
+		if change.Path == "Log" || strings.HasPrefix(change.Path, "Log.") {
 			return true
 		}
 	}
 	return false
+}
+
+func enabledExternalAuthenticationProviders(settings config.Config) int {
+	providers := 0
+	for _, provider := range settings.Authentication.External.Providers {
+		if provider.Enabled {
+			providers++
+		}
+	}
+	return providers
 }

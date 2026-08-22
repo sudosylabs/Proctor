@@ -378,6 +378,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		if err := s.currentServingNodeLeaseFailure(); err != nil {
 			return fmt.Errorf("maintain serving node lease: %w", err)
 		}
+		s.components.logger.InfoContext(runCtx, "serving node lease started")
 	}
 	if s.components.reconciler != nil {
 		if err := s.components.reconciler.ReconcileSystemAdministratorRole(runCtx); err != nil {
@@ -401,6 +402,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 		if err := s.currentServingNodeLeaseFailure(); err != nil {
 			return fmt.Errorf("maintain serving node lease: %w", err)
 		}
+		s.components.logger.InfoContext(runCtx, "startup reconciliation complete")
 	}
 	if s.components.jobs != nil {
 		if err := s.components.jobs.Start(runCtx); err != nil {
@@ -410,6 +412,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			return fmt.Errorf("start durable jobs: %w", err)
 		}
 		s.recordStarted(func(m *lifecycleMilestones) { m.jobsStarted = true })
+		s.components.logger.InfoContext(runCtx, "durable jobs started")
 		if runCtx.Err() != nil {
 			return nil
 		}
@@ -425,6 +428,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			return fmt.Errorf("start WebSocket: %w", err)
 		}
 		s.recordStarted(func(m *lifecycleMilestones) { m.websocketStarted = true })
+		s.components.logger.InfoContext(runCtx, "WebSocket service started")
 		if runCtx.Err() != nil {
 			return nil
 		}

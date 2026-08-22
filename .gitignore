@@ -57,3 +57,7 @@ tmp/
 .plans/
 docs/adr/
 docs/adrs/
+
+# Operator-owned active deployment configuration. Releases ship only the
+# tracked server/config/config.example.json reference file.
+/server/config/config.json

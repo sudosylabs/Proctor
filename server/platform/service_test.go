@@ -32,7 +32,7 @@ type unavailableMailer struct{ testMailer }
 
 func (unavailableMailer) Enabled() bool { return true }
 func (unavailableMailer) Test(context.Context) error {
-	return errors.New("smtp unavailable")
+	return errors.New("smtp dialogue contains operator-secret-marker")
 }
 
 func (testStore) File() store.FileStore                                 { return nil }
@@ -196,6 +196,24 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 		t.Fatal(err)
 	}
 	resources := completeOwnedResources(t, configuration)
+	if err := resources.Logger.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	var output logging.Buffer
+	capture, err := logging.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := capture.Configure(logging.Config{
+		MaxFieldBytes: 1024,
+		Targets: []logging.Target{{
+			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	capture.LockConfiguration()
+	resources.Logger = capture
 	resources.Mailer = unavailableMailer{}
 	service, err := acceptForTest(resources)
 	if err != nil {
@@ -204,6 +222,33 @@ func TestSMTPOutageDoesNotFailPlatformReadiness(t *testing.T) {
 	t.Cleanup(func() { _ = service.Close() })
 	if err = service.CheckDependencies(context.Background()); err != nil {
 		t.Fatalf("CheckDependencies() failed general readiness for SMTP outage: %v", err)
+	}
+	if err = service.Start(context.Background()); err != nil {
+		t.Fatalf("Start() failed because the optional SMTP test failed: %v", err)
+	}
+	for _, message := range []string{
+		"database ready",
+		"application cache ready",
+		"filesystem ready",
+		"execution hosts ready",
+		"external authentication ready",
+		"platform initialized",
+		"cluster transport started",
+		"mail connection test failed; mail delivery may be unavailable",
+	} {
+		if !strings.Contains(output.String(), message) {
+			t.Fatalf("startup log is missing %q: %s", message, output.String())
+		}
+	}
+	if !strings.Contains(output.String(), `"scope":"process_local"`) ||
+		!strings.Contains(output.String(), `"backend":"memory"`) {
+		t.Fatalf("startup cache selection is missing from logs: %s", output.String())
+	}
+	if strings.Contains(output.String(), "operator-secret-marker") {
+		t.Fatalf("startup log contains raw SMTP dialogue: %s", output.String())
+	}
+	if !strings.Contains(output.String(), `"reason":"connection_test_failed"`) {
+		t.Fatalf("startup log is missing the bounded SMTP failure reason: %s", output.String())
 	}
 }
 

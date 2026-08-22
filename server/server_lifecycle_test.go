@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -798,6 +799,67 @@ func TestServerRunningContextCancellationIsGraceful(t *testing.T) {
 	)
 }
 
+func TestServerLogsSuccessfulStartupMilestones(t *testing.T) {
+	t.Parallel()
+
+	logger, err := logging.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	var output logging.Buffer
+	if err := logger.Configure(logging.Config{
+		MaxFieldBytes: 1024,
+		Targets: []logging.Target{{
+			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	events := &lifecycleEvents{}
+	readiness := &lifecycleReadiness{events: events}
+	httpService := &lifecycleHTTP{
+		events:  events,
+		started: make(chan struct{}),
+		stopped: make(chan struct{}),
+	}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform:     &lifecyclePlatform{events: events},
+		servingLease: &lifecycleServingNodeLease{events: events, failures: make(chan error)},
+		reconciler:   &lifecycleReconciler{events: events},
+		jobs:         &lifecycleJobs{events: events},
+		websocket:    &lifecycleWebSocket{events: events},
+		transport:    &lifecycleTransport{events: events},
+		readiness:    readiness,
+		logger:       logger,
+		listen: func(string, string) (net.Listener, error) {
+			return &lifecycleListener{}, nil
+		},
+		newHTTP: func(httpServerSettings) httpRuntime { return httpService },
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- node.Start(ctx) }()
+	waitForLifecycleReady(t, node)
+	cancel()
+	if err := receiveLifecycleResult(t, done, "logged server startup"); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []string{
+		"serving node lease started",
+		"startup reconciliation complete",
+		"durable jobs started",
+		"WebSocket service started",
+		"server started",
+	} {
+		if !strings.Contains(output.String(), message) {
+			t.Fatalf("runtime startup log is missing %q: %s", message, output.String())
+		}
+	}
+}
+
 func TestServerRunningContextCancellationReturnsCleanupFailure(t *testing.T) {
 	t.Parallel()
 
@@ -1202,11 +1264,14 @@ func TestServerConcurrentCloseBeforeStartIsIdempotent(t *testing.T) {
 func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server {
 	t.Helper()
 
-	logger, err := logging.New()
-	if err != nil {
-		t.Fatalf("create test logger: %v", err)
+	if components.logger == nil {
+		logger, err := logging.New()
+		if err != nil {
+			t.Fatalf("create test logger: %v", err)
+		}
+		t.Cleanup(func() { _ = logger.Shutdown() })
+		components.logger = logger
 	}
-	t.Cleanup(func() { _ = logger.Shutdown() })
 	if _, ok := components.platform.(*lifecyclePlatform); !ok {
 		t.Fatal("lifecycle test platform has unexpected type")
 	}
@@ -1214,7 +1279,6 @@ func newLifecycleTestServer(t *testing.T, components runtimeComponents) *Server 
 	settings.ListenAddress = "127.0.0.1:0"
 	settings.ShutdownTimeout.Duration = time.Second
 	components.settings = runtimeSettingsFromConfig(settings)
-	components.logger = logger
 	if components.listen == nil {
 		components.listen = func(string, string) (net.Listener, error) {
 			return nil, errors.New("listener should not be created")

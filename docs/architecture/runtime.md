@@ -80,16 +80,32 @@ redundant database, storage, cache where used, provider, and load-balancer
 infrastructure.
 
 Nodes keep no durable business state locally. They use stable runtime IDs,
-compatible versions/configuration, bounded graceful shutdown, schema migration
-as a separate deployment step, and shared VFS in clustered production. Truly
+compatible versions/configuration, bounded graceful shutdown, locked automatic
+forward schema migration, and shared VFS in clustered production. Truly
 singleton maintenance may use a PostgreSQL advisory lock; durable jobs prefer
 database-backed work claiming over broad leader election.
+
+Startup requires an operator-owned JSON configuration. Resolution is explicit
+path, then `PROCTOR_CONFIG`, then `config/config.json`; no active file is
+generated or silently replaced by in-memory defaults. Release bundles carry
+`config/config.example.json` for the operator to copy and edit. Deployment JSON
+uses PascalCase field names while environment overrides retain stable
+`PROCTOR_` names.
+
+The disposable application cache is either a bounded per-process memory LRU or
+Redis. The independent store read-through cache is always a small bounded local
+LRU and uses cluster messages only for best-effort invalidation after durable
+commits. Neither cache is authoritative. Startup logs the selected application
+cache, store cache, VFS, cluster, mail, execution-host, external-authentication,
+configuration-source, and schema-migration state without emitting secrets.
 
 ## Cluster transport
 
 `cluster/local` is the valid single-node adapter. `cluster/memberlist` is the
-peer-to-peer multi-node adapter. Redis is optional disposable cache
-infrastructure and is not required for clustering.
+peer-to-peer multi-node adapter. Memberlist does not use Redis as a transport,
+but Proctor requires the Redis application-cache backend in Memberlist mode so
+installation-wide disposable authentication counters remain coherent across
+nodes.
 
 Memberlist mode:
 
@@ -101,8 +117,8 @@ Memberlist mode:
 - requires authenticated gossip encryption, an explicit primary key, safe
   bind/advertise addresses, and a bounded fallback decryption ring for rolling
   key rotation;
-- validates the key, addresses, discovery, shared VFS, and other prerequisites
-  before readiness;
+- validates the key, addresses, discovery, Redis cache, shared VFS, and other
+  prerequisites before readiness;
 - advertises the server version and the cluster-protocol range compiled into
   the binary; operators cannot claim wire versions the binary does not encode;
 - carries a protocol version on every message, rejects incompatible peers
@@ -146,8 +162,8 @@ address only after one full discovery TTL; periodic rediscovery retries during
 that safety window. Local metadata that cannot fit Memberlist's fixed bound is
 rejected during construction and is never truncated into malformed JSON.
 
-Memberlist `encryption_key` is the primary key used for new gossip traffic and
-`decryption_keys` contains at most eight fallback keys. Rotation is a staged,
+Memberlist `EncryptionKey` is the primary key used for new gossip traffic and
+`DecryptionKeys` contains at most eight fallback keys. Rotation is a staged,
 restart-required deployment operation: first add the new key as a fallback on
 every node; then make it primary while retaining the old key as a fallback on
 every node; finally remove the old fallback after the fleet is converged.

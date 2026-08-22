@@ -13,13 +13,23 @@ import (
 	"testing"
 
 	server "github.com/sudosylabs/proctor/server"
+	"github.com/sudosylabs/proctor/server/config"
 )
 
-func TestValidateConfigAcceptsDefaultMemoryConfiguration(t *testing.T) {
-	t.Parallel()
+func TestValidateConfigUsesEnvironmentConfigurationPath(t *testing.T) {
+	path := writeValidConfig(t)
+	t.Setenv(server.ConfigPathEnv, path)
 
 	if err := server.ValidateConfig(context.Background(), ""); err != nil {
-		t.Fatalf("ValidateConfig() error = %v, want nil", err)
+		t.Fatalf("ValidateConfig() error = %v, want environment configuration: nil", err)
+	}
+}
+
+func TestExplicitConfigurationPathTakesPrecedenceOverEnvironment(t *testing.T) {
+	t.Setenv(server.ConfigPathEnv, filepath.Join(t.TempDir(), "missing.json"))
+
+	if err := server.ValidateConfig(context.Background(), writeValidConfig(t)); err != nil {
+		t.Fatalf("ValidateConfig() error = %v, want explicit configuration: nil", err)
 	}
 }
 
@@ -28,8 +38,12 @@ func TestValidateConfigRejectsMissingFile(t *testing.T) {
 
 	missing := filepath.Join(t.TempDir(), "missing.json")
 	err := server.ValidateConfig(context.Background(), missing)
-	if err == nil || !strings.Contains(err.Error(), "read configuration") {
-		t.Fatalf("ValidateConfig() error = %v, want read failure", err)
+	if err == nil || !strings.Contains(err.Error(), "copy config/config.example.json") ||
+		!strings.Contains(err.Error(), "read configuration") {
+		t.Fatalf("ValidateConfig() error = %v, want required-file guidance", err)
+	}
+	if _, statErr := os.Stat(missing); !os.IsNotExist(statErr) {
+		t.Fatalf("missing configuration was created: %v", statErr)
 	}
 }
 
@@ -67,6 +81,20 @@ func TestMigrateCommandsRejectMissingConfigurationFile(t *testing.T) {
 	if _, err := server.MigrateStatus(context.Background(), missing); err == nil {
 		t.Fatal("MigrateStatus() error = nil, want configuration failure")
 	}
+}
+
+func writeValidConfig(t *testing.T) string {
+	t.Helper()
+
+	data, err := json.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestCurrentBuildInfoReportsBuildValues(t *testing.T) {

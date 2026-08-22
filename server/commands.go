@@ -6,10 +6,17 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
+)
+
+const (
+	DefaultConfigPath = "config/config.json"
+	ConfigPathEnv     = "PROCTOR_CONFIG"
 )
 
 // RecoverAdministratorAccess constructs an inert server graph, invokes its
@@ -49,8 +56,8 @@ func CurrentBuildInfo() BuildInfo {
 }
 
 // ValidateConfig loads and strictly validates the deployment configuration at
-// configPath, or the default in-memory configuration when configPath is empty,
-// without constructing any infrastructure.
+// configPath, or the required configured/default file when configPath is
+// empty, without constructing any infrastructure.
 func ValidateConfig(ctx context.Context, configPath string) error {
 	configuration, err := openConfiguration(ctx, configPath)
 	if err != nil {
@@ -111,20 +118,30 @@ func MigrateStatus(ctx context.Context, configPath string) (MigrationStatus, err
 	}, nil
 }
 
-// openConfiguration loads the deployment configuration from configPath, or
-// returns the default in-memory configuration when configPath is empty.
+// openConfiguration loads the required operator-owned deployment
+// configuration. An explicit path wins over PROCTOR_CONFIG, which wins over
+// the conventional config/config.json path. It never creates the active file.
 func openConfiguration(ctx context.Context, configPath string) (*config.Store, error) {
-	var backing config.BackingStore
 	if configPath == "" {
-		backing = config.NewMemoryStore(nil)
-	} else {
-		fileStore, err := config.NewFileStore(configPath)
-		if err != nil {
-			return nil, err
-		}
-		backing = fileStore
+		configPath = os.Getenv(ConfigPathEnv)
 	}
-	return config.NewStore(ctx, backing, config.StoreOptions{})
+	if configPath == "" {
+		configPath = DefaultConfigPath
+	}
+	fileStore, err := config.NewFileStore(configPath)
+	if err != nil {
+		return nil, err
+	}
+	configuration, err := config.NewStore(ctx, fileStore, config.StoreOptions{})
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf(
+			"load required configuration %q (copy config/config.example.json to %q and edit it): %w",
+			configPath,
+			configPath,
+			err,
+		)
+	}
+	return configuration, err
 }
 
 // openMigrator opens the migration runner for the configured database. The

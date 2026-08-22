@@ -116,7 +116,16 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return wrapUsageError(err)
 	})
-	root.PersistentFlags().StringP("config", "c", "", text.value("cli.config.flag.path", "path to a JSON configuration file", nil))
+	root.PersistentFlags().StringP(
+		"config",
+		"c",
+		"",
+		text.value(
+			"cli.config.flag.path",
+			"configuration file path (default config/config.json; env PROCTOR_CONFIG)",
+			nil,
+		),
+	)
 
 	root.AddCommand(
 		newServeCommand(execute.serve, text),

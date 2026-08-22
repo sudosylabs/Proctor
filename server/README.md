@@ -60,12 +60,31 @@ authorities do not drift through duplicated implementation inventories.
 From the repository root:
 
 ```sh
-go run ./server/cmd/proctor serve --config ./server/config.example.json
+cp ./server/config/config.example.json ./server/config/config.json
+go run ./server/cmd/proctor serve --config ./server/config/config.json
 ```
 
-The server requires a migrated PostgreSQL database before startup. Cache, mail,
-and VFS backends are selected from `config.example.json`; the development
-defaults use memory cache, disabled mail, and local VFS.
+The active `config.json` is operator-owned and ignored by Git; Proctor never
+creates it. The tracked example is the copy source, not an active fallback.
+On startup Proctor connects to PostgreSQL, applies pending forward migrations
+under a named database migration lock, validates the resulting schema, and
+checks its configured cache, cluster, VFS, and execution-host dependencies.
+Enabled SMTP is connection-tested and reported without making a temporary relay
+outage fail general server readiness. The example uses memory cache, disabled
+mail, and local VFS.
+
+Create a release-style directory containing the executable and copy-only
+configuration example with:
+
+```sh
+make -C server package
+```
+
+The default output is `server/dist/proctor/`, with the binary at its root and
+the example at `config/config.example.json`. Run from that directory after
+copying the example to `config/config.json`, or provide an explicit path. The
+package target requires a nonexistent output path: it never reuses a directory
+that might contain an operator's active configuration or secrets.
 
 ### Pre-release database reset
 
@@ -76,22 +95,21 @@ schemas: existing development databases must be discarded and recreated. Back
 up any data you need before resetting a database.
 
 The checked-in Docker PostgreSQL service stores its database on a temporary
-filesystem. Recreate it, apply the baseline, and run the PostgreSQL integration
-suite with:
+filesystem. Recreate it and run the PostgreSQL integration suite with:
 
 ```sh
 make -C server postgres-down
 make -C server postgres-up
-PROCTOR_DATABASE_DATA_SOURCE='postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable' \
-  go run ./server/cmd/proctor migrate up
 make -C server integration-postgres
 ```
 
 For another development PostgreSQL instance, drop and recreate the dedicated
 Proctor database (or its isolated schema) with that instance's administration
-tools, then run `proctor migrate up` against the empty database. Do not point a
-new server build at a database created from an earlier development migration
-set; those schemas predate the current squashed baseline and are unsupported.
+tools. Normal startup applies the empty database's baseline automatically.
+`proctor migrate status` and `proctor migrate up` remain available for
+deployment inspection and deliberate pre-start convergence. Do not point a new
+server build at a database created from an earlier development migration set;
+those schemas predate the current squashed baseline and are unsupported.
 
 The default listener is `127.0.0.1:8065`. Available endpoints are:
 
@@ -209,10 +227,10 @@ lease is unexpired. Graceful shutdown withdraws its lease; after a crashed node,
 wait for the bounded lease to expire before retrying. Merely constructing this
 offline command never creates a serving lease.
 
-Production sets `authentication.bootstrap.secret` (or
+Production sets `Authentication.Bootstrap.Secret` (or
 `PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET`) to an operator-generated value of at
 least 32 bytes. Only loopback listener plus loopback public-origin development
-may set `authentication.bootstrap.development_mode` without a secret; the
+may set `Authentication.Bootstrap.DevelopmentMode` without a secret; the
 server then prints a temporary value once to the controlling terminal while
 the installation is pristine. The secret is redacted from configuration
 display and structured logs.
@@ -269,16 +287,20 @@ authentication wrappers.
 Validate a configuration without starting the server:
 
 ```sh
-go run ./server/cmd/proctor config validate --config ./server/config.example.json
+go run ./server/cmd/proctor config validate --config ./server/config/config.json
 ```
 
 `--config` is a persistent operator flag and may also precede the command.
 Run `proctor --help` for the command tree or `proctor completion --help` for
 shell-completion generation.
 
-Configuration is loaded in this order: built-in defaults, an optional strict
-JSON file, then `PROCTOR_` environment variables. Unknown JSON fields and
-invalid values are rejected at startup.
+The configuration path is resolved in this order: an explicit `--config`,
+`PROCTOR_CONFIG`, then `config/config.json` relative to the process working
+directory. That file is required. Its schema uses PascalCase keys, is decoded
+strictly over built-in field defaults, and is followed by `PROCTOR_`
+environment overrides. Unknown JSON fields and invalid values are rejected at
+startup; a missing file is reported with the example-copy instruction and is
+never created automatically.
 
 The deployment schema covers HTTP, PostgreSQL, cache, cluster transport and
 node identity, mail, VFS, logging, password hashing, session lifetimes,
@@ -287,14 +309,14 @@ redacted. Authentication configuration also controls the recent-authentication
 window, verification/reset lifetimes, recovery throttles, MFA issuer and setup
 lifetime, recovery-code count, a rotatable AES-256 encryption-key ring, and
 operator-owned external-provider definitions.
-When MFA is enabled, `authentication.mfa.encryption_key` must be a standard
-base64-encoded 32-byte key. Previous keys may remain in `decryption_keys`
+When MFA is enabled, `Authentication.MFA.EncryptionKey` must be a standard
+base64-encoded 32-byte key. Previous keys may remain in `DecryptionKeys`
 during rotation.
 
 Durable recoverable mail payloads use the independent
-`mail.secret_sealing.encryption_key`, canonical standard base64 for 32 bytes.
+`Mail.SecretSealing.EncryptionKey`, canonical standard base64 for 32 bytes.
 Up to eight previous keys may remain in
-`mail.secret_sealing.decryption_keys` while durable payloads are re-encrypted.
+`Mail.SecretSealing.DecryptionKeys` while durable payloads are re-encrypted.
 The ring may be absent only while mail is disabled. Enabling mail requires a
 primary key; a partially or unsafely configured ring is rejected during
 startup. MFA, Memberlist, and mail encryption keys are intentionally not
@@ -302,7 +324,7 @@ interchangeable.
 
 Mail-key rotation is staged: first deploy the new key as a readable fallback
 on every node; then restart every node with that key promoted to
-`encryption_key` and the old primary retained in `decryption_keys`; finally, a
+`EncryptionKey` and the old primary retained in `DecryptionKeys`; finally, a
 strong recently authenticated operator starts `POST /api/v1/mail/rekey` with
 the old key ID. The returned durable Job must succeed with zero retiring and
 non-primary references before the old key is removed from configuration and
@@ -331,46 +353,46 @@ the Access Policy and public provider-projection bounds. The checked-in example
 leaves the provider list empty so local development does not depend on an
 identity service.
 
-For CAS, `subject: "user"` selects `<cas:user>`; another released attribute may
+For CAS, `Claims.Subject: "user"` selects `<cas:user>`; another released attribute may
 be selected explicitly. Proctor never assumes that `<cas:user>` is an ePPN and
 never uses email as the external identity key. CAS email is considered verified
-only when `trust_email` is explicitly enabled or a mapped boolean released
+only when `Claims.TrustEmail` is explicitly enabled or a mapped boolean released
 attribute says so.
 
 Example provider entry:
 
 ```json
 {
-  "id": "campus-cas",
-  "type": "cas",
-  "display_name": "Campus CAS",
-  "enabled": true,
-  "auto_provision": true,
-  "cas": {
-    "base_url": "https://cas.example.edu/cas",
-    "validation_path": "/p3/serviceValidate",
-    "timeout": "5s",
-    "max_response_bytes": 65536
+  "ID": "campus-cas",
+  "Type": "cas",
+  "DisplayName": "Campus CAS",
+  "Enabled": true,
+  "AutoProvision": true,
+  "CAS": {
+    "BaseURL": "https://cas.example.edu/cas",
+    "ValidationPath": "/p3/serviceValidate",
+    "Timeout": "5s",
+    "MaxResponseBytes": 65536
   },
-  "claims": {
-    "subject": "user",
-    "username": "uid",
-    "email": "mail",
-    "first_name": "givenName",
-    "last_name": "sn",
-    "home_organization": "schacHomeOrganization",
-    "affiliation": "eduPersonAffiliation",
-    "allowed_home_organizations": ["example.edu"],
-    "trust_email": true,
-    "multi_factor_attribute": "authnContext",
-    "multi_factor_values": ["mfa"]
+  "Claims": {
+    "Subject": "user",
+    "Username": "uid",
+    "Email": "mail",
+    "FirstName": "givenName",
+    "LastName": "sn",
+    "HomeOrganization": "schacHomeOrganization",
+    "Affiliation": "eduPersonAffiliation",
+    "AllowedHomeOrganizations": ["example.edu"],
+    "TrustEmail": true,
+    "MultiFactorAttribute": "authnContext",
+    "MultiFactorValues": ["mfa"]
   }
 }
 ```
 
 OIDC uses issuer discovery, Authorization Code flow, S256 PKCE, and a
 transaction-bound nonce. Proctor verifies ID-token signature, issuer, audience,
-expiry, nonce, and `at_hash` when present. If `use_userinfo` is enabled, its
+expiry, nonce, and `at_hash` when present. If `OIDC.UseUserInfo` is enabled, its
 `sub` must match the ID token and it cannot replace ID-token authentication-time
 or MFA claims. The callback URL registered at the provider is:
 
@@ -384,33 +406,33 @@ Example OIDC provider entry:
 
 ```json
 {
-  "id": "campus-oidc",
-  "type": "oidc",
-  "display_name": "Campus Login",
-  "enabled": true,
-  "auto_provision": true,
-  "oidc": {
-    "issuer": "https://cas.example.edu/cas/oidc",
-    "client_id": "proctor",
-    "client_secret": "replace-with-a-secret",
-    "scopes": ["openid", "profile", "email"],
-    "use_userinfo": false,
-    "timeout": "5s",
-    "max_response_bytes": 262144
+  "ID": "campus-oidc",
+  "Type": "oidc",
+  "DisplayName": "Campus Login",
+  "Enabled": true,
+  "AutoProvision": true,
+  "OIDC": {
+    "Issuer": "https://cas.example.edu/cas/oidc",
+    "ClientID": "proctor",
+    "ClientSecret": "replace-with-a-secret",
+    "Scopes": ["openid", "profile", "email"],
+    "UseUserInfo": false,
+    "Timeout": "5s",
+    "MaxResponseBytes": 262144
   },
-  "claims": {
-    "subject": "sub",
-    "username": "preferred_username",
-    "email": "email",
-    "email_verified_claim": "email_verified",
-    "first_name": "given_name",
-    "last_name": "family_name",
-    "home_organization": "schacHomeOrganization",
-    "affiliation": "eduPersonAffiliation",
-    "allowed_home_organizations": ["example.edu"],
-    "trust_email": false,
-    "multi_factor_attribute": "amr",
-    "multi_factor_values": ["mfa"]
+  "Claims": {
+    "Subject": "sub",
+    "Username": "preferred_username",
+    "Email": "email",
+    "EmailVerifiedClaim": "email_verified",
+    "FirstName": "given_name",
+    "LastName": "family_name",
+    "HomeOrganization": "schacHomeOrganization",
+    "Affiliation": "eduPersonAffiliation",
+    "AllowedHomeOrganizations": ["example.edu"],
+    "TrustEmail": false,
+    "MultiFactorAttribute": "amr",
+    "MultiFactorValues": ["mfa"]
   }
 }
 ```
@@ -428,13 +450,13 @@ Logging supports multiple independently filtered console or file targets,
 text/JSON formatting, contextual fields, bounded field sizes, runtime
 reconfiguration, flush/shutdown, and locked test capture.
 
-The default `cluster.backend` is `local`, with `node_id` set to `local`. This
+The default `Cluster.Backend` is `local`, with `NodeID` set to `local`. This
 backend has no peers: broadcast is deliberately a no-op and never loops back
 into local handlers. The transport still participates in dependency checks and
 is started before readiness and stopped through the platform lifecycle.
 
-Set `cluster.backend` to `memberlist` and give every process a unique stable
-`cluster.node_id` for a multi-node installation. Memberlist uses encrypted
+Set `Cluster.Backend` to `memberlist` and give every process a unique stable
+`Cluster.NodeID` for a multi-node installation. Memberlist uses encrypted
 gossip membership, PostgreSQL discovery heartbeats for bootstrap seeds, and
 best-effort direct peer messaging. There is no durable cluster delivery class:
 session and authorization correctness recover from PostgreSQL and bounded
@@ -444,12 +466,13 @@ periodically re-lists compatible leases and retries a bounded rotating seed
 batch without adding another lifecycle goroutine. Peer metadata advertises the
 wire protocol compiled into the binary, and alive/merge admission rejects
 malformed metadata, duplicate remote merge identities, or incompatible peers
-after startup as well as during initial join. The cache backend is selected
-independently: each node may use
-its own memory cache or optional Redis as a shared disposable cache. Clustering
-does not require Redis. Multi-node configuration requires shared VFS rather
-than node-local storage, plus a shared primary encryption key, explicit
-bind/advertise addresses, and optional `decryption_keys` during staged rotation.
+after startup as well as during initial join. Single-node installations may use
+the bounded in-process LRU application cache. Memberlist installations require
+Redis so installation-wide disposable authentication counters have one shared
+view; the transport itself remains peer-to-peer and does not route messages
+through Redis. Multi-node configuration also requires shared VFS rather than
+node-local storage, plus a shared primary encryption key, explicit
+bind/advertise addresses, and optional `DecryptionKeys` during staged rotation.
 Add the new fallback to every node, promote it while retaining the old primary
 on every node, then remove the old fallback only after convergence; each stage
 requires restart.
@@ -492,11 +515,11 @@ stable.
 
 ### Production SMTP and deliverability
 
-The checked-in [`config.example.json`](config.example.json) documents every
+The checked-in [`config.example.json`](config/config.example.json) documents every
 mail setting. A production installation enables the `smtp` backend, uses
 `starttls` or `tls` for the relay, configures authentication only over TLS,
 sets a stable sender and Message-ID domain, and supplies an independent
-standard-base64 32-byte `mail.secret_sealing.encryption_key`. The equivalent
+standard-base64 32-byte `Mail.SecretSealing.EncryptionKey`. The equivalent
 deployment overrides use the `PROCTOR_MAIL_` environment prefix. Cleartext
 SMTP without authentication is for a loopback capture server such as Mailpit,
 not a production relay.
@@ -512,7 +535,7 @@ with the relay's delivery diagnostics; Proctor logs deliberately contain no
 recipient, body, ciphertext, or SMTP dialogue.
 
 During a transient relay outage, keep mail enabled so bounded retries and the
-mail-health projection retain the normal recovery path. Setting `mail.enabled`
+mail-health projection retain the normal recovery path. Setting `Mail.Enabled`
 to false is an explicit terminal suppression operation: outstanding work
 converges to suppressed and is not resurrected by later re-enablement. Use the
 documented rekey sequence above for payload-key rotation; never remove a
@@ -572,8 +595,7 @@ suite with:
 make -C server integration-postgres
 ```
 
-Run optional Redis **cache** adapter tests (clustering does not require Redis)
-with:
+Run Redis cache adapter tests with:
 
 ```sh
 make -C server integration-redis
@@ -593,8 +615,8 @@ servers and PostgreSQL, with:
 make -C server integration-providers
 ```
 
-Run the WebSocket and two-node Memberlist cluster suite (PostgreSQL; optional
-Redis only when testing shared-cache mode) with:
+Run the WebSocket and two-node Memberlist cluster suite with PostgreSQL and
+Redis with:
 
 ```sh
 make -C server integration-realtime

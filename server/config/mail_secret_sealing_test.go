@@ -131,6 +131,7 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			name: "Memberlist",
 			setup: func(cfg *Config) {
 				cfg.Mail.SecretSealing.EncryptionKey = key(3)
+				cfg.Cache.Backend = "redis"
 				cfg.Cluster.Backend = "memberlist"
 				cfg.Cluster.Memberlist.EncryptionKey = key(3)
 				cfg.VFS.Backend = "s3"
@@ -143,6 +144,7 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			name: "whitespace-padded Memberlist",
 			setup: func(cfg *Config) {
 				cfg.Mail.SecretSealing.EncryptionKey = key(4)
+				cfg.Cache.Backend = "redis"
 				cfg.Cluster.Backend = "memberlist"
 				cfg.Cluster.Memberlist.EncryptionKey = "  \n" + key(4) + "\t "
 				cfg.VFS.Backend = "s3"

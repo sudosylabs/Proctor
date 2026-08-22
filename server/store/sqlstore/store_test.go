@@ -95,20 +95,12 @@ func seedTestAuthenticationPolicy(t *testing.T, sqlStore *SQLStore, providerAdmi
 func openTestStore(t *testing.T) *SQLStore {
 	t.Helper()
 	settings := testSettings(t)
-	migrator, err := NewMigrator(context.Background(), settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := migrator.Up(); err != nil {
-		_ = migrator.Close()
-		t.Fatal(err)
-	}
-	if err := migrator.Close(); err != nil {
-		t.Fatal(err)
-	}
-
 	sqlStore, err := New(context.Background(), settings)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlStore.ApplyPendingMigrations(context.Background()); err != nil {
+		_ = sqlStore.Close()
 		t.Fatal(err)
 	}
 	if err := sqlStore.ValidateSchema(context.Background()); err != nil {

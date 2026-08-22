@@ -13,7 +13,7 @@ PROCTOR_TEST_MAILPIT_HTTP_URL ?= http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT
 
-.PHONY: check architecture i18n-check openapi-validate openapi-agreement test test-race vet build mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
+.PHONY: check architecture i18n-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
 check: architecture i18n-check openapi-agreement test test-race vet
 
@@ -40,6 +40,15 @@ vet:
 
 build:
 	go build ./...
+
+PACKAGE_DIR ?= dist/proctor
+
+package:
+	@test ! -e "$(PACKAGE_DIR)" || (echo 'package output already exists; choose a new PACKAGE_DIR or remove it explicitly' >&2; exit 2)
+	mkdir -p "$(PACKAGE_DIR)/config"
+	go build -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
+	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
+	@test ! -e "$(PACKAGE_DIR)/config/config.json"
 
 mail-templates-install:
 	$(MAKE) -C templates install

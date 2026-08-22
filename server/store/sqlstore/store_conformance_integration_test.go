@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	memoryvfs "github.com/sudosylabs/proctor/packages/vfs/memory"
 	"github.com/sudosylabs/proctor/server/filecontent"
@@ -34,7 +36,14 @@ func TestLocalCacheLayerConformance(t *testing.T) {
 
 func newLocalCacheConformanceStore(t *testing.T, sqlStore *SQLStore) store.Store {
 	t.Helper()
-	cache, err := localcachelayer.NewMemoryCache(128)
+	storeCache, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+		MaxEntries: 128,
+		MaxBytes:   64 << 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, err := localcachelayer.NewCacheAdapter(storeCache)
 	if err != nil {
 		t.Fatal(err)
 	}

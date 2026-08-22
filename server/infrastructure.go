@@ -40,6 +40,11 @@ import (
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
+const (
+	storeLocalCacheMaxEntries = 1_024
+	storeLocalCacheMaxBytes   = 64 << 20
+)
+
 // ownedInfrastructure is the sole owner of infrastructure while the root is
 // acquiring and decorating it. Ownership is transferred as one unit to the
 // Platform boundary; before then, release is the only cleanup path.
@@ -53,6 +58,7 @@ type ownedInfrastructure struct {
 	filesystem             vfspkg.FileSystem
 	externalAuthentication *externalauth.Registry
 	executionHosts         executionHostDirectory
+	migration              *sqlstore.MigrationResult
 }
 
 type executionHostDirectory interface {
@@ -74,6 +80,7 @@ type constructionCapabilities struct {
 	externalAuthentication *externalauth.Registry
 	executionHosts         appexecution.HostDirectory
 	nodeID                 string
+	migration              *sqlstore.MigrationResult
 }
 
 type borrowedCache interface {
@@ -158,6 +165,14 @@ func openRuntimeInfrastructure(
 		if err != nil {
 			return result, fmt.Errorf("open database: %w", err)
 		}
+		migration, err := persistence.ApplyPendingMigrations(ctx)
+		if err != nil {
+			return result, errors.Join(
+				fmt.Errorf("migrate database: %w", err),
+				persistence.Close(),
+			)
+		}
+		result.migration = &migration
 		result.persistence = persistence
 	}
 	if err := checkAcquisitionContext(ctx, "acquire persistence"); err != nil {
@@ -233,7 +248,7 @@ func openRuntimeInfrastructure(
 	}
 	storeLocalCache := overrides.StoreLocalCache
 	if storeLocalCache == nil {
-		storeLocalCache, err = localcachelayer.NewMemoryCache(1_024)
+		storeLocalCache, err = newStoreLocalMemoryCache(storeLocalCacheMaxEntries)
 		if err != nil {
 			return result, fmt.Errorf("construct local store cache: %w", err)
 		}
@@ -275,11 +290,46 @@ func openRuntimeInfrastructure(
 	return result, nil
 }
 
+func newStoreLocalMemoryCache(maxEntries int) (localcachelayer.Cache, error) {
+	store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+		MaxEntries: maxEntries,
+		MaxBytes:   storeLocalCacheMaxBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return localcachelayer.NewCacheAdapter(store)
+}
+
 func checkAcquisitionContext(ctx context.Context, phase string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("%s: %w", phase, err)
 	}
 	return nil
+}
+
+func logStartupInfrastructure(
+	snapshot config.Config,
+	logger runtimeLogger,
+	migration *sqlstore.MigrationResult,
+) {
+	if logger == nil {
+		return
+	}
+	if migration != nil {
+		logger.Info(
+			"database migrations complete",
+			logging.Int("applied", migration.Applied),
+			logging.Int("schema_version", migration.SchemaVersion),
+		)
+	}
+	logger.Info(
+		"store cache ready",
+		logging.String("backend", "memory_lru"),
+		logging.Int("max_entries", storeLocalCacheMaxEntries),
+		logging.Int64("max_bytes", storeLocalCacheMaxBytes),
+		logging.String("invalidation_backend", snapshot.Cluster.Backend),
+	)
 }
 
 func (i *ownedInfrastructure) acceptPlatform(
@@ -294,6 +344,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 		filesystem:             i.filesystem,
 		externalAuthentication: i.externalAuthentication,
 		executionHosts:         i.executionHosts,
+		migration:              i.migration,
 	}
 	if i.cluster != nil {
 		capabilities.nodeID = i.cluster.NodeID()
@@ -388,7 +439,10 @@ func newExecutionHostDirectory(settings config.Execution) (*executionhost.Direct
 func newCache(settings config.Cache) (platform.Cache, error) {
 	switch settings.Backend {
 	case "memory":
-		store, err := memorycache.New(cachepkg.BytesCodec())
+		store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+			MaxEntries: settings.Memory.MaxEntries,
+			MaxBytes:   settings.Memory.MaxBytes,
+		})
 		if err != nil {
 			return nil, err
 		}

@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 101 {
-		t.Fatalf("environment override definitions = %d, want 101", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 103 {
+		t.Fatalf("environment override definitions = %d, want 103", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -228,6 +228,7 @@ func validBaseForEnvironmentOverride(key string) Config {
 	case "PROCTOR_CACHE_BACKEND":
 		base.Cache.Backend = "redis"
 	case "PROCTOR_CLUSTER_BACKEND":
+		base.Cache.Backend = "redis"
 		base.Cluster.Backend = "memberlist"
 		base.Cluster.Memberlist.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
 		base.VFS.Backend = "s3"

@@ -56,7 +56,20 @@ SQL uses plural `snake_case` tables, `id` primary keys, `<entity>_id` foreign ke
 
 Go uses UTC `time.Time`, PostgreSQL uses `timestamptz`, and HTTP uses RFC 3339. Optional lifecycle events are nullable fields such as `archived_at`, not integer zero sentinels.
 
-Normal serving validates schema compatibility and never migrates. Deployments run `proctor migrate` under a lock. Before the first supported release, migrations may be rewritten or squashed and development databases recreated. That release freezes the baseline; later changes are append-only expand/backfill/contract migrations.
+Normal serving connects to PostgreSQL and applies every pending forward
+migration before constructing application consumers. Morph holds the named
+PostgreSQL migration mutex for inspection and application, so concurrent node
+starts serialize schema convergence; startup then validates the resulting
+schema and fails closed on any connection, migration, unlock, or compatibility
+error. The configured migration timeout bounds lock acquisition and each
+migration statement; it is not a single wall-clock budget for the complete
+migration set.
+`proctor migrate status` and `proctor migrate up` remain operator tools for
+inspection and deliberate pre-start convergence; rollback is never an
+automatic startup action. Before the first supported release, migrations may
+be rewritten or squashed and development databases recreated. That release
+freezes the baseline; later changes are append-only expand/backfill/contract
+migrations compatible with rolling node startup.
 
 `Archive` is reversible removal from active use, `Disable` is reversible prevention from operating, and `Purge` is explicit irreversible removal. A soft archive is not named `Delete`.
 

@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	cachepkg "github.com/sudosylabs/proctor/packages/cache"
+	memorycache "github.com/sudosylabs/proctor/packages/cache/memory"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
@@ -154,7 +156,7 @@ func TestLocalCacheReturnsDefensiveAcademicPeriodCopies(t *testing.T) {
 		Revision:    1,
 	}
 	underlying := &academicPeriodStub{period: period}
-	cache, err := localcachelayer.NewMemoryCache(8)
+	cache, err := newMemoryCache(8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +389,7 @@ func TestLocalCacheBypassesAuthoritativeSecurityReads(t *testing.T) {
 	t.Parallel()
 
 	bindings := &roleBindingStub{}
-	cache, err := localcachelayer.NewMemoryCache(8)
+	cache, err := newMemoryCache(8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +449,7 @@ func TestLocalCacheRecordsClosedHitAndMissOutcomes(t *testing.T) {
 
 	period := validAcademicPeriod()
 	underlying := &academicPeriodStub{period: period}
-	cache, err := localcachelayer.NewMemoryCache(8)
+	cache, err := newMemoryCache(8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +480,7 @@ func TestLocalCacheRecordsClosedHitAndMissOutcomes(t *testing.T) {
 func TestMemoryCacheBoundsSizeTTLAndByteAliasing(t *testing.T) {
 	t.Parallel()
 
-	cache, err := localcachelayer.NewMemoryCache(2)
+	cache, err := newMemoryCache(2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,13 +531,40 @@ func TestMemoryCacheBoundsSizeTTLAndByteAliasing(t *testing.T) {
 	}
 }
 
+func TestMemoryCacheEvictsLeastRecentlyUsedEntry(t *testing.T) {
+	t.Parallel()
+
+	cache, err := newMemoryCache(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, key := range []string{"a", "b"} {
+		if err := cache.Set(ctx, key, []byte(key), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, found, err := cache.Get(ctx, "a"); err != nil || !found {
+		t.Fatalf("refresh key a = found %v, error %v", found, err)
+	}
+	if err := cache.Set(ctx, "c", []byte("c"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := cache.Get(ctx, "b"); err != nil || found {
+		t.Fatalf("least-recent key b = found %v, error %v", found, err)
+	}
+	if _, found, err := cache.Get(ctx, "a"); err != nil || !found {
+		t.Fatalf("recent key a = found %v, error %v", found, err)
+	}
+}
+
 func TestLocalCacheRejectsUnboundedConstruction(t *testing.T) {
 	t.Parallel()
 
-	if _, err := localcachelayer.NewMemoryCache(0); err == nil {
-		t.Fatal("NewMemoryCache() accepted zero entries")
+	if _, err := newMemoryCache(0); err == nil {
+		t.Fatal("newMemoryCache() accepted zero entries")
 	}
-	cache, err := localcachelayer.NewMemoryCache(1)
+	cache, err := newMemoryCache(1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,9 +631,20 @@ func validAcademicPeriod() *model.AcademicPeriod {
 	}
 }
 
+func newMemoryCache(maxEntries int) (localcachelayer.Cache, error) {
+	store, err := memorycache.New(cachepkg.BytesCodec(), memorycache.Config{
+		MaxEntries: maxEntries,
+		MaxBytes:   64 << 20,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return localcachelayer.NewCacheAdapter(store)
+}
+
 func newLayer(t *testing.T, periods store.AcademicPeriodStore, ttl time.Duration) *localcachelayer.Layer {
 	t.Helper()
-	cache, err := localcachelayer.NewMemoryCache(8)
+	cache, err := newMemoryCache(8)
 	if err != nil {
 		t.Fatal(err)
 	}

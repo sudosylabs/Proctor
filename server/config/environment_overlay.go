@@ -347,6 +347,12 @@ var environmentOverrideCatalog = []environmentOverride{
 	intEnvironmentOverride("PROCTOR_LOG_MAX_FIELD_BYTES", func(cfg *Config) *int {
 		return &cfg.Log.MaxFieldBytes
 	}),
+	intEnvironmentOverride("PROCTOR_CACHE_MEMORY_MAX_ENTRIES", func(cfg *Config) *int {
+		return &cfg.Cache.Memory.MaxEntries
+	}),
+	int64EnvironmentOverride("PROCTOR_CACHE_MEMORY_MAX_BYTES", func(cfg *Config) *int64 {
+		return &cfg.Cache.Memory.MaxBytes
+	}),
 	intEnvironmentOverride("PROCTOR_CACHE_REDIS_DATABASE", func(cfg *Config) *int {
 		return &cfg.Cache.Redis.Database
 	}),

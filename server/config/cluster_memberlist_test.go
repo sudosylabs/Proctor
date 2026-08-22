@@ -17,6 +17,7 @@ func TestMemberlistKeyringValidationAndRedaction(t *testing.T) {
 	t.Parallel()
 
 	cfg := Default()
+	cfg.Cache.Backend = "redis"
 	cfg.Cluster.Backend = "memberlist"
 	cfg.Cluster.NodeID = "node-a"
 	cfg.Cluster.Memberlist.EncryptionKey = memberlistTestKey('a')

@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,13 +17,47 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
-	"github.com/sudosylabs/proctor/server/store/localcachelayer"
+	"github.com/sudosylabs/proctor/server/store/sqlstore"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
 )
 
 type releaseStore struct {
 	store.Store
 	events *[]string
+}
+
+func TestStartupInfrastructureLogsMigrationAndStoreCache(t *testing.T) {
+	t.Parallel()
+
+	logger, err := logging.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Shutdown() })
+	var output logging.Buffer
+	if err := logger.Configure(logging.Config{
+		MaxFieldBytes: 1024,
+		Targets: []logging.Target{{
+			Name: "test", Type: "console", Level: "info", Format: "json", Writer: &output,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	logStartupInfrastructure(config.Default(), logger, &sqlstore.MigrationResult{
+		Applied:       2,
+		SchemaVersion: 7,
+	})
+	for _, value := range []string{
+		"database migrations complete",
+		`"applied":2`,
+		`"schema_version":7`,
+		"store cache ready",
+		`"backend":"memory_lru"`,
+	} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("startup infrastructure log is missing %q: %s", value, output.String())
+		}
+	}
 }
 
 func (s releaseStore) Close() error {
@@ -150,7 +185,7 @@ func TestRootComposesLocalCacheOutsideTiming(t *testing.T) {
 		UpdatedAt: time.Now().UTC(), Revision: 1,
 	}
 	periods := &layerOrderPeriods{period: period}
-	cache, err := localcachelayer.NewMemoryCache(8)
+	cache, err := newStoreLocalMemoryCache(8)
 	if err != nil {
 		t.Fatal(err)
 	}

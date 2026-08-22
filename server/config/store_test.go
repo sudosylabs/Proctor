@@ -548,7 +548,26 @@ func TestInfrastructureAndAuthenticationValidationIsAggregated(t *testing.T) {
 	}
 }
 
-func TestMemberlistClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
+func TestDatabaseRequiresTwoConnectionsForLockedMigrations(t *testing.T) {
+	t.Parallel()
+
+	cfg := Default()
+	cfg.Database.MaxOpenConnections = 1
+	cfg.Database.MaxIdleConnections = 1
+	err := cfg.Validate()
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Validate() error = %v, want ValidationError", err)
+	}
+	for _, field := range validationError.Fields {
+		if field.Field == "database.max_open_connections" {
+			return
+		}
+	}
+	t.Fatalf("Validate() fields = %#v, want database connection minimum", validationError.Fields)
+}
+
+func TestMemberlistClusterRequiresRedisAndSharedVFS(t *testing.T) {
 	t.Parallel()
 
 	cfg := Default()
@@ -563,8 +582,8 @@ func TestMemberlistClusterAllowsMemoryCacheButRequiresSharedVFS(t *testing.T) {
 	for _, field := range validationError.Fields {
 		fields[field.Field] = field.Message
 	}
-	if fields["cache.backend"] != "" {
-		t.Fatalf("cluster unexpectedly requires a shared cache: %#v", validationError.Fields)
+	if fields["cache.backend"] == "" {
+		t.Fatalf("cluster cache field = %#v, want Redis requirement", validationError.Fields)
 	}
 	if fields["vfs.backend"] == "" {
 		t.Fatalf("cluster shared-infrastructure fields = %#v", validationError.Fields)
@@ -676,7 +695,7 @@ func TestStoreRejectsUnknownAndInvalidConfiguration(t *testing.T) {
 
 	_, err := NewStore(
 		context.Background(),
-		NewMemoryStore([]byte(`{"version":1,"mystery":true}`)),
+		NewMemoryStore([]byte(`{"Version":1,"mystery":true}`)),
 		StoreOptions{LookupEnv: noEnvironment},
 	)
 	if err == nil || !strings.Contains(err.Error(), `unknown field "mystery"`) {
@@ -707,7 +726,7 @@ func TestDiffReportsStableConfigurationPaths(t *testing.T) {
 	current.Log.Targets[0].Level = "debug"
 
 	changes := Diff(old, current)
-	want := []Change{{Path: "log.targets"}, {Path: "server.public_url"}}
+	want := []Change{{Path: "Log.Targets"}, {Path: "Server.PublicURL"}}
 	if !reflect.DeepEqual(changes, want) {
 		t.Fatalf("Diff() = %#v, want %#v", changes, want)
 	}

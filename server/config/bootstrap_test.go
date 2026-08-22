@@ -56,7 +56,7 @@ func TestBootstrapSecretIsRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), cfg.Authentication.Bootstrap.Secret) ||
-		!strings.Contains(string(data), `"secret": "[redacted]"`) {
+		!strings.Contains(string(data), `"Secret": "[redacted]"`) {
 		t.Fatalf("RedactedJSON() = %s", data)
 	}
 }

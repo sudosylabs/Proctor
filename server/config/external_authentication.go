@@ -22,58 +22,58 @@ const (
 // consume. Provider adapters normalize their protocol-specific representation
 // before applying this mapping.
 type ExternalClaimMapping struct {
-	Subject                  string   `json:"subject"`
-	Username                 string   `json:"username"`
-	Email                    string   `json:"email"`
-	EmailVerifiedClaim       string   `json:"email_verified_claim,omitempty"`
-	FirstName                string   `json:"first_name,omitempty"`
-	LastName                 string   `json:"last_name,omitempty"`
-	DisplayName              string   `json:"display_name,omitempty"`
-	HomeOrganization         string   `json:"home_organization,omitempty"`
-	Affiliation              string   `json:"affiliation,omitempty"`
-	AllowedHomeOrganizations []string `json:"allowed_home_organizations,omitempty"`
-	TrustEmail               bool     `json:"trust_email"`
-	MultiFactorAttribute     string   `json:"multi_factor_attribute,omitempty"`
-	MultiFactorValues        []string `json:"multi_factor_values,omitempty"`
+	Subject                  string   `json:"Subject"`
+	Username                 string   `json:"Username"`
+	Email                    string   `json:"Email"`
+	EmailVerifiedClaim       string   `json:"EmailVerifiedClaim,omitempty"`
+	FirstName                string   `json:"FirstName,omitempty"`
+	LastName                 string   `json:"LastName,omitempty"`
+	DisplayName              string   `json:"DisplayName,omitempty"`
+	HomeOrganization         string   `json:"HomeOrganization,omitempty"`
+	Affiliation              string   `json:"Affiliation,omitempty"`
+	AllowedHomeOrganizations []string `json:"AllowedHomeOrganizations,omitempty"`
+	TrustEmail               bool     `json:"TrustEmail"`
+	MultiFactorAttribute     string   `json:"MultiFactorAttribute,omitempty"`
+	MultiFactorValues        []string `json:"MultiFactorValues,omitempty"`
 }
 
 type CASProvider struct {
-	BaseURL          string   `json:"base_url"`
-	ValidationPath   string   `json:"validation_path"`
-	Timeout          Duration `json:"timeout"`
-	MaxResponseBytes int64    `json:"max_response_bytes"`
+	BaseURL          string   `json:"BaseURL"`
+	ValidationPath   string   `json:"ValidationPath"`
+	Timeout          Duration `json:"Timeout"`
+	MaxResponseBytes int64    `json:"MaxResponseBytes"`
 }
 
 // OIDCProvider deliberately uses issuer discovery instead of accepting a set
 // of independently configured endpoints. This preserves issuer consistency
 // and lets standards-compliant providers rotate endpoints and signing keys.
 type OIDCProvider struct {
-	Issuer           string   `json:"issuer"`
-	ClientID         string   `json:"client_id"`
-	ClientSecret     string   `json:"client_secret,omitempty"`
-	Scopes           []string `json:"scopes"`
-	UseUserInfo      bool     `json:"use_userinfo"`
-	Timeout          Duration `json:"timeout"`
-	MaxResponseBytes int64    `json:"max_response_bytes"`
+	Issuer           string   `json:"Issuer"`
+	ClientID         string   `json:"ClientID"`
+	ClientSecret     string   `json:"ClientSecret,omitempty"`
+	Scopes           []string `json:"Scopes"`
+	UseUserInfo      bool     `json:"UseUserInfo"`
+	Timeout          Duration `json:"Timeout"`
+	MaxResponseBytes int64    `json:"MaxResponseBytes"`
 }
 
 // ExternalAuthenticationProvider is a discriminated provider definition.
 // Exactly one protocol block must match Type. Adding a protocol introduces a
 // new block and factory without changing the application login orchestration.
 type ExternalAuthenticationProvider struct {
-	ID            string               `json:"id"`
-	Type          string               `json:"type"`
-	DisplayName   string               `json:"display_name"`
-	Enabled       bool                 `json:"enabled"`
-	AutoProvision bool                 `json:"auto_provision"`
-	Claims        ExternalClaimMapping `json:"claims"`
-	CAS           *CASProvider         `json:"cas,omitempty"`
-	OIDC          *OIDCProvider        `json:"oidc,omitempty"`
+	ID            string               `json:"ID"`
+	Type          string               `json:"Type"`
+	DisplayName   string               `json:"DisplayName"`
+	Enabled       bool                 `json:"Enabled"`
+	AutoProvision bool                 `json:"AutoProvision"`
+	Claims        ExternalClaimMapping `json:"Claims"`
+	CAS           *CASProvider         `json:"CAS,omitempty"`
+	OIDC          *OIDCProvider        `json:"OIDC,omitempty"`
 }
 
 type ExternalAuthentication struct {
-	LoginStateTTL Duration                         `json:"login_state_ttl"`
-	Providers     []ExternalAuthenticationProvider `json:"providers"`
+	LoginStateTTL Duration                         `json:"LoginStateTTL"`
+	Providers     []ExternalAuthenticationProvider `json:"Providers"`
 }
 
 func validateExternalAuthentication(
