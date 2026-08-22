@@ -26,7 +26,7 @@ the only copy of data that the application cannot reconstruct.
 
 The initial backends are:
 
-- `memory`: concurrency-safe, encoded in-process storage;
+- `memory`: concurrency-safe, encoded, entry/byte-bounded in-process LRU;
 - `redis`: Redis standalone, Sentinel, or Cluster storage through `rueidis`.
 
 The core interface deliberately excludes scanning, bulk deletion, distributed
@@ -52,7 +52,10 @@ import (
 ## Memory example
 
 ```go
-store, err := memory.New(cache.JSONCodec[Session]())
+store, err := memory.New(
+    cache.JSONCodec[Session](),
+    memory.Config{MaxEntries: 10_000, MaxBytes: 32 << 20},
+)
 if err != nil {
     return err
 }
@@ -73,7 +76,11 @@ if errors.Is(err, cache.ErrNotFound) {
 
 The memory backend stores encoded bytes rather than retaining the original Go
 value. This prevents callers from mutating cached slices, maps, or pointers
-without a subsequent `Set`, and keeps behavior closer to remote backends.
+without a subsequent `Set`, and keeps behavior closer to remote backends. It
+evicts the least recently used entries until both configured limits are met;
+omitting `memory.Config` selects conservative defaults of 100,000 entries and
+64 MiB of retained key/value bytes. Runtime object overhead is intentionally
+outside the byte accounting.
 
 ## Redis example
 

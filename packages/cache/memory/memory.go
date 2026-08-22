@@ -2,6 +2,7 @@
 package memory
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"math"
@@ -13,8 +14,10 @@ import (
 )
 
 type entry struct {
+	key       string
 	data      []byte
 	expiresAt time.Time
+	recency   *list.Element
 }
 
 func (e entry) expired(now time.Time) bool {
@@ -24,21 +27,60 @@ func (e entry) expired(now time.Time) bool {
 // Store is an encoded in-process cache. Encoding values before storing them
 // keeps its copy/isolation behavior aligned with remote backends.
 type Store[V any] struct {
-	mu     sync.Mutex
-	values map[string]entry
-	codec  cache.Codec[V]
-	now    func() time.Time
+	mu            sync.Mutex
+	values        map[string]*entry
+	recency       *list.List
+	retainedBytes int64
+	config        Config
+	codec         cache.Codec[V]
+	now           func() time.Time
 }
 
-// New constructs an empty in-process store.
-func New[V any](codec cache.Codec[V]) (*Store[V], error) {
+// Config bounds retained entries and encoded key/value bytes. Go map, list,
+// and object overhead are deliberately excluded from MaxBytes.
+type Config struct {
+	MaxEntries int
+	MaxBytes   int64
+}
+
+// DefaultConfig provides conservative bounds for callers that do not need to
+// tune the in-process adapter.
+func DefaultConfig() Config {
+	return Config{MaxEntries: 100_000, MaxBytes: 64 << 20}
+}
+
+func (c Config) validate() error {
+	if c.MaxEntries < 1 {
+		return fmt.Errorf("memory cache: max entries must be greater than zero")
+	}
+	if c.MaxBytes < 1 {
+		return fmt.Errorf("memory cache: max bytes must be greater than zero")
+	}
+	return nil
+}
+
+// New constructs an empty bounded in-process LRU store. Supplying no Config
+// selects DefaultConfig; more than one Config is rejected.
+func New[V any](codec cache.Codec[V], configurations ...Config) (*Store[V], error) {
 	if codec == nil {
 		return nil, fmt.Errorf("memory cache: codec must not be nil")
 	}
+	configuration := DefaultConfig()
+	if len(configurations) > 1 {
+		return nil, fmt.Errorf("memory cache: at most one configuration is allowed")
+	}
+	if len(configurations) == 1 {
+		configuration = configurations[0]
+	}
+	if err := configuration.validate(); err != nil {
+		return nil, err
+	}
 	return &Store[V]{
-		values: make(map[string]entry),
-		codec:  codec,
-		now:    time.Now,
+		values:  make(map[string]*entry),
+		recency: list.New(),
+		config:  configuration,
+		codec:   codec,
+		now:     time.Now,
 	}, nil
 }
 
@@ -63,10 +105,14 @@ func (s *Store[V]) Get(ctx context.Context, key string) (V, error) {
 	s.mu.Lock()
 	item, found := s.values[key]
 	if found && item.expired(s.now()) {
-		delete(s.values, key)
+		s.removeLocked(item)
 		found = false
 	}
-	data := append([]byte(nil), item.data...)
+	var data []byte
+	if found {
+		s.recency.MoveToFront(item.recency)
+		data = append([]byte(nil), item.data...)
+	}
 	s.mu.Unlock()
 
 	if !found {
@@ -105,7 +151,7 @@ func (s *Store[V]) Set(ctx context.Context, key string, value V, options cache.S
 
 	current, found := s.values[key]
 	if found && current.expired(now) {
-		delete(s.values, key)
+		s.removeLocked(current)
 		found = false
 	}
 	if options.Condition == cache.SetIfAbsent && found {
@@ -119,7 +165,22 @@ func (s *Store[V]) Set(ctx context.Context, key string, value V, options cache.S
 	if ttl > 0 {
 		expiresAt = now.Add(ttl)
 	}
-	s.values[key] = entry{data: data, expiresAt: expiresAt}
+	if int64(len(key)+len(data)) > s.config.MaxBytes {
+		return cache.Error("set", key, fmt.Errorf("%w: encoded entry exceeds memory cache byte limit", cache.ErrInvalidValue))
+	}
+	if found {
+		s.retainedBytes -= int64(len(current.data))
+		current.data = data
+		current.expiresAt = expiresAt
+		s.retainedBytes += int64(len(data))
+		s.recency.MoveToFront(current.recency)
+	} else {
+		item := &entry{key: key, data: data, expiresAt: expiresAt}
+		item.recency = s.recency.PushFront(item)
+		s.values[key] = item
+		s.retainedBytes += int64(len(key) + len(data))
+	}
+	s.evictLocked()
 	return nil
 }
 
@@ -132,7 +193,9 @@ func (s *Store[V]) Delete(ctx context.Context, key string) error {
 	}
 
 	s.mu.Lock()
-	delete(s.values, key)
+	if item, found := s.values[key]; found {
+		s.removeLocked(item)
+	}
 	s.mu.Unlock()
 	return nil
 }
@@ -160,7 +223,7 @@ func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cac
 
 	item, found := s.values[key]
 	if found && item.expired(now) {
-		delete(s.values, key)
+		s.removeLocked(item)
 		found = false
 	}
 
@@ -181,10 +244,23 @@ func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cac
 	if ttl > 0 {
 		expiresAt = now.Add(ttl)
 	}
-	s.values[key] = entry{
-		data:      []byte(strconv.FormatInt(current, 10)),
-		expiresAt: expiresAt,
+	data := []byte(strconv.FormatInt(current, 10))
+	if int64(len(key)+len(data)) > s.config.MaxBytes {
+		return 0, cache.Error("add", key, fmt.Errorf("%w: encoded entry exceeds memory cache byte limit", cache.ErrInvalidValue))
 	}
+	if found {
+		s.retainedBytes -= int64(len(item.data))
+		item.data = data
+		item.expiresAt = expiresAt
+		s.retainedBytes += int64(len(data))
+		s.recency.MoveToFront(item.recency)
+	} else {
+		item = &entry{key: key, data: data, expiresAt: expiresAt}
+		item.recency = s.recency.PushFront(item)
+		s.values[key] = item
+		s.retainedBytes += int64(len(key) + len(data))
+	}
+	s.evictLocked()
 	return current, nil
 }
 
@@ -194,9 +270,39 @@ func (s *Store[V]) Purge(ctx context.Context) error {
 		return cache.Error("purge", "", err)
 	}
 	s.mu.Lock()
-	s.values = make(map[string]entry)
+	s.values = make(map[string]*entry)
+	s.recency.Init()
+	s.retainedBytes = 0
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Store[V]) evictLocked() {
+	if len(s.values) <= s.config.MaxEntries && s.retainedBytes <= s.config.MaxBytes {
+		return
+	}
+	now := s.now()
+	for element := s.recency.Back(); element != nil; {
+		previous := element.Prev()
+		item := element.Value.(*entry)
+		if item.expired(now) {
+			s.removeLocked(item)
+		}
+		element = previous
+	}
+	for len(s.values) > s.config.MaxEntries || s.retainedBytes > s.config.MaxBytes {
+		oldest := s.recency.Back()
+		if oldest == nil {
+			return
+		}
+		s.removeLocked(oldest.Value.(*entry))
+	}
+}
+
+func (s *Store[V]) removeLocked(item *entry) {
+	delete(s.values, item.key)
+	s.recency.Remove(item.recency)
+	s.retainedBytes -= int64(len(item.key) + len(item.data))
 }
 
 var (
