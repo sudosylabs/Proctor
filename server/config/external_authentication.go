@@ -25,16 +25,16 @@ type ExternalClaimMapping struct {
 	Subject                  string   `json:"Subject"`
 	Username                 string   `json:"Username"`
 	Email                    string   `json:"Email"`
-	EmailVerifiedClaim       string   `json:"EmailVerifiedClaim,omitempty"`
-	FirstName                string   `json:"FirstName,omitempty"`
-	LastName                 string   `json:"LastName,omitempty"`
-	DisplayName              string   `json:"DisplayName,omitempty"`
-	HomeOrganization         string   `json:"HomeOrganization,omitempty"`
-	Affiliation              string   `json:"Affiliation,omitempty"`
-	AllowedHomeOrganizations []string `json:"AllowedHomeOrganizations,omitempty"`
+	EmailVerifiedClaim       string   `json:"EmailVerifiedClaim"`
+	FirstName                string   `json:"FirstName"`
+	LastName                 string   `json:"LastName"`
+	DisplayName              string   `json:"DisplayName"`
+	HomeOrganization         string   `json:"HomeOrganization"`
+	Affiliation              string   `json:"Affiliation"`
+	AllowedHomeOrganizations []string `json:"AllowedHomeOrganizations"`
 	TrustEmail               bool     `json:"TrustEmail"`
-	MultiFactorAttribute     string   `json:"MultiFactorAttribute,omitempty"`
-	MultiFactorValues        []string `json:"MultiFactorValues,omitempty"`
+	MultiFactorAttribute     string   `json:"MultiFactorAttribute"`
+	MultiFactorValues        []string `json:"MultiFactorValues"`
 }
 
 type CASProvider struct {
@@ -50,7 +50,7 @@ type CASProvider struct {
 type OIDCProvider struct {
 	Issuer           string   `json:"Issuer"`
 	ClientID         string   `json:"ClientID"`
-	ClientSecret     string   `json:"ClientSecret,omitempty"`
+	ClientSecret     string   `json:"ClientSecret"`
 	Scopes           []string `json:"Scopes"`
 	UseUserInfo      bool     `json:"UseUserInfo"`
 	Timeout          Duration `json:"Timeout"`
@@ -67,8 +67,8 @@ type ExternalAuthenticationProvider struct {
 	Enabled       bool                 `json:"Enabled"`
 	AutoProvision bool                 `json:"AutoProvision"`
 	Claims        ExternalClaimMapping `json:"Claims"`
-	CAS           *CASProvider         `json:"CAS,omitempty"`
-	OIDC          *OIDCProvider        `json:"OIDC,omitempty"`
+	CAS           *CASProvider         `json:"CAS"`
+	OIDC          *OIDCProvider        `json:"OIDC"`
 }
 
 type ExternalAuthentication struct {

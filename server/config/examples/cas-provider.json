@@ -1,0 +1,29 @@
+{
+  "ID": "campus-cas",
+  "Type": "cas",
+  "DisplayName": "Campus CAS",
+  "Enabled": true,
+  "AutoProvision": true,
+  "Claims": {
+    "Subject": "user",
+    "Username": "uid",
+    "Email": "mail",
+    "EmailVerifiedClaim": "",
+    "FirstName": "givenName",
+    "LastName": "sn",
+    "DisplayName": "displayName",
+    "HomeOrganization": "",
+    "Affiliation": "",
+    "AllowedHomeOrganizations": [],
+    "TrustEmail": false,
+    "MultiFactorAttribute": "",
+    "MultiFactorValues": []
+  },
+  "CAS": {
+    "BaseURL": "https://sso.example.edu/cas",
+    "ValidationPath": "/p3/serviceValidate",
+    "Timeout": "5s",
+    "MaxResponseBytes": 65536
+  },
+  "OIDC": null
+}

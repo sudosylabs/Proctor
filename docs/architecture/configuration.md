@@ -79,7 +79,13 @@ Normal startup requires one operator-owned JSON file and never creates it.
 Path precedence is an explicit CLI path, `PROCTOR_CONFIG`, then
 `config/config.json` relative to the process working directory. Release
 bundles carry `config/config.example.json`; operators copy it to the active
-path and edit it. Deployment JSON field names are PascalCase. Value precedence
+path and edit it. That canonical file renders every deployment field with its
+built-in default, including empty secret fields, so the supported schema is
+discoverable without reading Go types. Empty structured lists stay empty in
+the canonical file; complete validated entry objects for execution hosts and
+CAS/OIDC providers ship under `config/examples/`. Configuration serialization
+never omits zero-valued fields, and tests fail when the schema, defaults, or
+examples drift. Deployment JSON field names are PascalCase. Value precedence
 is built-in field defaults, the required typed file, then `PROCTOR_`
 environment overrides. Unknown fields are rejected, validation errors are
 aggregated where possible, URLs/durations are parsed at the boundary, secrets

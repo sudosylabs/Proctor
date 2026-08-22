@@ -65,7 +65,12 @@ go run ./server/cmd/proctor serve --config ./server/config/config.json
 ```
 
 The active `config.json` is operator-owned and ignored by Git; Proctor never
-creates it. The tracked example is the copy source, not an active fallback.
+creates it. The tracked example is the copy source, not an active fallback. It
+renders every deployment field, including empty secret placeholders. Complete,
+validated entries for the structured `Execution.Hosts` and
+`Authentication.External.Providers` lists live under `config/examples/`; copy
+the applicable object into the canonical file and replace its placeholder
+values. Protect the active file because it contains real deployment secrets.
 On startup Proctor connects to PostgreSQL, applies pending forward migrations
 under a named database migration lock, validates the resulting schema, and
 checks its configured cache, cluster, VFS, and execution-host dependencies.
@@ -74,15 +79,16 @@ outage fail general server readiness. The example uses memory cache, disabled
 mail, and local VFS.
 
 Create a release-style directory containing the executable and copy-only
-configuration example with:
+configuration examples with:
 
 ```sh
 make -C server package
 ```
 
-The default output is `server/dist/proctor/`, with the binary at its root and
-the example at `config/config.example.json`. Run from that directory after
-copying the example to `config/config.json`, or provide an explicit path. The
+The default output is `server/dist/proctor/`, with the binary at its root, the
+canonical example at `config/config.example.json`, and structured entry
+examples under `config/examples/`. Run from that directory after copying the
+canonical example to `config/config.json`, or provide an explicit path. The
 package target requires a nonexistent output path: it never reuses a directory
 that might contain an operator's active configuration or secrets.
 

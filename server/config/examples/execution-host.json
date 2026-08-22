@@ -1,0 +1,10 @@
+{
+  "ID": "execenv-1",
+  "Address": "execenv.example.edu:8443",
+  "Security": "tls",
+  "Token": "replace-with-execution-host-token",
+  "ServerName": "execenv.example.edu",
+  "CAFile": "",
+  "ClientCertificateFile": "",
+  "ClientKeyFile": ""
+}

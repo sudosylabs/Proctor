@@ -26,6 +26,22 @@ was behaviorally compared with Mattermost revision
 Proctor's corresponding walking-skeleton implementation was independently
 written and does not copy those Mattermost sources.
 
+Canonical configuration rendering behavioral reference
+--------------------------------------------------------
+
+Proctor's complete rendered deployment example was behaviorally compared with
+Mattermost revision c5835cd2b10e8c0ba0f7b71b9d7035721dbab36e, principally:
+
+- server/config/config.json;
+- server/public/model/config.go.
+
+The Mattermost model path is governed by the Apache License 2.0 exception in
+the upstream `server/public/LICENSE.txt`; the example is governed by the GNU
+Affero General Public License v3 in the upstream repository. Proctor's schema,
+defaults, structured entry examples, serialization contract, and completeness
+tests were independently written for its own configuration model. No
+Mattermost source or example values were copied.
+
 Client-facing TLS behavioral reference
 ---------------------------------------
 

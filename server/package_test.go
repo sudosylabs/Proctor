@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestPackageTargetCreatesOnlyBinaryAndExampleConfiguration(t *testing.T) {
+func TestPackageTargetCreatesOnlyBinaryAndConfigurationExamples(t *testing.T) {
 	t.Parallel()
 
 	output := filepath.Join(t.TempDir(), "proctor-release")
@@ -21,6 +21,9 @@ func TestPackageTargetCreatesOnlyBinaryAndExampleConfiguration(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join(output, "proctor"),
 		filepath.Join(output, "config", "config.example.json"),
+		filepath.Join(output, "config", "examples", "execution-host.json"),
+		filepath.Join(output, "config", "examples", "cas-provider.json"),
+		filepath.Join(output, "config", "examples", "oidc-provider.json"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("package artifact %q: %v", path, err)

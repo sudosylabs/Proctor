@@ -1,0 +1,36 @@
+{
+  "ID": "campus-oidc",
+  "Type": "oidc",
+  "DisplayName": "Campus OIDC",
+  "Enabled": true,
+  "AutoProvision": true,
+  "Claims": {
+    "Subject": "sub",
+    "Username": "preferred_username",
+    "Email": "email",
+    "EmailVerifiedClaim": "email_verified",
+    "FirstName": "given_name",
+    "LastName": "family_name",
+    "DisplayName": "name",
+    "HomeOrganization": "",
+    "Affiliation": "",
+    "AllowedHomeOrganizations": [],
+    "TrustEmail": false,
+    "MultiFactorAttribute": "",
+    "MultiFactorValues": []
+  },
+  "CAS": null,
+  "OIDC": {
+    "Issuer": "https://sso.example.edu/oidc",
+    "ClientID": "proctor",
+    "ClientSecret": "replace-with-oidc-client-secret",
+    "Scopes": [
+      "openid",
+      "profile",
+      "email"
+    ],
+    "UseUserInfo": true,
+    "Timeout": "5s",
+    "MaxResponseBytes": 65536
+  }
+}

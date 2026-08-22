@@ -13,7 +13,8 @@ the code and component contracts for that detail.
   `platform.Service`, a discarded non-owning projection wires `app.App`, HTTP,
   WebSocket and Jobs, and `Server` alone owns milestone-based startup,
   readiness, listener handoff, bounded drain and reverse shutdown.
-- Required operator-owned PascalCase deployment configuration, bounded
+- Required operator-owned PascalCase deployment configuration with a complete
+  canonical default and validated structured-entry examples, bounded
   asynchronous structured logging with rotated targets and failure/drop
   diagnostics, automatic locked forward migrations, explicit dependency
   startup reporting, health/readiness, graceful shutdown, built-in static TLS,

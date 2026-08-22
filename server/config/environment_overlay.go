@@ -116,7 +116,7 @@ func stringListEnvironmentOverride(
 			return nil
 		},
 		restore: func(candidate *Config, persisted Config) {
-			*field(candidate) = append([]string(nil), (*field(&persisted))...)
+			*field(candidate) = cloneSlice(*field(&persisted))
 		},
 	}
 }

@@ -42,6 +42,8 @@
       "Addresses": [
         "127.0.0.1:6379"
       ],
+      "Username": "",
+      "Password": "",
       "Database": 0,
       "TLS": false,
       "ConnectTimeout": "5s"
@@ -91,7 +93,12 @@
     },
     "S3": {
       "Endpoint": "",
+      "AccessKey": "",
+      "SecretKey": "",
+      "SessionToken": "",
       "Bucket": "",
+      "Prefix": "",
+      "Region": "",
       "Secure": true
     }
   },
@@ -172,7 +179,12 @@
         "Type": "console",
         "Level": "info",
         "Format": "text",
-        "QueueSize": 256
+        "File": "",
+        "QueueSize": 256,
+        "MaxSizeMB": 0,
+        "MaxAgeDays": 0,
+        "MaxBackups": 0,
+        "Compress": false
       }
     ]
   }

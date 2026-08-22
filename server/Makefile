@@ -48,6 +48,7 @@ package:
 	mkdir -p "$(PACKAGE_DIR)/config"
 	go build -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
 	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
+	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
 	@test ! -e "$(PACKAGE_DIR)/config/config.json"
 
 mail-templates-install:

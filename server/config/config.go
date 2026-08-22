@@ -68,15 +68,15 @@ type Server struct {
 // ACME HTTP-01 challenges and redirects share one lifecycle.
 type ServerTLS struct {
 	Mode               ServerTLSMode     `json:"Mode"`
-	CertificateFile    string            `json:"CertificateFile,omitempty"`
-	PrivateKeyFile     string            `json:"PrivateKeyFile,omitempty"`
+	CertificateFile    string            `json:"CertificateFile"`
+	PrivateKeyFile     string            `json:"PrivateKeyFile"`
 	LetsEncrypt        ServerLetsEncrypt `json:"LetsEncrypt"`
 	ForwardHTTPToHTTPS bool              `json:"ForwardHTTPToHTTPS"`
 	HTTPListenAddress  string            `json:"HTTPListenAddress"`
 }
 
 type ServerLetsEncrypt struct {
-	Email          string `json:"Email,omitempty"`
+	Email          string `json:"Email"`
 	CacheDirectory string `json:"CacheDirectory"`
 }
 
@@ -85,12 +85,12 @@ type LogTarget struct {
 	Type       string `json:"Type"`
 	Level      string `json:"Level"`
 	Format     string `json:"Format"`
-	File       string `json:"File,omitempty"`
+	File       string `json:"File"`
 	QueueSize  int    `json:"QueueSize"`
-	MaxSizeMB  int    `json:"MaxSizeMB,omitempty"`
-	MaxAgeDays int    `json:"MaxAgeDays,omitempty"`
-	MaxBackups int    `json:"MaxBackups,omitempty"`
-	Compress   bool   `json:"Compress,omitempty"`
+	MaxSizeMB  int    `json:"MaxSizeMB"`
+	MaxAgeDays int    `json:"MaxAgeDays"`
+	MaxBackups int    `json:"MaxBackups"`
+	Compress   bool   `json:"Compress"`
 }
 
 type Log struct {
@@ -114,8 +114,8 @@ type Database struct {
 
 type CacheRedis struct {
 	Addresses      []string `json:"Addresses"`
-	Username       string   `json:"Username,omitempty"`
-	Password       string   `json:"Password,omitempty"`
+	Username       string   `json:"Username"`
+	Password       string   `json:"Password"`
 	Database       int      `json:"Database"`
 	TLS            bool     `json:"TLS"`
 	ConnectTimeout Duration `json:"ConnectTimeout"`
@@ -139,9 +139,9 @@ type Cache struct {
 type ClusterMemberlist struct {
 	BindAddress        string   `json:"BindAddress"`
 	AdvertiseAddress   string   `json:"AdvertiseAddress"`
-	EncryptionKey      string   `json:"EncryptionKey,omitempty"`
-	DecryptionKeys     []string `json:"DecryptionKeys,omitempty"`
-	SeedAddresses      []string `json:"SeedAddresses,omitempty"`
+	EncryptionKey      string   `json:"EncryptionKey"`
+	DecryptionKeys     []string `json:"DecryptionKeys"`
+	SeedAddresses      []string `json:"SeedAddresses"`
 	DiscoveryTTL       Duration `json:"DiscoveryTTL"`
 	DiscoveryHeartbeat Duration `json:"DiscoveryHeartbeat"`
 	AllowPublicBind    bool     `json:"AllowPublicBind"`
@@ -159,11 +159,11 @@ type Cluster struct {
 
 type MailSMTP struct {
 	Address         string   `json:"Address"`
-	ServerName      string   `json:"ServerName,omitempty"`
-	LocalName       string   `json:"LocalName,omitempty"`
+	ServerName      string   `json:"ServerName"`
+	LocalName       string   `json:"LocalName"`
 	Security        string   `json:"Security"`
-	Username        string   `json:"Username,omitempty"`
-	Password        string   `json:"Password,omitempty"`
+	Username        string   `json:"Username"`
+	Password        string   `json:"Password"`
 	Authentication  string   `json:"Authentication"`
 	Timeout         Duration `json:"Timeout"`
 	MessageIDDomain string   `json:"MessageIDDomain"`
@@ -174,15 +174,15 @@ type MailSMTP struct {
 // SecretSealing configures a primary AES-256 encryption key and the bounded
 // fallback ring used to read values written before rotation.
 type SecretSealing struct {
-	EncryptionKey  string   `json:"EncryptionKey,omitempty"`
-	DecryptionKeys []string `json:"DecryptionKeys,omitempty"`
+	EncryptionKey  string   `json:"EncryptionKey"`
+	DecryptionKeys []string `json:"DecryptionKeys"`
 }
 
 type Mail struct {
 	Enabled       bool          `json:"Enabled"`
 	Backend       string        `json:"Backend"`
 	FromAddress   string        `json:"FromAddress"`
-	FromName      string        `json:"FromName,omitempty"`
+	FromName      string        `json:"FromName"`
 	SMTP          MailSMTP      `json:"SMTP"`
 	SecretSealing SecretSealing `json:"SecretSealing"`
 }
@@ -193,12 +193,12 @@ type VFSLocal struct {
 
 type VFSS3 struct {
 	Endpoint     string `json:"Endpoint"`
-	AccessKey    string `json:"AccessKey,omitempty"`
-	SecretKey    string `json:"SecretKey,omitempty"`
-	SessionToken string `json:"SessionToken,omitempty"`
+	AccessKey    string `json:"AccessKey"`
+	SecretKey    string `json:"SecretKey"`
+	SessionToken string `json:"SessionToken"`
 	Bucket       string `json:"Bucket"`
-	Prefix       string `json:"Prefix,omitempty"`
-	Region       string `json:"Region,omitempty"`
+	Prefix       string `json:"Prefix"`
+	Region       string `json:"Region"`
 	Secure       bool   `json:"Secure"`
 }
 
@@ -216,11 +216,11 @@ type ExecutionHost struct {
 	ID                    string `json:"ID"`
 	Address               string `json:"Address"`
 	Security              string `json:"Security"`
-	Token                 string `json:"Token,omitempty"`
-	ServerName            string `json:"ServerName,omitempty"`
-	CAFile                string `json:"CAFile,omitempty"`
-	ClientCertificateFile string `json:"ClientCertificateFile,omitempty"`
-	ClientKeyFile         string `json:"ClientKeyFile,omitempty"`
+	Token                 string `json:"Token"`
+	ServerName            string `json:"ServerName"`
+	CAFile                string `json:"CAFile"`
+	ClientCertificateFile string `json:"ClientCertificateFile"`
+	ClientKeyFile         string `json:"ClientKeyFile"`
 }
 
 // Execution configures the installation's bounded set of execenv hosts.
@@ -275,7 +275,7 @@ type PersonalAccessTokens struct {
 // DevelopmentMode permits process-generated secret material only while the
 // installation is pristine and both listener and public origin are loopback-only.
 type Bootstrap struct {
-	Secret          string `json:"Secret,omitempty"`
+	Secret          string `json:"Secret"`
 	DevelopmentMode bool   `json:"DevelopmentMode"`
 }
 
@@ -285,8 +285,8 @@ type Bootstrap struct {
 type MFA struct {
 	Enabled           bool     `json:"Enabled"`
 	Issuer            string   `json:"Issuer"`
-	EncryptionKey     string   `json:"EncryptionKey,omitempty"`
-	DecryptionKeys    []string `json:"DecryptionKeys,omitempty"`
+	EncryptionKey     string   `json:"EncryptionKey"`
+	DecryptionKeys    []string `json:"DecryptionKeys"`
 	SetupTTL          Duration `json:"SetupTTL"`
 	RecoveryCodeCount int      `json:"RecoveryCodeCount"`
 }
@@ -371,6 +371,8 @@ func Default() Config {
 			Memberlist: ClusterMemberlist{
 				BindAddress:        "127.0.0.1:7946",
 				AdvertiseAddress:   "127.0.0.1:7946",
+				DecryptionKeys:     []string{},
+				SeedAddresses:      []string{},
 				DiscoveryTTL:       Duration{Duration: 30 * time.Second},
 				DiscoveryHeartbeat: Duration{Duration: 10 * time.Second},
 			},
@@ -389,6 +391,7 @@ func Default() Config {
 				MaxMessageBytes: 25 << 20,
 				MaxRecipients:   100,
 			},
+			SecretSealing: SecretSealing{DecryptionKeys: []string{}},
 		},
 		VFS: VFS{
 			Backend: "local",
@@ -444,6 +447,7 @@ func Default() Config {
 			MFA: MFA{
 				Enabled:           false,
 				Issuer:            "Proctor",
+				DecryptionKeys:    []string{},
 				SetupTTL:          Duration{Duration: 10 * time.Minute},
 				RecoveryCodeCount: 10,
 			},
@@ -472,25 +476,13 @@ func Default() Config {
 
 func (c Config) Clone() Config {
 	cloned := c
-	cloned.Log.Targets = append([]LogTarget(nil), c.Log.Targets...)
-	cloned.Cache.Redis.Addresses = append([]string(nil), c.Cache.Redis.Addresses...)
-	cloned.Execution.Hosts = append([]ExecutionHost{}, c.Execution.Hosts...)
-	cloned.Cluster.Memberlist.SeedAddresses = append(
-		[]string(nil),
-		c.Cluster.Memberlist.SeedAddresses...,
-	)
-	cloned.Cluster.Memberlist.DecryptionKeys = append(
-		[]string(nil),
-		c.Cluster.Memberlist.DecryptionKeys...,
-	)
-	cloned.Mail.SecretSealing.DecryptionKeys = append(
-		[]string(nil),
-		c.Mail.SecretSealing.DecryptionKeys...,
-	)
-	cloned.Authentication.MFA.DecryptionKeys = append(
-		[]string(nil),
-		c.Authentication.MFA.DecryptionKeys...,
-	)
+	cloned.Log.Targets = cloneSlice(c.Log.Targets)
+	cloned.Cache.Redis.Addresses = cloneSlice(c.Cache.Redis.Addresses)
+	cloned.Execution.Hosts = cloneSlice(c.Execution.Hosts)
+	cloned.Cluster.Memberlist.SeedAddresses = cloneSlice(c.Cluster.Memberlist.SeedAddresses)
+	cloned.Cluster.Memberlist.DecryptionKeys = cloneSlice(c.Cluster.Memberlist.DecryptionKeys)
+	cloned.Mail.SecretSealing.DecryptionKeys = cloneSlice(c.Mail.SecretSealing.DecryptionKeys)
+	cloned.Authentication.MFA.DecryptionKeys = cloneSlice(c.Authentication.MFA.DecryptionKeys)
 	if c.Authentication.External.Providers != nil {
 		cloned.Authentication.External.Providers = append(
 			make([]ExternalAuthenticationProvider, 0, len(c.Authentication.External.Providers)),
@@ -519,11 +511,18 @@ func (c Config) Clone() Config {
 		}
 		if sourceProvider.OIDC != nil {
 			oidc := *sourceProvider.OIDC
-			oidc.Scopes = append([]string(nil), sourceProvider.OIDC.Scopes...)
+			oidc.Scopes = cloneSlice(sourceProvider.OIDC.Scopes)
 			provider.OIDC = &oidc
 		}
 	}
 	return cloned
+}
+
+func cloneSlice[T any](values []T) []T {
+	if values == nil {
+		return nil
+	}
+	return append(make([]T, 0, len(values)), values...)
 }
 
 // Redacted returns a safe copy for display.
