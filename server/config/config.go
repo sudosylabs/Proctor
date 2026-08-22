@@ -15,9 +15,19 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"golang.org/x/net/idna"
 )
 
 const SchemaVersion = 1
+
+type ServerTLSMode string
+
+const (
+	ServerTLSModeDisabled    ServerTLSMode = "disabled"
+	ServerTLSModeStatic      ServerTLSMode = "static"
+	ServerTLSModeLetsEncrypt ServerTLSMode = "lets_encrypt"
+)
 
 type Duration struct {
 	time.Duration
@@ -41,15 +51,33 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 }
 
 type Server struct {
-	ListenAddress     string   `json:"ListenAddress"`
-	PublicURL         string   `json:"PublicURL"`
-	ReadHeaderTimeout Duration `json:"ReadHeaderTimeout"`
-	ReadTimeout       Duration `json:"ReadTimeout"`
-	WriteTimeout      Duration `json:"WriteTimeout"`
-	IdleTimeout       Duration `json:"IdleTimeout"`
-	ShutdownTimeout   Duration `json:"ShutdownTimeout"`
-	MaxHeaderBytes    int      `json:"MaxHeaderBytes"`
-	MaxBodyBytes      int64    `json:"MaxBodyBytes"`
+	ListenAddress     string    `json:"ListenAddress"`
+	PublicURL         string    `json:"PublicURL"`
+	TLS               ServerTLS `json:"TLS"`
+	ReadHeaderTimeout Duration  `json:"ReadHeaderTimeout"`
+	ReadTimeout       Duration  `json:"ReadTimeout"`
+	WriteTimeout      Duration  `json:"WriteTimeout"`
+	IdleTimeout       Duration  `json:"IdleTimeout"`
+	ShutdownTimeout   Duration  `json:"ShutdownTimeout"`
+	MaxHeaderBytes    int       `json:"MaxHeaderBytes"`
+	MaxBodyBytes      int64     `json:"MaxBodyBytes"`
+}
+
+// ServerTLS configures the client-facing listener. Mode is one of disabled,
+// static, or lets_encrypt. HTTP forwarding is owned by the same runtime so
+// ACME HTTP-01 challenges and redirects share one lifecycle.
+type ServerTLS struct {
+	Mode               ServerTLSMode     `json:"Mode"`
+	CertificateFile    string            `json:"CertificateFile,omitempty"`
+	PrivateKeyFile     string            `json:"PrivateKeyFile,omitempty"`
+	LetsEncrypt        ServerLetsEncrypt `json:"LetsEncrypt"`
+	ForwardHTTPToHTTPS bool              `json:"ForwardHTTPToHTTPS"`
+	HTTPListenAddress  string            `json:"HTTPListenAddress"`
+}
+
+type ServerLetsEncrypt struct {
+	Email          string `json:"Email,omitempty"`
+	CacheDirectory string `json:"CacheDirectory"`
 }
 
 type LogTarget struct {
@@ -299,8 +327,15 @@ func Default() Config {
 	return Config{
 		Version: SchemaVersion,
 		Server: Server{
-			ListenAddress:     "127.0.0.1:8065",
-			PublicURL:         "http://localhost:8065",
+			ListenAddress: "127.0.0.1:8065",
+			PublicURL:     "http://localhost:8065",
+			TLS: ServerTLS{
+				Mode:              ServerTLSModeDisabled,
+				HTTPListenAddress: "127.0.0.1:8080",
+				LetsEncrypt: ServerLetsEncrypt{
+					CacheDirectory: "./data/acme",
+				},
+			},
 			ReadHeaderTimeout: Duration{Duration: 10 * time.Second},
 			ReadTimeout:       Duration{Duration: 30 * time.Second},
 			WriteTimeout:      Duration{Duration: 30 * time.Second},
@@ -584,6 +619,7 @@ func (c Config) Validate() error {
 	}
 	validateListenAddress(c.Server.ListenAddress, add)
 	validatePublicURL(c.Server.PublicURL, add)
+	validateServerTLS(c.Server, c.Cluster, add)
 
 	durations := []struct {
 		field string
@@ -1397,17 +1433,30 @@ func validateDatabase(database Database, add func(string, string)) {
 }
 
 func validateListenAddress(address string, add func(string, string)) {
+	validateTCPListenAddress("server.listen_address", address, true, add)
+}
+
+func validateTCPListenAddress(
+	field string,
+	address string,
+	allowEphemeralPort bool,
+	add func(string, string),
+) {
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
-		add("server.listen_address", "must be a host:port TCP address")
+		add(field, "must be a host:port TCP address")
 		return
 	}
 	if strings.ContainsAny(host, "\r\n") {
-		add("server.listen_address", "host contains invalid characters")
+		add(field, "host contains invalid characters")
 	}
 	port, err := strconv.Atoi(portText)
-	if err != nil || port < 0 || port > 65535 {
-		add("server.listen_address", "port must be between 0 and 65535")
+	minimumPort := 1
+	if allowEphemeralPort {
+		minimumPort = 0
+	}
+	if err != nil || port < minimumPort || port > 65535 {
+		add(field, fmt.Sprintf("port must be between %d and 65535", minimumPort))
 	}
 }
 
@@ -1429,6 +1478,104 @@ func validatePublicURL(raw string, add func(string, string)) {
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		add("server.public_url", "query and fragment are forbidden")
 	}
+}
+
+func validateServerTLS(server Server, cluster Cluster, add func(string, string)) {
+	settings := server.TLS
+	parsedPublicURL, _ := url.Parse(server.PublicURL)
+
+	for _, item := range []struct {
+		field string
+		value string
+	}{
+		{"server.tls.certificate_file", settings.CertificateFile},
+		{"server.tls.private_key_file", settings.PrivateKeyFile},
+		{"server.tls.lets_encrypt.cache_directory", settings.LetsEncrypt.CacheDirectory},
+	} {
+		if strings.ContainsRune(item.value, '\x00') {
+			add(item.field, "contains a null byte")
+		}
+	}
+	if settings.LetsEncrypt.Email != "" && !validMailbox(settings.LetsEncrypt.Email) {
+		add("server.tls.lets_encrypt.email", "must be a plain email address")
+	}
+
+	switch settings.Mode {
+	case ServerTLSModeDisabled:
+	case ServerTLSModeStatic:
+		if strings.TrimSpace(settings.CertificateFile) == "" {
+			add("server.tls.certificate_file", "is required when TLS mode is static")
+		}
+		if strings.TrimSpace(settings.PrivateKeyFile) == "" {
+			add("server.tls.private_key_file", "is required when TLS mode is static")
+		}
+	case ServerTLSModeLetsEncrypt:
+		if strings.TrimSpace(settings.LetsEncrypt.CacheDirectory) == "" {
+			add("server.tls.lets_encrypt.cache_directory", "is required when TLS mode is lets_encrypt")
+		}
+		if server.LetsEncryptHostname() == "" {
+			add("server.public_url", "must use a fully qualified DNS hostname for Let's Encrypt")
+		}
+		if cluster.Backend == "memberlist" {
+			add("server.tls.mode", "lets_encrypt is single-node only; terminate public TLS at the load balancer in a cluster")
+		}
+		if !settings.ForwardHTTPToHTTPS {
+			add("server.tls.forward_http_to_https", "must be enabled for Let's Encrypt HTTP-01 challenges")
+		}
+	default:
+		add("server.tls.mode", "must be disabled, static, or lets_encrypt")
+	}
+
+	if settings.Mode != ServerTLSModeDisabled && (parsedPublicURL == nil || parsedPublicURL.Scheme != "https") {
+		add("server.public_url", "scheme must be https when built-in TLS is enabled")
+	}
+	if settings.ForwardHTTPToHTTPS {
+		if settings.Mode == ServerTLSModeDisabled {
+			add("server.tls.forward_http_to_https", "requires static or lets_encrypt TLS mode")
+		}
+		validateTCPListenAddress("server.tls.http_listen_address", settings.HTTPListenAddress, false, add)
+		if settings.HTTPListenAddress == server.ListenAddress {
+			add("server.tls.http_listen_address", "must differ from server.listen_address")
+		}
+	}
+}
+
+// LetsEncryptHostname returns the canonical exact DNS hostname eligible for
+// automatic certificate issuance, or an empty string when PublicURL cannot
+// identify one safely.
+func (server Server) LetsEncryptHostname() string {
+	parsed, err := url.Parse(server.PublicURL)
+	if err != nil {
+		return ""
+	}
+	hostname := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if !validACMEDNSHostname(hostname) {
+		return ""
+	}
+	return hostname
+}
+
+func validACMEDNSHostname(hostname string) bool {
+	if len(hostname) == 0 || len(hostname) > 253 || hostname == "localhost" ||
+		net.ParseIP(hostname) != nil || !strings.Contains(hostname, ".") {
+		return false
+	}
+	canonical, err := idna.Lookup.ToASCII(hostname)
+	if err != nil || canonical != hostname {
+		return false
+	}
+	for _, label := range strings.Split(hostname, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, character := range label {
+			if (character < 'a' || character > 'z') &&
+				(character < '0' || character > '9') && character != '-' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validateBootstrap(server Server, bootstrap Bootstrap, add func(string, string)) {

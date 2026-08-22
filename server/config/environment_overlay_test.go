@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 103 {
-		t.Fatalf("environment override definitions = %d, want 103", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 110 {
+		t.Fatalf("environment override definitions = %d, want 110", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -168,6 +168,9 @@ func validEnvironmentValue(
 		"local",
 		"smtp",
 		"none",
+		"disabled",
+		"static",
+		"lets_encrypt",
 		"localhost",
 		"operator@example.edu",
 		"./changed",
@@ -223,6 +226,11 @@ func validBaseForEnvironmentOverride(key string) Config {
 	switch key {
 	case "PROCTOR_SERVER_PUBLIC_URL":
 		base.Authentication.Bootstrap.DevelopmentMode = false
+	case "PROCTOR_SERVER_TLS_MODE", "PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS":
+		base.Server.PublicURL = "https://localhost:8065"
+		base.Server.TLS.Mode = "static"
+		base.Server.TLS.CertificateFile = "./certificate.pem"
+		base.Server.TLS.PrivateKeyFile = "./private-key.pem"
 	case "PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE":
 		base.Authentication.Bootstrap.Secret = "operator-provided-bootstrap-secret-32-bytes"
 	case "PROCTOR_CACHE_BACKEND":

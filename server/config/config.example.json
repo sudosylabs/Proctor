@@ -3,6 +3,17 @@
   "Server": {
     "ListenAddress": "127.0.0.1:8065",
     "PublicURL": "http://localhost:8065",
+    "TLS": {
+      "Mode": "disabled",
+      "CertificateFile": "",
+      "PrivateKeyFile": "",
+      "LetsEncrypt": {
+        "Email": "",
+        "CacheDirectory": "./data/acme"
+      },
+      "ForwardHTTPToHTTPS": false,
+      "HTTPListenAddress": "127.0.0.1:8080"
+    },
     "ReadHeaderTimeout": "10s",
     "ReadTimeout": "30s",
     "WriteTimeout": "30s",

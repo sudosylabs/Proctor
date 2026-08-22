@@ -11,6 +11,27 @@ Application settings include institution presentation, branding,
 academic policy, exam defaults, invitation rules, and other administrator
 behavior.
 
+`Server.TLS.Mode` selects `disabled`, `static`, or `lets_encrypt`. Static mode
+requires `CertificateFile` and `PrivateKeyFile`. Let's Encrypt mode requires an
+HTTPS `PublicURL` with one fully qualified DNS hostname, a private local
+`LetsEncrypt.CacheDirectory`, and `ForwardHTTPToHTTPS`; `LetsEncrypt.Email` is
+optional. Forwarding binds `HTTPListenAddress`, which must differ from the main
+listener. Let's Encrypt is a single-node convenience and is invalid with the
+Memberlist backend; clustered production terminates public TLS at its load
+balancer. Static TLS remains valid in a cluster for an operator-managed
+load-balancer-to-node encrypted hop.
+
+The corresponding environment overrides are
+`PROCTOR_SERVER_TLS_MODE`, `PROCTOR_SERVER_TLS_CERTIFICATE_FILE`,
+`PROCTOR_SERVER_TLS_PRIVATE_KEY_FILE`,
+`PROCTOR_SERVER_TLS_LETS_ENCRYPT_EMAIL`,
+`PROCTOR_SERVER_TLS_LETS_ENCRYPT_CACHE_DIRECTORY`,
+`PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS`, and
+`PROCTOR_SERVER_TLS_HTTP_LISTEN_ADDRESS`. TLS mode, listener, certificate, and
+forwarding changes require restart. HTTP certificates and Memberlist gossip
+keys are independent deployment capabilities and never substitute for one
+another.
+
 Provider issuer/service URLs, client credentials, certificates, claim mapping,
 and SMTP remain deployment configuration. The revisioned `AccessPolicy` is
 application data: it selects local-login, credential-enrollment, invitation,

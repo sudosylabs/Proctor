@@ -146,6 +146,26 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_SERVER_PUBLIC_URL", func(cfg *Config) *string {
 		return &cfg.Server.PublicURL
 	}),
+	scalarEnvironmentOverride("PROCTOR_SERVER_TLS_MODE", func(cfg *Config) *ServerTLSMode {
+		return &cfg.Server.TLS.Mode
+	}, func(value string) (ServerTLSMode, error) {
+		return ServerTLSMode(value), nil
+	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_TLS_CERTIFICATE_FILE", func(cfg *Config) *string {
+		return &cfg.Server.TLS.CertificateFile
+	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_TLS_PRIVATE_KEY_FILE", func(cfg *Config) *string {
+		return &cfg.Server.TLS.PrivateKeyFile
+	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_TLS_LETS_ENCRYPT_EMAIL", func(cfg *Config) *string {
+		return &cfg.Server.TLS.LetsEncrypt.Email
+	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_TLS_LETS_ENCRYPT_CACHE_DIRECTORY", func(cfg *Config) *string {
+		return &cfg.Server.TLS.LetsEncrypt.CacheDirectory
+	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_TLS_HTTP_LISTEN_ADDRESS", func(cfg *Config) *string {
+		return &cfg.Server.TLS.HTTPListenAddress
+	}),
 	stringEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET", func(cfg *Config) *string {
 		return &cfg.Authentication.Bootstrap.Secret
 	}),
@@ -424,6 +444,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	boolEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE", func(cfg *Config) *bool {
 		return &cfg.Authentication.Bootstrap.DevelopmentMode
+	}),
+	boolEnvironmentOverride("PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS", func(cfg *Config) *bool {
+		return &cfg.Server.TLS.ForwardHTTPToHTTPS
 	}),
 	intEnvironmentOverride("PROCTOR_DATABASE_MAX_OPEN_CONNECTIONS", func(cfg *Config) *int {
 		return &cfg.Database.MaxOpenConnections
