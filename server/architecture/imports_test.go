@@ -107,6 +107,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "identity-provider constraints cannot import configuration", from: serverModule + "/identityprovider", imported: serverModule + "/config"},
 		{name: "model build tools cannot import server code", from: serverModule + "/model/internal/idgen", imported: serverModule + "/app"},
 		{name: "model build tools cannot import third-party code", from: serverModule + "/model/internal/idgen", imported: "golang.org/x/tools/go/packages"},
+		{name: "ACME adapter cannot import application", from: serverModule + "/internal/autocert", imported: serverModule + "/app"},
+		{name: "ACME adapter cannot import unrelated third-party code", from: serverModule + "/internal/autocert", imported: "github.com/gorilla/mux"},
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
 		{name: "Exam child cannot import parent application", from: serverModule + "/app/exam", imported: serverModule + "/app"},
@@ -233,6 +235,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "mail preview may import localization", from: serverModule + "/cmd/mailpreview", imported: serverModule + "/localization"},
 		{name: "standard library remains available", from: serverModule + "/app", imported: "context"},
 		{name: "model build tools may import standard library", from: serverModule + "/model/internal/idgen", imported: "go/format"},
+		{name: "ACME adapter may import ACME protocol", from: serverModule + "/internal/autocert", imported: "golang.org/x/crypto/acme"},
+		{name: "ACME adapter may canonicalize IDNs", from: serverModule + "/internal/autocert", imported: "golang.org/x/net/idna"},
 	}
 
 	for _, tt := range tests {
@@ -304,6 +308,9 @@ func forbiddenImport(from, imported string) bool {
 		return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
 	case packageOrBelow(from, serverModule+"/model/internal/idgen"):
 		return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
+	case from == serverModule+"/internal/autocert":
+		return strings.HasPrefix(imported, repositoryModule+"/") ||
+			(thirdPartyImport(imported) && imported != "golang.org/x/crypto/acme" && imported != "golang.org/x/net/idna")
 	case from == serverModule+"/model":
 		return standardInfrastructureImport(imported) || thirdPartyImport(imported) ||
 			(strings.HasPrefix(imported, repositoryModule+"/") && imported != serverModule+"/identityprovider")
@@ -502,6 +509,7 @@ func knownProductionPackage(packagePath string) bool {
 	}
 	if packagePath == serverModule || packagePath == serverModule+"/identityprovider" || packagePath == serverModule+"/model" ||
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
+		packagePath == serverModule+"/internal/autocert" ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
 		packagePath == serverModule+"/logging" || packagePath == serverModule+"/migrations" ||
 		packagePath == serverModule+"/secretseal" || packagePath == serverModule+"/localization" ||

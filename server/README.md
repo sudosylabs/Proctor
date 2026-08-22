@@ -313,6 +313,72 @@ When MFA is enabled, `Authentication.MFA.EncryptionKey` must be a standard
 base64-encoded 32-byte key. Previous keys may remain in `DecryptionKeys`
 during rotation.
 
+### Public TLS and HTTP forwarding
+
+`Server.TLS.Mode` has three values:
+
+- `disabled` serves cleartext HTTP. This is also the correct application-node
+  setting when a production load balancer terminates public TLS; `PublicURL`
+  remains the external HTTPS URL.
+- `static` serves HTTPS with operator-provided `CertificateFile` and
+  `PrivateKeyFile` paths.
+- `lets_encrypt` retrieves and renews a certificate for the single exact DNS
+  hostname in `PublicURL` and keeps its account and certificate material in the
+  node-local `LetsEncrypt.CacheDirectory`.
+
+Static TLS with port 80 forwarding can be configured as follows:
+
+```json
+{
+  "ListenAddress": ":443",
+  "PublicURL": "https://proctor.example.edu",
+  "TLS": {
+    "Mode": "static",
+    "CertificateFile": "/etc/proctor/tls/certificate.pem",
+    "PrivateKeyFile": "/etc/proctor/tls/private-key.pem",
+    "LetsEncrypt": {
+      "Email": "",
+      "CacheDirectory": "/var/lib/proctor/acme"
+    },
+    "ForwardHTTPToHTTPS": true,
+    "HTTPListenAddress": ":80"
+  }
+}
+```
+
+For automatic single-node certificates, change the TLS block to:
+
+```json
+{
+  "Mode": "lets_encrypt",
+  "CertificateFile": "",
+  "PrivateKeyFile": "",
+  "LetsEncrypt": {
+    "Email": "operator@example.edu",
+    "CacheDirectory": "/var/lib/proctor/acme"
+  },
+  "ForwardHTTPToHTTPS": true,
+  "HTTPListenAddress": ":80"
+}
+```
+
+The public DNS record must resolve to this server and ports 80 and 443 must be
+reachable by the certificate authority. Binding those privileged ports may
+require an operating-system capability or a supervisor that grants them. The
+cache directory is created with mode `0700`; startup rejects an existing cache
+directory that exposes the private material to group or other users or cannot
+be written. Non-challenge HTTP requests receive `308 Permanent Redirect` to the
+configured public authority with their path and query preserved.
+
+Built-in Let's Encrypt is intentionally rejected with the Memberlist cluster
+backend because its cache, issuance, and renewal are node-local. Active-active
+deployments use redundant load balancers for the public certificate, ACME, and
+HTTP forwarding. If the load balancer-to-node hop must also be encrypted,
+configure static TLS on every application node and provision those certificates
+through operator infrastructure. Public TLS certificates and Memberlist's
+shared gossip-encryption key ring are separate and must never reuse key
+material.
+
 Durable recoverable mail payloads use the independent
 `Mail.SecretSealing.EncryptionKey`, canonical standard base64 for 32 bytes.
 Up to eight previous keys may remain in

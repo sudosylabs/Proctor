@@ -72,6 +72,35 @@ likewise commits the new immutable Revision and Sitting retarget before
 notifying candidates. The complete lifecycle and correction contract is
 [Examinations](./examinations.md).
 
+## Client-facing HTTP and TLS
+
+The root HTTP-serving module owns the complete client-facing listener lifecycle
+behind one `Serve`/`Shutdown`/`Close` interface. Deployment selects `disabled`,
+`static`, or `lets_encrypt` TLS mode. Static mode loads an operator-provided
+certificate and private key. Let's Encrypt mode uses one exact DNS hostname
+from `Server.PublicURL`, accepts the ACME terms, and persists account and
+certificate material in a node-local directory that must be private and
+writable before readiness. Built-in TLS requires TLS 1.2 or newer and never
+reuses Memberlist key material. Automatic-certificate maintenance starts only
+inside HTTP serving; shutdown cancels issuance and renewal and waits for its
+owned background work before the serving lifecycle returns.
+
+Optional HTTP-to-HTTPS forwarding is part of the same module rather than an
+untracked sibling process. The HTTP listener binds before the HTTPS listener is
+accepted for readiness, serves ACME HTTP-01 challenges when applicable, and
+otherwise returns a permanent redirect to the configured public authority
+while preserving the request path and query. It never derives the redirect
+authority from the untrusted request `Host`. Startup failure of either listener
+closes the other; graceful and forced shutdown stop both.
+
+Let's Encrypt cache and issuance are deliberately node-local and are not
+coordinated through PostgreSQL, Memberlist, or shared storage. Consequently,
+`lets_encrypt` is rejected in Memberlist mode. An active-active installation
+terminates public TLS and performs HTTP forwarding at its redundant load
+balancer. Operators may use static TLS independently on each application node
+when they require encryption from the load balancer to the node; certificate
+distribution and trust remain operator infrastructure concerns.
+
 ## High availability
 
 Several active application processes sharing one installation form an

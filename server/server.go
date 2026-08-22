@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,10 +110,6 @@ type httpRuntime interface {
 	Close() error
 }
 
-type standardHTTPRuntime struct {
-	server *http.Server
-}
-
 // ownershipListener transfers the bound listener at the first HTTP accept.
 // Until then Server remains responsible for closing it on cancellation.
 type ownershipListener struct {
@@ -150,11 +148,25 @@ func (l *ownershipListener) Close() error {
 type httpServerSettings struct {
 	handler           http.Handler
 	errorLog          *log.Logger
+	listen            func(string, string) (net.Listener, error)
+	tls               httpTLSSettings
 	readHeaderTimeout time.Duration
 	readTimeout       time.Duration
 	writeTimeout      time.Duration
 	idleTimeout       time.Duration
 	maxHeaderBytes    int
+}
+
+type httpTLSSettings struct {
+	mode                      config.ServerTLSMode
+	certificateFile           string
+	privateKeyFile            string
+	letsEncryptEmail          string
+	letsEncryptCacheDirectory string
+	letsEncryptHostname       string
+	forwardHTTPToHTTPS        bool
+	httpListenAddress         string
+	redirectAuthority         string
 }
 
 type runtimeSettings struct {
@@ -166,16 +178,44 @@ type runtimeSettings struct {
 	idleTimeout       time.Duration
 	shutdownTimeout   time.Duration
 	maxHeaderBytes    int
+	tls               httpTLSSettings
 }
 
 func runtimeSettingsFromConfig(settings config.Server) runtimeSettings {
+	publicURL, _ := url.Parse(settings.PublicURL)
+	authority := canonicalPublicURLAuthority(publicURL)
 	return runtimeSettings{
 		listenAddress: settings.ListenAddress, publicURL: settings.PublicURL,
 		readHeaderTimeout: settings.ReadHeaderTimeout.Duration,
 		readTimeout:       settings.ReadTimeout.Duration, writeTimeout: settings.WriteTimeout.Duration,
 		idleTimeout: settings.IdleTimeout.Duration, shutdownTimeout: settings.ShutdownTimeout.Duration,
 		maxHeaderBytes: settings.MaxHeaderBytes,
+		tls: httpTLSSettings{
+			mode:                      settings.TLS.Mode,
+			certificateFile:           settings.TLS.CertificateFile,
+			privateKeyFile:            settings.TLS.PrivateKeyFile,
+			letsEncryptEmail:          settings.TLS.LetsEncrypt.Email,
+			letsEncryptCacheDirectory: settings.TLS.LetsEncrypt.CacheDirectory,
+			letsEncryptHostname:       settings.LetsEncryptHostname(),
+			forwardHTTPToHTTPS:        settings.TLS.ForwardHTTPToHTTPS,
+			httpListenAddress:         settings.TLS.HTTPListenAddress,
+			redirectAuthority:         authority,
+		},
 	}
+}
+
+func canonicalPublicURLAuthority(publicURL *url.URL) string {
+	if publicURL == nil {
+		return ""
+	}
+	hostname := strings.TrimSuffix(strings.ToLower(publicURL.Hostname()), ".")
+	if port := publicURL.Port(); port != "" {
+		return net.JoinHostPort(hostname, port)
+	}
+	if strings.ContainsRune(hostname, ':') {
+		return "[" + hostname + "]"
+	}
+	return hostname
 }
 
 type runtimeComponents struct {
@@ -301,30 +341,6 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}
 	return result.server, nil
-}
-
-func newHTTPServer(settings httpServerSettings) httpRuntime {
-	return &standardHTTPRuntime{server: &http.Server{
-		Handler:           settings.handler,
-		ErrorLog:          settings.errorLog,
-		ReadHeaderTimeout: settings.readHeaderTimeout,
-		ReadTimeout:       settings.readTimeout,
-		WriteTimeout:      settings.writeTimeout,
-		IdleTimeout:       settings.idleTimeout,
-		MaxHeaderBytes:    settings.maxHeaderBytes,
-	}}
-}
-
-func (r *standardHTTPRuntime) Serve(listener net.Listener, accept func() bool) error {
-	return r.server.Serve(&ownershipListener{Listener: listener, accept: accept})
-}
-
-func (r *standardHTTPRuntime) Shutdown(ctx context.Context) error {
-	return r.server.Shutdown(ctx)
-}
-
-func (r *standardHTTPRuntime) Close() error {
-	return r.server.Close()
 }
 
 // Start starts shared infrastructure and HTTP serving in dependency order,
@@ -456,6 +472,8 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	httpServer := s.components.newHTTP(httpServerSettings{
 		handler:           s.components.transport,
 		errorLog:          s.components.logger.StdLogger(slog.LevelError),
+		listen:            s.components.listen,
+		tls:               settings.tls,
 		readHeaderTimeout: settings.readHeaderTimeout,
 		readTimeout:       settings.readTimeout,
 		writeTimeout:      settings.writeTimeout,
@@ -522,6 +540,8 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			"server started",
 			logging.String("listen_address", listener.Addr().String()),
 			logging.String("public_url", settings.publicURL),
+			logging.String("tls_mode", string(settings.tls.mode)),
+			logging.Bool("http_to_https_forwarding", settings.tls.forwardHTTPToHTTPS),
 			logging.String("version", app.Version),
 		)
 	}

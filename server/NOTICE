@@ -26,6 +26,39 @@ was behaviorally compared with Mattermost revision
 Proctor's corresponding walking-skeleton implementation was independently
 written and does not copy those Mattermost sources.
 
+Client-facing TLS behavioral reference
+---------------------------------------
+
+Proctor's built-in static TLS, single-node Let's Encrypt, and HTTP-to-HTTPS
+forwarding behavior was compared with Mattermost revision
+c5835cd2b10e8c0ba0f7b71b9d7035721dbab36e, principally:
+
+- server/channels/app/server.go, lines 1035-1233
+
+That Mattermost path is governed by the GNU Affero General Public License v3
+in the upstream repository. Proctor's HTTP runtime was independently written
+around its existing listener-ownership and readiness contract; no Mattermost
+source was copied. It deliberately uses an exact ACME hostname policy, current
+Go TLS defaults with a TLS 1.2 floor, canonical-host permanent redirects, and
+lifecycle ownership of both listeners.
+
+The automatic-certificate implementation in `server/internal/autocert` adapts
+the following files from `golang.org/x/crypto/acme/autocert` v0.52.0, revision
+a1c0d9929856c8aba2b31f079340f00578eda803, under the BSD 3-Clause License:
+
+- acme/autocert/autocert.go;
+- acme/autocert/cache.go;
+- acme/autocert/renewal.go;
+- LICENSE.
+
+The upstream copyright and license notice are preserved in those files and in
+`server/internal/autocert/LICENSE`. Proctor adds an explicitly closable manager:
+certificate issuance, deferred authorization cleanup, failed-issuance retry,
+and renewal work share a cancellable lifecycle, and Close waits for owned
+background work. The Proctor HTTP runtime additionally enforces its one exact
+canonical hostname before either cached-certificate selection or HTTP-01
+challenge handling.
+
 Transactional mail template workflow behavioral reference
 ---------------------------------------------------------
 
