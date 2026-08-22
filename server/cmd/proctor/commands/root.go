@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +48,7 @@ type executors struct {
 	migrateStatus        migrateStatusExecutor
 	recoverAdministrator administratorRecoveryExecutor
 	currentBuildInfo     buildInfoExecutor
+	effectiveUID         func() int
 }
 
 func productionExecutors() executors {
@@ -57,6 +59,7 @@ func productionExecutors() executors {
 		migrateStatus:        server.MigrateStatus,
 		recoverAdministrator: server.RecoverAdministratorAccess,
 		currentBuildInfo:     server.CurrentBuildInfo,
+		effectiveUID:         os.Geteuid,
 	}
 }
 
@@ -109,6 +112,9 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 		RunE: func(*cobra.Command, []string) error {
 			return newUsageError(text.value("cli.root.error.command_required", "a command is required", nil))
 		},
+		PersistentPreRun: func(command *cobra.Command, _ []string) {
+			checkForRootUser(command.ErrOrStderr(), execute.effectiveUID, text)
+		},
 	}
 	root.SetIn(stdin)
 	root.SetOut(stdout)
@@ -135,6 +141,20 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 		newVersionCommand(execute.currentBuildInfo, text),
 	)
 	return root
+}
+
+func checkForRootUser(stderr io.Writer, effectiveUID func() int, text commandText) {
+	if stderr == nil || effectiveUID == nil || effectiveUID() != 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(
+		stderr,
+		text.value(
+			"cli.root.warning.root_user",
+			"warning: running Proctor as root is not recommended; use a dedicated non-root user",
+			nil,
+		),
+	)
 }
 
 func configPath(command *cobra.Command, text commandText) (string, error) {

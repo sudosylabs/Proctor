@@ -136,6 +136,10 @@
     "translation": "Run and maintain a Proctor installation"
   },
   {
+    "id": "cli.root.warning.root_user",
+    "translation": "warning: running Proctor as root is not recommended; use a dedicated non-root user"
+  },
+  {
     "id": "cli.serve.short",
     "translation": "Run the Proctor server"
   },

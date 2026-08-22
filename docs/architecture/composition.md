@@ -2,7 +2,7 @@
 
 ## Composition and lifecycle
 
-`server.New` is the sole composition root. It loads configuration, constructs concrete adapters and store layers, gives infrastructure to `platform.Service` for lifecycle ownership, translates configuration into narrow application policies, constructs `app.App`, constructs HTTP and WebSocket transports, and wires post-commit effects. Construction is inert; `Server.Start` alone enters runtime lifecycle stages.
+`server.New` is the sole composition root. It loads configuration, constructs concrete adapters and store layers, gives infrastructure to `platform.Service` for lifecycle ownership, translates configuration into narrow application policies, constructs `app.App`, constructs HTTP and WebSocket transports, and wires post-commit effects. Construction is inert; blocking `Server.Run` alone enters runtime lifecycle stages and returns only after shutdown or runtime failure.
 
 Construction may be split across cohesive files in the module-root `server`
 package. That keeps backend selection reviewable without turning `server.New`
@@ -36,6 +36,13 @@ close-before-start; only successfully entered active stages require runtime
 drain behavior. Shutdown uses bounded deadlines and retains drain and cleanup
 failures for concurrent or repeated callers. Liveness, readiness, and
 authorized dependency diagnostics remain distinct signals.
+
+After internal readiness is published, `Server.Run` invokes at most one
+optional, promptly returning host-process readiness observer. The observer has
+no infrastructure lifecycle and cannot make an otherwise ready node fail; its
+errors are operational diagnostics. The CLI uses this seam to emit systemd's
+`READY=1` datagram without making the module-root server depend on environment
+variables or a supervisor-specific implementation.
 
 ## Module placement
 

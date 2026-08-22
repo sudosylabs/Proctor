@@ -22,7 +22,8 @@ import (
 )
 
 type options struct {
-	configPath string
+	configPath    string
+	readyNotifier ReadyNotifier
 }
 
 var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after graceful shutdown")
@@ -30,6 +31,11 @@ var errHTTPServerStopTimeout = errors.New("HTTP server did not stop after gracef
 // Option configures construction without exposing infrastructure or transport
 // implementation types.
 type Option func(*options) error
+
+// ReadyNotifier observes the single transition from startup to serving
+// readiness. Implementations must return promptly; notification failures are
+// logged and do not stop an otherwise healthy server.
+type ReadyNotifier func(context.Context) error
 
 // WithConfigPath selects the deployment configuration file used to construct
 // the server. Applying the option fails when path is empty; loading and
@@ -40,6 +46,19 @@ func WithConfigPath(path string) Option {
 			return errors.New("configuration path is empty")
 		}
 		settings.configPath = path
+		return nil
+	}
+}
+
+// WithReadyNotifier attaches a host-process readiness notification. The
+// notifier runs exactly once after every required runtime dependency and HTTP
+// serving are ready. It is not called when startup fails or is canceled.
+func WithReadyNotifier(notify ReadyNotifier) Option {
+	return func(settings *options) error {
+		if notify == nil {
+			return errors.New("ready notifier is nil")
+		}
+		settings.readyNotifier = notify
 		return nil
 	}
 }
@@ -272,6 +291,9 @@ const (
 // Server is the lifecycle owner for one assembled Proctor node.
 type Server struct {
 	components runtimeComponents
+	// readyNotifier is a borrowed host-process observer, not an owned runtime
+	// component. It has no lifecycle and is invoked only after readiness.
+	readyNotifier ReadyNotifier
 
 	lifecycleMu  sync.Mutex
 	state        nodeState
@@ -284,7 +306,7 @@ type Server struct {
 	httpMu sync.Mutex
 	http   httpRuntime
 	// httpShutdownErr is retained so the Close call that requested shutdown and
-	// every later Close observe the same drain failure as Start.
+	// every later Close observe the same drain failure as Run.
 	httpShutdownErr error
 
 	closeOnce sync.Once
@@ -292,7 +314,7 @@ type Server struct {
 }
 
 // RecoverAdministratorAccess runs only while the constructed node remains
-// inert. Starting the node permanently closes this host-only capability.
+// inert. Running the node permanently closes this host-only capability.
 func (s *Server) RecoverAdministratorAccess(ctx context.Context, command AdministratorRecoveryCommand) (*AdministratorRecoveryResult, error) {
 	if s == nil {
 		return nil, errors.New("server is nil")
@@ -324,7 +346,7 @@ func (s *Server) RecoverAdministratorAccess(ctx context.Context, command Adminis
 // usable Server.
 //
 // New does not start network listeners or WebSocket background work. Call
-// Start to begin serving and Close to drain transports and infrastructure.
+// Run to begin serving and Close to drain transports and infrastructure.
 func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 	settings := options{}
 	for _, option := range optionValues {
@@ -340,15 +362,16 @@ func New(ctx context.Context, optionValues ...Option) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("construct server: %w", err)
 	}
+	result.server.readyNotifier = settings.readyNotifier
 	return result.server, nil
 }
 
-// Start starts shared infrastructure and HTTP serving in dependency order,
-// marks the node ready only after both have started, and runs until cancellation
-// or serving failure. It returns an error when the server is closed, was already
-// started, cannot start a dependency or listener, or stops unexpectedly. Every
-// exit path closes the assembled runtime.
-func (s *Server) Start(ctx context.Context) (resultErr error) {
+// Run starts shared infrastructure and HTTP serving in dependency order,
+// marks the node ready only after both have started, and blocks until
+// cancellation or serving failure. It returns an error when the server is
+// closed, was already run, cannot start a dependency or listener, or stops
+// unexpectedly. Every exit path closes the assembled runtime.
+func (s *Server) Run(ctx context.Context) (resultErr error) {
 	s.lifecycleMu.Lock()
 	if s.state == nodeClosed {
 		s.lifecycleMu.Unlock()
@@ -356,7 +379,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 	}
 	if s.state != nodeInert {
 		s.lifecycleMu.Unlock()
-		return errors.New("server has already been started")
+		return errors.New("server has already been run")
 	}
 	runCtx, runCancel := context.WithCancel(ctx)
 	s.state = nodeStarting
@@ -544,6 +567,17 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 			logging.Bool("http_to_https_forwarding", settings.tls.forwardHTTPToHTTPS),
 			logging.String("version", app.Version),
 		)
+		if s.readyNotifier != nil {
+			if err := s.readyNotifier(runCtx); err != nil {
+				s.components.logger.ErrorContext(
+					runCtx,
+					"host readiness notification failed",
+					logging.Err(err),
+				)
+			} else {
+				s.components.logger.InfoContext(runCtx, "host readiness notification sent")
+			}
+		}
 	}
 
 	var runtimeErr error
@@ -595,7 +629,7 @@ func (s *Server) Start(ctx context.Context) (resultErr error) {
 
 // Close makes the node unready, gracefully stops HTTP when running, and then
 // closes transport and shared infrastructure. It is idempotent, waits for a
-// running Start call to finish, and returns any shutdown failures.
+// running Run call to finish, and returns any shutdown failures.
 func (s *Server) Close() error {
 	s.lifecycleMu.Lock()
 	if s.state == nodeClosed {

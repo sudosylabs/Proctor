@@ -464,7 +464,7 @@ func startIntegrationServer(t *testing.T, helper *testlib.Helper) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- helper.Server.Start(ctx) }()
+	go func() { done <- helper.Server.Run(ctx) }()
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	for !helper.Server.Ready() {

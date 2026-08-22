@@ -419,7 +419,7 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 		t.Fatalf("NewForTesting() runtime = %#v, want every handle populated", runtime)
 	}
 	if runtime.Server.Ready() {
-		t.Fatal("server is ready before Start")
+		t.Fatal("server is ready before Run")
 	}
 	observationsBeforePing := timedOperations.Load()
 	if observationsBeforePing == 0 {
@@ -434,7 +434,7 @@ func TestNewForTestingAssemblesTheProductionGraphWithOverrides(t *testing.T) {
 	}
 }
 
-func TestCompositionIsInertUntilServerStart(t *testing.T) {
+func TestCompositionIsInertUntilServerRun(t *testing.T) {
 	t.Parallel()
 
 	overrides, _, _, _ := newHookOverrides(t)
@@ -445,7 +445,7 @@ func TestCompositionIsInertUntilServerStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if runtime.Server.Ready() {
-		t.Fatal("composed node is ready before Start")
+		t.Fatal("composed node is ready before Run")
 	}
 	if got := clusterTransport.startedCount.Load(); got != 0 {
 		t.Fatalf("cluster Start calls during composition = %d, want 0", got)

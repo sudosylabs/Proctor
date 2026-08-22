@@ -32,6 +32,24 @@ func testExecutors() executors {
 		currentBuildInfo: func() server.BuildInfo {
 			return server.BuildInfo{Version: "dev", Commit: "unknown", BuildTime: "unknown", GoVersion: "go-test"}
 		},
+		effectiveUID: func() int { return 1000 },
+	}
+}
+
+func TestRunWarnsButContinuesWhenRunningAsRoot(t *testing.T) {
+	t.Parallel()
+
+	execute := testExecutors()
+	execute.effectiveUID = func() int { return 0 }
+	code, stdout, stderr := executeForTest(context.Background(), []string{"version"}, nil, execute)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(stdout, "proctor dev") {
+		t.Fatalf("stdout = %q, want version output", stdout)
+	}
+	if stderr != "warning: running Proctor as root is not recommended; use a dedicated non-root user\n" {
+		t.Fatalf("stderr = %q", stderr)
 	}
 }
 

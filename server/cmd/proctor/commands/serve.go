@@ -5,6 +5,7 @@ package commands
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -33,9 +34,12 @@ func serve(ctx context.Context, configPath string) error {
 	if configPath != "" {
 		options = append(options, server.WithConfigPath(configPath))
 	}
+	if socketPath := os.Getenv("NOTIFY_SOCKET"); socketPath != "" {
+		options = append(options, server.WithReadyNotifier(systemdReadyNotifier(socketPath)))
+	}
 	node, err := server.New(ctx, options...)
 	if err != nil {
 		return err
 	}
-	return node.Start(ctx)
+	return node.Run(ctx)
 }

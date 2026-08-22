@@ -338,13 +338,21 @@ func TestServerStartupFailureCleansUpConstructedRuntime(t *testing.T) {
 		transport: &lifecycleTransport{events: events},
 		readiness: readiness,
 	})
+	var notifications atomic.Int64
+	node.readyNotifier = func(context.Context) error {
+		notifications.Add(1)
+		return nil
+	}
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, startErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	if readiness.Ready() {
 		t.Fatal("Ready() = true after startup failure")
+	}
+	if got := notifications.Load(); got != 0 {
+		t.Fatalf("notifications = %d after startup failure, want 0", got)
 	}
 	assertLifecycleEvents(t, events, "platform-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 
@@ -367,9 +375,9 @@ func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) 
 		readiness: &lifecycleReadiness{},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, startErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
@@ -388,9 +396,9 @@ func TestServerServingLeaseMustCommitBeforeWorkersOrListener(t *testing.T) {
 		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, startErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events,
 		"platform-start", "serving-lease-start", "jobs-close", "websocket-close",
@@ -414,12 +422,12 @@ func TestServerServingLeaseRenewalFailureDrainsBeforeLeaseWithdrawal(t *testing.
 		newHTTP: func(httpServerSettings) httpRuntime { return httpService },
 	})
 	done := make(chan error, 1)
-	go func() { done <- node.Start(context.Background()) }()
+	go func() { done <- node.Run(context.Background()) }()
 	waitForLifecycleReady(t, node)
 	lease.failures <- renewalErr
-	err := receiveLifecycleResult(t, done, "Start after serving lease failure")
+	err := receiveLifecycleResult(t, done, "Run after serving lease failure")
 	if !errors.Is(err, renewalErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, renewalErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, renewalErr)
 	}
 	if node.Ready() {
 		t.Fatal("server remained ready after serving lease failure")
@@ -445,9 +453,9 @@ func TestServerReconcilesProtectedRoleBeforeStartingWorkers(t *testing.T) {
 		readiness:  &lifecycleReadiness{},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, startErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events,
 		"platform-start", "role-reconcile", "jobs-close", "websocket-close",
@@ -467,9 +475,9 @@ func TestServerReconcilesOfflineAdministratorRecoveryBeforeStartingWorkers(t *te
 		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, startErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, startErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events,
 		"platform-start", "role-reconcile", "administrator-recovery-reconcile",
@@ -494,9 +502,9 @@ func TestServerListenerFailureUnwindsStartedRuntime(t *testing.T) {
 		},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	if !errors.Is(err, listenErr) {
-		t.Fatalf("Start() error = %v, want wrapped %v", err, listenErr)
+		t.Fatalf("Run() error = %v, want wrapped %v", err, listenErr)
 	}
 	if node.Ready() {
 		t.Fatal("Ready() = true after listener failure")
@@ -538,7 +546,7 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- node.Start(context.Background()) }()
+	go func() { done <- node.Run(context.Background()) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -552,10 +560,10 @@ func TestServerCloseDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start() error = %v", err)
+			t.Fatalf("Run() error = %v", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("Close() returned without stopping Start()")
+		t.Fatal("Close() returned without stopping Run()")
 	}
 	if node.Ready() {
 		t.Fatal("Ready() = true after shutdown")
@@ -623,7 +631,7 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- node.Start(context.Background()) }()
+	go func() { done <- node.Run(context.Background()) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -632,7 +640,7 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	select {
 	case err := <-done:
 		if !errors.Is(err, serveErr) {
-			t.Fatalf("Start() error = %v, want wrapped %v", err, serveErr)
+			t.Fatalf("Run() error = %v, want wrapped %v", err, serveErr)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("server did not stop after HTTP serving failure")
@@ -655,7 +663,7 @@ func TestServerServeFailureDrainsHTTPBeforeClosingRuntime(t *testing.T) {
 	)
 }
 
-func TestServerCloseBeforeStartDisposesInertRuntimeExactlyOnce(t *testing.T) {
+func TestServerCloseBeforeRunDisposesInertRuntimeExactlyOnce(t *testing.T) {
 	t.Parallel()
 
 	events := &lifecycleEvents{}
@@ -673,13 +681,13 @@ func TestServerCloseBeforeStartDisposesInertRuntimeExactlyOnce(t *testing.T) {
 	if err := node.Close(); err != nil {
 		t.Fatalf("repeated Close() error = %v", err)
 	}
-	if err := node.Start(context.Background()); err == nil || err.Error() != "server is closed" {
-		t.Fatalf("Start() after Close() error = %v, want server is closed", err)
+	if err := node.Run(context.Background()); err == nil || err.Error() != "server is closed" {
+		t.Fatalf("Run() after Close() error = %v, want server is closed", err)
 	}
 	assertLifecycleEvents(t, events, "jobs-close", "websocket-close", "transport-close", "platform-close")
 }
 
-func TestServerRejectsASecondStartWhileRunning(t *testing.T) {
+func TestServerRejectsASecondRunWhileRunning(t *testing.T) {
 	t.Parallel()
 
 	events := &lifecycleEvents{}
@@ -701,20 +709,20 @@ func TestServerRejectsASecondStartWhileRunning(t *testing.T) {
 	})
 
 	first := make(chan error, 1)
-	go func() { first <- node.Start(context.Background()) }()
+	go func() { first <- node.Run(context.Background()) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
 		t.Fatal("HTTP serving did not start")
 	}
-	if err := node.Start(context.Background()); err == nil || err.Error() != "server has already been started" {
-		t.Fatalf("second Start() error = %v, want already started", err)
+	if err := node.Run(context.Background()); err == nil || err.Error() != "server has already been run" {
+		t.Fatalf("second Run() error = %v, want already run", err)
 	}
 	if err := node.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
 	if err := <-first; err != nil {
-		t.Fatalf("first Start() error = %v", err)
+		t.Fatalf("first Run() error = %v", err)
 	}
 }
 
@@ -733,8 +741,8 @@ func TestServerCanceledStartupIsGracefulAndClosesRuntime(t *testing.T) {
 		readiness: &lifecycleReadiness{},
 	})
 
-	if err := node.Start(ctx); err != nil {
-		t.Fatalf("Start(canceled) error = %v, want nil", err)
+	if err := node.Run(ctx); err != nil {
+		t.Fatalf("Run(canceled) error = %v, want nil", err)
 	}
 	if node.Ready() {
 		t.Fatal("Ready() = true after canceled startup")
@@ -766,7 +774,7 @@ func TestServerRunningContextCancellationIsGraceful(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- node.Start(ctx) }()
+	go func() { done <- node.Run(ctx) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -777,10 +785,10 @@ func TestServerRunningContextCancellationIsGraceful(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start() after running cancellation error = %v", err)
+			t.Fatalf("Run() after running cancellation error = %v", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("running cancellation did not stop Server.Start")
+		t.Fatal("running cancellation did not stop Server.Run")
 	}
 	assertLifecycleEvents(
 		t,
@@ -796,6 +804,48 @@ func TestServerRunningContextCancellationIsGraceful(t *testing.T) {
 		"websocket-close",
 		"transport-close",
 		"platform-close",
+	)
+}
+
+func TestServerNotifiesHostExactlyOnceAfterPublishingReadiness(t *testing.T) {
+	t.Parallel()
+
+	events := &lifecycleEvents{}
+	httpService := &lifecycleHTTP{
+		events: events, started: make(chan struct{}), stopped: make(chan struct{}),
+	}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, jobs: &lifecycleJobs{events: events},
+		websocket: &lifecycleWebSocket{events: events}, transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{events: events},
+		listen:    func(string, string) (net.Listener, error) { return &lifecycleListener{}, nil },
+		newHTTP:   func(httpServerSettings) httpRuntime { return httpService },
+	})
+	var notifications atomic.Int64
+	notificationErr := errors.New("notification socket unavailable")
+	node.readyNotifier = func(context.Context) error {
+		if !node.Ready() {
+			t.Error("host was notified before the node became ready")
+		}
+		notifications.Add(1)
+		events.record("host-ready-notify")
+		return notificationErr
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- node.Run(ctx) }()
+	waitForLifecycleReady(t, node)
+	cancel()
+	if err := receiveLifecycleResult(t, done, "server readiness notification"); err != nil {
+		t.Fatal(err)
+	}
+	if got := notifications.Load(); got != 1 {
+		t.Fatalf("notifications = %d, want 1", got)
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "jobs-start", "websocket-start", "http-serve", "ready", "host-ready-notify",
+		"unready", "http-shutdown", "jobs-close", "websocket-close", "transport-close", "platform-close",
 	)
 }
 
@@ -841,7 +891,7 @@ func TestServerLogsSuccessfulStartupMilestones(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- node.Start(ctx) }()
+	go func() { done <- node.Run(ctx) }()
 	waitForLifecycleReady(t, node)
 	cancel()
 	if err := receiveLifecycleResult(t, done, "logged server startup"); err != nil {
@@ -888,7 +938,7 @@ func TestServerRunningContextCancellationReturnsCleanupFailure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- node.Start(ctx) }()
+	go func() { done <- node.Run(ctx) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -899,10 +949,10 @@ func TestServerRunningContextCancellationReturnsCleanupFailure(t *testing.T) {
 	select {
 	case err := <-done:
 		if !errors.Is(err, cleanupErr) {
-			t.Fatalf("Start() after running cancellation error = %v, want cleanup failure", err)
+			t.Fatalf("Run() after running cancellation error = %v, want cleanup failure", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("running cancellation did not stop Server.Start")
+		t.Fatal("running cancellation did not stop Server.Run")
 	}
 }
 
@@ -928,7 +978,7 @@ func TestServerCancellationBeforeHTTPHandoffClosesOwnedListener(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- node.Start(ctx) }()
+	go func() { done <- node.Run(ctx) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -939,7 +989,7 @@ func TestServerCancellationBeforeHTTPHandoffClosesOwnedListener(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start() error = %v", err)
+			t.Fatalf("Run() error = %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("cancellation before HTTP handoff blocked")
@@ -976,13 +1026,13 @@ func TestServerCancellationPreservesHTTPDrainAndForcedCloseFailures(t *testing.T
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- node.Start(ctx) }()
+	go func() { done <- node.Run(ctx) }()
 	waitForLifecycleReady(t, node)
 	cancel()
 	err := <-done
 	for _, expected := range []error{shutdownErr, forceErr} {
 		if !errors.Is(err, expected) {
-			t.Fatalf("Start() error = %v, want %v", err, expected)
+			t.Fatalf("Run() error = %v, want %v", err, expected)
 		}
 	}
 	closeErr := node.Close()
@@ -1040,13 +1090,13 @@ func assertRetainedDrainFailure(t *testing.T, node *Server, want error) {
 	t.Helper()
 
 	startDone := make(chan error, 1)
-	go func() { startDone <- node.Start(context.Background()) }()
+	go func() { startDone <- node.Run(context.Background()) }()
 	waitForLifecycleReady(t, node)
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- node.Close() }()
-	startErr := receiveLifecycleResult(t, startDone, "Start")
+	startErr := receiveLifecycleResult(t, startDone, "Run")
 	closeErr := receiveLifecycleResult(t, closeDone, "Close")
-	for name, err := range map[string]error{"Start": startErr, "Close": closeErr, "repeated Close": node.Close()} {
+	for name, err := range map[string]error{"Run": startErr, "Close": closeErr, "repeated Close": node.Close()} {
 		if !errors.Is(err, want) {
 			t.Fatalf("%s() error = %v, want retained %v", name, err, want)
 		}
@@ -1071,7 +1121,7 @@ func TestServerRetainsPreHandoffListenerCloseFailureForCloseCallers(t *testing.T
 		newHTTP:   func(httpServerSettings) httpRuntime { return httpService },
 	})
 	startDone := make(chan error, 1)
-	go func() { startDone <- node.Start(context.Background()) }()
+	go func() { startDone <- node.Run(context.Background()) }()
 	select {
 	case <-httpService.started:
 	case <-time.After(time.Second):
@@ -1087,9 +1137,9 @@ func TestServerRetainsPreHandoffListenerCloseFailureForCloseCallers(t *testing.T
 		time.Sleep(time.Millisecond)
 	}
 	close(accept)
-	startErr := receiveLifecycleResult(t, startDone, "Start")
+	startErr := receiveLifecycleResult(t, startDone, "Run")
 	closeErr := receiveLifecycleResult(t, closeDone, "Close")
-	for name, err := range map[string]error{"Start": startErr, "Close": closeErr, "repeated Close": node.Close()} {
+	for name, err := range map[string]error{"Run": startErr, "Close": closeErr, "repeated Close": node.Close()} {
 		if !errors.Is(err, listenerErr) {
 			t.Fatalf("%s() error = %v, want retained %v", name, err, listenerErr)
 		}
@@ -1118,8 +1168,8 @@ func TestServerDependencyFailureWinsCancellationRace(t *testing.T) {
 		platform:  &lifecyclePlatform{startErr: errors.Join(context.Canceled, dependencyErr), events: events},
 		transport: &lifecycleTransport{events: events}, readiness: &lifecycleReadiness{},
 	})
-	if err := node.Start(ctx); !errors.Is(err, dependencyErr) {
-		t.Fatalf("Start() error = %v, want dependency failure", err)
+	if err := node.Run(ctx); !errors.Is(err, dependencyErr) {
+		t.Fatalf("Run() error = %v, want dependency failure", err)
 	}
 }
 
@@ -1155,8 +1205,8 @@ func TestServerCancellationBetweenStartupPhasesPreventsLaterWork(t *testing.T) {
 					return &lifecycleListener{events: events}, nil
 				},
 			})
-			if err := node.Start(ctx); err != nil {
-				t.Fatalf("Start() error = %v", err)
+			if err := node.Run(ctx); err != nil {
+				t.Fatalf("Run() error = %v", err)
 			}
 			want := []string{"platform-start"}
 			if phase != "platform" {
@@ -1204,7 +1254,7 @@ func TestServerPreservesPrimaryAndCleanupFailures(t *testing.T) {
 		readiness: &lifecycleReadiness{},
 	})
 
-	err := node.Start(context.Background())
+	err := node.Run(context.Background())
 	for _, expected := range []error{
 		startErr,
 		jobsCloseErr,
@@ -1213,7 +1263,7 @@ func TestServerPreservesPrimaryAndCleanupFailures(t *testing.T) {
 		platformCloseErr,
 	} {
 		if !errors.Is(err, expected) {
-			t.Fatalf("Start() error = %v, want joined %v", err, expected)
+			t.Fatalf("Run() error = %v, want joined %v", err, expected)
 		}
 	}
 	assertLifecycleEvents(
@@ -1229,7 +1279,7 @@ func TestServerPreservesPrimaryAndCleanupFailures(t *testing.T) {
 	)
 }
 
-func TestServerConcurrentCloseBeforeStartIsIdempotent(t *testing.T) {
+func TestServerConcurrentCloseBeforeRunIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	events := &lifecycleEvents{}

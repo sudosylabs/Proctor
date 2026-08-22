@@ -12,13 +12,13 @@
 // One validated configuration snapshot drives construction, while consumers
 // retain only focused immutable settings and capabilities.
 //
-// Start enters Platform, durable Jobs, WebSocket, listener ownership and HTTP
-// serving in order, then publishes readiness. Failure and Close first make the
-// node unready, drain HTTP when serving began, and dispose Jobs, WebSocket, the
-// HTTP transport and Platform exactly once. The primary listener remains
-// Server-owned until HTTP's first accept handoff; the HTTP runtime owns any
-// configured ACME challenge and forwarding listener. Constructors never bind
-// listeners or start background work.
+// Run enters Platform, durable Jobs, WebSocket, listener ownership and HTTP
+// serving in order, publishes readiness, and blocks until shutdown or failure.
+// Failure and Close first make the node unready, drain HTTP when serving began,
+// and dispose Jobs, WebSocket, the HTTP transport and Platform exactly once.
+// The primary listener remains Server-owned until HTTP's first accept handoff;
+// the HTTP runtime owns any configured ACME challenge and forwarding listener.
+// Constructors never bind listeners or start background work.
 //
 // NewForTesting uses that same private recipe with concrete adapter
 // substitutions. Its result exposes only Server, the application facade and an

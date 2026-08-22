@@ -11,7 +11,7 @@ if err != nil {
 	return err
 }
 defer node.Close()
-return node.Start(ctx)
+return node.Run(ctx)
 ```
 
 The module-root facade selects concrete infrastructure and owns platform
@@ -32,9 +32,9 @@ at call entry, including failure outcomes. A short-lived lifecycle-free
 projection lets the root wire consumers without turning Platform into a
 locator. The projection is discarded before construction returns.
 
-The facade intentionally exposes construction, start, close, readiness, and
-the narrow operator-command capabilities used by the CLI. The CLI remains a
-thin caller of this API. Its Cobra tree is assembled explicitly under
+The facade intentionally exposes construction, blocking run, close, readiness,
+and the narrow operator-command capabilities used by the CLI. The CLI remains
+a thin caller of this API. Its Cobra tree is assembled explicitly under
 `cmd/proctor/commands`, creates fresh command state for each execution, and
 keeps concrete infrastructure construction in this module-root facade.
 `testlib` uses the same private composition recipe
@@ -85,6 +85,44 @@ the example at `config/config.example.json`. Run from that directory after
 copying the example to `config/config.json`, or provide an explicit path. The
 package target requires a nonexistent output path: it never reuses a directory
 that might contain an operator's active configuration or secrets.
+
+### Run under systemd
+
+The `serve` command supports systemd's notification protocol. When systemd
+provides `NOTIFY_SOCKET`, Proctor attempts to send `READY=1` exactly once after
+Platform, the serving-node lease, startup reconciliation, Jobs, WebSocket, and
+HTTP serving have all reached readiness. A notification failure is logged but
+does not stop an otherwise healthy server; systemd's start timeout remains the
+external failure boundary.
+
+A minimal service unit is:
+
+```ini
+[Unit]
+Description=Proctor server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=proctor
+Group=proctor
+WorkingDirectory=/opt/proctor
+ExecStart=/opt/proctor/proctor serve --config /etc/proctor/config.json
+Restart=on-failure
+TimeoutStartSec=3600
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Run the long-lived service as a dedicated non-root user. The CLI warns but
+continues when its effective user is root, matching deployments where root is
+temporarily intentional. To bind ports 80 and 443 without running the process
+as root, grant only the operating-system bind capability to the executable or
+have a load balancer bind the privileged public ports.
 
 ### Pre-release database reset
 

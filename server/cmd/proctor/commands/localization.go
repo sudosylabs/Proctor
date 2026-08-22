@@ -108,6 +108,7 @@ func LocalizationDefinitions() []localization.Definition {
 		"cli.password.error.unavailable",
 		"cli.root.error.command_required",
 		"cli.root.short",
+		"cli.root.warning.root_user",
 		"cli.serve.short",
 		"cli.version.flag.json",
 		"cli.version.short",

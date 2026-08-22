@@ -59,7 +59,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 
 	serveCtx, cancelServing := context.WithCancel(context.Background())
 	serveDone := make(chan error, 1)
-	go func() { serveDone <- primary.Server.Start(serveCtx) }()
+	go func() { serveDone <- primary.Server.Run(serveCtx) }()
 	waitForReady := time.Now().Add(5 * time.Second)
 	for !primary.Server.Ready() && time.Now().Before(waitForReady) {
 		time.Sleep(5 * time.Millisecond)
@@ -100,7 +100,7 @@ func TestOfflineAdministratorRecoveryRejectsAnotherServingNode(t *testing.T) {
 	select {
 	case err := <-serveDone:
 		if err != nil {
-			t.Fatalf("primary Server.Start() shutdown error = %v", err)
+			t.Fatalf("primary Server.Run() shutdown error = %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("primary server did not stop")
@@ -161,7 +161,7 @@ func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *tes
 
 	ctx, cancel := context.WithCancel(context.Background())
 	startDone := make(chan error, 1)
-	go func() { startDone <- helper.Server.Start(ctx) }()
+	go func() { startDone <- helper.Server.Run(ctx) }()
 	deadline := time.Now().Add(5 * time.Second)
 	for !helper.Server.Ready() && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
@@ -196,7 +196,7 @@ func TestOfflineAdministratorRecoveryReconcilesBeforeNormalAuthentication(t *tes
 	select {
 	case err := <-startDone:
 		if err != nil {
-			t.Fatalf("Server.Start() after cancellation = %v", err)
+			t.Fatalf("Server.Run() after cancellation = %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("server did not stop")

@@ -55,7 +55,7 @@ func TestInertServerFacadeOwnsConstructedRuntime(t *testing.T) {
 	}
 	facade := &Server{components: components}
 	if facade.Ready() {
-		t.Fatal("New().Ready() = true before Start()")
+		t.Fatal("New().Ready() = true before Run()")
 	}
 	if err := facade.Close(); err != nil {
 		t.Fatalf("New().Close() error = %v", err)
@@ -69,5 +69,14 @@ func TestNewRejectsEmptyConfigurationPath(t *testing.T) {
 	_, err := New(context.Background(), WithConfigPath(""))
 	if err == nil || !strings.Contains(err.Error(), "configuration path is empty") {
 		t.Fatalf("New() error = %v, want empty configuration path", err)
+	}
+}
+
+func TestWithReadyNotifierRejectsNil(t *testing.T) {
+	t.Parallel()
+
+	settings := options{}
+	if err := WithReadyNotifier(nil)(&settings); err == nil || !strings.Contains(err.Error(), "ready notifier is nil") {
+		t.Fatalf("WithReadyNotifier(nil) error = %v", err)
 	}
 }

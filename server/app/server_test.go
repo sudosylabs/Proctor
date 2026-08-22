@@ -73,12 +73,12 @@ func TestServerStopsWhenContextIsCanceled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- helper.Server.Start(ctx)
+		done <- helper.Server.Run(ctx)
 	}()
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start() error = %v", err)
+			t.Fatalf("Run() error = %v", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("server did not stop after context cancellation")
@@ -90,9 +90,9 @@ func TestClusterStartFailurePreventsReadinessAndClosesPlatform(t *testing.T) {
 
 	cluster := &failingStartCluster{}
 	helper := testlib.Setup(t, testlib.WithCluster(cluster))
-	err := helper.Server.Start(context.Background())
+	err := helper.Server.Run(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "start cluster transport") {
-		t.Fatalf("Start() error = %v", err)
+		t.Fatalf("Run() error = %v", err)
 	}
 	if helper.Server.Ready() {
 		t.Fatal("server became ready after cluster transport start failed")
@@ -102,7 +102,7 @@ func TestClusterStartFailurePreventsReadinessAndClosesPlatform(t *testing.T) {
 	}
 }
 
-func TestServerCannotStartTwice(t *testing.T) {
+func TestServerCannotRunTwice(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t, testlib.WithConfig(func(cfg *config.Config) {
@@ -111,11 +111,11 @@ func TestServerCannotStartTwice(t *testing.T) {
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := helper.Server.Start(ctx); err != nil {
+	if err := helper.Server.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := helper.Server.Start(context.Background()); err == nil {
-		t.Fatal("second Start() was accepted")
+	if err := helper.Server.Run(context.Background()); err == nil {
+		t.Fatal("second Run() was accepted")
 	}
 }
 
@@ -128,7 +128,7 @@ func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
 	}))
 	done := make(chan error, 1)
 	go func() {
-		done <- helper.Server.Start(context.Background())
+		done <- helper.Server.Run(context.Background())
 	}()
 
 	deadline := time.After(2 * time.Second)
@@ -147,14 +147,14 @@ func TestCloseStopsARunningServerAndWaitsForItsLifecycle(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start() error = %v", err)
+			t.Fatalf("Run() error = %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Close returned without stopping Start")
+		t.Fatal("Close returned without stopping Run")
 	}
 }
 
-func TestClosedServerCannotBeStarted(t *testing.T) {
+func TestClosedServerCannotBeRun(t *testing.T) {
 	t.Parallel()
 
 	helper := testlib.Setup(t)
@@ -164,7 +164,7 @@ func TestClosedServerCannotBeStarted(t *testing.T) {
 	if !helper.PersistenceClose.Closed() {
 		t.Fatal("server close did not close the platform store")
 	}
-	if err := helper.Server.Start(context.Background()); err == nil {
+	if err := helper.Server.Run(context.Background()); err == nil {
 		t.Fatal("closed server was started")
 	}
 }

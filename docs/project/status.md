@@ -18,10 +18,11 @@ the code and component contracts for that detail.
   diagnostics, automatic locked forward migrations, explicit dependency
   startup reporting, health/readiness, graceful shutdown, built-in static TLS,
   single-node exact-host Let's Encrypt, lifecycle-owned HTTP-to-HTTPS
-  forwarding, and the shared `testlib` graph are operational. The application
-  memory cache is a configurable entry/byte-bounded LRU; the store read-through
-  cache is a separate bounded local LRU. Memberlist mode requires Redis for
-  shared disposable authentication counters.
+  forwarding, systemd `READY=1` notification after exact internal readiness,
+  a non-root CLI warning, and the shared `testlib` graph are operational. The
+  application memory cache is a configurable entry/byte-bounded LRU; the store
+  read-through cache is a separate bounded local LRU. Memberlist mode requires
+  Redis for shared disposable authentication counters.
 - The execenv v0.2.0 server foundation is operational behind `app/execution`:
   a bounded static multi-host catalog supports TLS 1.3/mTLS or loopback-only
   development authentication, fail-closed readiness, reconnecting outbound
