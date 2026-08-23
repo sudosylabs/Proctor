@@ -215,8 +215,8 @@ func (s SQLProgrammeLevelStore) SearchByProgramme(
 	query := s.programmeLevelsQuery.Where(sq.Eq{
 		"programme_levels.programme_id": programmeID,
 		"programme_levels.archived_at":  nil,
-	}).Where("(programme_levels.name ILIKE ? OR programme_levels.display_name ILIKE ?)",
-		"%"+term+"%", "%"+term+"%").
+	}).Where("(programme_levels.name ILIKE ? ESCAPE '!' OR programme_levels.display_name ILIKE ? ESCAPE '!')",
+		directorySearchPattern(term), directorySearchPattern(term)).
 		OrderBy("programme_levels.name", "programme_levels.id").Limit(uint64(limit))
 	rows := []programmeLevelRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {

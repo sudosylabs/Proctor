@@ -513,6 +513,11 @@ patterns:
 The agreement test records these exceptions so migration cannot silently
 change existing clients. It does not make them conventions for new endpoints.
 
+The Exam catalog's optional `q` parameter is a literal case-insensitive
+substring match against the current Draft title. SQL wildcard characters have
+no special meaning, and the current authorization constraint is applied in
+PostgreSQL before results are returned.
+
 The Exam catalog's `next_cursor` is an opaque URL-safe token whose private
 payload includes a cursor version, exact update time, and Exam identity.
 Clients must return it unchanged. Malformed cursors, trailing payload, and

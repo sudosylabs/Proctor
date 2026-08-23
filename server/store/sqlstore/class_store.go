@@ -237,8 +237,8 @@ func (s SQLClassStore) SearchByAcademicUnit(
 			"programme_levels.archived_at": nil,
 			"classes.archived_at":          nil,
 		}).
-		Where("(classes.name ILIKE ? OR classes.display_name ILIKE ?)",
-			"%"+term+"%", "%"+term+"%").
+		Where("(classes.name ILIKE ? ESCAPE '!' OR classes.display_name ILIKE ? ESCAPE '!')",
+			directorySearchPattern(term), directorySearchPattern(term)).
 		OrderBy("classes.name", "classes.id").
 		Limit(uint64(limit))
 	return s.selectClasses(ctx, query, "search classes by academic unit")

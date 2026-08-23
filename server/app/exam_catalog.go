@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
@@ -14,6 +15,7 @@ import (
 
 type ListExamsQuery struct {
 	AcademicUnitID  model.AcademicUnitID
+	Query           string
 	ArchiveFilter   ExamArchiveFilter
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID
@@ -56,7 +58,7 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 		query.ArchiveFilter = ExamArchiveActive
 	}
 	page, err := a.exams.List(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ListQuery{
-		AcademicUnitID: query.AcademicUnitID, ArchiveFilter: store.ExamArchiveFilter(query.ArchiveFilter),
+		AcademicUnitID: query.AcademicUnitID, Query: strings.TrimSpace(query.Query), ArchiveFilter: store.ExamArchiveFilter(query.ArchiveFilter),
 		BeforeUpdatedAt: query.BeforeUpdatedAt, BeforeExamID: query.BeforeExamID, Limit: query.Limit,
 	})
 	if err != nil {

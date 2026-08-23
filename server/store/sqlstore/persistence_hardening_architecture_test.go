@@ -95,6 +95,30 @@ func TestSQLStoreUsesSinglePreReleaseBaseline(t *testing.T) {
 	}
 }
 
+func TestDirectorySearchIndexesCoverEverySearchableCatalog(t *testing.T) {
+	t.Parallel()
+
+	baseline, err := os.ReadFile("../../migrations/postgres/000001_baseline.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(baseline)
+	for _, required := range []string{
+		"CREATE EXTENSION IF NOT EXISTS pg_trgm;",
+		"academic_units_directory_search_idx",
+		"programmes_directory_search_idx",
+		"programme_levels_directory_search_idx",
+		"academic_periods_directory_search_idx",
+		"classes_directory_search_idx",
+		"users_directory_search_idx",
+		"exam_drafts_title_search_idx",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("PostgreSQL baseline lacks %q", required)
+		}
+	}
+}
+
 func sqlstoreProductionSyntax(t *testing.T) map[string]*ast.File {
 	t.Helper()
 	entries, err := os.ReadDir(".")

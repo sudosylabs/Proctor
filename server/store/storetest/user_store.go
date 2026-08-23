@@ -382,7 +382,9 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	first := newUser()
 	first.Username = "aaa-" + model.NewId()
-	first.DisplayName = "Searchable Alpha"
+	first.DisplayName = "Searchable Alpha 50%_!"
+	first.FirstName = "Literal_Given"
+	first.LastName = "Literal%Family!"
 	first, err := createUser(t, ctx, ss, first)
 	requireNoError(t, err)
 	second := newUser()
@@ -611,6 +613,23 @@ func testUserStoreListAndDisable(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != first.ID {
 		t.Fatalf("List(search) = %#v", found)
+	}
+	for _, query := range []string{first.Username, first.Email, "LITERAL_GIVEN", "Literal%Family!", "%", "_", "!"} {
+		found, err = ss.User().List(ctx, store.UserListOptions{
+			Visibility: store.UserVisibilityScope{InstitutionWide: true}, Query: query, Limit: 10,
+		})
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != first.ID {
+			t.Fatalf("List(search %q) = %#v, want only %s", query, found, first.ID)
+		}
+	}
+	scopedLiteral, err := ss.User().List(ctx, store.UserListOptions{
+		Visibility: store.UserVisibilityScope{ClassIDs: []string{visibleClass.ID.String()}, ActiveAt: activeAt},
+		Query:      "Literal%Family!", Limit: 10,
+	})
+	requireNoError(t, err)
+	if len(scopedLiteral) != 1 || scopedLiteral[0].ID != first.ID {
+		t.Fatalf("List(scoped literal public-field search) = %#v, want only %s", scopedLiteral, first.ID)
 	}
 	page, err := ss.User().List(ctx, store.UserListOptions{
 		Visibility:    store.UserVisibilityScope{InstitutionWide: true},

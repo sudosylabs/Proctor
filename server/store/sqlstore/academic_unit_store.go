@@ -316,8 +316,8 @@ func (s SQLAcademicUnitStore) Search(
 			"academic_units.institution_id": institutionID,
 			"academic_units.archived_at":    nil,
 		}).
-		Where("(academic_units.name ILIKE ? OR academic_units.display_name ILIKE ?)",
-			"%"+term+"%", "%"+term+"%").
+		Where("(academic_units.name ILIKE ? ESCAPE '!' OR academic_units.display_name ILIKE ? ESCAPE '!')",
+			directorySearchPattern(term), directorySearchPattern(term)).
 		OrderBy("academic_units.name", "academic_units.id").
 		Limit(uint64(limit))
 	rows := []academicUnitRow{}

@@ -8,6 +8,7 @@ package sqlstore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -98,7 +99,11 @@ func testExamCatalogBoundedPlan(t *testing.T, persistence *SQLStore) {
 	}
 	for index, id := range ids {
 		updatedAt := at.Add(time.Duration(index) * time.Millisecond)
-		if _, err := drafts.Exec(id.String(), "Catalog plan", "", `{}`, updatedAt, 1); err != nil {
+		title := "Catalog plan"
+		if index%100 == 0 {
+			title = fmt.Sprintf("Needle catalog %04d", index)
+		}
+		if _, err := drafts.Exec(id.String(), title, "", `{}`, updatedAt, 1); err != nil {
 			_ = drafts.Close()
 			_ = tx.Rollback()
 			t.Fatal(err)
@@ -185,6 +190,36 @@ func testExamCatalogBoundedPlan(t *testing.T, persistence *SQLStore) {
 			}
 		})
 	}
+
+	t.Run("selective title search supports trigram plan", func(t *testing.T) {
+		options := store.ExamListOptions{
+			Query: "needle catalog 4900", ArchiveFilter: store.ExamArchiveAll, Limit: 20,
+			Visibility: store.ExamListVisibility{ActorUserID: actor.ID, OverrideInstitutionWide: true},
+		}
+		query, args := examCatalogQuery(options)
+		tx, err := persistence.GetMaster().DB().BeginTxx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		// The 5,000-row fixture is intentionally small enough that PostgreSQL may
+		// prefer a sequential scan. Disable it only in this transaction to prove
+		// the production predicate is compatible with the trigram index.
+		if _, err := tx.ExecContext(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+			t.Fatal(err)
+		}
+		var encoded []byte
+		if err := tx.GetContext(ctx, &encoded, tx.Rebind(`EXPLAIN (ANALYZE, FORMAT JSON) `+query), args...); err != nil {
+			t.Fatal(err)
+		}
+		var documents []examCatalogPlanDocument
+		if err := json.Unmarshal(encoded, &documents); err != nil || len(documents) != 1 {
+			t.Fatalf("decode plan: documents=%d err=%v plan=%s", len(documents), err, encoded)
+		}
+		if _, found := findExamCatalogIndex(documents[0].Plan, "exam_drafts_title_search_idx"); !found {
+			t.Fatalf("title search plan lacks trigram index: %s", encoded)
+		}
+	})
 }
 
 func examCatalogPlanScansAlias(node examCatalogPlanNode, alias string) bool {

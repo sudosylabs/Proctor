@@ -204,12 +204,23 @@ func testAcademicPeriodStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	period := saveAcademicPeriod(
 		t, ctx, ss, institution.ID.String(), "distinct-summer-term", 2_000_000_000_000,
 	)
+	period.DisplayName = "Literal 50%_! Summer Term"
+	period, err := ss.AcademicPeriod().Update(ctx, period)
+	requireNoError(t, err)
 	found, err := ss.AcademicPeriod().ListVisible(
 		ctx, store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID.String(), InstitutionWide: true}, "summer", 10,
 	)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != period.ID {
 		t.Fatalf("ListVisible(search) = %#v", found)
+	}
+	visibility := store.AcademicPeriodVisibilityScope{InstitutionID: institution.ID.String(), InstitutionWide: true}
+	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
+		found, err = ss.AcademicPeriod().ListVisible(ctx, visibility, query, 10)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != period.ID {
+			t.Fatalf("ListVisible(%q) = %#v, want only %s", query, found, period.ID)
+		}
 	}
 	archived, err := ss.AcademicPeriod().Archive(ctx, period.ID.String(), model.GetMillis())
 	requireNoError(t, err)

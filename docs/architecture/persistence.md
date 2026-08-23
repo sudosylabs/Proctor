@@ -71,6 +71,11 @@ be rewritten or squashed and development databases recreated. That release
 freezes the baseline; later changes are append-only expand/backfill/contract
 migrations compatible with rolling node startup.
 
+The baseline installs PostgreSQL's `pg_trgm` extension. Bounded directory
+searches use its GIN operator classes for literal case-insensitive substring
+matching; authorization predicates remain part of the same SQL statement and
+query text never enters ordinary telemetry.
+
 `Archive` is reversible removal from active use, `Disable` is reversible prevention from operating, and `Purge` is explicit irreversible removal. A soft archive is not named `Delete`.
 
 Idempotent command outcomes are persisted atomically: explicitly retryable

@@ -22,7 +22,7 @@ func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *test
 	updatedAt := time.Date(2026, 8, 14, 7, 0, 0, 0, time.UTC)
 	fixture.persistence.summaries = []store.ExamSummary{{ID: fixture.examID, AcademicUnitID: fixture.unitID, CreatorUserID: fixture.userID,
 		OwnerUserID: fixture.userID, Title: "Systems", UpdatedAt: updatedAt, Revision: 3, ManagerCount: 2}}
-	page, err := fixture.service.List(context.Background(), fixture.call, ListQuery{AcademicUnitID: fixture.unitID,
+	page, err := fixture.service.List(context.Background(), fixture.call, ListQuery{AcademicUnitID: fixture.unitID, Query: "  Systems  ",
 		ArchiveFilter: store.ExamArchiveActive, Limit: 50})
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestListCatalogUsesAuthorizedPersistenceVisibilityAndBoundedSummary(t *test
 	if len(page.Items) != 1 || page.Items[0].Title != "Systems" || page.Items[0].ManagerCount != 2 {
 		t.Fatalf("page = %#v", page)
 	}
-	if fixture.persistence.listOptions.Visibility.ActorUserID != fixture.userID || !reflect.DeepEqual(fixture.persistence.listOptions.Visibility, visibility) || fixture.persistence.listOptions.AcademicUnitID != fixture.unitID {
+	if fixture.persistence.listOptions.Visibility.ActorUserID != fixture.userID || !reflect.DeepEqual(fixture.persistence.listOptions.Visibility, visibility) || fixture.persistence.listOptions.AcademicUnitID != fixture.unitID || fixture.persistence.listOptions.Query != "Systems" {
 		t.Fatalf("list options = %#v", fixture.persistence.listOptions)
 	}
 	if want := []string{"authorize.list", "store.list"}; !reflect.DeepEqual(*fixture.order, want) {

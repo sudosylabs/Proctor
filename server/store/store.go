@@ -128,6 +128,7 @@ type ExamListVisibility struct {
 
 type ExamListOptions struct {
 	AcademicUnitID  model.AcademicUnitID
+	Query           string
 	ArchiveFilter   ExamArchiveFilter
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID

@@ -77,7 +77,9 @@ the code and component contracts for that detail.
   organizational membership, and effective-dated student enrollment. Academic
   Periods have immutable Institution or Academic Unit ownership, owner-scoped
   canonical names and authorization, and Classes retain one exact Period that
-  must apply to their Programme lineage.
+  must apply to their Programme lineage. Resource-specific User and structural
+  directory lists provide bounded, indexed literal substring search without a
+  cross-resource search endpoint.
 - Identity includes local passwords, sessions and refresh rotation, account
   recovery, personal access tokens, TOTP MFA with User-bound versioned
   secret-sealing envelopes and single-use recovery codes, administrative
@@ -138,8 +140,9 @@ the code and component contracts for that detail.
   idempotent updates. They can also replace only the typed Focus Loss policy
   through the same guarded mutation path while Connection Loss remains fixed;
   unchanged updates do not mutate or publish. A visibility-aware, keyset-
-  paginated catalog lists bounded active or archived Exam summaries without
-  hydrating authored content. Ordinary discovery requires current exact
+  paginated catalog lists bounded active or archived Exam summaries and
+  supports indexed literal title search without hydrating authored content.
+  Ordinary discovery requires current exact
   Academic Unit membership, current Manager relationship, and applicable role
   scope; explicit override stays separate and audited. Revision-fenced,
   idempotent archive records an immutable archive time without deleting state;

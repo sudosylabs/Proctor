@@ -124,10 +124,20 @@ func testProgrammeLevelStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	_, programme := saveProgrammeParents(t, ctx, ss, "archive-level-programme")
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "distinct-foundation")
+	level.DisplayName = "Literal 50%_! Foundation"
+	level, err := ss.ProgrammeLevel().Update(ctx, level)
+	requireNoError(t, err)
 	found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID.String(), "foundation", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != level.ID {
 		t.Fatalf("SearchByProgramme() = %#v", found)
+	}
+	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
+		found, err = ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID.String(), query, 10)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != level.ID {
+			t.Fatalf("SearchByProgramme(%q) = %#v, want only %s", query, found, level.ID)
+		}
 	}
 	archived, err := ss.ProgrammeLevel().Archive(ctx, level.ID.String(), model.GetMillis())
 	requireNoError(t, err)

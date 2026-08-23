@@ -8,6 +8,8 @@
 -- rather than integer zero sentinels. Revision columns match domain optimistic
 -- concurrency where applicable.
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- ---------------------------------------------------------------------------
 -- Structural academic domain
 -- ---------------------------------------------------------------------------
@@ -48,6 +50,9 @@ CREATE UNIQUE INDEX academic_units_institution_id_parent_id_name_key
     ON academic_units (institution_id, name) WHERE archived_at IS NULL;
 CREATE INDEX academic_units_institution_id_parent_id_idx
     ON academic_units (parent_id) WHERE archived_at IS NULL;
+CREATE INDEX academic_units_directory_search_idx
+    ON academic_units USING gin (name gin_trgm_ops, display_name gin_trgm_ops)
+    WHERE archived_at IS NULL;
 
 CREATE TABLE programmes (
     id varchar(26) PRIMARY KEY,
@@ -64,6 +69,9 @@ CREATE TABLE programmes (
 
 CREATE UNIQUE INDEX programmes_academic_unit_id_name_key
     ON programmes (academic_unit_id, name) WHERE archived_at IS NULL;
+CREATE INDEX programmes_directory_search_idx
+    ON programmes USING gin (name gin_trgm_ops, display_name gin_trgm_ops)
+    WHERE archived_at IS NULL;
 
 CREATE TABLE programme_levels (
     id varchar(26) PRIMARY KEY,
@@ -80,6 +88,9 @@ CREATE TABLE programme_levels (
 
 CREATE UNIQUE INDEX programme_levels_programme_id_name_key
     ON programme_levels (programme_id, name) WHERE archived_at IS NULL;
+CREATE INDEX programme_levels_directory_search_idx
+    ON programme_levels USING gin (name gin_trgm_ops, display_name gin_trgm_ops)
+    WHERE archived_at IS NULL;
 
 CREATE TABLE academic_periods (
     id varchar(26) PRIMARY KEY,
@@ -109,6 +120,9 @@ CREATE UNIQUE INDEX academic_periods_institution_id_name_key
 CREATE UNIQUE INDEX academic_periods_academic_unit_id_name_key
     ON academic_periods (academic_unit_id, name)
     WHERE owner_type = 'academic_unit' AND archived_at IS NULL;
+CREATE INDEX academic_periods_directory_search_idx
+    ON academic_periods USING gin (name gin_trgm_ops, display_name gin_trgm_ops)
+    WHERE archived_at IS NULL;
 
 CREATE TABLE classes (
     id varchar(26) PRIMARY KEY,
@@ -130,6 +144,9 @@ CREATE UNIQUE INDEX classes_programme_level_id_academic_period_id_name_key
     ON classes (programme_level_id, academic_period_id, name) WHERE archived_at IS NULL;
 CREATE INDEX classes_academic_period_id_idx
     ON classes (academic_period_id) WHERE archived_at IS NULL;
+CREATE INDEX classes_directory_search_idx
+    ON classes USING gin (name gin_trgm_ops, display_name gin_trgm_ops)
+    WHERE archived_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- Durable finite background work
@@ -302,6 +319,14 @@ CREATE TABLE users (
 
 CREATE UNIQUE INDEX users_username_key ON users (username) WHERE archived_at IS NULL;
 CREATE UNIQUE INDEX users_email_key ON users (email) WHERE archived_at IS NULL;
+CREATE INDEX users_directory_search_idx
+    ON users USING gin (
+        username gin_trgm_ops,
+        email gin_trgm_ops,
+        display_name gin_trgm_ops,
+        first_name gin_trgm_ops,
+        last_name gin_trgm_ops
+    ) WHERE archived_at IS NULL;
 
 CREATE TABLE user_settings_documents (
     user_id varchar(26) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -828,6 +853,9 @@ CREATE TABLE exam_drafts (
     CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536),
     CONSTRAINT exam_drafts_execution_profile_size_check CHECK (octet_length(execution_profile::text) <= 1024)
 );
+
+CREATE INDEX exam_drafts_title_search_idx
+    ON exam_drafts USING gin (title gin_trgm_ops);
 
 CREATE TABLE exam_managers (
     exam_id varchar(26) NOT NULL REFERENCES exams(id) ON DELETE CASCADE,

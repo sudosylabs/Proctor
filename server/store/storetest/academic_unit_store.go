@@ -189,10 +189,20 @@ func testAcademicUnitStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	institution := saveInstitution(t, ctx, ss)
 	parent := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "archive-parent")
 	child := saveAcademicUnit(t, ctx, ss, institution.ID.String(), parent.ID.String(), "distinct-computing")
+	child.DisplayName = "Literal 50%_! Computing"
+	child, err := ss.AcademicUnit().Update(ctx, child)
+	requireNoError(t, err)
 	found, err := ss.AcademicUnit().Search(ctx, institution.ID.String(), "distinct-comput", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != child.ID {
 		t.Fatalf("Search() = %#v", found)
+	}
+	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
+		found, err = ss.AcademicUnit().Search(ctx, institution.ID.String(), query, 10)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != child.ID {
+			t.Fatalf("Search(%q) = %#v, want only %s", query, found, child.ID)
+		}
 	}
 	exact, err := ss.AcademicUnit().GetByName(ctx, institution.ID.String(), child.Name)
 	requireNoError(t, err)

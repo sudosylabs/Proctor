@@ -362,17 +362,17 @@ func (s SQLUserStore) List(
 	}
 	term := strings.TrimSpace(options.Query)
 	if term != "" {
-		pattern := "%" + term + "%"
+		pattern := directorySearchPattern(term)
 		if options.Visibility.InstitutionWide {
 			query = query.Where(`(
-				users.username ILIKE ? OR users.email ILIKE ? OR
-				users.display_name ILIKE ? OR users.first_name ILIKE ? OR
-				users.last_name ILIKE ?
+				users.username ILIKE ? ESCAPE '!' OR users.email ILIKE ? ESCAPE '!' OR
+				users.display_name ILIKE ? ESCAPE '!' OR users.first_name ILIKE ? ESCAPE '!' OR
+				users.last_name ILIKE ? ESCAPE '!'
 			)`, pattern, pattern, pattern, pattern, pattern)
 		} else {
 			query = query.Where(`(
-				users.username ILIKE ? OR users.display_name ILIKE ? OR
-				users.first_name ILIKE ? OR users.last_name ILIKE ?
+				users.username ILIKE ? ESCAPE '!' OR users.display_name ILIKE ? ESCAPE '!' OR
+				users.first_name ILIKE ? ESCAPE '!' OR users.last_name ILIKE ? ESCAPE '!'
 			)`, pattern, pattern, pattern, pattern)
 		}
 	}

@@ -60,14 +60,14 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 		Title: "Systems", UpdatedAt: time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC), Revision: 2, ManagerCount: 1,
 	}}}}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examResource(fake))
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/exams?academic_unit_id="+unitID.String()+"&archive_state=all&limit=25", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/exams?academic_unit_id="+unitID.String()+"&q=systems+design&archive_state=all&limit=25", nil)
 	request.Header.Set("Authorization", "Bearer credential")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("list status = %d: %s", response.Code, response.Body.String())
 	}
-	if fake.list.AcademicUnitID != unitID || fake.list.ArchiveFilter != application.ExamArchiveAll || fake.list.Limit != 25 {
+	if fake.list.AcademicUnitID != unitID || fake.list.Query != "systems design" || fake.list.ArchiveFilter != application.ExamArchiveAll || fake.list.Limit != 25 {
 		t.Fatalf("list query = %#v", fake.list)
 	}
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"title":"Systems"`)) || bytes.Contains(response.Body.Bytes(), []byte("instructions_markdown")) || bytes.Contains(response.Body.Bytes(), []byte("policy")) {

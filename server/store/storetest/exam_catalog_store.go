@@ -25,8 +25,8 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 		AcademicUnitID: unit.ID, UserID: creator.ID, StartsAt: membershipBase.Add(-time.Minute),
 	})
 	requireNoError(t, err)
-	first := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt, "catalog-first")
-	second := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt.Add(time.Minute), "catalog-second")
+	first := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt, "catalog-first_100%")
+	second := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, firstAt.Add(time.Minute), "catalog!second")
 
 	visibility := store.ExamListVisibility{ActorUserID: creator.ID, OrdinaryMembershipAt: membershipBase.Add(10 * time.Minute), OrdinaryInstitutionWide: true}
 	page, err := ss.ExamAuthoring().List(ctx, store.ExamListOptions{ArchiveFilter: store.ExamArchiveActive, Limit: 1, Visibility: visibility})
@@ -41,6 +41,23 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if len(next) != 1 || next[0].ID != first.Value.Exam.ID {
 		t.Fatalf("next page = %#v", next)
+	}
+	for _, search := range []struct {
+		query string
+		want  model.ExamID
+	}{
+		{query: "SECOND", want: second.Value.Exam.ID},
+		{query: "_", want: first.Value.Exam.ID},
+		{query: "%", want: first.Value.Exam.ID},
+		{query: "!", want: second.Value.Exam.ID},
+	} {
+		found, searchErr := ss.ExamAuthoring().List(ctx, store.ExamListOptions{
+			Query: search.query, ArchiveFilter: store.ExamArchiveActive, Limit: 50, Visibility: visibility,
+		})
+		requireNoError(t, searchErr)
+		if len(found) != 1 || found[0].ID != search.want {
+			t.Fatalf("search %q = %#v, want Exam %s", search.query, found, search.want)
+		}
 	}
 
 	outsider := saveUser(t, ctx, ss)
@@ -145,6 +162,7 @@ func testExamCatalogListAndArchive(t *testing.T, ss store.Store) {
 func createCatalogExam(t *testing.T, ctx context.Context, ss store.Store, unitID model.AcademicUnitID, creatorID model.UserID, at time.Time, key string) *store.ExamAuthoringCommandResult {
 	t.Helper()
 	creation := newExamAuthoringCreation(t, ctx, ss, unitID, creatorID, at)
+	creation.Draft.Title = key
 	created, err := ss.ExamAuthoring().Create(ctx, creation, examCommand(creatorID, "exam.create.v1", key, key+"-command"))
 	requireNoError(t, err)
 	return created

@@ -273,8 +273,8 @@ func (s SQLAcademicPeriodStore) ListVisible(
 		query = query.Where("FALSE")
 	}
 	if term = strings.TrimSpace(term); term != "" {
-		pattern := "%" + term + "%"
-		query = query.Where("(academic_periods.name ILIKE ? OR academic_periods.display_name ILIKE ?)", pattern, pattern)
+		pattern := directorySearchPattern(term)
+		query = query.Where("(academic_periods.name ILIKE ? ESCAPE '!' OR academic_periods.display_name ILIKE ? ESCAPE '!')", pattern, pattern)
 	}
 	query = query.OrderBy("academic_periods.start_at", "academic_periods.name", "academic_periods.id").Limit(uint64(limit))
 	rows := []academicPeriodRow{}

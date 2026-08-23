@@ -171,12 +171,22 @@ func testClassStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	class := saveClass(
 		t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "distinct-class-zeta",
 	)
+	class.DisplayName = "Literal 50%_! Zeta"
+	class, err := ss.Class().Update(ctx, class)
+	requireNoError(t, err)
 	unitID, err := ss.Class().GetAcademicUnitId(ctx, class.ID.String())
 	requireNoError(t, err)
 	found, err := ss.Class().SearchByAcademicUnit(ctx, unitID, "zeta", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != class.ID {
 		t.Fatalf("SearchByAcademicUnit() = %#v", found)
+	}
+	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
+		found, err = ss.Class().SearchByAcademicUnit(ctx, unitID, query, 10)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != class.ID {
+			t.Fatalf("SearchByAcademicUnit(%q) = %#v, want only %s", query, found, class.ID)
+		}
 	}
 	archived, err := ss.Class().Archive(ctx, class.ID.String(), model.GetMillis())
 	requireNoError(t, err)

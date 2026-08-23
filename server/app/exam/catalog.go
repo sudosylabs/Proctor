@@ -6,6 +6,7 @@ package exam
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -14,6 +15,7 @@ import (
 
 type ListQuery struct {
 	AcademicUnitID  model.AcademicUnitID
+	Query           string
 	ArchiveFilter   store.ExamArchiveFilter
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID
@@ -48,7 +50,7 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 	}
 	visibility.ActorUserID = principal.UserID
 	items, err := a.persistence.List(ctx, store.ExamListOptions{AcademicUnitID: query.AcademicUnitID,
-		ArchiveFilter: query.ArchiveFilter, BeforeUpdatedAt: query.BeforeUpdatedAt,
+		Query: strings.TrimSpace(query.Query), ArchiveFilter: query.ArchiveFilter, BeforeUpdatedAt: query.BeforeUpdatedAt,
 		BeforeExamID: query.BeforeExamID, Limit: query.Limit, Visibility: visibility})
 	if err != nil {
 		return CatalogPage{}, mapStoreError(err)

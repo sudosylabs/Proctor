@@ -30,6 +30,7 @@ func TestExamCatalogListUsesOneExamDrivenQuery(t *testing.T) {
 	adapter := SQLExamAuthoringStore{catalogReader: reader}
 	items, err := adapter.List(context.Background(), store.ExamListOptions{
 		ArchiveFilter: store.ExamArchiveActive,
+		Query:         "Systems",
 		Limit:         20,
 		Visibility: store.ExamListVisibility{
 			ActorUserID: model.NewUserID(), OverrideInstitutionWide: true,
@@ -43,6 +44,7 @@ func TestExamCatalogListUsesOneExamDrivenQuery(t *testing.T) {
 	}
 	if strings.Contains(reader.query, "visible_exams") || strings.Contains(reader.query, " UNION ") ||
 		!strings.Contains(reader.query, "FROM exams e JOIN exam_drafts") ||
+		!strings.Contains(reader.query, "d.title ILIKE ? ESCAPE '!'") ||
 		!strings.Contains(reader.query, "ORDER BY e.updated_at DESC, e.id DESC LIMIT") {
 		t.Fatalf("catalog query is not Exam-driven and bounded:\n%s", reader.query)
 	}

@@ -132,10 +132,20 @@ func testProgrammeStoreSearchAndArchive(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	unit, _ := saveProgrammeParents(t, ctx, ss, "archive-programme-parent")
 	programme := saveProgramme(t, ctx, ss, unit.ID.String(), "distinct-robotics")
+	programme.DisplayName = "Literal 50%_! Robotics"
+	programme, err := ss.Programme().Update(ctx, programme)
+	requireNoError(t, err)
 	found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), "robot", 10)
 	requireNoError(t, err)
 	if len(found) != 1 || found[0].ID != programme.ID {
 		t.Fatalf("SearchByAcademicUnit() = %#v", found)
+	}
+	for _, query := range []string{"LITERAL 50%_!", "%", "_", "!"} {
+		found, err = ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), query, 10)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != programme.ID {
+			t.Fatalf("SearchByAcademicUnit(%q) = %#v, want only %s", query, found, programme.ID)
+		}
 	}
 	archived, err := ss.Programme().Archive(ctx, programme.ID.String(), model.GetMillis())
 	requireNoError(t, err)

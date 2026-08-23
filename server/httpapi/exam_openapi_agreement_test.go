@@ -4,6 +4,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -114,6 +115,15 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())
+
+	document := readOpenAPIDocument(t)
+	var listOperation openAPIOperation
+	if err := json.Unmarshal(document.Paths[model.APIURLSuffix+"/exams"]["get"], &listOperation); err != nil {
+		t.Fatal(err)
+	}
+	if got := academicStructureQueryParameterNames(listOperation.Parameters); !reflect.DeepEqual(got, []string{"academic_unit_id", "archive_state", "cursor", "limit", "q"}) {
+		t.Fatalf("Exam list query parameters = %v", got)
+	}
 }
 
 func examManagerAdditionContractCodes() []string {

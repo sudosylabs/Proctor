@@ -42,6 +42,21 @@ func TestCreateExamRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestListExamsNormalizesTitleSearchForChildUseCase(t *testing.T) {
+	t.Parallel()
+	child := &examUseCasesFake{}
+	application := &App{exams: child}
+	_, err := application.ListExams(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ListExamsQuery{
+		Query: "  Distributed Systems  ", ArchiveFilter: ExamArchiveActive, Limit: 25,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.list.Query != "Distributed Systems" || child.list.Limit != 25 {
+		t.Fatalf("child list query = %#v", child.list)
+	}
+}
+
 func TestEditExamDraftTextBuildsPresenceAwareIdempotentChildCommand(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()

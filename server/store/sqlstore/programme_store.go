@@ -215,8 +215,8 @@ func (s SQLProgrammeStore) SearchByAcademicUnit(
 	query := s.programmesQuery.Where(sq.Eq{
 		"programmes.academic_unit_id": academicUnitID,
 		"programmes.archived_at":      nil,
-	}).Where("(programmes.name ILIKE ? OR programmes.display_name ILIKE ?)",
-		"%"+term+"%", "%"+term+"%").
+	}).Where("(programmes.name ILIKE ? ESCAPE '!' OR programmes.display_name ILIKE ? ESCAPE '!')",
+		directorySearchPattern(term), directorySearchPattern(term)).
 		OrderBy("programmes.name", "programmes.id").Limit(uint64(limit))
 	rows := []programmeRow{}
 	if err := s.GetMaster().SelectBuilder(ctx, &rows, query); err != nil {

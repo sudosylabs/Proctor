@@ -696,6 +696,7 @@ func examManagerChangeResponseFromApplication(change application.ExamManagerChan
 func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 	query := application.ListExamsQuery{ArchiveFilter: application.ExamArchiveActive, Limit: 50}
 	values := request.URL.Query()
+	query.Query = values.Get("q")
 	if raw := values.Get("academic_unit_id"); raw != "" {
 		unitID, err := model.ParseAcademicUnitID(raw)
 		if err != nil {

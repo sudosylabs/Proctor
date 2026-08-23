@@ -80,6 +80,10 @@ func examCatalogQuery(options store.ExamListOptions) (string, []any) {
 		query += ` AND e.archived_at IS NOT NULL`
 	case store.ExamArchiveAll:
 	}
+	if strings.TrimSpace(options.Query) != "" {
+		query += ` AND d.title ILIKE ? ESCAPE '!'`
+		args = append(args, directorySearchPattern(options.Query))
+	}
 	if !options.BeforeUpdatedAt.IsZero() {
 		query += ` AND (e.updated_at, e.id) < (?, ?)`
 		args = append(args, model.TimeUTC(options.BeforeUpdatedAt), options.BeforeExamID.String())
