@@ -10,11 +10,12 @@ import (
 	"testing"
 )
 
-func TestPackageTargetCreatesOnlyBinaryAndConfigurationExamples(t *testing.T) {
+func TestPackageTargetCreatesBinaryWebappAndConfigurationExamples(t *testing.T) {
 	t.Parallel()
 
 	output := filepath.Join(t.TempDir(), "proctor-release")
-	command := exec.Command("make", "package", "PACKAGE_DIR="+output)
+	webapp := createPackageTestWebapp(t)
+	command := exec.Command("make", "package", "PACKAGE_DIR="+output, "WEBAPP_DIST_DIR="+webapp)
 	if result, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("make package: %v\n%s", err, result)
 	}
@@ -24,6 +25,9 @@ func TestPackageTargetCreatesOnlyBinaryAndConfigurationExamples(t *testing.T) {
 		filepath.Join(output, "config", "examples", "execution-host.json"),
 		filepath.Join(output, "config", "examples", "cas-provider.json"),
 		filepath.Join(output, "config", "examples", "oidc-provider.json"),
+		filepath.Join(output, "webapp", "dist", "index.html"),
+		filepath.Join(output, "webapp", "dist", "webapp-build.json"),
+		filepath.Join(output, "webapp", "dist", "assets", "index-Test123.js"),
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("package artifact %q: %v", path, err)
@@ -32,6 +36,25 @@ func TestPackageTargetCreatesOnlyBinaryAndConfigurationExamples(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(output, "config", "config.json")); !os.IsNotExist(err) {
 		t.Fatalf("package contains active configuration: %v", err)
 	}
+}
+
+func createPackageTestWebapp(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	assets := filepath.Join(directory, "assets")
+	if err := os.MkdirAll(assets, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"index.html":              "<!doctype html><title>Proctor</title>",
+		"webapp-build.json":       `{"schema_version":1,"version":"dev","commit":"unknown"}`,
+		"assets/index-Test123.js": "export {};",
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return directory
 }
 
 func TestPackageTargetRejectsAnExistingOutputDirectory(t *testing.T) {

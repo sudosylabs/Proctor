@@ -354,18 +354,21 @@ into routes.
 
 The current verification and password-reset messages construct HTTPS URLs at
 `/account/verify-email#token=...` and
-`/account/reset-password#token=...`. The corresponding hosted pages are not
-implemented. They are deliberately deferred to the server-hosted page and
-design-system phase, when they will read and immediately remove the fragment,
-submit the credential through the existing JSON completion operation, and
-apply strict no-store, no-referrer, and Content Security Policy safeguards.
-This dependency must remain visible until those pages exist; the mail phase
-must not claim that the recovery journey is end-to-end complete.
+`/account/reset-password#token=...`. The packaged browser runtime now owns
+these exact routes and the shared fragment-removal and security foundation,
+but their visual flows are not implemented. They remain deferred to the
+server-hosted design-system phase, when they will submit the captured
+credential through the existing JSON completion operation. This dependency
+must remain visible until those flows exist; the mail phase must not claim
+that the recovery journey is end-to-end complete.
 
 Invitation mail uses the corresponding server-hosted join route
 `/join#token=...`. The invitation carries a random 256-bit credential only in
-the URL fragment; the page must remove the fragment before submitting it to the
-server. Resend rotates the credential rather than reproducing the old link.
+the URL fragment; the nonvisual browser bootstrap removes the fragment before
+rendering and passes the claim as purpose-specific in-memory state to the
+future visual flow. The supporting API exchanges it for a short-lived server
+transaction and HttpOnly proof. Resend rotates the credential rather than
+reproducing the old link.
 Acceptance must still recheck the Invitation's pending state, expiry, target
 email, purpose package, and the current authorization of the relationship it
 will establish.

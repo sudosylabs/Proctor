@@ -42,13 +42,18 @@ build:
 	go build ./...
 
 PACKAGE_DIR ?= dist/proctor
+WEBAPP_DIST_DIR ?= ../webapp/dist
+GO_LDFLAGS ?=
 
 package:
 	@test ! -e "$(PACKAGE_DIR)" || (echo 'package output already exists; choose a new PACKAGE_DIR or remove it explicitly' >&2; exit 2)
-	mkdir -p "$(PACKAGE_DIR)/config"
-	go build -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
+	@test -f "$(WEBAPP_DIST_DIR)/index.html" || (echo 'webapp distribution is missing index.html; run the root package target' >&2; exit 2)
+	@test -f "$(WEBAPP_DIST_DIR)/webapp-build.json" || (echo 'webapp distribution is missing webapp-build.json; run the root package target' >&2; exit 2)
+	mkdir -p "$(PACKAGE_DIR)/config" "$(PACKAGE_DIR)/webapp/dist"
+	go build -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
 	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
 	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
+	cp -R "$(WEBAPP_DIST_DIR)/." "$(PACKAGE_DIR)/webapp/dist"
 	@test ! -e "$(PACKAGE_DIR)/config/config.json"
 
 mail-templates-install:
@@ -178,7 +183,7 @@ phase-access-onboarding: check
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test -tags=integration ./store/sqlstore -run '^TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationMaintenanceIsBoundedAndMultiNodeSafe$$' -count=1; \
+		go test -tags=integration ./store/sqlstore -run '^TestBrowserAuthenticationMaintenanceIsBoundedAndMultiNodeSafe$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \

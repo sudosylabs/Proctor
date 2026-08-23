@@ -61,6 +61,8 @@ From the repository root:
 
 ```sh
 cp ./server/config/config.example.json ./server/config/config.json
+npm --prefix ./webapp ci
+npm --prefix ./webapp run build
 go run ./server/cmd/proctor serve --config ./server/config/config.json
 ```
 
@@ -78,19 +80,27 @@ Enabled SMTP is connection-tested and reported without making a temporary relay
 outage fail general server readiness. The example uses memory cache, disabled
 mail, and local VFS.
 
-Create a release-style directory containing the executable and copy-only
-configuration examples with:
+Create a release-style directory containing the executable, compiled hosted
+webapp, and copy-only configuration examples with:
 
 ```sh
-make -C server package
+make package
 ```
 
-The default output is `server/dist/proctor/`, with the binary at its root, the
-canonical example at `config/config.example.json`, and structured entry
-examples under `config/examples/`. Run from that directory after copying the
-canonical example to `config/config.json`, or provide an explicit path. The
-package target requires a nonexistent output path: it never reuses a directory
-that might contain an operator's active configuration or secrets.
+The default output is `dist/proctor/`, with the binary at its root, the Vite
+distribution under `webapp/dist/`, the canonical example at
+`config/config.example.json`, and structured entry examples under
+`config/examples/`. Run from that directory after copying the canonical
+example to `config/config.json`, or provide an explicit path. The package target
+requires a nonexistent output path: it never reuses a directory that might
+contain an operator's active configuration or secrets. Ordinary server builds
+and `make -C server check` remain Node-free; the root product package is the
+only build that combines Go and Vite.
+
+`Server.WebappDirectory` selects the immutable Vite distribution and defaults
+to `./webapp/dist` relative to the process working directory. Production
+startup validates `webapp-build.json` against the Go binary version and commit
+and fails before readiness when the artifacts do not belong to the same build.
 
 ### Run under systemd
 
@@ -175,6 +185,10 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `POST /api/v1/auth/email-verification/complete` (public token consumption)
 - `POST /api/v1/auth/password-reset/request` (generic public acceptance)
 - `POST /api/v1/auth/password-reset/complete` (public token consumption)
+- `POST /api/v1/auth/browser/invitations` (exchange a fragment Invitation
+  claim for a short-lived handle and HttpOnly browser proof)
+- `POST /api/v1/auth/browser/invitations/accept` and `/accept-session`
+  (purpose-separated local-account and existing-Session acceptance)
 - `GET /api/v1/auth/providers` (safe provider discovery)
 - `GET /api/v1/auth/providers/{provider_id}/login` (provider browser
   initiation)
@@ -293,7 +307,7 @@ cookies. The native client starts the system-browser authorization protocol at
 `POST /api/v1/auth/desktop/authorizations` and exchanges its short-lived,
 one-use code at `POST /api/v1/auth/desktop/token` for an ordinary rotating
 Desktop Session. The hosted `/authorize/desktop` page and Desktop UI remain
-separate implementation work.
+visual implementation work; the packaged runtime already owns the route.
 
 External login uses the same browser session transport. The initiation endpoint
 stores only hashes of a one-use state and browser-binding credential in

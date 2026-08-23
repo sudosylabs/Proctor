@@ -2,7 +2,8 @@
 
 Proctor is a multi-module repository with licenses applied by directory.
 
-- The combined server in [`server/`](server/) is licensed under the GNU Affero
+- The combined server in [`server/`](server/) and its browser application in
+  [`webapp/`](webapp/) are licensed under the GNU Affero
   General Public License, version 3. See [`server/LICENSE`](server/LICENSE).
   Individual Mattermost-adapted source files may retain their compatible Apache
   License 2.0 notices and SPDX identifiers, as recorded in

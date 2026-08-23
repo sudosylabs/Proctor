@@ -419,22 +419,27 @@ bounded fan-out, relevance fencing, deadline-aware retries, safe operator
 control, and no user opt-outs. The complete contract is in
 [Transactional mail](../architecture/mail.md).
 
-The current verification and reset links name server-hosted routes whose pages
-do not exist. Those pages are explicitly deferred to the server-hosted page
-and design-system phase and must remain visible as an incomplete recovery
-journey. Ordinary transactional mail will not invent protected API links or a
-desktop URL scheme while the client navigation contract remains undefined.
+The current verification and reset links name routes now owned by the packaged
+server browser runtime. Their visual flows remain explicitly deferred to the
+design-system phase and must remain visible as an incomplete recovery journey.
+Ordinary transactional mail will not invent protected API links or a desktop
+URL scheme while the client navigation contract remains undefined.
 
 ## Access and onboarding
 
-The access and onboarding server phase is implemented and certified. Existing
+The access and onboarding server phase is implemented and certified. A root
+Vite module now provides the Node-pinned, generated-API, localization,
+fragment-credential, CSRF, route, build-manifest, and packaging foundation for
+the declared hosted pages. The Go server validates and serves the matching
+immutable distribution with strict browser headers while preserving API and
+health route ownership. Visual pages remain deliberately empty. Existing
 installations reconcile the protected `system_admin` Role with every current
 grantable action before serving traffic, preserving unknown downgrade actions
 and all custom Roles and bindings. The real-graph phase gate covers bootstrap,
 policy, Desktop protocol, local and external credentials, Invitations,
 JSON/CSV administration, progression, mail, multi-node recovery,
 authorization, privacy, PostgreSQL conformance, HTTP/OpenAPI, race, vet, and
-architecture checks. Server-hosted design-system pages and the Desktop
+architecture checks. Server-hosted visual design-system pages and the Desktop
 LaunchWindow remain explicitly deferred client/hosted-page work.
 
 Bootstrap now requires a deployment-owned secret, rate-limits public proof attempts,
@@ -502,9 +507,10 @@ Desktop client/device metadata while persisting bearer values only as hashes.
 Any node can approve through an existing Web Session, cancel, or atomically
 exchange the short one-use code for an ordinary rotating Desktop Session;
 mix-up, concurrent exchange, replay, expiry, and current-policy/provider checks
-fail closed. The `/authorize/desktop` hosted page and Desktop Launch Window/UI
-remain explicitly unimplemented design-system/client work, so the repository
-does not yet claim an end-to-end user journey.
+fail closed. The packaged runtime owns `/authorize/desktop`, but its visual flow
+and the Desktop Launch Window/UI remain explicitly unimplemented
+design-system/client work, so the repository does not yet claim an end-to-end
+user journey.
 
 Authentication-method lifecycle APIs are implemented. A strong, recent Web
 Session can enroll a policy-permitted password only for a verified mailbox,
@@ -635,10 +641,13 @@ Roles remain unchanged. The complete contract and implementation order are in
 
 The transactional-mail foundation can now durably deliver the implemented
 student Invitation credential and semantic acceptance message. The hosted
-`/join` page is deliberately not implemented in this slice and remains deferred
-to the future server-hosted design-system phase alongside the recovery pages.
-The issue and acceptance APIs therefore do not by themselves constitute a
-complete human onboarding journey.
+runtime serves `/join`; its nonvisual bootstrap removes the fragment credential
+before rendering and passes purpose-specific in-memory state to the future
+visual flow. The supporting API exchanges that claim for a purpose-bound
+PostgreSQL transaction whose second proof exists only in a short-lived HttpOnly
+cookie. The visual join flow remains deferred to the design-system phase
+alongside the recovery pages, so these APIs still do not constitute a complete
+human onboarding journey.
 
 ## Implemented user settings
 
@@ -695,8 +704,9 @@ to hosts. The complete contract is in
 
 ## Planned product work
 
-- Implement the deferred server-hosted account, Invitation, and Desktop
-  authorization pages with the design system, plus the Desktop LaunchWindow.
+- Implement the visual account, Invitation, and Desktop authorization flows in
+  the established server-hosted runtime with the design system, plus the
+  Desktop LaunchWindow.
 - Exam Resource metadata or content search remains deferred until a concrete
   server-owned use case requires an authorized index.
 
