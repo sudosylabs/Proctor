@@ -166,6 +166,21 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_SERVER_TLS_HTTP_LISTEN_ADDRESS", func(cfg *Config) *string {
 		return &cfg.Server.TLS.HTTPListenAddress
 	}),
+	boolEnvironmentOverride("PROCTOR_METRICS_ENABLED", func(cfg *Config) *bool {
+		return &cfg.Metrics.Enabled
+	}),
+	stringEnvironmentOverride("PROCTOR_METRICS_LISTEN_ADDRESS", func(cfg *Config) *string {
+		return &cfg.Metrics.ListenAddress
+	}),
+	stringEnvironmentOverride("PROCTOR_METRICS_BEARER_TOKEN", func(cfg *Config) *string {
+		return &cfg.Metrics.BearerToken
+	}),
+	stringEnvironmentOverride("PROCTOR_METRICS_TLS_CERTIFICATE_FILE", func(cfg *Config) *string {
+		return &cfg.Metrics.TLS.CertificateFile
+	}),
+	stringEnvironmentOverride("PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE", func(cfg *Config) *string {
+		return &cfg.Metrics.TLS.PrivateKeyFile
+	}),
 	stringEnvironmentOverride("PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET", func(cfg *Config) *string {
 		return &cfg.Authentication.Bootstrap.Secret
 	}),
@@ -298,6 +313,21 @@ var environmentOverrideCatalog = []environmentOverride{
 	durationEnvironmentOverride("PROCTOR_SERVER_SHUTDOWN_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Server.ShutdownTimeout
 	}),
+	durationEnvironmentOverride("PROCTOR_METRICS_READ_HEADER_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Metrics.ReadHeaderTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_METRICS_READ_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Metrics.ReadTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_METRICS_WRITE_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Metrics.WriteTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_METRICS_IDLE_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Metrics.IdleTimeout
+	}),
+	durationEnvironmentOverride("PROCTOR_METRICS_SHUTDOWN_TIMEOUT", func(cfg *Config) *Duration {
+		return &cfg.Metrics.ShutdownTimeout
+	}),
 	durationEnvironmentOverride("PROCTOR_CACHE_REDIS_CONNECT_TIMEOUT", func(cfg *Config) *Duration {
 		return &cfg.Cache.Redis.ConnectTimeout
 	}),
@@ -360,6 +390,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	}),
 	intEnvironmentOverride("PROCTOR_SERVER_MAX_HEADER_BYTES", func(cfg *Config) *int {
 		return &cfg.Server.MaxHeaderBytes
+	}),
+	intEnvironmentOverride("PROCTOR_METRICS_MAXIMUM_CONCURRENT_SCRAPES", func(cfg *Config) *int {
+		return &cfg.Metrics.MaximumConcurrentScrapes
 	}),
 	int64EnvironmentOverride("PROCTOR_SERVER_MAX_BODY_BYTES", func(cfg *Config) *int64 {
 		return &cfg.Server.MaxBodyBytes

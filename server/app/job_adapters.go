@@ -52,8 +52,15 @@ func (adapter jobMailDeliveryRecorder) RecordJobMailDelivery(ctx context.Context
 	}
 	adapter.recorder.RecordMailDelivery(ctx, MailDeliveryMetric{
 		TemplateKey: metric.TemplateKey, State: metric.State, OutcomeCode: metric.OutcomeCode,
-		AttemptCount: metric.AttemptCount, ProcessingLatency: metric.ProcessingLatency,
+		ProcessingLatency: metric.ProcessingLatency,
 	})
+}
+
+func (adapter jobMailDeliveryRecorder) RecordJobMailAttempt(ctx context.Context, metric appjobs.MailAttemptMetric) {
+	if adapter.recorder == nil {
+		return
+	}
+	adapter.recorder.RecordMailAttempt(ctx, MailAttemptMetric{TemplateKey: metric.TemplateKey, State: metric.State})
 }
 
 type jobMailHealth struct{ health *MailHealth }

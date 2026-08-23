@@ -21,6 +21,7 @@ type Engine struct {
 	registry           *Registry
 	nodeID             string
 	diagnostics        Diagnostics
+	recorder           Recorder
 	poll               time.Duration
 	shutdownTimeout    time.Duration
 	wake               chan struct{}
@@ -40,6 +41,59 @@ type Diagnostics interface {
 	ErrorContext(context.Context, string, error)
 }
 
+// Recorder observes bounded Job runtime facts and never receives commands,
+// results, errors, claims, identifiers, or actor data.
+type Recorder interface {
+	Started(model.JobType)
+	Finished(model.JobType, ExecutionOutcome, time.Duration)
+	Record(Activity)
+}
+
+// ExecutionOutcome is the closed telemetry vocabulary for one claimed Job
+// execution. It includes runtime terminal states that are not handler outcomes.
+type ExecutionOutcome string
+
+const (
+	ExecutionSucceeded        ExecutionOutcome = "succeeded"
+	ExecutionRetryableFailure ExecutionOutcome = "retryable_failure"
+	ExecutionPermanentFailure ExecutionOutcome = "permanent_failure"
+	ExecutionCanceled         ExecutionOutcome = "canceled"
+	ExecutionRelinquished     ExecutionOutcome = "relinquished"
+	ExecutionAbandoned        ExecutionOutcome = "abandoned"
+	ExecutionClaimLost        ExecutionOutcome = "claim_lost"
+	ExecutionShutdown         ExecutionOutcome = "shutdown"
+	ExecutionInvalid          ExecutionOutcome = "invalid"
+)
+
+func executionOutcomeFromHandler(outcome OutcomeKind) ExecutionOutcome {
+	switch outcome {
+	case OutcomeSucceeded:
+		return ExecutionSucceeded
+	case OutcomeRetryableFailure:
+		return ExecutionRetryableFailure
+	case OutcomePermanentFailure:
+		return ExecutionPermanentFailure
+	case OutcomeCanceled:
+		return ExecutionCanceled
+	case OutcomeRelinquished:
+		return ExecutionRelinquished
+	default:
+		return ExecutionInvalid
+	}
+}
+
+// Activity is a bounded operational fact emitted by the Job runtime. Name is
+// either a registered Job type, recurrence, or periodic-task name; Operation
+// and Outcome are selected only by this package.
+type Activity struct {
+	Kind         string
+	Name         string
+	Operation    string
+	Outcome      string
+	Duration     time.Duration
+	QueueLatency time.Duration
+}
+
 type Policy struct {
 	PollInterval       time.Duration
 	ShutdownTimeout    time.Duration
@@ -51,6 +105,7 @@ type Config struct {
 	Descriptors   []Descriptor
 	NodeID        string
 	Diagnostics   Diagnostics
+	Recorder      Recorder
 	Policy        Policy
 	Clock         Clock
 	Recurrences   []Recurrence
@@ -82,7 +137,7 @@ func New(config Config) (*Engine, error) {
 	if config.Clock == nil {
 		config.Clock = systemClock{}
 	}
-	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, periodicTasks: periodicTasks, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
+	return &Engine{jobs: config.Store, registry: registry, nodeID: config.NodeID, diagnostics: config.Diagnostics, recorder: config.Recorder, poll: config.Policy.PollInterval, shutdownTimeout: config.Policy.ShutdownTimeout, recurrences: recurrences, periodicTasks: periodicTasks, proposalRetryDelay: config.Policy.ProposalRetryDelay, clock: config.Clock, wake: make(chan struct{}, 1)}, nil
 }
 
 // Descriptor returns the immutable execution contract for a registered type.
@@ -130,14 +185,14 @@ func (r *Engine) Start(ctx context.Context) error {
 		r.wg.Add(1)
 		go func(value Recurrence) {
 			defer r.wg.Done()
-			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake)
+			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake, r.recorder)
 		}(recurrence)
 	}
 	for _, task := range r.periodicTasks {
 		r.wg.Add(1)
 		go func(value PeriodicTask) {
 			defer r.wg.Done()
-			runPeriodicTask(runCtx, value, r.diagnostics, r.clock)
+			runPeriodicTask(runCtx, value, r.diagnostics, r.clock, r.recorder)
 		}(task)
 	}
 	return nil
@@ -192,17 +247,31 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 			resetTimer(timer, r.poll)
 			continue
 		}
+		startedClaim := time.Now()
 		claim, err := r.jobs.ClaimNext(ctx, &store.JobClaimRequest{Types: []model.JobType{descriptor.Type}, NodeID: r.nodeID, ClaimToken: token, LeaseDuration: descriptor.LeaseDuration})
+		claimDuration := time.Since(startedClaim)
 		if err != nil {
+			result := "error"
+			if store.IsNotFound(err) {
+				result = "empty"
+			} else if errors.Is(err, context.Canceled) {
+				result = "canceled"
+			}
+			r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "claim", Outcome: result, Duration: claimDuration})
 			if !store.IsNotFound(err) && !errors.Is(err, context.Canceled) {
 				r.diagnostics.ErrorContext(ctx, "claim durable job", err)
 			}
 			resetTimer(timer, r.poll)
 			continue
 		}
+		queueLatency := time.Since(claim.Job.AvailableAt)
+		if queueLatency < 0 {
+			queueLatency = 0
+		}
+		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "claim", Outcome: "success", Duration: claimDuration, QueueLatency: queueLatency})
 		resolved, err := r.registry.Resolve(claim.Job.Type, claim.Job.CommandVersion)
 		if err != nil {
-			r.complete(ctx, descriptor, claim, PermanentFailure("job.command.unsupported", err))
+			r.completeUnsupported(ctx, descriptor, claim, err)
 		} else {
 			r.execute(ctx, resolved, claim)
 		}
@@ -210,7 +279,26 @@ func (r *Engine) worker(ctx context.Context, descriptor Descriptor) {
 	}
 }
 
+func (r *Engine) completeUnsupported(ctx context.Context, descriptor Descriptor, claim *store.JobClaim, resolutionErr error) {
+	startedAt := time.Now()
+	if r.recorder != nil {
+		r.recorder.Started(descriptor.Type)
+		defer func() {
+			r.recorder.Finished(descriptor.Type, ExecutionPermanentFailure, time.Since(startedAt))
+		}()
+	}
+	r.complete(ctx, descriptor, claim, PermanentFailure("job.command.unsupported", resolutionErr))
+}
+
 func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *store.JobClaim) {
+	startedAt := time.Now()
+	metricOutcome := ExecutionAbandoned
+	if r.recorder != nil {
+		r.recorder.Started(descriptor.Type)
+		defer func() {
+			r.recorder.Finished(descriptor.Type, metricOutcome, time.Since(startedAt))
+		}()
+	}
 	handlerCtx, cancelHandler := context.WithTimeout(parent, descriptor.Timeout)
 	defer cancelHandler()
 	heartbeatDone := make(chan struct{})
@@ -227,7 +315,9 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 			case <-handlerCtx.Done():
 				return
 			case <-ticker.C:
+				heartbeatStarted := time.Now()
 				if _, err := r.jobs.Heartbeat(handlerCtx, &store.JobHeartbeat{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, LeaseDuration: descriptor.LeaseDuration}); err != nil {
+					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "error", Duration: time.Since(heartbeatStarted)})
 					r.diagnostics.ErrorContext(parent, "heartbeat durable job", err)
 					select {
 					case claimLost <- struct{}{}:
@@ -236,9 +326,12 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 					cancelHandler()
 					return
 				}
+				r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "heartbeat", Outcome: "success", Duration: time.Since(heartbeatStarted)})
 				if descriptor.Cancelable {
+					cancellationStarted := time.Now()
 					requested, err := r.jobs.CancellationRequested(handlerCtx, claim.Attempt.ID, claim.Attempt.ClaimToken)
 					if err != nil {
+						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "error", Duration: time.Since(cancellationStarted)})
 						r.diagnostics.ErrorContext(parent, "observe durable job cancellation", err)
 						select {
 						case claimLost <- struct{}{}:
@@ -248,16 +341,26 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 						return
 					}
 					if requested {
+						r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "requested", Duration: time.Since(cancellationStarted)})
 						cancelHandler()
 						return
 					}
+					r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "cancellation_check", Outcome: "clear", Duration: time.Since(cancellationStarted)})
 				}
 			}
 		}
 	}()
 	execution := NewExecution(claim.Job, claim.Attempt, nil, nil)
 	execution.reserveWork = func(ctx context.Context, units, limit int) (bool, error) {
+		started := time.Now()
 		result, err := r.jobs.ReserveWork(ctx, &store.JobWorkReservation{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Units: units, Limit: limit})
+		activityOutcome := "error"
+		if err == nil && result.Reserved {
+			activityOutcome = "reserved"
+		} else if err == nil {
+			activityOutcome = "limit"
+		}
+		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "reserve_work", Outcome: activityOutcome, Duration: time.Since(started)})
 		if err != nil {
 			return false, err
 		}
@@ -270,7 +373,9 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 		if value.Progress != nil && (value.Progress.Current < 0 || value.Progress.Total <= 0 || value.Progress.Current > value.Progress.Total || !descriptor.SupportsProgressStage(value.Progress.Stage)) {
 			return errors.New("job progress stage is not declared")
 		}
+		started := time.Now()
 		_, err := r.jobs.Checkpoint(ctx, &store.JobCheckpoint{AttemptID: claim.Attempt.ID, ClaimToken: claim.Attempt.ClaimToken, Progress: value.Progress, CheckpointVersion: value.Version, Checkpoint: value.Document})
+		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "checkpoint", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 		return err
 	}
 	outcome := runHandler(handlerCtx, descriptor.Handler, execution)
@@ -278,15 +383,19 @@ func (r *Engine) execute(parent context.Context, descriptor Descriptor, claim *s
 	<-heartbeatStopped
 	select {
 	case <-claimLost:
+		r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "lease", Outcome: "lost"})
+		metricOutcome = ExecutionClaimLost
 		return
 	default:
 	}
 	if errors.Is(parent.Err(), context.Canceled) {
+		metricOutcome = ExecutionShutdown
 		return
 	}
 	if errors.Is(handlerCtx.Err(), context.DeadlineExceeded) {
 		outcome = RetryableFailure("job.timeout", handlerCtx.Err())
 	}
+	metricOutcome = executionOutcomeFromHandler(outcome.Kind)
 	r.complete(parent, descriptor, claim, outcome)
 }
 
@@ -327,8 +436,30 @@ func (r *Engine) complete(ctx context.Context, descriptor Descriptor, claim *sto
 		completion.Kind = store.JobCompletionPermanentFailure
 		completion.PublicErrorCode = "job.outcome.invalid"
 	}
-	if _, err := r.jobs.Complete(ctx, completion); err != nil && !errors.Is(err, context.Canceled) {
+	started := time.Now()
+	_, err := r.jobs.Complete(ctx, completion)
+	r.record(Activity{Kind: "job", Name: string(descriptor.Type), Operation: "complete", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
+	if err != nil && !errors.Is(err, context.Canceled) {
 		r.diagnostics.ErrorContext(ctx, "complete durable job", err)
+	}
+}
+
+func (r *Engine) record(activity Activity) {
+	if r.recorder != nil {
+		r.recorder.Record(activity)
+	}
+}
+
+func simpleJobOutcome(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	default:
+		return "error"
 	}
 }
 

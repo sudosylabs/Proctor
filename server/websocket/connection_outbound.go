@@ -32,18 +32,39 @@ func (c *connectionRuntime) writePump(ctx context.Context) {
 			} else {
 				err = c.socket.WriteJSON(message.response)
 			}
+			if c.recorder != nil {
+				kind, bytes := outboundMetric(message)
+				c.recorder.ObserveWebSocketMessage("outbound", kind, streamResult(err), bytes)
+			}
 			if err != nil {
 				c.closeTransport()
 				return
 			}
 		case <-ticker.Chan():
 			_ = c.socket.SetWriteDeadline(c.clock.Now().Add(writeWait))
-			if err := c.socket.WriteMessage(websocketPingMessage, nil); err != nil {
+			err := c.socket.WriteMessage(websocketPingMessage, nil)
+			if c.recorder != nil {
+				c.recorder.ObserveWebSocketMessage("outbound", "ping", streamResult(err), 0)
+			}
+			if err != nil {
 				c.closeTransport()
 				return
 			}
 		}
 	}
+}
+
+func outboundMetric(message outboundMessage) (string, int) {
+	if message.event != nil {
+		return "event", len(message.event.Data)
+	}
+	if message.response == nil {
+		return "response", 0
+	}
+	if message.response.Error != nil {
+		return "error", len(message.response.Error.Code) + len(message.response.Error.Message)
+	}
+	return "response", len(message.response.Data)
 }
 
 func (c *connectionRuntime) enqueueHello(resumed, resyncRequired bool) {
@@ -144,6 +165,9 @@ func (c *connectionRuntime) enqueueOutbound(message outboundMessage) {
 }
 
 func (c *connectionRuntime) closeForBackpressure() {
+	if c.recorder != nil {
+		c.recorder.Backpressure()
+	}
 	c.close(CloseBackpressure, localizedCloseReason(c.localizer, c.locale, websocketCloseMessages["backpressure"]), false)
 }
 

@@ -76,7 +76,8 @@ type examUseCases interface {
 	AuthorizeView(context.Context, examengine.Call, model.ExamID) error
 }
 
-func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (ExamView, error) {
+func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (result ExamView, resultErr error) {
+	defer func() { a.recordOperational("exam", "create", resultErr) }()
 	if command.IdempotencyKey == "" {
 		return ExamView{}, NewError("idempotency.key_required")
 	}

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -141,6 +142,51 @@ func (r *responseRecorder) Flush() {
 	}
 }
 
+type requestBodyRecorder struct {
+	io.ReadCloser
+	bytes int64
+}
+
+func (r *requestBodyRecorder) Read(buffer []byte) (int, error) {
+	read, err := r.ReadCloser.Read(buffer)
+	r.bytes += int64(read)
+	return read, err
+}
+
+type requestMetricsObservation struct {
+	metrics      Metrics
+	route        string
+	method       string
+	started      time.Time
+	response     *responseRecorder
+	requestBody  *requestBodyRecorder
+	httpFinished func()
+}
+
+func beginRequestMetrics(writer http.ResponseWriter, request *http.Request, metrics Metrics, route, method string) (*responseRecorder, *requestMetricsObservation) {
+	response := &responseRecorder{ResponseWriter: writer}
+	body := &requestBodyRecorder{ReadCloser: request.Body}
+	if request.Body != nil {
+		request.Body = body
+	}
+	return response, &requestMetricsObservation{
+		metrics: metrics, route: route, method: method, started: time.Now(),
+		response: response, requestBody: body, httpFinished: metrics.HTTPStarted(),
+	}
+}
+
+func (o *requestMetricsObservation) finish(status int) {
+	if status == 0 {
+		status = o.response.status
+	}
+	if status == 0 {
+		status = http.StatusOK
+	}
+	o.metrics.ObserveHTTPRequest(o.route, o.method, status, time.Since(o.started))
+	o.metrics.ObserveHTTPPayload(o.route, o.method, o.requestBody.bytes, int64(o.response.bytes))
+	o.httpFinished()
+}
+
 func logRequests(next http.Handler, logger Logger) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		started := time.Now()
@@ -159,5 +205,23 @@ func logRequests(next http.Handler, logger Logger) http.Handler {
 			logInt("bytes", recorder.bytes),
 			logInt64("duration_ms", time.Since(started).Milliseconds()),
 		)
+	})
+}
+
+func observeRequestMetrics(next http.Handler, metrics Metrics, route, method string) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorder, observation := beginRequestMetrics(writer, request, metrics, route, method)
+		defer func() {
+			recovered := recover()
+			status := 0
+			if recovered != nil {
+				status = http.StatusInternalServerError
+			}
+			observation.finish(status)
+			if recovered != nil {
+				panic(recovered)
+			}
+		}()
+		next.ServeHTTP(recorder, request)
 	})
 }

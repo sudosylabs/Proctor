@@ -40,7 +40,8 @@ type examRevisionUseCases interface {
 	List(context.Context, examengine.Call, examengine.ListRevisionsQuery) (examengine.RevisionPage, error)
 }
 
-func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, command PublishExamRevisionCommand) (ExamRevisionSummary, error) {
+func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, command PublishExamRevisionCommand) (result ExamRevisionSummary, resultErr error) {
+	defer func() { a.recordOperational("exam", "publish_revision", resultErr) }()
 	if command.IdempotencyKey == "" {
 		return ExamRevisionSummary{}, NewError("idempotency.key_required")
 	}

@@ -41,12 +41,17 @@ func clonePeriodicTasks(values []PeriodicTask) ([]PeriodicTask, error) {
 	return cloned, nil
 }
 
-func runPeriodicTask(ctx context.Context, task PeriodicTask, diagnostics Diagnostics, clock Clock) {
+func runPeriodicTask(ctx context.Context, task PeriodicTask, diagnostics Diagnostics, clock Clock, recorder Recorder) {
 	if task.Name == "" || task.Interval <= 0 || task.Runner == nil || diagnostics == nil || clock == nil {
 		return
 	}
 	for {
-		if err := task.Runner.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		started := time.Now()
+		err := task.Runner.Run(ctx)
+		if recorder != nil {
+			recorder.Record(Activity{Kind: "periodic", Name: task.Name, Operation: "run", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
+		}
+		if err != nil && !errors.Is(err, context.Canceled) {
 			diagnostics.ErrorContext(ctx, "run periodic runtime task "+task.Name, err)
 		}
 		if ctx.Err() != nil {

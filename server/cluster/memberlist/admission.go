@@ -124,6 +124,9 @@ func (d *admissionDelegate) NotifyMerge(peers []*hashimemberlist.Node) error {
 }
 
 func (d *admissionDelegate) NotifyConflict(_, _ *hashimemberlist.Node) {
+	if d.transport.cfg.Metrics != nil {
+		d.transport.cfg.Metrics.ObserveClusterAdmission("identity_conflict")
+	}
 	d.transport.cfg.Logger.ErrorContext(
 		context.Background(),
 		"duplicate cluster node identity rejected",
@@ -137,11 +140,33 @@ func (d *admissionDelegate) reject(err error) {
 		d.startupErr = err
 	}
 	d.mu.Unlock()
+	if d.transport.cfg.Metrics != nil {
+		d.transport.cfg.Metrics.ObserveClusterAdmission(admissionReason(err))
+	}
 	d.transport.cfg.Logger.ErrorContext(
 		context.Background(),
 		"cluster peer admission rejected",
 		err,
 	)
+}
+
+func admissionReason(err error) string {
+	switch {
+	case errors.Is(err, errAdmissionMetadataInvalid):
+		return "metadata_invalid"
+	case errors.Is(err, errAdmissionIdentityMismatch):
+		return "identity_mismatch"
+	case errors.Is(err, errAdmissionServerVersionMissing):
+		return "version_missing"
+	case errors.Is(err, errAdmissionProtocolInvalid):
+		return "protocol_invalid"
+	case errors.Is(err, errAdmissionProtocolIncompatible):
+		return "protocol_incompatible"
+	case errors.Is(err, cluster.ErrNodeIDInUse):
+		return "identity_conflict"
+	default:
+		return "invalid"
+	}
 }
 
 func (d *admissionDelegate) finishStartup() error {

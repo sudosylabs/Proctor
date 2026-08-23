@@ -47,6 +47,7 @@ type Config struct {
 	ServerVersion      string
 	AllowPublicBind    bool
 	Logger             cluster.Logger
+	Metrics            cluster.Metrics
 }
 
 type state uint8
@@ -242,6 +243,18 @@ func (t *Transport) NodeID() string {
 	return t.cfg.NodeID
 }
 
+// PeerCount reports the current node-local mesh view without exposing member
+// identity or metadata.
+func (t *Transport) PeerCount() int {
+	t.mu.RLock()
+	list := t.list
+	t.mu.RUnlock()
+	if list == nil {
+		return 0
+	}
+	return max(list.NumMembers()-1, 0)
+}
+
 // Start creates Memberlist, advertises discovery, joins seeds, and starts
 // heartbeat maintenance. It is idempotent while running.
 func (t *Transport) Start(ctx context.Context) error {
@@ -313,8 +326,15 @@ func (t *Transport) Start(ctx context.Context) error {
 	}
 	if len(seeds) > 0 {
 		if _, err := list.Join(seeds); err != nil {
+			if t.cfg.Metrics != nil {
+				t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "error")
+			}
 			t.cfg.Logger.ErrorContext(ctx, "memberlist join incomplete", err)
+		} else if t.cfg.Metrics != nil {
+			t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "success")
 		}
+	} else if t.cfg.Metrics != nil {
+		t.cfg.Metrics.ObserveClusterDiscovery("initial_join", "empty")
 	}
 	if err := admission.finishStartup(); err != nil {
 		t.discovery.rollback(ctx)
@@ -322,6 +342,9 @@ func (t *Transport) Start(ctx context.Context) error {
 		return err
 	}
 	if err := t.admitJoinedPeers(list.LocalNode(), list.Members()); err != nil {
+		if t.cfg.Metrics != nil {
+			t.cfg.Metrics.ObserveClusterAdmission(admissionReason(err))
+		}
 		t.discovery.rollback(ctx)
 		_ = list.Shutdown()
 		return err
@@ -476,12 +499,23 @@ func (t *Transport) Broadcast(ctx context.Context, message *cluster.Message) err
 	if list == nil {
 		return cluster.ErrNotStarted
 	}
+	members := list.Members()
+	recipients := 0
+	for _, member := range members {
+		if member != nil && member.Name != t.cfg.NodeID {
+			recipients++
+		}
+	}
+	if t.cfg.Metrics != nil {
+		t.cfg.Metrics.ObserveClusterFanout(recipients)
+	}
 	return broadcastMembers(
 		ctx,
 		t.cfg.NodeID,
-		list.Members(),
+		members,
 		payload,
 		list.SendBestEffort,
+		func(err error) { t.observeSentMessage(message.Event, payload, err) },
 	)
 }
 
@@ -491,6 +525,7 @@ func broadcastMembers(
 	members []*hashimemberlist.Node,
 	payload []byte,
 	send func(*hashimemberlist.Node, []byte) error,
+	observers ...func(error),
 ) error {
 	var result error
 	for _, member := range members {
@@ -500,7 +535,13 @@ func broadcastMembers(
 		if member.Name == localNodeID {
 			continue
 		}
-		if err := send(member, payload); err != nil {
+		err := send(member, payload)
+		for _, observe := range observers {
+			if observe != nil {
+				observe(err)
+			}
+		}
+		if err != nil {
 			result = errors.Join(result, fmt.Errorf("send to %s: %w", member.Name, err))
 		}
 	}
@@ -514,7 +555,15 @@ func (t *Transport) SendToNode(ctx context.Context, nodeID string, message *clus
 		return err
 	}
 	if nodeID == t.cfg.NodeID {
-		return t.dispatchLocal(ctx, message.Clone())
+		err := t.dispatchLocal(ctx, message.Clone())
+		if t.cfg.Metrics != nil {
+			result := "success"
+			if err != nil {
+				result = "error"
+			}
+			t.cfg.Metrics.ObserveClusterMessage("local", t.metricEvent(message.Event), result, len(message.Data))
+		}
+		return err
 	}
 	payload, err := t.encodeEnvelope(nodeID, message)
 	if err != nil {
@@ -530,15 +579,42 @@ func (t *Transport) SendToNode(ctx context.Context, nodeID string, message *clus
 		meta, metaErr := decodeNodeMeta(member.Meta)
 		if metaErr != nil {
 			if member.Name == nodeID {
-				return list.SendBestEffort(member, payload)
+				err = list.SendBestEffort(member, payload)
+				t.observeSentMessage(message.Event, payload, err)
+				return err
 			}
 			continue
 		}
 		if meta.NodeID == nodeID || member.Name == nodeID {
-			return list.SendBestEffort(member, payload)
+			err = list.SendBestEffort(member, payload)
+			t.observeSentMessage(message.Event, payload, err)
+			return err
 		}
 	}
 	return fmt.Errorf("%w: %s", cluster.ErrNodeUnavailable, nodeID)
+}
+
+func (t *Transport) observeSentMessage(event cluster.Event, payload []byte, err error) {
+	if t.cfg.Metrics == nil {
+		return
+	}
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	t.cfg.Metrics.ObserveClusterMessage("send", t.metricEvent(event), result, len(payload))
+}
+
+// metricEvent exposes only startup-registered event names. Message validation
+// bounds syntax and size, but registration is what closes metric cardinality.
+func (t *Transport) metricEvent(event cluster.Event) string {
+	t.mu.RLock()
+	_, registered := t.handlers[event]
+	t.mu.RUnlock()
+	if !registered {
+		return "unregistered"
+	}
+	return string(event)
 }
 
 func (t *Transport) validateSend(ctx context.Context, message *cluster.Message) error {

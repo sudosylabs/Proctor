@@ -28,6 +28,7 @@ type API struct {
 	router                  *mux.Router
 	authenticator           Authenticator
 	logger                  Logger
+	metrics                 Metrics
 	localizer               Localizer
 	cookies                 browserCookies
 	recentAuthenticationTTL time.Duration
@@ -121,6 +122,7 @@ func New(options Options) (*API, error) {
 	api := &API{
 		authenticator:           options.Application,
 		logger:                  options.Logger,
+		metrics:                 options.Metrics,
 		localizer:               options.Localizer,
 		cookies:                 cookies,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
@@ -168,6 +170,12 @@ func (a *API) Routes() []Route {
 func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
 	match := &mux.RouteMatch{}
 	if !a.router.Match(request, match) {
+		if a.metrics != nil {
+			method := boundedHTTPMethod(request.Method)
+			recorder, observation := beginRequestMetrics(writer, request, a.metrics, "unmatched", method)
+			defer observation.finish(0)
+			writer = recorder
+		}
 		if len(a.allowedMethods(request)) != 0 {
 			a.handleMethodNotAllowed(writer, request)
 			return
@@ -176,6 +184,16 @@ func (a *API) serveRoutes(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	a.router.ServeHTTP(writer, request)
+}
+
+func boundedHTTPMethod(method string) string {
+	switch method {
+	case http.MethodConnect, http.MethodDelete, http.MethodGet, http.MethodHead,
+		http.MethodOptions, http.MethodPatch, http.MethodPost, http.MethodPut, http.MethodTrace:
+		return method
+	default:
+		return "OTHER"
+	}
 }
 
 func (a *API) Close() error {

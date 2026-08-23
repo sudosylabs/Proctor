@@ -76,7 +76,7 @@ func TestRunPeriodicTaskRunsImmediatelyAndOnEachInterval(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		runPeriodicTask(ctx, PeriodicTask{Name: "scan", Interval: 2 * time.Second, Runner: runner}, &jobDiagnosticsFake{}, clock)
+		runPeriodicTask(ctx, PeriodicTask{Name: "scan", Interval: 2 * time.Second, Runner: runner}, &jobDiagnosticsFake{}, clock, nil)
 		close(done)
 	}()
 
@@ -106,7 +106,7 @@ func TestRunPeriodicTaskReportsErrorAndContinues(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		runPeriodicTask(ctx, PeriodicTask{Name: "scan", Interval: 2 * time.Second, Runner: runner}, diagnostics, clock)
+		runPeriodicTask(ctx, PeriodicTask{Name: "scan", Interval: 2 * time.Second, Runner: runner}, diagnostics, clock, nil)
 		close(done)
 	}()
 	waitPeriodicCall(t, runner.seen)

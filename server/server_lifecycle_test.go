@@ -89,6 +89,37 @@ type lifecycleServingNodeLease struct {
 	failures chan error
 }
 
+type lifecycleMetrics struct {
+	startErr       error
+	closeErr       error
+	events         *lifecycleEvents
+	failures       chan error
+	failureSources []<-chan error
+	failureCalls   atomic.Int64
+	ready          atomic.Bool
+}
+
+func (m *lifecycleMetrics) Start(context.Context) error {
+	m.events.record("metrics-start")
+	return m.startErr
+}
+
+func (m *lifecycleMetrics) Failures() <-chan error {
+	if len(m.failureSources) == 0 {
+		return m.failures
+	}
+	index := int(m.failureCalls.Add(1) - 1)
+	if index >= len(m.failureSources) {
+		index = len(m.failureSources) - 1
+	}
+	return m.failureSources[index]
+}
+func (m *lifecycleMetrics) SetReady(ready bool) { m.ready.Store(ready) }
+func (m *lifecycleMetrics) Close() error {
+	m.events.record("metrics-close")
+	return m.closeErr
+}
+
 func (l *lifecycleServingNodeLease) Start(context.Context) error {
 	l.events.record("serving-lease-start")
 	return l.startErr
@@ -380,6 +411,63 @@ func TestServerJobStartupFailureClosesWorkersBeforeInfrastructure(t *testing.T) 
 		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
 	}
 	assertLifecycleEvents(t, events, "platform-start", "jobs-start", "jobs-close", "websocket-close", "transport-close", "platform-close")
+}
+
+func TestServerMetricsStartupFailureIsFatalAndClosesBeforeInfrastructure(t *testing.T) {
+	t.Parallel()
+
+	startErr := errors.New("metrics listener unavailable")
+	events := &lifecycleEvents{}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform:  &lifecyclePlatform{events: events},
+		metrics:   &lifecycleMetrics{startErr: startErr, events: events, failures: make(chan error)},
+		jobs:      &lifecycleJobs{events: events},
+		websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events},
+		readiness: &lifecycleReadiness{},
+	})
+
+	err := node.Run(context.Background())
+	if !errors.Is(err, startErr) {
+		t.Fatalf("Run() error = %v, want wrapped %v", err, startErr)
+	}
+	assertLifecycleEvents(t, events,
+		"platform-start", "metrics-start", "jobs-close", "websocket-close",
+		"transport-close", "metrics-close", "platform-close",
+	)
+}
+
+func TestServerRechecksQueuedMetricsFailureBeforePublishingReady(t *testing.T) {
+	t.Parallel()
+
+	metricsErr := errors.New("metrics listener stopped during HTTP handoff")
+	queuedFailure := make(chan error, 1)
+	queuedFailure <- metricsErr
+	events := &lifecycleEvents{}
+	readiness := &lifecycleReadiness{events: events}
+	httpService := &lifecycleHTTP{events: events, started: make(chan struct{}), stopped: make(chan struct{})}
+	metrics := &lifecycleMetrics{
+		events: events,
+		// The first source covers the post-Start probe, the nil source disables
+		// the handoff select case, and the third models a failure already queued
+		// when the immediate pre-readiness probe runs.
+		failureSources: []<-chan error{make(chan error), nil, queuedFailure},
+	}
+	node := newLifecycleTestServer(t, runtimeComponents{
+		platform: &lifecyclePlatform{events: events}, metrics: metrics,
+		jobs: &lifecycleJobs{events: events}, websocket: &lifecycleWebSocket{events: events},
+		transport: &lifecycleTransport{events: events}, readiness: readiness,
+		listen:  func(string, string) (net.Listener, error) { return &lifecycleListener{events: events}, nil },
+		newHTTP: func(httpServerSettings) httpRuntime { return httpService },
+	})
+
+	err := node.Run(context.Background())
+	if !errors.Is(err, metricsErr) {
+		t.Fatalf("Run() error = %v, want wrapped %v", err, metricsErr)
+	}
+	if readiness.Ready() || metrics.ready.Load() {
+		t.Fatal("node published readiness after a queued metrics failure")
+	}
 }
 
 func TestServerServingLeaseMustCommitBeforeWorkersOrListener(t *testing.T) {

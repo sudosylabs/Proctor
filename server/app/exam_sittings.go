@@ -120,7 +120,8 @@ type examSittingUseCases interface {
 	ListLifecycleDue(context.Context, store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error)
 }
 
-func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (ExamSittingView, error) {
+func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (result ExamSittingView, resultErr error) {
+	defer func() { a.recordOperational("exam_sitting", "schedule", resultErr) }()
 	idempotency, err := newExamSittingIdempotency(invocation, "exam.sitting.schedule.v1", command.IdempotencyKey, struct {
 		ExamID           model.ExamID         `json:"exam_id"`
 		ExamRevisionID   model.ExamRevisionID `json:"exam_revision_id"`
@@ -237,7 +238,8 @@ type examSittingManagerTransitionUseCase func(context.Context, examsitting.Call,
 
 func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation Invocation, operation string,
 	command PauseExamSittingCommand, run examSittingManagerTransitionUseCase,
-) (ExamSittingView, error) {
+) (result ExamSittingView, resultErr error) {
+	defer func() { a.recordOperational("exam_sitting", examSittingMetricEvent(operation), resultErr) }()
 	idempotency, err := newExamSittingIdempotency(invocation, operation, command.IdempotencyKey, struct {
 		ExamID           model.ExamID        `json:"exam_id"`
 		SittingID        model.ExamSittingID `json:"exam_sitting_id"`
@@ -255,6 +257,19 @@ func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation In
 		return ExamSittingView{}, examSittingError(err, true)
 	}
 	return view, nil
+}
+
+func examSittingMetricEvent(operation string) string {
+	switch operation {
+	case "exam.sitting.pause.v1":
+		return "pause"
+	case "exam.sitting.resume.v1":
+		return "resume"
+	case "exam.sitting.close.v1":
+		return "close"
+	default:
+		return "transition"
+	}
 }
 
 func (a *App) ExtendExamSitting(ctx context.Context, invocation Invocation, command ExtendExamSittingCommand) (ExamSittingView, error) {

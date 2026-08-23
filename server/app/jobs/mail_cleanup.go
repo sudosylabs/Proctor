@@ -101,7 +101,7 @@ func recordMailMaintenanceDeliveries(ctx context.Context, recorder MailDeliveryR
 	for _, delivery := range result.Deliveries {
 		recorder.RecordJobMailDelivery(ctx, MailDeliveryMetric{
 			TemplateKey: delivery.TemplateKey, State: delivery.State, OutcomeCode: delivery.PublicFailureCode,
-			AttemptCount: delivery.AttemptCount, ProcessingLatency: delivery.ProcessingLatency,
+			ProcessingLatency: delivery.ProcessingLatency,
 		})
 	}
 }

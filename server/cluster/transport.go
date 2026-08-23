@@ -30,6 +30,17 @@ type Logger interface {
 	ErrorContext(ctx context.Context, message string, err error)
 }
 
+// Metrics receives only bounded transport facts selected inside cluster
+// implementations. It never receives node identities, addresses, payloads, or
+// error text.
+type Metrics interface {
+	ObserveClusterMessage(direction, event, outcome string, bytes int)
+	ObserveClusterMembership(event string)
+	ObserveClusterDiscovery(operation, outcome string)
+	ObserveClusterAdmission(reason string)
+	ObserveClusterFanout(recipients int)
+}
+
 // Transport is the server-owned inter-node messaging contract.
 //
 // Broadcast sends to peer nodes only and never invokes this node's handlers.

@@ -120,19 +120,27 @@ func (directory *Directory) Revoke(ctx context.Context, hostID, grantID string) 
 // Check fails closed when execution is enabled without at least one usable,
 // isolated host. A disabled directory is a healthy inert dependency.
 func (directory *Directory) Check(ctx context.Context) error {
+	_, err := directory.CheckCatalog(ctx)
+	return err
+}
+
+// CheckCatalog performs the health check and returns the exact catalog used
+// for the decision. Runtime decorators use this to publish a consistent host
+// snapshot without issuing a second remote probe.
+func (directory *Directory) CheckCatalog(ctx context.Context) ([]appexecution.HostStatus, error) {
 	if directory == nil || !directory.enabled {
-		return nil
+		return []appexecution.HostStatus{}, nil
 	}
 	catalog, err := directory.Catalog(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, host := range catalog {
 		if host.Usable && host.Isolated {
-			return nil
+			return catalog, nil
 		}
 	}
-	return errors.New("no usable isolated execution host")
+	return catalog, errors.New("no usable isolated execution host")
 }
 
 func (directory *Directory) Close() error {

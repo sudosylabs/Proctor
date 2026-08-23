@@ -80,6 +80,26 @@ type ServerLetsEncrypt struct {
 	CacheDirectory string `json:"CacheDirectory"`
 }
 
+// Metrics configures the node-local Prometheus scrape listener. A listener
+// reachable beyond loopback must use both TLS and bearer authentication.
+type Metrics struct {
+	Enabled                  bool       `json:"Enabled"`
+	ListenAddress            string     `json:"ListenAddress"`
+	BearerToken              string     `json:"BearerToken"`
+	TLS                      MetricsTLS `json:"TLS"`
+	ReadHeaderTimeout        Duration   `json:"ReadHeaderTimeout"`
+	ReadTimeout              Duration   `json:"ReadTimeout"`
+	WriteTimeout             Duration   `json:"WriteTimeout"`
+	IdleTimeout              Duration   `json:"IdleTimeout"`
+	ShutdownTimeout          Duration   `json:"ShutdownTimeout"`
+	MaximumConcurrentScrapes int        `json:"MaximumConcurrentScrapes"`
+}
+
+type MetricsTLS struct {
+	CertificateFile string `json:"CertificateFile"`
+	PrivateKeyFile  string `json:"PrivateKeyFile"`
+}
+
 type LogTarget struct {
 	Name       string `json:"Name"`
 	Type       string `json:"Type"`
@@ -312,6 +332,7 @@ type Localization struct {
 type Config struct {
 	Version        int            `json:"Version"`
 	Server         Server         `json:"Server"`
+	Metrics        Metrics        `json:"Metrics"`
 	Database       Database       `json:"Database"`
 	Cache          Cache          `json:"Cache"`
 	Cluster        Cluster        `json:"Cluster"`
@@ -343,6 +364,15 @@ func Default() Config {
 			ShutdownTimeout:   Duration{Duration: 15 * time.Second},
 			MaxHeaderBytes:    1 << 20,
 			MaxBodyBytes:      1 << 20,
+		},
+		Metrics: Metrics{
+			ListenAddress:            "127.0.0.1:8067",
+			ReadHeaderTimeout:        Duration{Duration: 5 * time.Second},
+			ReadTimeout:              Duration{Duration: 10 * time.Second},
+			WriteTimeout:             Duration{Duration: 30 * time.Second},
+			IdleTimeout:              Duration{Duration: time.Minute},
+			ShutdownTimeout:          Duration{Duration: 5 * time.Second},
+			MaximumConcurrentScrapes: 2,
 		},
 		Database: Database{
 			DataSource:            "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
@@ -532,6 +562,7 @@ func (c Config) Redacted() Config {
 		redacted.Database.DataSource = "[redacted]"
 	}
 	redacted.Cache.Redis.Password = redactSecret(redacted.Cache.Redis.Password)
+	redacted.Metrics.BearerToken = redactSecret(redacted.Metrics.BearerToken)
 	redacted.Cluster.Memberlist.EncryptionKey = redactSecret(redacted.Cluster.Memberlist.EncryptionKey)
 	for index := range redacted.Cluster.Memberlist.DecryptionKeys {
 		redacted.Cluster.Memberlist.DecryptionKeys[index] = redactSecret(
@@ -619,6 +650,7 @@ func (c Config) Validate() error {
 	validateListenAddress(c.Server.ListenAddress, add)
 	validatePublicURL(c.Server.PublicURL, add)
 	validateServerTLS(c.Server, c.Cluster, add)
+	validateMetrics(c.Metrics, c.Server, add)
 
 	durations := []struct {
 		field string
@@ -736,6 +768,72 @@ func (c Config) Validate() error {
 		return &ValidationError{Fields: fields}
 	}
 	return nil
+}
+
+func validateMetrics(metrics Metrics, server Server, add func(string, string)) {
+	if !validHostPort(metrics.ListenAddress) {
+		add("metrics.listen_address", "must be a host:port TCP address")
+	} else {
+		metricsHost, _, _ := net.SplitHostPort(metrics.ListenAddress)
+		if metrics.Enabled && listenAddressesConflict(metrics.ListenAddress, server.ListenAddress) {
+			add("metrics.listen_address", "must differ from server.listen_address")
+		}
+		if metrics.Enabled && server.TLS.ForwardHTTPToHTTPS &&
+			listenAddressesConflict(metrics.ListenAddress, server.TLS.HTTPListenAddress) {
+			add("metrics.listen_address", "must differ from server.tls.http_listen_address")
+		}
+		ip := net.ParseIP(metricsHost)
+		loopback := strings.EqualFold(metricsHost, "localhost") || (ip != nil && ip.IsLoopback())
+		hasCertificate := strings.TrimSpace(metrics.TLS.CertificateFile) != ""
+		hasKey := strings.TrimSpace(metrics.TLS.PrivateKeyFile) != ""
+		if metrics.Enabled && hasCertificate != hasKey {
+			add("metrics.tls", "certificate_file and private_key_file must be configured together")
+		}
+		if metrics.Enabled && !loopback && (!hasCertificate || !hasKey || len(metrics.BearerToken) < 32) {
+			add("metrics.listen_address", "non-loopback metrics require TLS and a bearer token of at least 32 bytes")
+		}
+	}
+	if metrics.BearerToken != "" && (len(metrics.BearerToken) < 32 || len(metrics.BearerToken) > 512) {
+		add("metrics.bearer_token", "must contain between 32 and 512 bytes when configured")
+	}
+	for _, timeout := range []struct {
+		field string
+		value time.Duration
+	}{
+		{"metrics.read_header_timeout", metrics.ReadHeaderTimeout.Duration},
+		{"metrics.read_timeout", metrics.ReadTimeout.Duration},
+		{"metrics.write_timeout", metrics.WriteTimeout.Duration},
+		{"metrics.idle_timeout", metrics.IdleTimeout.Duration},
+		{"metrics.shutdown_timeout", metrics.ShutdownTimeout.Duration},
+	} {
+		if timeout.value <= 0 {
+			add(timeout.field, "must be greater than zero")
+		}
+	}
+	if metrics.MaximumConcurrentScrapes < 1 || metrics.MaximumConcurrentScrapes > 32 {
+		add("metrics.maximum_concurrent_scrapes", "must be between 1 and 32")
+	}
+}
+
+func listenAddressesConflict(first, second string) bool {
+	firstHost, firstPort, firstErr := net.SplitHostPort(first)
+	secondHost, secondPort, secondErr := net.SplitHostPort(second)
+	if firstErr != nil || secondErr != nil || firstPort != secondPort {
+		return false
+	}
+	firstHost = strings.TrimSuffix(strings.ToLower(firstHost), ".")
+	secondHost = strings.TrimSuffix(strings.ToLower(secondHost), ".")
+	if firstHost == secondHost {
+		return true
+	}
+	firstIP, secondIP := net.ParseIP(firstHost), net.ParseIP(secondHost)
+	if (firstIP != nil && firstIP.IsUnspecified()) || (secondIP != nil && secondIP.IsUnspecified()) ||
+		firstHost == "" || secondHost == "" {
+		return true
+	}
+	firstLoopback := firstHost == "localhost" || (firstIP != nil && firstIP.IsLoopback())
+	secondLoopback := secondHost == "localhost" || (secondIP != nil && secondIP.IsLoopback())
+	return firstLoopback && secondLoopback
 }
 
 func validateCluster(cluster Cluster, add func(string, string)) {

@@ -26,7 +26,8 @@ type SubmitExamAttemptCommand struct {
 
 func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 	command SubmitExamAttemptCommand,
-) (ExamSubmissionReceipt, error) {
+) (response ExamSubmissionReceipt, resultErr error) {
+	defer func() { a.recordOperational("exam_attempt", "submit", resultErr) }()
 	if command.IdempotencyKey == "" {
 		return ExamSubmissionReceipt{}, NewError("idempotency.key_required")
 	}

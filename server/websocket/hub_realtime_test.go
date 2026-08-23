@@ -13,6 +13,26 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
+type websocketMetricsFake struct {
+	broadcastEvent      string
+	broadcastOutcome    string
+	broadcastRecipients int
+	replays             []string
+	subscriptions       int
+}
+
+func (*websocketMetricsFake) ConnectionOpened(string)                             {}
+func (*websocketMetricsFake) ConnectionClosed(string)                             {}
+func (*websocketMetricsFake) Backpressure()                                       {}
+func (*websocketMetricsFake) ObserveWebSocketMessage(string, string, string, int) {}
+func (r *websocketMetricsFake) ObserveWebSocketBroadcast(event, outcome string, recipients int) {
+	r.broadcastEvent, r.broadcastOutcome, r.broadcastRecipients = event, outcome, recipients
+}
+func (r *websocketMetricsFake) ObserveWebSocketReplay(outcome string, _ int) {
+	r.replays = append(r.replays, outcome)
+}
+func (r *websocketMetricsFake) AddWebSocketSubscriptions(delta int) { r.subscriptions += delta }
+
 func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	t.Parallel()
 
@@ -44,6 +64,32 @@ func TestEventFromRealtimePreservesWireFieldsAndClonesData(t *testing.T) {
 	event.Data[0] = '['
 	if bytes.Equal(event.Data, source.Data) {
 		t.Fatal("wire event data aliases the realtime event data")
+	}
+}
+
+func TestHubMetricsObserveBroadcastFanoutAndResumeOutcome(t *testing.T) {
+	t.Parallel()
+
+	hub := newInternalTestHub(t)
+	recorder := &websocketMetricsFake{}
+	if err := hub.AttachRecorder(recorder); err != nil {
+		t.Fatal(err)
+	}
+	if err := hub.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hub.Close() }()
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID()}
+	if connection, _ := hub.register(newRuntimeTestSocket(), principal, model.RequestMetadata{}, "missing-resume", 0, ""); connection == nil {
+		t.Fatal("register returned nil")
+	}
+	event := realtime.RealtimeEvent{ID: model.NewId(), Name: "academic_unit.updated", UserID: principal.UserID.String(), Data: json.RawMessage(`{"updated":true}`)}
+	hub.PublishLocal(context.Background(), event)
+	if recorder.broadcastEvent != "event" || recorder.broadcastOutcome != "published" || recorder.broadcastRecipients != 1 {
+		t.Fatalf("broadcast metrics = (%q, %q, %d)", recorder.broadcastEvent, recorder.broadcastOutcome, recorder.broadcastRecipients)
+	}
+	if len(recorder.replays) != 1 || recorder.replays[0] != "resync_required" {
+		t.Fatalf("replay metrics = %#v", recorder.replays)
 	}
 }
 

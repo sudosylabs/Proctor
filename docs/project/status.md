@@ -24,6 +24,14 @@ the code and component contracts for that detail.
   application memory cache is a configurable entry/byte-bounded LRU; the store
   read-through cache is a separate bounded local LRU. Memberlist mode requires
   Redis for shared disposable authentication counters.
+- An optional node-local Prometheus server is lifecycle-owned by `Server`,
+  disabled and loopback-bound by default, TLS-plus-bearer protected when
+  exposed beyond loopback, and limited to `GET /metrics` without pprof. It
+  reports build/process/readiness and scrape health plus deep HTTP, SQL/store,
+  logging/cache, WebSocket, cluster, durable Jobs, execution-host, VFS,
+  Redis/shared-cache, SMTP/durable-mail, and selected application outcomes.
+  Internal queue, fan-out, replay, membership, rejoin, lease, retry, stream,
+  size, and health facts use bounded labels and consumer-owned recorders.
 - The execenv v0.2.0 server foundation is operational behind `app/execution`:
   a bounded static multi-host catalog supports TLS 1.3/mTLS or loopback-only
   development authentication, fail-closed readiness, reconnecting outbound

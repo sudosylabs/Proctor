@@ -71,13 +71,17 @@ func nextDailyOccurrence(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
 }
 
-func runDailyProposal(ctx context.Context, recurrence Recurrence, diagnostics Diagnostics, clock Clock, retryDelay time.Duration, wake func()) {
+func runDailyProposal(ctx context.Context, recurrence Recurrence, diagnostics Diagnostics, clock Clock, retryDelay time.Duration, wake func(), recorder Recorder) {
 	if recurrence.Name == "" || recurrence.Proposer == nil || diagnostics == nil || clock == nil || retryDelay <= 0 {
 		return
 	}
 	occurrence := clock.Now().UTC()
 	for {
+		started := time.Now()
 		err := recurrence.Proposer.Propose(ctx, occurrence)
+		if recorder != nil {
+			recorder.Record(Activity{Kind: "recurrence", Name: recurrence.Name, Operation: "propose", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
+		}
 		if err != nil && !errors.Is(err, context.Canceled) {
 			diagnostics.ErrorContext(ctx, "propose daily durable job "+recurrence.Name, err)
 		}

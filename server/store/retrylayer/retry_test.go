@@ -47,6 +47,10 @@ type rootStub struct {
 	invitation           store.InvitationStore
 }
 
+type retryRecorder struct{ outcomes []string }
+
+func (r *retryRecorder) ObserveStoreRetry(outcome string) { r.outcomes = append(r.outcomes, outcome) }
+
 func (s *rootStub) Institution() store.InstitutionStore   { return s.institution }
 func (s *rootStub) AcademicUnit() store.AcademicUnitStore { return nil }
 func (s *rootStub) ExamAuthoring() store.ExamAuthoringStore {
@@ -696,6 +700,33 @@ func TestRetryGeneratedForwardingIsCurrent(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatal("forwarding_gen.go is stale; run go generate ./store/retrylayer")
+	}
+}
+
+func TestRetryRecorderReportsAttemptsAndExhaustion(t *testing.T) {
+	t.Parallel()
+
+	transient := errors.New("transient")
+	institution := &institutionStub{get: func() (*model.Institution, error) { return nil, transient }}
+	recorder := &retryRecorder{}
+	layer, err := retrylayer.NewWithRecorder(&rootStub{institution: institution}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(err error) bool { return errors.Is(err, transient) },
+	}, recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := layer.Institution().Get(context.Background(), "institution"); !errors.Is(err, transient) {
+		t.Fatalf("Get() error = %v", err)
+	}
+	want := []string{"retry", "retry", "exhausted"}
+	if len(recorder.outcomes) != len(want) {
+		t.Fatalf("outcomes = %#v, want %#v", recorder.outcomes, want)
+	}
+	for index := range want {
+		if recorder.outcomes[index] != want[index] {
+			t.Fatalf("outcomes = %#v, want %#v", recorder.outcomes, want)
+		}
 	}
 }
 

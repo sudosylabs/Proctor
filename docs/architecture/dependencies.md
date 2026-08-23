@@ -16,6 +16,7 @@ secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
 {localization, app/mail, cmd/proctor/commands, httpapi, websocket} ← cmd/ptool
 logging ← platform
+{config, store/timerlayer, store/localcachelayer} ← metrics ← server
 app ← httpapi
 model ← filecontent
 packages/vfs ← filecontent
@@ -47,6 +48,7 @@ inside `app/` are application-owned modules, not transports.
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
+| `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
 | `app` | `model`, `store`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `httpapi` | `app`, `model`, `localization`, HTTP libraries | `store`, `sqlstore`, `platform` |

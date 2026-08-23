@@ -560,6 +560,43 @@ Logging supports multiple independently filtered console or file targets,
 text/JSON formatting, contextual fields, bounded field sizes, runtime
 reconfiguration, flush/shutdown, and locked test capture.
 
+### Prometheus metrics
+
+`Metrics.Enabled` starts a dedicated node-local Prometheus listener. Its safe
+default is `127.0.0.1:8067`; Prometheus must scrape every application node and
+apply its own target labels because Proctor does not aggregate metrics through
+Memberlist. Only `GET /metrics` exists on this listener—profiling endpoints are
+not mounted. Listener settings are restart-required.
+
+For a monitoring agent on the same host, keep the loopback address and scrape
+`http://127.0.0.1:8067/metrics`. `Metrics.BearerToken` is optional on loopback.
+For a remote monitoring network, choose a non-loopback `ListenAddress` and set
+both `Metrics.TLS.CertificateFile` and `Metrics.TLS.PrivateKeyFile`, plus a
+random bearer token of 32–512 bytes (prefer
+`PROCTOR_METRICS_BEARER_TOKEN`). Configuration validation rejects an exposed
+listener missing either protection. The token is sent as
+`Authorization: Bearer <token>` and is redacted from configuration display.
+The principal deployment overrides are `PROCTOR_METRICS_ENABLED`,
+`PROCTOR_METRICS_LISTEN_ADDRESS`, `PROCTOR_METRICS_TLS_CERTIFICATE_FILE`, and
+`PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE`; timeout and scrape-concurrency fields
+also have matching `PROCTOR_METRICS_` overrides.
+
+Metric families use the `proctor_` prefix and cover build/process/readiness and
+scrape health; sealed HTTP route templates, payload sizes, SQL pools, complete
+store-call timing and retry exhaustion; logging drops and cache decisions;
+WebSocket connections, messages, broadcasts, fan-out, replay, subscriptions,
+and backpressure; cluster messages/bytes, fan-out, membership, discovery,
+rejoin, and admission; durable Job claims, queue latency, lease heartbeats,
+reservations, checkpoints, completion, recurrence, and periodic work;
+execution-host state, capacity, calls, observations, files, and terminals; VFS
+operation outcomes, object/page sizes, streams, and bytes; shared memory/Redis
+cache hits, misses, conditional outcomes, latency, and bytes; SMTP stages,
+portable delivery outcomes, recipients/bytes, and durable mail queue/health;
+and selected authentication, authorization, realtime, and examination
+outcomes. Labels never contain
+raw request or VFS paths, cache keys, host/node/user/session/exam identifiers,
+mail recipients, payloads, credentials, or error text.
+
 The default `Cluster.Backend` is `local`, with `NodeID` set to `local`. This
 backend has no peers: broadcast is deliberately a no-op and never loops back
 into local handlers. The transport still participates in dependency checks and

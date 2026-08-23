@@ -6,8 +6,10 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/executionhost"
 	"github.com/sudosylabs/proctor/server/logging"
+	metricspkg "github.com/sudosylabs/proctor/server/metrics"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/platform/externalauth"
 	externalauthcas "github.com/sudosylabs/proctor/server/platform/externalauth/cas"
@@ -59,6 +62,7 @@ type ownedInfrastructure struct {
 	externalAuthentication *externalauth.Registry
 	executionHosts         executionHostDirectory
 	migration              *sqlstore.MigrationResult
+	metrics                *metricspkg.Module
 }
 
 type executionHostDirectory interface {
@@ -81,6 +85,7 @@ type constructionCapabilities struct {
 	executionHosts         appexecution.HostDirectory
 	nodeID                 string
 	migration              *sqlstore.MigrationResult
+	metrics                *metricspkg.Module
 }
 
 type borrowedCache interface {
@@ -178,11 +183,37 @@ func openRuntimeInfrastructure(
 	if err := checkAcquisitionContext(ctx, "acquire persistence"); err != nil {
 		return result, err
 	}
+	var databaseStats func() sql.DBStats
+	if source, ok := result.persistence.(interface{ Stats() sql.DBStats }); ok {
+		databaseStats = source.Stats
+	}
+	currentBuild := app.CurrentBuildInfo()
+	metricsModule, err := metricspkg.New(cfg.Metrics, metricspkg.BuildInfo{
+		Version: currentBuild.Version, Commit: currentBuild.Commit, GoVersion: currentBuild.GoVersion,
+	}, metricspkg.Sources{
+		Database: databaseStats,
+		ErrorLog: result.logger.StdLogger(slog.LevelError),
+		Logging: func() metricspkg.LogStats {
+			stats := result.logger.Stats()
+			return metricspkg.LogStats{Dropped: stats.Dropped, InternalErrors: stats.InternalErrors}
+		},
+	})
+	if err != nil {
+		return result, fmt.Errorf("construct metrics module: %w", err)
+	}
+	result.metrics = metricsModule
+	if metricsModule.Enabled() && result.executionHosts != nil {
+		result.executionHosts = &measuredExecutionHosts{next: result.executionHosts, metrics: metricsModule}
+	}
 	storeRetry := retrylayer.DefaultPolicy(sqlstore.IsTransientError)
 	if overrides.StoreRetry != nil {
 		storeRetry = *overrides.StoreRetry
 	}
-	retriedPersistence, err := retrylayer.New(result.persistence, storeRetry)
+	var storeRetryMetrics retrylayer.Recorder
+	if metricsModule.Enabled() {
+		storeRetryMetrics = metricsModule
+	}
+	retriedPersistence, err := retrylayer.NewWithRecorder(result.persistence, storeRetry, storeRetryMetrics)
 	if err != nil {
 		return result, fmt.Errorf("construct store retry layer: %w", err)
 	}
@@ -192,7 +223,11 @@ func openRuntimeInfrastructure(
 	}
 	storeMetrics := overrides.StoreMetrics
 	if storeMetrics == nil {
-		storeMetrics = timerlayer.NopRecorder{}
+		if metricsModule.Enabled() {
+			storeMetrics = metricsModule
+		} else {
+			storeMetrics = timerlayer.NopRecorder{}
+		}
 	}
 	timedPersistence, err := timerlayer.New(result.persistence, storeMetrics)
 	if err != nil {
@@ -209,6 +244,9 @@ func openRuntimeInfrastructure(
 		}
 		result.cache = cache
 	}
+	if metricsModule.Enabled() {
+		result.cache = &measuredCache{next: result.cache, backend: cfg.Cache.Backend, metrics: metricsModule}
+	}
 	if err := checkAcquisitionContext(ctx, "acquire cache"); err != nil {
 		return result, err
 	}
@@ -218,6 +256,9 @@ func openRuntimeInfrastructure(
 			return result, fmt.Errorf("open mail transport: %w", err)
 		}
 		result.mailer = mailer
+	}
+	if metricsModule.Enabled() {
+		result.mailer = &measuredMailer{next: result.mailer, metrics: metricsModule}
 	}
 	if err := checkAcquisitionContext(ctx, "acquire mail transport"); err != nil {
 		return result, err
@@ -229,6 +270,9 @@ func openRuntimeInfrastructure(
 		}
 		result.filesystem = filesystem
 	}
+	if metricsModule.Enabled() {
+		result.filesystem = &measuredVFS{next: result.filesystem, backend: cfg.VFS.Backend, metrics: metricsModule}
+	}
 	if err := checkAcquisitionContext(ctx, "acquire VFS"); err != nil {
 		return result, err
 	}
@@ -237,11 +281,21 @@ func openRuntimeInfrastructure(
 		if result.persistence != nil {
 			discovery = result.persistence.ClusterDiscovery()
 		}
-		cluster, err := newCluster(cfg.Cluster, result.logger, discovery, app.Version)
+		var clusterMetrics cluster.Metrics
+		if metricsModule.Enabled() {
+			clusterMetrics = metricsModule
+		}
+		cluster, err := newCluster(cfg.Cluster, result.logger, discovery, app.Version, clusterMetrics)
 		if err != nil {
 			return result, fmt.Errorf("open cluster transport: %w", err)
 		}
 		result.cluster = cluster
+	}
+	if metricsModule.Enabled() {
+		if peers, ok := result.cluster.(interface{ PeerCount() int }); ok {
+			metricsModule.SetClusterPeerSource(peers.PeerCount)
+		}
+		result.cluster = &measuredCluster{next: result.cluster, metrics: metricsModule, events: make(map[cluster.Event]struct{})}
 	}
 	if err := checkAcquisitionContext(ctx, "acquire cluster transport"); err != nil {
 		return result, err
@@ -259,7 +313,11 @@ func openRuntimeInfrastructure(
 	}
 	storeCacheMetrics := overrides.StoreCacheMetrics
 	if storeCacheMetrics == nil {
-		storeCacheMetrics = localcachelayer.NopRecorder{}
+		if metricsModule.Enabled() {
+			storeCacheMetrics = metricsModule.StoreCacheRecorder()
+		} else {
+			storeCacheMetrics = localcachelayer.NopRecorder{}
+		}
 	}
 	cacheInvalidation, err := newLocalCacheClusterAdapter(result.cluster)
 	if err != nil {
@@ -330,6 +388,13 @@ func logStartupInfrastructure(
 		logging.Int64("max_bytes", storeLocalCacheMaxBytes),
 		logging.String("invalidation_backend", snapshot.Cluster.Backend),
 	)
+	logger.Info(
+		"metrics configured",
+		logging.Bool("enabled", snapshot.Metrics.Enabled),
+		logging.String("listen_address", snapshot.Metrics.ListenAddress),
+		logging.Bool("tls", snapshot.Metrics.TLS.CertificateFile != ""),
+		logging.Bool("bearer_authentication", snapshot.Metrics.BearerToken != ""),
+	)
 }
 
 func (i *ownedInfrastructure) acceptPlatform(
@@ -345,6 +410,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 		externalAuthentication: i.externalAuthentication,
 		executionHosts:         i.executionHosts,
 		migration:              i.migration,
+		metrics:                i.metrics,
 	}
 	if i.cluster != nil {
 		capabilities.nodeID = i.cluster.NodeID()
@@ -363,7 +429,7 @@ func (i *ownedInfrastructure) acceptPlatform(
 	*i = ownedInfrastructure{}
 	service, snapshot, err := platform.Accept(ctx, resources)
 	if err != nil {
-		return nil, config.Config{}, constructionCapabilities{}, err
+		return nil, config.Config{}, constructionCapabilities{}, errors.Join(err, capabilities.metrics.Close())
 	}
 	return service, snapshot, capabilities, nil
 }
@@ -411,7 +477,12 @@ func (i *ownedInfrastructure) release() error {
 	if i.configuration != nil {
 		configErr = i.configuration.Close()
 	}
+	var metricsErr error
+	if i.metrics != nil {
+		metricsErr = i.metrics.Close()
+	}
 	return errors.Join(
+		metricsErr,
 		clusterErr,
 		vfsErr,
 		mailErr,
@@ -583,6 +654,7 @@ func newCluster(
 	logger *logging.Logger,
 	discovery store.ClusterDiscoveryStore,
 	serverVersion string,
+	metrics cluster.Metrics,
 ) (cluster.Transport, error) {
 	switch settings.Backend {
 	case "local":
@@ -621,6 +693,7 @@ func newCluster(
 				logging.String("node_id", settings.NodeID),
 				logging.String("backend", "memberlist"),
 			)},
+			Metrics: metrics,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported cluster backend %q", settings.Backend)

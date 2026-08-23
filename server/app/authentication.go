@@ -266,7 +266,9 @@ func (a *App) Login(
 	_ Invocation,
 	command LoginCommand,
 ) (*LoginResult, error) {
-	return a.authentication.login(ctx, command)
+	result, err := a.authentication.login(ctx, command)
+	a.recordOperational("authentication", "login", err)
+	return result, err
 }
 
 func (s *authenticationService) login(
@@ -504,7 +506,9 @@ func (a *App) AuthenticateAccess(
 	ctx context.Context,
 	rawToken string,
 ) (*model.Principal, error) {
-	return a.authentication.authenticateAccess(ctx, rawToken)
+	principal, err := a.authentication.authenticateAccess(ctx, rawToken)
+	a.recordOperational("authentication", "access_token", err)
+	return principal, err
 }
 
 // AuthenticateBearer accepts the two Authorization-header credential classes:
@@ -516,12 +520,16 @@ func (a *App) AuthenticateBearer(
 ) (*model.Principal, error) {
 	principal, err := a.authentication.authenticateAccess(ctx, rawToken)
 	if err == nil {
+		a.recordOperational("authentication", "bearer", nil)
 		return principal, nil
 	}
 	if failure, ok := As(err); !ok || failure.Code() != "authentication.invalid_token" {
+		a.recordOperational("authentication", "bearer", err)
 		return nil, err
 	}
-	return a.authentication.personalTokens.ResolveBearer(ctx, rawToken, a.authentication.now())
+	principal, err = a.authentication.personalTokens.ResolveBearer(ctx, rawToken, a.authentication.now())
+	a.recordOperational("authentication", "bearer", err)
+	return principal, err
 }
 
 func (s *authenticationService) authenticateAccess(
@@ -637,7 +645,9 @@ func (a *App) RefreshSession(
 	_ Invocation,
 	command RefreshSessionCommand,
 ) (*model.Session, *model.AuthenticationTokens, error) {
-	return a.authentication.refresh(ctx, command.RefreshToken)
+	session, tokens, err := a.authentication.refresh(ctx, command.RefreshToken)
+	a.recordOperational("authentication", "refresh", err)
+	return session, tokens, err
 }
 
 func (s *authenticationService) refresh(
@@ -725,7 +735,9 @@ func (s *authenticationService) refresh(
 }
 
 func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
-	return a.authentication.logout(ctx, invocation)
+	err := a.authentication.logout(ctx, invocation)
+	a.recordOperational("authentication", "logout", err)
+	return err
 }
 
 func (s *authenticationService) logout(ctx context.Context, invocation Invocation) error {

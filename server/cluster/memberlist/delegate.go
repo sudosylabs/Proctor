@@ -31,27 +31,43 @@ func (d *delegate) NodeMeta(limit int) []byte {
 
 func (d *delegate) NotifyMsg(message []byte) {
 	if len(message) == 0 || len(message) > maxWireBytes {
+		d.observeMessage("unknown", "invalid_size", len(message))
 		return
 	}
 	var envelope wireEnvelope
 	if err := json.Unmarshal(message, &envelope); err != nil {
+		d.observeMessage("unknown", "invalid_envelope", len(message))
 		return
 	}
 	if envelope.Version != wireProtocolVersion ||
 		envelope.Message == nil ||
 		envelope.Source == "" ||
 		envelope.Source == d.transport.cfg.NodeID {
+		d.observeMessage("unknown", "rejected", len(message))
 		return
 	}
 	if envelope.Target != "" && envelope.Target != d.transport.cfg.NodeID {
+		d.observeMessage("unknown", "wrong_target", len(message))
 		return
 	}
 	if err := envelope.Message.Validate(); err != nil {
+		d.observeMessage("unknown", "invalid_message", len(message))
 		return
 	}
 	// Best-effort dispatch: handler failures are logged and not retried by the
 	// transport.
-	_ = d.transport.dispatchLocal(context.Background(), envelope.Message.Clone())
+	err := d.transport.dispatchLocal(context.Background(), envelope.Message.Clone())
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	d.observeMessage(d.transport.metricEvent(envelope.Message.Event), result, len(message))
+}
+
+func (d *delegate) observeMessage(event, outcome string, bytes int) {
+	if d.transport.cfg.Metrics != nil {
+		d.transport.cfg.Metrics.ObserveClusterMessage("receive", event, outcome, bytes)
+	}
 }
 
 func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte { return nil }
@@ -66,6 +82,9 @@ func (e *eventDelegate) NotifyJoin(node *hashimemberlist.Node) {
 	if node == nil || node.Name == e.transport.cfg.NodeID {
 		return
 	}
+	if e.transport.cfg.Metrics != nil {
+		e.transport.cfg.Metrics.ObserveClusterMembership("join")
+	}
 	meta, err := decodeNodeMeta(node.Meta)
 	if err != nil {
 		return
@@ -79,8 +98,16 @@ func (e *eventDelegate) NotifyJoin(node *hashimemberlist.Node) {
 	}
 }
 
-func (e *eventDelegate) NotifyLeave(*hashimemberlist.Node)  {}
-func (e *eventDelegate) NotifyUpdate(*hashimemberlist.Node) {}
+func (e *eventDelegate) NotifyLeave(node *hashimemberlist.Node) {
+	if node != nil && node.Name != e.transport.cfg.NodeID && e.transport.cfg.Metrics != nil {
+		e.transport.cfg.Metrics.ObserveClusterMembership("leave")
+	}
+}
+func (e *eventDelegate) NotifyUpdate(node *hashimemberlist.Node) {
+	if node != nil && node.Name != e.transport.cfg.NodeID && e.transport.cfg.Metrics != nil {
+		e.transport.cfg.Metrics.ObserveClusterMembership("update")
+	}
+}
 
 type memberlistLogWriter struct {
 	logger cluster.Logger

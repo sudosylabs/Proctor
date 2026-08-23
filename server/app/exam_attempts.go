@@ -644,7 +644,8 @@ func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, com
 	return result, nil
 }
 
-func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invocation, command RenewExamAttemptParticipationCommand) (ExamAttemptParticipationRenewal, error) {
+func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invocation, command RenewExamAttemptParticipationCommand) (response ExamAttemptParticipationRenewal, resultErr error) {
+	defer func() { a.recordOperational("exam_attempt", "renew", resultErr) }()
 	result, err := a.examAttempts.RenewParticipation(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamAttemptParticipationRenewal{}, examAttemptError(err, true)
@@ -654,7 +655,8 @@ func (a *App) RenewExamAttemptParticipation(ctx context.Context, invocation Invo
 
 func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invocation,
 	command EvaluateExamAttemptFocusLossCommand,
-) (ExamAttemptFocusLossEvaluation, error) {
+) (response ExamAttemptFocusLossEvaluation, resultErr error) {
+	defer func() { a.recordOperational("exam_attempt", "focus_loss", resultErr) }()
 	result, err := a.examAttempts.EvaluateFocusLoss(ctx,
 		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
@@ -663,7 +665,8 @@ func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invoc
 	return result, nil
 }
 
-func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (ExamAttemptConnection, error) {
+func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
+	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
 	if command.IdempotencyKey == "" {
 		return ExamAttemptConnection{}, NewError("idempotency.key_required")
 	}
@@ -684,7 +687,8 @@ func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, com
 	return result, nil
 }
 
-func (a *App) CloseExamAttemptConnection(ctx context.Context, invocation Invocation, command CloseExamAttemptConnectionCommand) (ExamAttemptConnectionClosed, error) {
+func (a *App) CloseExamAttemptConnection(ctx context.Context, invocation Invocation, command CloseExamAttemptConnectionCommand) (response ExamAttemptConnectionClosed, resultErr error) {
+	defer func() { a.recordOperational("exam_attempt", "close", resultErr) }()
 	result, err := a.examAttempts.CloseConnection(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamAttemptConnectionClosed{}, examAttemptError(err, true)

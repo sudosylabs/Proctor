@@ -241,6 +241,35 @@ Operational logging and telemetry follow
 the process is functioning; readiness says it can safely receive traffic;
 detailed dependency diagnostics are authorized/operator-only.
 
+The `metrics` module owns one private Prometheus registry and one optional,
+node-local scrape listener. It starts after shared infrastructure and before
+public readiness, reports readiness as zero during startup and shutdown, and
+is closed after Jobs and public transports but before `platform.Service`.
+Binding, TLS-identity, and unexpected serving failures are terminal to
+`Server.Run`; metrics never run as an untracked sibling process. The endpoint
+exposes only `GET /metrics`, never profiling handlers. Loopback is the safe
+default. A non-loopback bind is rejected unless static TLS and bearer
+authentication are both configured. Prometheus scrapes each node separately;
+Memberlist does not aggregate or forward metrics.
+
+The registry covers Go/process/build/readiness and scrape health; HTTP route
+templates, sizes, SQL pools, complete store timing/retries, logging drops, and
+local store-cache decisions; WebSocket messages, publication fan-out, replay,
+subscriptions, and backpressure; Memberlist message flow, membership,
+discovery/rejoin, and admission; durable Job claim, queue, lease, checkpoint,
+completion, recurrence, and periodic work; execution-host state/capacity and
+streams; VFS outcomes, sizes, streams, and bytes; shared-cache/Redis outcomes,
+latency, and bytes; SMTP stages and durable mail delivery/queue/health; and
+named authentication, authorization, realtime, and examination outcomes.
+Each subsystem owns a narrow recorder or transparent wrapper. The application
+has no Prometheus dependency and there is no global telemetry service locator;
+its one-method recorder accepts only application-constructed bounded events.
+Labels come from sealed route templates, closed operation and outcome sets,
+configured backend names, registered cluster events, registered Job/periodic
+work names, mail template/state vocabularies, and named application events.
+Resource IDs, principals, addresses, paths, cache keys, message data, mail
+recipients, and error text are forbidden labels.
+
 ## Naming and files
 
 - Packages are short, lowercase, singular responsibilities.

@@ -52,6 +52,14 @@ type Health interface {
 	Ready() bool
 }
 
+// Metrics is the narrow, transport-owned observation port. Route is the
+// sealed template, never a request path or resource identifier.
+type Metrics interface {
+	HTTPStarted() func()
+	ObserveHTTPRequest(route, method string, status int, duration time.Duration)
+	ObserveHTTPPayload(route, method string, requestBytes, responseBytes int64)
+}
+
 type AuthRequirement string
 type IdempotencyRequirement string
 type RouteProtocolKind string
@@ -100,6 +108,7 @@ type routeMatcher struct {
 // set before compiling any resource route into the immutable HTTP manifest.
 type Options struct {
 	Logger                        Logger
+	Metrics                       Metrics
 	Localizer                     Localizer
 	Health                        Health
 	Application                   Application

@@ -256,7 +256,7 @@ func TestRootSelectsLocalDevelopmentInfrastructure(t *testing.T) {
 		t.Fatalf("local VFS health: %v", err)
 	}
 
-	cluster, err := newCluster(settings.Cluster, logger, nil, "test")
+	cluster, err := newCluster(settings.Cluster, logger, nil, "test", nil)
 	if err != nil {
 		t.Fatalf("construct local cluster: %v", err)
 	}

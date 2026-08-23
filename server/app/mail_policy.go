@@ -85,8 +85,12 @@ type MailDeliveryMetric struct {
 	TemplateKey       model.MailTemplateKey
 	State             model.MailDeliveryState
 	OutcomeCode       string
-	AttemptCount      int
 	ProcessingLatency time.Duration
+}
+
+type MailAttemptMetric struct {
+	TemplateKey model.MailTemplateKey
+	State       model.MailDeliveryState
 }
 
 type MailQueueMetric struct {
@@ -122,8 +126,15 @@ type MailMetricsSnapshot struct {
 // cardinality and operational logs safe.
 type MailDeliveryRecorder interface {
 	RecordMailDelivery(context.Context, MailDeliveryMetric)
+	RecordMailAttempt(context.Context, MailAttemptMetric)
 	RecordMailQueueSnapshot(context.Context, []MailQueueMetric)
 	RecordMailHealth(context.Context, MailHealthMetric)
+}
+
+// MailMetricsReader exposes the bounded in-process snapshot used by the
+// authorized operational API. Export-only recorders do not need to implement
+// this query contract.
+type MailMetricsReader interface {
 	Snapshot() MailMetricsSnapshot
 }
 
@@ -133,6 +144,7 @@ type MailDeliveryRecorder interface {
 type NopMailDeliveryRecorder struct{}
 
 func (NopMailDeliveryRecorder) RecordMailDelivery(context.Context, MailDeliveryMetric) {}
+func (NopMailDeliveryRecorder) RecordMailAttempt(context.Context, MailAttemptMetric)   {}
 func (NopMailDeliveryRecorder) RecordMailQueueSnapshot(context.Context, []MailQueueMetric) {
 }
 func (NopMailDeliveryRecorder) RecordMailHealth(context.Context, MailHealthMetric) {}
@@ -256,7 +268,7 @@ func recordMailMaintenanceDeliveries(ctx context.Context, recorder MailDeliveryR
 	for _, delivery := range result.Deliveries {
 		recorder.RecordMailDelivery(ctx, MailDeliveryMetric{
 			TemplateKey: delivery.TemplateKey, State: delivery.State, OutcomeCode: delivery.PublicFailureCode,
-			AttemptCount: delivery.AttemptCount, ProcessingLatency: delivery.ProcessingLatency,
+			ProcessingLatency: delivery.ProcessingLatency,
 		})
 	}
 }

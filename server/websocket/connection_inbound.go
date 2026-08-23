@@ -31,11 +31,20 @@ func (c *connectionRuntime) readPump(ctx context.Context) {
 	for {
 		var request Request
 		if err := c.socket.ReadJSON(&request); err != nil {
+			if c.recorder != nil {
+				c.recorder.ObserveWebSocketMessage("inbound", "request", streamResult(err), 0)
+			}
 			return
 		}
 		if err := request.Validate(); err != nil {
+			if c.recorder != nil {
+				c.recorder.ObserveWebSocketMessage("inbound", boundedWebSocketAction(request.Action), "invalid", len(request.Data))
+			}
 			c.enqueueError(request.Sequence, "websocket.request.invalid", websocketErrorRequestInvalid)
 			continue
+		}
+		if c.recorder != nil {
+			c.recorder.ObserveWebSocketMessage("inbound", boundedWebSocketAction(request.Action), "accepted", len(request.Data))
 		}
 		c.handleRequest(ctx, &request)
 	}
@@ -257,7 +266,8 @@ func (c *connectionRuntime) handleRequest(
 			return
 		}
 		c.mu.Lock()
-		if _, exists := c.subscriptions[subscription.Key()]; !exists &&
+		_, existed := c.subscriptions[subscription.Key()]
+		if !existed &&
 			len(c.subscriptions) >= maximumSubscriptions {
 			c.mu.Unlock()
 			c.enqueueError(
@@ -269,6 +279,9 @@ func (c *connectionRuntime) handleRequest(
 		}
 		c.subscriptions[subscription.Key()] = subscription
 		c.mu.Unlock()
+		if !existed && c.recorder != nil {
+			c.recorder.AddWebSocketSubscriptions(1)
+		}
 		c.enqueueResponse(request.Sequence, nil)
 	case "unsubscribe":
 		var subscription Subscription
@@ -278,10 +291,16 @@ func (c *connectionRuntime) handleRequest(
 			return
 		}
 		c.mu.Lock()
+		_, existed := c.subscriptions[subscription.Key()]
 		if c.attempt == nil || subscription != c.examAttemptSubscriptionLocked() {
 			delete(c.subscriptions, subscription.Key())
+		} else {
+			existed = false
 		}
 		c.mu.Unlock()
+		if existed && c.recorder != nil {
+			c.recorder.AddWebSocketSubscriptions(-1)
+		}
 		c.enqueueResponse(request.Sequence, nil)
 	case examAttemptConnectAction:
 		c.handleExamAttemptConnect(ctx, request)
@@ -348,9 +367,13 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		c.enqueueError(request.Sequence, "exam.attempt.already_connected", websocketErrorAttemptAlreadyConnected)
 		return
 	}
+	_, subscriptionExisted := c.subscriptions[subscription.Key()]
 	c.attempt = binding
 	c.subscriptions[subscription.Key()] = subscription
 	c.mu.Unlock()
+	if !subscriptionExisted && c.recorder != nil {
+		c.recorder.AddWebSocketSubscriptions(1)
+	}
 	encoded, err := json.Marshal(examAttemptConnectResponse{
 		AttemptID: result.Attempt.ID.String(), WorkspaceID: result.Workspace.ID.String(),
 		ParticipationID: result.Participation.ID.String(), AttemptConnectionID: result.Connection.ID.String(),
@@ -365,6 +388,30 @@ func (c *connectionRuntime) handleExamAttemptConnect(ctx context.Context, reques
 		return
 	}
 	c.enqueueResponse(request.Sequence, encoded)
+}
+
+func boundedWebSocketAction(action string) string {
+	switch action {
+	case "ping", "subscribe", "unsubscribe", examAttemptConnectAction, examAttemptRenewAction,
+		examAttemptFocusLossAction, examAttemptTerminalOpenAction, examAttemptTerminalInputAction,
+		examAttemptTerminalResizeAction, examAttemptTerminalCloseAction:
+		return action
+	default:
+		return "unknown"
+	}
+}
+
+func streamResult(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, io.EOF):
+		return "closed"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	default:
+		return "error"
+	}
 }
 
 func (c *connectionRuntime) handleExamAttemptRenew(ctx context.Context, request *Request) {
@@ -462,13 +509,19 @@ func (c *connectionRuntime) handleExamAttemptFocusLoss(ctx context.Context, requ
 	if result.ConnectionClosed || result.SuspensionCreated {
 		c.mu.Lock()
 		var terminal app.CandidateExamTerminal
+		removedSubscription := false
 		if c.attempt != nil && *c.attempt == binding {
-			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+			key := c.examAttemptSubscriptionLocked().Key()
+			_, removedSubscription = c.subscriptions[key]
+			delete(c.subscriptions, key)
 			c.attempt = nil
 			terminal = c.terminal
 			c.terminal = nil
 		}
 		c.mu.Unlock()
+		if removedSubscription && c.recorder != nil {
+			c.recorder.AddWebSocketSubscriptions(-1)
+		}
 		if terminal != nil {
 			_ = terminal.Close()
 		}
@@ -490,11 +543,16 @@ func (c *connectionRuntime) unbindExamAttemptConnection(connectionID model.Attem
 		c.mu.Unlock()
 		return false
 	}
-	delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+	key := c.examAttemptSubscriptionLocked().Key()
+	_, removedSubscription := c.subscriptions[key]
+	delete(c.subscriptions, key)
 	c.attempt = nil
 	terminal := c.terminal
 	c.terminal = nil
 	c.mu.Unlock()
+	if removedSubscription && c.recorder != nil {
+		c.recorder.AddWebSocketSubscriptions(-1)
+	}
 	if terminal != nil {
 		_ = terminal.Close()
 	}
@@ -507,11 +565,17 @@ func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
 		binding := c.attempt
 		terminal := c.terminal
 		c.terminal = nil
+		removedSubscription := false
 		if binding != nil {
-			delete(c.subscriptions, c.examAttemptSubscriptionLocked().Key())
+			key := c.examAttemptSubscriptionLocked().Key()
+			_, removedSubscription = c.subscriptions[key]
+			delete(c.subscriptions, key)
 			c.attempt = nil
 		}
 		c.mu.Unlock()
+		if removedSubscription && c.recorder != nil {
+			c.recorder.AddWebSocketSubscriptions(-1)
+		}
 		if terminal != nil {
 			_ = terminal.Close()
 		}

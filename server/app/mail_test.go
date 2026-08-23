@@ -20,13 +20,14 @@ import (
 )
 
 type mailStoreFake struct {
-	enqueue  *store.MailTestEnqueue
-	delivery *model.MailDelivery
-	gets     int
-	lists    int
-	mutates  int
-	permit   func() *store.MailSendPermit
-	classes  []store.MailSendClass
+	enqueue     *store.MailTestEnqueue
+	delivery    *model.MailDelivery
+	gets        int
+	lists       int
+	mutates     int
+	permit      func() *store.MailSendPermit
+	classes     []store.MailSendClass
+	completeErr error
 }
 
 func (s *mailStoreFake) EnqueueTest(_ context.Context, input *store.MailTestEnqueue) (*model.MailDelivery, error) {
@@ -105,6 +106,9 @@ func (s *mailStoreFake) StartDelivery(_ context.Context, id model.MailDeliveryID
 	return next, err
 }
 func (s *mailStoreFake) CompleteDelivery(_ context.Context, input *store.MailDeliveryCompletion) (*model.MailDelivery, error) {
+	if s.completeErr != nil {
+		return nil, s.completeErr
+	}
 	if s.delivery == nil || s.delivery.Revision != input.ExpectedRevision {
 		return nil, store.NewErrConflict("mail_delivery", "stale", nil)
 	}
@@ -126,6 +130,19 @@ func (s *mailStoreFake) CompleteDelivery(_ context.Context, input *store.MailDel
 		s.delivery = next
 	}
 	return next, err
+}
+
+type jobMailMetricsFake struct {
+	values   []appjobs.MailDeliveryMetric
+	attempts []appjobs.MailAttemptMetric
+}
+
+func (r *jobMailMetricsFake) RecordJobMailDelivery(_ context.Context, metric appjobs.MailDeliveryMetric) {
+	r.values = append(r.values, metric)
+}
+
+func (r *jobMailMetricsFake) RecordJobMailAttempt(_ context.Context, metric appjobs.MailAttemptMetric) {
+	r.attempts = append(r.attempts, metric)
 }
 
 type mailUserStoreFake struct{ user *model.User }
@@ -590,6 +607,32 @@ func TestMailDeliveryHandlerUsesStableMessageIDAndRecordsAcceptance(t *testing.T
 	second := runMailDeliveryJob(persistence, sender, sealer, time.Now, job)
 	if second.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 {
 		t.Fatalf("terminal replay resent: %#v", second)
+	}
+}
+
+func TestMailDeliveryHandlerRecordsAttemptBeforeCompletionFailure(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	completionErr := errors.New("completion unavailable")
+	persistence := &mailStoreFake{delivery: delivery, completeErr: completionErr}
+	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}}
+	recorder := &jobMailMetricsFake{}
+	descriptor := appjobs.NewMailDeliveryDescriptor(
+		persistence, sender, sealer, recorder, nil, jobMailDeliveryIsRelevant,
+		func() time.Time { return at.Add(time.Second) }, false,
+	)
+	outcome := descriptor.Handler.Run(context.Background(), jobengine.NewExecution(job, nil, nil, nil))
+	if outcome.Kind != jobengine.OutcomeRetryableFailure || !errors.Is(outcome.Err, completionErr) {
+		t.Fatalf("outcome = %#v", outcome)
+	}
+	if persistence.delivery.State != model.MailDeliverySending || persistence.delivery.AttemptCount != 1 {
+		t.Fatalf("persisted delivery = %#v", persistence.delivery)
+	}
+	if len(recorder.values) != 0 || len(recorder.attempts) != 1 ||
+		recorder.attempts[0].State != model.MailDeliverySending || recorder.attempts[0].TemplateKey != delivery.TemplateKey {
+		t.Fatalf("mail metrics = deliveries %#v attempts %#v", recorder.values, recorder.attempts)
 	}
 }
 

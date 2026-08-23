@@ -98,6 +98,11 @@ func (a *API) collectResources(apiPrefix string, resources ...resource) error {
 				bodyLimit = definition.maxBodyBytes
 			}
 			handler = limitRequestBody(handler, bodyLimit)
+			// Upgrade handlers own long-lived transport lifetimes; WebSocket
+			// metrics record their handshake and connection lifecycle separately.
+			if a.metrics != nil && definition.protocolKind != RouteProtocolUpgrade {
+				handler = observeRequestMetrics(handler, a.metrics, path, definition.method)
+			}
 			probe := mux.NewRouter().NewRoute().Path(path).Methods(definition.method)
 			if err := probe.GetError(); err != nil {
 				return fmt.Errorf("compile resource %q %s %s: %w", resource.name, definition.method, path, err)

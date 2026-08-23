@@ -105,7 +105,7 @@ type mailService struct {
 	attempts                *authenticationAttemptAccounting
 	composer                *appmail.Composer
 	sender                  appmail.Sender
-	metrics                 MailDeliveryRecorder
+	metrics                 MailMetricsReader
 	sealer                  *secretseal.Sealer
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
@@ -116,7 +116,7 @@ func newDirectMailPreparer(renderer appmail.Renderer, sender appmail.Sender, sea
 	return appmail.NewComposer(renderer, sender, sealer)
 }
 
-func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailDeliveryRecorder, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
+func newMailService(mailStore mailStore, users mailUserStore, authorization mailAuthorizer, audit mailAuditPreparer, attempts *authenticationAttemptAccounting, renderer appmail.Renderer, sender appmail.Sender, metrics MailMetricsReader, sealer *secretseal.Sealer, recentTTL time.Duration, now func() time.Time) (*mailService, error) {
 	if mailStore == nil || users == nil || authorization == nil || audit == nil || attempts == nil || renderer == nil || sender == nil || metrics == nil || now == nil || recentTTL <= 0 {
 		return nil, errors.New("mail service dependencies are invalid")
 	}

@@ -26,6 +26,7 @@ type connectionRuntime struct {
 	principal   model.Principal
 	metadata    model.RequestMetadata
 	id          string
+	recorder    Recorder
 
 	mu            sync.Mutex
 	nextSequence  int64

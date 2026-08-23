@@ -130,5 +130,14 @@ Metrics and tracing instrument HTTP, WebSocket, store, and outbound-adapter
 boundaries through explicit wrappers. Application use cases may expose named
 outcomes or events but do not call a global telemetry facade.
 
+The Prometheus listener is disabled and loopback-bound by default. Binding it
+beyond loopback requires static TLS plus a 32-to-512-byte bearer token; the
+token is environment-overridable, redacted from configuration display, and
+compared without content-dependent timing. The listener exposes no pprof
+routes. Metrics are node-local and low-cardinality: they never label raw URL
+paths, VFS paths, Redis/cache keys, execution-host IDs or addresses, cluster
+node IDs, users, sessions, exam entities, mail addresses, payloads, or error
+strings. Deployment monitoring systems add target identity outside Proctor.
+
 Durable security audit behavior is specified in
 [Authorization and audit](./authorization.md#audit).

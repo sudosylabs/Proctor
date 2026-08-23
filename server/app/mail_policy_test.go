@@ -77,6 +77,7 @@ type recordingMailMetrics struct {
 func (r *recordingMailMetrics) RecordMailDelivery(_ context.Context, metric MailDeliveryMetric) {
 	r.deliveries = append(r.deliveries, metric)
 }
+func (*recordingMailMetrics) RecordMailAttempt(context.Context, MailAttemptMetric) {}
 func (r *recordingMailMetrics) RecordMailQueueSnapshot(_ context.Context, metrics []MailQueueMetric) {
 	r.queues = append(r.queues[:0], metrics...)
 }

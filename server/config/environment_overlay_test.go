@@ -12,8 +12,8 @@ import (
 )
 
 func TestEnvironmentOverrideCatalogContracts(t *testing.T) {
-	if len(environmentOverrideCatalog) != 110 {
-		t.Fatalf("environment override definitions = %d, want 110", len(environmentOverrideCatalog))
+	if len(environmentOverrideCatalog) != 121 {
+		t.Fatalf("environment override definitions = %d, want 121", len(environmentOverrideCatalog))
 	}
 
 	seen := make(map[string]struct{}, len(environmentOverrideCatalog))
@@ -224,6 +224,10 @@ func validEnvironmentValue(
 func validBaseForEnvironmentOverride(key string) Config {
 	base := Default()
 	switch key {
+	case "PROCTOR_METRICS_TLS_CERTIFICATE_FILE":
+		base.Metrics.TLS.PrivateKeyFile = "./metrics-key.pem"
+	case "PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE":
+		base.Metrics.TLS.CertificateFile = "./metrics-certificate.pem"
 	case "PROCTOR_SERVER_PUBLIC_URL":
 		base.Authentication.Bootstrap.DevelopmentMode = false
 	case "PROCTOR_SERVER_TLS_MODE", "PROCTOR_SERVER_TLS_FORWARD_HTTP_TO_HTTPS":

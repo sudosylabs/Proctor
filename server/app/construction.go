@@ -243,6 +243,7 @@ func assembleApplication(
 		jobOperations:                     jobs.operations,
 		mail:                              jobs.mail,
 		mailSecretSealer:                  deps.MailSecretSealer,
+		operational:                       deps.OperationalRecorder,
 		recentAuthenticationTTL:           deps.RecentAuthenticationTTL,
 	}
 }

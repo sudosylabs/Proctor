@@ -47,6 +47,7 @@ func constructJobs(
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
+		Recorder:      deps.JobRecorder,
 		Policy:        jobengine.Policy{PollInterval: 500 * time.Millisecond},
 		Recurrences:   definitions.recurrences,
 		PeriodicTasks: definitions.periodicTasks,
@@ -65,7 +66,7 @@ func constructJobs(
 			deps.Store.Mail(), deps.Store.User(),
 			mailAuthorizationAdapter{authorization: access.authorization, institutions: deps.Store.Institution()},
 			mailAuditAdapter{audit: foundation.audit}, foundation.attempts,
-			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailDeliveryRecorder, deps.MailSecretSealer,
+			deps.MailTemplateRenderer, deps.MailDeliverySender, deps.MailMetricsReader, deps.MailSecretSealer,
 			deps.RecentAuthenticationTTL, time.Now,
 		)
 		if err != nil {

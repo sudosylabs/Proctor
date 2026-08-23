@@ -52,6 +52,8 @@ func (c *Transport) NodeID() string {
 	return c.nodeID
 }
 
+func (c *Transport) PeerCount() int { return 0 }
+
 // Start marks the transport ready. It is idempotent while running.
 func (c *Transport) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {

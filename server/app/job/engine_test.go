@@ -28,6 +28,31 @@ type jobRunnerStoreFake struct {
 	claimRequests   chan struct{}
 }
 
+type jobMetricsFake struct {
+	mu         sync.Mutex
+	activities []Activity
+	started    int
+	finished   int
+	outcomes   []ExecutionOutcome
+}
+
+func (r *jobMetricsFake) Started(model.JobType) {
+	r.mu.Lock()
+	r.started++
+	r.mu.Unlock()
+}
+func (r *jobMetricsFake) Finished(_ model.JobType, outcome ExecutionOutcome, _ time.Duration) {
+	r.mu.Lock()
+	r.finished++
+	r.outcomes = append(r.outcomes, outcome)
+	r.mu.Unlock()
+}
+func (r *jobMetricsFake) Record(activity Activity) {
+	r.mu.Lock()
+	r.activities = append(r.activities, activity)
+	r.mu.Unlock()
+}
+
 func allowJobWorkReservation() func(context.Context, int, int) (bool, error) {
 	consumed := 0
 	return func(_ context.Context, units, limit int) (bool, error) {
@@ -150,9 +175,10 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 	claim := jobRunnerClaim(t)
 	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
 	persistence := &jobRunnerStoreFake{claim: claim}
+	recorder := &jobMetricsFake{}
 	engine, err := New(Config{
 		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
-		Diagnostics: &jobDiagnosticsFake{}, Policy: Policy{PollInterval: time.Millisecond},
+		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +205,60 @@ func TestEngineClaimsAndCompletesThroughItsPublicLifecycle(t *testing.T) {
 	}
 	if err = engine.Close(); err != nil {
 		t.Fatal(err)
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.started != 1 || recorder.finished != 1 {
+		t.Fatalf("execution metrics = started %d finished %d", recorder.started, recorder.finished)
+	}
+	seen := map[string]bool{}
+	for _, activity := range recorder.activities {
+		seen[activity.Operation+"/"+activity.Outcome] = true
+	}
+	if !seen["claim/success"] || !seen["complete/success"] {
+		t.Fatalf("activities = %#v", recorder.activities)
+	}
+}
+
+func TestEngineRecordsUnsupportedClaimAsAnExecution(t *testing.T) {
+	t.Parallel()
+
+	claim := jobRunnerClaim(t)
+	claim.Job.CommandVersion = 2
+	descriptor := testDescriptor(handlerFunc(func(context.Context, Execution) Outcome { return succeededOutcome() }))
+	persistence := &jobRunnerStoreFake{claim: claim}
+	recorder := &jobMetricsFake{}
+	engine, err := New(Config{
+		Store: persistence, Descriptors: []Descriptor{descriptor}, NodeID: "node-a",
+		Diagnostics: &jobDiagnosticsFake{}, Recorder: recorder, Policy: Policy{PollInterval: time.Millisecond},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = engine.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	engine.Wake()
+	deadline := time.Now().Add(time.Second)
+	for {
+		persistence.mu.Lock()
+		completion := persistence.completion
+		persistence.mu.Unlock()
+		if completion != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Engine did not complete the unsupported claim")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err = engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	if recorder.started != 1 || recorder.finished != 1 || len(recorder.outcomes) != 1 || recorder.outcomes[0] != ExecutionPermanentFailure {
+		t.Fatalf("execution metrics = started %d finished %d outcomes %#v", recorder.started, recorder.finished, recorder.outcomes)
 	}
 }
 

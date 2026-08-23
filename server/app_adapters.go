@@ -46,12 +46,14 @@ func applicationDependencies(
 		return app.Dependencies{}, errors.New("mail template renderer is nil")
 	}
 	mailer := accountMailerAdapter{mailer: capabilities.mailer}
+	mailDeliveryRecorder, mailMetricsReader := newMailTelemetry(log, nil)
 	return app.Dependencies{
 		Store:                   capabilities.persistence,
 		Cache:                   cache,
 		MailDeliverySender:      mailer,
 		MailTemplateRenderer:    mailRenderer,
-		MailDeliveryRecorder:    newMailDeliveryRecorder(log, nil),
+		MailDeliveryRecorder:    mailDeliveryRecorder,
+		MailMetricsReader:       mailMetricsReader,
 		MailSecretSealer:        mailSecretSealer,
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
@@ -402,40 +404,16 @@ type operationalMailTelemetry struct {
 	health       string
 }
 
-type combinedMailDeliveryRecorder struct {
-	metrics app.MailDeliveryRecorder
-	logs    app.MailDeliveryRecorder
-}
-
-func newMailDeliveryRecorder(log runtimeLogger, metrics app.MailDeliveryRecorder) app.MailDeliveryRecorder {
+func newMailTelemetry(log runtimeLogger, metrics app.MailDeliveryRecorder) (app.MailDeliveryRecorder, app.MailMetricsReader) {
 	operational := &operationalMailTelemetry{
 		log: log, deliveries: make(map[mailDeliveryMetricKey]mailDeliveryMetricAggregate),
 		queues:       make(map[mailDeliveryMetricKey]app.MailQueueMetric),
 		queueBuckets: make(map[mailDeliveryMetricKey]string),
 	}
 	if metrics == nil {
-		return operational
+		return operational, operational
 	}
-	return combinedMailDeliveryRecorder{metrics: metrics, logs: operational}
-}
-
-func (r combinedMailDeliveryRecorder) RecordMailDelivery(ctx context.Context, metric app.MailDeliveryMetric) {
-	r.metrics.RecordMailDelivery(ctx, metric)
-	r.logs.RecordMailDelivery(ctx, metric)
-}
-
-func (r combinedMailDeliveryRecorder) RecordMailQueueSnapshot(ctx context.Context, metrics []app.MailQueueMetric) {
-	r.metrics.RecordMailQueueSnapshot(ctx, metrics)
-	r.logs.RecordMailQueueSnapshot(ctx, metrics)
-}
-
-func (r combinedMailDeliveryRecorder) RecordMailHealth(ctx context.Context, metric app.MailHealthMetric) {
-	r.metrics.RecordMailHealth(ctx, metric)
-	r.logs.RecordMailHealth(ctx, metric)
-}
-
-func (r combinedMailDeliveryRecorder) Snapshot() app.MailMetricsSnapshot {
-	return r.logs.Snapshot()
+	return fanoutMailDeliveryRecorder{first: metrics, second: operational}, operational
 }
 
 func (r *operationalMailTelemetry) RecordMailDelivery(ctx context.Context, metric app.MailDeliveryMetric) {
@@ -443,7 +421,6 @@ func (r *operationalMailTelemetry) RecordMailDelivery(ctx context.Context, metri
 	r.mu.Lock()
 	aggregate := r.deliveries[key]
 	aggregate.count++
-	aggregate.attempts += uint64(metric.AttemptCount)
 	aggregate.processingLatency += metric.ProcessingLatency
 	if metric.ProcessingLatency > aggregate.maximumLatency {
 		aggregate.maximumLatency = metric.ProcessingLatency
@@ -455,8 +432,22 @@ func (r *operationalMailTelemetry) RecordMailDelivery(ctx context.Context, metri
 			logging.String("template_key", string(metric.TemplateKey)),
 			logging.String("state", string(metric.State)),
 			logging.String("outcome_code", metric.OutcomeCode),
-			logging.Int("attempt_count", metric.AttemptCount),
 			logging.Duration("processing_latency", metric.ProcessingLatency),
+		)
+	}
+}
+
+func (r *operationalMailTelemetry) RecordMailAttempt(ctx context.Context, metric app.MailAttemptMetric) {
+	key := mailDeliveryMetricKey{template: metric.TemplateKey, state: metric.State, code: "mail.attempt_started"}
+	r.mu.Lock()
+	aggregate := r.deliveries[key]
+	aggregate.attempts++
+	r.deliveries[key] = aggregate
+	r.mu.Unlock()
+	if r.log != nil {
+		r.log.InfoContext(ctx, "mail delivery attempt started",
+			logging.String("template_key", string(metric.TemplateKey)),
+			logging.String("state", string(metric.State)),
 		)
 	}
 }

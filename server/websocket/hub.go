@@ -72,12 +72,38 @@ type Hub struct {
 	publicURL   *url.URL
 	nodeID      string
 	hashSeed    maphash.Seed
+	recorder    Recorder
 
 	mu     sync.RWMutex
 	state  hubState
 	shards []*shard
 	stop   chan struct{}
 	done   chan struct{}
+}
+
+// Recorder observes bounded connection, message, publication, replay, and
+// subscription facts. It never receives a principal, connection identifier,
+// subscription value, payload, or close reason.
+type Recorder interface {
+	ConnectionOpened(outcome string)
+	ConnectionClosed(outcome string)
+	Backpressure()
+	ObserveWebSocketMessage(direction, kind, outcome string, bytes int)
+	ObserveWebSocketBroadcast(event, outcome string, recipients int)
+	ObserveWebSocketReplay(outcome string, events int)
+	AddWebSocketSubscriptions(delta int)
+}
+
+// AttachRecorder installs the optional observability adapter while the hub is
+// still inert.
+func (h *Hub) AttachRecorder(recorder Recorder) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.state != hubCreated {
+		return errors.New("WebSocket recorder must be attached before Start")
+	}
+	h.recorder = recorder
+	return nil
 }
 
 type shard struct {
@@ -201,9 +227,15 @@ func (h *Hub) Accept(
 	allowMissingOrigin bool,
 ) error {
 	if !h.Started() {
+		if h.recorder != nil {
+			h.recorder.ConnectionOpened("unavailable")
+		}
 		return app.NewError("websocket.unavailable")
 	}
 	if !h.OriginAllowed(request.Header.Get("Origin"), allowMissingOrigin) {
+		if h.recorder != nil {
+			h.recorder.ConnectionOpened("origin_invalid")
+		}
 		return app.NewError("websocket.origin.invalid")
 	}
 	upgrader := websocket.Upgrader{
@@ -216,6 +248,9 @@ func (h *Hub) Accept(
 	}
 	socket, err := upgrader.Upgrade(writer, request, nil)
 	if err != nil {
+		if h.recorder != nil {
+			h.recorder.ConnectionOpened("upgrade_error")
+		}
 		h.logger.WarnContext(request.Context(), "WebSocket upgrade failed", err)
 		return nil
 	}
@@ -233,6 +268,9 @@ func (h *Hub) Accept(
 		locale,
 	)
 	if connection == nil {
+		if h.recorder != nil {
+			h.recorder.ConnectionOpened("rejected")
+		}
 		_ = runtimeSocket.WriteControl(
 			websocketCloseMessage,
 			websocket.FormatCloseMessage(CloseLimit, localizedCloseReason(h.localizer, locale, websocketCloseMessages["connection_limit"])),
@@ -241,9 +279,15 @@ func (h *Hub) Accept(
 		_ = runtimeSocket.Close()
 		return nil
 	}
+	if h.recorder != nil {
+		h.recorder.ConnectionOpened("success")
+	}
 	connection.enqueueHello(resumed, connectionID != "" && !resumed)
 	connection.run(request.Context())
 	h.unregister(connection)
+	if h.recorder != nil {
+		h.recorder.ConnectionClosed("closed")
+	}
 	return nil
 }
 
@@ -330,7 +374,18 @@ func (h *Hub) register(
 		subscriptions,
 		replayEvents,
 	)
+	connection.recorder = h.recorder
 	shard.conns[connectionID] = connection
+	if h.recorder != nil {
+		if requestedID != "" {
+			result := "resync_required"
+			if resumed {
+				result = "resumed"
+			}
+			h.recorder.ObserveWebSocketReplay(result, len(replayEvents))
+		}
+		h.recorder.AddWebSocketSubscriptions(len(subscriptions))
+	}
 	return connection, resumed
 }
 
@@ -345,6 +400,9 @@ func (h *Hub) unregister(connection *connectionRuntime) {
 	}
 	delete(shard.conns, connectionID)
 	snapshot := connection.finalSnapshot()
+	if h.recorder != nil {
+		h.recorder.AddWebSocketSubscriptions(-len(snapshot.subscriptions))
+	}
 	h.mu.RLock()
 	started := h.state == hubStarted
 	h.mu.RUnlock()
@@ -390,6 +448,9 @@ func (h *Hub) UnbindExamAttemptConnection(connectionID model.AttemptConnectionID
 
 func (h *Hub) publishWire(event *Event) {
 	if event == nil || event.ValidateForPublish() != nil {
+		if h.recorder != nil {
+			h.recorder.ObserveWebSocketBroadcast("invalid", "rejected", 0)
+		}
 		return
 	}
 	var shards []*shard
@@ -419,6 +480,12 @@ func (h *Hub) publishWire(event *Event) {
 	for _, connection := range connections {
 		connection.enqueueEvent(event)
 		connection.release()
+	}
+	if h.recorder != nil {
+		// Event names are application payload data rather than a closed wire
+		// registry. Keep the metric series bounded while retaining publication
+		// outcome and fan-out depth.
+		h.recorder.ObserveWebSocketBroadcast("event", "published", len(connections))
 	}
 }
 

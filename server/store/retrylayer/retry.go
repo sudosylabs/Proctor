@@ -23,6 +23,12 @@ type Policy struct {
 	IsTransient    func(error) bool
 }
 
+// Recorder observes aggregate retry decisions without store arguments,
+// operation values, errors, or caller context.
+type Recorder interface {
+	ObserveStoreRetry(outcome string)
+}
+
 // DefaultPolicy returns the conservative production retry policy.
 func DefaultPolicy(classifier func(error) bool) Policy {
 	return Policy{
@@ -37,12 +43,23 @@ func DefaultPolicy(classifier func(error) bool) Policy {
 // exactly once; only handwritten overrides opt an operation into retries.
 type Layer struct {
 	store.Store
-	policy Policy
-	stores retryStores
+	policy   Policy
+	recorder Recorder
+	stores   retryStores
 }
 
-// New constructs a constrained retry layer around next.
+// New constructs a constrained retry layer around next without telemetry.
 func New(next store.Store, policy Policy) (*Layer, error) {
+	return newLayer(next, policy, nil)
+}
+
+// NewWithRecorder constructs a constrained retry layer with bounded retry
+// telemetry. The recorder observes decisions only, never store arguments.
+func NewWithRecorder(next store.Store, policy Policy, recorder Recorder) (*Layer, error) {
+	return newLayer(next, policy, recorder)
+}
+
+func newLayer(next store.Store, policy Policy, recorder Recorder) (*Layer, error) {
 	if next == nil {
 		return nil, errors.New("retry store is nil")
 	}
@@ -58,7 +75,7 @@ func New(next store.Store, policy Policy) (*Layer, error) {
 	if policy.IsTransient == nil {
 		return nil, errors.New("retry transient classifier is nil")
 	}
-	return &Layer{Store: next, policy: policy}, nil
+	return &Layer{Store: next, policy: policy, recorder: recorder}, nil
 }
 
 // Ping retries the idempotent database health query.
@@ -81,8 +98,15 @@ func retryCall1[T any](ctx context.Context, layer *Layer, call func() (T, error)
 	delay := layer.policy.InitialBackoff
 	for attempt := 1; ; attempt++ {
 		result, err := call()
-		if err == nil || attempt >= layer.policy.MaxAttempts || !layer.policy.IsTransient(err) {
+		transient := err != nil && layer.policy.IsTransient(err)
+		if err == nil || attempt >= layer.policy.MaxAttempts || !transient {
+			if transient && attempt >= layer.policy.MaxAttempts && layer.recorder != nil {
+				layer.recorder.ObserveStoreRetry("exhausted")
+			}
 			return result, err
+		}
+		if layer.recorder != nil {
+			layer.recorder.ObserveStoreRetry("retry")
 		}
 		if err := wait(ctx, delay); err != nil {
 			return zero, err

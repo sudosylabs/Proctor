@@ -155,7 +155,9 @@ func (a *App) AttachRealtimeClusterFanout(fanout apprealtime.ClusterFanout) erro
 // PublishRealtimeEvent publishes a transport-neutral application event after
 // durable commit. Prefer this over any transport-shaped construction.
 func (a *App) PublishRealtimeEvent(ctx context.Context, event apprealtime.RealtimeEvent) error {
-	return a.realtime.Publish(ctx, event)
+	err := a.realtime.Publish(ctx, event)
+	a.recordOperational("realtime", "publish", err)
+	return err
 }
 
 func (a *App) AuthorizeWebSocketSubscription(
@@ -164,7 +166,8 @@ func (a *App) AuthorizeWebSocketSubscription(
 	metadata model.RequestMetadata,
 	action model.Action,
 	resource model.Resource,
-) error {
+) (resultErr error) {
+	defer func() { a.recordOperational("realtime", "subscription_authorize", resultErr) }()
 	definition, ok := model.DefinitionForAction(action)
 	if !ok || resource.Validate() != nil || definition.ResourceType != resource.Type {
 		return invalidRealtimeRequest("subscription")
@@ -202,5 +205,7 @@ func (a *App) ValidateWebSocketPrincipal(
 	ctx context.Context,
 	principal model.Principal,
 ) error {
-	return a.authentication.ValidatePrincipal(ctx, principal)
+	err := a.authentication.ValidatePrincipal(ctx, principal)
+	a.recordOperational("realtime", "principal_validate", err)
+	return err
 }

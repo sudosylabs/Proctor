@@ -45,6 +45,7 @@ type discoveryMaintenanceConfig struct {
 	protocolMin        int
 	protocolMax        int
 	diagnostics        cluster.Logger
+	metrics            cluster.Metrics
 	now                func() time.Time
 	newTicker          func(time.Duration) discoveryTicker
 }
@@ -75,6 +76,7 @@ func newSystemDiscoveryMaintenance(cfg Config) *discoveryMaintenance {
 		protocolMin:        supportedProtocolMin,
 		protocolMax:        supportedProtocolMax,
 		diagnostics:        cfg.Logger,
+		metrics:            cfg.Metrics,
 		now:                time.Now,
 		newTicker:          newDiscoveryTicker,
 	})
@@ -99,8 +101,10 @@ func (m *discoveryMaintenance) prepare(ctx context.Context) ([]string, error) {
 func (m *discoveryMaintenance) seedsAt(ctx context.Context, now time.Time) ([]string, error) {
 	live, err := m.cfg.discovery.ListLive(ctx, now)
 	if err != nil {
+		m.observe("list", err)
 		return nil, fmt.Errorf("list discovery peers: %w", err)
 	}
+	m.observe("list", nil)
 	seeds := append([]string(nil), m.cfg.seedAddresses...)
 	for _, peer := range live {
 		if peer.NodeID == m.cfg.nodeID {
@@ -140,7 +144,10 @@ func (m *discoveryMaintenance) run(
 				continue
 			}
 			if err := rejoin(ctx, seeds); err != nil && ctx.Err() == nil {
+				m.observe("rejoin", err)
 				m.cfg.diagnostics.ErrorContext(ctx, "memberlist rejoin incomplete", err)
+			} else {
+				m.observe("rejoin", err)
 			}
 		}
 	}
@@ -151,7 +158,10 @@ func (m *discoveryMaintenance) maintainAt(ctx context.Context, now time.Time) {
 		m.cfg.diagnostics.ErrorContext(ctx, "cluster discovery heartbeat failed", err)
 	}
 	if _, err := m.cfg.discovery.DeleteExpired(ctx, now); err != nil {
+		m.observe("cleanup", err)
 		m.cfg.diagnostics.ErrorContext(ctx, "cluster discovery cleanup failed", err)
+	} else {
+		m.observe("cleanup", nil)
 	}
 }
 
@@ -160,7 +170,7 @@ func (m *discoveryMaintenance) advertiseAt(ctx context.Context, now time.Time) e
 	if err != nil {
 		return err
 	}
-	return m.cfg.discovery.Upsert(ctx, cluster.DiscoveryNode{
+	err = m.cfg.discovery.Upsert(ctx, cluster.DiscoveryNode{
 		NodeID:           m.cfg.nodeID,
 		AdvertiseAddress: m.cfg.advertiseAddress,
 		ServerVersion:    m.cfg.serverVersion,
@@ -169,6 +179,8 @@ func (m *discoveryMaintenance) advertiseAt(ctx context.Context, now time.Time) e
 		UpdatedAt:        updatedAt,
 		ExpiresAt:        expiresAt,
 	})
+	m.observe("advertise", err)
+	return err
 }
 
 func discoveryLease(now time.Time, ttl time.Duration) (updatedAt, expiresAt time.Time, err error) {
@@ -190,7 +202,10 @@ func (m *discoveryMaintenance) rollback(ctx context.Context) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), discoveryRollbackTimeout)
 	defer cancel()
 	if err := m.cfg.discovery.Delete(cleanupCtx, m.cfg.nodeID); err != nil {
+		m.observe("rollback", err)
 		m.cfg.diagnostics.ErrorContext(ctx, "cluster discovery startup rollback failed", err)
+	} else {
+		m.observe("rollback", nil)
 	}
 }
 
@@ -198,8 +213,24 @@ func (m *discoveryMaintenance) rollback(ctx context.Context) {
 // Discovery remains disposable, so withdrawal failure is diagnostic-only.
 func (m *discoveryMaintenance) withdraw(ctx context.Context) {
 	if err := m.cfg.discovery.Delete(ctx, m.cfg.nodeID); err != nil {
+		m.observe("withdraw", err)
 		m.cfg.diagnostics.ErrorContext(ctx, "cluster discovery delete failed", err)
+	} else {
+		m.observe("withdraw", nil)
 	}
+}
+
+func (m *discoveryMaintenance) observe(operation string, err error) {
+	if m.cfg.metrics == nil {
+		return
+	}
+	result := "success"
+	if errors.Is(err, context.Canceled) {
+		result = "canceled"
+	} else if err != nil {
+		result = "error"
+	}
+	m.cfg.metrics.ObserveClusterDiscovery(operation, result)
 }
 
 func protocolsCompatible(localMin, localMax, peerMin, peerMax int) bool {

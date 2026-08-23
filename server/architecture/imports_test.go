@@ -148,6 +148,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "HTTP cannot import platform services", from: serverModule + "/httpapi", imported: serverModule + "/platform"},
 		{name: "HTTP cannot import SQL driver", from: serverModule + "/httpapi", imported: "database/sql"},
 		{name: "SQL adapter cannot import application policy", from: serverModule + "/store/sqlstore", imported: serverModule + "/app"},
+		{name: "metrics cannot import application policy", from: serverModule + "/metrics", imported: serverModule + "/app"},
+		{name: "metrics cannot import concrete infrastructure", from: serverModule + "/metrics", imported: repositoryModule + "/packages/cache/redis"},
 		{name: "store layer cannot import application policy", from: serverModule + "/store/retrylayer", imported: serverModule + "/app"},
 		{name: "cluster adapter cannot import platform", from: serverModule + "/cluster/memberlist", imported: serverModule + "/platform"},
 		{name: "cluster adapter cannot import persistence", from: serverModule + "/cluster/memberlist", imported: serverModule + "/store"},
@@ -223,6 +225,8 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "WebSocket may import Realtime child", from: serverModule + "/websocket", imported: serverModule + "/app/realtime"},
 		{name: "HTTP may import router library", from: serverModule + "/httpapi", imported: "github.com/gorilla/mux"},
 		{name: "SQL adapter may import store contracts", from: serverModule + "/store/sqlstore", imported: serverModule + "/store"},
+		{name: "metrics may import timer recorder", from: serverModule + "/metrics", imported: serverModule + "/store/timerlayer"},
+		{name: "metrics may import Prometheus", from: serverModule + "/metrics", imported: "github.com/prometheus/client_golang/prometheus"},
 		{name: "cache store layer may import cache contract", from: serverModule + "/store/localcachelayer", imported: repositoryModule + "/packages/cache"},
 		{name: "cluster adapter may import cluster contracts", from: serverModule + "/cluster/memberlist", imported: serverModule + "/cluster"},
 		{name: "application may import password hashing library", from: serverModule + "/app", imported: "golang.org/x/crypto/argon2"},
@@ -393,6 +397,10 @@ func forbiddenImport(from, imported string) bool {
 			return thirdPartyImport(imported) || strings.HasPrefix(imported, repositoryModule+"/")
 		}
 		return forbiddenProjectImportExcept(imported, serverModule+"/cluster")
+	case from == serverModule+"/metrics":
+		return (thirdPartyImport(imported) && !packageOrBelow(imported, "github.com/prometheus/client_golang")) ||
+			forbiddenProjectImportExcept(imported,
+				serverModule+"/config", serverModule+"/store/timerlayer", serverModule+"/store/localcachelayer")
 	case packageOrBelow(from, serverModule+"/platform/externalauth"):
 		return forbiddenProjectImportExcept(imported,
 			serverModule+"/app",
@@ -511,7 +519,7 @@ func knownProductionPackage(packagePath string) bool {
 		packageOrBelow(packagePath, serverModule+"/model/internal/idgen") ||
 		packagePath == serverModule+"/internal/autocert" ||
 		packagePath == serverModule+"/store" || packagePath == serverModule+"/config" ||
-		packagePath == serverModule+"/logging" || packagePath == serverModule+"/migrations" ||
+		packagePath == serverModule+"/logging" || packagePath == serverModule+"/metrics" || packagePath == serverModule+"/migrations" ||
 		packagePath == serverModule+"/secretseal" || packagePath == serverModule+"/localization" ||
 		packagePath == serverModule+"/executionhost" ||
 		packagePath == serverModule+"/platform" || packagePath == serverModule+"/cmd/proctor" ||

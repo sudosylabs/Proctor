@@ -78,6 +78,7 @@ type App struct {
 	jobOperations                     *jobOperationsService
 	mail                              *mailService
 	mailSecretSealer                  *secretseal.Sealer
+	operational                       OperationalRecorder
 
 	// Cross-cutting policy and ports still used by App-method facades that
 	// have not yet been extracted into focused services.
@@ -98,6 +99,9 @@ func (a *App) Jobs() *jobengine.Engine {
 // visible here while private construction modules retain each cohesive slice's
 // projection and wiring knowledge.
 func New(deps Dependencies) (*App, error) {
+	if deps.OperationalRecorder == nil {
+		deps.OperationalRecorder = nopOperationalRecorder{}
+	}
 	if err := validateApplicationDependencies(deps); err != nil {
 		return nil, err
 	}
@@ -152,7 +156,15 @@ func (a *App) Authorize(
 	resource model.Resource,
 	metadata model.RequestMetadata,
 ) error {
-	return a.authorization.Authorize(ctx, principal, action, resource, metadata)
+	err := a.authorization.Authorize(ctx, principal, action, resource, metadata)
+	a.recordOperational("authorization", "decision", err)
+	return err
+}
+
+func (a *App) recordOperational(subsystem, event string, err error) {
+	if a != nil && a.operational != nil {
+		a.operational.RecordOperationalEvent(operationalEvent(subsystem, event, err))
+	}
 }
 
 // ErrAuthenticationCacheMiss and ErrAuthenticationCacheNotStored are the

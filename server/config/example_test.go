@@ -26,7 +26,7 @@ func TestExampleConfigurationIsCompleteCanonicalDefault(t *testing.T) {
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"Version", "Server", "Database", "Cache", "Cluster"} {
+	for _, key := range []string{"Version", "Server", "Metrics", "Database", "Cache", "Cluster"} {
 		if _, exists := document[key]; !exists {
 			t.Fatalf("example configuration is missing PascalCase key %q", key)
 		}

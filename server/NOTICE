@@ -74,6 +74,35 @@ written around its blocking `Server.Run` lifecycle: the host CLI owns
 `NOTIFY_SOCKET` and effective-user inspection, while the module-root server
 exposes only a narrow readiness observer. No Mattermost source was copied.
 
+Prometheus metrics behavioral reference
+---------------------------------------
+
+Proctor's dedicated node-local metrics listener and configuration were
+behaviorally compared with Mattermost revision
+c5835cd2b10e8c0ba0f7b71b9d7035721dbab36e, principally:
+
+- server/channels/app/platform/metrics.go;
+- server/public/model/config.go;
+- server/einterfaces/metrics.go;
+- server/channels/store/timerlayer/timerlayer.go;
+- server/channels/store/localcachelayer/;
+- server/channels/app/platform/web_conn.go;
+- server/channels/app/platform/web_hub.go;
+- server/channels/jobs/jobs.go; and
+- server/platform/services/cache/redis.go.
+
+The `server/public/model` path is governed by the Apache License 2.0 exception
+in `server/public/LICENSE.txt`; the remaining listed paths are governed by the
+GNU Affero General Public License v3. Mattermost's broad collector
+implementation under `server/enterprise/metrics/` is governed by Mattermost's
+Source Available License and was used only to understand product behavior; no
+source, metric definitions, or implementation from that directory was copied
+or adapted.
+Proctor's `server/metrics`, boundary recorders, security policy, and
+`Server.Run` integration were independently written for Proctor's architecture.
+Unlike Mattermost, Proctor exposes no pprof routes, defaults to loopback, and
+requires TLS plus bearer authentication for non-loopback exposure.
+
 The automatic-certificate implementation in `server/internal/autocert` adapts
 the following files from `golang.org/x/crypto/acme/autocert` v0.52.0, revision
 a1c0d9929856c8aba2b31f079340f00578eda803, under the BSD 3-Clause License:
@@ -699,3 +728,5 @@ The Gorilla mux router dependency is separately licensed under the BSD
 3-Clause License.
 The Gorilla WebSocket dependency is separately licensed under the BSD
 2-Clause License.
+The Prometheus Go client dependency is separately licensed under the Apache
+License 2.0.

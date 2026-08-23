@@ -13,6 +13,7 @@ import (
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	appexecution "github.com/sudosylabs/proctor/server/app/execution"
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
@@ -55,6 +56,9 @@ type Dependencies struct {
 	MailDeliverySender   appmail.Sender
 	MailTemplateRenderer appmail.Renderer
 	MailDeliveryRecorder MailDeliveryRecorder
+	MailMetricsReader    MailMetricsReader
+	JobRecorder          jobRecorder
+	OperationalRecorder  OperationalRecorder
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.
 	MailSecretSealer *secretseal.Sealer
@@ -81,6 +85,12 @@ type Dependencies struct {
 	AuthenticationDiagnostics authenticationDiagnostics
 	RealtimeDiagnostics       realtimeDiagnostics
 	RecoveryDiagnostics       recoveryDiagnostics
+}
+
+type jobRecorder interface {
+	Started(model.JobType)
+	Finished(model.JobType, jobengine.ExecutionOutcome, time.Duration)
+	Record(jobengine.Activity)
 }
 
 // PasswordPolicy is the immutable password-hashing projection composition

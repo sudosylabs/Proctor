@@ -48,35 +48,45 @@ func TestAccountMailerAdapterClassifiesPortableAndLegacyFailures(t *testing.T) {
 
 func TestProductionMailTelemetryRetainsBoundedSafeMetrics(t *testing.T) {
 	t.Parallel()
-	recorder, ok := newMailDeliveryRecorder(nil, nil).(*operationalMailTelemetry)
+	recorder, reader := newMailTelemetry(nil, nil)
+	operational, ok := reader.(*operationalMailTelemetry)
 	if !ok {
-		t.Fatalf("production recorder type = %T", recorder)
+		t.Fatalf("production metrics reader type = %T", reader)
+	}
+	if recorder != operational {
+		t.Fatalf("production recorder type = %T, want shared operational telemetry", recorder)
 	}
 	ctx := context.Background()
 	key := mailDeliveryMetricKey{template: model.MailTemplateSystemTest, state: model.MailDeliveryQueued, code: "mail.transport.temporary"}
-	recorder.RecordMailDelivery(ctx, app.MailDeliveryMetric{
-		TemplateKey: key.template, State: key.state, OutcomeCode: key.code,
-		AttemptCount: 2, ProcessingLatency: time.Second,
-	})
+	attemptKey := mailDeliveryMetricKey{template: model.MailTemplateSystemTest, state: model.MailDeliverySending, code: "mail.attempt_started"}
+	for range 2 {
+		recorder.RecordMailDelivery(ctx, app.MailDeliveryMetric{
+			TemplateKey: key.template, State: key.state, OutcomeCode: key.code,
+			ProcessingLatency: time.Second,
+		})
+		recorder.RecordMailAttempt(ctx, app.MailAttemptMetric{TemplateKey: attemptKey.template, State: attemptKey.state})
+	}
 	recorder.RecordMailQueueSnapshot(ctx, []app.MailQueueMetric{{
 		TemplateKey: key.template, State: key.state, OutcomeCode: key.code,
 		Count: 7, OldestAge: 6 * time.Minute, HealthCode: app.MailHealthQueueDelayed,
 	}})
 	recorder.RecordMailHealth(ctx, app.MailHealthMetric{Code: app.MailHealthQueueDelayed})
-	snapshot := recorder.Snapshot()
+	snapshot := reader.Snapshot()
 
-	recorder.mu.Lock()
-	aggregate := recorder.deliveries[key]
-	if aggregate.count != 1 || aggregate.attempts != 2 || aggregate.processingLatency != time.Second || aggregate.maximumLatency != time.Second ||
-		recorder.queues[key].Count != 7 ||
-		recorder.queueBuckets[key] != "lt_15m0s" || recorder.health != app.MailHealthQueueDelayed ||
-		len(snapshot.Deliveries) != 1 || snapshot.Deliveries[0].AttemptCount != 2 || len(snapshot.Queues) != 1 {
+	operational.mu.Lock()
+	aggregate := operational.deliveries[key]
+	attemptAggregate := operational.deliveries[attemptKey]
+	if aggregate.count != 2 || aggregate.attempts != 0 || aggregate.processingLatency != 2*time.Second || aggregate.maximumLatency != time.Second ||
+		attemptAggregate.count != 0 || attemptAggregate.attempts != 2 ||
+		operational.queues[key].Count != 7 ||
+		operational.queueBuckets[key] != "lt_15m0s" || operational.health != app.MailHealthQueueDelayed ||
+		len(snapshot.Deliveries) != 2 || len(snapshot.Queues) != 1 {
 		t.Fatalf("operational telemetry = deliveries %#v queues %#v buckets %#v health %q",
-			recorder.deliveries, recorder.queues, recorder.queueBuckets, recorder.health)
+			operational.deliveries, operational.queues, operational.queueBuckets, operational.health)
 	}
-	recorder.mu.Unlock()
+	operational.mu.Unlock()
 	recorder.RecordMailQueueSnapshot(ctx, nil)
-	if len(recorder.Snapshot().Queues) != 0 {
-		t.Fatalf("drained queue remained in snapshot: %#v", recorder.Snapshot().Queues)
+	if len(reader.Snapshot().Queues) != 0 {
+		t.Fatalf("drained queue remained in snapshot: %#v", reader.Snapshot().Queues)
 	}
 }

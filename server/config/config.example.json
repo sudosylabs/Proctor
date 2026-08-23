@@ -22,6 +22,21 @@
     "MaxHeaderBytes": 1048576,
     "MaxBodyBytes": 1048576
   },
+  "Metrics": {
+    "Enabled": false,
+    "ListenAddress": "127.0.0.1:8067",
+    "BearerToken": "",
+    "TLS": {
+      "CertificateFile": "",
+      "PrivateKeyFile": ""
+    },
+    "ReadHeaderTimeout": "5s",
+    "ReadTimeout": "10s",
+    "WriteTimeout": "30s",
+    "IdleTimeout": "1m",
+    "ShutdownTimeout": "5s",
+    "MaximumConcurrentScrapes": 2
+  },
   "Database": {
     "DataSource": "postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable",
     "MaxOpenConnections": 50,

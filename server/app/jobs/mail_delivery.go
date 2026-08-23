@@ -30,12 +30,17 @@ type MailDeliveryMetric struct {
 	TemplateKey       model.MailTemplateKey
 	State             model.MailDeliveryState
 	OutcomeCode       string
-	AttemptCount      int
 	ProcessingLatency time.Duration
+}
+
+type MailAttemptMetric struct {
+	TemplateKey model.MailTemplateKey
+	State       model.MailDeliveryState
 }
 
 type MailDeliveryRecorder interface {
 	RecordJobMailDelivery(context.Context, MailDeliveryMetric)
+	RecordJobMailAttempt(context.Context, MailAttemptMetric)
 }
 
 type MailHealth interface {
@@ -131,6 +136,7 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 	if sending.State == model.MailDeliverySuppressed || sending.State == model.MailDeliveryCanceled || sending.State == model.MailDeliveryAccepted {
 		return mailDeliverySucceeded(sending)
 	}
+	h.recordAttempt(ctx, sending)
 	payload, err := openFrozenMailPayload(h.sealer, sending)
 	if err != nil {
 		return h.fail(ctx, sending, "mail.payload.unavailable", err)
@@ -250,7 +256,14 @@ func (h mailDeliveryHandler) record(ctx context.Context, delivery *model.MailDel
 	if latency < 0 {
 		latency = 0
 	}
-	h.recorder.RecordJobMailDelivery(ctx, MailDeliveryMetric{TemplateKey: delivery.TemplateKey, State: state, OutcomeCode: code, AttemptCount: delivery.AttemptCount, ProcessingLatency: latency})
+	h.recorder.RecordJobMailDelivery(ctx, MailDeliveryMetric{TemplateKey: delivery.TemplateKey, State: state, OutcomeCode: code, ProcessingLatency: latency})
+}
+
+func (h mailDeliveryHandler) recordAttempt(ctx context.Context, delivery *model.MailDelivery) {
+	if h.recorder == nil || delivery == nil {
+		return
+	}
+	h.recorder.RecordJobMailAttempt(ctx, MailAttemptMetric{TemplateKey: delivery.TemplateKey, State: delivery.State})
 }
 
 func openFrozenMailPayload(sealer *secretseal.Sealer, delivery *model.MailDelivery) (appmail.FrozenPayloadV1, error) {

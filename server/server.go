@@ -105,6 +105,13 @@ type runtimeServingNodeLease interface {
 	Close() error
 }
 
+type runtimeMetrics interface {
+	Start(context.Context) error
+	Failures() <-chan error
+	SetReady(bool)
+	Close() error
+}
+
 // runtimeReconciler owns bounded durable startup convergence that must complete
 // after infrastructure is ready and before any worker or transport can serve.
 type runtimeReconciler interface {
@@ -245,6 +252,7 @@ type runtimeComponents struct {
 	logger                runtimeLogger
 	jobs                  runtimeJobs
 	servingLease          runtimeServingNodeLease
+	metrics               runtimeMetrics
 	transport             runtimeTransport
 	websocket             runtimeWebSocket
 	readiness             runtimeReadiness
@@ -404,6 +412,17 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 		return fmt.Errorf("start platform: %w", err)
 	}
 	s.recordStarted(func(m *lifecycleMilestones) { m.platformStarted = true })
+	if s.components.metrics != nil {
+		if err := s.components.metrics.Start(runCtx); err != nil {
+			if gracefulCancellation(err, runCtx.Err()) {
+				return nil
+			}
+			return fmt.Errorf("start metrics: %w", err)
+		}
+		if err := s.currentMetricsFailure(); err != nil {
+			return fmt.Errorf("serve metrics: %w", err)
+		}
+	}
 	if runCtx.Err() != nil {
 		return nil
 	}
@@ -556,6 +575,17 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 			s.closeOwnedListener(),
 			s.forceCloseHTTP(),
 		)
+	case metricsErr := <-s.metricsFailures():
+		return errors.Join(fmt.Errorf("serve metrics: %w", metricsErr), s.closeOwnedListener(), s.forceCloseHTTP())
+	}
+	// Handoff and a dependency failure may become selectable together. Drain
+	// any already-queued failure before publishing readiness so a dead required
+	// listener or serving lease is never briefly advertised as healthy.
+	if metricsErr := s.currentMetricsFailure(); metricsErr != nil {
+		return errors.Join(fmt.Errorf("serve metrics: %w", metricsErr), s.forceCloseHTTP())
+	}
+	if leaseErr := s.currentServingNodeLeaseFailure(); leaseErr != nil {
+		return errors.Join(fmt.Errorf("maintain serving node lease: %w", leaseErr), s.forceCloseHTTP())
 	}
 	if s.publishReady(runCtx) {
 		s.components.logger.InfoContext(
@@ -598,6 +628,11 @@ func (s *Server) Run(ctx context.Context) (resultErr error) {
 		forceServingStop = true
 		s.setUnready()
 		s.components.logger.ErrorContext(runCtx, "serving node lease failed; stopping server", logging.Err(leaseErr))
+	case metricsErr := <-s.metricsFailures():
+		runtimeErr = fmt.Errorf("serve metrics: %w", metricsErr)
+		forceServingStop = true
+		s.setUnready()
+		s.components.logger.ErrorContext(runCtx, "metrics listener failed; stopping server", logging.Err(metricsErr))
 	}
 
 	var stopErr error
@@ -741,12 +776,17 @@ func (s *Server) closeRuntime() error {
 		if s.components.servingLease != nil {
 			servingLeaseErr = s.components.servingLease.Close()
 		}
+		var metricsErr error
+		if s.components.metrics != nil {
+			metricsErr = s.components.metrics.Close()
+		}
 		s.closeErr = errors.Join(
 			listenerErr,
 			jobsErr,
 			websocketErr,
 			transportErr,
 			servingLeaseErr,
+			metricsErr,
 			s.components.platform.Close(),
 		)
 	})
@@ -763,6 +803,22 @@ func (s *Server) servingNodeLeaseFailures() <-chan error {
 func (s *Server) currentServingNodeLeaseFailure() error {
 	select {
 	case err := <-s.servingNodeLeaseFailures():
+		return err
+	default:
+		return nil
+	}
+}
+
+func (s *Server) metricsFailures() <-chan error {
+	if s.components.metrics == nil {
+		return nil
+	}
+	return s.components.metrics.Failures()
+}
+
+func (s *Server) currentMetricsFailure() error {
+	select {
+	case err := <-s.metricsFailures():
 		return err
 	default:
 		return nil
@@ -790,6 +846,9 @@ func (s *Server) publishReady(ctx context.Context) bool {
 	s.milestones.ready = true
 	s.state = nodeRunning
 	s.components.readiness.SetReady(true)
+	if s.components.metrics != nil {
+		s.components.metrics.SetReady(true)
+	}
 	return true
 }
 
@@ -798,6 +857,9 @@ func (s *Server) setUnready() {
 	defer s.lifecycleMu.Unlock()
 	s.milestones.ready = false
 	s.components.readiness.SetReady(false)
+	if s.components.metrics != nil {
+		s.components.metrics.SetReady(false)
+	}
 }
 
 func (s *Server) closeOwnedListener() error {
