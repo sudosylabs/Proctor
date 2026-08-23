@@ -187,9 +187,9 @@ the code and component contracts for that detail.
 ## Architecture migration acceptance
 
 The required architecture migration was accepted on 2026-08-08. At acceptance,
-the dependency-debt ledger was empty, the module-root composition and inward
-dependency graph were enforced, OpenAPI agreed with runtime routes and errors,
-and the hermetic server gate plus independent module checks passed. The
+the module-root composition and inward dependency graph had zero forbidden
+production imports, OpenAPI agreed with runtime routes and errors, and the
+hermetic server gate plus independent module checks passed. The
 remaining work below is product development or optional tightening, not an
 uncompleted architecture migration.
 

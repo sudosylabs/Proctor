@@ -716,11 +716,9 @@ make -C server check
 make -C server architecture
 ```
 
-The dependency-debt ledger at
-`server/architecture/dependency_debt.txt` is currently empty and may never
-grow. The gate rejects forbidden imports, stale entries, duplicates, and
-unsorted debt; its immutable initial ceiling prevents a new violation from
-being legalized by editing the ledger.
+The architecture gate evaluates production packages against ordered,
+declarative import rules. Every package must have an owning rule and every
+forbidden import fails immediately; there is no waiver path.
 
 The default `test`, `test-race`, and `check` targets are hermetic: they do not
 require PostgreSQL, Redis, SMTP, S3, or another external service. Tests backed

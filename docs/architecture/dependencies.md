@@ -62,7 +62,9 @@ inside `app/` are application-owned modules, not transports.
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
 | `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket` | runtime composition and concrete infrastructure construction |
 
-Tests and `testlib` may cross production boundaries for verification. An architecture test enforces the production allowlist.
+Tests and `testlib` may cross production boundaries for verification. Ordered,
+declarative package rules enforce the production allowlist with no debt or
+waiver mechanism.
 
 ## Reusable capability boundaries
 

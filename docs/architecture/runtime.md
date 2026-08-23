@@ -314,9 +314,9 @@ boundaries, OpenAPI/route/error agreement, and portable documentation links.
 ## Architecture migration acceptance
 
 The required architecture migration was accepted on 2026-08-08. The acceptance
-run verified the module-root composition graph, an empty dependency-debt
-ledger, inward production imports, OpenAPI/runtime agreement, the hermetic
-server gate, and independent module checks. This dated result is historical
+run verified the module-root composition graph, zero forbidden production
+imports, OpenAPI/runtime agreement, the hermetic server gate, and independent
+module checks. This dated result is historical
 evidence; current status and unresolved product work live in
 [`docs/project/status.md`](../project/status.md).
 

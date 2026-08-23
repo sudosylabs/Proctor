@@ -1,5 +1,0 @@
-# Exact production import violations that predate the architecture gate.
-#
-# Format: <module-relative Go file><tab><forbidden import path>
-# Entries are sorted. Delete an entry in the same change that removes its import;
-# new entries are forbidden because this ledger may only shrink.

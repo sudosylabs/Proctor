@@ -7,8 +7,9 @@ before changing import policy and
 before changing the Markdown validator.
 
 - Tests remain hermetic and network-free.
-- The production dependency-debt ledger may shrink but never grow. Its current
-  accepted state is empty.
+- Production package boundaries are declared as ordered rules in
+  `import_policy_test.go`. Every production package must match a rule and every
+  forbidden import fails the gate; do not add waiver or debt mechanisms.
 - Documentation validation inspects repository candidates when Git metadata is
   available and skips only the Git-specific check for an independently tested
   server module without a repository checkout.
