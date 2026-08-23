@@ -16,7 +16,7 @@ import (
 )
 
 type desktopAuthorizationStore interface {
-	Create(context.Context, *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error)
+	CreateDesktopAuthorization(context.Context, *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error)
 	IssueCode(context.Context, *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error)
 	Cancel(context.Context, *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error)
 	Exchange(context.Context, *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error)
@@ -159,7 +159,7 @@ func newDesktopAuthorizationService(
 		policy.CodeLifetime <= 0 || policy.CodeLifetime > model.DesktopAuthorizationCodeLifetime {
 		return nil, errors.New("desktop authorization lifetime policy is invalid")
 	}
-	if err := model.ValidateDesktopAuthorizationIssuer(policy.Issuer, policy.AllowLoopbackHTTPDevelopment); err != nil {
+	if err := model.ValidateBrowserAuthenticationIssuer(policy.Issuer, policy.AllowLoopbackHTTPDevelopment); err != nil {
 		return nil, errors.New("desktop authorization issuer policy is invalid")
 	}
 	if sessionPolicy.AccessTTL <= 0 || sessionPolicy.RefreshTTL <= 0 || sessionPolicy.IdleTTL <= 0 ||
@@ -428,7 +428,7 @@ func (s *desktopAuthorizationService) Start(
 	if transaction.Validate() != nil {
 		return nil, NewError("authentication.desktop_authorization.invalid")
 	}
-	saved, err := s.transactions.Create(ctx, transaction)
+	saved, err := s.transactions.CreateDesktopAuthorization(ctx, transaction)
 	if err != nil {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}

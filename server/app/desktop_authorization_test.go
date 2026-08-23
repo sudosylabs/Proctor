@@ -295,7 +295,7 @@ type desktopAuthorizationStoreFake struct {
 	exchangeErr    error
 }
 
-func (s *desktopAuthorizationStoreFake) Create(
+func (s *desktopAuthorizationStoreFake) CreateDesktopAuthorization(
 	_ context.Context,
 	transaction *model.BrowserAuthenticationTransaction,
 ) (*model.BrowserAuthenticationTransaction, error) {

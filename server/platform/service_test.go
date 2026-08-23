@@ -35,13 +35,13 @@ func (unavailableMailer) Test(context.Context) error {
 	return errors.New("smtp dialogue contains operator-secret-marker")
 }
 
-func (testStore) File() store.FileStore                                 { return nil }
-func (testStore) Job() store.JobStore                                   { return nil }
-func (testStore) Mail() store.MailStore                                 { return nil }
-func (testStore) ExecutionGrant() store.ExecutionGrantStore             { return nil }
-func (testStore) DesktopAuthorization() store.DesktopAuthorizationStore { return nil }
-func (testStore) Invitation() store.InvitationStore                     { return nil }
-func (testStore) OnboardingImport() store.OnboardingImportStore         { return nil }
+func (testStore) File() store.FileStore                                   { return nil }
+func (testStore) Job() store.JobStore                                     { return nil }
+func (testStore) Mail() store.MailStore                                   { return nil }
+func (testStore) ExecutionGrant() store.ExecutionGrantStore               { return nil }
+func (testStore) BrowserAuthentication() store.BrowserAuthenticationStore { return nil }
+func (testStore) Invitation() store.InvitationStore                       { return nil }
+func (testStore) OnboardingImport() store.OnboardingImportStore           { return nil }
 func (testStore) UserSettings() store.UserSettingsStore {
 	return nil
 }

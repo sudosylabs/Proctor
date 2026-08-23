@@ -122,6 +122,7 @@ type Options struct {
 	AcademicUnitMembers           AcademicUnitMemberApplication
 	ClassMembers                  ClassMemberApplication
 	Invitations                   InvitationApplication
+	BrowserInvitations            BrowserInvitationApplication
 	OnboardingImports             OnboardingImportApplication
 	StudentProgressions           StudentProgressionApplication
 	AcademicAdministrationBatches AcademicAdministrationBatchApplication

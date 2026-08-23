@@ -23,6 +23,9 @@ type InvitationSQLProbe struct {
 	EndBindingBeforeAccept         func(*testing.T, context.Context, *model.RoleBinding, func() error) error
 	ArchiveRoleBeforeAccept        func(*testing.T, context.Context, *model.Role, func() error) error
 	PayloadKeyReferences           func(*testing.T, context.Context, string) int64
+	SetInvitationExpiresAt         func(*testing.T, context.Context, model.InvitationID, time.Time)
+	SetInvitationIntendedEndsAt    func(*testing.T, context.Context, model.InvitationID, time.Time)
+	BrowserTransactionExists       func(*testing.T, context.Context, model.BrowserAuthenticationTransactionID) bool
 	ArchiveTeacherUnitBeforeAccept func(*testing.T, context.Context, *model.AcademicUnit, func() error) error
 	ArchiveTeacherUnitBeforeMail   func(*testing.T, context.Context, *model.AcademicUnit, func() error) error
 	MutateTeacherRoleBeforeMail    func(*testing.T, context.Context, *model.Role, func() error) error
@@ -54,6 +57,9 @@ func TestInvitationStore(t *testing.T, ss store.Store, probes ...InvitationSQLPr
 	})
 	t.Run("AcceptStudentClassResolvesExistingUser", func(t *testing.T) {
 		testInvitationAcceptStudentClassResolvesExistingUser(t, ss)
+	})
+	t.Run("BrowserHandoffCreationUsesAuthoritativeBounds", func(t *testing.T) {
+		testBrowserInvitationTransactionCreation(t, ss, probe)
 	})
 	t.Run("AcceptStudentClassRejectsConflictingMembershipAtomically", func(t *testing.T) {
 		testInvitationAcceptStudentClassRejectsConflictingMembershipAtomically(t, ss)
@@ -1659,10 +1665,55 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	invitation, err := ss.Invitation().IssueStudentClass(ctx, issue)
 	requireNoError(t, err)
 	acceptance := studentClassInvitationAcceptanceFixture(t, invitation, model.NowUTC())
+	handle, proof := model.NewCredentialToken(), model.NewCredentialToken()
+	transaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, &store.BrowserInvitationTransactionCreation{
+		ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: fixture.institution.ID,
+		Issuer: "https://proctor.example.edu", InvitationID: invitation.ID,
+		InvitationPurpose: invitation.Purpose, InvitationClaimHash: invitation.ClaimHash,
+		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
+	})
+	if err != nil {
+		t.Fatalf("create browser Invitation transaction: %v", err)
+	}
+	if transaction.Purpose != model.BrowserAuthenticationPurposeInvitationAcceptance ||
+		transaction.InvitationID != invitation.ID || transaction.ExpiresAt.After(invitation.ExpiresAt) {
+		t.Fatalf("browser Invitation transaction = %#v", transaction)
+	}
+	acceptance.BrowserTransaction = &store.BrowserInvitationTransactionProof{
+		ID: transaction.ID, HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
+	}
+	rejected := *acceptance
+	rejectedProof := *acceptance.BrowserTransaction
+	rejectedProof.BrowserProofHash = model.HashToken(model.NewCredentialToken())
+	rejected.BrowserTransaction = &rejectedProof
+	if _, err = ss.Invitation().AcceptStudentClass(ctx, &rejected); err == nil {
+		t.Fatal("AcceptStudentClass accepted a mismatched browser proof")
+	}
+	stillPending, err := ss.Invitation().Get(ctx, invitation.ID)
+	requireNoError(t, err)
+	if stillPending.State != model.InvitationPending {
+		t.Fatalf("mismatched browser proof consumed Invitation: %#v", stillPending)
+	}
 	accepted, err := ss.Invitation().AcceptStudentClass(ctx, acceptance)
 	requireNoError(t, err)
 	if accepted.User.ID != existing.ID || !accepted.User.EmailVerified || accepted.ClassMember.UserID != existing.ID || accepted.Affiliation.UserID != existing.ID {
 		t.Fatalf("existing User acceptance = %#v", accepted)
+	}
+	if _, err = ss.BrowserAuthentication().ResolveInvitation(ctx, model.HashToken(handle), model.HashToken(proof)); !store.IsNotFound(err) {
+		t.Fatalf("resolved consumed browser Invitation transaction: %v", err)
+	}
+	if _, err = ss.BrowserAuthentication().CreateInvitation(ctx, &store.BrowserInvitationTransactionCreation{
+		ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: fixture.institution.ID,
+		Issuer: "https://proctor.example.edu", InvitationID: invitation.ID,
+		InvitationPurpose: invitation.Purpose, InvitationClaimHash: invitation.ClaimHash,
+		HandleHash: model.HashToken(model.NewCredentialToken()), BrowserProofHash: model.HashToken(model.NewCredentialToken()),
+	}); !store.IsConflict(err) {
+		t.Fatalf("created browser transaction for accepted Invitation: %v", err)
+	}
+	replayed, err := ss.Invitation().AcceptStudentClass(ctx, acceptance)
+	requireNoError(t, err)
+	if !replayed.Replayed || replayed.User.ID != existing.ID {
+		t.Fatalf("browser Invitation acceptance replay = %#v", replayed)
 	}
 	if _, err = ss.PasswordCredential().GetByUser(ctx, existing.ID.String()); err != nil {
 		t.Fatalf("existing User password credential: %v", err)
@@ -1670,6 +1721,132 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	if _, err = ss.Job().Get(ctx, acceptance.DefaultProfilePictureJob.ID); !store.IsNotFound(err) {
 		t.Fatalf("existing User unexpectedly enqueued a second default-picture Job: %v", err)
 	}
+}
+
+func testBrowserInvitationTransactionCreation(t *testing.T, ss store.Store, probe InvitationSQLProbe) {
+	t.Helper()
+	ctx := context.Background()
+	fixture, class, inviter, role, _, issuedAt := invitationAcceptanceStoreFixture(t, ctx, ss, "browser-handoff-bounds")
+
+	issueInvitation := func(t *testing.T, targetClass *model.Class, period *model.AcademicPeriod, at time.Time, intendedEnd model.OptionalTime) *model.Invitation {
+		t.Helper()
+		input := studentClassInvitationIssueFixture(t, ss, inviter, targetClass, period, at)
+		unique := strings.ToLower(model.NewId())
+		input.Invitation.TargetEmail = "browser-" + unique + "@example.edu"
+		input.Invitation.Suggestions.Username = "browser-" + unique
+		input.Invitation.IntendedEndsAt = intendedEnd
+		created, err := ss.Invitation().IssueStudentClass(ctx, input)
+		requireNoError(t, err)
+		return created
+	}
+	newCreation := func(invitation *model.Invitation) (*store.BrowserInvitationTransactionCreation, string, string) {
+		handleHash := model.HashToken(model.NewCredentialToken())
+		proofHash := model.HashToken(model.NewCredentialToken())
+		return &store.BrowserInvitationTransactionCreation{
+			ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: fixture.institution.ID,
+			Issuer: "https://proctor.example.edu", InvitationID: invitation.ID,
+			InvitationPurpose: invitation.Purpose, InvitationClaimHash: invitation.ClaimHash,
+			HandleHash: handleHash, BrowserProofHash: proofHash,
+		}, handleHash, proofHash
+	}
+	assertNotInserted := func(t *testing.T, input *store.BrowserInvitationTransactionCreation, handleHash, proofHash string) {
+		t.Helper()
+		if probe.BrowserTransactionExists != nil && probe.BrowserTransactionExists(t, ctx, input.ID) {
+			t.Fatalf("rejected browser Invitation transaction %s was inserted", input.ID)
+		}
+		if _, err := ss.BrowserAuthentication().ResolveInvitation(ctx, handleHash, proofHash); !store.IsNotFound(err) {
+			t.Fatalf("ResolveInvitation() after rejected creation = %v, want not found", err)
+		}
+	}
+
+	t.Run("FiveMinuteLifetime", func(t *testing.T) {
+		invitation := issueInvitation(t, class, fixture.period, issuedAt, model.OptionalTimeFrom(fixture.period.EndsAt))
+		input, _, _ := newCreation(invitation)
+		transaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, input)
+		requireNoError(t, err)
+		if lifetime := transaction.ExpiresAt.Sub(transaction.CreatedAt); lifetime != model.BrowserAuthenticationTransactionLifetime {
+			t.Fatalf("browser Invitation transaction lifetime = %s, want %s", lifetime, model.BrowserAuthenticationTransactionLifetime)
+		}
+	})
+
+	t.Run("InvitationExpiryBoundsLifetime", func(t *testing.T) {
+		expiresAt := model.NowUTC().Add(2 * time.Minute)
+		invitation := issueInvitation(t, class, fixture.period, expiresAt.Add(-model.InvitationLifetime), model.OptionalTimeFrom(fixture.period.EndsAt))
+		input, _, _ := newCreation(invitation)
+		transaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, input)
+		requireNoError(t, err)
+		if !transaction.ExpiresAt.Equal(invitation.ExpiresAt) {
+			t.Fatalf("browser Invitation deadline = %s, want Invitation expiry %s", transaction.ExpiresAt, invitation.ExpiresAt)
+		}
+	})
+
+	activePeriod := saveAcademicPeriod(t, ctx, ss, fixture.institution.ID.String(), "browser-handoff-"+model.NewId(), model.MillisFromTime(model.NowUTC().Add(-time.Hour)))
+	activeClass := saveClass(t, ctx, ss, fixture.level.ID.String(), activePeriod.ID.String(), "browser-handoff-"+model.NewId())
+	_, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: inviter.ID, RoleID: role.ID, ScopeType: model.RoleScopeClass, ScopeID: activeClass.ID.String(),
+		StartsAt: activePeriod.StartsAt,
+	})
+	requireNoError(t, err)
+
+	t.Run("IntendedEndBoundsLifetime", func(t *testing.T) {
+		intendedEnd := model.NowUTC().Add(2 * time.Minute)
+		invitation := issueInvitation(t, activeClass, activePeriod, model.NowUTC().Add(-time.Minute), model.OptionalTimeFrom(intendedEnd))
+		input, _, _ := newCreation(invitation)
+		transaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, input)
+		requireNoError(t, err)
+		if !transaction.ExpiresAt.Equal(invitation.IntendedEndsAt.Time) {
+			t.Fatalf("browser Invitation deadline = %s, want intended end %s", transaction.ExpiresAt, invitation.IntendedEndsAt.Time)
+		}
+	})
+
+	t.Run("RejectsPurposeMismatchWithoutInsert", func(t *testing.T) {
+		invitation := issueInvitation(t, class, fixture.period, issuedAt, model.OptionalTimeFrom(fixture.period.EndsAt))
+		input, handleHash, proofHash := newCreation(invitation)
+		input.InvitationPurpose = model.InvitationPurposeTeacherAcademicUnit
+		if _, err := ss.BrowserAuthentication().CreateInvitation(ctx, input); !store.IsNotFound(err) {
+			t.Fatalf("CreateInvitation() purpose mismatch = %v, want not found", err)
+		}
+		assertNotInserted(t, input, handleHash, proofHash)
+	})
+
+	t.Run("RejectsClaimMismatchWithoutInsert", func(t *testing.T) {
+		invitation := issueInvitation(t, class, fixture.period, issuedAt, model.OptionalTimeFrom(fixture.period.EndsAt))
+		input, handleHash, proofHash := newCreation(invitation)
+		input.InvitationClaimHash = model.HashInvitationClaim(model.NewCredentialToken())
+		if _, err := ss.BrowserAuthentication().CreateInvitation(ctx, input); !store.IsNotFound(err) {
+			t.Fatalf("CreateInvitation() claim mismatch = %v, want not found", err)
+		}
+		assertNotInserted(t, input, handleHash, proofHash)
+	})
+
+	t.Run("RejectsExpiredInvitationWithoutInsert", func(t *testing.T) {
+		if probe.SetInvitationExpiresAt == nil {
+			t.Skip("requires an authoritative SQL clock probe")
+		}
+		expiresAt := model.NowUTC().Add(2 * time.Minute)
+		invitation := issueInvitation(t, class, fixture.period, expiresAt.Add(-model.InvitationLifetime), model.OptionalTimeFrom(fixture.period.EndsAt))
+		probe.SetInvitationExpiresAt(t, ctx, invitation.ID, model.NowUTC().Add(-time.Minute))
+		defer probe.SetInvitationExpiresAt(t, ctx, invitation.ID, invitation.ExpiresAt)
+		input, handleHash, proofHash := newCreation(invitation)
+		if _, err := ss.BrowserAuthentication().CreateInvitation(ctx, input); !store.IsConflict(err) {
+			t.Fatalf("CreateInvitation() expired Invitation = %v, want conflict", err)
+		}
+		assertNotInserted(t, input, handleHash, proofHash)
+	})
+
+	t.Run("RejectsEndedInvitationWithoutInsert", func(t *testing.T) {
+		if probe.SetInvitationIntendedEndsAt == nil {
+			t.Skip("requires an authoritative SQL clock probe")
+		}
+		invitation := issueInvitation(t, activeClass, activePeriod, model.NowUTC().Add(-time.Minute), model.OptionalTimeFrom(model.NowUTC().Add(2*time.Minute)))
+		probe.SetInvitationIntendedEndsAt(t, ctx, invitation.ID, model.NowUTC().Add(-time.Minute))
+		defer probe.SetInvitationIntendedEndsAt(t, ctx, invitation.ID, invitation.IntendedEndsAt.Time)
+		input, handleHash, proofHash := newCreation(invitation)
+		if _, err := ss.BrowserAuthentication().CreateInvitation(ctx, input); !store.IsConflict(err) {
+			t.Fatalf("CreateInvitation() ended Invitation = %v, want conflict", err)
+		}
+		assertNotInserted(t, input, handleHash, proofHash)
+	})
 }
 
 func testInvitationAcceptStudentClassRejectsConflictingMembershipAtomically(t *testing.T, ss store.Store) {

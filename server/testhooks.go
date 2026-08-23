@@ -5,8 +5,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
+	"testing/fstest"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/app"
@@ -19,6 +22,7 @@ import (
 	"github.com/sudosylabs/proctor/server/store/localcachelayer"
 	"github.com/sudosylabs/proctor/server/store/retrylayer"
 	"github.com/sudosylabs/proctor/server/store/timerlayer"
+	"github.com/sudosylabs/proctor/server/webui"
 )
 
 // TestingOverrides replaces individual runtime capabilities for tests. A nil
@@ -51,6 +55,9 @@ type TestingOverrides struct {
 	AllowMissingJobs bool
 	// BuildInfo replaces the served build information when any field is set.
 	BuildInfo httpapi.BuildInfo
+	// WebappFiles replaces the immutable packaged browser distribution. A nil
+	// value uses a minimal build-matched distribution owned by NewForTesting.
+	WebappFiles fs.FS
 	// BootstrapSecretWriter captures the explicit loopback-development secret.
 	// Production writes it directly to the controlling terminal.
 	BootstrapSecretWriter io.Writer
@@ -80,6 +87,9 @@ func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRun
 	if overrides.BootstrapSecretWriter == nil {
 		overrides.BootstrapSecretWriter = io.Discard
 	}
+	if overrides.WebappFiles == nil {
+		overrides.WebappFiles = testingWebappFiles(overrides.BuildInfo)
+	}
 	result, err := composeNode(ctx, compositionInput{
 		overrides:        overrides,
 		allowMissingJobs: overrides.AllowMissingJobs,
@@ -92,4 +102,20 @@ func NewForTesting(ctx context.Context, overrides TestingOverrides) (*TestingRun
 		Application: result.test.application,
 		Handler:     result.test.handler,
 	}, nil
+}
+
+func testingWebappFiles(build httpapi.BuildInfo) fs.FS {
+	if build == (httpapi.BuildInfo{}) {
+		current := app.CurrentBuildInfo()
+		build.Version, build.Commit = current.Version, current.Commit
+	}
+	manifest, _ := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"version":        build.Version,
+		"commit":         build.Commit,
+	})
+	return fstest.MapFS{
+		webui.BuildManifestName: {Data: manifest},
+		"index.html":            {Data: []byte("<!doctype html><title>Proctor test webapp</title>")},
+	}
 }

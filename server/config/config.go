@@ -53,6 +53,7 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 type Server struct {
 	ListenAddress     string    `json:"ListenAddress"`
 	PublicURL         string    `json:"PublicURL"`
+	WebappDirectory   string    `json:"WebappDirectory"`
 	TLS               ServerTLS `json:"TLS"`
 	ReadHeaderTimeout Duration  `json:"ReadHeaderTimeout"`
 	ReadTimeout       Duration  `json:"ReadTimeout"`
@@ -347,8 +348,9 @@ func Default() Config {
 	return Config{
 		Version: SchemaVersion,
 		Server: Server{
-			ListenAddress: "127.0.0.1:8065",
-			PublicURL:     "http://localhost:8065",
+			ListenAddress:   "127.0.0.1:8065",
+			PublicURL:       "http://localhost:8065",
+			WebappDirectory: "./webapp/dist",
 			TLS: ServerTLS{
 				Mode:              ServerTLSModeDisabled,
 				HTTPListenAddress: "127.0.0.1:8080",
@@ -648,6 +650,9 @@ func (c Config) Validate() error {
 	}
 	validateListenAddress(c.Server.ListenAddress, add)
 	validatePublicURL(c.Server.PublicURL, add)
+	if strings.TrimSpace(c.Server.WebappDirectory) == "" || strings.ContainsRune(c.Server.WebappDirectory, '\x00') {
+		add("server.webapp_directory", "must be a non-empty path without null bytes")
+	}
 	validateServerTLS(c.Server, c.Cluster, add)
 	validateMetrics(c.Metrics, c.Server, add)
 
@@ -1568,6 +1573,9 @@ func validatePublicURL(raw string, add func(string, string)) {
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		add("server.public_url", "query and fragment are forbidden")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		add("server.public_url", "path is unsupported; host Proctor at the origin root")
 	}
 }
 

@@ -180,6 +180,30 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 	}
 }
 
+func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing.T) {
+	t.Parallel()
+	at := TimeUTC(time.Now())
+	transaction := &BrowserAuthenticationTransaction{
+		Purpose:       BrowserAuthenticationPurposeInvitationAcceptance,
+		InstitutionID: NewInstitutionID(), Issuer: "https://proctor.example.edu",
+		InvitationID: NewInvitationID(), InvitationClaimHash: HashInvitationClaim(NewCredentialToken()),
+		HandleHash: HashToken(NewCredentialToken()), BrowserProofHash: HashToken(NewCredentialToken()),
+		ClientType: SessionClientWeb, ExpiresAt: at.Add(BrowserAuthenticationTransactionLifetime),
+	}
+	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
+	if err := transaction.Validate(); err != nil {
+		t.Fatalf("pending invitation transaction: %v", err)
+	}
+
+	transaction.PrepareInvitationCompleted(NewUserID(), at.Add(time.Minute))
+	if err := transaction.Validate(); err != nil {
+		t.Fatalf("completed invitation transaction: %v", err)
+	}
+	if transaction.InvitationClaimHash != "" || transaction.HandleHash != "" || transaction.BrowserProofHash != "" {
+		t.Fatal("completed invitation transaction retained credential hashes")
+	}
+}
+
 func pendingDesktopAuthorizationTransaction(at time.Time) *BrowserAuthenticationTransaction {
 	transaction := &BrowserAuthenticationTransaction{
 		Purpose: BrowserAuthenticationPurposeDesktopAuthorization, InstitutionID: NewInstitutionID(),

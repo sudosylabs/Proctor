@@ -32,6 +32,13 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 	if invitations == nil {
 		invitations = unavailableInvitationApplication{}
 	}
+	browserInvitations := options.BrowserInvitations
+	if browserInvitations == nil {
+		browserInvitations, _ = options.Application.(BrowserInvitationApplication)
+	}
+	if browserInvitations == nil {
+		browserInvitations = unavailableBrowserInvitationApplication{}
+	}
 	academicAdministrationBatches := options.AcademicAdministrationBatches
 	if academicAdministrationBatches == nil {
 		academicAdministrationBatches, _ = options.Application.(AcademicAdministrationBatchApplication)
@@ -44,6 +51,7 @@ func productionResources(options Options, cookies browserCookies, webSocket WebS
 		authenticationMethodResource(options.Application, cookies),
 		desktopAuthorizationResource(options.Application),
 		externalAuthenticationResource(options.Application, cookies),
+		browserInvitationResource(browserInvitations, cookies),
 		userProfileResource(options.UserProfiles),
 		userSettingsResource(options.UserSettings),
 		userAdministrationResource(options.AccountStates, options.SessionAdministrations),

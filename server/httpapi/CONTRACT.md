@@ -107,12 +107,13 @@ issued only through this purpose-bound approval and PKCE/code exchange. The
 pinned issuer is HTTPS except when composition explicitly grants a validated
 localhost or literal-loopback HTTP development origin.
 
-The runtime invokes bounded Desktop-authorization maintenance periodically on
-every node. PostgreSQL row locking makes concurrent invocations safe without a
-durable Job, Attempt, occurrence, or permanent-deduplication ledger. Each pass
-terminalizes expired pending/code-issued transactions with proof destruction
-and purges terminal safe metadata after 24 hours; protocol writes do not
-perform opportunistic cleanup scans.
+The runtime invokes bounded browser-authentication maintenance periodically on
+every node for Desktop and hosted Invitation transactions. PostgreSQL row
+locking makes concurrent invocations safe without a durable Job, Attempt,
+occurrence, or permanent-deduplication ledger. Each pass terminalizes expired
+pending/code-issued transactions with proof destruction and purges terminal
+safe metadata after 24 hours; protocol writes do not perform opportunistic
+cleanup scans.
 
 Provider-connection redirects retain their one critical audit attempt across
 the callback. Rejection, invalid assertion, and post-consumption failures
@@ -123,9 +124,10 @@ writing. Start passes a bounded lifetime rather than a node-computed deadline;
 creation, expiry, and one-use callback consumption are all evaluated against
 authoritative PostgreSQL time.
 
-The `/authorize/desktop` hosted page and Desktop UI are deliberately absent.
-Their later implementation must consume this protocol without adding provider
-tokens, Session credentials, or raw proofs to URLs, logs, or audit data.
+The packaged runtime owns `/authorize/desktop`, but its visual flow and the
+Desktop UI are deliberately absent. Their later implementation must consume
+this protocol without adding provider tokens, Session credentials, or raw
+proofs to URLs, logs, or audit data.
 
 ## Authentication-method lifecycle
 
@@ -229,8 +231,8 @@ transition rechecks both current public-registration and local-enrollment
 policy and atomically creates only the unverified local User, password,
 settings, default-picture Job, safe audit, target-bound verification token,
 frozen encrypted credential delivery, and delivery Job. It creates no
-Affiliation, membership, or Role Binding. This API does not implement or claim
-the future server-hosted `/register` page.
+Affiliation, membership, or Role Binding. The packaged runtime owns `/register`,
+but this API does not implement or claim its deferred visual flow.
 
 ## Student Class Invitations
 
@@ -253,9 +255,9 @@ login/activity, disablement, or other account-profile metadata and issues no
 Session.
 Invalid, expired, conflicting, disabled-policy, and lost-authority outcomes use
 the bounded `invitation.*` vocabulary and do not disclose which internal check
-failed. The hosted `/join` page that captures and immediately removes the URL
-fragment is explicitly not implemented; it remains part of the server-hosted
-design-system phase.
+failed. The packaged runtime owns `/join` and its nonvisual fragment bootstrap;
+the visual acceptance flow remains part of the server-hosted design-system
+phase.
 
 ## Teacher Academic Unit Invitations
 
@@ -271,8 +273,7 @@ Role, and actions but never the mailbox, claim digest, raw claim, or action URL.
 the same claim/password secrecy and bounded-error rules as student acceptance.
 Its purpose-specific result identifies the User, Affiliation, Academic Unit
 membership, package-origin Role Binding, and Invitation by ID only, plus exact
-replay status. It issues no Session. The hosted `/join` page remains outside
-this transport slice.
+replay status. It issues no Session. The visual `/join` flow remains deferred.
 
 ## Scoped Role Invitations
 
@@ -298,7 +299,48 @@ a Session, or prepare welcome or acceptance mail. The response contains only
 the User, Invitation, Role Binding, and replay identifiers. A replay by that
 same User returns the exact result; a different User or incompatible package
 receives a bounded `invitation.*` outcome without consuming the Invitation.
-The hosted `/join` page remains outside this transport slice.
+The visual `/join` flow remains deferred.
+
+## Hosted browser Invitation handoff
+
+`POST /api/v1/auth/browser/invitations` is the public strict-JSON exchange that
+supports the future visual `/join` flow. Its request contains only `claim`.
+The raw claim is request-only credential material: it is rate-accounted, never
+returned, logged, audited, or placed in a query string, and the endpoint
+responds with `Cache-Control: no-store`. The application accepts only a pending,
+unexpired Invitation with an unexpired intended relationship and maps its
+closed purpose to either the `account` or `session` acceptance requirement.
+
+The `201` response contains a random public `handle`, the Invitation `purpose`,
+the closed `requirement`, and `expires_at`. A distinct random browser proof is
+set as a host-only, HttpOnly, SameSite=Lax cookie scoped to
+`/api/v1/auth/browser/invitations`; it is Secure outside the explicit loopback
+HTTP development mode. The named creation aggregate locks and rechecks the
+Invitation and computes one authoritative PostgreSQL time. The transaction
+deadline is the earliest of five minutes from that time, Invitation expiry,
+and intended relationship end. PostgreSQL retains only hashes of the handle,
+proof, and Invitation claim together with the exact Invitation and installation
+origin.
+
+`POST /api/v1/auth/browser/invitations/accept` is public and accepts the public
+handle plus the same closed local-account fields as the purpose-specific
+student and teacher acceptance operations. It also requires the browser-proof
+cookie and is valid only for the `account` purposes. `POST
+/api/v1/auth/browser/invitations/accept-session` accepts only the handle,
+requires an authenticated Web Session under the ordinary browser-cookie/CSRF
+or bearer rules, requires the same proof cookie, and is valid only for the
+Academic Unit and Institution Role `session` purposes. A purpose mismatch,
+missing or duplicate cookie, invalid proof pair, expiry, or reuse receives the
+bounded `invitation.invalid` outcome without disclosing the failed check.
+
+Acceptance repeats the same policy, authority, target, account, and package
+checks as the purpose-specific operation. Invitation consumption, relationship
+or Role Binding creation, audit, and browser-transaction completion commit in
+one named PostgreSQL aggregate. Concurrent exact acceptance can return the
+ordinary acceptance replay projection, but no transaction proof is reusable
+after completion: terminalization clears every stored proof hash. A successful
+response clears the browser-proof cookie, uses `Cache-Control: no-store`, and
+returns only the existing purpose-specific safe acceptance projection.
 
 ## Invitation administration
 

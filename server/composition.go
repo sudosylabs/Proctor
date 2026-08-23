@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/localization"
 	"github.com/sudosylabs/proctor/server/websocket"
+	"github.com/sudosylabs/proctor/server/webui"
 )
 
 type compositionInput struct {
@@ -48,10 +50,11 @@ type consumerConstructors struct {
 	websocket      func(*app.App, runtimeLogger, string, string) (composedWebSocket, error)
 	attachSink     func(*app.App, apprealtime.Sink) error
 	http           func(httpapi.Options) (runtimeTransport, http.Handler, error)
+	webapp         func(webui.Options) (http.Handler, error)
 	jobs           func(*app.App) runtimeJobs
 }
 
-func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, error) {
+func defaultConsumerConstructors(snapshot config.Config, overrideWebappFiles fs.FS) (consumerConstructors, error) {
 	catalogFiles, err := runtimeAssetDirectory("i18n")
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("open localization catalogs: %w", err)
@@ -67,6 +70,10 @@ func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, 
 	mailRenderer, err := appmail.NewRenderer(templateFiles, localizer)
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("construct mail renderer: %w", err)
+	}
+	webappFiles := overrideWebappFiles
+	if webappFiles == nil {
+		webappFiles = os.DirFS(snapshot.Server.WebappDirectory)
 	}
 	return consumerConstructors{
 		fileContent: func(capabilities constructionCapabilities) (app.FileContent, error) {
@@ -92,6 +99,9 @@ func defaultConsumerConstructors(snapshot config.Config) (consumerConstructors, 
 			options.Localizer = localizer
 			transport, err := httpapi.New(options)
 			return transport, transport, err
+		},
+		webapp: func(options webui.Options) (http.Handler, error) {
+			return webui.New(webappFiles, options)
 		},
 		jobs: func(application *app.App) runtimeJobs {
 			if runner := application.Jobs(); runner != nil {
@@ -132,7 +142,7 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 	}
 	logStartupInfrastructure(snapshot, capabilities.logger, capabilities.migration)
 
-	constructors, constructorsErr := defaultConsumerConstructors(snapshot)
+	constructors, constructorsErr := defaultConsumerConstructors(snapshot, input.overrides.WebappFiles)
 	if constructorsErr != nil {
 		return nil, errors.Join(constructorsErr, closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
 	}
@@ -243,6 +253,7 @@ func composeConsumers(
 		Classes: application, Affiliations: application, AcademicUnitMembers: application,
 		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
 		Invitations:                   application,
+		BrowserInvitations:            application,
 		AcademicAdministrationBatches: application,
 		SessionAdministrations:        application, Roles: application, RoleBindings: application,
 		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,
@@ -257,18 +268,35 @@ func composeConsumers(
 			webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
 		)
 	}
+	webappHandler, err := constructors.webapp(webui.Options{
+		BuildVersion: buildInfo.Version,
+		BuildCommit:  buildInfo.Commit,
+	})
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("construct hosted webapp: %w", err),
+			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
+		)
+	}
+	rootTransport, err := newRootHTTPTransport(httpTransport, httpAPI, webappHandler)
+	if err != nil {
+		return nil, errors.Join(
+			fmt.Errorf("compose HTTP transports: %w", err),
+			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
+		)
+	}
 	jobRuntime := constructors.jobs(application)
 	if jobRuntime == nil && !input.allowMissingJobs {
 		return nil, errors.Join(
 			fmt.Errorf("require durable Job runtime: %w", errDurableJobRuntimeUnavailable),
-			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
+			rootTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
 		)
 	}
 	servingLease, err := newServingNodeLeaseRuntime(capabilities.persistence.ServingNodeLease(), capabilities.nodeID)
 	if err != nil {
 		return nil, errors.Join(
 			fmt.Errorf("construct serving node lease: %w", err),
-			httpTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
+			rootTransport.Close(), webSocketHub.Close(), closeAcceptedRuntime(applicationPlatform, capabilities.metrics),
 		)
 	}
 
@@ -277,13 +305,13 @@ func composeConsumers(
 	node := &Server{components: runtimeComponents{
 		platform: applicationPlatform, reconciler: application, administratorRecovery: application,
 		settings: runtimeSettingsFromConfig(snapshot.Server),
-		logger:   capabilities.logger, jobs: jobRuntime, servingLease: servingLease, transport: httpTransport,
+		logger:   capabilities.logger, jobs: jobRuntime, servingLease: servingLease, transport: rootTransport,
 		websocket: webSocketHub, metrics: capabilities.metrics, readiness: readiness, listen: net.Listen, newHTTP: newHTTPServer,
 	}}
 	return &compositionResult{
 		server: node,
 		test: testingProjection{
-			application: application, handler: httpAPI,
+			application: application, handler: rootTransport,
 		},
 	}, nil
 }

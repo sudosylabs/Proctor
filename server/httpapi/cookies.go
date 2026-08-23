@@ -24,12 +24,13 @@ import (
 )
 
 const (
-	BrowserAccessCookieName        = "PROCTOR_ACCESS"
-	BrowserRefreshCookieName       = "PROCTOR_REFRESH"
-	BrowserCSRFBindingCookieName   = "PROCTOR_CSRF_BINDING"
-	BrowserCSRFCookieName          = "PROCTOR_CSRF"
-	BrowserExternalLoginCookieName = "PROCTOR_EXTERNAL_LOGIN"
-	BrowserCSRFHeader              = "X-Proctor-CSRF-Token"
+	BrowserAccessCookieName          = "PROCTOR_ACCESS"
+	BrowserRefreshCookieName         = "PROCTOR_REFRESH"
+	BrowserCSRFBindingCookieName     = "PROCTOR_CSRF_BINDING"
+	BrowserCSRFCookieName            = "PROCTOR_CSRF"
+	BrowserExternalLoginCookieName   = "PROCTOR_EXTERNAL_LOGIN"
+	BrowserInvitationProofCookieName = "PROCTOR_INVITATION_PROOF"
+	BrowserCSRFHeader                = "X-Proctor-CSRF-Token"
 )
 
 const csrfMessage = "proctor-browser-csrf-v1"
@@ -38,6 +39,7 @@ type browserCookies struct {
 	secure            bool
 	refreshPath       string
 	externalLoginPath string
+	invitationPath    string
 	now               func() time.Time
 }
 
@@ -51,8 +53,17 @@ func newBrowserCookies(publicURL string) (browserCookies, error) {
 		secure:            parsed.Scheme == "https",
 		refreshPath:       model.APIURLSuffix + "/auth/refresh",
 		externalLoginPath: model.APIURLSuffix + "/auth/providers/",
+		invitationPath:    model.APIURLSuffix + "/auth/browser/invitations",
 		now:               time.Now,
 	}, nil
+}
+
+func (c browserCookies) attachInvitationProof(writer http.ResponseWriter, proof string, expiresAt int64) {
+	c.set(writer, BrowserInvitationProofCookieName, proof, c.invitationPath, expiresAt, true)
+}
+
+func (c browserCookies) clearInvitationProof(writer http.ResponseWriter) {
+	c.expire(writer, BrowserInvitationProofCookieName, c.invitationPath, true)
 }
 
 func (c browserCookies) attachExternalLoginBinding(

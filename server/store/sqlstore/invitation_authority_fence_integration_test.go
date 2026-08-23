@@ -28,6 +28,36 @@ func invitationAuthoritySQLProbe(t *testing.T, primary *SQLStore) storetest.Invi
 			}
 			return references
 		},
+		SetInvitationExpiresAt: func(t *testing.T, ctx context.Context, id model.InvitationID, expiresAt time.Time) {
+			t.Helper()
+			result, err := primary.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=?, expires_at=? WHERE id=?`,
+				expiresAt.Add(-model.InvitationLifetime), expiresAt, id.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+				t.Fatalf("set Invitation expiry: affected=%d err=%v", affected, affectedErr)
+			}
+		},
+		SetInvitationIntendedEndsAt: func(t *testing.T, ctx context.Context, id model.InvitationID, intendedEnd time.Time) {
+			t.Helper()
+			result, err := primary.GetMaster().Exec(ctx, `UPDATE invitations SET intended_end_at=? WHERE id=?`, intendedEnd, id.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+				t.Fatalf("set Invitation intended end: affected=%d err=%v", affected, affectedErr)
+			}
+		},
+		BrowserTransactionExists: func(t *testing.T, ctx context.Context, id model.BrowserAuthenticationTransactionID) bool {
+			t.Helper()
+			var exists bool
+			if err := primary.GetMaster().Get(ctx, &exists,
+				`SELECT EXISTS (SELECT 1 FROM browser_authentication_transactions WHERE id=?)`, id.String()); err != nil {
+				t.Fatal(err)
+			}
+			return exists
+		},
 		ArchiveTeacherUnitBeforeAccept: func(t *testing.T, ctx context.Context, unit *model.AcademicUnit, operation func() error) error {
 			return runInvitationAuthorityMutationFirst(t, ctx, primary, "teacher_invitation_unit_archive", "academic_units", "UPDATE academic_units", 8154700260827, func() error {
 				_, err := secondary.AcademicUnit().Archive(ctx, unit.ID.String(), model.GetMillis())

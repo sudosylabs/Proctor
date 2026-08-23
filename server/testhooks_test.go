@@ -107,8 +107,8 @@ func (s *hookStore) ExternalIdentity() store.ExternalIdentityStore {
 func (s *hookStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return hookExternalLoginStateStore{}
 }
-func (s *hookStore) DesktopAuthorization() store.DesktopAuthorizationStore {
-	return hookDesktopAuthorizationStore{}
+func (s *hookStore) BrowserAuthentication() store.BrowserAuthenticationStore {
+	return hookBrowserAuthenticationStore{}
 }
 func (s *hookStore) UserToken() store.UserTokenStore   { return hookUserTokenStore{} }
 func (s *hookStore) Invitation() store.InvitationStore { return hookInvitationStore{} }
@@ -194,8 +194,8 @@ type hookAuditStore struct{ store.AuditStore }
 type hookPersonalAccessTokenStore struct{ store.PersonalAccessTokenStore }
 type hookExternalIdentityStore struct{ store.ExternalIdentityStore }
 type hookExternalLoginStateStore struct{ store.ExternalLoginStateStore }
-type hookDesktopAuthorizationStore struct {
-	store.DesktopAuthorizationStore
+type hookBrowserAuthenticationStore struct {
+	store.BrowserAuthenticationStore
 }
 type hookUserTokenStore struct{ store.UserTokenStore }
 type hookRoleStore struct{ store.RoleStore }

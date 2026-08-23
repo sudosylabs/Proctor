@@ -13,9 +13,9 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type SQLDesktopAuthorizationStore struct{ *SQLStore }
+type SQLBrowserAuthenticationStore struct{ *SQLStore }
 
-type desktopAuthorizationRow struct {
+type browserAuthenticationRow struct {
 	ID                           string         `db:"id"`
 	CreatedAt                    time.Time      `db:"created_at"`
 	UpdatedAt                    time.Time      `db:"updated_at"`
@@ -23,8 +23,10 @@ type desktopAuthorizationRow struct {
 	State                        string         `db:"state"`
 	InstitutionID                string         `db:"institution_id"`
 	Issuer                       string         `db:"issuer"`
+	InvitationID                 sql.NullString `db:"invitation_id"`
 	HandleHash                   sql.NullString `db:"handle_hash"`
 	BrowserProofHash             sql.NullString `db:"browser_proof_hash"`
+	InvitationClaimHash          sql.NullString `db:"invitation_claim_hash"`
 	StateHash                    sql.NullString `db:"state_hash"`
 	CallbackURL                  sql.NullString `db:"callback_url"`
 	CodeChallenge                sql.NullString `db:"code_challenge"`
@@ -45,22 +47,24 @@ type desktopAuthorizationRow struct {
 	CodeExpiresAt                sql.NullTime   `db:"code_expires_at"`
 	CancelledAt                  sql.NullTime   `db:"cancelled_at"`
 	ExchangedAt                  sql.NullTime   `db:"exchanged_at"`
+	CompletedAt                  sql.NullTime   `db:"completed_at"`
 	ExpiredAt                    sql.NullTime   `db:"expired_at"`
 }
 
-const desktopAuthorizationColumns = `id, created_at, updated_at, purpose, state, institution_id, issuer,
-handle_hash, browser_proof_hash, state_hash, callback_url, code_challenge,
+const browserAuthenticationColumns = `id, created_at, updated_at, purpose, state, institution_id, issuer, invitation_id,
+handle_hash, browser_proof_hash, invitation_claim_hash, state_hash, callback_url, code_challenge,
 expected_authentication_method, expected_provider_id, client_type, device_id, device_name, expires_at,
 user_id, authentication_method, authentication_provider_id, external_identity_id, authentication_strength, authenticated_at,
-mfa_completed_at, code_hash, code_expires_at, cancelled_at, exchanged_at, expired_at`
+mfa_completed_at, code_hash, code_expires_at, cancelled_at, exchanged_at, completed_at, expired_at`
 
-func newSQLDesktopAuthorizationStore(sqlStore *SQLStore) store.DesktopAuthorizationStore {
-	return &SQLDesktopAuthorizationStore{SQLStore: sqlStore}
+func newSQLBrowserAuthenticationStore(sqlStore *SQLStore) store.BrowserAuthenticationStore {
+	return &SQLBrowserAuthenticationStore{SQLStore: sqlStore}
 }
 
-func (s SQLDesktopAuthorizationStore) Create(ctx context.Context, transaction *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error) {
+func (s SQLBrowserAuthenticationStore) CreateDesktopAuthorization(ctx context.Context, transaction *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error) {
 	if transaction == nil || !transaction.ID.IsValid() || transaction.Validate() != nil ||
-		transaction.State != model.BrowserAuthenticationStatePending {
+		transaction.State != model.BrowserAuthenticationStatePending ||
+		transaction.Purpose != model.BrowserAuthenticationPurposeDesktopAuthorization {
 		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "value", nil)
 	}
 	lifetime := transaction.ExpiresAt.Sub(transaction.CreatedAt)
@@ -75,27 +79,171 @@ func (s SQLDesktopAuthorizationStore) Create(ctx context.Context, transaction *m
 		}
 		candidate.ExpiresAt = model.TimeUTC(now).Add(lifetime)
 		candidate.PrepareCreate(candidate.ID, now)
-		_, err := tx.Exec(ctx, `INSERT INTO browser_authentication_transactions (
-			id, created_at, updated_at, purpose, state, institution_id, issuer, handle_hash, browser_proof_hash,
-			state_hash, callback_url, code_challenge, expected_authentication_method, expected_provider_id,
-			client_type, device_id, device_name, expires_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)`,
-			candidate.ID.String(), candidate.CreatedAt, candidate.UpdatedAt, candidate.Purpose, candidate.State,
-			candidate.InstitutionID.String(), candidate.Issuer, candidate.HandleHash, candidate.BrowserProofHash,
-			candidate.StateHash, candidate.CallbackURL, candidate.CodeChallenge, candidate.ExpectedAuthenticationMethod,
-			candidate.ExpectedProviderID, candidate.ClientType, candidate.DeviceID, candidate.DeviceName, candidate.ExpiresAt)
-		if err != nil {
-			return nil, translateError("browser_authentication_transaction", candidate.ID.String(), err)
+		if err := insertBrowserAuthenticationTransaction(ctx, tx, &candidate); err != nil {
+			return nil, err
 		}
-		var row desktopAuthorizationRow
-		if err = tx.Get(ctx, &row, `SELECT `+desktopAuthorizationColumns+` FROM browser_authentication_transactions WHERE id = ?`, candidate.ID.String()); err != nil {
-			return nil, translateError("browser_authentication_transaction", candidate.ID.String(), err)
-		}
-		return row.model()
+		return getBrowserAuthenticationTransaction(ctx, tx, candidate.ID)
 	})
 }
 
-func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error) {
+// CreateInvitation is the named aggregate for hosted Invitation handoff. It
+// locks and rechecks the Invitation, derives every deadline from one
+// authoritative PostgreSQL timestamp, and creates the browser transaction in
+// the same commit.
+func (s SQLBrowserAuthenticationStore) CreateInvitation(ctx context.Context, input *store.BrowserInvitationTransactionCreation) (*model.BrowserAuthenticationTransaction, error) {
+	if err := validateBrowserInvitationTransactionCreation(input); err != nil {
+		return nil, err
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "create browser invitation transaction", func(ctx context.Context, tx *sqlxTxWrapper) (*model.BrowserAuthenticationTransaction, error) {
+		var invitationData invitationRow
+		if err := tx.Get(ctx, &invitationData, `SELECT `+invitationColumns+` FROM invitations
+			WHERE id=? AND purpose=? AND claim_hash=? FOR UPDATE`,
+			input.InvitationID.String(), input.InvitationPurpose, input.InvitationClaimHash); err != nil {
+			return nil, translateError("invitation", "browser_handoff", err)
+		}
+		invitation, err := invitationData.model()
+		if err != nil {
+			return nil, err
+		}
+		var now time.Time
+		if err = tx.Get(ctx, &now, `SELECT clock_timestamp()`); err != nil {
+			return nil, fmt.Errorf("read browser invitation creation time: %w", err)
+		}
+		now = model.TimeUTC(now)
+		if invitation.State != model.InvitationPending || !now.Before(invitation.ExpiresAt) ||
+			(invitation.IntendedEndsAt.Valid && !now.Before(invitation.IntendedEndsAt.Time)) {
+			return nil, store.NewErrConflict("invitation", "browser_handoff_invalid", nil)
+		}
+		deadline := now.Add(model.BrowserAuthenticationTransactionLifetime)
+		if invitation.ExpiresAt.Before(deadline) {
+			deadline = invitation.ExpiresAt
+		}
+		if invitation.IntendedEndsAt.Valid && invitation.IntendedEndsAt.Time.Before(deadline) {
+			deadline = invitation.IntendedEndsAt.Time
+		}
+		candidate := &model.BrowserAuthenticationTransaction{
+			Purpose:             model.BrowserAuthenticationPurposeInvitationAcceptance,
+			InstitutionID:       input.InstitutionID,
+			Issuer:              input.Issuer,
+			InvitationID:        input.InvitationID,
+			HandleHash:          input.HandleHash,
+			BrowserProofHash:    input.BrowserProofHash,
+			InvitationClaimHash: input.InvitationClaimHash,
+			ClientType:          model.SessionClientWeb,
+			ExpiresAt:           deadline,
+		}
+		candidate.PrepareCreate(input.ID, now)
+		if err = candidate.Validate(); err != nil {
+			return nil, store.NewErrInvalidInput("browser_authentication_transaction", "invitation", err)
+		}
+		if err = insertBrowserAuthenticationTransaction(ctx, tx, candidate); err != nil {
+			return nil, err
+		}
+		return getBrowserAuthenticationTransaction(ctx, tx, candidate.ID)
+	})
+}
+
+func insertBrowserAuthenticationTransaction(ctx context.Context, tx *sqlxTxWrapper, candidate *model.BrowserAuthenticationTransaction) error {
+	_, err := tx.Exec(ctx, `INSERT INTO browser_authentication_transactions (
+		id, created_at, updated_at, purpose, state, institution_id, issuer, invitation_id, handle_hash, browser_proof_hash, invitation_claim_hash,
+		state_hash, callback_url, code_challenge, expected_authentication_method, expected_provider_id,
+		client_type, device_id, device_name, expires_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), ?, ?, ?, ?)`,
+		candidate.ID.String(), candidate.CreatedAt, candidate.UpdatedAt, candidate.Purpose, candidate.State,
+		candidate.InstitutionID.String(), candidate.Issuer, candidate.InvitationID.String(), candidate.HandleHash, candidate.BrowserProofHash, candidate.InvitationClaimHash,
+		candidate.StateHash, candidate.CallbackURL, candidate.CodeChallenge, candidate.ExpectedAuthenticationMethod,
+		candidate.ExpectedProviderID, candidate.ClientType, candidate.DeviceID, candidate.DeviceName, candidate.ExpiresAt)
+	if err != nil {
+		return translateError("browser_authentication_transaction", candidate.ID.String(), err)
+	}
+	return nil
+}
+
+func getBrowserAuthenticationTransaction(ctx context.Context, tx *sqlxTxWrapper, id model.BrowserAuthenticationTransactionID) (*model.BrowserAuthenticationTransaction, error) {
+	var row browserAuthenticationRow
+	if err := tx.Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id = ?`, id.String()); err != nil {
+		return nil, translateError("browser_authentication_transaction", id.String(), err)
+	}
+	return row.model()
+}
+
+func validateBrowserInvitationTransactionCreation(input *store.BrowserInvitationTransactionCreation) error {
+	if input == nil || !input.ID.IsValid() || !input.InstitutionID.IsValid() ||
+		model.ValidateBrowserAuthenticationIssuer(input.Issuer, true) != nil || !input.InvitationID.IsValid() ||
+		!model.IsValidTokenHash(input.InvitationClaimHash) || !model.IsValidTokenHash(input.HandleHash) ||
+		!model.IsValidTokenHash(input.BrowserProofHash) || input.HandleHash == input.BrowserProofHash {
+		return store.NewErrInvalidInput("browser_authentication_transaction", "invitation", nil)
+	}
+	switch input.InvitationPurpose {
+	case model.InvitationPurposeStudentClass, model.InvitationPurposeTeacherAcademicUnit,
+		model.InvitationPurposeAcademicUnitRole, model.InvitationPurposeInstitutionRole:
+		return nil
+	default:
+		return store.NewErrInvalidInput("browser_authentication_transaction", "invitation_purpose", nil)
+	}
+}
+
+func (s SQLBrowserAuthenticationStore) ResolveInvitation(ctx context.Context, handleHash, proofHash string) (*model.BrowserAuthenticationTransaction, error) {
+	if !model.IsValidTokenHash(handleHash) || !model.IsValidTokenHash(proofHash) {
+		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "invitation_proof", nil)
+	}
+	var row browserAuthenticationRow
+	if err := s.GetMaster().Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions
+		WHERE purpose='invitation_acceptance' AND state='pending' AND handle_hash=? AND browser_proof_hash=?
+		  AND created_at <= clock_timestamp() AND expires_at > clock_timestamp()`, handleHash, proofHash); err != nil {
+		return nil, translateError("browser_authentication_transaction", "invitation", err)
+	}
+	return row.model()
+}
+
+func completeBrowserInvitationTransaction(
+	ctx context.Context,
+	tx *sqlxTxWrapper,
+	proof *store.BrowserInvitationTransactionProof,
+	invitation *model.Invitation,
+	userID model.UserID,
+) error {
+	if proof == nil {
+		return nil
+	}
+	if tx == nil || !proof.ID.IsValid() || !model.IsValidTokenHash(proof.HandleHash) ||
+		!model.IsValidTokenHash(proof.BrowserProofHash) || invitation == nil ||
+		!invitation.ID.IsValid() || !model.IsValidTokenHash(invitation.ClaimHash) || !userID.IsValid() {
+		return store.NewErrInvalidInput("browser_authentication_transaction", "invitation_completion", nil)
+	}
+	result, err := tx.Exec(ctx, `UPDATE browser_authentication_transactions
+	   SET updated_at=terminal.at, state='completed', handle_hash=NULL, browser_proof_hash=NULL,
+	       invitation_claim_hash=NULL, user_id=?, completed_at=terminal.at
+	  FROM (SELECT clock_timestamp() AS at) AS terminal
+	 WHERE id=? AND purpose='invitation_acceptance' AND state='pending' AND invitation_id=?
+	   AND invitation_claim_hash=? AND handle_hash=? AND browser_proof_hash=?
+	   AND created_at <= terminal.at AND expires_at > terminal.at`,
+		userID.String(), proof.ID.String(), invitation.ID.String(), invitation.ClaimHash,
+		proof.HandleHash, proof.BrowserProofHash)
+	if err != nil {
+		return translateError("browser_authentication_transaction", proof.ID.String(), err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete browser invitation transaction: %w", err)
+	}
+	if affected == 1 {
+		return nil
+	}
+	var replay bool
+	if err = tx.Get(ctx, &replay, `SELECT EXISTS(
+		SELECT 1 FROM browser_authentication_transactions
+		 WHERE id=? AND purpose='invitation_acceptance' AND state='completed'
+		   AND invitation_id=? AND user_id=?)`, proof.ID.String(), invitation.ID.String(), userID.String()); err != nil {
+		return fmt.Errorf("inspect browser invitation transaction completion: %w", err)
+	}
+	if replay {
+		return nil
+	}
+	return store.NewErrConflict("browser_authentication_transaction", "invitation_transaction_invalid", nil)
+}
+
+func (s SQLBrowserAuthenticationStore) IssueCode(ctx context.Context, input *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error) {
 	if err := validateDesktopAuthorizationCodeIssue(input); err != nil {
 		return nil, err
 	}
@@ -121,7 +269,7 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 			WHERE id = ? AND archived_at IS NULL AND disabled_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}
-		var row desktopAuthorizationRow
+		var row browserAuthenticationRow
 		err := tx.Get(ctx, &row, `UPDATE browser_authentication_transactions
 		   SET updated_at = terminal.at, state = 'code_issued', handle_hash = NULL, browser_proof_hash = NULL,
 		       user_id = ?, authentication_method = ?, authentication_provider_id = NULLIF(?, ''), external_identity_id = NULLIF(?, ''),
@@ -132,7 +280,7 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 		   AND purpose = 'desktop_authorization' AND client_type = 'desktop'
 		   AND expected_authentication_method = ? AND expected_provider_id IS NOT DISTINCT FROM NULLIF(?, '')
 		   AND created_at <= terminal.at AND expires_at > terminal.at
-		 RETURNING `+desktopAuthorizationColumns,
+		 RETURNING `+browserAuthenticationColumns,
 			input.UserID.String(), input.AuthenticationMethod, input.AuthenticationProviderID, input.ExternalIdentityID.String(),
 			input.AuthenticationStrength, model.TimeFromMillis(input.AuthenticatedAt), NullTimeFromOptional(model.OptionalTimeFromMillis(input.MFACompletedAt)), input.CodeHash,
 			input.CodeLifetime.Milliseconds(), input.HandleHash, input.BrowserProofHash, input.StateHash,
@@ -155,20 +303,20 @@ func (s SQLDesktopAuthorizationStore) IssueCode(ctx context.Context, input *stor
 	})
 }
 
-func (s SQLDesktopAuthorizationStore) Cancel(ctx context.Context, input *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error) {
+func (s SQLBrowserAuthenticationStore) Cancel(ctx context.Context, input *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error) {
 	if input == nil || !model.IsValidTokenHash(input.HandleHash) || !model.IsValidTokenHash(input.BrowserProofHash) ||
 		!model.IsValidTokenHash(input.StateHash) || input.CancelledAt <= 0 {
 		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "cancellation", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "cancel desktop authorization", func(ctx context.Context, tx *sqlxTxWrapper) (*model.BrowserAuthenticationTransaction, error) {
-		var row desktopAuthorizationRow
+		var row browserAuthenticationRow
 		err := tx.Get(ctx, &row, `UPDATE browser_authentication_transactions
 	   SET updated_at = terminal.at, state = 'cancelled', handle_hash = NULL, browser_proof_hash = NULL,
 	       state_hash = NULL, callback_url = NULL, code_challenge = NULL, cancelled_at = terminal.at
 	  FROM (SELECT clock_timestamp() AS at) AS terminal
 	 WHERE handle_hash = ? AND browser_proof_hash = ? AND state_hash = ? AND state = 'pending'
 	   AND created_at <= clock_timestamp() AND expires_at > clock_timestamp()
-	 RETURNING `+desktopAuthorizationColumns, input.HandleHash, input.BrowserProofHash, input.StateHash)
+	 RETURNING `+browserAuthenticationColumns, input.HandleHash, input.BrowserProofHash, input.StateHash)
 		if err != nil {
 			return nil, translateError("browser_authentication_transaction", "", err)
 		}
@@ -176,13 +324,13 @@ func (s SQLDesktopAuthorizationStore) Cancel(ctx context.Context, input *store.D
 	})
 }
 
-func (s SQLDesktopAuthorizationStore) Exchange(ctx context.Context, input *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
+func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
 	if err := validateDesktopAuthorizationExchange(input); err != nil {
 		return nil, err
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "exchange desktop authorization code", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DesktopAuthorizationExchangeResult, error) {
-		var row desktopAuthorizationRow
-		if err := tx.Get(ctx, &row, `SELECT `+desktopAuthorizationColumns+` FROM browser_authentication_transactions
+		var row browserAuthenticationRow
+		if err := tx.Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions
 		 WHERE code_hash = ? AND state_hash = ? AND code_challenge = ? AND issuer = ?
 		   AND state = 'code_issued' AND created_at <= clock_timestamp() AND expires_at > clock_timestamp()
 		   AND code_expires_at > clock_timestamp() FOR UPDATE`, input.CodeHash, input.StateHash,
@@ -263,11 +411,11 @@ func (s SQLDesktopAuthorizationStore) Exchange(ctx context.Context, input *store
 			}
 			return nil, store.NewErrNotFound("user", candidate.UserID.String())
 		}
-		var terminal desktopAuthorizationRow
+		var terminal browserAuthenticationRow
 		if err = tx.Get(ctx, &terminal, `UPDATE browser_authentication_transactions
 			SET updated_at = ?, state = 'exchanged', state_hash = NULL, callback_url = NULL,
 			    code_challenge = NULL, code_hash = NULL, code_expires_at = NULL, exchanged_at = ?
-			WHERE id = ? AND state = 'code_issued' RETURNING `+desktopAuthorizationColumns,
+			WHERE id = ? AND state = 'code_issued' RETURNING `+browserAuthenticationColumns,
 			now, now, transaction.ID.String()); err != nil {
 			return nil, translateError("browser_authentication_transaction", transaction.ID.String(), err)
 		}
@@ -332,7 +480,7 @@ func validateDesktopAuthorizationExchange(input *store.DesktopAuthorizationExcha
 	return nil
 }
 
-func (row desktopAuthorizationRow) model() (*model.BrowserAuthenticationTransaction, error) {
+func (row browserAuthenticationRow) model() (*model.BrowserAuthenticationTransaction, error) {
 	id, err := model.ParseBrowserAuthenticationTransactionID(row.ID)
 	if err != nil {
 		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "id", row.ID)
@@ -345,7 +493,7 @@ func (row desktopAuthorizationRow) model() (*model.BrowserAuthenticationTransact
 		ID: id, CreatedAt: row.CreatedAt.UTC(), UpdatedAt: row.UpdatedAt.UTC(),
 		Purpose: model.BrowserAuthenticationPurpose(row.Purpose), State: model.BrowserAuthenticationState(row.State),
 		InstitutionID: institutionID, Issuer: row.Issuer, HandleHash: row.HandleHash.String,
-		BrowserProofHash: row.BrowserProofHash.String, StateHash: row.StateHash.String,
+		BrowserProofHash: row.BrowserProofHash.String, InvitationClaimHash: row.InvitationClaimHash.String, StateHash: row.StateHash.String,
 		CallbackURL: row.CallbackURL.String, CodeChallenge: row.CodeChallenge.String,
 		ExpectedAuthenticationMethod: row.ExpectedAuthenticationMethod, ExpectedProviderID: row.ExpectedProviderID.String,
 		ClientType: model.SessionClientType(row.ClientType), DeviceID: row.DeviceID, DeviceName: row.DeviceName,
@@ -356,7 +504,13 @@ func (row desktopAuthorizationRow) model() (*model.BrowserAuthenticationTransact
 		AuthenticatedAt:          OptionalTimeFromNullTime(row.AuthenticatedAt), MFACompletedAt: OptionalTimeFromNullTime(row.MFACompletedAt), CodeHash: row.CodeHash.String,
 		CodeExpiresAt: OptionalTimeFromNullTime(row.CodeExpiresAt), CancelledAt: OptionalTimeFromNullTime(row.CancelledAt),
 		ExchangedAt: OptionalTimeFromNullTime(row.ExchangedAt),
-		ExpiredAt:   OptionalTimeFromNullTime(row.ExpiredAt),
+		CompletedAt: OptionalTimeFromNullTime(row.CompletedAt), ExpiredAt: OptionalTimeFromNullTime(row.ExpiredAt),
+	}
+	if row.InvitationID.Valid {
+		value.InvitationID, err = model.ParseInvitationID(row.InvitationID.String)
+		if err != nil {
+			return nil, store.NewErrInvalidInput("browser_authentication_transaction", "invitation_id", row.InvitationID.String)
+		}
 	}
 	if row.UserID.Valid {
 		value.UserID, err = model.ParseUserID(row.UserID.String)
@@ -370,11 +524,11 @@ func (row desktopAuthorizationRow) model() (*model.BrowserAuthenticationTransact
 	return value, nil
 }
 
-func (s SQLDesktopAuthorizationStore) Maintain(ctx context.Context, limit int) (*store.DesktopAuthorizationMaintenanceResult, error) {
+func (s SQLBrowserAuthenticationStore) Maintain(ctx context.Context, limit int) (*store.BrowserAuthenticationMaintenanceResult, error) {
 	if limit < 1 || limit > 1000 {
 		return nil, store.NewErrInvalidInput("browser_authentication_transaction", "maintenance_limit", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "maintain desktop authorizations", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DesktopAuthorizationMaintenanceResult, error) {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "maintain browser authentications", func(ctx context.Context, tx *sqlxTxWrapper) (*store.BrowserAuthenticationMaintenanceResult, error) {
 		var expired int
 		if err := tx.Get(ctx, &expired, `WITH candidates AS (
 			SELECT id, CASE WHEN state = 'code_issued' THEN LEAST(expires_at, code_expires_at) ELSE expires_at END AS deadline
@@ -386,6 +540,7 @@ func (s SQLDesktopAuthorizationStore) Maintain(ctx context.Context, limit int) (
 			UPDATE browser_authentication_transactions AS transaction
 			   SET state = 'expired', updated_at = candidates.deadline,
 			       handle_hash = NULL, browser_proof_hash = NULL, state_hash = NULL,
+			       invitation_claim_hash = NULL,
 			       callback_url = NULL, code_challenge = NULL, code_hash = NULL,
 			       code_expires_at = NULL, expired_at = candidates.deadline
 			  FROM candidates WHERE transaction.id = candidates.id RETURNING 1
@@ -395,7 +550,7 @@ func (s SQLDesktopAuthorizationStore) Maintain(ctx context.Context, limit int) (
 		var purged int
 		if err := tx.Get(ctx, &purged, `WITH candidates AS (
 			SELECT id FROM browser_authentication_transactions
-			 WHERE state IN ('cancelled', 'exchanged', 'expired')
+			 WHERE state IN ('cancelled', 'exchanged', 'completed', 'expired')
 			   AND updated_at <= clock_timestamp() - (? * interval '1 millisecond')
 			 ORDER BY updated_at, id LIMIT ? FOR UPDATE SKIP LOCKED
 		), removed AS (
@@ -410,13 +565,13 @@ func (s SQLDesktopAuthorizationStore) Maintain(ctx context.Context, limit int) (
 			 WHERE (state = 'pending' AND expires_at <= clock_timestamp())
 			    OR (state = 'code_issued' AND LEAST(expires_at, code_expires_at) <= clock_timestamp()))
 			OR EXISTS (SELECT 1 FROM browser_authentication_transactions
-			 WHERE state IN ('cancelled', 'exchanged', 'expired')
+			 WHERE state IN ('cancelled', 'exchanged', 'completed', 'expired')
 			   AND updated_at <= clock_timestamp() - (? * interval '1 millisecond'))`,
 			model.BrowserAuthenticationRetention.Milliseconds()); err != nil {
 			return nil, fmt.Errorf("inspect remaining browser authentication maintenance: %w", err)
 		}
-		return &store.DesktopAuthorizationMaintenanceResult{Expired: expired, Purged: purged, More: more}, nil
+		return &store.BrowserAuthenticationMaintenanceResult{Expired: expired, Purged: purged, More: more}, nil
 	})
 }
 
-var _ store.DesktopAuthorizationStore = (*SQLDesktopAuthorizationStore)(nil)
+var _ store.BrowserAuthenticationStore = (*SQLBrowserAuthenticationStore)(nil)

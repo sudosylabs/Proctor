@@ -29,6 +29,7 @@ const (
 type BrowserAuthenticationPurpose string
 
 const BrowserAuthenticationPurposeDesktopAuthorization BrowserAuthenticationPurpose = "desktop_authorization"
+const BrowserAuthenticationPurposeInvitationAcceptance BrowserAuthenticationPurpose = "invitation_acceptance"
 
 type BrowserAuthenticationState string
 
@@ -36,6 +37,7 @@ const (
 	BrowserAuthenticationStatePending    BrowserAuthenticationState = "pending"
 	BrowserAuthenticationStateCodeIssued BrowserAuthenticationState = "code_issued"
 	BrowserAuthenticationStateExchanged  BrowserAuthenticationState = "exchanged"
+	BrowserAuthenticationStateCompleted  BrowserAuthenticationState = "completed"
 	BrowserAuthenticationStateCancelled  BrowserAuthenticationState = "cancelled"
 	BrowserAuthenticationStateExpired    BrowserAuthenticationState = "expired"
 )
@@ -51,9 +53,11 @@ type BrowserAuthenticationTransaction struct {
 	State         BrowserAuthenticationState
 	InstitutionID InstitutionID
 	Issuer        string
+	InvitationID  InvitationID
 
 	HandleHash                   string `json:"-"`
 	BrowserProofHash             string `json:"-"`
+	InvitationClaimHash          string `json:"-"`
 	StateHash                    string `json:"-"`
 	CallbackURL                  string `json:"-"`
 	CodeChallenge                string `json:"-"`
@@ -76,6 +80,7 @@ type BrowserAuthenticationTransaction struct {
 	CodeExpiresAt            OptionalTime
 	CancelledAt              OptionalTime
 	ExchangedAt              OptionalTime
+	CompletedAt              OptionalTime
 	ExpiredAt                OptionalTime
 }
 
@@ -132,6 +137,7 @@ func (t *BrowserAuthenticationTransaction) PrepareCancelled(at time.Time) {
 	t.UpdatedAt = at
 	t.State = BrowserAuthenticationStateCancelled
 	t.HandleHash, t.BrowserProofHash, t.StateHash = "", "", ""
+	t.InvitationClaimHash = ""
 	t.CallbackURL, t.CodeChallenge, t.CodeHash = "", "", ""
 	t.CodeExpiresAt = OptionalTime{}
 	t.CancelledAt = OptionalTimeFrom(at)
@@ -147,6 +153,18 @@ func (t *BrowserAuthenticationTransaction) PrepareExchanged(at time.Time) {
 	t.StateHash, t.CallbackURL, t.CodeChallenge, t.CodeHash = "", "", "", ""
 	t.CodeExpiresAt = OptionalTime{}
 	t.ExchangedAt = OptionalTimeFrom(at)
+}
+
+func (t *BrowserAuthenticationTransaction) PrepareInvitationCompleted(userID UserID, at time.Time) {
+	if t == nil {
+		return
+	}
+	at = TimeUTC(at)
+	t.UpdatedAt = at
+	t.State = BrowserAuthenticationStateCompleted
+	t.HandleHash, t.BrowserProofHash, t.InvitationClaimHash = "", "", ""
+	t.UserID = userID
+	t.CompletedAt = OptionalTimeFrom(at)
 }
 
 // PrepareExpired destroys every remaining bearer proof at the authoritative
@@ -165,6 +183,7 @@ func (t *BrowserAuthenticationTransaction) PrepareExpired(observedAt time.Time) 
 	t.UpdatedAt = deadline
 	t.State = BrowserAuthenticationStateExpired
 	t.HandleHash, t.BrowserProofHash, t.StateHash = "", "", ""
+	t.InvitationClaimHash = ""
 	t.CallbackURL, t.CodeChallenge, t.CodeHash = "", "", ""
 	t.CodeExpiresAt = OptionalTime{}
 	t.ExpiredAt = OptionalTimeFrom(deadline)
@@ -182,15 +201,26 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	if t.CreatedAt.IsZero() || t.UpdatedAt.IsZero() || t.UpdatedAt.Before(t.CreatedAt) {
 		return invalidModelError(where, "browser_authentication_transaction", "timestamps", "must be ordered and set", details)
 	}
-	if t.Purpose != BrowserAuthenticationPurposeDesktopAuthorization ||
-		t.ClientType != SessionClientDesktop {
-		return invalidModelError(where, "browser_authentication_transaction", "purpose", "must be a desktop authorization", details)
+	if (t.Purpose == BrowserAuthenticationPurposeDesktopAuthorization && t.ClientType != SessionClientDesktop) ||
+		(t.Purpose == BrowserAuthenticationPurposeInvitationAcceptance && t.ClientType != SessionClientWeb) ||
+		(t.Purpose != BrowserAuthenticationPurposeDesktopAuthorization && t.Purpose != BrowserAuthenticationPurposeInvitationAcceptance) {
+		return invalidModelError(where, "browser_authentication_transaction", "purpose", "has an invalid purpose or client type", details)
 	}
 	// Rehydration accepts the one explicitly supported development origin.
 	// Composition is responsible for proving that loopback HTTP was enabled by
 	// deployment policy before any such transaction can be created.
-	if !t.InstitutionID.IsValid() || ValidateDesktopAuthorizationIssuer(t.Issuer, true) != nil {
+	if !t.InstitutionID.IsValid() || ValidateBrowserAuthenticationIssuer(t.Issuer, true) != nil {
 		return invalidModelError(where, "browser_authentication_transaction", "issuer", "must identify the pinned installation", details)
+	}
+	if !t.ExpiresAt.After(t.CreatedAt) ||
+		t.ExpiresAt.After(t.CreatedAt.Add(BrowserAuthenticationTransactionLifetime)) {
+		return invalidModelError(where, "browser_authentication_transaction", "expires_at", "must be within the browser lifetime", details)
+	}
+	if t.Purpose == BrowserAuthenticationPurposeInvitationAcceptance {
+		return t.validateInvitationAcceptance(details)
+	}
+	if !t.InvitationID.IsZero() || t.InvitationClaimHash != "" || t.CompletedAt.Valid {
+		return invalidModelError(where, "browser_authentication_transaction", "invitation", "must be empty for desktop authorization", details)
 	}
 	if !validAuthenticationPath(t.ExpectedAuthenticationMethod, t.ExpectedProviderID) {
 		return invalidModelError(where, "browser_authentication_transaction", "expected_authentication", "must identify one exact authentication path", details)
@@ -198,10 +228,6 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	if len(t.DeviceID) > SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(t.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(where, "browser_authentication_transaction", "device", "exceeds the model bounds", details)
-	}
-	if !t.ExpiresAt.After(t.CreatedAt) ||
-		t.ExpiresAt.After(t.CreatedAt.Add(BrowserAuthenticationTransactionLifetime)) {
-		return invalidModelError(where, "browser_authentication_transaction", "expires_at", "must be within the browser lifetime", details)
 	}
 	switch t.State {
 	case BrowserAuthenticationStatePending:
@@ -267,6 +293,44 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	return nil
 }
 
+func (t *BrowserAuthenticationTransaction) validateInvitationAcceptance(details string) error {
+	const where = "BrowserAuthenticationTransaction.Validate"
+	if !t.InvitationID.IsValid() || t.ExpectedAuthenticationMethod != "" || t.ExpectedProviderID != "" ||
+		t.StateHash != "" || t.CallbackURL != "" || t.CodeChallenge != "" || t.DeviceID != "" || t.DeviceName != "" ||
+		t.AuthenticationMethod != "" || t.AuthenticationProviderID != "" || !t.ExternalIdentityID.IsZero() ||
+		t.AuthenticationStrength != "" || t.AuthenticatedAt.Valid || t.MFACompletedAt.Valid || t.CodeHash != "" ||
+		t.CodeExpiresAt.Valid || t.ExchangedAt.Valid {
+		return invalidModelError(where, "browser_authentication_transaction", "invitation", "contains desktop authorization state", details)
+	}
+	switch t.State {
+	case BrowserAuthenticationStatePending:
+		if !IsValidTokenHash(t.HandleHash) || !IsValidTokenHash(t.BrowserProofHash) ||
+			!IsValidTokenHash(t.InvitationClaimHash) || !t.UserID.IsZero() || t.CancelledAt.Valid ||
+			t.CompletedAt.Valid || t.ExpiredAt.Valid {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid pending invitation state", details)
+		}
+	case BrowserAuthenticationStateCompleted:
+		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsValid() ||
+			t.CancelledAt.Valid || !t.CompletedAt.Valid || !t.CompletedAt.Time.Equal(t.UpdatedAt) || t.ExpiredAt.Valid {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid completed invitation state", details)
+		}
+	case BrowserAuthenticationStateCancelled:
+		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsZero() ||
+			!t.CancelledAt.Valid || !t.CancelledAt.Time.Equal(t.UpdatedAt) || t.CompletedAt.Valid || t.ExpiredAt.Valid {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid cancelled invitation state", details)
+		}
+	case BrowserAuthenticationStateExpired:
+		if t.HandleHash != "" || t.BrowserProofHash != "" || t.InvitationClaimHash != "" || !t.UserID.IsZero() ||
+			t.CancelledAt.Valid || t.CompletedAt.Valid || !t.ExpiredAt.Valid || !t.ExpiredAt.Time.Equal(t.UpdatedAt) ||
+			!t.UpdatedAt.Equal(t.ExpiresAt) {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid expired invitation state", details)
+		}
+	default:
+		return invalidModelError(where, "browser_authentication_transaction", "state", "is invalid for invitation acceptance", details)
+	}
+	return nil
+}
+
 func validAuthenticationPath(method, providerID string) bool {
 	if method == "password" {
 		return providerID == ""
@@ -282,30 +346,30 @@ func validAuthenticationIdentity(providerID string, identityID ExternalIdentityI
 	return identityID.IsValid()
 }
 
-// ValidateDesktopAuthorizationIssuer validates the installation origin pinned
-// into a native-public-client transaction. HTTP is restricted to an explicit
+// ValidateBrowserAuthenticationIssuer validates the installation origin
+// pinned into a browser transaction. HTTP is restricted to an explicit
 // loopback-development policy; production origins remain HTTPS-only.
-func ValidateDesktopAuthorizationIssuer(issuer string, allowLoopbackHTTPDevelopment bool) error {
+func ValidateBrowserAuthenticationIssuer(issuer string, allowLoopbackHTTPDevelopment bool) error {
 	if issuer == "" || len(issuer) > ExternalLoginReturnToMaxLength {
-		return errors.New("desktop authorization issuer is invalid")
+		return errors.New("browser authentication issuer is invalid")
 	}
 	parsed, err := url.Parse(issuer)
 	if err != nil || parsed.Host == "" || parsed.User != nil ||
 		parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-		return errors.New("desktop authorization issuer is invalid")
+		return errors.New("browser authentication issuer is invalid")
 	}
 	if parsed.Scheme == "https" {
 		return nil
 	}
 	if parsed.Scheme != "http" || !allowLoopbackHTTPDevelopment {
-		return errors.New("desktop authorization issuer requires HTTPS")
+		return errors.New("browser authentication issuer requires HTTPS")
 	}
 	if strings.EqualFold(parsed.Hostname(), "localhost") {
 		return nil
 	}
 	ip := net.ParseIP(parsed.Hostname())
 	if ip == nil || !ip.IsLoopback() {
-		return errors.New("desktop authorization HTTP issuer must be loopback")
+		return errors.New("browser authentication HTTP issuer must be loopback")
 	}
 	return nil
 }
@@ -317,7 +381,8 @@ func (t *BrowserAuthenticationTransaction) Auditable() map[string]any {
 	return map[string]any{
 		"id": t.ID.String(), "purpose": t.Purpose, "state": t.State,
 		"institution_id": t.InstitutionID.String(), "issuer": t.Issuer,
-		"client_type": t.ClientType, "device_id": t.DeviceID,
+		"invitation_id": t.InvitationID.String(),
+		"client_type":   t.ClientType, "device_id": t.DeviceID,
 		"expected_authentication_method": t.ExpectedAuthenticationMethod,
 		"expected_provider_id":           t.ExpectedProviderID,
 		"user_id":                        t.UserID.String(), "authentication_method": t.AuthenticationMethod,
@@ -327,7 +392,7 @@ func (t *BrowserAuthenticationTransaction) Auditable() map[string]any {
 		"expires_at": MillisFromTime(t.ExpiresAt), "authenticated_at": t.AuthenticatedAt.Millis(),
 		"mfa_completed_at": t.MFACompletedAt.Millis(),
 		"code_expires_at":  t.CodeExpiresAt.Millis(), "cancelled_at": t.CancelledAt.Millis(),
-		"exchanged_at": t.ExchangedAt.Millis(), "expired_at": t.ExpiredAt.Millis(),
+		"exchanged_at": t.ExchangedAt.Millis(), "completed_at": t.CompletedAt.Millis(), "expired_at": t.ExpiredAt.Millis(),
 	}
 }
 

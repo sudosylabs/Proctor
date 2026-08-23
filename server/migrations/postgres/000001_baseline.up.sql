@@ -2741,18 +2741,20 @@ CREATE TABLE browser_authentication_transactions (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
-    purpose varchar(32) NOT NULL CHECK (purpose = 'desktop_authorization'),
-    state varchar(16) NOT NULL CHECK (state IN ('pending', 'code_issued', 'exchanged', 'cancelled', 'expired')),
+    purpose varchar(32) NOT NULL CHECK (purpose IN ('desktop_authorization', 'invitation_acceptance')),
+    state varchar(16) NOT NULL CHECK (state IN ('pending', 'code_issued', 'exchanged', 'completed', 'cancelled', 'expired')),
     institution_id varchar(26) NOT NULL REFERENCES institutions(id),
     issuer varchar(2048) NOT NULL,
+    invitation_id varchar(26) REFERENCES invitations(id),
     handle_hash char(64),
     browser_proof_hash char(64),
+    invitation_claim_hash char(64),
     state_hash char(64),
     callback_url text,
     code_challenge varchar(128),
     expected_authentication_method varchar(64) NOT NULL,
     expected_provider_id varchar(64),
-    client_type varchar(32) NOT NULL CHECK (client_type = 'desktop'),
+    client_type varchar(32) NOT NULL CHECK (client_type IN ('desktop', 'web')),
     device_id varchar(128) NOT NULL DEFAULT '',
     device_name varchar(512) NOT NULL DEFAULT '',
     expires_at timestamptz NOT NULL,
@@ -2767,15 +2769,21 @@ CREATE TABLE browser_authentication_transactions (
     code_expires_at timestamptz,
     cancelled_at timestamptz,
     exchanged_at timestamptz,
+    completed_at timestamptz,
     expired_at timestamptz,
     CONSTRAINT browser_authentication_transactions_lifecycle_check CHECK (
         updated_at >= created_at AND expires_at > created_at AND expires_at <= created_at + interval '5 minutes'
     ),
     CONSTRAINT browser_authentication_transactions_expected_path_check CHECK (
-        (expected_authentication_method = 'password' AND expected_provider_id IS NULL) OR
-        (expected_authentication_method <> 'password' AND expected_provider_id IS NOT NULL)
+        (purpose = 'invitation_acceptance' AND expected_authentication_method = '' AND expected_provider_id IS NULL) OR
+        (purpose = 'desktop_authorization' AND (
+          (expected_authentication_method = 'password' AND expected_provider_id IS NULL) OR
+          (expected_authentication_method <> 'password' AND expected_provider_id IS NOT NULL)
+        ))
     ),
     CONSTRAINT browser_authentication_transactions_state_shape_check CHECK (
+      (purpose = 'desktop_authorization' AND client_type = 'desktop' AND invitation_id IS NULL AND
+       invitation_claim_hash IS NULL AND completed_at IS NULL AND (
         (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
@@ -2821,7 +2829,22 @@ CREATE TABLE browser_authentication_transactions (
            authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
            ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
             (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at))))
-        )
+        ))) OR
+      (purpose = 'invitation_acceptance' AND client_type = 'web' AND invitation_id IS NOT NULL AND
+       state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
+       expected_authentication_method = '' AND expected_provider_id IS NULL AND device_id = '' AND device_name = '' AND
+       authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
+       authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND
+       code_hash IS NULL AND code_expires_at IS NULL AND exchanged_at IS NULL AND (
+        (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND invitation_claim_hash IS NOT NULL AND
+         user_id IS NULL AND cancelled_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR
+        (state = 'completed' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
+         user_id IS NOT NULL AND cancelled_at IS NULL AND completed_at = updated_at AND expired_at IS NULL) OR
+        (state = 'cancelled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
+         user_id IS NULL AND cancelled_at = updated_at AND completed_at IS NULL AND expired_at IS NULL) OR
+        (state = 'expired' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
+         user_id IS NULL AND cancelled_at IS NULL AND completed_at IS NULL AND expired_at = updated_at AND updated_at = expires_at)
+       ))
     )
 );
 
@@ -2837,7 +2860,7 @@ CREATE INDEX browser_authentication_transactions_code_expiry_idx
 	WHERE state = 'code_issued';
 CREATE INDEX browser_authentication_transactions_terminal_retention_idx
     ON browser_authentication_transactions (updated_at, id)
-    WHERE state IN ('cancelled', 'exchanged', 'expired');
+    WHERE state IN ('cancelled', 'exchanged', 'completed', 'expired');
 
 -- ---------------------------------------------------------------------------
 -- Authorization audit and installation marker
@@ -3759,6 +3782,8 @@ ALTER TABLE browser_authentication_transactions
     CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT browser_authentication_transactions_user_id_canonical_check
     CHECK (user_id IS NULL OR user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT browser_authentication_transactions_invitation_id_canonical_check
+	CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT browser_authentication_transactions_external_identity_id_canonical_check
 	CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 

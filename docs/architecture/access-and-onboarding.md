@@ -266,6 +266,16 @@ the project must not claim an end-to-end hosted journey until those pages
 exist. Human prose lives under `server/i18n`; presentation and email templates
 live under `server/templates`.
 
+The server-owned browser runtime is now established as a root Vite module. A
+release build generates its API types from the authoritative OpenAPI document,
+compiles one immutable distribution, records the exact server version and
+commit in that distribution, and packages it beside the Go executable. Server
+startup rejects a missing or mixed-version distribution. The root HTTP module
+serves only the declared hosted routes and existing fingerprinted assets;
+API, health, the undeclared origin root, non-fingerprinted assets, and unknown
+server paths retain their existing transport behavior. This is the delivery
+foundation, not the deferred visual page implementation.
+
 Credential-bearing pages use no-store responses, strict Content Security
 Policy, `Referrer-Policy: no-referrer`, frame denial, MIME-sniffing protection,
 host-only secure cookies, CSRF protection, and no third-party script, font,
@@ -304,6 +314,18 @@ Invitation acceptance and desktop authentication do not create an unexpected
 persistent browser Session. An existing valid browser Session may approve a
 desktop transaction after an explicit account/device confirmation and any
 required recent or strong authentication.
+
+For local Invitation acceptance, the `/join` bootstrap removes the fragment
+credential before rendering and exposes it only as purpose-specific in-memory
+state. The browser-support API exchanges that claim once for a five-minute
+public handle and a separate host-only HttpOnly browser proof. PostgreSQL
+locks and rechecks the Invitation, computes the deadline from one authoritative
+database timestamp, and stores only their hashes plus the exact Invitation and
+its claim hash in the same named creation aggregate.
+Account-creating and existing-Session acceptance use distinct terminal
+operations; completion clears every transaction proof. The server never
+returns the original claim after exchange or places it in a query string,
+provider state, log, or audit field.
 
 Provider callbacks, local-password validation, and current account state prove
 authentication but do not authorize a terminal effect. Policy, Invitation, and

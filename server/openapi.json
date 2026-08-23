@@ -1392,6 +1392,33 @@
         "responses": {"200": {"$ref": "#/components/responses/BuildInfoOK"}}
       }
     },
+    "/api/v1/auth/browser/invitations": {
+      "post": {
+        "operationId": "startBrowserInvitation", "summary": "Exchange an Invitation claim for a purpose-bound browser acceptance transaction",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"],
+        "security": [],
+        "requestBody": {"$ref": "#/components/requestBodies/BrowserInvitationStart"},
+        "responses": {"201": {"$ref": "#/components/responses/BrowserInvitationStarted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/browser/invitations/accept": {
+      "post": {
+        "operationId": "acceptBrowserInvitation", "summary": "Accept an account-creating Invitation through its browser transaction",
+        "x-proctor-auth": "public", "x-proctor-error-codes": ["request.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.user_invalid", "invitation.mail_unavailable", "invitation.unavailable", "authentication.password.invalid"],
+        "security": [],
+        "requestBody": {"$ref": "#/components/requestBodies/BrowserInvitationAcceptance"},
+        "responses": {"200": {"$ref": "#/components/responses/BrowserInvitationAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
+    "/api/v1/auth/browser/invitations/accept-session": {
+      "post": {
+        "operationId": "acceptBrowserInvitationWithSession", "summary": "Accept a scoped-role Invitation with the current browser Session",
+        "x-proctor-auth": "session_required", "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authentication.rate_limited", "authentication.rate_limit_unavailable", "invitation.invalid", "invitation.unavailable"],
+        "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
+        "requestBody": {"$ref": "#/components/requestBodies/BrowserInvitationSessionAcceptance"},
+        "responses": {"200": {"$ref": "#/components/responses/BrowserInvitationAccepted"}, "400": {"$ref": "#/components/responses/BadRequest"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}
+      }
+    },
     "/api/v1/auth/desktop/authorizations": {
       "post": {
         "operationId": "startDesktopAuthorization", "summary": "Create a purpose-bound Desktop browser authorization transaction",
@@ -2937,6 +2964,9 @@
       }
     },
     "requestBodies": {
+      "BrowserInvitationStart": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrowserInvitationStartRequest"}}}},
+      "BrowserInvitationAcceptance": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrowserInvitationAcceptanceRequest"}}}},
+      "BrowserInvitationSessionAcceptance": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrowserInvitationSessionAcceptanceRequest"}}}},
       "DesktopAuthorizationStart": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationStartRequest"}}}},
       "DesktopAuthorizationProof": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationProofRequest"}}}},
       "DesktopAuthorizationExchange": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationExchangeRequest"}}}},
@@ -3209,6 +3239,8 @@
       }
     },
     "responses": {
+      "BrowserInvitationStarted": {"description": "Short-lived browser Invitation transaction created; its second proof is set only as an HttpOnly cookie", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BrowserInvitationStartResponse"}}}},
+      "BrowserInvitationAccepted": {"description": "Invitation accepted or its exact durable outcome replayed", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAcceptanceResponse"}}}},
       "DesktopAuthorizationStarted": {"description": "Desktop browser authorization transaction created", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationStartResponse"}}}},
       "DesktopAuthorizationApproved": {"description": "One-use Desktop code issued", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DesktopAuthorizationApprovalResponse"}}}},
       "InvitationAdministrationOK": {"description": "Authorized safe Invitation administration view", "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InvitationAdministrationResponse"}}}},
@@ -3599,6 +3631,22 @@
       "ID": {
         "type": "string",
         "pattern": "^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$"
+      },
+      "BrowserInvitationStartRequest": {
+        "type": "object", "additionalProperties": false, "required": ["claim"],
+        "properties": {"claim": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}
+      },
+      "BrowserInvitationAcceptanceRequest": {
+        "type": "object", "additionalProperties": false, "required": ["handle", "password", "username"],
+        "properties": {"handle": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "password": {"type": "string"}, "username": {"type": "string"}, "display_name": {"type": "string"}, "first_name": {"type": "string"}, "last_name": {"type": "string"}, "locale": {"type": "string"}, "timezone": {"type": "string"}}
+      },
+      "BrowserInvitationSessionAcceptanceRequest": {
+        "type": "object", "additionalProperties": false, "required": ["handle"],
+        "properties": {"handle": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}
+      },
+      "BrowserInvitationStartResponse": {
+        "type": "object", "additionalProperties": false, "required": ["handle", "purpose", "requirement", "expires_at"],
+        "properties": {"handle": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}, "purpose": {"type": "string", "enum": ["student_class", "teacher_academic_unit", "academic_unit_role", "institution_role"]}, "requirement": {"type": "string", "enum": ["account", "session"]}, "expires_at": {"type": "integer", "format": "int64"}}
       },
       "DesktopAuthorizationStartRequest": {
         "type": "object", "additionalProperties": false,

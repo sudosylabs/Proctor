@@ -30,6 +30,7 @@ type IssueStudentClassInvitationCommand struct {
 
 type AcceptStudentClassInvitationCommand struct {
 	Claim, Password, Username, DisplayName, FirstName, LastName, Locale, Timezone, Source string
+	browserTransaction                                                                    *store.BrowserInvitationTransactionProof
 }
 
 type IssueTeacherAcademicUnitInvitationCommand struct {
@@ -85,6 +86,7 @@ type authorizedScopedRoleInvitationIssue struct {
 
 type AcceptTeacherAcademicUnitInvitationCommand struct {
 	Claim, Password, Username, DisplayName, FirstName, LastName, Locale, Timezone, Source string
+	browserTransaction                                                                    *store.BrowserInvitationTransactionProof
 }
 
 type AcceptAcademicUnitRoleInvitationCommand struct {
@@ -1809,6 +1811,13 @@ func (s *invitationService) AcceptStudentClass(ctx context.Context, invocation I
 		return nil, NewError("invitation.invalid")
 	}
 	claimHash := model.HashInvitationClaim(command.Claim)
+	return s.acceptStudentClassByClaimHash(ctx, invocation, command, claimHash)
+}
+
+func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, invocation Invocation, command AcceptStudentClassInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
+	if !model.IsValidTokenHash(claimHash) {
+		return nil, NewError("invitation.invalid")
+	}
 	invitation, err := s.store.GetByClaimHash(ctx, claimHash)
 	if err != nil {
 		return nil, invalidInvitationError(err)
@@ -1853,7 +1862,8 @@ func (s *invitationService) AcceptStudentClass(ctx context.Context, invocation I
 		AcceptedAt: model.MillisFromTime(at), User: user, Settings: settings, PasswordCredential: credential,
 		DefaultProfilePictureJob: defaultJob, Affiliation: affiliation, ClassMember: member,
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEvent: event,
-		RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage}})
+		RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionClassMembersManage},
+		BrowserTransaction: command.browserTransaction})
 	if err != nil {
 		return nil, invalidInvitationError(err)
 	}
@@ -1869,6 +1879,13 @@ func (s *invitationService) AcceptTeacherAcademicUnit(ctx context.Context, invoc
 		return nil, NewError("invitation.invalid")
 	}
 	claimHash := model.HashInvitationClaim(command.Claim)
+	return s.acceptTeacherAcademicUnitByClaimHash(ctx, invocation, command, claimHash)
+}
+
+func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Context, invocation Invocation, command AcceptTeacherAcademicUnitInvitationCommand, claimHash string) (*InvitationAcceptanceView, error) {
+	if !model.IsValidTokenHash(claimHash) {
+		return nil, NewError("invitation.invalid")
+	}
 	invitation, err := s.store.GetByClaimHash(ctx, claimHash)
 	if err != nil || invitation.Purpose != model.InvitationPurposeTeacherAcademicUnit {
 		return nil, invalidInvitationError(err)
@@ -1916,7 +1933,8 @@ func (s *invitationService) AcceptTeacherAcademicUnit(ctx context.Context, invoc
 		AcceptedAt: model.MillisFromTime(at), User: user, Settings: settings, PasswordCredential: credential,
 		DefaultProfilePictureJob: defaultJob, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding,
 		Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job, AuditEvent: event,
-		RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}})
+		RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage},
+		BrowserTransaction: command.browserTransaction})
 	if err != nil {
 		return nil, invalidInvitationError(err)
 	}
@@ -2030,6 +2048,20 @@ func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Inv
 		return nil, NewError("invitation.invalid")
 	}
 	claimHash := model.HashInvitationClaim(claim)
+	return s.acceptScopedRoleByClaimHash(ctx, invocation, claimHash, purpose, nil)
+}
+
+func (s *invitationService) acceptScopedRoleByClaimHash(
+	ctx context.Context,
+	invocation Invocation,
+	claimHash string,
+	purpose model.InvitationPurpose,
+	browserTransaction *store.BrowserInvitationTransactionProof,
+) (*InvitationAcceptanceView, error) {
+	principal := invocation.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess || !model.IsValidTokenHash(claimHash) {
+		return nil, invalidTokenAppError()
+	}
 	invitation, err := s.store.GetByClaimHash(ctx, claimHash)
 	if err != nil || invitation.Purpose != purpose {
 		return nil, invalidInvitationError(err)
@@ -2053,7 +2085,8 @@ func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Inv
 	}, s.now, func(ctx context.Context, attempt mutationAttemptReference) (*store.ScopedRoleInvitationAcceptanceResult, error) {
 		return s.store.AcceptScopedRole(ctx, &store.ScopedRoleInvitationAcceptance{ClaimHash: claimHash,
 			UserID: principal.UserID, RoleBinding: binding, AuditEventID: attempt.ID, AuditAt: attempt.MutationAtMillis,
-			RequiredActions: []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage}})
+			RequiredActions:    []model.Action{model.ActionInvitationCreate, model.ActionRoleBindingManage},
+			BrowserTransaction: browserTransaction})
 	}, invalidInvitationError)
 	if err != nil {
 		return nil, err

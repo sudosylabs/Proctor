@@ -331,6 +331,10 @@ var dependencyRules = []dependencyRule{
 		thirdParty: only(exact("golang.org/x/crypto/argon2")),
 	},
 	{
+		name:    "hosted webapp transport",
+		sources: []pathPattern{exact(serverModule + "/webui")},
+	},
+	{
 		name: "HTTP and WebSocket transports",
 		sources: []pathPattern{
 			subtree(serverModule + "/httpapi"),

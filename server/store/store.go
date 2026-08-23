@@ -339,7 +339,7 @@ type Catalog interface {
 	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
-	DesktopAuthorization() DesktopAuthorizationStore
+	BrowserAuthentication() BrowserAuthenticationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
 	OnboardingImport() OnboardingImportStore
@@ -386,7 +386,7 @@ type Store interface {
 	Mail() MailStore
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
-	DesktopAuthorization() DesktopAuthorizationStore
+	BrowserAuthentication() BrowserAuthenticationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
 	OnboardingImport() OnboardingImportStore
@@ -1430,6 +1430,7 @@ type StudentClassInvitationAcceptance struct {
 	DeliveryJob              *model.Job
 	AuditEvent               *model.AuditEvent
 	RequiredActions          []model.Action
+	BrowserTransaction       *BrowserInvitationTransactionProof
 }
 
 // StudentClassInvitationAcceptanceResult is the authoritative accepted
@@ -1461,6 +1462,7 @@ type TeacherAcademicUnitInvitationAcceptance struct {
 	DeliveryJob              *model.Job
 	AuditEvent               *model.AuditEvent
 	RequiredActions          []model.Action
+	BrowserTransaction       *BrowserInvitationTransactionProof
 }
 
 type TeacherAcademicUnitInvitationAcceptanceResult struct {
@@ -1493,9 +1495,10 @@ type ScopedRoleInvitationAcceptance struct {
 	RoleBinding *model.RoleBinding
 	// AuditEventID identifies the already-persisted secret-free attempt. The
 	// aggregate completes it atomically with acceptance or exact replay.
-	AuditEventID    string
-	AuditAt         int64
-	RequiredActions []model.Action
+	AuditEventID       string
+	AuditAt            int64
+	RequiredActions    []model.Action
+	BrowserTransaction *BrowserInvitationTransactionProof
 }
 
 type ScopedRoleInvitationAcceptanceResult struct {

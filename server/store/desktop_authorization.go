@@ -4,7 +4,6 @@
 package store
 
 import (
-	"context"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -64,24 +63,4 @@ type DesktopAuthorizationExchangeResult struct {
 	Transaction *model.BrowserAuthenticationTransaction
 	Session     *model.Session
 	Credentials []*model.SessionCredential
-}
-
-// DesktopAuthorizationMaintenanceResult describes one bounded, authoritative
-// database-clock maintenance page. More reports that immediately eligible work
-// remains for a subsequent page or scheduled occurrence.
-type DesktopAuthorizationMaintenanceResult struct {
-	Expired int
-	Purged  int
-	More    bool
-}
-
-// DesktopAuthorizationStore owns the durable native-public-client protocol.
-// No raw handle, browser proof, state, code, verifier, or Session credential
-// crosses this boundary.
-type DesktopAuthorizationStore interface {
-	Create(context.Context, *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error)
-	IssueCode(context.Context, *DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error)
-	Cancel(context.Context, *DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error)
-	Exchange(context.Context, *DesktopAuthorizationExchange) (*DesktopAuthorizationExchangeResult, error)
-	Maintain(context.Context, int) (*DesktopAuthorizationMaintenanceResult, error)
 }

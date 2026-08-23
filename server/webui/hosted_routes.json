@@ -1,0 +1,12 @@
+[
+  "/setup",
+  "/login",
+  "/register",
+  "/authorize/desktop",
+  "/join",
+  "/account/forgot-password",
+  "/account/reset-password",
+  "/account/verify-email",
+  "/account/connect-provider",
+  "/authorization/complete"
+]

@@ -133,7 +133,7 @@ func applicationDependencies(
 func explicitLoopbackHTTPDevelopment(raw string) bool {
 	parsed, err := url.Parse(raw)
 	return err == nil && parsed.Scheme == "http" &&
-		model.ValidateDesktopAuthorizationIssuer(raw, true) == nil
+		model.ValidateBrowserAuthenticationIssuer(raw, true) == nil
 }
 
 // platformAuthenticationCache adapts platform.Cache to app.authenticationCache.

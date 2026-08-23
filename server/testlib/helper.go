@@ -292,8 +292,8 @@ func (s *LifecycleStore) ExternalIdentity() store.ExternalIdentityStore {
 func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore {
 	return lifecycleExternalLoginStateStore{}
 }
-func (s *LifecycleStore) DesktopAuthorization() store.DesktopAuthorizationStore {
-	return lifecycleDesktopAuthorizationStore{}
+func (s *LifecycleStore) BrowserAuthentication() store.BrowserAuthenticationStore {
+	return lifecycleBrowserAuthenticationStore{}
 }
 func (s *LifecycleStore) UserToken() store.UserTokenStore { return lifecycleUserTokenStore{} }
 func (s *LifecycleStore) Invitation() store.InvitationStore {
@@ -409,8 +409,8 @@ type lifecycleClassStore struct{ store.ClassStore }
 type lifecycleClassMemberStore struct{ store.ClassMemberStore }
 type lifecycleExternalIdentityStore struct{ store.ExternalIdentityStore }
 type lifecycleExternalLoginStateStore struct{ store.ExternalLoginStateStore }
-type lifecycleDesktopAuthorizationStore struct {
-	store.DesktopAuthorizationStore
+type lifecycleBrowserAuthenticationStore struct {
+	store.BrowserAuthenticationStore
 }
 type lifecycleInvitationStore struct{ store.InvitationStore }
 type lifecycleUserTokenStore struct{ store.UserTokenStore }

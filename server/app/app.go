@@ -32,6 +32,7 @@ type executionUseCases interface {
 type App struct {
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
+	browserInvitations                *browserInvitationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
 	authenticationMethods             *authenticationMethodService

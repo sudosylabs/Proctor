@@ -1623,7 +1623,9 @@ func (s SQLInvitationStore) Maintain(ctx context.Context, limit int) (*store.Inv
 		}
 		cutoff := now.Add(-invitationTerminalRetention)
 		purged, err := tx.Exec(ctx, `WITH candidates AS (
-			SELECT id FROM invitations WHERE state<>'pending' AND updated_at<=? ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT ?)
+			SELECT id FROM invitations WHERE state<>'pending' AND updated_at<=?
+			  AND NOT EXISTS (SELECT 1 FROM browser_authentication_transactions bat WHERE bat.invitation_id=invitations.id)
+			 ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT ?)
 			DELETE FROM invitations i USING candidates c WHERE i.id=c.id`, cutoff, limit)
 		if err != nil {
 			return nil, fmt.Errorf("purge Invitations: %w", err)
@@ -1635,7 +1637,8 @@ func (s SQLInvitationStore) Maintain(ctx context.Context, limit int) (*store.Inv
 		var more bool
 		if err = tx.Get(ctx, &more, `SELECT EXISTS(SELECT 1 FROM invitations WHERE
 			(state='pending' AND (expires_at<=? OR (intended_end_at IS NOT NULL AND intended_end_at<=?))) OR
-			(state<>'pending' AND updated_at<=?))`, now, now, cutoff); err != nil {
+			(state<>'pending' AND updated_at<=? AND NOT EXISTS (
+				SELECT 1 FROM browser_authentication_transactions bat WHERE bat.invitation_id=invitations.id)))`, now, now, cutoff); err != nil {
 			return nil, fmt.Errorf("inspect Invitation maintenance continuation: %w", err)
 		}
 		return &store.InvitationMaintenanceResult{Expired: len(rows), Purged: int(purgedCount), More: more}, nil
@@ -1666,6 +1669,9 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 			}
 			affiliation, member, err := invitationAcceptedRelationships(ctx, tx, invitation, user.ID)
 			if err != nil {
+				return nil, err
+			}
+			if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
 				return nil, err
 			}
 			return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member, Replayed: true}, nil
@@ -1742,6 +1748,9 @@ func (s SQLInvitationStore) AcceptStudentClass(ctx context.Context, input *store
 		if _, err := insertAuditEvent(ctx, tx, event); err != nil {
 			return nil, fmt.Errorf("insert invitation acceptance audit: %w", err)
 		}
+		if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
+			return nil, err
+		}
 		return &store.StudentClassInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, ClassMember: member}, nil
 	})
 }
@@ -1764,7 +1773,14 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 			return nil, store.NewErrConflict("invitation", "invitation_not_pending", err)
 		}
 		if invitation.State == model.InvitationAccepted {
-			return replayTeacherAcademicUnitInvitation(ctx, tx, invitation)
+			result, replayErr := replayTeacherAcademicUnitInvitation(ctx, tx, invitation)
+			if replayErr != nil {
+				return nil, replayErr
+			}
+			if replayErr = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, result.User.ID); replayErr != nil {
+				return nil, replayErr
+			}
+			return result, nil
 		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
@@ -1852,6 +1868,9 @@ func (s SQLInvitationStore) AcceptTeacherAcademicUnit(ctx context.Context, input
 		event.Result = encoded
 		if _, err = insertAuditEvent(ctx, tx, event); err != nil {
 			return nil, fmt.Errorf("insert teacher Invitation acceptance audit: %w", err)
+		}
+		if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
+			return nil, err
 		}
 		return &store.TeacherAcademicUnitInvitationAcceptanceResult{Invitation: invitation, User: user, Affiliation: affiliation, AcademicUnitMember: member, RoleBinding: binding}, nil
 	})
@@ -2208,6 +2227,9 @@ func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.S
 			if replayErr = completeScopedRoleInvitationAcceptanceAudit(ctx, tx, input, invitation); replayErr != nil {
 				return nil, replayErr
 			}
+			if replayErr = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, result.User.ID); replayErr != nil {
+				return nil, replayErr
+			}
 			return result, nil
 		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
@@ -2266,6 +2288,9 @@ func (s SQLInvitationStore) AcceptScopedRole(ctx context.Context, input *store.S
 			return nil, err
 		}
 		if err = completeScopedRoleInvitationAcceptanceAudit(ctx, tx, input, invitation); err != nil {
+			return nil, err
+		}
+		if err = completeBrowserInvitationTransaction(ctx, tx, input.BrowserTransaction, invitation, user.ID); err != nil {
 			return nil, err
 		}
 		return &store.ScopedRoleInvitationAcceptanceResult{Invitation: invitation, User: user, RoleBinding: binding}, nil

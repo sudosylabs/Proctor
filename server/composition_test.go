@@ -16,6 +16,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/webui"
 )
 
 type compositionCloser struct {
@@ -71,7 +72,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 
 	phases := []string{
 		"file-content", "dependencies", "application", "realtime",
-		"attach-realtime", "websocket", "attach-sink", "http", "jobs",
+		"attach-realtime", "websocket", "attach-sink", "http", "webapp", "jobs",
 	}
 	for _, phase := range phases {
 		phase := phase
@@ -99,9 +100,11 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 				},
 				attachSink: func(*app.App, apprealtime.Sink) error { return nil },
 				http: func(httpapi.Options) (runtimeTransport, http.Handler, error) {
-					return compositionTransport{closer: transportCloser}, nil, nil
+					transport := compositionTransport{closer: transportCloser}
+					return transport, transport, nil
 				},
-				jobs: func(*app.App) runtimeJobs { return compositionJobs{} },
+				webapp: func(webui.Options) (http.Handler, error) { return http.NotFoundHandler(), nil },
+				jobs:   func(*app.App) runtimeJobs { return compositionJobs{} },
 			}
 			switch phase {
 			case "file-content":
@@ -122,6 +125,8 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 				constructors.attachSink = func(*app.App, apprealtime.Sink) error { return primaryErr }
 			case "http":
 				constructors.http = func(httpapi.Options) (runtimeTransport, http.Handler, error) { return nil, nil, primaryErr }
+			case "webapp":
+				constructors.webapp = func(webui.Options) (http.Handler, error) { return nil, primaryErr }
 			case "jobs":
 				constructors.jobs = func(*app.App) runtimeJobs { return nil }
 				primaryErr = errDurableJobRuntimeUnavailable
@@ -141,7 +146,7 @@ func TestConsumerConstructionFailuresUnwindExactlyOnce(t *testing.T) {
 			if phase == "attach-sink" || phase == "http" || phase == "jobs" {
 				wantEvents = []string{"websocket", "platform"}
 			}
-			if phase == "jobs" {
+			if phase == "webapp" || phase == "jobs" {
 				wantEvents = []string{"transport", "websocket", "platform"}
 			}
 			if !slices.Equal(events, wantEvents) {

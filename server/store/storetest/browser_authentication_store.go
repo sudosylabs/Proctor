@@ -13,11 +13,11 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-type DesktopAuthorizationSQLProbe struct {
+type BrowserAuthenticationSQLProbe struct {
 	Backdate func(t *testing.T, id model.BrowserAuthenticationTransactionID, createdAt, expiresAt time.Time)
 }
 
-func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAuthorizationSQLProbe, concurrentPeers ...store.DesktopAuthorizationStore) {
+func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserAuthenticationSQLProbe, concurrentPeers ...store.BrowserAuthenticationStore) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	user := saveUser(t, ctx, ss)
@@ -26,7 +26,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 		nodeNow := model.NowUTC().Add(skew)
 		skewed, _, _, _, _ := newDesktopAuthorizationTransaction(nodeNow, institution.ID)
 		before := model.NowUTC()
-		rebased, createErr := ss.DesktopAuthorization().Create(ctx, skewed)
+		rebased, createErr := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, skewed)
 		after := model.NowUTC()
 		requireNoError(t, createErr)
 		if rebased.CreatedAt.Before(before.Add(-time.Second)) || rebased.CreatedAt.After(after.Add(time.Second)) ||
@@ -36,30 +36,30 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 		}
 	}
 	transaction, handle, proof, state, verifier := newDesktopAuthorizationTransaction(now, institution.ID)
-	saved, err := ss.DesktopAuthorization().Create(ctx, transaction)
+	saved, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
 	requireNoError(t, err)
 	if saved.ID != transaction.ID || saved.HandleHash != model.HashToken(handle) {
 		t.Fatalf("Create() = %#v", saved)
 	}
 
 	expiredPending, expiredHandle, expiredProof, expiredState, _ := newDesktopAuthorizationTransaction(now.Add(-10*time.Minute), institution.ID)
-	expired, err := ss.DesktopAuthorization().Create(ctx, expiredPending)
+	expired, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, expiredPending)
 	requireNoError(t, err)
 	probe.Backdate(t, expired.ID, expiredPending.CreatedAt, expiredPending.ExpiresAt)
 	if expired.State != model.BrowserAuthenticationStatePending {
 		t.Fatalf("Create(expired pending) performed opportunistic maintenance: %#v", expired)
 	}
 	secondExpired, _, _, _, _ := newDesktopAuthorizationTransaction(now.Add(-9*time.Minute), institution.ID)
-	if _, err = ss.DesktopAuthorization().Create(ctx, secondExpired); err != nil {
+	if _, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, secondExpired); err != nil {
 		t.Fatal(err)
 	}
 	probe.Backdate(t, secondExpired.ID, secondExpired.CreatedAt, secondExpired.ExpiresAt)
-	maintained, err := ss.DesktopAuthorization().Maintain(ctx, 1)
+	maintained, err := ss.BrowserAuthentication().Maintain(ctx, 1)
 	requireNoError(t, err)
 	if maintained.Expired != 1 || maintained.Purged != 0 || !maintained.More {
 		t.Fatalf("Maintain(first bounded page) = %#v", maintained)
 	}
-	maintained, err = ss.DesktopAuthorization().Maintain(ctx, 1)
+	maintained, err = ss.BrowserAuthentication().Maintain(ctx, 1)
 	requireNoError(t, err)
 	if maintained.Expired != 1 || maintained.Purged != 0 || maintained.More {
 		t.Fatalf("Maintain(second bounded page) = %#v", maintained)
@@ -68,28 +68,28 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	reusedProofs.HandleHash = model.HashToken(expiredHandle)
 	reusedProofs.BrowserProofHash = model.HashToken(expiredProof)
 	reusedProofs.StateHash = model.HashToken(expiredState)
-	if _, err = ss.DesktopAuthorization().Create(ctx, reusedProofs); err != nil {
+	if _, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, reusedProofs); err != nil {
 		t.Fatalf("Create(reused terminal proofs) error = %v", err)
 	}
 
 	purgeCandidate, _, _, _, _ := newDesktopAuthorizationTransaction(now.Add(-25*time.Hour), institution.ID)
 	purgedID := purgeCandidate.ID
-	if _, err = ss.DesktopAuthorization().Create(ctx, purgeCandidate); err != nil {
+	if _, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, purgeCandidate); err != nil {
 		t.Fatalf("Create(past retention) error = %v", err)
 	}
 	probe.Backdate(t, purgeCandidate.ID, purgeCandidate.CreatedAt, purgeCandidate.ExpiresAt)
-	maintained, err = ss.DesktopAuthorization().Maintain(ctx, 1)
+	maintained, err = ss.BrowserAuthentication().Maintain(ctx, 1)
 	requireNoError(t, err)
 	if maintained.Expired != 1 || maintained.Purged != 1 {
 		t.Fatalf("Maintain(past retention) = %#v", maintained)
 	}
 	reusedID, _, _, _, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	reusedID.ID = purgedID
-	if _, err = ss.DesktopAuthorization().Create(ctx, reusedID); err != nil {
+	if _, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, reusedID); err != nil {
 		t.Fatalf("Create(reused purged ID) error = %v", err)
 	}
 	for _, invalidLimit := range []int{0, 1001} {
-		if _, err = ss.DesktopAuthorization().Maintain(ctx, invalidLimit); err == nil {
+		if _, err = ss.BrowserAuthentication().Maintain(ctx, invalidLimit); err == nil {
 			t.Fatalf("Maintain(%d) accepted invalid limit", invalidLimit)
 		}
 	}
@@ -97,7 +97,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "issue")
 	code := model.NewCredentialToken()
 	issueBefore := model.NowUTC()
-	issued, err := ss.DesktopAuthorization().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+	issued, err := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof), StateHash: model.HashToken(state),
 		UserID: user.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: now.UnixMilli(), CodeHash: model.HashToken(code), CodeLifetime: 45 * time.Second,
@@ -111,7 +111,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 		issued.CodeExpiresAt.Time.Sub(issued.UpdatedAt) != 45*time.Second {
 		t.Fatalf("IssueCode() = %#v", issued)
 	}
-	if _, err = ss.DesktopAuthorization().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+	if _, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof), StateHash: model.HashToken(state),
 		UserID: user.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: now.UnixMilli(), CodeHash: model.HashToken(model.NewCredentialToken()), CodeLifetime: 30 * time.Second,
@@ -133,11 +133,11 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	} {
 		candidate := *exchange
 		mutate(&candidate)
-		if _, mismatchErr := ss.DesktopAuthorization().Exchange(ctx, &candidate); !store.IsNotFound(mismatchErr) {
+		if _, mismatchErr := ss.BrowserAuthentication().Exchange(ctx, &candidate); !store.IsNotFound(mismatchErr) {
 			t.Fatalf("Exchange(%s mix-up) error = %v", name, mismatchErr)
 		}
 	}
-	peers := []store.DesktopAuthorizationStore{ss.DesktopAuthorization(), ss.DesktopAuthorization()}
+	peers := []store.BrowserAuthenticationStore{ss.BrowserAuthentication(), ss.BrowserAuthentication()}
 	if len(concurrentPeers) > 0 && concurrentPeers[0] != nil {
 		peers[1] = concurrentPeers[0]
 	}
@@ -147,7 +147,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	exchangeBefore := model.NowUTC()
 	for _, peer := range peers {
 		wait.Add(1)
-		go func(candidate store.DesktopAuthorizationStore) {
+		go func(candidate store.BrowserAuthenticationStore) {
 			defer wait.Done()
 			value, exchangeErr := candidate.Exchange(ctx, exchange)
 			results <- value
@@ -199,11 +199,11 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 
 	disabledUser := saveUser(t, ctx, ss)
 	disabledTransaction, disabledHandle, disabledProof, disabledState, disabledVerifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
-	_, err = ss.DesktopAuthorization().Create(ctx, disabledTransaction)
+	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, disabledTransaction)
 	requireNoError(t, err)
 	disabledCode := model.NewCredentialToken()
 	disabledIssueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "issue-disabled-user")
-	_, err = ss.DesktopAuthorization().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		HandleHash: model.HashToken(disabledHandle), BrowserProofHash: model.HashToken(disabledProof), StateHash: model.HashToken(disabledState),
 		UserID: disabledUser.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: disabledTransaction.CreatedAt.UnixMilli(), CodeHash: model.HashToken(disabledCode), CodeLifetime: 45 * time.Second,
@@ -222,10 +222,10 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 		t.Fatalf("disabled user = %#v", disabled)
 	}
 	rejectedIssue, rejectedHandle, rejectedProof, rejectedState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
-	_, err = ss.DesktopAuthorization().Create(ctx, rejectedIssue)
+	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, rejectedIssue)
 	requireNoError(t, err)
 	rejectedIssueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "issue-disabled-user-after-disable")
-	_, err = ss.DesktopAuthorization().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 		HandleHash: model.HashToken(rejectedHandle), BrowserProofHash: model.HashToken(rejectedProof), StateHash: model.HashToken(rejectedState),
 		UserID: disabledUser.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: rejectedIssue.CreatedAt.UnixMilli(), CodeHash: model.HashToken(model.NewCredentialToken()),
@@ -242,7 +242,7 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 		t.Fatalf("disabled-user IssueCode completed audit: %#v", rejectedIssueAuditAfter)
 	}
 	disabledExchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "exchange-disabled-user")
-	_, err = ss.DesktopAuthorization().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), disabledCode, disabledState, disabledVerifier, disabledExchangeAudit))
+	_, err = ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), disabledCode, disabledState, disabledVerifier, disabledExchangeAudit))
 	if !store.IsNotFound(err) {
 		t.Fatalf("Exchange(disabled user) error = %v, want not found", err)
 	}
@@ -258,14 +258,14 @@ func TestDesktopAuthorizationStore(t *testing.T, ss store.Store, probe DesktopAu
 	}
 
 	cancelled, cancelHandle, cancelProof, cancelState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
-	_, err = ss.DesktopAuthorization().Create(ctx, cancelled)
+	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, cancelled)
 	requireNoError(t, err)
-	cancelled, err = ss.DesktopAuthorization().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState), CancelledAt: model.GetMillis()})
+	cancelled, err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState), CancelledAt: model.GetMillis()})
 	requireNoError(t, err)
 	if cancelled.State != model.BrowserAuthenticationStateCancelled || cancelled.StateHash != "" {
 		t.Fatalf("Cancel() = %#v", cancelled)
 	}
-	_, err = ss.DesktopAuthorization().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState), CancelledAt: model.GetMillis()})
+	_, err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState), CancelledAt: model.GetMillis()})
 	if !store.IsNotFound(err) {
 		t.Fatalf("Cancel(replay) error = %v", err)
 	}

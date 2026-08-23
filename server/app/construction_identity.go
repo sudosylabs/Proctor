@@ -21,7 +21,7 @@ func constructIdentity(
 	}
 	accountMail := foundation.mail
 	desktopAuthorization, err := newDesktopAuthorizationService(
-		deps.Store.DesktopAuthorization(), deps.Store.Institution(), authenticationAccess,
+		deps.Store.BrowserAuthentication(), deps.Store.Institution(), authenticationAccess,
 		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
 		desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, deps.Sessions,
 		DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, model.NewCredentialToken, time.Now,
@@ -78,6 +78,13 @@ func constructIdentity(
 		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, deps.NodeID, deps.PublicURL,
 		deps.RecentAuthenticationTTL, model.NewCredentialToken, time.Now,
+	)
+	if err != nil {
+		return identityConstruction{}, err
+	}
+	browserInvitations, err := newBrowserInvitationService(
+		deps.Store.BrowserAuthentication(), deps.Store.Institution(), invitations,
+		deps.PublicURL, model.NewCredentialToken,
 	)
 	if err != nil {
 		return identityConstruction{}, err
@@ -162,6 +169,7 @@ func constructIdentity(
 		mail:                              accountMail,
 		authentication:                    authentication,
 		desktopAuthorization:              desktopAuthorization,
+		browserInvitations:                browserInvitations,
 		selfSessions:                      selfSessions,
 		externalAuthentication:            externalAuthentication,
 		authenticationMethods:             authenticationMethods,

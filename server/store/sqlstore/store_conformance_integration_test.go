@@ -127,7 +127,7 @@ func TestAccessAndOnboardingDecoratedLayerConformance(t *testing.T) {
 			storetest.TestExternalLoginStateStore(t, decorated, externalLoginStateSQLProbe(sqlStore))
 		}},
 		{"DesktopAuthorization", false, nil, func(t *testing.T, decorated store.Store) {
-			storetest.TestDesktopAuthorizationStore(t, decorated, desktopAuthorizationSQLProbe(sqlStore))
+			storetest.TestBrowserAuthenticationStore(t, decorated, browserAuthenticationSQLProbe(sqlStore))
 		}},
 		{"InvitationAndBatch", false, nil, func(t *testing.T, decorated store.Store) {
 			storetest.TestInvitationStore(t, decorated, invitationAuthoritySQLProbe(t, sqlStore))
@@ -218,7 +218,7 @@ func runLayerConformance(
 			storetest.TestExternalLoginStateStore(t, decorated, externalLoginStateSQLProbe(sqlStore))
 		}},
 		{"DesktopAuthorization", func(t *testing.T, decorated store.Store) {
-			storetest.TestDesktopAuthorizationStore(t, decorated, desktopAuthorizationSQLProbe(sqlStore))
+			storetest.TestBrowserAuthenticationStore(t, decorated, browserAuthenticationSQLProbe(sqlStore))
 		}},
 		{"PasswordCredential", storetest.TestPasswordCredentialStore},
 		{"UserToken", storetest.TestUserTokenStore},
@@ -264,15 +264,15 @@ func runLayerConformance(
 	}
 }
 
-func TestDesktopAuthorizationStore(t *testing.T) {
+func TestBrowserAuthenticationStore(t *testing.T) {
 	sqlStore := openTestStore(t)
 	resetTestStore(t, sqlStore)
 	peer := openTestStore(t)
-	storetest.TestDesktopAuthorizationStore(t, sqlStore, desktopAuthorizationSQLProbe(sqlStore), peer.DesktopAuthorization())
+	storetest.TestBrowserAuthenticationStore(t, sqlStore, browserAuthenticationSQLProbe(sqlStore), peer.BrowserAuthentication())
 }
 
-func desktopAuthorizationSQLProbe(sqlStore *SQLStore) storetest.DesktopAuthorizationSQLProbe {
-	return storetest.DesktopAuthorizationSQLProbe{Backdate: func(t *testing.T, id model.BrowserAuthenticationTransactionID, createdAt, expiresAt time.Time) {
+func browserAuthenticationSQLProbe(sqlStore *SQLStore) storetest.BrowserAuthenticationSQLProbe {
+	return storetest.BrowserAuthenticationSQLProbe{Backdate: func(t *testing.T, id model.BrowserAuthenticationTransactionID, createdAt, expiresAt time.Time) {
 		t.Helper()
 		if _, err := sqlStore.GetMaster().Exec(context.Background(), `UPDATE browser_authentication_transactions
 			SET created_at=?,updated_at=?,expires_at=? WHERE id=?`, createdAt, createdAt, expiresAt, id.String()); err != nil {
@@ -1509,7 +1509,9 @@ func TestInvitationStore(t *testing.T) {
 		DeliveryID   string `db:"delivery_id"`
 	}
 	if err := sqlStore.GetMaster().Get(ctx, &target, `SELECT i.id invitation_id,d.id delivery_id FROM invitations i JOIN mail_deliveries d ON d.target_invitation_id=i.id
-		WHERE i.state='accepted' AND d.state IN ('accepted','suppressed','canceled') ORDER BY i.id LIMIT 1`); err != nil {
+		WHERE i.state='accepted' AND d.state IN ('accepted','suppressed','canceled')
+		  AND NOT EXISTS (SELECT 1 FROM browser_authentication_transactions bat WHERE bat.invitation_id=i.id)
+		ORDER BY i.id LIMIT 1`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sqlStore.GetMaster().Exec(ctx, `UPDATE invitations SET created_at=created_at-interval '100 days',

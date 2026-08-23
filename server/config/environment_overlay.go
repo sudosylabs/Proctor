@@ -146,6 +146,9 @@ var environmentOverrideCatalog = []environmentOverride{
 	stringEnvironmentOverride("PROCTOR_SERVER_PUBLIC_URL", func(cfg *Config) *string {
 		return &cfg.Server.PublicURL
 	}),
+	stringEnvironmentOverride("PROCTOR_SERVER_WEBAPP_DIRECTORY", func(cfg *Config) *string {
+		return &cfg.Server.WebappDirectory
+	}),
 	scalarEnvironmentOverride("PROCTOR_SERVER_TLS_MODE", func(cfg *Config) *ServerTLSMode {
 		return &cfg.Server.TLS.Mode
 	}, func(value string) (ServerTLSMode, error) {
