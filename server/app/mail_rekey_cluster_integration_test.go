@@ -13,6 +13,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -66,7 +67,9 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		t.Fatal(err)
 	}
 
-	oldDescriptor := mailRekeyDescriptor(mailRekeyHandler{mail: persistence.Mail(), sealer: oldSealer})
+	oldDescriptor := integrationJobDescriptor(t, appjobs.NewCatalog(appjobs.CatalogDependencies{
+		JobStore: persistence.Job(), MailRekey: persistence.Mail(), MailSealer: oldSealer,
+	}), model.JobTypeMailRekey)
 	oldDescriptor.BaseRetryDelay, oldDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
 	oldDescriptor.LeaseDuration, oldDescriptor.HeartbeatInterval = 100*time.Millisecond, 20*time.Millisecond
 	oldNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{oldDescriptor},
@@ -91,7 +94,9 @@ func TestMailRekeyOldPrimaryRelinquishesOnceAndNewPrimaryCompletes(t *testing.T)
 		t.Fatalf("no-compatible-node attempts = %#v, %v", attempts, err)
 	}
 
-	newDescriptor := mailRekeyDescriptor(mailRekeyHandler{mail: persistence.Mail(), sealer: newSealer})
+	newDescriptor := integrationJobDescriptor(t, appjobs.NewCatalog(appjobs.CatalogDependencies{
+		JobStore: persistence.Job(), MailRekey: persistence.Mail(), MailSealer: newSealer,
+	}), model.JobTypeMailRekey)
 	newDescriptor.BaseRetryDelay, newDescriptor.MaximumRetryDelay = 10*time.Millisecond, 10*time.Millisecond
 	newDescriptor.LeaseDuration, newDescriptor.HeartbeatInterval = 100*time.Millisecond, 20*time.Millisecond
 	newNode, err := jobengine.New(jobengine.Config{Store: persistence.Job(), Descriptors: []jobengine.Descriptor{newDescriptor},

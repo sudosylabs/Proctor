@@ -2,7 +2,7 @@ name: proctor-mail-test
 
 services:
   mailpit:
-    image: ${MAILPIT_IMAGE:-axllent/mailpit:v1.30.5}
+    image: ${MAILPIT_IMAGE:-axllent/mailpit:v1.30.5@sha256:b868afa176bfd6cce2323ea316cd99ccad77915e51e595748f6d786700ecf109}
     environment:
       MP_DATABASE: /data/mailpit.db
       MP_MAX_MESSAGES: "100"

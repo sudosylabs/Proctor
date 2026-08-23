@@ -8,6 +8,12 @@ the code and component contracts for that detail.
 
 - Four independent Go modules are connected by the root workspace: reusable
   cache, mail, and VFS modules plus the Proctor server.
+- The root product build now owns one configurable end-to-end development
+  lifecycle, layered dependencies and observability, a real
+  readiness-aware three-node HAProxy topology and node-loss certification,
+  exact-version/digest build and runtime containers, deterministic multi-arch
+  release archives, hardened systemd/container deployment examples, and CI
+  gates while preserving every Go module's independent build.
 - The module-root `server.New` follows one inert ordered composition recipe:
   explicit acquisition transfers infrastructure atomically to lifecycle-only
   `platform.Service`, a discarded non-owning projection wires `app.App`, HTTP,

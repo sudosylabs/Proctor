@@ -1,0 +1,44 @@
+# Runtime and maintainer images need only the Go workspace, reusable modules,
+# server, and hosted webapp. Everything else stays outside the build context so
+# ignored operator/developer material cannot influence or reach the builder.
+*
+!go.work
+!go.work.sum
+!packages
+!packages/**
+!server
+!server/**
+!webapp
+!webapp/**
+
+# These patterns remain excluded even when they are nested below an included
+# source directory.
+**/.env
+**/.env.*
+**/.npmrc
+**/.pnp
+**/.pnp.js
+**/.next
+**/.turbo
+**/.vercel
+**/.vscode
+**/.scratch
+**/.scratch/**
+**/.plans
+**/.plans/**
+**/tmp
+**/tmp/**
+**/legacy
+**/legacy/**
+**/tools
+**/tools/**
+**/*.pem
+**/.DS_Store
+**/node_modules
+**/coverage
+**/dist
+**/out
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+server/config/config.json

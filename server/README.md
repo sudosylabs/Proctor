@@ -80,8 +80,11 @@ Enabled SMTP is connection-tested and reported without making a temporary relay
 outage fail general server readiness. The example uses memory cache, disabled
 mail, and local VFS.
 
-Create a release-style directory containing the executable, compiled hosted
-webapp, and copy-only configuration examples with:
+The root [product build](../build/README.md) owns complete development,
+cluster, observability, packaging, and release lifecycles. Create a
+release-style directory containing the executable, compiled hosted webapp,
+copy-only configuration examples, legal notices, deployment support, and build
+identity with:
 
 ```sh
 make package
@@ -111,28 +114,8 @@ HTTP serving have all reached readiness. A notification failure is logged but
 does not stop an otherwise healthy server; systemd's start timeout remains the
 external failure boundary.
 
-A minimal service unit is:
-
-```ini
-[Unit]
-Description=Proctor server
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=notify
-NotifyAccess=main
-User=proctor
-Group=proctor
-WorkingDirectory=/opt/proctor
-ExecStart=/opt/proctor/proctor serve --config /etc/proctor/config.json
-Restart=on-failure
-TimeoutStartSec=3600
-TimeoutStopSec=90
-
-[Install]
-WantedBy=multi-user.target
-```
+The tracked [hardened service unit](../deploy/systemd/proctor.service) and
+[deployment guide](../deploy/README.md) are copied into release archives.
 
 Run the long-lived service as a dedicated non-root user. The CLI warns but
 continues when its effective user is root, matching deployments where root is
@@ -797,6 +780,12 @@ integration, and independent `GOWORK=off` builds/tests of all four modules:
 ```sh
 make -C server phase-file-jobs
 ```
+
+The server module pins published revisions of the reusable modules so that the
+isolated check cannot silently borrow newer APIs from `go.work`. When the
+repository is private, Git must be authenticated for `github.com` access;
+the Makefile exports the matching `GOPRIVATE` pattern so Go bypasses the public
+module proxy and checksum database for these in-repository dependencies.
 
 The access-and-onboarding server-phase gate combines the hermetic checks with
 the real composition graph, PostgreSQL-backed JSON/CSV administration,

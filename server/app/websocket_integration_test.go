@@ -263,9 +263,10 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 	if dataSource == "" {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is required")
 	}
-	// Optional Redis remains an independent cache backend; clustering itself
-	// uses Memberlist and does not require Redis.
 	redisAddress := os.Getenv("PROCTOR_TEST_REDIS_ADDRESS")
+	if redisAddress == "" {
+		t.Fatal("PROCTOR_TEST_REDIS_ADDRESS is required for clustered cache coherence")
+	}
 	persistenceA := openAuthenticationStore(t, dataSource)
 	database := config.Default().Database
 	database.DataSource = dataSource
@@ -297,12 +298,8 @@ func TestWebSocketTwoNodeConformance(t *testing.T) {
 			}
 			cfg.Cluster.Memberlist.DiscoveryTTL.Duration = 5 * time.Second
 			cfg.Cluster.Memberlist.DiscoveryHeartbeat.Duration = time.Second
-			if redisAddress != "" {
-				cfg.Cache.Backend = "redis"
-				cfg.Cache.Redis.Addresses = []string{redisAddress}
-			} else {
-				cfg.Cache.Backend = "memory"
-			}
+			cfg.Cache.Backend = "redis"
+			cfg.Cache.Redis.Addresses = []string{redisAddress}
 			cfg.VFS.Backend = "s3"
 			cfg.VFS.S3.Endpoint = "127.0.0.1:19000"
 			cfg.VFS.S3.Bucket = "proctor-test"

@@ -25,6 +25,14 @@ coverage
 .next/
 out/
 dist
+/.build/
+/config.override.mk
+/deploy/compose/.env
+/deploy/compose/proctor.env
+/deploy/compose/config.json
+/deploy/compose/data/
+/deploy/compose/logs/
+/deploy/compose/secrets/
 
 # Legacy project snapshot
 #
@@ -32,7 +40,6 @@ dist
 # built. These paths are intentionally outside the new repository history.
 /legacy/
 /tools/
-/.github/
 /.npmrc
 /.nvmrc
 /.prettierignore

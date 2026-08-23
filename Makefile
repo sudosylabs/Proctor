@@ -1,33 +1,20 @@
 SHELL := /bin/sh
 
-WEBAPP_DIR ?= webapp
-SERVER_DIR ?= server
-PACKAGE_DIR ?= dist/proctor
-VERSION ?= dev
-COMMIT ?= unknown
-BUILD_TIME ?= unknown
+ROOT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
-SERVER_LDFLAGS := -X github.com/sudosylabs/proctor/server/app.Version=$(VERSION) -X github.com/sudosylabs/proctor/server/app.Commit=$(COMMIT) -X github.com/sudosylabs/proctor/server/app.BuildTime=$(BUILD_TIME)
+# Command-line values have highest priority. The ignored override file is read
+# before tracked ?= defaults; environment values apply when it does not set the
+# same variable.
+-include $(ROOT_DIR)/config.override.mk
 
-.PHONY: check webapp-install webapp-check webapp-build server-check package
+include $(ROOT_DIR)/build/make/config.mk
+include $(ROOT_DIR)/build/make/dev.mk
+include $(ROOT_DIR)/build/make/test.mk
+include $(ROOT_DIR)/build/make/release.mk
+include $(ROOT_DIR)/build/make/container.mk
 
-check: webapp-check server-check
+.DEFAULT_GOAL := help
 
-webapp-install:
-	cd "$(WEBAPP_DIR)" && npm ci
-
-webapp-check: webapp-install
-	cd "$(WEBAPP_DIR)" && npm run check
-
-webapp-build: webapp-install
-	cd "$(WEBAPP_DIR)" && npm run verify
-	cd "$(WEBAPP_DIR)" && PROCTOR_BUILD_VERSION='$(VERSION)' PROCTOR_BUILD_COMMIT='$(COMMIT)' npm run build
-
-server-check:
-	$(MAKE) -C "$(SERVER_DIR)" check
-
-package: webapp-build
-	$(MAKE) -C "$(SERVER_DIR)" package \
-		PACKAGE_DIR="$(abspath $(PACKAGE_DIR))" \
-		WEBAPP_DIST_DIR="$(abspath $(WEBAPP_DIR)/dist)" \
-		GO_LDFLAGS='$(SERVER_LDFLAGS)'
+.PHONY: help
+help: ## List product build, development, test, and release commands.
+	@awk 'BEGIN {FS = ":.*## "; printf "Proctor commands:\n\n"} /^[a-zA-Z0-9_.-]+:.*## / {printf "  %-24s %s\n", $$1, $$2}' $(MAKEFILE_LIST)

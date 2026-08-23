@@ -1,0 +1,44 @@
+extensions:
+  file_storage:
+    directory: /var/lib/otel
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  filelog/proctor:
+    include:
+      - /var/log/proctor/*/server.log
+    include_file_path: true
+    start_at: beginning
+    storage: file_storage
+    operators:
+      - type: json_parser
+        parse_to: attributes
+        if: 'body matches "^\\s*\\{"'
+      - type: regex_parser
+        parse_from: attributes["log.file.path"]
+        regex: '^/var/log/proctor/(?P<proctor_node>[^/]+)/server\\.log$'
+      - type: move
+        from: attributes.proctor_node
+        to: resource["service.instance.id"]
+
+processors:
+  resource/proctor:
+    attributes:
+      - key: service.name
+        value: proctor
+        action: upsert
+  batch:
+    timeout: 1s
+
+exporters:
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  extensions: [file_storage, health_check]
+  pipelines:
+    logs:
+      receivers: [filelog/proctor]
+      processors: [resource/proctor, batch]
+      exporters: [otlp_http/loki]

@@ -36,6 +36,7 @@ export default defineConfig({
       "/api": {
         target: process.env.PROCTOR_SERVER_DEV_URL || "http://127.0.0.1:8065",
         changeOrigin: false,
+        ws: true,
       },
     },
   },

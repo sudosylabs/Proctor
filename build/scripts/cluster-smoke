@@ -1,0 +1,80 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+gateway=$1
+prometheus=$2
+mode=${3:-full}
+curl_command=${CURL_COMMAND:-curl}
+jq_command=${JQ_COMMAND:-jq}
+
+retry() {
+	description=$1
+	shift
+	remaining=60
+	until "$@" >/dev/null 2>&1; do
+		remaining=$((remaining - 1))
+		if [ "$remaining" -le 0 ]; then
+			printf 'timed out waiting for %s\n' "$description" >&2
+			return 1
+		fi
+		sleep 1
+	done
+}
+
+retry 'gateway readiness' "$curl_command" --fail --silent --show-error "$gateway/health/ready"
+
+gateway_backend_sample() {
+	excluded=${1:-}
+	seen=''
+	requests=0
+	while [ "$requests" -lt 12 ]; do
+		headers=$("$curl_command" --fail --silent --show-error --dump-header - --output /dev/null "$gateway/health/ready") || return 1
+		node=$(printf '%s\n' "$headers" | awk 'tolower($1) == "x-proctor-node:" {gsub("\\r", "", $2); print $2; exit}')
+		[ -n "$node" ] || return 1
+		[ -z "$excluded" ] || [ "$node" != "$excluded" ] || return 1
+		seen="$seen $node"
+		requests=$((requests + 1))
+	done
+	if [ -n "$excluded" ]; then
+		return 0
+	fi
+	case "$seen" in *' node-a'*) ;; *) return 1 ;; esac
+	case "$seen" in *' node-b'*) ;; *) return 1 ;; esac
+	case "$seen" in *' node-c'*) ;; *) return 1 ;; esac
+}
+
+if [ "$mode" = gateway-only ]; then
+	retry 'gateway removal of stopped node' gateway_backend_sample node-b
+	exit 0
+fi
+
+retry 'gateway round-robin across all nodes' gateway_backend_sample
+
+query_count() {
+	expression=$1
+	expected=$2
+	result=$("$curl_command" --fail --silent --get --data-urlencode "query=$expression" "$prometheus/api/v1/query")
+	[ "$(printf '%s' "$result" | "$jq_command" -r '.status')" = success ] &&
+		[ "$(printf '%s' "$result" | "$jq_command" '.data.result | length')" -eq "$expected" ]
+}
+
+remaining=90
+until query_count 'up{job="proctor",topology="cluster"} == 1' 3 \
+	&& query_count 'proctor_ready{job="proctor",topology="cluster"} == 1' 3 \
+	&& query_count 'proctor_cluster_peers{job="proctor",topology="cluster"} == 2' 3; do
+	remaining=$((remaining - 1))
+	if [ "$remaining" -le 0 ]; then
+		printf 'cluster metrics did not converge to three ready nodes with two peers each\n' >&2
+		exit 1
+	fi
+	sleep 1
+done
+
+build_info=$("$curl_command" --fail --silent --show-error "$gateway/api/v1/system/version")
+expected_version=${PROCTOR_EXPECTED_VERSION:-}
+expected_commit=${PROCTOR_EXPECTED_COMMIT:-}
+[ -z "$expected_version" ] || [ "$(printf '%s' "$build_info" | "$jq_command" -r '.version')" = "$expected_version" ]
+[ -z "$expected_commit" ] || [ "$(printf '%s' "$build_info" | "$jq_command" -r '.commit')" = "$expected_commit" ]

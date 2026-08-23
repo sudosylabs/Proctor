@@ -10,8 +10,9 @@ PROCTOR_TEST_REDIS_ADDRESS ?= 127.0.0.1:$(PROCTOR_REDIS_PORT)
 PROCTOR_TEST_S3_ENDPOINT ?= 127.0.0.1:$(PROCTOR_MINIO_PORT)
 PROCTOR_TEST_MAIL_SMTP_ADDRESS ?= 127.0.0.1:$(PROCTOR_MAILPIT_SMTP_PORT)
 PROCTOR_TEST_MAILPIT_HTTP_URL ?= http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)
+GOPRIVATE ?= github.com/sudosylabs/proctor
 
-export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT
+export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT GOPRIVATE
 
 .PHONY: check architecture i18n-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
@@ -44,16 +45,18 @@ build:
 PACKAGE_DIR ?= dist/proctor
 WEBAPP_DIST_DIR ?= ../webapp/dist
 GO_LDFLAGS ?=
+GO_BUILD_FLAGS ?=
 
 package:
 	@test ! -e "$(PACKAGE_DIR)" || (echo 'package output already exists; choose a new PACKAGE_DIR or remove it explicitly' >&2; exit 2)
 	@test -f "$(WEBAPP_DIST_DIR)/index.html" || (echo 'webapp distribution is missing index.html; run the root package target' >&2; exit 2)
 	@test -f "$(WEBAPP_DIST_DIR)/webapp-build.json" || (echo 'webapp distribution is missing webapp-build.json; run the root package target' >&2; exit 2)
 	mkdir -p "$(PACKAGE_DIR)/config" "$(PACKAGE_DIR)/webapp/dist"
-	go build -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
+	go build $(GO_BUILD_FLAGS) -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
 	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
 	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
 	cp -R "$(WEBAPP_DIST_DIR)/." "$(PACKAGE_DIR)/webapp/dist"
+	cp LICENSE NOTICE "$(PACKAGE_DIR)/"
 	@test ! -e "$(PACKAGE_DIR)/config/config.json"
 
 mail-templates-install:
@@ -219,9 +222,10 @@ integration-realtime:
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
 	trap cleanup EXIT INT TERM; \
-	$(COMPOSE) up --detach --wait postgres; \
+	$(COMPOSE) up --detach --wait postgres redis; \
 	go test -tags=integration ./cluster/memberlist -run '^(TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal|TestLateIncompatiblePeerIsRejectedByContinuousAdmission|TestAbruptStableIDRestartReclaimsDeadAddress|TestMemberlistKeyringSupportsRollingPrimaryRotation|TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
+	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
 		go test -tags=integration ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1
 
 conformance-postgres: integration-postgres

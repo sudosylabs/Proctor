@@ -1,0 +1,32 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 6 ]; then
+    echo "usage: package-support ROOT PACKAGE_DIR VERSION COMMIT BUILD_TIME SOURCE_DATE_EPOCH" >&2
+    exit 2
+fi
+
+root=$1
+package_dir=$2
+version=$3
+commit=$4
+build_time=$5
+source_date_epoch=$6
+
+mkdir -p "$package_dir/deploy/systemd"
+cp "$root/deploy/README.md" "$package_dir/deploy/README.md"
+cp "$root/deploy/systemd/proctor.service" "$package_dir/deploy/systemd/proctor.service"
+cp "$root/LICENSING.md" "$package_dir/LICENSING.md"
+{
+    printf 'version=%s\n' "$version"
+    printf 'commit=%s\n' "$commit"
+    printf 'build_time=%s\n' "$build_time"
+    printf 'source_date_epoch=%s\n' "$source_date_epoch"
+} >"$package_dir/BUILD_METADATA"
+
+find "$package_dir" -type d -exec chmod 0755 {} +
+find "$package_dir" -type f -exec chmod 0644 {} +
+chmod 0755 "$package_dir/proctor"

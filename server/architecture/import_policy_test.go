@@ -407,6 +407,10 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:    "healthcheck executable",
+		sources: []pathPattern{exact(serverModule + "/cmd/proctor-healthcheck")},
+	},
+	{
 		name:    "operator executable",
 		sources: []pathPattern{exact(serverModule + "/cmd/proctor")},
 		project: only(exact(serverModule + "/cmd/proctor/commands")),
@@ -512,6 +516,7 @@ func TestDependencyRulePrecedence(t *testing.T) {
 		{packagePath: serverModule + "/app/exam/review", wantRule: "exam application"},
 		{packagePath: serverModule + "/store/sqlstore", wantRule: "SQL store adapter"},
 		{packagePath: serverModule + "/platform/externalauth/oidc", wantRule: "external-auth adapters"},
+		{packagePath: serverModule + "/cmd/proctor-healthcheck", wantRule: "healthcheck executable"},
 		{packagePath: serverModule + "/cmd/ptool/commands", wantRule: "ptool commands"},
 	}
 

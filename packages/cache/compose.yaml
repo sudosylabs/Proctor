@@ -2,7 +2,7 @@ name: proctor-cache-test
 
 services:
   redis:
-    image: ${CACHE_REDIS_IMAGE:-redis:7.2.15-alpine3.21}
+    image: ${CACHE_REDIS_IMAGE:-redis:7.2.15-alpine3.21@sha256:05a97a479bc73de66f087dc05b569010772880f778cc8671fa6b8aadee32e5c6}
     command:
       - redis-server
       - --save

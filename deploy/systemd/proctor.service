@@ -1,0 +1,51 @@
+[Unit]
+Description=Proctor examination server
+Documentation=https://github.com/sudosylabs/proctor
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=proctor
+Group=proctor
+WorkingDirectory=/opt/proctor
+EnvironmentFile=-/etc/proctor/proctor.env
+ExecStartPre=/opt/proctor/proctor config validate --config /etc/proctor/config.json
+ExecStart=/opt/proctor/proctor serve --config /etc/proctor/config.json
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=120s
+TimeoutStopSec=90s
+KillSignal=SIGTERM
+UMask=0077
+
+StateDirectory=proctor
+LogsDirectory=proctor
+RuntimeDirectory=proctor
+ReadWritePaths=/var/lib/proctor /var/log/proctor /run/proctor
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

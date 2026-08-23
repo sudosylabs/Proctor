@@ -1,0 +1,172 @@
+name: ${PROCTOR_COMPOSE_PROJECT_NAME:-proctor-dev}
+
+services:
+  volume-init:
+    image: ${PROCTOR_POSTGRES_IMAGE:-postgres:16.6-alpine3.20@sha256:1e59919c179e296eaf3cc701f4d50bab5c393d7ed9746c188c9d519489c998dc}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        [ "$$(stat -c '%u:%g' /volumes/postgres)" = 70:70 ] || chown -R 70:70 /volumes/postgres
+        [ "$$(stat -c '%u:%g' /volumes/minio)" = 1000:1000 ] || chown -R 1000:1000 /volumes/minio
+        [ "$$(stat -c '%u:%g' /volumes/mailpit)" = 65532:65532 ] || chown -R 65532:65532 /volumes/mailpit
+    volumes:
+      - postgres-data:/volumes/postgres
+      - minio-data:/volumes/minio
+      - mailpit-data:/volumes/mailpit
+    restart: "no"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proctor-dev
+
+  postgres:
+    image: ${PROCTOR_POSTGRES_IMAGE:-postgres:16.6-alpine3.20@sha256:1e59919c179e296eaf3cc701f4d50bab5c393d7ed9746c188c9d519489c998dc}
+    environment:
+      POSTGRES_DB: proctor
+      POSTGRES_USER: proctor
+      POSTGRES_PASSWORD: proctor
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    ports:
+      - 127.0.0.1:${PROCTOR_POSTGRES_PORT:-15432}:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U proctor -d proctor]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+    user: 70:70
+    tmpfs:
+      - /var/run/postgresql:rw,noexec,nosuid,size=16m,uid=70,gid=70,mode=0770
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+  redis:
+    image: ${PROCTOR_REDIS_IMAGE:-redis:7.2.15-alpine3.21@sha256:05a97a479bc73de66f087dc05b569010772880f778cc8671fa6b8aadee32e5c6}
+    command: [redis-server, --save, "", --appendonly, "no", --loglevel, warning]
+    ports:
+      - 127.0.0.1:${PROCTOR_REDIS_PORT:-16379}:6379
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+    restart: unless-stopped
+    user: redis
+    read_only: true
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+  minio:
+    image: ${PROCTOR_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    command: [server, /data, --console-address, ":9001"]
+    environment:
+      MINIO_ROOT_USER: proctorminio
+      MINIO_ROOT_PASSWORD: proctorminio-secret
+    ports:
+      - 127.0.0.1:${PROCTOR_MINIO_PORT:-19000}:9000
+      - 127.0.0.1:${PROCTOR_MINIO_CONSOLE_PORT:-19001}:9001
+    volumes:
+      - minio-data:/data
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+    user: 1000:1000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+  minio-init:
+    image: ${PROCTOR_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mc alias set local http://minio:9000 proctorminio proctorminio-secret
+        mc mb --ignore-existing local/proctor-dev
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+      - /root/.mc:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+  mailpit:
+    image: ${PROCTOR_MAILPIT_IMAGE:-axllent/mailpit:v1.30.5@sha256:b868afa176bfd6cce2323ea316cd99ccad77915e51e595748f6d786700ecf109}
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: "1000"
+      MP_MAX_MESSAGE_SIZE: "30"
+      MP_QUIET: "true"
+    ports:
+      - 127.0.0.1:${PROCTOR_MAILPIT_SMTP_PORT:-11025}:1025
+      - 127.0.0.1:${PROCTOR_MAILPIT_HTTP_PORT:-18025}:8025
+    volumes:
+      - mailpit-data:/data
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+    restart: unless-stopped
+    user: 65532:65532
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev
+
+networks:
+  proctor-dev:
+    name: ${PROCTOR_COMPOSE_PROJECT_NAME:-proctor-dev}-network
+
+volumes:
+  postgres-data:
+  minio-data:
+  mailpit-data:

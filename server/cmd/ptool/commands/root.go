@@ -28,5 +28,6 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newI18nCommand())
+	root.AddCommand(newReleaseCommand())
 	return root
 }

@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proctor-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -buildvcs=false -mod=readonly
+  GOPRIVATE: github.com/sudosylabs/proctor
+
+jobs:
+  hermetic:
+    name: Hermetic and independent modules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        with:
+          go-version: 1.25.4
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/vfs/go.sum
+      - name: Set up Node
+        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+        with:
+          node-version-file: webapp/.nvmrc
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - name: Run product gate
+        run: make check
+      - name: Verify independent modules
+        run: make independent-modules
+
+  integration:
+    name: Dependency-backed integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        with:
+          go-version: 1.25.4
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/vfs/go.sum
+      - name: Run integration suites
+        run: make integration
+
+  cluster:
+    name: Three-node certification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        with:
+          go-version: 1.25.4
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/vfs/go.sum
+      - name: Set up Node
+        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+        with:
+          node-version-file: webapp/.nvmrc
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - name: Certify active-active development topology
+        run: make cluster-smoke
+      - name: Print service logs after failure
+        if: failure()
+        run: make cluster-diagnostics
+      - name: Stop cluster
+        if: always()
+        run: make cluster-down || true
+
+  release:
+    name: Reproducible release artifacts
+    needs: [hermetic, integration, cluster]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+      - name: Set up Go
+        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        with:
+          go-version: 1.25.4
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/vfs/go.sum
+      - name: Set up Node
+        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+        with:
+          node-version-file: webapp/.nvmrc
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - name: Build archives and checksums
+        run: make VERSION=0.0.0-ci.${{ github.run_id }} dist
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@bbbca94d44d03d8e8a7d6c0251a0d6b8c6e0e972 # v7.0.0
+        with:
+          name: proctor-linux-${{ github.sha }}
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error

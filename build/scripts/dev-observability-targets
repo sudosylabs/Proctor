@@ -1,0 +1,26 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 3 ]; then
+    echo "usage: dev-observability-targets OUTPUT_DIR SINGLE_NODE_PORT CLUSTER_NODE_PORT" >&2
+    exit 2
+fi
+
+output_dir=$1
+single_node_port=$2
+cluster_node_port=$3
+
+case "$single_node_port:$cluster_node_port" in
+    *[!0-9:]*|:*|*:)
+        echo "metrics ports must be numeric" >&2
+        exit 2
+        ;;
+esac
+
+mkdir -p "$output_dir"
+umask 022
+printf '[{"targets":["host.docker.internal:%s"],"labels":{"node":"local","topology":"single-node"}}]\n' "$single_node_port" >"$output_dir/single-node-targets.json"
+printf '[{"targets":["node-a:%s"],"labels":{"node":"node-a","topology":"cluster"}},{"targets":["node-b:%s"],"labels":{"node":"node-b","topology":"cluster"}},{"targets":["node-c:%s"],"labels":{"node":"node-c","topology":"cluster"}}]\n' "$cluster_node_port" "$cluster_node_port" "$cluster_node_port" >"$output_dir/cluster-targets.json"

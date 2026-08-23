@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+  - job_name: proctor
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/proctor-metrics-token
+    tls_config:
+      ca_file: /run/secrets/proctor-metrics-ca.pem
+      server_name: localhost
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/targets.json
+        refresh_interval: 5s

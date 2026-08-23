@@ -1,0 +1,136 @@
+x-proctor-node: &proctor-node
+  image: ${PROCTOR_RUNTIME_IMAGE:-proctor:dev}
+  env_file:
+    - ../../.build/dev/secrets/environment
+  environment: &proctor-environment
+    PROCTOR_SERVER_LISTEN_ADDRESS: 0.0.0.0:8065
+    PROCTOR_SERVER_PUBLIC_URL: http://localhost:${PROCTOR_CLUSTER_HTTP_PORT:-18065}
+    PROCTOR_SERVER_WEBAPP_DIRECTORY: /opt/proctor/webapp/dist
+    PROCTOR_DATABASE_DATA_SOURCE: postgres://proctor:proctor@postgres:5432/proctor?sslmode=disable
+    PROCTOR_CACHE_BACKEND: redis
+    PROCTOR_CACHE_NAMESPACE: proctor-dev
+    PROCTOR_CACHE_REDIS_ADDRESSES: redis:6379
+    PROCTOR_VFS_BACKEND: s3
+    PROCTOR_VFS_S3_ENDPOINT: minio:9000
+    PROCTOR_VFS_S3_ACCESS_KEY: proctorminio
+    PROCTOR_VFS_S3_SECRET_KEY: proctorminio-secret
+    PROCTOR_VFS_S3_BUCKET: proctor-dev
+    PROCTOR_VFS_S3_REGION: us-east-1
+    PROCTOR_VFS_S3_SECURE: "false"
+    PROCTOR_MAIL_ENABLED: "true"
+    PROCTOR_MAIL_FROM_ADDRESS: no-reply@proctor.local
+    PROCTOR_MAIL_SMTP_ADDRESS: mailpit:1025
+    PROCTOR_METRICS_ENABLED: "true"
+    PROCTOR_METRICS_LISTEN_ADDRESS: 0.0.0.0:8067
+    PROCTOR_METRICS_TLS_CERTIFICATE_FILE: /run/proctor-dev/metrics-certificate.pem
+    PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE: /run/proctor-dev/metrics-private-key.pem
+    PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE: "false"
+    PROCTOR_CLUSTER_BACKEND: memberlist
+    PROCTOR_CLUSTER_MEMBERLIST_BIND_ADDRESS: 0.0.0.0:7946
+    PROCTOR_CLUSTER_MEMBERLIST_ALLOW_PUBLIC_BIND: "true"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    minio-init:
+      condition: service_completed_successfully
+    mailpit:
+      condition: service_healthy
+  expose:
+    - 8065
+    - 8067
+    - 7946/tcp
+    - 7946/udp
+  volumes:
+    - ../../.build/dev/secrets/metrics-certificate.pem:/run/proctor-dev/metrics-certificate.pem:ro
+    - ../../.build/dev/secrets/metrics-private-key.pem:/run/proctor-dev/metrics-private-key.pem:ro
+    - ../../.build/dev/logs:/var/log/proctor
+  healthcheck:
+    test: [CMD, /opt/proctor/proctor-healthcheck]
+    interval: 3s
+    timeout: 3s
+    retries: 60
+    start_period: 15s
+  stop_grace_period: 90s
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  user: ${PROCTOR_UID:-1000}:${PROCTOR_GID:-1000}
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  networks:
+    - proctor-dev
+
+services:
+  node-a:
+    <<: *proctor-node
+    environment:
+      <<: *proctor-environment
+      PROCTOR_CLUSTER_NODE_ID: node-a
+      PROCTOR_CLUSTER_MEMBERLIST_ADVERTISE_ADDRESS: node-a:7946
+      PROCTOR_CLUSTER_MEMBERLIST_SEED_ADDRESSES: node-b:7946,node-c:7946
+    volumes:
+      - ../../.build/dev/config/node-a.json:/etc/proctor/config.json:ro
+      - ../../.build/dev/secrets/metrics-certificate.pem:/run/proctor-dev/metrics-certificate.pem:ro
+      - ../../.build/dev/secrets/metrics-private-key.pem:/run/proctor-dev/metrics-private-key.pem:ro
+      - ../../.build/dev/logs:/var/log/proctor
+
+  node-b:
+    <<: *proctor-node
+    environment:
+      <<: *proctor-environment
+      PROCTOR_CLUSTER_NODE_ID: node-b
+      PROCTOR_CLUSTER_MEMBERLIST_ADVERTISE_ADDRESS: node-b:7946
+      PROCTOR_CLUSTER_MEMBERLIST_SEED_ADDRESSES: node-a:7946
+    volumes:
+      - ../../.build/dev/config/node-b.json:/etc/proctor/config.json:ro
+      - ../../.build/dev/secrets/metrics-certificate.pem:/run/proctor-dev/metrics-certificate.pem:ro
+      - ../../.build/dev/secrets/metrics-private-key.pem:/run/proctor-dev/metrics-private-key.pem:ro
+      - ../../.build/dev/logs:/var/log/proctor
+
+  node-c:
+    <<: *proctor-node
+    environment:
+      <<: *proctor-environment
+      PROCTOR_CLUSTER_NODE_ID: node-c
+      PROCTOR_CLUSTER_MEMBERLIST_ADVERTISE_ADDRESS: node-c:7946
+      PROCTOR_CLUSTER_MEMBERLIST_SEED_ADDRESSES: node-a:7946
+    volumes:
+      - ../../.build/dev/config/node-c.json:/etc/proctor/config.json:ro
+      - ../../.build/dev/secrets/metrics-certificate.pem:/run/proctor-dev/metrics-certificate.pem:ro
+      - ../../.build/dev/secrets/metrics-private-key.pem:/run/proctor-dev/metrics-private-key.pem:ro
+      - ../../.build/dev/logs:/var/log/proctor
+
+  gateway:
+    image: ${PROCTOR_HAPROXY_IMAGE:-haproxy:3.2.7-alpine@sha256:3b80483d47e1c7d1fc7eb4b9104f33d9a51259769be299eb675524dca2bc8157}
+    ports:
+      - 127.0.0.1:${PROCTOR_CLUSTER_HTTP_PORT:-18065}:8065
+    volumes:
+      - ../gateway/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      node-a:
+        condition: service_healthy
+      node-b:
+        condition: service_healthy
+      node-c:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, --spider, --quiet, "http://127.0.0.1:8065/health/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - proctor-dev

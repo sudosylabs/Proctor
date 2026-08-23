@@ -1,0 +1,43 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+go_command=$1
+npm_command=$2
+docker_command=$3
+jq_command=$4
+curl_command=$5
+
+for command_name in "$go_command" "$npm_command" node "$docker_command" "$jq_command" "$curl_command" openssl; do
+	command -v "$command_name" >/dev/null 2>&1 || {
+		printf 'required development command not found: %s\n' "$command_name" >&2
+		exit 1
+	}
+done
+
+go_version=$($go_command env GOVERSION)
+go_major=$(printf '%s' "$go_version" | sed 's/^go//' | cut -d. -f1)
+go_minor=$(printf '%s' "$go_version" | sed 's/^go//' | cut -d. -f2)
+case "$go_major:$go_minor" in
+	*[!0-9:]*|:*|*:)
+		printf 'unrecognized Go version %s\n' "$go_version" >&2
+		exit 1
+		;;
+esac
+if [ "$go_major" -lt 1 ] || { [ "$go_major" -eq 1 ] && [ "$go_minor" -lt 25 ]; }; then
+	printf 'unsupported Go version %s; Proctor requires Go 1.25 or newer\n' "$go_version" >&2
+	exit 1
+fi
+
+node_version=$(node --version)
+node_major=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f1)
+node_minor=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f2)
+if [ "$node_major" -lt 20 ] || { [ "$node_major" -eq 20 ] && [ "$node_minor" -lt 19 ]; }; then
+	printf 'unsupported Node version %s; use webapp/.nvmrc\n' "$node_version" >&2
+	exit 1
+fi
+
+$docker_command compose version >/dev/null
+$docker_command info >/dev/null

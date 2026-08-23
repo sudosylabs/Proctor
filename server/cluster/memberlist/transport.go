@@ -77,6 +77,7 @@ type wireEnvelope struct {
 type Transport struct {
 	cfg       Config
 	discovery *discoveryMaintenance
+	lookupIP  func(context.Context, string) ([]net.IPAddr, error)
 
 	mu       sync.RWMutex
 	stopMu   sync.Mutex
@@ -99,6 +100,7 @@ func New(cfg Config) (*Transport, error) {
 	return &Transport{
 		cfg:       cfg,
 		discovery: newSystemDiscoveryMaintenance(cfg),
+		lookupIP:  net.DefaultResolver.LookupIPAddr,
 		state:     stateCreated,
 		handlers:  make(map[cluster.Event]cluster.Handler),
 	}, nil
@@ -278,6 +280,10 @@ func (t *Transport) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	advertiseHost, err = t.resolveAdvertiseHost(ctx, advertiseHost)
+	if err != nil {
+		return err
+	}
 	bindPortNumber, err := net.LookupPort("tcp", bindPort)
 	if err != nil {
 		return fmt.Errorf("bind port: %w", err)
@@ -364,6 +370,31 @@ func (t *Transport) Start(ctx context.Context) error {
 		})
 	}()
 	return nil
+}
+
+// resolveAdvertiseHost translates a stable service name into the concrete IP
+// required by Memberlist while preserving the configured hostname in durable
+// discovery. This lets orchestrators assign container IPs without making those
+// disposable addresses part of Proctor's configuration contract.
+func (t *Transport) resolveAdvertiseHost(ctx context.Context, host string) (string, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.String(), nil
+	}
+	addresses, err := t.lookupIP(ctx, host)
+	if err != nil {
+		return "", fmt.Errorf("resolve cluster advertise host %q: %w", host, err)
+	}
+	for _, address := range addresses {
+		if ipv4 := address.IP.To4(); ipv4 != nil {
+			return ipv4.String(), nil
+		}
+	}
+	for _, address := range addresses {
+		if ipv6 := address.IP.To16(); ipv6 != nil {
+			return ipv6.String(), nil
+		}
+	}
+	return "", fmt.Errorf("resolve cluster advertise host %q: no IP addresses returned", host)
 }
 
 // Stop leaves the gossip mesh, removes discovery, and is idempotent.

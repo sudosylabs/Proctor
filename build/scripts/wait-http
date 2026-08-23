@@ -1,0 +1,24 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    echo "usage: wait-http URL" >&2
+    exit 2
+fi
+
+url=$1
+curl_command=${CURL_COMMAND:-curl}
+attempt=0
+while [ "$attempt" -lt 60 ]; do
+    if "$curl_command" --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1; then
+        exit 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+
+echo "timed out waiting for $url" >&2
+exit 1

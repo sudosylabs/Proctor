@@ -20,6 +20,8 @@ matches the work instead of loading every document.
 
 ## Contributing
 
+- [Build and development environment](../build/README.md) — product lifecycle,
+  HA development topology, observability, packaging, and overrides
 - [Documentation system](./contributing/documentation.md) — authority,
   placement, links, decision rationale, and validation
 - [Root agent guide](../AGENTS.md) — always-loaded repository guardrails and

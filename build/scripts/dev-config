@@ -1,0 +1,40 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+source_file=$1
+output_file=$2
+log_file=$3
+webapp_directory=$4
+jq_command=${JQ_COMMAND:-jq}
+
+output_directory=$(dirname "$output_file")
+log_directory=$(dirname "$log_file")
+mkdir -p "$output_directory"
+case "$log_directory" in
+	/var/log/proctor/*) ;;
+	*) mkdir -p "$log_directory" ;;
+esac
+
+temporary=$(mktemp "$output_directory/.config.XXXXXX")
+"$jq_command" --arg log_file "$log_file" --arg webapp "$webapp_directory" '
+  .Server.WebappDirectory = $webapp |
+  .Log.Targets = [
+    {
+      "Name": "console", "Type": "console", "Level": "info",
+      "Format": "json", "File": "", "QueueSize": 256,
+      "MaxSizeMB": 0, "MaxAgeDays": 0, "MaxBackups": 0,
+      "Compress": false
+    },
+    {
+      "Name": "file", "Type": "file", "Level": "info",
+      "Format": "json", "File": $log_file, "QueueSize": 512,
+      "MaxSizeMB": 100, "MaxAgeDays": 7, "MaxBackups": 10,
+      "Compress": true
+    }
+  ]
+' "$source_file" >"$temporary"
+chmod 600 "$temporary"
+mv "$temporary" "$output_file"

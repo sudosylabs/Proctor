@@ -15,6 +15,7 @@ import (
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -59,7 +60,9 @@ func TestJobRunnerRecoversNodeLossAroundADurableDomainCommit(t *testing.T) {
 				persistence.User(), files, &pictureContentFake{},
 				nil, nil, nil, nil, nil, time.Now,
 			)
-			realHandler := defaultProfilePictureHandler{generator: pictures}
+			realHandler := appjobs.NewDefaultProfilePictureDescriptor(
+				jobDefaultProfilePictureGenerator{service: pictures},
+			).Handler
 			entered := make(chan struct{})
 			canceled := make(chan struct{})
 			handler := &recoveryCommitHandler{

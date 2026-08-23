@@ -1,0 +1,45 @@
+groups:
+  - name: proctor
+    rules:
+      - record: proctor:http_request_error_ratio5m
+        expr: sum by (instance, node, topology) (rate(proctor_http_requests_total{status_class="5xx"}[5m])) / clamp_min(sum by (instance, node, topology) (rate(proctor_http_requests_total[5m])), 0.000001)
+      - record: proctor:http_request_p95_seconds5m
+        expr: histogram_quantile(0.95, sum by (instance, node, topology, le) (rate(proctor_http_request_duration_seconds_bucket[5m])))
+      - alert: ProctorNodeDown
+        expr: up{job="proctor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Proctor metrics endpoint is unreachable
+          description: Prometheus cannot scrape {{ $labels.node }} at {{ $labels.instance }}.
+      - alert: ProctorNodeNotReady
+        expr: proctor_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Proctor node is not ready
+          description: Node {{ $labels.node }} has reported not-ready for two minutes.
+      - alert: ProctorHTTPErrorRatioHigh
+        expr: proctor:http_request_error_ratio5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Proctor HTTP 5xx ratio is high
+          description: More than 5% of requests to {{ $labels.node }} failed over five minutes.
+      - alert: ProctorJobFailures
+        expr: sum by (instance, node, topology) (increase(proctor_jobs_executions_total{outcome!="succeeded"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: A Proctor durable job failed
+          description: Node {{ $labels.node }} reported a failed job execution.
+      - alert: ProctorSMTPFailures
+        expr: sum by (instance, node, topology) (increase(proctor_smtp_messages_total{outcome!="accepted"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Proctor could not submit mail
+          description: Node {{ $labels.node }} reported an unsuccessful SMTP submission.

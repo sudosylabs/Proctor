@@ -29,6 +29,7 @@ func TestNewAutomaticallyMigratesAnEmptyDatabase(t *testing.T) {
 	cfg := config.Default()
 	cfg.Database.DataSource = dataSource
 	cfg.VFS.Local.Root = t.TempDir()
+	cfg.Server.WebappDirectory = createStartupMigrationWebapp(t)
 	cfg.Authentication.Bootstrap.DevelopmentMode = false
 	cfg.Authentication.Bootstrap.Secret = "operator-provided-bootstrap-secret-32-bytes"
 	data, err := json.Marshal(cfg)
@@ -63,6 +64,27 @@ func TestNewAutomaticallyMigratesAnEmptyDatabase(t *testing.T) {
 	if after.DatabaseVersion != after.ServerVersion || after.PendingMigrations != 0 {
 		t.Fatalf("migration status after New = %#v, want converged schema", after)
 	}
+}
+
+func createStartupMigrationWebapp(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	build := CurrentBuildInfo()
+	manifest, err := json.Marshal(struct {
+		SchemaVersion int    `json:"schema_version"`
+		Version       string `json:"version"`
+		Commit        string `json:"commit"`
+	}{SchemaVersion: 1, Version: build.Version, Commit: build.Commit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(directory, "webapp-build.json"), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(directory, "index.html"), []byte("<!doctype html><title>Proctor</title>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }
 
 func newStartupMigrationDatabase(t *testing.T, ctx context.Context) string {

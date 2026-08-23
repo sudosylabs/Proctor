@@ -7,11 +7,14 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/store/sqlstore"
 )
 
@@ -21,8 +24,16 @@ func TestMigrateIntegration(t *testing.T) {
 		t.Fatal("PROCTOR_TEST_DATABASE_URL is required for integration tests")
 	}
 	t.Setenv("PROCTOR_DATABASE_DATA_SOURCE", dataSource)
+	cfg, err := json.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err = os.WriteFile(configPath, cfg, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	code, stdout, stderr := executeForTest(context.Background(), []string{"migrate", "up"}, nil, productionExecutors())
+	code, stdout, stderr := executeForTest(context.Background(), []string{"--config", configPath, "migrate", "up"}, nil, productionExecutors())
 	if code != 0 {
 		t.Fatalf("migrate up code=%d stderr=%q", code, stderr)
 	}
@@ -34,7 +45,7 @@ func TestMigrateIntegration(t *testing.T) {
 		t.Fatalf("migrate up output = %q", stdout)
 	}
 
-	code, stdout, stderr = executeForTest(context.Background(), []string{"migrate", "status"}, nil, productionExecutors())
+	code, stdout, stderr = executeForTest(context.Background(), []string{"--config", configPath, "migrate", "status"}, nil, productionExecutors())
 	if code != 0 {
 		t.Fatalf("migrate status code=%d stderr=%q", code, stderr)
 	}

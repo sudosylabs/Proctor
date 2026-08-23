@@ -155,6 +155,13 @@ Memberlist mode:
   adjacent compatible versions for rolling upgrades; and
 - provides best-effort, non-durable delivery.
 
+The configured advertise address may use a stable private DNS name. At startup
+the adapter resolves that name to the concrete IP required by Memberlist while
+retaining the stable configured name in PostgreSQL discovery. Resolution is
+fail-closed and prefers IPv4 when DNS returns both families. This keeps
+orchestrator-assigned container IPs out of the deployment contract without
+changing seed discovery semantics.
+
 The Memberlist adapter contains a private discovery-maintenance module. It owns
 lease construction, initial advertisement and rollback, compatible discovery
 seed selection, periodic renewal, expired-row cleanup, rediscovery, and
@@ -307,6 +314,15 @@ multi-node suites use the `integration` build tag and dedicated Make targets;
 an invoked integration target fails rather than silently skipping a missing
 dependency. Docker test environments pin images, bind loopback ports, isolate
 names and state, wait for health, and clean up on failure.
+
+The root product build is the stable repository interface for complete local
+runtime, three-node certification, observability, container construction, and
+release packaging; module Makefiles remain independently runnable. Generated
+development state stays below ignored `.build`, while tracked Compose,
+Prometheus/Grafana/Loki/collector, gateway, Docker, and deployment definitions
+remain reproducible inputs. Release archives normalize file order, ownership,
+permissions, and source-commit timestamps and refuse to replace an existing
+output directory.
 
 The hermetic `make -C server check` gate covers unit/race/vet, production import
 boundaries, OpenAPI/route/error agreement, and portable documentation links.
