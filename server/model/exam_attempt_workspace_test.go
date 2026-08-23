@@ -11,10 +11,10 @@ import (
 
 func TestAttemptWorkspaceLimitsAndPathsAreBounded(t *testing.T) {
 	t.Parallel()
-	if AttemptWorkspaceMaximumEntries != 500 || AttemptWorkspaceMaximumDepth != 16 ||
+	if AttemptWorkspaceMaximumEntries != 5000 || AttemptWorkspaceMaximumDepth != 16 ||
 		AttemptWorkspaceMaximumSegmentBytes != 255 || AttemptWorkspaceMaximumPathBytes != 1024 ||
-		AttemptWorkspaceMaximumFileBytes != 10<<20 || AttemptWorkspaceMaximumTotalBytes != 50<<20 ||
-		AttemptWorkspaceMaximumRequestBytes != (10<<20)+(64<<10) ||
+		AttemptWorkspaceMaximumFileBytes != 100<<20 || AttemptWorkspaceMaximumTotalBytes != 1<<30 ||
+		AttemptWorkspaceMaximumRequestBytes != (100<<20)+(64<<10) ||
 		AttemptWorkspaceJournalRetention != 4096 || AttemptWorkspaceJournalReadMaximum != 200 {
 		t.Fatalf("Attempt Workspace limits changed")
 	}

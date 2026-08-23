@@ -23,6 +23,13 @@ CREATE TABLE institutions (
     name varchar(64) NOT NULL,
     display_name varchar(512) NOT NULL,
     description varchar(4096) NOT NULL DEFAULT '',
+    exam_resource_max_count integer NOT NULL DEFAULT 10 CHECK (exam_resource_max_count BETWEEN 1 AND 100),
+    exam_resource_max_bytes bigint NOT NULL DEFAULT 10485760 CHECK (exam_resource_max_bytes BETWEEN 1 AND 104857600),
+    exam_workspace_max_entries integer NOT NULL DEFAULT 500 CHECK (exam_workspace_max_entries BETWEEN 1 AND 5000),
+    exam_workspace_max_file_bytes bigint NOT NULL DEFAULT 10485760 CHECK (exam_workspace_max_file_bytes BETWEEN 1 AND 104857600),
+    exam_workspace_max_total_bytes bigint NOT NULL DEFAULT 52428800 CHECK (
+        exam_workspace_max_total_bytes BETWEEN exam_workspace_max_file_bytes AND 1073741824
+    ),
     singleton boolean NOT NULL DEFAULT true CHECK (singleton),
     CONSTRAINT institutions_name_key UNIQUE (name),
     CONSTRAINT institutions_lifecycle_check CHECK (updated_at >= created_at)
@@ -947,7 +954,7 @@ CREATE TABLE exam_starter_workspace_objects (
             content_version ~ '^[A-Za-z0-9_-]{26}$' AND
             media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
             size_bytes IS NOT NULL AND
-            size_bytes BETWEEN 0 AND 10485760 AND
+            size_bytes BETWEEN 0 AND 104857600 AND
             sha256 IS NOT NULL AND
             sha256 ~ '^[0-9a-f]{64}$'
         ) OR (state IN ('reclaimable', 'claimed') AND (
@@ -957,7 +964,7 @@ CREATE TABLE exam_starter_workspace_objects (
                 content_version ~ '^[A-Za-z0-9_-]{26}$' AND
                 media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
                 size_bytes IS NOT NULL AND
-                size_bytes BETWEEN 0 AND 10485760 AND
+                size_bytes BETWEEN 0 AND 104857600 AND
                 sha256 IS NOT NULL AND
                 sha256 ~ '^[0-9a-f]{64}$')
         ))
@@ -1035,9 +1042,16 @@ CREATE TABLE exam_revisions (
     execution_profile_digest char(64) NOT NULL CHECK (execution_profile_digest ~ '^[0-9a-f]{64}$'),
     starter_workspace_digest char(64) NOT NULL CHECK (starter_workspace_digest ~ '^[0-9a-f]{64}$'),
     content_digest char(64) NOT NULL CHECK (content_digest ~ '^[0-9a-f]{64}$'),
-    resource_count smallint NOT NULL CHECK (resource_count BETWEEN 0 AND 10),
-    starter_entry_count integer NOT NULL CHECK (starter_entry_count BETWEEN 0 AND 500),
-    starter_total_bytes bigint NOT NULL CHECK (starter_total_bytes BETWEEN 0 AND 52428800),
+    exam_resource_max_count integer NOT NULL DEFAULT 10 CHECK (exam_resource_max_count BETWEEN 1 AND 100),
+    exam_resource_max_bytes bigint NOT NULL DEFAULT 10485760 CHECK (exam_resource_max_bytes BETWEEN 1 AND 104857600),
+    exam_workspace_max_entries integer NOT NULL DEFAULT 500 CHECK (exam_workspace_max_entries BETWEEN 1 AND 5000),
+    exam_workspace_max_file_bytes bigint NOT NULL DEFAULT 10485760 CHECK (exam_workspace_max_file_bytes BETWEEN 1 AND 104857600),
+    exam_workspace_max_total_bytes bigint NOT NULL DEFAULT 52428800 CHECK (
+        exam_workspace_max_total_bytes BETWEEN exam_workspace_max_file_bytes AND 1073741824
+    ),
+    resource_count smallint NOT NULL CHECK (resource_count BETWEEN 0 AND exam_resource_max_count),
+    starter_entry_count integer NOT NULL CHECK (starter_entry_count BETWEEN 0 AND exam_workspace_max_entries),
+    starter_total_bytes bigint NOT NULL CHECK (starter_total_bytes BETWEEN 0 AND exam_workspace_max_total_bytes),
     published_by_user_id varchar(26) NOT NULL REFERENCES users(id),
     published_at timestamptz NOT NULL,
     base_revision_id varchar(26),
@@ -1062,9 +1076,9 @@ CREATE TABLE exam_revision_resources (
     rendition_id varchar(26) NOT NULL,
     display_name text NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 255),
     description_markdown text NOT NULL DEFAULT '' CHECK (octet_length(description_markdown) <= 16384),
-    position smallint NOT NULL CHECK (position BETWEEN 0 AND 9),
+    position smallint NOT NULL CHECK (position BETWEEN 0 AND 99),
     media_type varchar(255) NOT NULL,
-    size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 10485760),
+    size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 104857600),
     sha256 char(64) NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     PRIMARY KEY (exam_revision_id, resource_id),
     UNIQUE (exam_revision_id, position),
@@ -1101,7 +1115,7 @@ CREATE TABLE exam_revision_starter_workspace_entries (
         (kind = 'directory' AND object_id IS NULL AND content_version IS NULL AND media_type IS NULL AND size_bytes IS NULL AND sha256 IS NULL) OR
         (kind = 'file' AND object_id IS NOT NULL AND content_version ~ '^[A-Za-z0-9_-]{26}$' AND
             media_type IS NOT NULL AND char_length(btrim(media_type)) > 0 AND
-            size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$')
+            size_bytes BETWEEN 0 AND 104857600 AND sha256 ~ '^[0-9a-f]{64}$')
     )
 );
 
@@ -1645,7 +1659,7 @@ CREATE TABLE exam_attempt_workspace_objects (
     CONSTRAINT exam_attempt_workspace_objects_content_check CHECK (
         (content_version IS NULL AND media_type IS NULL AND size_bytes IS NULL AND sha256 IS NULL) OR
         (content_version ~ '^[A-Za-z0-9_-]{26}$' AND char_length(btrim(media_type)) > 0 AND
-         size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$')
+         size_bytes BETWEEN 0 AND 104857600 AND sha256 ~ '^[0-9a-f]{64}$')
     ),
     CONSTRAINT exam_attempt_workspace_objects_lifecycle_check CHECK (
         updated_at >= created_at AND (expires_at IS NULL OR expires_at > created_at) AND
@@ -2126,8 +2140,8 @@ CREATE TABLE exam_submissions (
     manifest_schema_version integer NOT NULL CHECK (manifest_schema_version = 1),
     workspace_cursor bigint NOT NULL CHECK (workspace_cursor >= 0),
     manifest_digest char(64) NOT NULL CHECK (manifest_digest ~ '^[0-9a-f]{64}$'),
-    manifest_entry_count integer NOT NULL CHECK (manifest_entry_count BETWEEN 0 AND 500),
-    manifest_total_file_bytes bigint NOT NULL CHECK (manifest_total_file_bytes BETWEEN 0 AND 52428800),
+    manifest_entry_count integer NOT NULL CHECK (manifest_entry_count BETWEEN 0 AND 5000),
+    manifest_total_file_bytes bigint NOT NULL CHECK (manifest_total_file_bytes BETWEEN 0 AND 1073741824),
     final_focus_loss_sequence bigint NOT NULL CHECK (final_focus_loss_sequence >= 0),
     integrity_state varchar(16) NOT NULL CHECK (integrity_state IN ('settled', 'gapped')),
     unresolved_integrity_count bigint NOT NULL CHECK (unresolved_integrity_count >= 0),
@@ -2185,7 +2199,7 @@ CREATE TABLE exam_submission_manifest_entries (
          workspace_object_id IS NULL) OR
         (kind = 'file' AND content_version ~ '^[A-Za-z0-9_-]{26}$' AND
          media_type IS NOT NULL AND media_type = btrim(media_type) AND char_length(media_type) BETWEEN 1 AND 255 AND
-         size_bytes BETWEEN 0 AND 10485760 AND sha256 ~ '^[0-9a-f]{64}$' AND workspace_object_id IS NOT NULL AND
+         size_bytes BETWEEN 0 AND 104857600 AND sha256 ~ '^[0-9a-f]{64}$' AND workspace_object_id IS NOT NULL AND
          ((storage_origin = 'starter' AND starter_object_id IS NOT NULL AND attempt_object_id IS NULL) OR
           (storage_origin = 'attempt' AND starter_object_id IS NULL AND attempt_object_id = workspace_object_id)))
     )

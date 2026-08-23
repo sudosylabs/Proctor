@@ -26,8 +26,9 @@ func TestInstitutionOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "PATCH /api/v1/institution", Auth: AuthPrincipalRequired, RequestBodyRef: "#/components/requestBodies/UpdateInstitution", RequestSchema: "UpdateInstitutionRequest", SuccessStatus: "200", SuccessRef: "#/components/responses/InstitutionOK", SuccessSchema: "InstitutionResponse", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "institution.invalid", "institution.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "InstitutionResponse", DTO: reflect.TypeOf(institutionResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "name", "display_name", "description"}},
+			{Name: "InstitutionResponse", DTO: reflect.TypeOf(institutionResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "name", "display_name", "description", "exam_capacity"}},
 			{Name: "UpdateInstitutionRequest", DTO: reflect.TypeOf(updateInstitutionRequest{})},
+			{Name: "ExamCapacityPolicy", DTO: reflect.TypeOf(examCapacityPolicyResponse{}), Required: []string{"resource_maximum_count", "resource_maximum_bytes", "workspace_maximum_entries", "workspace_maximum_file_bytes", "workspace_maximum_total_bytes"}},
 		},
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())

@@ -15,9 +15,10 @@ import (
 type GetInstitutionQuery struct{}
 
 type UpdateInstitutionCommand struct {
-	Name        *string
-	DisplayName *string
-	Description *string
+	Name         *string
+	DisplayName  *string
+	Description  *string
+	ExamCapacity *model.ExamCapacityPolicy
 }
 
 type institutionStore interface {
@@ -104,6 +105,9 @@ func (s *institutionService) Update(
 	}
 	if command.Description != nil {
 		candidate.Description = *command.Description
+	}
+	if command.ExamCapacity != nil {
+		candidate.ExamCapacity = *command.ExamCapacity
 	}
 	candidate.PrepareUpdate(s.now())
 	if err := candidate.Validate(); err != nil {

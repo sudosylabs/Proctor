@@ -1726,8 +1726,11 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			Instructions     string `db:"instructions_markdown"`
 			Policy           []byte `db:"policy_canonical"`
 			ExecutionProfile []byte `db:"execution_profile_canonical"`
+			examCapacityPolicyRow
 		}
-		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical,execution_profile_canonical FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
+		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical,execution_profile_canonical,
+			exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes
+			FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
 			return nil, translateError("exam_revision", guard.RevisionID, err)
 		}
 		policy, err := model.DecodeExamPolicySet(header.Policy)
@@ -1737,6 +1740,10 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		executionProfile, err := model.DecodeExecutionProfile(header.ExecutionProfile)
 		if err != nil {
 			return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
+		}
+		capacity, err := header.examCapacityPolicyRow.policy()
+		if err != nil {
+			return nil, err
 		}
 		var rows []struct {
 			ResourceID  string `db:"resource_id"`
@@ -1774,6 +1781,7 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID, AdmissionRevisionID: admissionRevisionID,
 			CurrentRevisionID: revisionID, Title: header.Title, InstructionsMarkdown: header.Instructions,
 			ExecutionProfile:           executionProfile,
+			Capacity:                   capacity,
 			FocusLossCollectionEnabled: policy.FocusLoss.Enabled, Resources: make([]store.CandidateExamResource, 0, len(rows))}
 		for _, row := range rows {
 			resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)

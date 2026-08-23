@@ -208,16 +208,17 @@ type examIdentityResponse struct {
 }
 
 type examDraftResponse struct {
-	ExamID               string                   `json:"exam_id"`
-	Title                string                   `json:"title"`
-	InstructionsMarkdown string                   `json:"instructions_markdown"`
-	Policy               examPolicyResponse       `json:"policy"`
-	ExecutionProfile     executionProfileResponse `json:"execution_profile"`
-	BaseRevisionID       string                   `json:"base_revision_id,omitempty"`
-	UpdatedAt            string                   `json:"updated_at"`
-	Revision             int64                    `json:"revision"`
-	ResourceCount        int                      `json:"resource_count"`
-	HasStarterWorkspace  bool                     `json:"has_starter_workspace"`
+	ExamID               string                     `json:"exam_id"`
+	Title                string                     `json:"title"`
+	InstructionsMarkdown string                     `json:"instructions_markdown"`
+	Policy               examPolicyResponse         `json:"policy"`
+	ExecutionProfile     executionProfileResponse   `json:"execution_profile"`
+	Capacity             examCapacityPolicyResponse `json:"capacity"`
+	BaseRevisionID       string                     `json:"base_revision_id,omitempty"`
+	UpdatedAt            string                     `json:"updated_at"`
+	Revision             int64                      `json:"revision"`
+	ResourceCount        int                        `json:"resource_count"`
+	HasStarterWorkspace  bool                       `json:"has_starter_workspace"`
 }
 
 type executionProfileResponse struct {
@@ -802,6 +803,7 @@ func examResponseFromView(view application.ExamView) examResponse {
 			},
 			ExecutionProfile: executionProfileResponse{Enabled: view.Draft.ExecutionProfile.Enabled,
 				Image: view.Draft.ExecutionProfile.Image, Network: string(view.Draft.ExecutionProfile.Network)},
+			Capacity:       examCapacityPolicyResponseFromModel(view.Capacity),
 			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.TimeUTC(view.Draft.UpdatedAt).Format(time.RFC3339Nano),
 			Revision: view.Draft.Revision, ResourceCount: view.ResourceCount, HasStarterWorkspace: view.HasStarterWorkspace,
 		},

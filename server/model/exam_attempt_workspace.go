@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	AttemptWorkspaceMaximumEntries      = 500
+	AttemptWorkspaceMaximumEntries      = ExamWorkspaceMaximumEntries
 	AttemptWorkspaceMaximumDepth        = 16
 	AttemptWorkspaceMaximumSegmentBytes = 255
 	AttemptWorkspaceMaximumPathBytes    = 1024
-	AttemptWorkspaceMaximumFileBytes    = int64(10 << 20)
-	AttemptWorkspaceMaximumTotalBytes   = int64(50 << 20)
+	AttemptWorkspaceMaximumFileBytes    = ExamWorkspaceMaximumFileBytes
+	AttemptWorkspaceMaximumTotalBytes   = ExamWorkspaceMaximumTotalBytes
 	// AttemptWorkspaceMaximumRequestBytes leaves 64 KiB for the bounded
 	// multipart/JSON envelope around one maximum-size staged file.
 	AttemptWorkspaceMaximumRequestBytes = AttemptWorkspaceMaximumFileBytes + (64 << 10)

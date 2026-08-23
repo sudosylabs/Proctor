@@ -27,14 +27,19 @@ type SQLInstitutionStore struct {
 }
 
 type institutionRow struct {
-	ID          string       `db:"id"`
-	CreatedAt   time.Time    `db:"created_at"`
-	UpdatedAt   time.Time    `db:"updated_at"`
-	ArchivedAt  sql.NullTime `db:"archived_at"`
-	Revision    int64        `db:"revision"`
-	Name        string       `db:"name"`
-	DisplayName string       `db:"display_name"`
-	Description string       `db:"description"`
+	ID                         string       `db:"id"`
+	CreatedAt                  time.Time    `db:"created_at"`
+	UpdatedAt                  time.Time    `db:"updated_at"`
+	ArchivedAt                 sql.NullTime `db:"archived_at"`
+	Revision                   int64        `db:"revision"`
+	Name                       string       `db:"name"`
+	DisplayName                string       `db:"display_name"`
+	Description                string       `db:"description"`
+	ResourceMaximumCount       int          `db:"exam_resource_max_count"`
+	ResourceMaximumBytes       int64        `db:"exam_resource_max_bytes"`
+	WorkspaceMaximumEntries    int          `db:"exam_workspace_max_entries"`
+	WorkspaceMaximumFileBytes  int64        `db:"exam_workspace_max_file_bytes"`
+	WorkspaceMaximumTotalBytes int64        `db:"exam_workspace_max_total_bytes"`
 }
 
 func institutionSliceColumns() []string {
@@ -47,6 +52,11 @@ func institutionSliceColumns() []string {
 		"institutions.name",
 		"institutions.display_name",
 		"institutions.description",
+		"institutions.exam_resource_max_count",
+		"institutions.exam_resource_max_bytes",
+		"institutions.exam_workspace_max_entries",
+		"institutions.exam_workspace_max_file_bytes",
+		"institutions.exam_workspace_max_total_bytes",
 	}
 }
 
@@ -81,9 +91,13 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 	row := newInstitutionRow(created)
 	if _, err := s.GetMaster().NamedExec(ctx, `
 		INSERT INTO institutions (
-			id, created_at, updated_at, archived_at, revision, name, display_name, description
+			id, created_at, updated_at, archived_at, revision, name, display_name, description,
+			exam_resource_max_count, exam_resource_max_bytes, exam_workspace_max_entries,
+			exam_workspace_max_file_bytes, exam_workspace_max_total_bytes
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :name, :display_name, :description
+			:id, :created_at, :updated_at, :archived_at, :revision, :name, :display_name, :description,
+			:exam_resource_max_count, :exam_resource_max_bytes, :exam_workspace_max_entries,
+			:exam_workspace_max_file_bytes, :exam_workspace_max_total_bytes
 		)`, &row); err != nil {
 		return nil, fmt.Errorf("save institution: %w", translateError("institution", created.ID.String(), err))
 	}
@@ -155,13 +169,23 @@ func (s SQLInstitutionStore) updateInstitution(
 			       revision = :revision,
 			       name = :name,
 			       display_name = :display_name,
-			       description = :description
+			       description = :description,
+			       exam_resource_max_count = :exam_resource_max_count,
+			       exam_resource_max_bytes = :exam_resource_max_bytes,
+			       exam_workspace_max_entries = :exam_workspace_max_entries,
+			       exam_workspace_max_file_bytes = :exam_workspace_max_file_bytes,
+			       exam_workspace_max_total_bytes = :exam_workspace_max_total_bytes
 			 WHERE id = :id AND singleton = TRUE AND archived_at IS NULL
 			   AND revision = :expected_revision`, map[string]any{
 			"id": candidate.ID.String(), "updated_at": row.UpdatedAt,
 			"revision": candidate.Revision, "name": row.Name,
 			"display_name": row.DisplayName, "description": row.Description,
-			"expected_revision": candidate.Revision - 1,
+			"exam_resource_max_count":        row.ResourceMaximumCount,
+			"exam_resource_max_bytes":        row.ResourceMaximumBytes,
+			"exam_workspace_max_entries":     row.WorkspaceMaximumEntries,
+			"exam_workspace_max_file_bytes":  row.WorkspaceMaximumFileBytes,
+			"exam_workspace_max_total_bytes": row.WorkspaceMaximumTotalBytes,
+			"expected_revision":              candidate.Revision - 1,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("update institution: %w", translateError("institution", candidate.ID.String(), err))
@@ -207,15 +231,21 @@ func (s SQLInstitutionStore) Archive(ctx context.Context, id string, archiveAt i
 }
 
 func newInstitutionRow(institution *model.Institution) institutionRow {
+	capacity := institution.ExamCapacity
 	return institutionRow{
-		ID:          institution.ID.String(),
-		CreatedAt:   UTCTime(institution.CreatedAt),
-		UpdatedAt:   UTCTime(institution.UpdatedAt),
-		ArchivedAt:  NullTimeFromOptional(institution.ArchivedAt),
-		Revision:    institution.Revision,
-		Name:        institution.Name,
-		DisplayName: institution.DisplayName,
-		Description: institution.Description,
+		ID:                         institution.ID.String(),
+		CreatedAt:                  UTCTime(institution.CreatedAt),
+		UpdatedAt:                  UTCTime(institution.UpdatedAt),
+		ArchivedAt:                 NullTimeFromOptional(institution.ArchivedAt),
+		Revision:                   institution.Revision,
+		Name:                       institution.Name,
+		DisplayName:                institution.DisplayName,
+		Description:                institution.Description,
+		ResourceMaximumCount:       capacity.ResourceMaximumCount,
+		ResourceMaximumBytes:       capacity.ResourceMaximumBytes,
+		WorkspaceMaximumEntries:    capacity.WorkspaceMaximumEntries,
+		WorkspaceMaximumFileBytes:  capacity.WorkspaceMaximumFileBytes,
+		WorkspaceMaximumTotalBytes: capacity.WorkspaceMaximumTotalBytes,
 	}
 }
 
@@ -233,6 +263,13 @@ func (row institutionRow) model() (*model.Institution, error) {
 		Name:        row.Name,
 		DisplayName: row.DisplayName,
 		Description: row.Description,
+		ExamCapacity: model.ExamCapacityPolicy{
+			ResourceMaximumCount:       row.ResourceMaximumCount,
+			ResourceMaximumBytes:       row.ResourceMaximumBytes,
+			WorkspaceMaximumEntries:    row.WorkspaceMaximumEntries,
+			WorkspaceMaximumFileBytes:  row.WorkspaceMaximumFileBytes,
+			WorkspaceMaximumTotalBytes: row.WorkspaceMaximumTotalBytes,
+		},
 	}
 	if err := validatePersistedModel("institution", institution); err != nil {
 		return nil, err

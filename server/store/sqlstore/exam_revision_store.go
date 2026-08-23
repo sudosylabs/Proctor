@@ -22,30 +22,35 @@ func newSQLExamRevisionStore(sqlStore *SQLStore) store.ExamRevisionStore {
 }
 
 type examRevisionHeaderRow struct {
-	ID                        string         `db:"id"`
-	ExamID                    string         `db:"exam_id"`
-	Number                    int64          `db:"number"`
-	SnapshotSchemaVersion     int            `db:"snapshot_schema_version"`
-	SourceDraftRevision       int64          `db:"source_draft_revision"`
-	Title                     string         `db:"title"`
-	InstructionsMarkdown      string         `db:"instructions_markdown"`
-	PolicySchemaVersion       int            `db:"policy_schema_version"`
-	PolicyDocument            jsonValue      `db:"policy_document"`
-	PolicyCanonical           []byte         `db:"policy_canonical"`
-	PolicyDigest              string         `db:"policy_digest"`
-	ExecutionProfileDocument  jsonValue      `db:"execution_profile_document"`
-	ExecutionProfileCanonical []byte         `db:"execution_profile_canonical"`
-	ExecutionProfileDigest    string         `db:"execution_profile_digest"`
-	StarterWorkspaceDigest    string         `db:"starter_workspace_digest"`
-	ContentDigest             string         `db:"content_digest"`
-	ResourceCount             int            `db:"resource_count"`
-	StarterEntryCount         int            `db:"starter_entry_count"`
-	StarterTotalBytes         int64          `db:"starter_total_bytes"`
-	PublishedByUserID         string         `db:"published_by_user_id"`
-	PublishedAt               time.Time      `db:"published_at"`
-	BaseRevisionID            sql.NullString `db:"base_revision_id"`
-	PublicationKind           string         `db:"publication_kind"`
-	Sealed                    bool           `db:"sealed"`
+	ID                         string         `db:"id"`
+	ExamID                     string         `db:"exam_id"`
+	Number                     int64          `db:"number"`
+	SnapshotSchemaVersion      int            `db:"snapshot_schema_version"`
+	SourceDraftRevision        int64          `db:"source_draft_revision"`
+	Title                      string         `db:"title"`
+	InstructionsMarkdown       string         `db:"instructions_markdown"`
+	PolicySchemaVersion        int            `db:"policy_schema_version"`
+	PolicyDocument             jsonValue      `db:"policy_document"`
+	PolicyCanonical            []byte         `db:"policy_canonical"`
+	PolicyDigest               string         `db:"policy_digest"`
+	ExecutionProfileDocument   jsonValue      `db:"execution_profile_document"`
+	ExecutionProfileCanonical  []byte         `db:"execution_profile_canonical"`
+	ExecutionProfileDigest     string         `db:"execution_profile_digest"`
+	ResourceMaximumCount       int            `db:"exam_resource_max_count"`
+	ResourceMaximumBytes       int64          `db:"exam_resource_max_bytes"`
+	WorkspaceMaximumEntries    int            `db:"exam_workspace_max_entries"`
+	WorkspaceMaximumFileBytes  int64          `db:"exam_workspace_max_file_bytes"`
+	WorkspaceMaximumTotalBytes int64          `db:"exam_workspace_max_total_bytes"`
+	StarterWorkspaceDigest     string         `db:"starter_workspace_digest"`
+	ContentDigest              string         `db:"content_digest"`
+	ResourceCount              int            `db:"resource_count"`
+	StarterEntryCount          int            `db:"starter_entry_count"`
+	StarterTotalBytes          int64          `db:"starter_total_bytes"`
+	PublishedByUserID          string         `db:"published_by_user_id"`
+	PublishedAt                time.Time      `db:"published_at"`
+	BaseRevisionID             sql.NullString `db:"base_revision_id"`
+	PublicationKind            string         `db:"publication_kind"`
+	Sealed                     bool           `db:"sealed"`
 }
 
 type examRevisionResourceRow struct {
@@ -84,6 +89,7 @@ type examRevisionPublicationOutcomeRow struct {
 const examRevisionHeaderSelect = `SELECT id,exam_id,number,snapshot_schema_version,source_draft_revision,
 	title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
 	execution_profile_document,execution_profile_canonical,execution_profile_digest,
+	exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
 	starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 	published_by_user_id,published_at,base_revision_id,publication_kind,sealed FROM exam_revisions`
 
@@ -188,6 +194,10 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_draft", "execution_profile", err)
 	}
+	capacity, err := currentExamCapacityPolicy(ctx, tx)
+	if err != nil {
+		return examRevisionPublicationOutcomeRow{}, err
+	}
 	resources, err := listExamResourceRecords(ctx, tx, input.ExamID)
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, err
@@ -230,6 +240,9 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		}
 		workspaceSnapshots[index] = snapshot
 	}
+	if examRevisionCapacityExceeded(capacity, resourceSnapshots, workspaceSnapshots) {
+		return examRevisionPublicationOutcomeRow{}, store.NewErrConflict("exam_revision", "exam_revision_capacity", nil)
+	}
 	baseRevisionID, err := parseNullablePersistedID[model.ExamRevisionID]("exam_draft", "base_revision_id", draft.BaseRevisionID, model.ParseExamRevisionID)
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, err
@@ -240,7 +253,7 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: input.RevisionID, ExamID: input.ExamID,
 		Number: number, SourceDraftRevision: draft.DraftRevision, Title: draft.Title, InstructionsMarkdown: draft.InstructionsMarkdown,
-		Policy: policy, ExecutionProfile: executionProfile, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
+		Policy: policy, ExecutionProfile: executionProfile, Capacity: capacity, Resources: resourceSnapshots, StarterWorkspace: workspaceSnapshots,
 		PublishedByUserID: input.ActorUserID, PublishedAt: input.PublishedAt, BaseRevisionID: baseRevisionID, Kind: input.Kind})
 	if err != nil {
 		return examRevisionPublicationOutcomeRow{}, invalidPersistedState("exam_revision", "snapshot", err)
@@ -285,6 +298,25 @@ func publishExamRevision(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 		ExamRevision: examRevision, DraftRevision: draftRevision, PolicyDigest: revision.PolicyDigest}, nil
 }
 
+func examRevisionCapacityExceeded(capacity model.ExamCapacityPolicy, resources []model.ExamRevisionResource, workspace []model.ExamRevisionStarterWorkspaceEntry) bool {
+	if len(resources) > capacity.ResourceMaximumCount || len(workspace) > capacity.WorkspaceMaximumEntries {
+		return true
+	}
+	var workspaceBytes int64
+	for _, resource := range resources {
+		if resource.SizeBytes > capacity.ResourceMaximumBytes {
+			return true
+		}
+	}
+	for _, entry := range workspace {
+		if entry.SizeBytes > capacity.WorkspaceMaximumFileBytes {
+			return true
+		}
+		workspaceBytes += entry.SizeBytes
+	}
+	return workspaceBytes > capacity.WorkspaceMaximumTotalBytes
+}
+
 func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.ExamRevision) error {
 	var starterBytes int64
 	for _, entry := range revision.StarterWorkspace {
@@ -297,12 +329,15 @@ func insertExamRevision(ctx context.Context, tx *sqlxTxWrapper, revision *model.
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_revisions (id,exam_id,number,snapshot_schema_version,source_draft_revision,
 		title,instructions_markdown,policy_schema_version,policy_document,policy_canonical,policy_digest,
 		execution_profile_document,execution_profile_canonical,execution_profile_digest,
+		exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes,
 		starter_workspace_digest,content_digest,resource_count,starter_entry_count,starter_total_bytes,
 		published_by_user_id,published_at,base_revision_id,publication_kind)
-		VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?::jsonb,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID.String(), revision.ExamID.String(), revision.Number,
+		VALUES (?,?,?,?,?,?,?,?,?::jsonb,?,?,?::jsonb,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, revision.ID.String(), revision.ExamID.String(), revision.Number,
 		model.ExamRevisionSnapshotSchemaVersion, revision.SourceDraftRevision, revision.Title, revision.InstructionsMarkdown,
 		revision.Policy.SchemaVersion, string(revision.Policy.Bytes), revision.Policy.Bytes, revision.PolicyDigest,
 		string(profile), profile, revision.ExecutionProfileDigest,
+		revision.Capacity.ResourceMaximumCount, revision.Capacity.ResourceMaximumBytes, revision.Capacity.WorkspaceMaximumEntries,
+		revision.Capacity.WorkspaceMaximumFileBytes, revision.Capacity.WorkspaceMaximumTotalBytes,
 		revision.StarterWorkspaceDigest, revision.ContentDigest, len(revision.Resources), len(revision.StarterWorkspace), starterBytes,
 		revision.PublishedByUserID.String(), revision.PublishedAt, nullableString(revision.BaseRevisionID.String()), string(revision.Kind)); err != nil {
 		return fmt.Errorf("insert Exam Revision: %w", translateError("exam_revision", revision.ID.String(), err))
@@ -468,7 +503,11 @@ func getExamRevisionSnapshot(ctx context.Context, executor sqlxExecutor, examID 
 	}
 	revision, err := model.NewExamRevision(model.ExamRevisionSpecification{ID: id, ExamID: examID, Number: header.Number,
 		SourceDraftRevision: header.SourceDraftRevision, Title: header.Title, InstructionsMarkdown: header.InstructionsMarkdown,
-		Policy: policy, ExecutionProfile: profile, Resources: resources, StarterWorkspace: workspace, PublishedByUserID: publisherID,
+		Policy: policy, ExecutionProfile: profile, Capacity: model.ExamCapacityPolicy{
+			ResourceMaximumCount: header.ResourceMaximumCount, ResourceMaximumBytes: header.ResourceMaximumBytes,
+			WorkspaceMaximumEntries: header.WorkspaceMaximumEntries, WorkspaceMaximumFileBytes: header.WorkspaceMaximumFileBytes,
+			WorkspaceMaximumTotalBytes: header.WorkspaceMaximumTotalBytes,
+		}, Resources: resources, StarterWorkspace: workspace, PublishedByUserID: publisherID,
 		PublishedAt: header.PublishedAt, BaseRevisionID: baseID, Kind: model.ExamRevisionPublicationKind(header.PublicationKind)})
 	if err != nil {
 		return nil, invalidPersistedState("exam_revision", "snapshot", err)
@@ -509,6 +548,8 @@ func (row examRevisionHeaderRow) summary() (*store.ExamRevisionSummary, error) {
 	}
 	return &store.ExamRevisionSummary{ID: id, ExamID: examID, Number: row.Number, SourceDraftRevision: row.SourceDraftRevision, Title: row.Title,
 		PolicySchemaVersion: row.PolicySchemaVersion, PolicyDigest: row.PolicyDigest, ExecutionProfileDigest: row.ExecutionProfileDigest, StarterWorkspaceDigest: row.StarterWorkspaceDigest,
+		Capacity: model.ExamCapacityPolicy{ResourceMaximumCount: row.ResourceMaximumCount, ResourceMaximumBytes: row.ResourceMaximumBytes,
+			WorkspaceMaximumEntries: row.WorkspaceMaximumEntries, WorkspaceMaximumFileBytes: row.WorkspaceMaximumFileBytes, WorkspaceMaximumTotalBytes: row.WorkspaceMaximumTotalBytes},
 		ContentDigest: row.ContentDigest, ResourceCount: row.ResourceCount, StarterWorkspaceEntries: row.StarterEntryCount,
 		StarterWorkspaceBytes: row.StarterTotalBytes, PublishedByUserID: publisherID, PublishedAt: model.TimeUTC(row.PublishedAt),
 		BaseRevisionID: baseID, Kind: model.ExamRevisionPublicationKind(row.PublicationKind)}, nil

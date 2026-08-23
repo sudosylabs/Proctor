@@ -387,6 +387,7 @@ type CandidateExamPresentation struct {
 	Title                string
 	InstructionsMarkdown string
 	ExecutionProfile     model.ExecutionProfile
+	Capacity             model.ExamCapacityPolicy
 	Resources            []CandidateExamResource
 	// FocusLossCollectionEnabled is the only Focus Loss policy detail exposed
 	// to candidates. It comes from the Sitting's current frozen Revision and

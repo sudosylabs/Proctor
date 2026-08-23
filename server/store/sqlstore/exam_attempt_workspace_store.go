@@ -325,6 +325,13 @@ func (s *SQLExamAttemptWorkspaceStore) MarkObjectReady(ctx context.Context, inpu
 		if err != nil {
 			return nil, err
 		}
+		capacity, err := attemptWorkspaceCapacityPolicy(ctx, tx, target.WorkspaceID)
+		if err != nil {
+			return nil, err
+		}
+		if input.Content.SizeBytes > capacity.WorkspaceMaximumFileBytes {
+			return nil, store.NewErrConflict("attempt_workspace", "attempt_workspace_size_limit", nil)
+		}
 		var row attemptWorkspaceObjectRow
 		if err = tx.Get(ctx, &row, attemptWorkspaceObjectSelect+` WHERE id=? AND workspace_id=? FOR UPDATE`,
 			input.ObjectID.String(), target.WorkspaceID.String()); err != nil {
@@ -779,6 +786,10 @@ func ensureAttemptWorkspaceParent(ctx context.Context, tx *sqlxTxWrapper, worksp
 }
 
 func ensureAttemptWorkspaceCapacity(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID, entryDelta int, byteDelta int64) error {
+	capacity, err := attemptWorkspaceCapacityPolicy(ctx, tx, workspaceID)
+	if err != nil {
+		return err
+	}
 	var usage struct {
 		Entries int   `db:"entries"`
 		Bytes   int64 `db:"bytes"`
@@ -788,10 +799,10 @@ func ensureAttemptWorkspaceCapacity(ctx context.Context, tx *sqlxTxWrapper, work
 		WHERE e.workspace_id=?`, workspaceID.String()); err != nil {
 		return fmt.Errorf("read Attempt Workspace capacity: %w", err)
 	}
-	if usage.Entries+entryDelta > model.AttemptWorkspaceMaximumEntries {
+	if usage.Entries+entryDelta > capacity.WorkspaceMaximumEntries {
 		return store.NewErrConflict("attempt_workspace", "attempt_workspace_entry_limit", nil)
 	}
-	if usage.Bytes+byteDelta > model.AttemptWorkspaceMaximumTotalBytes {
+	if usage.Bytes+byteDelta > capacity.WorkspaceMaximumTotalBytes {
 		return store.NewErrConflict("attempt_workspace", "attempt_workspace_size_limit", nil)
 	}
 	return nil

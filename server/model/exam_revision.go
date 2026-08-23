@@ -135,6 +135,7 @@ type ExamRevisionSpecification struct {
 	InstructionsMarkdown string
 	Policy               ExamRevisionPolicy
 	ExecutionProfile     ExecutionProfile
+	Capacity             ExamCapacityPolicy
 	Resources            []ExamRevisionResource
 	StarterWorkspace     []ExamRevisionStarterWorkspaceEntry
 	PublishedByUserID    UserID
@@ -157,6 +158,7 @@ type ExamRevision struct {
 	PolicyDigest           string
 	ExecutionProfile       ExecutionProfile
 	ExecutionProfileDigest string
+	Capacity               ExamCapacityPolicy
 	Resources              []ExamRevisionResource
 	StarterWorkspace       []ExamRevisionStarterWorkspaceEntry
 	StarterWorkspaceDigest string
@@ -177,6 +179,7 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 		Title: spec.Title, InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy: cloneExamRevisionPolicy(spec.Policy), PolicyDigest: spec.Policy.SHA256,
 		ExecutionProfile:  profile,
+		Capacity:          spec.Capacity,
 		Resources:         append([]ExamRevisionResource(nil), spec.Resources...),
 		StarterWorkspace:  append([]ExamRevisionStarterWorkspaceEntry(nil), spec.StarterWorkspace...),
 		PublishedByUserID: spec.PublishedByUserID, PublishedAt: TimeUTC(spec.PublishedAt),
@@ -225,6 +228,7 @@ func NewLiveCorrectionExamRevision(base *ExamRevision, id ExamRevisionID, number
 		InstructionsMarkdown: instructionsMarkdown,
 		Policy:               cloneExamRevisionPolicy(base.Policy),
 		ExecutionProfile:     base.ExecutionProfile,
+		Capacity:             base.Capacity,
 		Resources:            append([]ExamRevisionResource(nil), resources...),
 		StarterWorkspace:     append([]ExamRevisionStarterWorkspaceEntry(nil), base.StarterWorkspace...),
 		PublishedByUserID:    publishedBy,
@@ -249,14 +253,17 @@ func (revision *ExamRevision) Validate() error {
 	if err := revision.Policy.Validate(); err != nil || revision.PolicyDigest != revision.Policy.SHA256 {
 		return errors.New("model: invalid Exam Revision policy")
 	}
+	if err := revision.Capacity.Validate(); err != nil {
+		return errors.New("model: invalid Exam Revision capacity policy")
+	}
 	profileDigest, err := ExecutionProfileDigest(revision.ExecutionProfile)
 	if err != nil || revision.ExecutionProfileDigest != profileDigest {
 		return errors.New("model: invalid Exam Revision Execution Profile")
 	}
-	if err := validateExamRevisionResources(revision.Resources); err != nil {
+	if err := validateExamRevisionResources(revision.Resources, revision.Capacity); err != nil {
 		return err
 	}
-	if err := validateExamRevisionStarterWorkspace(revision.StarterWorkspace); err != nil {
+	if err := validateExamRevisionStarterWorkspace(revision.StarterWorkspace, revision.Capacity); err != nil {
 		return err
 	}
 	workspaceDigest, contentDigest, err := revision.computeDigests()
@@ -282,7 +289,7 @@ func (revision *ExamRevision) Clone() *ExamRevision {
 // generation identities are deliberately excluded: replacing bytes with the
 // same verified media, size, and digest is not a candidate-visible change.
 func SameExamRevisionCandidatePresentation(left, right *ExamRevision) bool {
-	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || len(left.Resources) != len(right.Resources) {
+	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || left.Capacity != right.Capacity || len(left.Resources) != len(right.Resources) {
 		return false
 	}
 	for index := range left.Resources {
@@ -295,13 +302,13 @@ func SameExamRevisionCandidatePresentation(left, right *ExamRevision) bool {
 	return true
 }
 
-func validateExamRevisionResources(resources []ExamRevisionResource) error {
-	if len(resources) > ExamResourceMaximumCount {
+func validateExamRevisionResources(resources []ExamRevisionResource, capacity ExamCapacityPolicy) error {
+	if len(resources) > capacity.ResourceMaximumCount {
 		return errors.New("model: too many Exam Revision resources")
 	}
 	resourceIDs, entryIDs := map[ExamResourceID]struct{}{}, map[FileEntryID]struct{}{}
 	for position, resource := range resources {
-		if err := resource.Validate(); err != nil || resource.Position != position {
+		if err := resource.Validate(); err != nil || resource.Position != position || resource.SizeBytes > capacity.ResourceMaximumBytes {
 			return errors.New("model: invalid ordered Exam Revision resources")
 		}
 		if _, exists := resourceIDs[resource.ResourceID]; exists {
@@ -315,8 +322,8 @@ func validateExamRevisionResources(resources []ExamRevisionResource) error {
 	return nil
 }
 
-func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspaceEntry) error {
-	if len(entries) > StarterWorkspaceMaximumEntries {
+func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspaceEntry, capacity ExamCapacityPolicy) error {
+	if len(entries) > capacity.WorkspaceMaximumEntries {
 		return errors.New("model: too many Exam Revision Starter Workspace entries")
 	}
 	paths := make(map[string]StarterWorkspaceEntryKind, len(entries))
@@ -324,7 +331,7 @@ func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspace
 	var total int64
 	previous := ""
 	for index, entry := range entries {
-		if err := entry.Validate(); err != nil || index > 0 && strings.Compare(previous, entry.Path) >= 0 {
+		if err := entry.Validate(); err != nil || entry.SizeBytes > capacity.WorkspaceMaximumFileBytes || index > 0 && strings.Compare(previous, entry.Path) >= 0 {
 			return errors.New("model: invalid canonical Exam Revision Starter Workspace")
 		}
 		if _, exists := ids[entry.EntryID]; exists {
@@ -339,7 +346,7 @@ func validateExamRevisionStarterWorkspace(entries []ExamRevisionStarterWorkspace
 			}
 			objects[entry.ObjectID] = struct{}{}
 			total += entry.SizeBytes
-			if total > StarterWorkspaceMaximumTotalBytes {
+			if total > capacity.WorkspaceMaximumTotalBytes {
 				return errors.New("model: Exam Revision Starter Workspace is too large")
 			}
 		}
@@ -419,11 +426,12 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 		Policy                 json.RawMessage             `json:"policy"`
 		ExecutionProfile       json.RawMessage             `json:"execution_profile"`
 		ExecutionProfileDigest string                      `json:"execution_profile_digest"`
+		Capacity               ExamCapacityPolicy          `json:"capacity"`
 		Resources              []examRevisionResourceWire  `json:"resources"`
 		StarterWorkspaceDigest string                      `json:"starter_workspace_digest"`
 		StarterWorkspace       []examRevisionWorkspaceWire `json:"starter_workspace"`
 	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion,
-		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest,
+		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest, revision.Capacity,
 		resources, workspaceDigest, workspace})
 	if err != nil {
 		return "", "", err

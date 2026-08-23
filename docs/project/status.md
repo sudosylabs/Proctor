@@ -175,6 +175,14 @@ the code and component contracts for that detail.
   delivery deadline and does not extend it for paused time. Closing now queues
   durable bounded Attempt sealing; zero-Attempt Sittings close through the same
   authoritative completion check.
+- Institution administration owns one audited five-field Exam Capacity Policy
+  for Resource count/bytes and Workspace entry/file/total bytes. Current policy
+  is enforced transactionally during Draft authoring and publication; immutable
+  Revisions freeze it for Starter and Attempt Workspaces, candidate presentation,
+  live correction, and Submission stability. Authorized Draft projections expose
+  the current policy without granting Institution administration. Defaults preserve the original
+  10-resource, 10 MiB-file, 500-entry, and 50 MiB-total behavior within fixed
+  server safety ceilings.
 
 ## Architecture migration acceptance
 
@@ -689,8 +697,8 @@ to hosts. The complete contract is in
 
 - Implement the deferred server-hosted account, Invitation, and Desktop
   authorization pages with the design system, plus the Desktop LaunchWindow.
-- Resource search remains deferred because an Exam initially has at most ten
-  active resources.
+- Exam Resource metadata or content search remains deferred until a concrete
+  server-owned use case requires an authorized index.
 
 ## Optional engineering follow-ups
 

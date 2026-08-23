@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	StarterWorkspaceMaximumEntries      = 500
+	StarterWorkspaceMaximumEntries      = ExamWorkspaceMaximumEntries
 	StarterWorkspaceMaximumDepth        = 16
 	StarterWorkspaceMaximumSegmentBytes = 255
 	StarterWorkspaceMaximumPathBytes    = 1024
-	StarterWorkspaceMaximumFileBytes    = int64(10 << 20)
-	StarterWorkspaceMaximumTotalBytes   = int64(50 << 20)
+	StarterWorkspaceMaximumFileBytes    = ExamWorkspaceMaximumFileBytes
+	StarterWorkspaceMaximumTotalBytes   = ExamWorkspaceMaximumTotalBytes
 	StarterWorkspaceUploadLease         = time.Hour
 	StarterWorkspaceReclaimSafetyWindow = 24 * time.Hour
 	StarterWorkspaceCleanupClaimLease   = 5 * time.Minute

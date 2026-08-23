@@ -140,10 +140,13 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	events := []string{}
 	current := &model.Institution{
 		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		Name: "northbridge", DisplayName: "Northbridge University", Revision: 1,
+		Name: "northbridge", DisplayName: "Northbridge University", Revision: 1, ExamCapacity: model.DefaultExamCapacityPolicy(),
 	}
 	updated := *current
 	updated.DisplayName = "Northbridge"
+	capacity := model.DefaultExamCapacityPolicy()
+	capacity.ResourceMaximumCount = 25
+	updated.ExamCapacity = capacity
 	persistence := &institutionStoreFake{
 		events: &events, current: current, updated: &updated,
 	}
@@ -154,13 +157,14 @@ func TestInstitutionUpdateCommitsSuccessAuditAtomically(t *testing.T) {
 	)
 	displayName := "Northbridge"
 	got, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{
-		DisplayName: &displayName,
+		DisplayName: &displayName, ExamCapacity: &capacity,
 	})
 	if err != nil || got != &updated {
 		t.Fatalf("Update() = %#v, %v", got, err)
 	}
 	if persistence.updateInput == nil ||
 		persistence.updateInput.Institution.DisplayName != displayName ||
+		persistence.updateInput.Institution.ExamCapacity != capacity ||
 		!persistence.updateInput.Institution.UpdatedAt.Equal(time.UnixMilli(500).UTC()) ||
 		persistence.updateInput.AuditEventID != auditor.beginID {
 		t.Fatalf("update input = %#v", persistence.updateInput)
@@ -176,7 +180,7 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 	events := []string{}
 	current := &model.Institution{
 		ID: model.InstitutionID(model.NewId()), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
-		Name: "northbridge", DisplayName: "Northbridge", Revision: 1,
+		Name: "northbridge", DisplayName: "Northbridge", Revision: 1, ExamCapacity: model.DefaultExamCapacityPolicy(),
 	}
 	persistence := &institutionStoreFake{
 		events: &events, current: current,
@@ -192,6 +196,30 @@ func TestInstitutionUpdateFailureCompletesFailedAttempt(t *testing.T) {
 		t.Fatalf("Update() error = %v, audit code = %q", err, auditor.failCode)
 	}
 	if !reflect.DeepEqual(events, []string{"get", "authorize", "audit-begin", "store-update", "audit-fail"}) {
+		t.Fatalf("events = %v", events)
+	}
+}
+
+func TestInstitutionUpdateRejectsInvalidExamCapacityBeforeAudit(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	current := &model.Institution{
+		ID: model.NewInstitutionID(), CreatedAt: model.TimeFromMillis(100), UpdatedAt: model.TimeFromMillis(100),
+		Name: "northbridge", DisplayName: "Northbridge", Revision: 1, ExamCapacity: model.DefaultExamCapacityPolicy(),
+	}
+	invalid := model.DefaultExamCapacityPolicy()
+	invalid.WorkspaceMaximumTotalBytes = invalid.WorkspaceMaximumFileBytes - 1
+	service := newInstitutionService(
+		&institutionStoreFake{events: &events, current: current},
+		&institutionAuthorizerFake{events: &events}, &institutionAuditorFake{events: &events}, time.Now,
+	)
+
+	_, err := service.Update(context.Background(), Invocation{}, UpdateInstitutionCommand{ExamCapacity: &invalid})
+	if !Is(err, "institution.invalid") {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if !reflect.DeepEqual(events, []string{"get", "authorize"}) {
 		t.Fatalf("events = %v", events)
 	}
 }

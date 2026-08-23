@@ -72,6 +72,12 @@ The typed examination and integrity rules authored in an exam draft and frozen
 in an exam revision.
 _Avoid_: Deployment configuration, executable policy
 
+**Exam Capacity Policy**:
+The institution-owned limits on Exam Resources and Starter or Attempt
+Workspace growth; publication freezes the applicable policy in an exam
+revision so later institution changes cannot alter admitted attempts.
+_Avoid_: Execution-host capacity, deployment configuration, retention policy
+
 **Exam Sitting**:
 A scheduled delivery of one exam revision to one class.
 _Avoid_: Exam version, exam session

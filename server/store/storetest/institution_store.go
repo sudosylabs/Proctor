@@ -148,10 +148,17 @@ func testInstitutionStoreUpdate(t *testing.T, ss store.Store) {
 	createAt := institution.CreatedAt
 
 	institution.DisplayName = "Northbridge"
+	capacity := model.DefaultExamCapacityPolicy()
+	capacity.ResourceMaximumCount = 25
+	capacity.WorkspaceMaximumEntries = 750
+	institution.ExamCapacity = capacity
 	updated, err := ss.Institution().Update(ctx, institution)
 	requireNoError(t, err)
 	if updated.DisplayName != "Northbridge" {
 		t.Fatalf("Update() display name = %q", updated.DisplayName)
+	}
+	if updated.ExamCapacity != capacity {
+		t.Fatalf("Update() Exam capacity = %#v", updated.ExamCapacity)
 	}
 	if !updated.CreatedAt.Equal(createAt) || updated.UpdatedAt.Before(institution.UpdatedAt) {
 		t.Fatalf("Update() timestamps = %#v", updated)

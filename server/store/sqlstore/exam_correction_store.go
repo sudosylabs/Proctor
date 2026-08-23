@@ -541,6 +541,9 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 			DescriptionMarkdown: item.DescriptionMarkdown, Position: position, MediaType: model.ExamResourceMediaType(stage.Rendition.MediaType),
 			SizeBytes: stage.Rendition.Size, SHA256: stage.Rendition.SHA256}
 	}
+	if examRevisionCapacityExceeded(base.Capacity, resources, nil) {
+		return nil, store.NewErrConflict("exam_correction", "exam_correction_resource_limit", nil)
+	}
 	instructions := base.InstructionsMarkdown
 	if input.InstructionsMarkdown != nil {
 		instructions = *input.InstructionsMarkdown
@@ -626,7 +629,7 @@ func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevi
 	}
 	return &store.ExamRevisionSummary{ID: revision.ID, ExamID: revision.ExamID, Number: revision.Number,
 		SourceDraftRevision: revision.SourceDraftRevision, Title: revision.Title, PolicySchemaVersion: revision.Policy.SchemaVersion,
-		PolicyDigest: revision.PolicyDigest, ExecutionProfileDigest: revision.ExecutionProfileDigest,
+		PolicyDigest: revision.PolicyDigest, ExecutionProfileDigest: revision.ExecutionProfileDigest, Capacity: revision.Capacity,
 		StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
 		ResourceCount: len(revision.Resources), StarterWorkspaceEntries: len(revision.StarterWorkspace), StarterWorkspaceBytes: starterBytes,
 		PublishedByUserID: revision.PublishedByUserID, PublishedAt: revision.PublishedAt, BaseRevisionID: revision.BaseRevisionID, Kind: revision.Kind}
@@ -635,6 +638,7 @@ func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevi
 func validateExamCorrectionOutcome(value *store.ExamCorrectionResult) error {
 	if value == nil || value.Revision == nil || value.Sitting == nil || value.Sitting.Sitting == nil ||
 		!value.Revision.ID.IsValid() || !value.Revision.ExamID.IsValid() || value.Revision.Kind != model.ExamRevisionPublicationLiveCorrection ||
+		value.Revision.Capacity.Validate() != nil ||
 		!value.PreviousRevisionID.IsValid() || value.Sitting.Sitting.ExamRevisionID != value.Revision.ID ||
 		value.Sitting.Sitting.ExamID != value.Revision.ExamID || !value.Sitting.AcademicUnitID.IsValid() ||
 		value.EffectiveAt.IsZero() || !model.TimeUTC(value.EffectiveAt).Equal(model.TimeUTC(value.Revision.PublishedAt)) {

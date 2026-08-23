@@ -165,6 +165,36 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store) {
 		t.Fatalf("removed hierarchy = %#v", items)
 	}
 
+	policy := model.DefaultExamCapacityPolicy()
+	policy.WorkspaceMaximumEntries = 1
+	policy.WorkspaceMaximumFileBytes = 8
+	policy.WorkspaceMaximumTotalBytes = 8
+	institution.ExamCapacity = policy
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	oversized := reserveStarterWorkspaceObject(t, ctx, ss, examID, creator.ID, unit.ID, 10,
+		model.NewStarterWorkspaceEntryID(), "oversized.txt", at.Add(11*time.Second), 9)
+	_, err = ss.ExamStarterWorkspace().CreateFile(ctx, oversized,
+		examCommand(creator.ID, "exam.starter_workspace.file.create.v1", "workspace-oversized", "workspace-oversized-command"))
+	if !errors.As(err, &conflict) || conflict.Constraint != "workspace_total_size" {
+		t.Fatalf("Starter Workspace file policy error = %v", err)
+	}
+	bounded := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 10,
+		model.NewStarterWorkspaceEntryID(), "bounded", at.Add(12*time.Second))
+	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, bounded,
+		examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-bounded", "workspace-bounded-command"))
+	requireNoError(t, err)
+	overflow := starterWorkspaceMutation(t, ctx, ss, examID, creator.ID, unit.ID, 11,
+		model.NewStarterWorkspaceEntryID(), "overflow", at.Add(13*time.Second))
+	_, err = ss.ExamStarterWorkspace().CreateDirectory(ctx, overflow,
+		examCommand(creator.ID, "exam.starter_workspace.directory.create.v1", "workspace-overflow", "workspace-overflow-command"))
+	if !errors.As(err, &conflict) || conflict.Constraint != "workspace_entry_limit" {
+		t.Fatalf("Starter Workspace entry policy error = %v", err)
+	}
+	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
+	_, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+
 	// An upload that never finalized remains invisible, becomes cleanup-eligible
 	// only after its lease plus safety window, and is recoverably claim-fenced.
 	oldAt := model.NowUTC().Add(-26 * time.Hour)

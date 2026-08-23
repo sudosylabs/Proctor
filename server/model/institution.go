@@ -15,14 +15,15 @@ import (
 // Domain time is UTC time.Time. Optional archive uses OptionalTime. Revision
 // supports optimistic concurrency on profile updates.
 type Institution struct {
-	ID          InstitutionID
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ArchivedAt  OptionalTime
-	Revision    int64
-	Name        string
-	DisplayName string
-	Description string
+	ID           InstitutionID
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	ArchivedAt   OptionalTime
+	Revision     int64
+	Name         string
+	DisplayName  string
+	Description  string
+	ExamCapacity ExamCapacityPolicy
 }
 
 // NewInstitution constructs a new institution with application-supplied identity
@@ -40,13 +41,14 @@ func NewInstitution(
 		return nil, fmt.Errorf("model: institution create time is required")
 	}
 	institution := &Institution{
-		ID:          id,
-		CreatedAt:   at,
-		UpdatedAt:   at,
-		Revision:    1,
-		Name:        name,
-		DisplayName: displayName,
-		Description: description,
+		ID:           id,
+		CreatedAt:    at,
+		UpdatedAt:    at,
+		Revision:     1,
+		Name:         name,
+		DisplayName:  displayName,
+		Description:  description,
+		ExamCapacity: DefaultExamCapacityPolicy(),
 	}
 	sanitizeNamed(&institution.Name, &institution.DisplayName, &institution.Description)
 	if err := institution.Validate(); err != nil {
@@ -153,6 +155,9 @@ func (i *Institution) Validate() error {
 	if i.ArchivedAt.Valid && i.ArchivedAt.Time.Before(i.CreatedAt) {
 		return invalidModelError(where, "institution", "archived_at", "must not precede created_at", details)
 	}
+	if err := i.ExamCapacity.Validate(); err != nil {
+		return invalidModelError(where, "institution", "exam_capacity", err.Error(), details)
+	}
 	return validateNamed(where, "institution", i.ID.String(), i.Name, i.DisplayName, i.Description)
 }
 
@@ -162,13 +167,14 @@ func (i *Institution) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	fields := map[string]any{
-		"id":           i.ID.String(),
-		"created_at":   MillisFromTime(i.CreatedAt),
-		"updated_at":   MillisFromTime(i.UpdatedAt),
-		"archived_at":  i.ArchivedAt.Millis(),
-		"revision":     i.Revision,
-		"name":         i.Name,
-		"display_name": i.DisplayName,
+		"id":            i.ID.String(),
+		"created_at":    MillisFromTime(i.CreatedAt),
+		"updated_at":    MillisFromTime(i.UpdatedAt),
+		"archived_at":   i.ArchivedAt.Millis(),
+		"revision":      i.Revision,
+		"name":          i.Name,
+		"display_name":  i.DisplayName,
+		"exam_capacity": i.ExamCapacity,
 	}
 	return fields
 }

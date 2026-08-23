@@ -109,9 +109,8 @@ ready, or failed. This distinguishes permission to index from processing state
 and prevents an infrastructure result from broadening access.
 
 The first profile-picture slice does not introduce a search service. Exam
-Resources are also initially limited to an authorized catalog of at most ten
-items, so metadata or content search remains deferred until a concrete use case
-justifies indexing them.
+Resource metadata or content search remains deferred until a concrete
+server-owned use case justifies indexing the bounded, authorized catalog.
 
 ## Profile pictures
 
@@ -210,8 +209,10 @@ Exam Resources are a separately authorized read-only catalog outside an
 Attempt Workspace. A resource relationship pins a stable File Entry, one exact
 available File Revision, required display name, optional Markdown description,
 and order. A display name is trimmed UTF-8 with 1–255 Unicode scalar values and
-its Markdown description is limited to 16 KiB of UTF-8. A Draft has at most ten
-active resources in contiguous zero-based order, each at most 10 MiB. The
+its Markdown description is limited to 16 KiB of UTF-8. Draft resources remain
+in contiguous zero-based order. The Institution's Exam Capacity Policy defaults
+to at most ten active resources of 10 MiB each, within fixed server safety
+ceilings of 100 resources and 100 MiB each. The
 accepted content types are verified PDF, PNG, JPEG, WebP, UTF-8 text, Markdown,
 CSV, and JSON. A published Exam Revision retains that exact relationship even
 when the Draft later replaces or removes the resource. Candidates have
@@ -223,8 +224,10 @@ Draft entries are frozen directly into an Exam Revision as an immutable logical
 path/content hierarchy, then copied into new Attempt-owned Workspace Entries.
 It does not create a generic File Revision chain. Live instructions/resource
 correction cannot change the Starter Workspace of an open Sitting. A Draft has
-at most 500 Starter Workspace entries and 50 MiB total file content; one file is
-at most 10 MiB. Its current content carries an opaque 26-character URL-safe
+Institution-configured Starter Workspace limits which default to 500 entries,
+10 MiB per file, and 50 MiB total file content, within fixed server safety
+ceilings of 5,000 entries, 100 MiB per file, and 1 GiB total. Its current
+content carries an opaque 26-character URL-safe
 Workspace Content Version for optimistic comparison; this token is not an
 entity identity. Canonical case-sensitive POSIX-relative paths have at most 16
 segments, 255 UTF-8 bytes per segment, and 1,024 UTF-8 bytes total. They reject
@@ -283,14 +286,18 @@ replace, move/rename, and delete commands are HTTP-only, require the active
 Session-bound Attempt credential and Connection headers, explicitly repeat the
 current Participation identity and generation, and require an idempotency key.
 File creation and replacement use exactly two multipart parts in order: strict
-JSON metadata, then content, with a 10 MiB plus 64 KiB envelope. Other commands
-use duplicate-free strict JSON. WebSocket publishes only the targeted
+JSON metadata, then content, with a hard 100 MiB plus 64 KiB envelope. The
+admission Revision's frozen Exam Capacity Policy may impose a lower per-file
+limit. Other commands use duplicate-free strict JSON. WebSocket publishes only the targeted
 `exam_attempt_workspace_changed` refetch hint; it carries no path, content,
 object selector, credential, Session, Participation, or generation.
 
-The bounded live contract is 500 entries, 16 path segments, 255 UTF-8 bytes per
-segment, 1,024 path bytes, 10 MiB per file, 50 MiB total, 200 items per page,
-and a retained 4,096-change journal window. Manifest pagination pins a numeric
+The bounded live contract uses the admission Revision's frozen Workspace entry,
+per-file, and total-byte limits. Defaults are 500 entries, 10 MiB per file, and
+50 MiB total; fixed safety ceilings are 5,000 entries, 100 MiB per file, and
+1 GiB total. Paths remain limited to 16 segments, 255 UTF-8 bytes per segment,
+and 1,024 path bytes; pages contain at most 200 items and the journal retains
+4,096 changes. Manifest pagination pins a numeric
 Workspace Cursor and exposes only the last Entry identity in its opaque cursor;
 paths never enter URLs or access logs. If the pinned manifest advances, or a
 journal cursor falls behind retention, the response explicitly requires a

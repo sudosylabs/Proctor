@@ -85,6 +85,21 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 		!authoringAfterRollback.Exam.DefaultRevisionID.IsZero() || !authoringAfterRollback.Draft.BaseRevisionID.IsZero() {
 		t.Fatalf("failed publication leaked state: revisions=%#v authoring=%#v", rolledBack, authoringAfterRollback)
 	}
+	capacity := model.DefaultExamCapacityPolicy()
+	capacity.WorkspaceMaximumEntries = 1
+	institution.ExamCapacity = capacity
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	capacityInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(3750*time.Millisecond))
+	_, err = ss.ExamRevision().Publish(ctx, capacityInput,
+		examCommand(creator.ID, "exam.revision.publish.v1", "revision-capacity", "revision-capacity-command"))
+	var capacityConflict *store.ErrConflict
+	if !errors.As(err, &capacityConflict) || capacityConflict.Constraint != "exam_revision_capacity" {
+		t.Fatalf("publication capacity error=%v", err)
+	}
+	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
 
 	firstInput := examRevisionPublication(t, ctx, ss, examID, creator.ID, unit.ID, 4, at.Add(4*time.Second))
 	firstCommand := examCommand(creator.ID, "exam.revision.publish.v1", "revision-publish", "revision-publish-command")
@@ -96,7 +111,8 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	firstSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, examID, first.Revision.ID)
 	requireNoError(t, err)
 	if len(firstSnapshot.Resources) != 1 || firstSnapshot.Resources[0].FileRevisionID != resourceResult.Value.Resource.SelectedFileRevisionID ||
-		len(firstSnapshot.StarterWorkspace) != 2 || firstSnapshot.StarterWorkspace[1].ObjectID != fileResult.Object.ID {
+		len(firstSnapshot.StarterWorkspace) != 2 || firstSnapshot.StarterWorkspace[1].ObjectID != fileResult.Object.ID ||
+		firstSnapshot.Capacity != model.DefaultExamCapacityPolicy() {
 		t.Fatalf("publication did not pin exact Draft: %#v", firstSnapshot)
 	}
 	retentionFixture.RevisionID = first.Revision.ID
@@ -121,6 +137,12 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 
 	// Change both content families after publication. The first Revision must
 	// keep its exact old bytes while the second freezes the new selections.
+	alteredCapacity := model.DefaultExamCapacityPolicy()
+	alteredCapacity.ResourceMaximumCount = 20
+	alteredCapacity.WorkspaceMaximumEntries = 750
+	institution.ExamCapacity = alteredCapacity
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
 	replacement := reserveExamResource(t, ctx, ss, examID, creator.ID, resourceResult.Value.Resource.ID, "Reference", 0, 5, at.Add(7*time.Second), model.ExamResourceMediaText, resourceResult.Value)
 	replacedResource, err := ss.ExamResource().FinalizeUpload(ctx, replacement.finalization, examCommand(creator.ID, "exam.resource.replace.v1", "revision-resource-replace", "revision-resource-replace-command"))
 	requireNoError(t, err)
@@ -133,12 +155,13 @@ func testExamRevisionStore(t *testing.T, ss store.Store, probe *ExamRevisionRete
 	requireNoError(t, err)
 	secondSnapshot, err := ss.ExamRevision().GetSnapshot(ctx, examID, second.Revision.ID)
 	requireNoError(t, err)
-	if second.Revision.Number != 2 || second.Revision.BaseRevisionID != first.Revision.ID || secondSnapshot.Resources[0].FileRevisionID != replacedResource.Value.Resource.SelectedFileRevisionID || secondSnapshot.StarterWorkspace[1].ObjectID != replacedWorkspace.Object.ID {
+	if second.Revision.Number != 2 || second.Revision.BaseRevisionID != first.Revision.ID || secondSnapshot.Capacity != alteredCapacity ||
+		secondSnapshot.Resources[0].FileRevisionID != replacedResource.Value.Resource.SelectedFileRevisionID || secondSnapshot.StarterWorkspace[1].ObjectID != replacedWorkspace.Object.ID {
 		t.Fatalf("second publication=%#v", second)
 	}
 	retained, err := ss.ExamRevision().GetSnapshot(ctx, examID, first.Revision.ID)
 	requireNoError(t, err)
-	if retained.Resources[0].FileRevisionID != resourceResult.Value.Resource.SelectedFileRevisionID || retained.StarterWorkspace[1].ObjectID != fileResult.Object.ID {
+	if retained.Capacity != model.DefaultExamCapacityPolicy() || retained.Resources[0].FileRevisionID != resourceResult.Value.Resource.SelectedFileRevisionID || retained.StarterWorkspace[1].ObjectID != fileResult.Object.ID {
 		t.Fatalf("published history changed=%#v", retained)
 	}
 	summary, err := ss.ExamRevision().GetSummary(ctx, examID, first.Revision.ID)

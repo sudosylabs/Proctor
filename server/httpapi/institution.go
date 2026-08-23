@@ -12,19 +12,60 @@ import (
 )
 
 type institutionResponse struct {
-	ID          string `json:"id"`
-	CreateAt    int64  `json:"create_at"`
-	UpdateAt    int64  `json:"update_at"`
-	DeleteAt    int64  `json:"delete_at"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
+	ID           string                     `json:"id"`
+	CreateAt     int64                      `json:"create_at"`
+	UpdateAt     int64                      `json:"update_at"`
+	DeleteAt     int64                      `json:"delete_at"`
+	Name         string                     `json:"name"`
+	DisplayName  string                     `json:"display_name"`
+	Description  string                     `json:"description"`
+	ExamCapacity examCapacityPolicyResponse `json:"exam_capacity"`
+}
+
+type examCapacityPolicyResponse struct {
+	ResourceMaximumCount       int   `json:"resource_maximum_count"`
+	ResourceMaximumBytes       int64 `json:"resource_maximum_bytes"`
+	WorkspaceMaximumEntries    int   `json:"workspace_maximum_entries"`
+	WorkspaceMaximumFileBytes  int64 `json:"workspace_maximum_file_bytes"`
+	WorkspaceMaximumTotalBytes int64 `json:"workspace_maximum_total_bytes"`
+}
+
+func examCapacityPolicyResponseFromModel(policy model.ExamCapacityPolicy) examCapacityPolicyResponse {
+	if policy.IsZero() {
+		policy = model.DefaultExamCapacityPolicy()
+	}
+	return examCapacityPolicyResponse{
+		ResourceMaximumCount:       policy.ResourceMaximumCount,
+		ResourceMaximumBytes:       policy.ResourceMaximumBytes,
+		WorkspaceMaximumEntries:    policy.WorkspaceMaximumEntries,
+		WorkspaceMaximumFileBytes:  policy.WorkspaceMaximumFileBytes,
+		WorkspaceMaximumTotalBytes: policy.WorkspaceMaximumTotalBytes,
+	}
+}
+
+type examCapacityPolicyRequest struct {
+	ResourceMaximumCount       int   `json:"resource_maximum_count"`
+	ResourceMaximumBytes       int64 `json:"resource_maximum_bytes"`
+	WorkspaceMaximumEntries    int   `json:"workspace_maximum_entries"`
+	WorkspaceMaximumFileBytes  int64 `json:"workspace_maximum_file_bytes"`
+	WorkspaceMaximumTotalBytes int64 `json:"workspace_maximum_total_bytes"`
+}
+
+func (request examCapacityPolicyRequest) model() model.ExamCapacityPolicy {
+	return model.ExamCapacityPolicy{
+		ResourceMaximumCount:       request.ResourceMaximumCount,
+		ResourceMaximumBytes:       request.ResourceMaximumBytes,
+		WorkspaceMaximumEntries:    request.WorkspaceMaximumEntries,
+		WorkspaceMaximumFileBytes:  request.WorkspaceMaximumFileBytes,
+		WorkspaceMaximumTotalBytes: request.WorkspaceMaximumTotalBytes,
+	}
 }
 
 type updateInstitutionRequest struct {
-	Name        Optional[string] `json:"name"`
-	DisplayName Optional[string] `json:"display_name"`
-	Description Optional[string] `json:"description"`
+	Name         Optional[string]                    `json:"name"`
+	DisplayName  Optional[string]                    `json:"display_name"`
+	Description  Optional[string]                    `json:"description"`
+	ExamCapacity Optional[examCapacityPolicyRequest] `json:"exam_capacity"`
 }
 
 type institutionResourceModule struct {
@@ -98,12 +139,18 @@ func (module institutionResourceModule) patch(request operationRequest) (operati
 	if err := request.decodeJSON(&body, "patchInstitution"); err != nil {
 		return operationResult{}, err
 	}
+	var capacity *model.ExamCapacityPolicy
+	if requested := body.ExamCapacity.ValuePointer(); requested != nil {
+		value := requested.model()
+		capacity = &value
+	}
 	institution, err := module.institutions.UpdateInstitution(
 		request.context,
 		request.invocation(),
 		application.UpdateInstitutionCommand{
 			Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(),
-			Description: body.Description.ValuePointer(),
+			Description:  body.Description.ValuePointer(),
+			ExamCapacity: capacity,
 		},
 	)
 	if err != nil {
@@ -117,13 +164,14 @@ func institutionResponseFromModel(institution *model.Institution) institutionRes
 		return institutionResponse{}
 	}
 	return institutionResponse{
-		ID:          institution.ID.String(),
-		CreateAt:    model.MillisFromTime(institution.CreatedAt),
-		UpdateAt:    model.MillisFromTime(institution.UpdatedAt),
-		DeleteAt:    institution.ArchivedAt.Millis(),
-		Name:        institution.Name,
-		DisplayName: institution.DisplayName,
-		Description: institution.Description,
+		ID:           institution.ID.String(),
+		CreateAt:     model.MillisFromTime(institution.CreatedAt),
+		UpdateAt:     model.MillisFromTime(institution.UpdatedAt),
+		DeleteAt:     institution.ArchivedAt.Millis(),
+		Name:         institution.Name,
+		DisplayName:  institution.DisplayName,
+		Description:  institution.Description,
+		ExamCapacity: examCapacityPolicyResponseFromModel(institution.ExamCapacity),
 	}
 }
 

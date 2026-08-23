@@ -498,10 +498,14 @@ func insertInstallationInstitution(
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO institutions (
 			id, created_at, updated_at, archived_at, name, display_name,
-			description
+			description, exam_resource_max_count, exam_resource_max_bytes,
+			exam_workspace_max_entries, exam_workspace_max_file_bytes,
+			exam_workspace_max_total_bytes
 		) VALUES (
 			:id, :created_at, :updated_at, :archived_at, :name, :display_name,
-			:description
+			:description, :exam_resource_max_count, :exam_resource_max_bytes,
+			:exam_workspace_max_entries, :exam_workspace_max_file_bytes,
+			:exam_workspace_max_total_bytes
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save bootstrap institution: %w",

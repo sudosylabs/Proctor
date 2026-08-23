@@ -41,7 +41,8 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 
 	first, err := ss.ExamAuthoring().Create(ctx, creation, command)
 	requireNoError(t, err)
-	if first.Replayed || first.Value.ManagerCount != 1 || !first.Value.ActorIsManager || first.Value.OwnerUserID != creator.ID {
+	if first.Replayed || first.Value.ManagerCount != 1 || !first.Value.ActorIsManager || first.Value.OwnerUserID != creator.ID ||
+		first.Value.Capacity != model.DefaultExamCapacityPolicy() {
 		t.Fatalf("first create = %#v", first)
 	}
 	if first.Value.ResourceCount != 0 || first.Value.HasStarterWorkspace {
@@ -59,7 +60,7 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	replayCreation.Manager.ExamID = creation.Exam.ID
 	replayed, err := ss.ExamAuthoring().Create(ctx, replayCreation, command)
 	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Value.Exam.ID != first.Value.Exam.ID {
+	if !replayed.Replayed || replayed.Value.Exam.ID != first.Value.Exam.ID || replayed.Value.Capacity != first.Value.Capacity {
 		t.Fatalf("replay = %#v", replayed)
 	}
 	replayAudit, err := ss.Audit().Get(ctx, replayCreation.AuditEventID)
@@ -91,6 +92,9 @@ func testExamAuthoringCreateGetAndReplay(t *testing.T, ss store.Store) {
 	}
 	if managerView.Draft.Policy != model.DefaultExamPolicySet() {
 		t.Fatalf("persisted policy = %#v", managerView.Draft.Policy)
+	}
+	if managerView.Capacity != model.DefaultExamCapacityPolicy() || outsiderView.Capacity != managerView.Capacity {
+		t.Fatalf("persisted capacity = %#v / %#v", managerView.Capacity, outsiderView.Capacity)
 	}
 }
 

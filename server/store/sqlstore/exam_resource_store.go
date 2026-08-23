@@ -209,6 +209,13 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 	if err := lockExamResourceDraft(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, input.ExpectedDraftRevision); err != nil {
 		return nil, err
 	}
+	capacity, err := currentExamCapacityPolicy(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if input.Rendition.Size > capacity.ResourceMaximumBytes {
+		return nil, store.NewErrConflict("exam_resource", "exam_resource_limit", nil)
+	}
 	var lease struct {
 		EntryID      string       `db:"file_entry_id"`
 		Purpose      string       `db:"purpose"`
@@ -225,17 +232,20 @@ func finalizeExamResourceUpload(ctx context.Context, tx *sqlxTxWrapper, input *s
 		return nil, store.NewErrConflict("exam_resource", "exam_resource_upload", nil)
 	}
 	var existing string
-	err := tx.Get(ctx, &existing, `SELECT file_entry_id FROM exam_resources WHERE exam_id=? AND id=? AND archived_at IS NULL FOR UPDATE`, input.ExamID.String(), input.Resource.ID.String())
+	err = tx.Get(ctx, &existing, `SELECT file_entry_id FROM exam_resources WHERE exam_id=? AND id=? AND archived_at IS NULL FOR UPDATE`, input.ExamID.String(), input.Resource.ID.String())
 	creating := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !creating {
 		return nil, translateError("exam_resource", input.Resource.ID.String(), err)
 	}
+	var count int
+	if err = tx.Get(ctx, &count, `SELECT COUNT(*) FROM exam_resources WHERE exam_id=? AND archived_at IS NULL`, input.ExamID.String()); err != nil {
+		return nil, err
+	}
+	if count > capacity.ResourceMaximumCount || creating && count >= capacity.ResourceMaximumCount {
+		return nil, store.NewErrConflict("exam_resource", "exam_resource_limit", nil)
+	}
 	if creating {
-		var count int
-		if err = tx.Get(ctx, &count, `SELECT COUNT(*) FROM exam_resources WHERE exam_id=? AND archived_at IS NULL`, input.ExamID.String()); err != nil {
-			return nil, err
-		}
-		if count >= model.ExamResourceMaximumCount || input.Resource.Position != count {
+		if input.Resource.Position != count {
 			return nil, store.NewErrConflict("exam_resource", "exam_resource_limit", nil)
 		}
 	} else if existing != input.Resource.FileEntryID.String() {

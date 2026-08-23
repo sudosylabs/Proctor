@@ -398,8 +398,13 @@ func TestExamHTTPResponseIsBoundedAndContainsTypedPolicy(t *testing.T) {
 		t.Fatalf("parse draft updated_at: %v", err)
 	}
 	policy := draft["policy"].(map[string]any)
+	capacity := draft["capacity"].(map[string]any)
 	if policy["schema_version"] != float64(1) || document["manager_count"] != float64(1) || draft["resource_count"] != float64(0) || draft["has_starter_workspace"] != false {
 		t.Fatalf("response = %s", encoded)
+	}
+	if capacity["resource_maximum_count"] != float64(model.ExamResourceDefaultMaximumCount) ||
+		capacity["workspace_maximum_entries"] != float64(model.ExamWorkspaceDefaultMaximumEntries) {
+		t.Fatalf("response capacity = %#v", capacity)
 	}
 }
 

@@ -4,16 +4,15 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
 const (
-	ExamResourceDisplayNameMaxRunes       = 255
-	ExamResourceDescriptionMaxBytes       = 16 * 1024
-	ExamResourceMaximumCount              = 10
-	ExamResourceMaximumBytes        int64 = 10 << 20
+	ExamResourceDisplayNameMaxRunes = 255
+	ExamResourceDescriptionMaxBytes = 16 * 1024
 )
 
 type ExamResourceMediaType string
@@ -81,7 +80,7 @@ func (r *ExamResource) Validate() error {
 		return invalidModelError(where, "exam_resource", "description_markdown", "must be valid bounded UTF-8", details)
 	}
 	if r.Position < 0 || r.Position >= ExamResourceMaximumCount {
-		return invalidModelError(where, "exam_resource", "position", "must be between 0 and 9", details)
+		return invalidModelError(where, "exam_resource", "position", fmt.Sprintf("must be between 0 and %d", ExamResourceMaximumCount-1), details)
 	}
 	if r.CreatedAt.IsZero() || r.UpdatedAt.IsZero() || r.UpdatedAt.Before(r.CreatedAt) || r.ArchivedAt.Valid && r.ArchivedAt.Time.Before(r.CreatedAt) {
 		return invalidModelError(where, "exam_resource", "timestamps", "must be ordered and nonzero", details)

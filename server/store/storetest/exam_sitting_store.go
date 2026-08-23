@@ -1724,8 +1724,19 @@ type examSittingFixture struct {
 }
 
 func newExamSittingFixture(t *testing.T, ctx context.Context, ss store.Store) examSittingFixture {
+	return newExamSittingFixtureWithCapacity(t, ctx, ss, model.ExamCapacityPolicy{})
+}
+
+func newExamSittingFixtureWithCapacity(t *testing.T, ctx context.Context, ss store.Store, capacity model.ExamCapacityPolicy) examSittingFixture {
 	t.Helper()
 	classFixture := saveClassFixture(t, ctx, ss)
+	if !capacity.IsZero() {
+		institution, err := ss.Institution().GetSingleton(ctx)
+		requireNoError(t, err)
+		institution.ExamCapacity = capacity
+		_, err = ss.Institution().Update(ctx, institution)
+		requireNoError(t, err)
+	}
 	class := saveClass(t, ctx, ss, classFixture.level.ID.String(), classFixture.period.ID.String(), "sitting-class")
 	actor := saveUser(t, ctx, ss)
 	created := createCatalogExam(t, ctx, ss, classFixture.programme.AcademicUnitID, actor.ID, model.NowUTC(), "sitting-exam")

@@ -41,9 +41,14 @@ func TestCandidateExamPresentationRequiresBoundHeadersAndNeverEchoesSecrets(t *t
 		t.Fatalf("candidate response leaked protected internals: %s", response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 ||
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 9 ||
 		string(payload["focus_loss_collection_enabled"]) != "true" {
 		t.Fatalf("presentation shape = %v, %v", payload, err)
+	}
+	var capacity examCapacityPolicyResponse
+	if err := json.Unmarshal(payload["capacity"], &capacity); err != nil ||
+		capacity != examCapacityPolicyResponseFromModel(model.DefaultExamCapacityPolicy()) {
+		t.Fatalf("presentation capacity = %#v, %v", capacity, err)
 	}
 }
 

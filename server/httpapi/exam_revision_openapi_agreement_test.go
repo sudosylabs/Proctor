@@ -17,7 +17,7 @@ func TestExamRevisionOpenAPIAgreesWithRuntime(t *testing.T) {
 	readCodes := principalContractCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable", "administration.unavailable")
 	mutationCodes := principalMutationContractCodes(
 		"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict",
-		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.unavailable",
+		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable",
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		"administration.unavailable",
 	)
@@ -29,7 +29,7 @@ func TestExamRevisionOpenAPIAgreesWithRuntime(t *testing.T) {
 		},
 		Schemas: []openAPIAgreementSchema{
 			{Name: "PublishExamRevisionRequest", DTO: reflect.TypeOf(publishExamRevisionRequest{}), Required: []string{"expected_draft_revision"}},
-			{Name: "ExamRevisionResponse", DTO: reflect.TypeOf(examRevisionResponse{}), Required: []string{"id", "exam_id", "number", "source_draft_revision", "title", "policy_schema_version", "policy_digest", "execution_profile_digest", "starter_workspace_digest", "content_digest", "resource_count", "starter_workspace_entry_count", "starter_workspace_total_bytes", "published_by_user_id", "published_at", "publication_kind"}},
+			{Name: "ExamRevisionResponse", DTO: reflect.TypeOf(examRevisionResponse{}), Required: []string{"id", "exam_id", "number", "source_draft_revision", "title", "policy_schema_version", "policy_digest", "execution_profile_digest", "capacity", "starter_workspace_digest", "content_digest", "resource_count", "starter_workspace_entry_count", "starter_workspace_total_bytes", "published_by_user_id", "published_at", "publication_kind"}},
 			{Name: "ExamRevisionListResponse", DTO: reflect.TypeOf(examRevisionListResponse{}), Required: []string{"items"}},
 		},
 	}

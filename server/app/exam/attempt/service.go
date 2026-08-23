@@ -703,6 +703,7 @@ type Presentation struct {
 	Title                      string
 	InstructionsMarkdown       string
 	ExecutionProfile           model.ExecutionProfile
+	Capacity                   model.ExamCapacityPolicy
 	FocusLossCollectionEnabled bool
 	Resources                  []Resource
 }
@@ -733,6 +734,7 @@ func (service *Service) GetPresentation(ctx context.Context, call Call, access C
 		AdmissionRevisionID: stored.AdmissionRevisionID, CurrentRevisionID: stored.CurrentRevisionID,
 		Title: stored.Title, InstructionsMarkdown: safemarkdown.Sanitize(stored.InstructionsMarkdown),
 		ExecutionProfile:           stored.ExecutionProfile,
+		Capacity:                   stored.Capacity,
 		FocusLossCollectionEnabled: stored.FocusLossCollectionEnabled, Resources: make([]Resource, len(stored.Resources))}
 	for index, item := range stored.Resources {
 		result.Resources[index] = Resource{ResourceID: item.ResourceID, DisplayName: item.DisplayName,

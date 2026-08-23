@@ -55,7 +55,7 @@ func TestNewExamRevisionFreezesExactBoundedSnapshot(t *testing.T) {
 	}
 	revision, err := NewExamRevision(ExamRevisionSpecification{
 		ID: revisionID, ExamID: examID, Number: 1, SourceDraftRevision: 7,
-		Title: "Algorithms", InstructionsMarkdown: "# Solve", Policy: policy,
+		Title: "Algorithms", InstructionsMarkdown: "# Solve", Policy: policy, Capacity: DefaultExamCapacityPolicy(),
 		Resources: []ExamRevisionResource{resource}, StarterWorkspace: []ExamRevisionStarterWorkspaceEntry{file, directory},
 		PublishedByUserID: NewUserID(), PublishedAt: at, Kind: ExamRevisionPublicationStandard,
 	})
@@ -88,7 +88,7 @@ func TestExamRevisionRejectsIncompleteOrUnboundedSnapshots(t *testing.T) {
 	policy, _ := NewExamRevisionPolicy(DefaultExamPolicySet())
 	base := ExamRevisionSpecification{
 		ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 1, SourceDraftRevision: 1,
-		Title: "Exam", Policy: policy, PublishedByUserID: NewUserID(), PublishedAt: at,
+		Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), PublishedByUserID: NewUserID(), PublishedAt: at,
 		Kind: ExamRevisionPublicationStandard,
 	}
 	badResource := ExamRevisionResource{ResourceID: NewExamResourceID(), FileEntryID: NewFileEntryID(), FileRevisionID: NewFileRevisionID(), RenditionID: NewFileRenditionID(), DisplayName: "Bad", Position: 1, MediaType: ExamResourceMediaText, SizeBytes: 1, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("x")))}
@@ -98,6 +98,7 @@ func TestExamRevisionRejectsIncompleteOrUnboundedSnapshots(t *testing.T) {
 		mutate func(*ExamRevisionSpecification)
 	}{
 		{name: "resource order gap", mutate: func(spec *ExamRevisionSpecification) { spec.Resources = []ExamRevisionResource{badResource} }},
+		{name: "missing capacity policy", mutate: func(spec *ExamRevisionSpecification) { spec.Capacity = ExamCapacityPolicy{} }},
 		{name: "file missing exact object", mutate: func(spec *ExamRevisionSpecification) {
 			spec.StarterWorkspace = []ExamRevisionStarterWorkspaceEntry{badFile}
 		}},
@@ -127,8 +128,10 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	workspace := ExamRevisionStarterWorkspaceEntry{EntryID: NewStarterWorkspaceEntryID(), Kind: StarterWorkspaceEntryFile,
 		Path: "main.go", ObjectID: NewStarterWorkspaceObjectID(), ContentVersion: NewWorkspaceContentVersion(),
 		MediaType: "text/x-go", SizeBytes: 12, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("package main")))}
+	capacity := DefaultExamCapacityPolicy()
+	capacity.ResourceMaximumCount = 20
 	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 3,
-		SourceDraftRevision: 9, Title: "Algorithms", InstructionsMarkdown: "Old", Policy: policy,
+		SourceDraftRevision: 9, Title: "Algorithms", InstructionsMarkdown: "Old", Policy: policy, Capacity: capacity,
 		Resources: []ExamRevisionResource{resource}, StarterWorkspace: []ExamRevisionStarterWorkspaceEntry{workspace},
 		PublishedByUserID: NewUserID(), PublishedAt: at.Add(-time.Hour), Kind: ExamRevisionPublicationStandard})
 	if err != nil {
@@ -144,6 +147,7 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	}
 	if corrected.Kind != ExamRevisionPublicationLiveCorrection || corrected.BaseRevisionID != base.ID ||
 		corrected.ExamID != base.ExamID || corrected.Title != base.Title || corrected.SourceDraftRevision != base.SourceDraftRevision ||
+		corrected.Capacity != capacity ||
 		corrected.PolicyDigest != base.PolicyDigest || !bytes.Equal(corrected.Policy.Bytes, base.Policy.Bytes) ||
 		corrected.StarterWorkspaceDigest != base.StarterWorkspaceDigest || corrected.InstructionsMarkdown != "Fixed **instructions**" ||
 		corrected.ContentDigest == base.ContentDigest {
@@ -163,7 +167,7 @@ func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T)
 	}
 	policy, _ := NewExamRevisionPolicy(DefaultExamPolicySet())
 	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 2,
-		SourceDraftRevision: 1, Title: "Exam", Policy: policy, PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(),
+		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(),
 		Kind: ExamRevisionPublicationStandard})
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +188,7 @@ func TestSameExamRevisionCandidatePresentationIgnoresStorageGenerations(t *testi
 		RenditionID: NewFileRenditionID(), DisplayName: "Reference", Position: 0, MediaType: ExamResourceMediaText,
 		SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("base")))}
 	base, err := NewExamRevision(ExamRevisionSpecification{ID: NewExamRevisionID(), ExamID: NewExamID(), Number: 1,
-		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Resources: []ExamRevisionResource{resource},
+		SourceDraftRevision: 1, Title: "Exam", Policy: policy, Capacity: DefaultExamCapacityPolicy(), Resources: []ExamRevisionResource{resource},
 		PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC(), Kind: ExamRevisionPublicationStandard})
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +199,11 @@ func TestSameExamRevisionCandidatePresentationIgnoresStorageGenerations(t *testi
 	if !SameExamRevisionCandidatePresentation(base, candidate) {
 		t.Fatal("same verified candidate presentation was treated as changed")
 	}
+	candidate.Capacity.ResourceMaximumCount--
+	if SameExamRevisionCandidatePresentation(base, candidate) {
+		t.Fatal("changed frozen capacity was treated as the same candidate presentation")
+	}
+	candidate.Capacity = base.Capacity
 	candidate.Resources[0].SHA256 = strings.Repeat("b", 64)
 	if SameExamRevisionCandidatePresentation(base, candidate) {
 		t.Fatal("changed verified content was treated as the same presentation")

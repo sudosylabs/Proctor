@@ -31,6 +31,17 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	t.Helper()
 	ctx := context.Background()
 	fixture := newExamAttemptFixture(t, ctx, ss)
+	// Admission and later Workspace growth use the policy frozen into the
+	// published Revision, not a subsequently lowered Institution policy.
+	institution, err := ss.Institution().GetSingleton(ctx)
+	requireNoError(t, err)
+	lowered := model.DefaultExamCapacityPolicy()
+	lowered.WorkspaceMaximumEntries = 1
+	lowered.WorkspaceMaximumFileBytes = 1
+	lowered.WorkspaceMaximumTotalBytes = 1
+	institution.ExamCapacity = lowered
+	_, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
 		SessionID: fixture.session.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
@@ -384,7 +395,7 @@ writesComplete:
 		requireNoError(t, reserveErr)
 		large, reserveErr = workspace.MarkObjectReady(ctx, &store.ExamAttemptWorkspaceObjectReady{Access: access,
 			ObjectID: large.ID, ContentVersion: model.NewWorkspaceContentVersion(), Content: model.AttemptWorkspaceContent{
-				MediaType: "application/octet-stream", SizeBytes: model.AttemptWorkspaceMaximumFileBytes, SHA256: strings.Repeat("d", 64)}})
+				MediaType: "application/octet-stream", SizeBytes: model.ExamWorkspaceDefaultMaximumFileBytes, SHA256: strings.Repeat("d", 64)}})
 		requireNoError(t, reserveErr)
 		_, reserveErr = apply(model.AttemptWorkspaceMutationCreateFile, "size-quota-"+string(rune('a'+index)), func(input *store.ExamAttemptWorkspaceMutation) {
 			input.DestinationPath, input.ObjectID = "large-"+string(rune('a'+index)), large.ID

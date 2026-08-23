@@ -88,6 +88,7 @@ type ExamAuthoringSnapshot struct {
 	OwnerUserID         model.UserID
 	ManagerCount        int
 	ActorIsManager      bool
+	Capacity            model.ExamCapacityPolicy
 	ResourceCount       int
 	HasStarterWorkspace bool
 }

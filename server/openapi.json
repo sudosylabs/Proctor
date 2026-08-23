@@ -1762,7 +1762,7 @@
         "summary": "Publish the complete validated Draft as an immutable Exam Revision",
         "x-proctor-auth": "principal_required",
         "x-proctor-idempotency": "required",
-        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict", "exam.draft.revision_conflict", "exam.revision.no_changes", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
+        "x-proctor-error-codes": ["authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous", "authentication.csrf.invalid", "authorization.denied", "authorization.request.invalid", "authorization.unavailable", "audit.unavailable", "request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict", "exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress", "administration.unavailable"],
         "security": [{"bearerAuth": []}, {"sessionCookie": [], "csrfToken": []}],
         "parameters": [{"$ref": "#/components/parameters/RequiredIdempotencyKey"}],
         "requestBody": {"$ref": "#/components/requestBodies/PublishExamRevision"},
@@ -3856,15 +3856,15 @@
           "id": {"$ref": "#/components/schemas/ID"},
           "display_name": {"type": "string", "minLength": 1, "maxLength": 255},
           "description_markdown": {"type": "string", "maxLength": 16384},
-          "position": {"type": "integer", "minimum": 0, "maximum": 9},
+          "position": {"type": "integer", "minimum": 0, "maximum": 99},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
       "CandidateExamPresentationResponse": {
         "type": "object", "additionalProperties": false,
-        "required": ["attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "focus_loss_collection_enabled", "resources"],
+        "required": ["attempt_id", "exam_sitting_id", "admission_revision_id", "current_revision_id", "title", "instructions_markdown", "focus_loss_collection_enabled", "capacity", "resources"],
         "properties": {
           "attempt_id": {"$ref": "#/components/schemas/ID"},
           "exam_sitting_id": {"$ref": "#/components/schemas/ID"},
@@ -3873,7 +3873,8 @@
           "title": {"type": "string", "minLength": 1, "maxLength": 200},
           "instructions_markdown": {"type": "string", "description": "Current Sitting Revision instructions as bounded authored Markdown."},
           "focus_loss_collection_enabled": {"type": "boolean", "description": "Whether the trusted client should collect and transmit bounded Focus Loss signals for this Sitting."},
-          "resources": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/CandidateExamResourceResponse"}}
+          "capacity": {"$ref": "#/components/schemas/ExamCapacityPolicy"},
+          "resources": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/CandidateExamResourceResponse"}}
         }
       },
       "CandidateExamWorkspaceItemResponse": {
@@ -3884,7 +3885,7 @@
           "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
           "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         },
         "oneOf": [
@@ -3912,16 +3913,16 @@
 	  },
 	  "CandidateWorkspaceFileUploadMetadata": {
 		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "path", "media_type", "size", "sha256"],
-		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
 	  },
 	  "CandidateWorkspaceFileUploadMultipart": {
 		"type": "object", "additionalProperties": false, "required": ["metadata", "content"],
-		"description": "Exactly two parts in order: strict JSON metadata first, then bounded file content. The complete request is limited to 10 MiB plus 64 KiB.",
+		"description": "Exactly two parts in order: strict JSON metadata first, then bounded file content. The complete request is limited to 100 MiB plus 64 KiB.",
 		"properties": {"metadata": {"$ref": "#/components/schemas/CandidateWorkspaceFileUploadMetadata"}, "content": {"type": "string", "format": "binary"}}
 	  },
 	  "ReplaceCandidateWorkspaceFileMetadata": {
 		"type": "object", "additionalProperties": false, "required": ["participation_id", "generation", "expected_path", "expected_content_version", "media_type", "size", "sha256"],
-		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "expected_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
+		"properties": {"participation_id": {"$ref": "#/components/schemas/ID"}, "generation": {"type": "integer", "format": "int64", "minimum": 1}, "expected_path": {"$ref": "#/components/schemas/StarterWorkspacePath"}, "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"}, "media_type": {"type": "string", "minLength": 1, "maxLength": 255}, "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600}, "sha256": {"$ref": "#/components/schemas/SHA256"}}
 	  },
 	  "ReplaceCandidateWorkspaceFileMultipart": {
 		"type": "object", "additionalProperties": false, "required": ["metadata", "content"],
@@ -3972,8 +3973,8 @@
           "manifest_schema_version": {"type": "integer", "const": 1},
           "workspace_cursor": {"type": "integer", "format": "int64", "minimum": 0},
           "manifest_digest": {"$ref": "#/components/schemas/SHA256"},
-          "manifest_entry_count": {"type": "integer", "minimum": 0, "maximum": 500},
-          "manifest_total_file_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 52428800},
+          "manifest_entry_count": {"type": "integer", "minimum": 0, "maximum": 5000},
+          "manifest_total_file_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 1073741824},
           "final_focus_loss_sequence": {"type": "integer", "format": "int64", "minimum": 0},
           "integrity_state": {"type": "string", "enum": ["settled", "gapped"]},
           "unresolved_integrity_count": {"type": "integer", "format": "int64", "minimum": 0},
@@ -3990,7 +3991,7 @@
           "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
           "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         },
         "oneOf": [
@@ -4152,7 +4153,7 @@
           "target_kind": {"type": "string", "enum": ["addition", "replacement"]},
           "replaces_resource_id": {"$ref": "#/components/schemas/ID"},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
@@ -4160,7 +4161,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["metadata", "content"],
-        "description": "Exactly two parts in order: metadata first as a non-file JSON part (maximum 32768 bytes), then content. The complete HTTP body is limited to 10 MiB plus 64 KiB multipart overhead.",
+        "description": "Exactly two parts in order: metadata first as a non-file JSON part (maximum 32768 bytes), then content. The complete HTTP body is limited to 100 MiB plus 64 KiB multipart overhead.",
         "properties": {
           "metadata": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceStageMetadata"},
           "content": {"type": "string", "format": "binary"}
@@ -4174,7 +4175,7 @@
           "stage_id": {"$ref": "#/components/schemas/ID"},
           "resource_id": {"$ref": "#/components/schemas/ID"},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"},
           "expires_at": {"type": "string", "format": "date-time"}
         }
@@ -4201,7 +4202,7 @@
           "instructions_markdown": {"type": "string", "maxLength": 65536, "description": "Omitted preserves current instructions. A present empty string clears them; null is invalid. Authored Markdown is limited to 65536 UTF-8 bytes."},
           "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "description": "Required already-trimmed private manager rationale; valid UTF-8, at most 1000 Unicode scalar values and 4000 bytes."},
           "resources": {
-            "type": "array", "maxItems": 10,
+            "type": "array", "maxItems": 100,
             "description": "Required complete desired resource manifest. Omitted base resources are removed and array order becomes resource position. Resource and non-empty stage identities must each be unique.",
             "items": {"$ref": "#/components/schemas/ExamSittingCorrectionResourceRequest"}
           }
@@ -4291,7 +4292,7 @@
           "display_name": {"type": "string", "minLength": 1, "maxLength": 255, "description": "Trimmed UTF-8 with at most 255 Unicode scalar values."},
           "description_markdown": {"type": "string", "maxLength": 16384, "description": "Authored Markdown encoded as UTF-8 and limited to 16384 bytes."},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
@@ -4301,7 +4302,7 @@
         "properties": {
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
@@ -4332,7 +4333,7 @@
         "type": "object", "additionalProperties": false, "required": ["expected_draft_revision", "resource_ids"],
         "properties": {
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
-          "resource_ids": {"type": "array", "maxItems": 10, "uniqueItems": true, "items": {"$ref": "#/components/schemas/ID"}}
+          "resource_ids": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"$ref": "#/components/schemas/ID"}}
         }
       },
       "RemoveExamResourceRequest": {
@@ -4349,10 +4350,10 @@
           "id": {"$ref": "#/components/schemas/ID"},
           "display_name": {"type": "string", "minLength": 1, "maxLength": 255},
           "description_markdown": {"type": "string", "maxLength": 16384, "description": "Authored Markdown encoded as UTF-8 and limited to 16384 bytes."},
-          "position": {"type": "integer", "minimum": 0, "maximum": 9},
+          "position": {"type": "integer", "minimum": 0, "maximum": 99},
           "content_revision_id": {"$ref": "#/components/schemas/ID"},
           "media_type": {"$ref": "#/components/schemas/ExamResourceMediaType"},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"},
           "updated_at": {"type": "string", "format": "date-time"},
           "draft_revision": {"type": "integer", "format": "int64", "minimum": 1}
@@ -4360,7 +4361,7 @@
       },
       "ExamResourceListResponse": {
         "type": "object", "additionalProperties": false, "required": ["items"],
-        "properties": {"items": {"type": "array", "maxItems": 10, "items": {"$ref": "#/components/schemas/ExamResourceResponse"}}}
+        "properties": {"items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/ExamResourceResponse"}}}
       },
       "CreateExamStarterWorkspaceDirectoryRequest": {
         "type": "object", "additionalProperties": false, "required": ["expected_draft_revision", "path"],
@@ -4376,7 +4377,7 @@
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
           "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 10485760, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 10 MiB."},
+          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 104857600, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 100 MiB."},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
@@ -4387,7 +4388,7 @@
           "expected_draft_revision": {"type": "integer", "format": "int64", "minimum": 1},
           "expected_content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 10485760, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 10 MiB."},
+          "size": {"type": "integer", "format": "int64", "minimum": -1, "maximum": 104857600, "description": "A value of -1 means the client did not declare a size; the streamed body remains bounded to 100 MiB."},
           "sha256": {"$ref": "#/components/schemas/SHA256"}
         }
       },
@@ -4431,7 +4432,7 @@
           "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
           "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"},
           "created_at": {"type": "string", "format": "date-time"},
           "updated_at": {"type": "string", "format": "date-time"},
@@ -4451,7 +4452,7 @@
           "path": {"$ref": "#/components/schemas/StarterWorkspacePath"},
           "content_version": {"$ref": "#/components/schemas/WorkspaceContentVersion"},
           "media_type": {"type": "string", "minLength": 1, "maxLength": 255},
-          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 10485760},
+          "size": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 104857600},
           "sha256": {"$ref": "#/components/schemas/SHA256"},
           "created_at": {"type": "string", "format": "date-time"},
           "updated_at": {"type": "string", "format": "date-time"}
@@ -4490,7 +4491,7 @@
       "ExamRevisionResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "exam_id", "number", "source_draft_revision", "title", "policy_schema_version", "policy_digest", "execution_profile_digest", "starter_workspace_digest", "content_digest", "resource_count", "starter_workspace_entry_count", "starter_workspace_total_bytes", "published_by_user_id", "published_at", "publication_kind"],
+        "required": ["id", "exam_id", "number", "source_draft_revision", "title", "policy_schema_version", "policy_digest", "execution_profile_digest", "capacity", "starter_workspace_digest", "content_digest", "resource_count", "starter_workspace_entry_count", "starter_workspace_total_bytes", "published_by_user_id", "published_at", "publication_kind"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"},
           "exam_id": {"$ref": "#/components/schemas/ID"},
@@ -4500,11 +4501,12 @@
           "policy_schema_version": {"type": "integer", "const": 1},
           "policy_digest": {"$ref": "#/components/schemas/SHA256"},
           "execution_profile_digest": {"$ref": "#/components/schemas/SHA256"},
+          "capacity": {"$ref": "#/components/schemas/ExamCapacityPolicy"},
           "starter_workspace_digest": {"$ref": "#/components/schemas/SHA256"},
           "content_digest": {"$ref": "#/components/schemas/SHA256"},
-          "resource_count": {"type": "integer", "minimum": 0, "maximum": 10},
-          "starter_workspace_entry_count": {"type": "integer", "minimum": 0, "maximum": 500},
-          "starter_workspace_total_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 52428800},
+          "resource_count": {"type": "integer", "minimum": 0, "maximum": 100},
+          "starter_workspace_entry_count": {"type": "integer", "minimum": 0, "maximum": 5000},
+          "starter_workspace_total_bytes": {"type": "integer", "format": "int64", "minimum": 0, "maximum": 1073741824},
           "published_by_user_id": {"$ref": "#/components/schemas/ID"},
           "published_at": {"type": "string", "format": "date-time"},
           "base_revision_id": {"$ref": "#/components/schemas/ID"},
@@ -4566,13 +4568,14 @@
       "ExamDraftResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["exam_id", "title", "instructions_markdown", "policy", "execution_profile", "updated_at", "revision", "resource_count", "has_starter_workspace"],
+        "required": ["exam_id", "title", "instructions_markdown", "policy", "execution_profile", "capacity", "updated_at", "revision", "resource_count", "has_starter_workspace"],
         "properties": {
           "exam_id": {"$ref": "#/components/schemas/ID"},
           "title": {"type": "string"},
           "instructions_markdown": {"type": "string", "description": "Authored Markdown encoded as UTF-8 and limited to 65536 bytes."},
           "policy": {"$ref": "#/components/schemas/ExamPolicySet"},
           "execution_profile": {"$ref": "#/components/schemas/ExecutionProfile"},
+          "capacity": {"$ref": "#/components/schemas/ExamCapacityPolicy"},
           "base_revision_id": {"$ref": "#/components/schemas/ID"},
           "updated_at": {"type": "string", "format": "date-time"},
           "revision": {"type": "integer", "format": "int64", "minimum": 1},
@@ -4678,7 +4681,7 @@
       "InstitutionResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "create_at", "update_at", "delete_at", "name", "display_name", "description"],
+        "required": ["id", "create_at", "update_at", "delete_at", "name", "display_name", "description", "exam_capacity"],
         "properties": {
           "id": {"$ref": "#/components/schemas/ID"},
           "create_at": {"type": "integer", "format": "int64"},
@@ -4686,7 +4689,20 @@
           "delete_at": {"type": "integer", "format": "int64"},
           "name": {"type": "string"},
           "display_name": {"type": "string"},
-          "description": {"type": "string"}
+          "description": {"type": "string"},
+          "exam_capacity": {"$ref": "#/components/schemas/ExamCapacityPolicy"}
+        }
+      },
+      "ExamCapacityPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource_maximum_count", "resource_maximum_bytes", "workspace_maximum_entries", "workspace_maximum_file_bytes", "workspace_maximum_total_bytes"],
+        "properties": {
+          "resource_maximum_count": {"type": "integer", "minimum": 1, "maximum": 100},
+          "resource_maximum_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 104857600},
+          "workspace_maximum_entries": {"type": "integer", "minimum": 1, "maximum": 5000},
+          "workspace_maximum_file_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 104857600},
+          "workspace_maximum_total_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 1073741824}
         }
       },
       "UpdateInstitutionRequest": {
@@ -4695,7 +4711,19 @@
                 "properties": {
                   "name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
                   "display_name": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
-                  "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."}
+                  "description": {"type": ["string", "null"], "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation."},
+                  "exam_capacity": {
+                    "type": ["object", "null"], "additionalProperties": false,
+                    "description": "Omitted or null leaves the policy unchanged. A present object replaces the complete institution Exam capacity policy.",
+                    "required": ["resource_maximum_count", "resource_maximum_bytes", "workspace_maximum_entries", "workspace_maximum_file_bytes", "workspace_maximum_total_bytes"],
+                    "properties": {
+                      "resource_maximum_count": {"type": "integer", "minimum": 1, "maximum": 100},
+                      "resource_maximum_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 104857600},
+                      "workspace_maximum_entries": {"type": "integer", "minimum": 1, "maximum": 5000},
+                      "workspace_maximum_file_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 104857600},
+                      "workspace_maximum_total_bytes": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 1073741824}
+                    }
+                  }
                 }
       },
       "ProgrammeResponse": {

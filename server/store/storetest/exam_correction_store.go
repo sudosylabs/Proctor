@@ -46,7 +46,10 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		t.Fatal("complete Exam correction SQL probe is required")
 	}
 	ctx := context.Background()
-	fixture := newExamSittingFixture(t, ctx, ss)
+	capacity := model.DefaultExamCapacityPolicy()
+	capacity.ResourceMaximumCount = 2
+	capacity.ResourceMaximumBytes = 5
+	fixture := newExamSittingFixtureWithCapacity(t, ctx, ss, capacity)
 	startAt := fixture.period.StartsAt.Add(time.Hour)
 	endAt := startAt.Add(2 * time.Hour)
 	sitting, err := model.NewExamSitting(model.NewExamSittingID(), fixture.examID, fixture.revisionID, fixture.class.ID, startAt, endAt, model.NowUTC())
@@ -137,6 +140,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	result, err := ss.ExamCorrection().Apply(ctx, application, applyCommand)
 	requireNoError(t, err)
 	if result.Replayed || result.Revision == nil || result.Revision.Kind != model.ExamRevisionPublicationLiveCorrection ||
+		result.Revision.Capacity != capacity ||
 		result.PreviousRevisionID != fixture.revisionID || result.Sitting.Sitting.ExamRevisionID != result.Revision.ID ||
 		result.Sitting.Sitting.Revision != live.Sitting.Revision+1 || result.EffectiveAt.IsZero() ||
 		!model.TimeUTC(result.EffectiveAt).Equal(model.TimeUTC(result.Revision.PublishedAt)) {
@@ -210,6 +214,39 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		secondSnapshot.Resources[1].FileRevisionID != replacementStage.FileRevisionID || secondSnapshot.Resources[1].DisplayName != "Clarification renamed" {
 		t.Fatalf("complete corrected manifest=%#v", secondSnapshot.Resources)
 	}
+	oversizedStage, _ := reserveReadyCorrectionStage(t, ctx, ss, probe, fixture, sitting.ID, secondResult.Revision.ID,
+		store.ExamCorrectionResourceReplacement, secondSnapshot.Resources[0].ResourceID, secondSnapshot.Resources[0].FileEntryID,
+		"correction-oversized", "larger")
+	oversizedAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
+	oversizedApply := &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: sitting.ID,
+		CurrentRevisionID: secondResult.Revision.ID, ExpectedSittingRevision: secondResult.Sitting.Sitting.Revision, ActorUserID: fixture.actor.ID,
+		Resources: []store.ExamCorrectionResourceManifestItem{
+			{ResourceID: secondSnapshot.Resources[0].ResourceID, DisplayName: secondSnapshot.Resources[0].DisplayName,
+				DescriptionMarkdown: secondSnapshot.Resources[0].DescriptionMarkdown, StageID: oversizedStage.ID},
+			{ResourceID: secondSnapshot.Resources[1].ResourceID, DisplayName: secondSnapshot.Resources[1].DisplayName,
+				DescriptionMarkdown: secondSnapshot.Resources[1].DescriptionMarkdown},
+		}, PrivateReason: "Reject oversized corrected resource", AppliedAt: model.NowUTC(),
+		AuditEventID: oversizedAudit.ID.String(), AuditAt: model.GetMillis()}
+	_, err = ss.ExamCorrection().Apply(ctx, oversizedApply,
+		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-oversized-apply", "correction-oversized-apply-command"))
+	requireExamSittingConflict(t, err, "exam_correction_resource_limit")
+
+	overCountStage, _ := reserveReadyCorrectionStage(t, ctx, ss, probe, fixture, sitting.ID, secondResult.Revision.ID,
+		store.ExamCorrectionResourceAddition, "", "", "correction-over-count", "third")
+	overCountAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
+	overCountApply := &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID, SittingID: sitting.ID,
+		CurrentRevisionID: secondResult.Revision.ID, ExpectedSittingRevision: secondResult.Sitting.Sitting.Revision, ActorUserID: fixture.actor.ID,
+		Resources: []store.ExamCorrectionResourceManifestItem{
+			{ResourceID: secondSnapshot.Resources[0].ResourceID, DisplayName: secondSnapshot.Resources[0].DisplayName,
+				DescriptionMarkdown: secondSnapshot.Resources[0].DescriptionMarkdown},
+			{ResourceID: secondSnapshot.Resources[1].ResourceID, DisplayName: secondSnapshot.Resources[1].DisplayName,
+				DescriptionMarkdown: secondSnapshot.Resources[1].DescriptionMarkdown},
+			{ResourceID: overCountStage.ResourceID, DisplayName: "Third", StageID: overCountStage.ID},
+		}, PrivateReason: "Reject excessive corrected resources", AppliedAt: model.NowUTC(),
+		AuditEventID: overCountAudit.ID.String(), AuditAt: model.GetMillis()}
+	_, err = ss.ExamCorrection().Apply(ctx, overCountApply,
+		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-over-count-apply", "correction-over-count-apply-command"))
+	requireExamSittingConflict(t, err, "exam_correction_resource_limit")
 
 	// Omission from the next complete manifest removes only the new Revision's
 	// relationship. Older immutable Revision snapshots remain exact.
@@ -411,7 +448,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	applyReplay.AuditEventID = saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID).ID.String()
 	replayed, err := ss.ExamCorrection().Apply(ctx, &applyReplay, applyCommand)
 	requireNoError(t, err)
-	if !replayed.Replayed || replayed.Revision.ID != result.Revision.ID || replayed.Sitting.Sitting.Revision != result.Sitting.Sitting.Revision {
+	if !replayed.Replayed || replayed.Revision.ID != result.Revision.ID || replayed.Revision.Capacity != result.Revision.Capacity ||
+		replayed.Sitting.Sitting.Revision != result.Sitting.Sitting.Revision {
 		t.Fatalf("Apply(replay)=%#v", replayed)
 	}
 	audit, err := ss.Audit().Get(ctx, applyAudit.ID.String())

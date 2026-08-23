@@ -39,8 +39,9 @@ type examAuthoringRow struct {
 	ManagerCount         int            `db:"manager_count" json:"manager_count"`
 	ActorIsManager       bool           `db:"actor_is_manager" json:"actor_is_manager"`
 	OwnerIsManager       bool           `db:"owner_is_manager" json:"owner_is_manager"`
-	ResourceCount        int            `db:"resource_count" json:"resource_count"`
-	HasStarterWorkspace  bool           `db:"has_starter_workspace" json:"has_starter_workspace"`
+	examCapacityPolicyRow
+	ResourceCount       int  `db:"resource_count" json:"resource_count"`
+	HasStarterWorkspace bool `db:"has_starter_workspace" json:"has_starter_workspace"`
 }
 
 type examAccessRow struct {
@@ -308,9 +309,12 @@ const examAuthoringSelect = `SELECT
 	(SELECT COUNT(*) FROM exam_managers count_managers WHERE count_managers.exam_id = e.id) AS manager_count,
 	EXISTS (SELECT 1 FROM exam_managers actor_manager WHERE actor_manager.exam_id = e.id AND actor_manager.user_id = ?) AS actor_is_manager,
 	EXISTS (SELECT 1 FROM exam_managers owner_manager WHERE owner_manager.exam_id = e.id AND owner_manager.user_id = e.owner_user_id) AS owner_is_manager,
+	i.exam_resource_max_count, i.exam_resource_max_bytes, i.exam_workspace_max_entries,
+	i.exam_workspace_max_file_bytes, i.exam_workspace_max_total_bytes,
 	(SELECT COUNT(*) FROM exam_resources resource WHERE resource.exam_id = e.id AND resource.archived_at IS NULL) AS resource_count,
 	EXISTS (SELECT 1 FROM exam_starter_workspace_entries entry WHERE entry.exam_id = e.id AND entry.archived_at IS NULL) AS has_starter_workspace
-FROM exams e JOIN exam_drafts d ON d.exam_id = e.id`
+FROM exams e JOIN exam_drafts d ON d.exam_id = e.id
+JOIN institutions i ON i.singleton=TRUE AND i.archived_at IS NULL`
 
 func prepareExamAuthoringCreation(input *store.ExamAuthoringCreation) (*store.ExamAuthoringCreation, json.RawMessage, error) {
 	if input == nil || input.Exam == nil || input.Draft == nil || input.Manager == nil || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
@@ -556,7 +560,12 @@ func createExamAuthoring(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if err != nil {
 		return nil, err
 	}
-	row, err := newExamAuthoringRow(&store.ExamAuthoringSnapshot{Exam: input.Exam, Draft: input.Draft, OwnerUserID: input.Exam.OwnerUserID, ManagerCount: 1, ActorIsManager: true}, true)
+	capacity, err := currentExamCapacityPolicy(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	row, err := newExamAuthoringRow(&store.ExamAuthoringSnapshot{Exam: input.Exam, Draft: input.Draft,
+		OwnerUserID: input.Exam.OwnerUserID, ManagerCount: 1, ActorIsManager: true, Capacity: capacity}, true)
 	if err != nil {
 		return nil, err
 	}
@@ -601,6 +610,10 @@ func newExamAuthoringRow(snapshot *store.ExamAuthoringSnapshot, actorIsManager b
 	if err != nil {
 		return examAuthoringRow{}, err
 	}
+	capacity := snapshot.Capacity
+	if err := capacity.Validate(); err != nil {
+		return examAuthoringRow{}, store.NewErrInvalidInput("exam", "capacity", nil).Wrap(err)
+	}
 	return examAuthoringRow{
 		ID: snapshot.Exam.ID.String(), AcademicUnitID: snapshot.Exam.AcademicUnitID.String(),
 		CreatorUserID: snapshot.Exam.CreatorUserID.String(), OwnerUserID: snapshot.Exam.OwnerUserID.String(),
@@ -611,7 +624,10 @@ func newExamAuthoringRow(snapshot *store.ExamAuthoringSnapshot, actorIsManager b
 		DraftUpdatedAt: snapshot.Draft.UpdatedAt, DraftRevision: snapshot.Draft.Revision,
 		ManagerCount: snapshot.ManagerCount, ActorIsManager: actorIsManager,
 		OwnerIsManager: true,
-		ResourceCount:  snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace,
+		examCapacityPolicyRow: examCapacityPolicyRow{ResourceMaximumCount: capacity.ResourceMaximumCount,
+			ResourceMaximumBytes: capacity.ResourceMaximumBytes, WorkspaceMaximumEntries: capacity.WorkspaceMaximumEntries,
+			WorkspaceMaximumFileBytes: capacity.WorkspaceMaximumFileBytes, WorkspaceMaximumTotalBytes: capacity.WorkspaceMaximumTotalBytes},
+		ResourceCount: snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace,
 	}, nil
 }
 
@@ -640,8 +656,13 @@ func (r examAuthoringRow) model() (*store.ExamAuthoringSnapshot, error) {
 	if r.ManagerCount < 1 || !r.OwnerIsManager || r.ResourceCount < 0 {
 		return nil, invalidPersistedState("exam", "aggregate", fmt.Errorf("invalid aggregate counts"))
 	}
+	capacity, err := r.examCapacityPolicyRow.policy()
+	if err != nil {
+		return nil, err
+	}
 	return &store.ExamAuthoringSnapshot{Exam: exam, Draft: draft, OwnerUserID: exam.OwnerUserID, ManagerCount: r.ManagerCount,
-		ActorIsManager: r.ActorIsManager, ResourceCount: r.ResourceCount, HasStarterWorkspace: r.HasStarterWorkspace}, nil
+		ActorIsManager: r.ActorIsManager, Capacity: capacity,
+		ResourceCount: r.ResourceCount, HasStarterWorkspace: r.HasStarterWorkspace}, nil
 }
 
 func (r examAuthoringRow) accessRow() examAccessRow {

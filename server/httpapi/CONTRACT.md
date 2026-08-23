@@ -538,10 +538,14 @@ or unsupported payloads are invalid requests. Publication uses
 `POST /api/v1/exams/{exam_id}/revisions`, requires `Idempotency-Key`, and accepts
 only the positive `expected_draft_revision` fence. Collection and exact reads
 return bounded publication metadata: identity, number, source Draft revision,
-title, policy and content digests, aggregate resource/Starter Workspace counts,
-publisher, time, base Revision, and publication kind. They never return
+title, policy and content digests, the frozen Exam Capacity Policy, aggregate
+resource/Starter Workspace counts, publisher, time, base Revision, and
+publication kind. They never return
 instructions, canonical policy bytes, resource metadata or content identities,
 Starter Workspace paths, object identities, or source bytes.
+Publication returns `exam.revision.capacity_exceeded` as a conflict when the
+current Institution policy was lowered below retained Draft content; managers
+must remove or repair that content before retrying.
 
 `PUT /api/v1/exams/{exam_id}/draft/execution-profile` replaces the complete
 Draft execution choice under the normal manager authorization, Draft revision
@@ -634,6 +638,14 @@ reject unknown fields.
 | `DELETE /api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}` | strict revision-fence JSON | `204` |
 | `GET /api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content` | optional `If-None-Match` | protected inline bytes or `304` |
 
+`PATCH /api/v1/institution` manages `exam_capacity` as one complete five-field
+policy covering resource count/bytes and Workspace entry/file/total bytes.
+Omission or explicit `null` leaves the policy unchanged; a present object
+replaces every field and is checked against fixed server safety ceilings.
+The authorized Exam Draft response also exposes the current policy for
+authoring guidance; each mutation still rechecks PostgreSQL and does not trust
+the earlier projection.
+
 Each multipart body contains exactly two parts in order: a non-file `metadata`
 part containing one strict JSON object of at most 32 KiB, followed by a
 `content` part. Duplicate metadata fields, trailing JSON, missing or reordered
@@ -642,8 +654,10 @@ parts, and additional parts are invalid. `size` and lowercase hexadecimal
 require the exact current `expected_content_version`; a stale version is a
 conflict. A Workspace Content Version is an opaque 26-character URL-safe
 comparison token matching `[A-Za-z0-9_-]{26}`. It is not an entity ID and
-clients return it unchanged. The route body limit is 10 MiB plus 64 KiB of
-multipart overhead; the streamed content itself remains limited to 10 MiB.
+clients return it unchanged. The hard route body limit is 100 MiB plus 64 KiB
+of multipart overhead. PostgreSQL authoritatively applies the current
+Institution policy to each Exam Resource or Starter Workspace finalization;
+the default per-file limit remains 10 MiB.
 
 Protected content responses set a strong checksum ETag,
 `X-Content-Type-Options: nosniff`, and no `Content-Disposition` header. Exam
@@ -665,8 +679,10 @@ Exam/Sitting management authorization.
 
 Stage metadata names the exact `base_revision_id`, target kind (`addition` or
 `replacement`), optional replacement resource identity, media type, explicit
-size including zero, and lowercase SHA-256 digest. The multipart shape and
-10 MiB plus 64 KiB body limit are identical to Exam Resource authoring. A
+size including zero, and lowercase SHA-256 digest. The multipart shape and hard
+100 MiB plus 64 KiB body limit are identical to Exam Resource authoring. The
+base Revision's frozen resource-byte limit is authoritative when applying the
+correction. A
 successful response contains only the purpose-bound stage and resource
 identities, authoritative ready rendition metadata, and expiry. File Entry,
 File Revision, rendition, upload-lease, VFS key, path, and URL identities never
@@ -674,7 +690,8 @@ cross the transport boundary.
 
 The apply body carries the expected Sitting revision, expected current Exam
 Revision, required private manager reason, optional `instructions_markdown`,
-and a required complete resource manifest of at most ten items. Omitting
+and a required complete resource manifest bounded by the base Revision's frozen
+resource-count limit, within the server ceiling of 100 items. Omitting
 `instructions_markdown` preserves it; a present empty string clears it and
 explicit `null` is invalid. Resource omission means removal, array order
 becomes position, an item without `stage_id` retains the exact base content,
@@ -769,8 +786,10 @@ logged, included in Problem Details, or persisted in raw form. Missing,
 duplicate, whitespace-altered, or malformed values are invalid requests.
 Every Workspace mutation also carries the non-secret `participation_id` and
 `generation` returned by the latest successful connect response. File writes
-use metadata-first, exactly-two-part multipart bodies bounded to 10 MiB plus
-64 KiB; other mutations use duplicate-free strict JSON. The access selectors
+use metadata-first, exactly-two-part multipart bodies bounded to a hard 100 MiB
+plus 64 KiB; the admission Revision's frozen Workspace file limit is
+authoritative and may be lower. Other mutations use duplicate-free strict JSON.
+The access selectors
 are reauthorized on every write but are excluded from the Attempt-scoped
 idempotency fingerprint so an exact command can recover across reconnect.
 Malformed paths, cursors, limits, states, or protection headers return

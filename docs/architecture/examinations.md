@@ -142,8 +142,11 @@ An Exam Resource is read-only supporting material outside the Attempt
 Workspace. It uses a stable File Entry and immutable available File Revisions,
 with required display name, optional Markdown description, and explicit order.
 A display name is trimmed UTF-8 with 1–255 Unicode scalar values; its Markdown
-description is at most 16 KiB of UTF-8. A Draft has at most ten active
-resources in contiguous zero-based order, each at most 10 MiB. The initial
+description is at most 16 KiB of UTF-8. Active resources remain in contiguous
+zero-based order. Their count and per-resource bytes are governed by the
+Institution's Exam Capacity Policy. The default is ten resources of at most
+10 MiB each; fixed server safety ceilings are 100 resources and 100 MiB each.
+The initial
 allowlist is verified PDF, PNG, JPEG, WebP, UTF-8 text, Markdown, CSV, and JSON;
 executables, archives, macros, and disk images are excluded. Publication pins
 the exact metadata and File Revision. Replacing resource content creates a new
@@ -153,7 +156,10 @@ The Starter Workspace is a separate logical hierarchy of initial code and
 directories frozen into an Exam Revision. It is copied into a new Attempt
 Workspace and is never an Exam Resource or generic File Revision chain. Live
 correction cannot alter starter material. A Draft Starter Workspace contains
-at most 500 entries and 50 MiB total file content. Each file is at most 10 MiB.
+an Institution-configured maximum entry count, per-file byte limit, and total
+file-byte limit. Defaults are 500 entries, 10 MiB per file, and 50 MiB total;
+fixed server safety ceilings are 5,000 entries, 100 MiB per file, and 1 GiB
+total.
 Its current content carries an opaque 26-character URL-safe Workspace Content
 Version for optimistic comparison; this token is not an entity identity.
 Paths are already-canonical case-sensitive POSIX-relative values with at most
@@ -176,6 +182,29 @@ Protected HTTP reads are authorization-checked on every request, return inline
 content with a strong checksum ETag and `nosniff`, and expose neither storage
 paths nor object keys. Exam Resources may be privately cached for five minutes;
 mutable Draft Starter Workspace files are private and `no-store`.
+
+The Exam Capacity Policy is one complete five-field Institution policy:
+resource count, resource bytes, Workspace entries, Workspace file bytes, and
+Workspace total bytes. Updating it is an authorized, audited Institution
+mutation. PostgreSQL rechecks the current policy inside each Draft resource or
+Starter Workspace mutation, and publication rejects a Draft that exceeds it.
+Authorized Exam Draft projections expose the current policy so an Exam Manager
+does not need Institution-administration access merely to discover authoring
+limits; the projection is advisory and mutation-time PostgreSQL state remains
+authoritative.
+Lowering a policy does not delete or rewrite existing Draft material: removal,
+reordering, and metadata repair remain possible, while new or replacement
+content and publication must satisfy the new limits.
+
+Publication freezes the complete policy in the immutable Exam Revision and its
+content digest. The frozen Workspace limits govern both Starter Workspace
+material and every Attempt Workspace admitted from that Revision. A later
+Institution update affects future Draft mutation and publication only; it does
+not shrink an open Sitting, an admitted Attempt, a live-correction Revision, or
+an immutable Submission. Live correction preserves the base Revision's policy.
+Execution-host CPU, memory, disk, and process admission belong to the Execution
+Profile/host capacity contract, and retention belongs to its purpose-specific
+policy; neither is part of Exam Capacity Policy.
 
 ## Sitting lifecycle and eligibility
 
@@ -583,8 +612,8 @@ retention/export/deletion, binary integrity capture, arbitrary policies, and
 offline participation. Execution Environments and the Attempt Terminal server
 contract are implemented as described in [Execution environments](./execution.md);
 the candidate UI remains a separate client slice. Exact
-workspace quotas, close-work budgets, and record retention remain explicit
-decisions for their owning slices. The
+close-work budgets and record retention remain explicit decisions for their
+owning slices. The
 pre-release schema extends the single version-1 baseline and requires
 development databases to be recreated; it does not add a chain of development
 migrations.

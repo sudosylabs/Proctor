@@ -93,10 +93,13 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	if got.ID != institution.ID.String() || got.Name != institution.Name {
 		t.Fatalf("get response = %#v", got)
 	}
+	if got.ExamCapacity != (examCapacityPolicyResponseFromModel(model.DefaultExamCapacityPolicy())) {
+		t.Fatalf("get Exam capacity = %#v", got.ExamCapacity)
+	}
 
 	patchRequest := httptest.NewRequest(
 		http.MethodPatch, "/api/v1/institution",
-		strings.NewReader(`{"display_name":"Northbridge"}`),
+		strings.NewReader(`{"display_name":"Northbridge","exam_capacity":{"resource_maximum_count":25,"resource_maximum_bytes":20971520,"workspace_maximum_entries":750,"workspace_maximum_file_bytes":20971520,"workspace_maximum_total_bytes":104857600}}`),
 	)
 	patchRequest.Header.Set("Authorization", "Bearer test-credential")
 	patchRequest.Header.Set("Content-Type", "application/json")
@@ -108,6 +111,11 @@ func TestInstitutionHTTPMapsDTOsWithoutPermissionPreflight(t *testing.T) {
 	if fakeApplication.command.DisplayName == nil ||
 		*fakeApplication.command.DisplayName != "Northbridge" {
 		t.Fatalf("update command = %#v", fakeApplication.command)
+	}
+	wantCapacity := model.ExamCapacityPolicy{ResourceMaximumCount: 25, ResourceMaximumBytes: 20 << 20,
+		WorkspaceMaximumEntries: 750, WorkspaceMaximumFileBytes: 20 << 20, WorkspaceMaximumTotalBytes: 100 << 20}
+	if fakeApplication.command.ExamCapacity == nil || *fakeApplication.command.ExamCapacity != wantCapacity {
+		t.Fatalf("update Exam capacity = %#v", fakeApplication.command.ExamCapacity)
 	}
 }
 
@@ -176,5 +184,13 @@ func TestOptionalDistinguishesInstitutionPatchWireStates(t *testing.T) {
 	value := zeroValue.Name.ValuePointer()
 	if !zeroValue.Name.IsSet() || zeroValue.Name.IsNull() || value == nil || *value != "" {
 		t.Fatalf("zero name = %#v, value = %#v", zeroValue.Name, value)
+	}
+
+	var nullCapacity updateInstitutionRequest
+	if err := json.Unmarshal([]byte(`{"exam_capacity":null}`), &nullCapacity); err != nil {
+		t.Fatal(err)
+	}
+	if !nullCapacity.ExamCapacity.IsSet() || !nullCapacity.ExamCapacity.IsNull() || nullCapacity.ExamCapacity.ValuePointer() != nil {
+		t.Fatalf("null Exam capacity = %#v", nullCapacity.ExamCapacity)
 	}
 }

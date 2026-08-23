@@ -41,6 +41,7 @@ type ExamRevisionSummary struct {
 	PolicySchemaVersion     int
 	PolicyDigest            string
 	ExecutionProfileDigest  string
+	Capacity                model.ExamCapacityPolicy
 	StarterWorkspaceDigest  string
 	ContentDigest           string
 	ResourceCount           int

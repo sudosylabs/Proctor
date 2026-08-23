@@ -333,7 +333,7 @@ func createStarterWorkspaceDirectory(ctx context.Context, tx *sqlxTxWrapper, inp
 	if _, err := lockStarterWorkspaceDraft(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, input.ExpectedDraftRevision); err != nil {
 		return nil, err
 	}
-	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 1, 0); err != nil {
+	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 1, 0, 0); err != nil {
 		return nil, err
 	}
 	if err := ensureStarterWorkspaceParent(ctx, tx, input.ExamID, input.Path); err != nil {
@@ -353,7 +353,7 @@ func createStarterWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *s
 	if _, err := lockStarterWorkspaceDraft(ctx, tx, input.ExamID, input.ActorUserID, input.ManagerOverride, input.ExpectedDraftRevision); err != nil {
 		return nil, err
 	}
-	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 1, input.SizeBytes); err != nil {
+	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 1, input.SizeBytes, input.SizeBytes); err != nil {
 		return nil, err
 	}
 	if err := ensureStarterWorkspaceParent(ctx, tx, input.ExamID, input.Path); err != nil {
@@ -458,7 +458,7 @@ func replaceStarterWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *
 	if !input.ExpectedContentVersion.IsValid() || input.ExpectedContentVersion != item.Object.ContentVersion {
 		return nil, store.NewErrConflict("exam_starter_workspace_entry", "workspace_content_version", nil)
 	}
-	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 0, input.SizeBytes-item.Object.SizeBytes); err != nil {
+	if err := ensureStarterWorkspaceCapacity(ctx, tx, input.ExamID, 0, input.SizeBytes-item.Object.SizeBytes, input.SizeBytes); err != nil {
 		return nil, err
 	}
 	object, err := consumeStarterWorkspaceObject(ctx, tx, input)
@@ -544,7 +544,11 @@ func lockStarterWorkspaceDraft(ctx context.Context, tx *sqlxTxWrapper, examID mo
 	return &starterWorkspaceDraftLock{Revision: row.Revision}, nil
 }
 
-func ensureStarterWorkspaceCapacity(ctx context.Context, tx *sqlxTxWrapper, examID model.ExamID, entryDelta int, byteDelta int64) error {
+func ensureStarterWorkspaceCapacity(ctx context.Context, tx *sqlxTxWrapper, examID model.ExamID, entryDelta int, byteDelta, fileBytes int64) error {
+	capacity, err := currentExamCapacityPolicy(ctx, tx)
+	if err != nil {
+		return err
+	}
 	var usage struct {
 		Entries int   `db:"entries"`
 		Bytes   int64 `db:"bytes"`
@@ -554,10 +558,10 @@ func ensureStarterWorkspaceCapacity(ctx context.Context, tx *sqlxTxWrapper, exam
 		WHERE e.exam_id = ? AND e.archived_at IS NULL`, examID.String()); err != nil {
 		return fmt.Errorf("read Starter Workspace usage: %w", err)
 	}
-	if usage.Entries+entryDelta > model.StarterWorkspaceMaximumEntries {
+	if usage.Entries+entryDelta > capacity.WorkspaceMaximumEntries {
 		return store.NewErrConflict("exam_starter_workspace", "workspace_entry_limit", nil)
 	}
-	if usage.Bytes+byteDelta > model.StarterWorkspaceMaximumTotalBytes {
+	if fileBytes > capacity.WorkspaceMaximumFileBytes || usage.Bytes+byteDelta > capacity.WorkspaceMaximumTotalBytes {
 		return store.NewErrConflict("exam_starter_workspace", "workspace_total_size", nil)
 	}
 	return nil

@@ -5,6 +5,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -83,6 +84,22 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	if len(ordered.Items) != 2 || ordered.Items[0].Resource.ID != secondResult.Value.Resource.ID || ordered.Items[1].Resource.Position != 1 {
 		t.Fatalf("ordered=%#v", ordered)
 	}
+	policy := model.DefaultExamCapacityPolicy()
+	policy.ResourceMaximumCount = 1
+	institution.ExamCapacity = policy
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	overCountReplacement := reserveExamResource(t, ctx, ss, examID, creator.ID, updated.Value.Resource.ID,
+		"Updated", 1, 6, at.Add(5500*time.Millisecond), model.ExamResourceMediaText, &ordered.Items[1])
+	_, err = ss.ExamResource().FinalizeUpload(ctx, overCountReplacement.finalization,
+		examCommand(creator.ID, "exam.resource.replace.v1", "resource-over-count-replacement", "resource-over-count-replacement-command"))
+	var capacityConflict *store.ErrConflict
+	if !errors.As(err, &capacityConflict) || capacityConflict.Constraint != "exam_resource_limit" {
+		t.Fatalf("resource replacement count policy error = %v", err)
+	}
+	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
 	removal := &store.ExamResourceRemoval{ExamID: examID, ActorUserID: creator.ID, ExpectedDraftRevision: 6, ResourceID: secondResult.Value.Resource.ID, ChangedAt: at.Add(6 * time.Second), AuditEventID: saveExamResourceAudit(t, ctx, ss, examID, creator.ID, unit.ID).ID.String(), AuditAt: model.MillisFromTime(at.Add(6 * time.Second))}
 	removed, err := ss.ExamResource().Remove(ctx, removal, examCommand(creator.ID, "exam.resource.remove.v1", "resource-remove", "resource-remove-command"))
 	requireNoError(t, err)
@@ -94,6 +111,33 @@ func TestExamResourceStore(t *testing.T, ss store.Store) {
 	if len(remaining) != 1 || remaining[0].Resource.Position != 0 || remaining[0].Resource.ID != updated.Value.Resource.ID {
 		t.Fatalf("remaining=%#v", remaining)
 	}
+
+	policy = model.DefaultExamCapacityPolicy()
+	policy.ResourceMaximumBytes = 7
+	institution.ExamCapacity = policy
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	oversized := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Oversized", 1, 7, at.Add(7*time.Second), model.ExamResourceMediaText, nil)
+	_, err = ss.ExamResource().FinalizeUpload(ctx, oversized.finalization,
+		examCommand(creator.ID, "exam.resource.add.v1", "resource-oversized", "resource-oversized-command"))
+	if !errors.As(err, &capacityConflict) || capacityConflict.Constraint != "exam_resource_limit" {
+		t.Fatalf("resource byte policy error = %v", err)
+	}
+
+	policy = model.DefaultExamCapacityPolicy()
+	policy.ResourceMaximumCount = 1
+	institution.ExamCapacity = policy
+	institution, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
+	overCount := reserveExamResource(t, ctx, ss, examID, creator.ID, model.NewExamResourceID(), "Over count", 1, 7, at.Add(8*time.Second), model.ExamResourceMediaText, nil)
+	_, err = ss.ExamResource().FinalizeUpload(ctx, overCount.finalization,
+		examCommand(creator.ID, "exam.resource.add.v1", "resource-over-count", "resource-over-count-command"))
+	if !errors.As(err, &capacityConflict) || capacityConflict.Constraint != "exam_resource_limit" {
+		t.Fatalf("resource count policy error = %v", err)
+	}
+	institution.ExamCapacity = model.DefaultExamCapacityPolicy()
+	_, err = ss.Institution().Update(ctx, institution)
+	requireNoError(t, err)
 
 	// A validation failure or an unknown VFS/write acknowledgement after the
 	// durable reservation deliberately leaves a pending revision. It must stay

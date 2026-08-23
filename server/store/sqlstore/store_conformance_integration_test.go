@@ -756,14 +756,16 @@ func examAttemptWorkspaceSQLProbe(t *testing.T, persistence *SQLStore) storetest
 				var workspace struct {
 					RevisionID  string    `db:"admission_revision_id"`
 					Count       int       `db:"entry_count"`
+					Maximum     int       `db:"maximum_entries"`
 					DatabaseNow time.Time `db:"database_now"`
 				}
-				if getErr := tx.Get(ctx, &workspace, `SELECT w.admission_revision_id,
+				if getErr := tx.Get(ctx, &workspace, `SELECT w.admission_revision_id,r.exam_workspace_max_entries AS maximum_entries,
 				(SELECT count(*) FROM exam_attempt_workspace_entries e WHERE e.workspace_id=w.id) AS entry_count,
-				statement_timestamp() AS database_now FROM exam_attempt_workspaces w WHERE w.id=? FOR UPDATE`, workspaceID.String()); getErr != nil {
+				statement_timestamp() AS database_now FROM exam_attempt_workspaces w
+				JOIN exam_revisions r ON r.id=w.admission_revision_id WHERE w.id=? FOR UPDATE OF w`, workspaceID.String()); getErr != nil {
 					return struct{}{}, getErr
 				}
-				for index := workspace.Count; index < model.AttemptWorkspaceMaximumEntries; index++ {
+				for index := workspace.Count; index < workspace.Maximum; index++ {
 					if _, execErr := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_entries
 					(id,workspace_id,admission_revision_id,kind,path,created_at,updated_at)
 					VALUES (?,?,?,'directory',?,?,?)`, model.NewAttemptWorkspaceEntryID().String(), workspaceID.String(),

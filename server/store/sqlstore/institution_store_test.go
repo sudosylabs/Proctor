@@ -59,14 +59,15 @@ func TestInstitutionRowConversion(t *testing.T) {
 		t.Fatal(err)
 	}
 	institution := &model.Institution{
-		ID:          id,
-		CreatedAt:   model.TimeFromMillis(1),
-		UpdatedAt:   model.TimeFromMillis(2),
-		ArchivedAt:  model.OptionalTimeFromMillis(3),
-		Revision:    7,
-		Name:        "northbridge",
-		DisplayName: "Northbridge",
-		Description: "University",
+		ID:           id,
+		CreatedAt:    model.TimeFromMillis(1),
+		UpdatedAt:    model.TimeFromMillis(2),
+		ArchivedAt:   model.OptionalTimeFromMillis(3),
+		Revision:     7,
+		Name:         "northbridge",
+		DisplayName:  "Northbridge",
+		Description:  "University",
+		ExamCapacity: model.DefaultExamCapacityPolicy(),
 	}
 	row := newInstitutionRow(institution)
 	got, err := row.model()

@@ -275,6 +275,7 @@ type candidateExamPresentationResponse struct {
 	Title                      string                          `json:"title"`
 	InstructionsMarkdown       string                          `json:"instructions_markdown"`
 	FocusLossCollectionEnabled bool                            `json:"focus_loss_collection_enabled"`
+	Capacity                   examCapacityPolicyResponse      `json:"capacity"`
 	Resources                  []candidateExamResourceResponse `json:"resources"`
 }
 
@@ -615,6 +616,7 @@ func (module examAttemptHTTPModule) presentation(request operationRequest) (oper
 	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(),
 		AdmissionRevisionID: view.AdmissionRevisionID.String(), CurrentRevisionID: view.CurrentRevisionID.String(), Title: view.Title,
 		InstructionsMarkdown: view.InstructionsMarkdown, FocusLossCollectionEnabled: view.FocusLossCollectionEnabled,
+		Capacity: examCapacityPolicyResponseFromModel(view.Capacity),
 		Resources: make([]candidateExamResourceResponse, 0, len(view.Resources))}
 	for _, resource := range view.Resources {
 		response.Resources = append(response.Resources, candidateExamResourceResponse{ID: resource.ResourceID.String(), DisplayName: resource.DisplayName,

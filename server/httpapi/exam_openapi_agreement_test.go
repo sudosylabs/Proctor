@@ -101,7 +101,7 @@ func TestExamOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "ExamSummaryResponse", DTO: reflect.TypeOf(examSummaryResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "title", "updated_at", "archived_at", "revision", "manager_count"}, Nullable: []string{"archived_at"}},
 			{Name: "ExamResponse", DTO: reflect.TypeOf(examResponse{}), Required: []string{"exam", "draft", "owner_user_id", "manager_count"}, Nullable: []string{"exam.archived_at"}},
 			{Name: "ExamIdentityResponse", DTO: reflect.TypeOf(examIdentityResponse{}), Required: []string{"id", "academic_unit_id", "creator_user_id", "owner_user_id", "created_at", "updated_at", "archived_at", "revision"}, Nullable: []string{"archived_at"}},
-			{Name: "ExamDraftResponse", DTO: reflect.TypeOf(examDraftResponse{}), Required: []string{"exam_id", "title", "instructions_markdown", "policy", "execution_profile", "updated_at", "revision", "resource_count", "has_starter_workspace"}},
+			{Name: "ExamDraftResponse", DTO: reflect.TypeOf(examDraftResponse{}), Required: []string{"exam_id", "title", "instructions_markdown", "policy", "execution_profile", "capacity", "updated_at", "revision", "resource_count", "has_starter_workspace"}},
 			{Name: "ExecutionProfile", DTO: reflect.TypeOf(executionProfileResponse{}), Required: []string{"enabled", "image", "network"}},
 			{Name: "ExecutionImageListResponse", DTO: reflect.TypeOf(executionImageListResponse{}), Required: []string{"items"}},
 			{Name: "ExecutionImage", DTO: reflect.TypeOf(executionImageResponse{}), Required: []string{"id", "networks"}},

@@ -31,23 +31,24 @@ type publishExamRevisionRequest struct {
 }
 
 type examRevisionResponse struct {
-	ID                         string `json:"id"`
-	ExamID                     string `json:"exam_id"`
-	Number                     int64  `json:"number"`
-	SourceDraftRevision        int64  `json:"source_draft_revision"`
-	Title                      string `json:"title"`
-	PolicySchemaVersion        int    `json:"policy_schema_version"`
-	PolicyDigest               string `json:"policy_digest"`
-	ExecutionProfileDigest     string `json:"execution_profile_digest"`
-	StarterWorkspaceDigest     string `json:"starter_workspace_digest"`
-	ContentDigest              string `json:"content_digest"`
-	ResourceCount              int    `json:"resource_count"`
-	StarterWorkspaceEntryCount int    `json:"starter_workspace_entry_count"`
-	StarterWorkspaceTotalBytes int64  `json:"starter_workspace_total_bytes"`
-	PublishedByUserID          string `json:"published_by_user_id"`
-	PublishedAt                string `json:"published_at"`
-	BaseRevisionID             string `json:"base_revision_id,omitempty"`
-	PublicationKind            string `json:"publication_kind"`
+	ID                         string                     `json:"id"`
+	ExamID                     string                     `json:"exam_id"`
+	Number                     int64                      `json:"number"`
+	SourceDraftRevision        int64                      `json:"source_draft_revision"`
+	Title                      string                     `json:"title"`
+	PolicySchemaVersion        int                        `json:"policy_schema_version"`
+	PolicyDigest               string                     `json:"policy_digest"`
+	ExecutionProfileDigest     string                     `json:"execution_profile_digest"`
+	Capacity                   examCapacityPolicyResponse `json:"capacity"`
+	StarterWorkspaceDigest     string                     `json:"starter_workspace_digest"`
+	ContentDigest              string                     `json:"content_digest"`
+	ResourceCount              int                        `json:"resource_count"`
+	StarterWorkspaceEntryCount int                        `json:"starter_workspace_entry_count"`
+	StarterWorkspaceTotalBytes int64                      `json:"starter_workspace_total_bytes"`
+	PublishedByUserID          string                     `json:"published_by_user_id"`
+	PublishedAt                string                     `json:"published_at"`
+	BaseRevisionID             string                     `json:"base_revision_id,omitempty"`
+	PublicationKind            string                     `json:"publication_kind"`
 }
 
 type examRevisionListResponse struct {
@@ -79,7 +80,7 @@ func examRevisionResource(application ExamRevisionApplication) resource {
 func examRevisionMutationErrorCodes() []string {
 	return academicMutationErrorCodes(
 		"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.conflict",
-		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.unavailable",
+		"exam.draft.revision_conflict", "exam.revision.no_changes", "exam.revision.capacity_exceeded", "exam.unavailable",
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 	)
 }
@@ -187,6 +188,7 @@ func examRevisionResponseFromSummary(summary application.ExamRevisionSummary) ex
 		SourceDraftRevision: summary.SourceDraftRevision, Title: summary.Title,
 		PolicySchemaVersion: summary.PolicySchemaVersion, PolicyDigest: summary.PolicyDigest,
 		ExecutionProfileDigest: summary.ExecutionProfileDigest,
+		Capacity:               examCapacityPolicyResponseFromModel(summary.Capacity),
 		StarterWorkspaceDigest: summary.StarterWorkspaceDigest, ContentDigest: summary.ContentDigest,
 		ResourceCount: summary.ResourceCount, StarterWorkspaceEntryCount: summary.StarterWorkspaceEntries,
 		StarterWorkspaceTotalBytes: summary.StarterWorkspaceBytes, PublishedByUserID: summary.PublishedByUserID.String(),

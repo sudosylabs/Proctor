@@ -17,6 +17,7 @@ type View struct {
 	Draft               model.ExamDraft
 	OwnerUserID         model.UserID
 	ManagerCount        int
+	Capacity            model.ExamCapacityPolicy
 	ResourceCount       int
 	HasStarterWorkspace bool
 }
@@ -616,7 +617,8 @@ func hasCurrentMembership(ctx context.Context, memberships memberships, userID m
 
 func project(snapshot *store.ExamAuthoringSnapshot) View {
 	return View{Exam: *snapshot.Exam, Draft: *snapshot.Draft, OwnerUserID: snapshot.OwnerUserID,
-		ManagerCount: snapshot.ManagerCount, ResourceCount: snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace}
+		ManagerCount: snapshot.ManagerCount, Capacity: snapshot.Capacity,
+		ResourceCount: snapshot.ResourceCount, HasStarterWorkspace: snapshot.HasStarterWorkspace}
 }
 
 func invalid(field string) error {
@@ -651,6 +653,8 @@ func mapStoreError(err error) error {
 			return &Fault{Code: "exam.draft.no_changes", Cause: err}
 		case "exam_revision_no_changes":
 			return &Fault{Code: "exam.revision.no_changes", Cause: err}
+		case "exam_revision_capacity":
+			return &Fault{Code: "exam.revision.capacity_exceeded", Cause: err}
 		case "exam_manager_exists":
 			return &Fault{Code: "exam.manager.exists", Cause: err}
 		case "exam_manager_missing":
