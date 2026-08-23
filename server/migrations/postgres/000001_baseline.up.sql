@@ -2634,7 +2634,7 @@ CREATE TABLE mfa_credentials (
     user_id varchar(26) NOT NULL REFERENCES users(id),
     state varchar(16) NOT NULL CHECK (state IN ('pending', 'active')),
     encrypted_secret varchar(4096) NOT NULL,
-    encryption_key_id char(16) NOT NULL,
+    encryption_key_id char(32) NOT NULL,
     pending_expires_at timestamptz,
     activated_at timestamptz,
     last_used_time_step bigint NOT NULL DEFAULT 0,

@@ -131,7 +131,7 @@ func validateApplicationDependencies(deps Dependencies) error {
 }
 
 func constructApplicationFoundation(deps Dependencies) (applicationFoundation, error) {
-	mfa, err := newMFAMechanics(deps.MFA)
+	mfa, err := newMFAMechanics(deps.MFA, deps.MFASecretSealer)
 	if err != nil {
 		return applicationFoundation{}, err
 	}

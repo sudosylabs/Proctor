@@ -33,7 +33,7 @@ func TestMFAPersonalAccessTokenCanonicalIDConstraints(t *testing.T) {
 	})
 	credential, err := persistence.MFA().SavePending(ctx, &model.MFACredential{
 		UserID: user.ID, State: model.MFAStatePending, EncryptedSecret: "ciphertext",
-		EncryptionKeyID: "0123456789abcdef", PendingExpiresAt: model.OptionalTimeFromMillis(model.GetMillis() + 60_000),
+		EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFromMillis(model.GetMillis() + 60_000),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	}
 	pending, err := persistence.MFA().SavePending(ctx, &model.MFACredential{
 		UserID: user.ID, State: model.MFAStatePending, EncryptedSecret: "ciphertext",
-		EncryptionKeyID: "0123456789abcdef", PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Hour)),
+		EncryptionKeyID: "0123456789abcdef0123456789abcdef", PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Hour)),
 	})
 	if err != nil {
 		t.Fatal(err)

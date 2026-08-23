@@ -79,7 +79,8 @@ the code and component contracts for that detail.
   canonical names and authorization, and Classes retain one exact Period that
   must apply to their Programme lineage.
 - Identity includes local passwords, sessions and refresh rotation, account
-  recovery, personal access tokens, TOTP MFA and recovery codes, administrative
+  recovery, personal access tokens, TOTP MFA with User-bound versioned
+  secret-sealing envelopes and single-use recovery codes, administrative
   session management, direct CAS 3, and generic OIDC. Its application facade
   delegates to validated unexported focused services that receive exact Store
   contracts; it retains no persistence locator or mutable sibling callbacks.

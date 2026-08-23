@@ -140,14 +140,14 @@ func (s *mfaApplicationService) Setup(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	encrypted, err := s.mechanics.encrypt(principal.UserID.String(), secret)
+	sealed, err := s.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
 	now := s.now()
 	candidate := &model.MFACredential{
 		UserID: principal.UserID, State: model.MFAStatePending,
-		EncryptedSecret: encrypted, EncryptionKeyID: s.mechanics.primary,
+		EncryptedSecret: sealed.encoded, EncryptionKeyID: sealed.keyID,
 		PendingExpiresAt: model.OptionalTimeFrom(now.Add(s.mechanics.settings.SetupTTL)),
 		CreatedAt:        now,
 	}

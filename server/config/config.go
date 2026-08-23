@@ -299,9 +299,8 @@ type Bootstrap struct {
 	DevelopmentMode bool   `json:"DevelopmentMode"`
 }
 
-// MFA contains operator-owned cryptographic and policy settings. The primary
-// key encrypts new TOTP secrets; decryption_keys permits online key rotation
-// while existing credentials are re-encrypted.
+// MFA contains operator-owned enrollment policy and an independent key ring
+// projected into the server's versioned secret-sealing module.
 type MFA struct {
 	Enabled           bool     `json:"Enabled"`
 	Issuer            string   `json:"Issuer"`
@@ -1068,15 +1067,7 @@ func validateSecretSealing(
 }
 
 func validateSecretKeySeparation(c Config, add func(string, string)) {
-	reserved := make(map[[32]byte]struct{}, 2+len(c.Authentication.MFA.DecryptionKeys))
-	for _, encoded := range append(
-		[]string{c.Authentication.MFA.EncryptionKey},
-		c.Authentication.MFA.DecryptionKeys...,
-	) {
-		if material, ok := decodeAES256Key(encoded); ok {
-			reserved[material] = struct{}{}
-		}
-	}
+	memberlistMaterial := make(map[[32]byte]struct{}, 1+len(c.Cluster.Memberlist.DecryptionKeys))
 	memberlistKeys := append(
 		[]string{c.Cluster.Memberlist.EncryptionKey},
 		c.Cluster.Memberlist.DecryptionKeys...,
@@ -1091,8 +1082,32 @@ func validateSecretKeySeparation(c Config, add func(string, string)) {
 		if err == nil && len(decoded) == 32 {
 			var material [32]byte
 			copy(material[:], decoded)
-			reserved[material] = struct{}{}
+			memberlistMaterial[material] = struct{}{}
 		}
+	}
+
+	reserved := make(map[[32]byte]struct{},
+		len(memberlistMaterial)+1+len(c.Authentication.MFA.DecryptionKeys))
+	for material := range memberlistMaterial {
+		reserved[material] = struct{}{}
+	}
+	mfaKeys := append(
+		[]string{c.Authentication.MFA.EncryptionKey},
+		c.Authentication.MFA.DecryptionKeys...,
+	)
+	for index, encoded := range mfaKeys {
+		material, ok := decodeAES256Key(encoded)
+		if !ok {
+			continue
+		}
+		if _, reused := memberlistMaterial[material]; reused {
+			field := "authentication.mfa.encryption_key"
+			if index > 0 {
+				field = fmt.Sprintf("authentication.mfa.decryption_keys[%d]", index-1)
+			}
+			add(field, "must not reuse Memberlist key material")
+		}
+		reserved[material] = struct{}{}
 	}
 	mailKeys := make([]string, 0, 1+len(c.Mail.SecretSealing.DecryptionKeys))
 	mailKeys = append(mailKeys, c.Mail.SecretSealing.EncryptionKey)
@@ -1400,36 +1415,15 @@ func validateAuthentication(authentication Authentication, add func(string, stri
 	if mfa.RecoveryCodeCount < 5 || mfa.RecoveryCodeCount > 20 {
 		add("authentication.mfa.recovery_code_count", "must be between 5 and 20")
 	}
-	keys := append([]string{mfa.EncryptionKey}, mfa.DecryptionKeys...)
-	seenKeys := make(map[string]struct{}, len(keys))
-	for index, key := range keys {
-		if key == "" {
-			if index == 0 && mfa.Enabled {
-				add(
-					"authentication.mfa.encryption_key",
-					"is required when MFA is enabled",
-				)
-			}
-			continue
-		}
-		decoded, err := base64.StdEncoding.DecodeString(key)
-		if err != nil || len(decoded) != 32 {
-			field := "authentication.mfa.encryption_key"
-			if index > 0 {
-				field = fmt.Sprintf(
-					"authentication.mfa.decryption_keys[%d]",
-					index-1,
-				)
-			}
-			add(field, "must be standard base64 encoding of exactly 32 bytes")
-			continue
-		}
-		if _, exists := seenKeys[key]; exists {
-			add("authentication.mfa.decryption_keys", "must not contain duplicate keys")
-			continue
-		}
-		seenKeys[key] = struct{}{}
+	if mfa.Enabled && mfa.EncryptionKey == "" {
+		add(
+			"authentication.mfa.encryption_key",
+			"is required when MFA is enabled",
+		)
 	}
+	validateSecretSealing("authentication.mfa", SecretSealing{
+		EncryptionKey: mfa.EncryptionKey, DecryptionKeys: mfa.DecryptionKeys,
+	}, add)
 
 	validateExternalAuthentication(authentication.External, add)
 }

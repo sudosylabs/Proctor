@@ -9,13 +9,14 @@
 package model
 
 import (
+	"encoding/hex"
 	"time"
 	"unicode/utf8"
 )
 
 const (
 	MFAEncryptedSecretMaxLength = 4096
-	MFAEncryptionKeyIDLength    = 16
+	MFAEncryptionKeyIDLength    = 32
 	MFARecoveryCodeMaxCount     = 20
 )
 
@@ -105,7 +106,9 @@ func (m *MFACredential) Validate() error {
 		len(m.EncryptedSecret) > MFAEncryptedSecretMaxLength {
 		return invalidModelError(where, "mfa_credential", "encrypted_secret", "has an invalid length", details)
 	}
-	if len(m.EncryptionKeyID) != MFAEncryptionKeyIDLength {
+	decodedKeyID, keyIDErr := hex.DecodeString(m.EncryptionKeyID)
+	if len(m.EncryptionKeyID) != MFAEncryptionKeyIDLength || keyIDErr != nil ||
+		hex.EncodeToString(decodedKeyID) != m.EncryptionKeyID {
 		return invalidModelError(where, "mfa_credential", "encryption_key_id", "has an invalid format", details)
 	}
 	if m.ArchivedAt.Valid && m.ArchivedAt.Time.Before(m.CreatedAt) {

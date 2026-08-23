@@ -60,3 +60,43 @@ func TestMailSecretSealingProjectionIsOptionalAndCopiesTheKeyRing(t *testing.T) 
 		t.Fatalf("newMailSecretSealer(invalid) error = %v", err)
 	}
 }
+
+func TestMFASecretSealingProjectionIsIndependentAndBounded(t *testing.T) {
+	t.Parallel()
+
+	settings, configured := mfaSecretSealingSettings(config.Default().Authentication.MFA)
+	if configured || settings.EncryptionKey != "" || len(settings.DecryptionKeys) != 0 ||
+		settings.MaximumPlaintext != 0 {
+		t.Fatalf("disabled default projection = %#v, %t", settings, configured)
+	}
+	sealer, err := newMFASecretSealer(config.Default().Authentication.MFA)
+	if err != nil || sealer != nil {
+		t.Fatalf("newMFASecretSealer(disabled default) = %v, %v", sealer, err)
+	}
+
+	mfaConfig := config.Default().Authentication.MFA
+	mfaConfig.EncryptionKey = base64.StdEncoding.EncodeToString([]byte(strings.Repeat("m", 32)))
+	mfaConfig.DecryptionKeys = []string{base64.StdEncoding.EncodeToString([]byte(strings.Repeat("f", 32)))}
+	settings, configured = mfaSecretSealingSettings(mfaConfig)
+	if !configured || settings.MaximumPlaintext != mfaSecretMaximumPlaintextBytes {
+		t.Fatalf("configured projection = %#v, %t", settings, configured)
+	}
+	mfaConfig.DecryptionKeys[0] = "mutated"
+	if settings.DecryptionKeys[0] == "mutated" {
+		t.Fatal("MFA key-ring projection retained the configuration slice")
+	}
+	mfaConfig.DecryptionKeys[0] = settings.DecryptionKeys[0]
+	sealer, err = newMFASecretSealer(mfaConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := secretseal.Binding{Purpose: "mfa.totp", Owner: "user-projection"}
+	envelope, err := sealer.Seal(binding, []byte("TOTPSECRET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := sealer.Open(binding, envelope)
+	if err != nil || string(opened) != "TOTPSECRET" {
+		t.Fatalf("Open(projected MFA envelope) = %q, %v", opened, err)
+	}
+}

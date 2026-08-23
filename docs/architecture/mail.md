@@ -280,8 +280,9 @@ server-owned secret-sealing module owns versioned AES-256-GCM envelopes, random
 nonces, authenticated domain separation, safe errors, bounds, key selection,
 and key identifiers. It is an in-process module, not a replaceable cryptography
 port. Mail has an independent primary encryption key and fallback decryption
-ring; MFA and Memberlist keys are never reused. MFA migration to the common
-module is separate work.
+ring. MFA uses the same cryptographic module through its own purpose-bound
+envelopes and independent key ring; Memberlist retains its protocol-specific
+ring. Key material is never reused across those domains.
 
 The complete frozen delivery payload is encrypted: full recipient name and
 address, subject, text, HTML, and sensitive headers. Plain durable metadata is

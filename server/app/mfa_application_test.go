@@ -7,12 +7,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -101,6 +104,52 @@ func TestMFASetupUsesControlledClockAndSecretGenerator(t *testing.T) {
 	}
 }
 
+func TestMFASecretSealingAuthenticatesUserAndKeyReference(t *testing.T) {
+	t.Parallel()
+
+	mechanics := mustTestMFAMechanics(t)
+	userID := model.NewUserID()
+	sealed, err := mechanics.sealTOTPSecret(userID.String(), "JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope secretseal.Envelope
+	if err := json.Unmarshal([]byte(sealed.encoded), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Version != secretseal.EnvelopeVersion1 ||
+		envelope.Algorithm != secretseal.AlgorithmAES256GCM ||
+		envelope.KeyID != sealed.keyID {
+		t.Fatalf("sealed MFA envelope = %#v", envelope)
+	}
+	credential := &model.MFACredential{
+		EncryptedSecret: sealed.encoded, EncryptionKeyID: sealed.keyID,
+	}
+	opened, err := mechanics.decrypt(userID.String(), credential)
+	if err != nil || opened != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("decrypt() = %q, %v", opened, err)
+	}
+	if _, err := mechanics.decrypt(model.NewUserID().String(), credential); err == nil {
+		t.Fatal("MFA envelope opened for a different user")
+	}
+	mismatched := *credential
+	mismatched.EncryptionKeyID = strings.Repeat("0", model.MFAEncryptionKeyIDLength)
+	if _, err := mechanics.decrypt(userID.String(), &mismatched); err == nil {
+		t.Fatal("MFA envelope opened with mismatched durable key reference")
+	}
+}
+
+func TestMFAMechanicsRequiresSealingOnlyWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	if _, err := newMFAMechanics(MFAPolicy{}, nil); err != nil {
+		t.Fatalf("newMFAMechanics(disabled) error = %v", err)
+	}
+	if _, err := newMFAMechanics(MFAPolicy{Enabled: true}, nil); err == nil {
+		t.Fatal("newMFAMechanics(enabled without sealer) succeeded")
+	}
+}
+
 func TestMFARecoveryCodeLoginConsumptionIsSerialized(t *testing.T) {
 	t.Parallel()
 
@@ -164,14 +213,14 @@ func TestMFASecurityTransitionsPrepareOneOrdinaryNoticeWithoutSecrets(t *testing
 	application := &App{mfaApplication: service}
 	invocation := NewInvocation(principal, model.RequestMetadata{RequestID: "mfa-notices"})
 	const secret = "JBSWY3DPEHPK3PXP"
-	encrypted, err := service.mechanics.encrypt(principal.UserID.String(), secret)
+	sealed, err := service.mechanics.sealTOTPSecret(principal.UserID.String(), secret)
 	if err != nil {
 		t.Fatal(err)
 	}
 	persistence.credential = &model.MFACredential{
 		ID: model.NewMFACredentialID(), UserID: principal.UserID,
-		State: model.MFAStatePending, EncryptedSecret: encrypted,
-		EncryptionKeyID: service.mechanics.primary, CreatedAt: now.Add(-time.Minute),
+		State: model.MFAStatePending, EncryptedSecret: sealed.encoded,
+		EncryptionKeyID: sealed.keyID, CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now.Add(-time.Minute), PendingExpiresAt: model.OptionalTimeFrom(now.Add(time.Minute)),
 	}
 	code, err := computeTOTP(secret, now.Unix()/30)
@@ -283,11 +332,18 @@ func newTestMFAApplicationService(
 
 func mustTestMFAMechanics(t *testing.T) *mfaMechanics {
 	t.Helper()
-	mechanics, err := newMFAMechanics(MFAPolicy{
+	policy := MFAPolicy{
 		Enabled: true, Issuer: "Proctor", SetupTTL: 10 * time.Minute,
 		RecoveryCodeCount: 5,
-		EncryptionKey:     base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)),
+	}
+	sealer, err := secretseal.New(secretseal.Settings{
+		EncryptionKey:    base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)),
+		MaximumPlaintext: 128,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mechanics, err := newMFAMechanics(policy, sealer)
 	if err != nil {
 		t.Fatal(err)
 	}

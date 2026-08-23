@@ -199,9 +199,12 @@ audit, and queues only the password-changed security notice.
 
 The principal records authentication strength and completion time. Sensitive
 operations can require strong and/or recent authentication. TOTP secrets are
-encrypted, challenges are replay-protected, recovery codes are hashed and
-single-use, and recovery-code values are shown only once. External-provider
-MFA counts only when an explicitly configured trusted assertion proves it.
+stored in versioned AES-256-GCM `secretseal` envelopes authenticated to the
+fixed `mfa.totp` purpose and owning User. The MFA key ring is independent from
+mail, Memberlist, and every other cryptographic domain. Challenges are
+replay-protected, recovery codes are hashed and single-use, and recovery-code
+values are shown only once. External-provider MFA counts only when an
+explicitly configured trusted assertion proves it.
 
 ## External provider boundary
 

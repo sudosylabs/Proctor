@@ -16,7 +16,7 @@ func TestMFACredentialValidationAndRedaction(t *testing.T) {
 		UserID:           NewUserID(),
 		State:            MFAStatePending,
 		EncryptedSecret:  "ciphertext",
-		EncryptionKeyID:  "0123456789abcdef",
+		EncryptionKeyID:  "0123456789abcdef0123456789abcdef",
 		PendingExpiresAt: OptionalTimeFrom(now.Add(time.Minute)),
 	}
 	pending.PrepareCreate(NewMFACredentialID(), now)
@@ -40,6 +40,11 @@ func TestMFACredentialValidationAndRedaction(t *testing.T) {
 	}
 	if !pending.IsPendingAt(now) || pending.IsPendingAt(pending.PendingExpiresAt.Time) {
 		t.Fatalf("IsPendingAt() inconsistent for %#v", pending)
+	}
+	invalidKeyID := *pending
+	invalidKeyID.EncryptionKeyID = strings.ToUpper(invalidKeyID.EncryptionKeyID)
+	if err := invalidKeyID.Validate(); err == nil {
+		t.Fatal("MFA credential accepted a non-canonical key ID")
 	}
 
 	active := *pending

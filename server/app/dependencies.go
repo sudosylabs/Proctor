@@ -59,6 +59,9 @@ type Dependencies struct {
 	MailMetricsReader    MailMetricsReader
 	JobRecorder          jobRecorder
 	OperationalRecorder  OperationalRecorder
+	// MFASecretSealer is the concrete in-process cryptographic module for TOTP
+	// secrets. It is nil until the independent MFA ring is configured.
+	MFASecretSealer *secretseal.Sealer
 	// MailSecretSealer is the concrete in-process cryptographic module for
 	// recoverable mail payloads. It is nil until an independent ring is configured.
 	MailSecretSealer *secretseal.Sealer
@@ -113,12 +116,11 @@ type AccountRecoveryPolicy struct {
 	RateLimit            LoginRateLimitPolicy
 }
 
-// MFAPolicy is the cryptographic and enrollment projection for TOTP MFA.
+// MFAPolicy is the enrollment and verification policy for TOTP MFA. Key-ring
+// construction remains at the server composition root.
 type MFAPolicy struct {
 	Enabled           bool
 	Issuer            string
-	EncryptionKey     string
-	DecryptionKeys    []string
 	SetupTTL          time.Duration
 	RecoveryCodeCount int
 }

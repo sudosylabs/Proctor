@@ -42,6 +42,10 @@ func applicationDependencies(
 	if err != nil {
 		return app.Dependencies{}, err
 	}
+	mfaSecretSealer, err := newMFASecretSealer(cfg.Authentication.MFA)
+	if err != nil {
+		return app.Dependencies{}, err
+	}
 	if mailRenderer == nil {
 		return app.Dependencies{}, errors.New("mail template renderer is nil")
 	}
@@ -54,6 +58,7 @@ func applicationDependencies(
 		MailTemplateRenderer:    mailRenderer,
 		MailDeliveryRecorder:    mailDeliveryRecorder,
 		MailMetricsReader:       mailMetricsReader,
+		MFASecretSealer:         mfaSecretSealer,
 		MailSecretSealer:        mailSecretSealer,
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
@@ -102,8 +107,6 @@ func applicationDependencies(
 		MFA: app.MFAPolicy{
 			Enabled:           auth.MFA.Enabled,
 			Issuer:            auth.MFA.Issuer,
-			EncryptionKey:     auth.MFA.EncryptionKey,
-			DecryptionKeys:    append([]string(nil), auth.MFA.DecryptionKeys...),
 			SetupTTL:          auth.MFA.SetupTTL.Duration,
 			RecoveryCodeCount: auth.MFA.RecoveryCodeCount,
 		},

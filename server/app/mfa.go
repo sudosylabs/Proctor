@@ -12,16 +12,12 @@ package app
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
-	"crypto/sha256"
 	"encoding/base32"
-	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -29,6 +25,7 @@ import (
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -36,6 +33,7 @@ const (
 	mfaSecretBytes       = 20
 	mfaRecoveryCodeBytes = 15
 	mfaTOTPWindow        = int64(1)
+	mfaSealingPurpose    = "mfa.totp"
 
 	actionMFASetup                   model.Action = "mfa.setup"
 	actionMFAActivate                model.Action = "mfa.activate"
@@ -46,38 +44,22 @@ const (
 
 type mfaMechanics struct {
 	settings         MFAPolicy
-	keys             map[string][]byte
-	primary          string
+	sealer           *secretseal.Sealer
 	newSecret        func() (string, error)
 	newRecoveryCodes func(string, int) ([]string, []*model.MFARecoveryCode, error)
 }
 
-func newMFAMechanics(settings MFAPolicy) (*mfaMechanics, error) {
-	service := &mfaMechanics{
+func newMFAMechanics(settings MFAPolicy, sealer *secretseal.Sealer) (*mfaMechanics, error) {
+	mechanics := &mfaMechanics{
 		settings:         settings,
-		keys:             make(map[string][]byte),
+		sealer:           sealer,
 		newSecret:        randomMFASecret,
 		newRecoveryCodes: generateMFARecoveryCodes,
 	}
-	if !settings.Enabled {
-		return service, nil
+	if settings.Enabled && sealer == nil {
+		return nil, errors.New("enabled MFA requires secret sealing")
 	}
-	encodedKeys := append(
-		[]string{settings.EncryptionKey},
-		settings.DecryptionKeys...,
-	)
-	for index, encoded := range encodedKeys {
-		key, err := base64.StdEncoding.Strict().DecodeString(encoded)
-		if err != nil || len(key) != 32 {
-			return nil, fmt.Errorf("configure MFA encryption key %d: invalid AES-256 key", index)
-		}
-		keyID := mfaEncryptionKeyID(key)
-		service.keys[keyID] = key
-		if index == 0 {
-			service.primary = keyID
-		}
-	}
-	return service, nil
+	return mechanics, nil
 }
 
 // GetMFAStatusQuery returns the caller's MFA enrollment status.
@@ -233,71 +215,49 @@ func (s *mfaMechanics) consumeSecondFactor(
 	return nil
 }
 
-func (s *mfaMechanics) encrypt(userID string, secret string) (string, error) {
-	key, ok := s.keys[s.primary]
-	if !ok {
-		return "", errors.New("MFA primary encryption key is unavailable")
+type sealedMFASecret struct {
+	encoded string
+	keyID   string
+}
+
+func (s *mfaMechanics) sealTOTPSecret(userID string, secret string) (sealedMFASecret, error) {
+	if s == nil || s.sealer == nil {
+		return sealedMFASecret{}, errors.New("MFA secret sealing is unavailable")
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return "", err
-	}
-	sealed := aead.Seal(
-		append([]byte(nil), nonce...),
-		nonce,
+	envelope, err := s.sealer.Seal(
+		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
 		[]byte(secret),
-		[]byte("proctor:mfa:"+userID),
 	)
-	return base64.RawURLEncoding.EncodeToString(sealed), nil
+	if err != nil {
+		return sealedMFASecret{}, err
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return sealedMFASecret{}, errors.New("encode MFA sealed secret")
+	}
+	return sealedMFASecret{encoded: string(encoded), keyID: envelope.KeyID}, nil
 }
 
 func (s *mfaMechanics) decrypt(
 	userID string,
 	credential *model.MFACredential,
 ) (string, error) {
-	key, ok := s.keys[credential.EncryptionKeyID]
-	if !ok {
-		return "", errors.New("MFA decryption key is unavailable")
+	if s == nil || s.sealer == nil || credential == nil {
+		return "", errors.New("MFA secret sealing is unavailable")
 	}
-	encoded, err := base64.RawURLEncoding.Strict().
-		DecodeString(credential.EncryptedSecret)
-	if err != nil {
-		return "", err
+	var envelope secretseal.Envelope
+	if err := json.Unmarshal([]byte(credential.EncryptedSecret), &envelope); err != nil ||
+		envelope.KeyID != credential.EncryptionKeyID {
+		return "", secretseal.ErrInvalidEnvelope
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	if len(encoded) <= aead.NonceSize() {
-		return "", errors.New("MFA encrypted secret is truncated")
-	}
-	plaintext, err := aead.Open(
-		nil,
-		encoded[:aead.NonceSize()],
-		encoded[aead.NonceSize():],
-		[]byte("proctor:mfa:"+userID),
+	plaintext, err := s.sealer.Open(
+		secretseal.Binding{Purpose: mfaSealingPurpose, Owner: userID},
+		envelope,
 	)
 	if err != nil {
 		return "", err
 	}
 	return string(plaintext), nil
-}
-
-func mfaEncryptionKeyID(key []byte) string {
-	digest := sha256.Sum256(key)
-	return hex.EncodeToString(digest[:8])
 }
 
 func randomMFASecret() (string, error) {

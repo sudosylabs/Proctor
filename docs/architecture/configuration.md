@@ -52,6 +52,17 @@ while the installation is pristine. After
 initialization the durable marker prevents replacement or removal of deployment
 configuration from reopening setup.
 
+Recoverable TOTP secrets use the independent `Authentication.MFA` key ring
+through the server-owned `secretseal` module. `EncryptionKey` selects the
+primary key for new purpose- and User-bound envelopes; `DecryptionKeys`
+contains at most eight fallbacks for values written before key promotion. All
+entries are canonical standard-base64 encodings of exactly 32 bytes. Enabling
+MFA requires a primary key, configuring fallbacks without one is invalid, and
+every configured ring is constructed during server composition. The
+environment overrides are `PROCTOR_AUTHENTICATION_MFA_ENCRYPTION_KEY` and
+`PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS`. Configuration display redacts the
+complete ring.
+
 Recoverable transactional-mail payloads use the independent
 `Mail.SecretSealing` deployment key ring. `EncryptionKey` is the primary key
 for new envelopes and `DecryptionKeys` is a bounded fallback ring for rotation;

@@ -24,7 +24,7 @@ func TestMFACredentialRowRehydrationRejectsInvalidPersistedState(t *testing.T) {
 		UserID:           model.NewUserID().String(),
 		State:            model.MFAStatePending,
 		EncryptedSecret:  "ciphertext-must-not-appear",
-		EncryptionKeyID:  "0123456789abcdef",
+		EncryptionKeyID:  "0123456789abcdef0123456789abcdef",
 		PendingExpiresAt: sql.NullTime{Time: created.Add(time.Minute), Valid: true},
 	}
 	tests := []struct {
@@ -65,7 +65,7 @@ func TestMFACredentialRowConversion(t *testing.T) {
 		UserID:           userID.String(),
 		State:            model.MFAStatePending,
 		EncryptedSecret:  "ciphertext",
-		EncryptionKeyID:  "0123456789abcdef",
+		EncryptionKeyID:  "0123456789abcdef0123456789abcdef",
 		PendingExpiresAt: sql.NullTime{Time: expires, Valid: true},
 	}
 	credential, err := row.model()

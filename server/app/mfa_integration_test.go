@@ -28,6 +28,7 @@ import (
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 	"github.com/sudosylabs/proctor/server/testlib"
 )
@@ -124,6 +125,15 @@ func TestMFAIntegration(t *testing.T) {
 	if persisted.EncryptedSecret == setup.Secret ||
 		strings.Contains(persisted.EncryptedSecret, setup.Secret) {
 		t.Fatal("TOTP secret was not encrypted at rest")
+	}
+	var envelope secretseal.Envelope
+	if err := json.Unmarshal([]byte(persisted.EncryptedSecret), &envelope); err != nil {
+		t.Fatalf("persisted MFA secret is not a versioned envelope: %v", err)
+	}
+	if envelope.Version != secretseal.EnvelopeVersion1 ||
+		envelope.Algorithm != secretseal.AlgorithmAES256GCM ||
+		envelope.KeyID != persisted.EncryptionKeyID {
+		t.Fatalf("persisted MFA envelope = %#v; key reference = %q", envelope, persisted.EncryptionKeyID)
 	}
 	code := integrationTOTP(t, setup.Secret, time.Now().UTC().Unix()/30)
 	activateResponse := performJSONRequest(

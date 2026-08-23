@@ -351,11 +351,13 @@ node identity, mail, VFS, logging, password hashing, session lifetimes,
 concurrent-session limits, and login rate limits. Secret fields are explicitly
 redacted. Authentication configuration also controls the recent-authentication
 window, verification/reset lifetimes, recovery throttles, MFA issuer and setup
-lifetime, recovery-code count, a rotatable AES-256 encryption-key ring, and
-operator-owned external-provider definitions.
-When MFA is enabled, `Authentication.MFA.EncryptionKey` must be a standard
-base64-encoded 32-byte key. Previous keys may remain in `DecryptionKeys`
-during rotation.
+lifetime, recovery-code count, an independent secret-sealing key ring, and
+operator-owned external-provider definitions. When MFA is enabled,
+`Authentication.MFA.EncryptionKey` must be the canonical standard-base64
+encoding of exactly 32 bytes. Up to eight previous keys may remain in
+`DecryptionKeys` so existing versioned envelopes remain readable during
+rotation. MFA envelopes are authenticated to their owning User and the fixed
+TOTP purpose; MFA, mail, Memberlist, and TLS keys are never interchangeable.
 
 ### Public TLS and HTTP forwarding
 

@@ -99,7 +99,71 @@ func TestMailSecretSealingValidationIsStrictAndIndependent(t *testing.T) {
 	}
 }
 
-func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
+func TestMFASecretSealingValidationUsesTheSharedKeyRingContract(t *testing.T) {
+	t.Parallel()
+
+	key := func(seed byte) string {
+		return base64.StdEncoding.EncodeToString([]byte(strings.Repeat(string([]byte{seed}), 32)))
+	}
+	tests := []struct {
+		name  string
+		setup func(*Config)
+		field string
+	}{
+		{
+			name:  "fallback requires primary",
+			setup: func(cfg *Config) { cfg.Authentication.MFA.DecryptionKeys = []string{key(1)} },
+			field: "authentication.mfa.encryption_key",
+		},
+		{
+			name: "primary must be canonical base64",
+			setup: func(cfg *Config) {
+				cfg.Authentication.MFA.EncryptionKey = key(1) + "\n"
+			},
+			field: "authentication.mfa.encryption_key",
+		},
+		{
+			name: "decoded material must be unique",
+			setup: func(cfg *Config) {
+				cfg.Authentication.MFA.EncryptionKey = key(1)
+				cfg.Authentication.MFA.DecryptionKeys = []string{key(1)}
+			},
+			field: "authentication.mfa.decryption_keys",
+		},
+		{
+			name: "fallback ring is bounded",
+			setup: func(cfg *Config) {
+				cfg.Authentication.MFA.EncryptionKey = key(1)
+				cfg.Authentication.MFA.DecryptionKeys = make([]string, 9)
+				for index := range cfg.Authentication.MFA.DecryptionKeys {
+					cfg.Authentication.MFA.DecryptionKeys[index] = key(byte(index + 2))
+				}
+			},
+			field: "authentication.mfa.decryption_keys",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Default()
+			test.setup(&cfg)
+			err := cfg.Validate()
+			var validation *ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("Validate() error = %v, want ValidationError", err)
+			}
+			for _, failure := range validation.Fields {
+				if failure.Field == test.field {
+					return
+				}
+			}
+			t.Fatalf("Validate() fields = %#v, want %q", validation.Fields, test.field)
+		})
+	}
+}
+
+func TestSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 	t.Parallel()
 
 	key := func(seed byte) string {
@@ -131,12 +195,7 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			name: "Memberlist",
 			setup: func(cfg *Config) {
 				cfg.Mail.SecretSealing.EncryptionKey = key(3)
-				cfg.Cache.Backend = "redis"
-				cfg.Cluster.Backend = "memberlist"
-				cfg.Cluster.Memberlist.EncryptionKey = key(3)
-				cfg.VFS.Backend = "s3"
-				cfg.VFS.S3.Endpoint = "127.0.0.1:9000"
-				cfg.VFS.S3.Bucket = "proctor"
+				configureMemberlistForSecretSealingTest(cfg, key(3))
 			},
 			field: "mail.secret_sealing.encryption_key",
 		},
@@ -144,12 +203,7 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			name: "whitespace-padded Memberlist",
 			setup: func(cfg *Config) {
 				cfg.Mail.SecretSealing.EncryptionKey = key(4)
-				cfg.Cache.Backend = "redis"
-				cfg.Cluster.Backend = "memberlist"
-				cfg.Cluster.Memberlist.EncryptionKey = "  \n" + key(4) + "\t "
-				cfg.VFS.Backend = "s3"
-				cfg.VFS.S3.Endpoint = "127.0.0.1:9000"
-				cfg.VFS.S3.Bucket = "proctor"
+				configureMemberlistForSecretSealingTest(cfg, "  \n"+key(4)+"\t ")
 			},
 			field: "mail.secret_sealing.encryption_key",
 		},
@@ -161,6 +215,24 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 				cfg.Authentication.MFA.EncryptionKey = encoded[:20] + "\r\n" + encoded[20:]
 			},
 			field: "mail.secret_sealing.encryption_key",
+		},
+		{
+			name: "MFA primary and Memberlist fallback",
+			setup: func(cfg *Config) {
+				cfg.Authentication.MFA.EncryptionKey = key(6)
+				configureMemberlistForSecretSealingTest(cfg, key(7))
+				cfg.Cluster.Memberlist.DecryptionKeys = []string{key(6)}
+			},
+			field: "authentication.mfa.encryption_key",
+		},
+		{
+			name: "MFA fallback and Memberlist primary",
+			setup: func(cfg *Config) {
+				cfg.Authentication.MFA.EncryptionKey = key(8)
+				cfg.Authentication.MFA.DecryptionKeys = []string{key(9)}
+				configureMemberlistForSecretSealingTest(cfg, key(9))
+			},
+			field: "authentication.mfa.decryption_keys[0]",
 		},
 	}
 	for _, test := range tests {
@@ -182,6 +254,15 @@ func TestMailSecretSealingRejectsDecodedKeyReuseAcrossDomains(t *testing.T) {
 			t.Fatalf("Validate() fields = %#v, want reuse failure for %q", validation.Fields, test.field)
 		})
 	}
+}
+
+func configureMemberlistForSecretSealingTest(cfg *Config, encryptionKey string) {
+	cfg.Cache.Backend = "redis"
+	cfg.Cluster.Backend = "memberlist"
+	cfg.Cluster.Memberlist.EncryptionKey = encryptionKey
+	cfg.VFS.Backend = "s3"
+	cfg.VFS.S3.Endpoint = "127.0.0.1:9000"
+	cfg.VFS.S3.Bucket = "proctor"
 }
 
 func TestMailSecretSealingKeysAreClonedAndRedacted(t *testing.T) {

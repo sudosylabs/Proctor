@@ -4,6 +4,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -266,6 +267,8 @@ func validBaseForEnvironmentOverride(key string) Config {
 	case "PROCTOR_AUTHENTICATION_MFA_ENABLED":
 		base.Authentication.MFA.Enabled = true
 		base.Authentication.MFA.EncryptionKey = base64.StdEncoding.EncodeToString(make([]byte, 32))
+	case "PROCTOR_AUTHENTICATION_MFA_DECRYPTION_KEYS":
+		base.Authentication.MFA.EncryptionKey = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
 	}
 	return base
 }
