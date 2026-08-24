@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Proctor installation authority topology</title>
+  <desc id="description">Client requests enter identical Proctor nodes through a load balancer. Nodes commit authoritative application state to PostgreSQL and managed file content to VFS before publishing disposable effects to Redis, WebSocket clients, execution hosts, or SMTP delivery.</desc>
+  <defs>
+    <marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4c586f"/>
+    </marker>
+    <marker id="arrow-cobalt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3657d6"/>
+    </marker>
+    <marker id="arrow-aqua" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0d806e"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="18" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="17" fill="none" stroke="#dfe3eb" stroke-width="2"/>
+
+  <text x="48" y="54" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="750" letter-spacing="2.1">INSTALLATION AUTHORITY MAP</text>
+  <text x="48" y="86" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">One institution · one authority model · one node or many</text>
+
+  <rect x="48" y="122" width="210" height="260" rx="14" fill="#f7f8fb" stroke="#dfe3eb" stroke-width="2"/>
+  <text x="70" y="151" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">CLIENT CONTEXTS</text>
+
+  <rect x="70" y="174" width="166" height="52" rx="9" fill="#ffffff" stroke="#c7ceda"/>
+  <circle cx="92" cy="200" r="7" fill="#3657d6"/>
+  <text x="108" y="205" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="650">Operator console</text>
+
+  <rect x="70" y="238" width="166" height="52" rx="9" fill="#ffffff" stroke="#c7ceda"/>
+  <circle cx="92" cy="264" r="7" fill="#3657d6"/>
+  <text x="108" y="269" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="650">Admin browser</text>
+
+  <rect x="70" y="302" width="166" height="52" rx="9" fill="#ffffff" stroke="#c7ceda"/>
+  <circle cx="92" cy="328" r="7" fill="#3657d6"/>
+  <text x="108" y="333" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="650">Candidate client</text>
+
+  <path d="M 258 252 H 322" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
+  <text x="267" y="240" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10">HTTPS/WSS</text>
+
+  <rect x="326" y="122" width="456" height="260" rx="14" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
+  <text x="350" y="151" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">PROCTOR INSTALLATION</text>
+
+  <rect x="447" y="172" width="214" height="50" rx="25" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
+  <text x="554" y="202" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700">External load balancer</text>
+
+  <path d="M 554 222 V 252 M 405 252 H 703 M 405 252 V 269 M 554 252 V 269 M 703 252 V 269" fill="none" stroke="#3657d6" stroke-width="2"/>
+
+  <rect x="350" y="270" width="110" height="78" rx="10" fill="#ffffff" stroke="#3657d6"/>
+  <text x="405" y="300" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Proctor</text>
+  <text x="405" y="321" text-anchor="middle" fill="#4c586f" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="12">node A</text>
+
+  <rect x="499" y="270" width="110" height="78" rx="10" fill="#ffffff" stroke="#3657d6"/>
+  <text x="554" y="300" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Proctor</text>
+  <text x="554" y="321" text-anchor="middle" fill="#4c586f" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="12">node B</text>
+
+  <rect x="648" y="270" width="110" height="78" rx="10" fill="#ffffff" stroke="#3657d6"/>
+  <text x="703" y="300" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Proctor</text>
+  <text x="703" y="321" text-anchor="middle" fill="#4c586f" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="12">node C</text>
+
+  <rect x="48" y="405" width="734" height="58" rx="9" fill="#3657d6"/>
+  <text x="72" y="430" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">DURABLE COMMIT BOUNDARY</text>
+  <text x="72" y="449" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Authority crosses this rail before any best-effort publication</text>
+  <path d="M 405 348 V 402 M 554 348 V 402 M 703 348 V 402" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+  <rect x="621" y="420" width="137" height="28" rx="14" fill="#ffffff"/>
+  <text x="689" y="438" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">COMMIT FIRST</text>
+  <path d="M 225 463 V 515 M 605 463 V 515" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+
+  <text x="48" y="498" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">AUTHORITATIVE STORES</text>
+
+  <rect x="48" y="518" width="354" height="128" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
+  <rect x="68" y="540" width="54" height="54" rx="27" fill="#eef1ff"/>
+  <path d="M 78 552 C 78 545 112 545 112 552 V 582 C 112 589 78 589 78 582 Z M 78 552 C 78 559 112 559 112 552 M 78 567 C 78 574 112 574 112 567" fill="none" stroke="#3657d6" stroke-width="2"/>
+  <text x="140" y="554" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="750">PostgreSQL</text>
+  <text x="140" y="577" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Authoritative application state</text>
+  <rect x="140" y="596" width="168" height="27" rx="13" fill="#eef1ff"/>
+  <text x="224" y="614" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">BACK UP + RESTORE</text>
+
+  <rect x="428" y="518" width="354" height="128" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
+  <rect x="448" y="540" width="54" height="54" rx="12" fill="#eef1ff"/>
+  <path d="M 460 552 H 489 V 584 H 460 Z M 467 552 V 547 H 482 V 552 M 466 562 H 483 M 466 570 H 483 M 466 578 H 477" fill="none" stroke="#3657d6" stroke-width="2"/>
+  <text x="520" y="554" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="750">VFS / object storage</text>
+  <text x="520" y="577" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Managed content behind VFS contracts</text>
+  <rect x="520" y="596" width="168" height="27" rx="13" fill="#eef1ff"/>
+  <text x="604" y="614" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">BACK UP + RESTORE</text>
+
+  <rect x="818" y="122" width="334" height="524" rx="14" fill="#e7f5f1" stroke="#0d806e" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="842" y="151" fill="#0d806e" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.4">DISPOSABLE / RECONSTRUCTIBLE</text>
+  <text x="842" y="174" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Effects follow a successful durable commit.</text>
+
+  <path d="M 782 327 H 826 M 826 237 V 507 M 826 237 H 839 M 826 327 H 839 M 826 417 H 839 M 826 507 H 839" fill="none" stroke="#0d806e" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-aqua)"/>
+
+  <rect x="842" y="200" width="286" height="74" rx="10" fill="#ffffff" stroke="#0d806e"/>
+  <text x="864" y="229" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Redis</text>
+  <text x="864" y="251" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Cache, counters, coordination</text>
+
+  <rect x="842" y="290" width="286" height="74" rx="10" fill="#ffffff" stroke="#0d806e"/>
+  <text x="864" y="319" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">WebSocket publication</text>
+  <text x="864" y="341" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Realtime client notifications</text>
+
+  <rect x="842" y="380" width="286" height="74" rx="10" fill="#ffffff" stroke="#0d806e"/>
+  <text x="864" y="409" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Execution hosts</text>
+  <text x="864" y="431" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Ephemeral Attempt projections</text>
+
+  <rect x="842" y="470" width="286" height="74" rx="10" fill="#ffffff" stroke="#0d806e"/>
+  <text x="864" y="499" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">SMTP delivery</text>
+  <text x="864" y="521" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Mail from durable jobs</text>
+
+  <rect x="842" y="565" width="286" height="53" rx="9" fill="#0d806e"/>
+  <text x="985" y="587" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1">RECOVER BY RECONCILIATION</text>
+  <text x="985" y="605" text-anchor="middle" fill="#e7f5f1" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Never restore authority from this side</text>
+
+  <path d="M 48 679 H 1152" stroke="#dfe3eb"/>
+  <circle cx="61" cy="695" r="5" fill="#a65c16"/>
+  <text x="76" y="699" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Node count changes capacity and availability—not ownership, ordering, or recovery semantics.</text>
+</svg>

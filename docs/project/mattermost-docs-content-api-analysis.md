@@ -867,8 +867,14 @@ cheaply discoverable wire shape.
 
 ### Phase 3 — Introduce a governed visual corpus
 
-This phase starts only after Proctor's image-processing dependency constraint is
-resolved.
+**Status: in progress.** `image-size` 2.0.2 still has no fixed release for the
+relevant advisories. The first slice therefore proves the alternative already
+required by section 1.3: reviewed SVG and PNG files are served from a constrained
+static directory, authored MDX supplies only a registry ID, and Docusaurus'
+vulnerable authored-image parser never reads the content asset. The registry,
+validator, deterministic screenshot contract, and first
+installation-authority diagram are implemented. The remaining prioritized
+diagrams and UI-specific screenshot fixtures are later Phase 3 slices.
 
 **Work**
 

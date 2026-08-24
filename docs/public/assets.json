@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "installation-authority-topology",
+      "path": "static/assets/diagrams/installation-authority-topology.svg",
+      "public_path": "/assets/diagrams/installation-authority-topology.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored for the Proctor documentation repository.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains architecture labels and synthetic node names only; no Institution, User, Exam, credential, hostname, or operational data."
+      },
+      "alt": "Requests pass through a load balancer to one or more identical Proctor nodes. Nodes commit authoritative state to PostgreSQL and managed content to VFS before sending disposable effects to Redis, WebSocket clients, execution hosts, or SMTP delivery.",
+      "caption": "The same authority boundary applies to one node or many: durable state and managed content commit before reconstructible cache, cluster, realtime, execution, or delivery effects.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "last_reviewed": "2026-08-24",
+      "review_triggers": [
+        "docs/architecture/dependencies.md",
+        "docs/architecture/runtime.md"
+      ]
+    }
+  ]
+}

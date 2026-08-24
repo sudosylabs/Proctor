@@ -1,0 +1,109 @@
+# Governed visual assets
+
+Visuals in the public documentation are evidence, not decoration. Add one only
+when it makes an architecture, lifecycle, spatial relationship, or UI procedure
+materially easier to understand than prose alone. The surrounding prose must
+remain sufficient in print, high contrast, and environments where the asset is
+unavailable.
+
+## Authoring boundary
+
+Every content asset has one entry in [`docs/public/assets.json`](../public/assets.json)
+and one file beneath `docs/public/static/assets/`. Authored Markdown and MDX do
+not import files, use Markdown image syntax, create raw `img` elements, or write
+direct `/assets/` paths. Reference the stable registry ID instead:
+
+```mdx
+<GovernedFigure asset="installation-authority-topology" />
+```
+
+`GovernedFigure` resolves the public path, alt description, dimensions, kind,
+and caption from the registry. This keeps page authors away from transport and
+presentation details while the validator enforces the asset contract.
+
+Only deterministic SVG diagrams and PNG screenshots or illustrations are
+allowed. The validator rejects unregistered and orphaned files, duplicate IDs,
+missing ownership or provenance, unapproved privacy reviews, unsafe SVG
+features, dimension and size drift, unknown references, and missing review
+triggers. SVG files may not contain active content, linked or embedded images,
+external references, event handlers, doctypes, or entities.
+
+The constrained static path deliberately bypasses Docusaurus' authored-image
+parser while its transitive `image-size` dependency has unresolved security
+advisories. Do not relax the Markdown-image and image-import prohibition when
+adding an asset.
+
+## Registry record
+
+Use lowercase kebab-case IDs and paths grouped by role, such as
+`static/assets/diagrams/`, `static/assets/screenshots/`, or
+`static/assets/illustrations/`. A record owns:
+
+- the source and public paths, kind, intrinsic dimensions, and maximum bytes;
+- the documentation owner, provenance, and licensing state;
+- a privacy decision with its evidence;
+- useful alt text and a concise visible caption;
+- the intended theme and review date; and
+- repository files whose changes require the asset to be reviewed.
+
+An original asset may record `license.status` as `pending` only while Proctor's
+documentation-license production decision remains open. The note must explain
+that state. Do not assign a license expression by assumption, and do not publish
+the documentation site until that decision is resolved. Adapted work must
+instead identify its exact source revision and satisfy the repository's
+licensing and notice rules.
+
+Run the asset checks from `docs/site`:
+
+```sh
+npm run validate:assets
+npm run test:assets
+```
+
+The normal `npm run check` and root `make docs-check` workflows include both.
+
+## Diagram standard
+
+Use the public site's established tokens: cobalt for the authoritative path,
+aqua for disposable or reconstructible effects, amber for human attention, and
+coral only for blocked or fail-closed outcomes. Labels, line styles, ordering,
+and shapes must communicate the same distinction without color. Keep diagrams
+on a white technical plate so light, dark, print, and high-contrast contexts
+retain the same evidence.
+
+Use system font fallbacks only. Preserve a numeric `width`, `height`, and
+matching `viewBox`; keep text legible when the figure fills a narrow content
+column. The SVG title and description are useful source metadata, while the
+registry alt text remains the rendered accessibility authority.
+
+## Screenshot fixtures
+
+Screenshots use seeded synthetic data only. Never capture a real Institution,
+User, Exam, answer, credential, email address, hostname, object key, or local
+filesystem path. A screenshot's review triggers must include both the UI source
+or component contract and the tracked seed fixture that produced its visible
+state.
+
+Use these deterministic capture defaults unless the procedure requires a
+different viewport and the registry provenance explains why:
+
+| Setting | Default |
+| --- | --- |
+| Desktop viewport | 1440 × 1024 CSS pixels |
+| Mobile viewport | 390 × 844 CSS pixels |
+| Browser scale | 100% |
+| Theme | Light |
+| Motion | Reduced |
+| Locale | `en` |
+| Time zone | `UTC` |
+| Data | Tracked, deterministic synthetic fixture |
+
+Capture only the application surface needed for orientation. Exclude browser
+chrome, developer tools, notifications, account menus, and unrelated personal
+applications. Prefer one clean frame over a sequence of nearly identical
+screenshots. Crop annotations must remain outside meaningful UI content.
+
+When a review trigger changes, regenerate the screenshot with the same fixture
+and capture settings, inspect the visual diff, update `last_reviewed`, and
+record any intentional capture change in `provenance`. If the UI is not stable
+enough for a deterministic fixture, keep the procedure prose-only.

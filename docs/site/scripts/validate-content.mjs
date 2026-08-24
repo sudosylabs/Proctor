@@ -73,10 +73,10 @@ for (const contentRoot of contentRoots) {
       failures.push(`${name}: unknown maturity ${frontmatter.maturity}`);
     }
     if (/!\[[^\]]*\]\(/.test(source)) {
-      failures.push(`${name}: authored images are disabled until the Docusaurus image parser is patched`);
+      failures.push(`${name}: Markdown images are forbidden; use GovernedFigure with a registered asset ID`);
     }
     if (/<img\b/i.test(source) || /^\s*import\s+.*\.(?:avif|gif|heic|heif|icns|jpe?g|jxl|png|svg|webp)['"];?\s*$/im.test(source)) {
-      failures.push(`${name}: authored image imports are disabled until the Docusaurus image parser is patched`);
+      failures.push(`${name}: direct image elements and imports are forbidden; use GovernedFigure with a registered asset ID`);
     }
   }
 }

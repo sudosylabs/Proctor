@@ -17,6 +17,7 @@ Each kind of information has one owner:
 | Capability status and unresolved decisions | [`docs/project/status.md`](../project/status.md) |
 | Public task-oriented guidance | [`docs/public/`](../public/) and authored [`docs/api/`](../api/) overview |
 | Public site presentation and build | [`docs/site/`](../site/) |
+| Public visual-asset metadata and files | [`docs/public/assets.json`](../public/assets.json) and [`docs/public/static/assets/`](../public/static/assets/) |
 | Module setup and commands | The module README and Makefile |
 | Cross-repository agent procedure | Root [`AGENTS.md`](../../AGENTS.md) |
 | Subtree-only agent differences | The nearest concise `AGENTS.md` |
@@ -95,6 +96,14 @@ or consequences only when they explain a real trade-off.
 Update a superseded rule in place and rely on Git history for chronology. Do
 not create a parallel ADR directory or append an unstructured decision log.
 Create a new architecture topic only when no existing topic owns the decision.
+
+## Visual assets
+
+Public diagrams and screenshots use the governed registry and static serving
+boundary described in the [visual-asset workflow](./visual-assets.md). MDX pages
+reference a stable asset ID through `GovernedFigure`; they do not own file
+paths, alt descriptions, dimensions, or captions. Preserve the direct image and
+image-import prohibitions until the documented dependency constraint changes.
 
 ## Portable references
 

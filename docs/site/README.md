@@ -24,7 +24,8 @@ make docs-start
 make docs-check
 ```
 
-`docs-start` serves a local preview. `docs-check` validates frontmatter, proves
+`docs-start` serves a local preview. `docs-check` validates frontmatter and the
+governed visual-asset registry, proves
 the generated OpenAPI artifact matches its human-authored YAML modules, audits
 the reference data, tests the audit and renderer failure modes, regenerates and
 verifies endpoint pages, type-checks the site, synchronizes the artifact, and
@@ -98,7 +99,14 @@ runtime compatibility.
 
 Docusaurus 3.10.2 currently resolves `image-size` 2.0.2, whose ICNS, JXL, and
 HEIF parsers have high-severity denial-of-service advisories and no published
-fixed release. Public pages therefore cannot add authored images or image
-imports yet; `npm run validate` enforces that boundary. Revisit it when a fixed
-dependency is available. The site uses typography and CSS for its initial
-visual system.
+fixed release. Public pages therefore cannot add Markdown images, raw `img`
+elements, or image imports; `npm run validate` enforces that boundary.
+
+Reviewed SVG and PNG content assets instead use the constrained static route
+documented in [`../contributing/visual-assets.md`](../contributing/visual-assets.md).
+MDX supplies only a registry ID to `GovernedFigure`, so Docusaurus' authored
+image parser never reads those files. The asset gate independently permits only
+the two reviewed formats and checks inventory, ownership, provenance, license
+state, privacy review, dimensions, size, safe SVG structure, references, and
+review triggers. Revisit the parser prohibition when a fixed dependency is
+available; do not remove the governed asset boundary.

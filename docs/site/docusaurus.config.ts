@@ -17,6 +17,7 @@ const config: Config = {
   // build from inventing a production hostname before that decision is made.
   url: process.env.DOCS_SITE_URL ?? 'https://docs.proctor.invalid',
   baseUrl: process.env.BASE_URL ?? '/',
+  staticDirectories: ['static', '../public/static'],
   trailingSlash: false,
 
   organizationName: 'sudosylabs',

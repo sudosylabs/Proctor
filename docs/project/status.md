@@ -27,9 +27,13 @@ the code and component contracts for that detail.
   and product-area tag, presents the Proctor contract extensions, and disables
   request sending. Authored integration guidance and end-to-end recipes now
   give every product area a human entry path, including durable Job and mail
-  operations. Governed visual assets and the provisional UI remain later
-  documentation slices, while licensing, hostname, versioning, and hosting
-  remain unsettled production decisions.
+  operations. A governed static visual-asset boundary now bypasses the
+  vulnerable authored-image parser, validates ownership, provenance, license
+  state, privacy, safe formats, dimensions, references, and freshness triggers,
+  and introduces the first high-contrast installation-authority diagram. The
+  broader visual corpus and provisional UI remain later documentation slices,
+  while licensing, hostname, versioning, and hosting remain unsettled
+  production decisions.
 - The root product build now owns one configurable end-to-end development
   lifecycle, layered dependencies and observability, a real
   readiness-aware three-node HAProxy topology and node-loss certification,

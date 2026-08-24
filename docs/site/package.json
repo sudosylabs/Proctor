@@ -15,10 +15,12 @@
     "generate:openapi:spec": "node scripts/sync-openapi.mjs",
     "generate:openapi:reference": "docusaurus clean-api-docs proctor && docusaurus gen-api-docs proctor && node scripts/finalize-openapi-reference.mjs && node scripts/verify-openapi-reference.mjs",
     "audit:openapi": "node scripts/audit-openapi.mjs",
+    "validate:assets": "node scripts/validate-assets.mjs",
+    "test:assets": "node --test scripts/asset-registry.test.mjs",
     "test:openapi-audit": "node --test scripts/openapi-audit.test.mjs",
     "test:openapi-reference": "node --test scripts/openapi-reference.test.mjs",
     "test:codegen": "node --test scripts/codegen-smoke.test.mjs",
-    "validate": "node scripts/validate-content.mjs && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
+    "validate": "node scripts/validate-content.mjs && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
     "typecheck": "tsc --noEmit",
     "check": "npm run validate && npm run generate:openapi && npm run typecheck && docusaurus build"
   },
