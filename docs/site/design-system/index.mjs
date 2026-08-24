@@ -122,6 +122,9 @@ function validateTokenContract() {
     ['light teal', designTokens.light.transient, designTokens.light['transient-soft']],
     ['light attention', designTokens.light.attention, designTokens.light['attention-soft']],
     ['light danger', designTokens.light.danger, designTokens.light['danger-soft']],
+    ['light plate primary', designTokens.light['print-primary'], designTokens.light.plate],
+    ['light plate complete', designTokens.light['print-complete'], designTokens.light.plate],
+    ['light plate complete surface', designTokens.light['print-complete'], designTokens.light['print-complete-soft']],
     ['dark ink', designTokens.dark.ink, designTokens.dark.canvas],
     ['dark soft ink', designTokens.dark['ink-soft'], designTokens.dark.canvas],
     ['dark muted ink', designTokens.dark['ink-muted'], designTokens.dark.canvas],
@@ -130,6 +133,9 @@ function validateTokenContract() {
     ['dark teal', designTokens.dark.transient, designTokens.dark['transient-soft']],
     ['dark attention', designTokens.dark.attention, designTokens.dark['attention-soft']],
     ['dark danger', designTokens.dark.danger, designTokens.dark['danger-soft']],
+    ['dark plate primary', designTokens.dark['print-primary'], designTokens.dark.plate],
+    ['dark plate complete', designTokens.dark['print-complete'], designTokens.dark.plate],
+    ['dark plate complete surface', designTokens.dark['print-complete'], designTokens.dark['print-complete-soft']],
   ];
   for (const [name, foreground, background] of contrastPairs) {
     const ratio = contrastRatio(foreground, background);

@@ -129,6 +129,15 @@ After changing `CONTEXT.md` or curated term markup, run `npm run
 generate:glossary`, then `npm run check:glossary` and `npm run test:glossary`
 from `docs/site`.
 
+## Local documentation search
+
+The search index is a generated adapter, not an authored catalog. Its module
+under `docs/site/search/` derives page titles, descriptions, searchable prose,
+routes, product areas, endpoint methods, paths, and contract vocabulary from
+the public MDX roots and `server/openapi.json`. After either authority changes,
+run `npm run generate:search`; validation rejects stale output. Search stays
+local in the built site and does not send reader queries to an external service.
+
 ## Portable references
 
 - Use repository-relative Markdown links for repository content.

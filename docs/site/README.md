@@ -11,9 +11,9 @@ presentation remains provisional. Publication, the production hostname,
 content licensing, versioning, analytics, and hosting remain explicit decisions
 to settle before deployment.
 
-The guide finder intentionally searches the current top-level guide catalog.
-Replace that bounded catalog with a generated body-content index when the
-public guide set is large enough to justify the dedicated search slice.
+The search dialog uses a generated local index covering authored public and API
+guides, canonical glossary terms, OpenAPI product areas, and every operation.
+It performs no remote request and sends no query off the page.
 
 The tracked [documentation design system](../contributing/design-system.md)
 owns the brand palette, semantic colors, IBM Plex typography, spacing,
@@ -28,6 +28,9 @@ npm run test:design-system
 npm run generate:glossary
 npm run check:glossary
 npm run test:glossary
+npm run generate:search
+npm run check:search
+npm run test:search
 ```
 
 The check rejects stale generated CSS, literal colors outside the token module,
@@ -39,6 +42,11 @@ system.
 public glossary page and the typed runtime lookup used by explicit `<Term>`
 tooltips. The check rejects stale generated views, unknown identifiers, repeated
 annotations, and tooltip markup inside headings or code.
+
+The search module reads human-authored MDX plus `server/openapi.json` and hides
+route derivation, text extraction, duplicate detection, and TypeScript adapter
+generation behind `generate:search`. Regenerate after public content or OpenAPI
+changes; `check:search` rejects a stale index.
 
 ## Commands
 

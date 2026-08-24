@@ -5,28 +5,28 @@ const roles = [
   {
     label: 'Operate',
     audience: 'Operator',
-    title: 'Run a Deployment',
+    title: 'Run a deployment',
     description: 'Plan dependencies, configuration, health, scaling, and recovery.',
     to: '/operator/',
   },
   {
     label: 'Administer',
     audience: 'Institution administrator',
-    title: 'Shape the Institution',
+    title: 'Shape the institution',
     description: 'Build the academic hierarchy, identities, roles, and access policy.',
     to: '/institution-admin/',
   },
   {
     label: 'Review & secure',
     audience: 'Security reviewer',
-    title: 'Trace the Guarantees',
+    title: 'Trace the guarantees',
     description: 'Review credentials, authorization, audit, data, and isolation boundaries.',
     to: '/security/',
   },
   {
     label: 'Build & integrate',
     audience: 'Developer',
-    title: 'Contribute or Integrate',
+    title: 'Contribute or integrate',
     description: 'Understand the modules, contracts, development workflow, and API.',
     to: '/developers/',
   },
@@ -42,7 +42,7 @@ export default function RoleGrid(): React.JSX.Element {
           <strong>{role.title}</strong>
           <span className={styles.description}>{role.description}</span>
           <span className={styles.action} aria-hidden="true">
-            Read guide <span>→</span>
+            Open guide <span>→</span>
           </span>
         </Link>
       ))}

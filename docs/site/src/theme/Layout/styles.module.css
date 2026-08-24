@@ -1,0 +1,35 @@
+.shell {
+  min-width: 0;
+}
+
+.home :global(.theme-doc-sidebar-container) {
+  display: none;
+}
+
+.home :global(.docMainContainer) {
+  max-width: none;
+  width: 100%;
+}
+
+.home :global(.docItemContainer) {
+  max-width: none;
+}
+
+.home :global(.container) {
+  max-width: 1280px;
+  padding-inline: clamp(var(--proctor-space-4), 4vw, var(--proctor-space-7));
+}
+
+.reader :global(.theme-doc-markdown) {
+  max-width: 76ch;
+}
+
+.reader :global(.theme-doc-markdown > .apiItemContainer) {
+  max-width: none;
+}
+
+@media (max-width: 996px) {
+  .home :global(.container) {
+    padding-inline: var(--proctor-space-4);
+  }
+}

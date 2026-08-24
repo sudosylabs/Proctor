@@ -8,6 +8,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+::selection {
+  background: var(--proctor-primary-soft);
+  color: var(--proctor-ink);
+}
+
 a,
 button {
   touch-action: manipulation;
@@ -34,14 +39,15 @@ summary:focus-visible {
 }
 
 .navbar__inner {
-  gap: 1.25rem;
+  gap: var(--proctor-space-4);
   margin: 0 auto;
-  max-width: 1600px;
+  max-width: 1680px;
+  padding-inline: var(--proctor-space-2);
 }
 
 .navbar__brand {
   color: var(--proctor-ink);
-  margin-right: 1.5rem;
+  margin-right: var(--proctor-space-5);
 }
 
 .navbar__brand:hover {
@@ -59,24 +65,24 @@ summary:focus-visible {
 .navbar__title::before {
   align-items: center;
   background: var(--proctor-action);
-  border-radius: 0.4rem;
+  border-radius: var(--proctor-radius-control);
   color: var(--proctor-on-action);
   content: "P";
   display: inline-flex;
   font-size: 0.72rem;
   font-weight: 700;
-  height: 1.8rem;
+  height: 2rem;
   justify-content: center;
-  margin-right: 0.7rem;
-  width: 1.8rem;
+  margin-right: var(--proctor-space-3);
+  width: 2rem;
 }
 
 .navbar__link {
-  border-radius: 0.38rem;
+  border-radius: var(--proctor-radius-control);
   color: var(--proctor-ink-soft);
   font-size: 0.84rem;
   font-weight: 600;
-  padding: 0.45rem 0.65rem;
+  padding: var(--proctor-space-2) var(--proctor-space-3);
 }
 
 .navbar__link:hover,
@@ -123,7 +129,7 @@ summary:focus-visible {
 }
 
 .theme-doc-sidebar-menu {
-  padding: 1.25rem 0.85rem 2rem;
+  padding: var(--proctor-space-5) var(--proctor-space-3) var(--proctor-space-6);
 }
 
 .menu {
@@ -136,15 +142,16 @@ summary:focus-visible {
 }
 
 .menu__list-item-collapsible {
-  margin-top: 1.25rem;
+  margin-top: var(--proctor-space-5);
 }
 
 .menu__list-item-collapsible .menu__link--sublist {
   color: var(--proctor-ink-muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.095em;
-  text-transform: uppercase;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-caption-size);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: none;
 }
 
 .menu__list-item-collapsible:hover {
@@ -162,12 +169,12 @@ summary:focus-visible {
 }
 
 .menu__link {
-  border-radius: 0.4rem;
+  border-radius: var(--proctor-radius-control);
   color: var(--proctor-ink-soft);
   line-height: 1.35;
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 0.55rem 0.7rem;
+  padding: var(--proctor-space-2) var(--proctor-space-3);
 }
 
 .menu__link:hover {
@@ -183,8 +190,8 @@ summary:focus-visible {
 }
 
 .breadcrumbs {
-  font-size: 0.75rem;
-  margin-bottom: 1.75rem;
+  font-size: var(--proctor-type-caption-size);
+  margin-bottom: var(--proctor-space-6);
 }
 
 .breadcrumbs__link {
@@ -275,8 +282,10 @@ summary:focus-visible {
 .theme-doc-markdown th {
   color: var(--proctor-ink);
   font-size: 0.73rem;
+  hyphens: none;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  word-break: normal;
 }
 
 .theme-doc-markdown th,
@@ -296,7 +305,7 @@ summary:focus-visible {
 .table-of-contents {
   border-left-color: var(--proctor-border);
   font-size: 0.78rem;
-  margin-top: 2rem;
+  margin-top: var(--proctor-space-6);
   padding-left: 1.15rem;
 }
 
@@ -305,10 +314,11 @@ summary:focus-visible {
   content: "On this page";
   display: block;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.075em;
   margin-bottom: 0.8rem;
-  text-transform: uppercase;
+  font-family: var(--ifm-font-family-monospace);
+  text-transform: none;
 }
 
 .table-of-contents__link {
@@ -428,6 +438,14 @@ code {
     display: block;
     max-width: 100%;
     overflow-x: auto;
+  }
+
+  .theme-doc-markdown th {
+    min-width: 8rem;
+  }
+
+  .theme-doc-markdown td {
+    min-width: 12rem;
   }
 }
 

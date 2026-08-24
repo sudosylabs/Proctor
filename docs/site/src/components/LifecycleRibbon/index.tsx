@@ -13,7 +13,7 @@ export default function LifecycleRibbon(): React.JSX.Element {
     <section className={styles.wrapper} aria-labelledby="lifecycle-title">
       <div className={styles.intro}>
         <p className={styles.eyebrow}>Examination lifecycle</p>
-        <h2 id="lifecycle-title">Follow the Domain, Not the Screen</h2>
+        <h2 id="lifecycle-title">Follow the domain, not the screen</h2>
         <p>
           Proctor keeps authoring, publication, scheduling, and participation
           separate. Guides and reference material follow the same boundaries.

@@ -1,26 +1,33 @@
-import Head from '@docusaurus/Head';
+import {useLocation} from '@docusaurus/router';
 import {useColorMode} from '@docusaurus/theme-common';
 import OriginalLayout from '@theme-original/Layout';
 import type {Props} from '@theme/Layout';
+import {useEffect} from 'react';
 
-function ThemeColor(): React.JSX.Element {
+import styles from './styles.module.css';
+
+function ThemeColor(): null {
   const {colorMode} = useColorMode();
 
-  return (
-    <Head>
-      <meta
-        content={colorMode === 'dark' ? '#11141c' : '#ffffff'}
-        name="theme-color"
-      />
-    </Head>
-  );
+  useEffect(() => {
+    const rootStyle = window.getComputedStyle(document.documentElement);
+    const canvas = rootStyle.getPropertyValue('--proctor-canvas').trim();
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta && canvas) meta.content = canvas;
+  }, [colorMode]);
+  return null;
 }
 
 export default function Layout({children, ...props}: Props): React.JSX.Element {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+
   return (
     <OriginalLayout {...props}>
       <ThemeColor />
-      {children}
+      <div className={`${styles.shell} ${isHome ? styles.home : styles.reader}`}>
+        {children}
+      </div>
     </OriginalLayout>
   );
 }

@@ -40,6 +40,9 @@
   --proctor-footer-ink: #e4dee8;
   --proctor-print-ink: #161616;
   --proctor-print-border: #655f69;
+  --proctor-print-primary: #470082;
+  --proctor-print-complete: #0b766e;
+  --proctor-print-complete-soft: #e7f5f1;
   --proctor-backdrop: rgb(20 12 26 / 58%);
   --proctor-shadow: 0 18px 50px rgb(45 20 62 / 14%);
   --proctor-space-1: 0.25rem;
@@ -130,6 +133,9 @@
   --proctor-footer-ink: #e4dee8;
   --proctor-print-ink: #161616;
   --proctor-print-border: #655f69;
+  --proctor-print-primary: #470082;
+  --proctor-print-complete: #0b766e;
+  --proctor-print-complete-soft: #e7f5f1;
   --proctor-backdrop: rgb(10 6 13 / 68%);
   --proctor-shadow: 0 18px 50px rgb(0 0 0 / 34%);
 

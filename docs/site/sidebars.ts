@@ -2,35 +2,42 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   guidesSidebar: [
-    {type: 'doc', id: 'index', label: 'Documentation Home'},
-    {type: 'doc', id: 'reference/glossary', label: 'Glossary'},
+    {type: 'doc', id: 'index', label: 'Overview'},
     {
       type: 'category',
-      label: 'Operate',
+      label: 'Run Proctor',
       collapsed: false,
       items: [{type: 'doc', id: 'operator/index', label: 'Deployment Overview'}],
     },
     {
       type: 'category',
-      label: 'Administer',
+      label: 'Govern One Institution',
       collapsed: false,
       items: [
         {type: 'doc', id: 'institution-admin/index', label: 'Institution Setup'},
+        {type: 'doc', id: 'security/index', label: 'Security Review'},
       ],
     },
     {
       type: 'category',
-      label: 'Review & Secure',
-      collapsed: false,
-      items: [{type: 'doc', id: 'security/index', label: 'Security Overview'}],
-    },
-    {
-      type: 'category',
-      label: 'Build & Integrate',
+      label: 'Build and Integrate',
       collapsed: false,
       items: [
         {type: 'doc', id: 'developers/index', label: 'Developer Guide'},
         {type: 'link', href: '/api/', label: 'API Reference'},
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Reference',
+      collapsed: false,
+      items: [
+        {type: 'doc', id: 'reference/glossary', label: 'Glossary'},
+        {
+          type: 'link',
+          href: 'https://github.com/sudosylabs/Proctor/tree/main/docs/architecture',
+          label: 'Architecture Source',
+        },
       ],
     },
   ],

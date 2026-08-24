@@ -118,7 +118,6 @@ const config: Config = {
     navbar: {
       title: 'Proctor Docs',
       items: [
-        {to: '/', label: 'Start', position: 'left', exact: true},
         {to: '/operator/', label: 'Operate', position: 'left'},
         {
           to: '/institution-admin/',
@@ -126,15 +125,8 @@ const config: Config = {
           position: 'left',
         },
         {to: '/security/', label: 'Secure', position: 'left'},
-        {
-          type: 'dropdown',
-          label: 'Build',
-          position: 'left',
-          items: [
-            {to: '/developers/', label: 'Developer Guide'},
-            {to: '/api/', label: 'API Reference'},
-          ],
-        },
+        {to: '/developers/', label: 'Develop', position: 'left'},
+        {to: '/api/', label: 'API', position: 'left'},
         {
           href: 'https://github.com/sudosylabs/Proctor',
           label: 'GitHub',
@@ -159,6 +151,7 @@ const config: Config = {
           items: [
             {label: 'Developer Guide', to: '/developers/'},
             {label: 'API Reference', to: '/api/'},
+            {label: 'Glossary', to: '/glossary/'},
             {
               label: 'Source Repository',
               href: 'https://github.com/sudosylabs/Proctor',
