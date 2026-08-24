@@ -229,7 +229,11 @@ func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCurs
 	older.ScheduledEndAt = older.ScheduledEndAt.Add(-time.Hour)
 	fake.page = application.ExamSittingPage{Items: []application.ExamSittingView{{Sitting: fake.sitting}, {Sitting: &older}}, HasMore: true}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
-	cursor := encodeExamSittingCursor(examSittingCursor{StartAt: fake.sitting.ScheduledStartAt, ID: model.NewExamSittingID()})
+	beforeSittingID := model.NewExamSittingID()
+	cursor, err := encodeExamSittingCursor(examSittingCursor{StartAt: fake.sitting.ScheduledStartAt, ID: beforeSittingID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	query := url.Values{}
 	query.Set("class_id", fake.sitting.ClassID.String())
 	query.Add("state", "scheduled")
@@ -244,7 +248,7 @@ func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCurs
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || fake.list.Limit != 2 || fake.list.ClassID != fake.sitting.ClassID || len(fake.list.States) != 2 ||
-		fake.list.OverlapStartAt.Hour() != 7 || fake.list.OverlapEndAt.Hour() != 16 || fake.list.BeforeScheduledStartAt != fake.sitting.ScheduledStartAt || !fake.list.BeforeSittingID.IsValid() {
+		fake.list.OverlapStartAt.Hour() != 7 || fake.list.OverlapEndAt.Hour() != 16 || fake.list.BeforeScheduledStartAt != fake.sitting.ScheduledStartAt || fake.list.BeforeSittingID != beforeSittingID {
 		t.Fatalf("status = %d query = %#v body = %s", response.Code, fake.list, response.Body.String())
 	}
 	var page examSittingListResponse
@@ -254,6 +258,12 @@ func TestExamSittingHTTPListNormalizesFiltersAndUsesVersionedDescendingTupleCurs
 	decoded, err := decodeExamSittingCursor(page.NextCursor)
 	if err != nil || decoded.StartAt != older.ScheduledStartAt || decoded.ID != older.ID {
 		t.Fatalf("cursor = %#v err = %v", decoded, err)
+	}
+	fake.page = application.ExamSittingPage{HasMore: true}
+	noProgress := httptest.NewRecorder()
+	httpAPI.ServeHTTP(noProgress, request.Clone(request.Context()))
+	if noProgress.Code != http.StatusInternalServerError {
+		t.Fatalf("no-progress status = %d body = %s", noProgress.Code, noProgress.Body.String())
 	}
 }
 
@@ -276,9 +286,7 @@ func TestExamSittingHTTPListRejectsPartialOverlapAndMalformedCursor(t *testing.T
 			request.Header.Set("Authorization", "Bearer credential")
 			response := httptest.NewRecorder()
 			httpAPI.ServeHTTP(response, request)
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
-			}
+			assertHTTPProblem(t, response, http.StatusBadRequest, "request.invalid")
 		})
 	}
 }
@@ -322,6 +330,25 @@ func TestExamSittingHTTPListsNoShowsWithOpaqueUserCursor(t *testing.T) {
 	decoded, err := decodeExamSittingNoShowCursor(body.NextCursor)
 	if err != nil || decoded != second || strings.Contains(body.NextCursor, second.String()) {
 		t.Fatalf("cursor=%q decoded=%s err=%v", body.NextCursor, decoded, err)
+	}
+	fake.noShowPage = application.ExamSittingNoShowPage{}
+	secondRequest := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/no-shows?cursor="+url.QueryEscape(body.NextCursor), nil)
+	secondRequest.Header.Set("Authorization", "Bearer credential")
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, secondRequest)
+	if secondResponse.Code != http.StatusOK || fake.noShows.AfterCandidateUserID != second {
+		t.Fatalf("no-show cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.noShows, secondResponse.Body.String())
+	}
+	malformedRequest := httptest.NewRequest(http.MethodGet, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/no-shows?cursor=not-a-cursor", nil)
+	malformedRequest.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformedRequest)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
+	fake.noShowPage = application.ExamSittingNoShowPage{HasMore: true}
+	noProgress := httptest.NewRecorder()
+	httpAPI.ServeHTTP(noProgress, request.Clone(request.Context()))
+	if noProgress.Code != http.StatusInternalServerError {
+		t.Fatalf("no-progress status=%d body=%s", noProgress.Code, noProgress.Body.String())
 	}
 	invalid := []string{
 		"not-base64",

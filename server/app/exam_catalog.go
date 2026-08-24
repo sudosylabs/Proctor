@@ -74,18 +74,8 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 }
 
 func (a *App) ArchiveExam(ctx context.Context, invocation Invocation, command ArchiveExamCommand) (model.Exam, error) {
-	if command.IdempotencyKey == "" {
-		return model.Exam{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.archive.v1", command.IdempotencyKey, struct {
-		ExamID               string `json:"exam_id"`
-		ExpectedExamRevision int64  `json:"expected_exam_revision"`
-	}{ExamID: command.ExamID.String(), ExpectedExamRevision: command.ExpectedExamRevision})
-	if err != nil {
-		return model.Exam{}, err
-	}
 	exam, err := a.exams.Archive(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ArchiveCommand{
-		ExamID: command.ExamID, ExpectedExamRevision: command.ExpectedExamRevision, Idempotency: idempotency,
+		ExamID: command.ExamID, ExpectedExamRevision: command.ExpectedExamRevision, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return model.Exam{}, examError(err, true)

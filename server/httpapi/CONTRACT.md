@@ -38,6 +38,12 @@ kernel-owned. After a successful upgrade, the sibling transport owns the
 connection lifecycle. The catalog exposes no mutable router or late-registration
 seam.
 
+`httpapi.New` requires the complete resource capability graph and an explicit
+WebSocket transport. It resolves and validates those dependencies once before
+catalog compilation; production has no no-op transport or application-capability
+fallback. `resource_catalog.go` is a pure ordered resource inventory and must
+contain neither dependency selection nor runtime type assertions.
+
 Catalog completion exposed two existing pre-upgrade outcomes that the prior
 OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
 (503). Their declaration is an additive documentation correction for existing
@@ -554,6 +560,28 @@ patterns:
 
 The agreement test records these exceptions so migration cannot silently
 change existing clients. It does not make them conventions for new endpoints.
+
+All keyset cursors use the shared bounded opaque envelope. Encoding is
+deterministic canonical unpadded raw URL-safe Base64 of one strict JSON object.
+Decoding rejects padded or non-canonical Base64, invalid UTF-8, non-object JSON,
+duplicate, case-aliased, or unknown members, trailing values, missing required
+resource/version data, overlong tokens, and versions outside the owning
+resource's explicit admission set. The owning resource defines the private
+keyset fields, ordering, validation, and legacy-version policy; clients return
+the token unchanged. Candidate Workspace retains its established optional
+`after_entry_id`: a snapshot-only cursor restarts that pinned snapshot safely,
+while every server-emitted continuation includes the final entry identity.
+
+Changes to cursor or construction behavior must keep these checks green from
+`server/`:
+
+~~~bash
+go test ./httpapi
+go test -race ./httpapi
+go vet ./httpapi
+make openapi-agreement
+make architecture
+~~~
 
 The Exam catalog's optional `q` parameter is a literal case-insensitive
 substring match against the current Draft title. SQL wildcard characters have

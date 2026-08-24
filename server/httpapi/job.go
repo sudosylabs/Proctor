@@ -5,8 +5,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -64,11 +62,13 @@ type jobAttemptListResponse struct {
 	NextCursor string               `json:"next_cursor,omitempty"`
 }
 type jobCursor struct {
+	Version   int    `json:"version,omitempty"`
 	CreatedAt int64  `json:"created_at"`
 	ID        string `json:"id"`
 }
 type jobAttemptCursor struct {
-	Number int `json:"number"`
+	Version int `json:"version,omitempty"`
+	Number  int `json:"number"`
 }
 
 type jobResourceModule struct {
@@ -107,7 +107,10 @@ func (module jobResourceModule) list(request operationRequest) (operationResult,
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
+		response.NextCursor, err = encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(last.CreatedAt), ID: last.ID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("job.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -140,7 +143,10 @@ func (module jobResourceModule) listAttempts(request operationRequest) (operatio
 		response.Items = append(response.Items, jobAttemptResponseFromApplication(item))
 	}
 	if len(page.Items) == limit {
-		response.NextCursor = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
+		response.NextCursor, err = encodeJobAttemptCursor(page.Items[len(page.Items)-1].Number)
+		if err != nil {
+			return operationResult{}, application.NewError("job.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -207,35 +213,48 @@ func attemptPagination(r *http.Request) (int, int, error) {
 	}
 	return limit, before, nil
 }
-func encodeJobAttemptCursor(number int) string {
-	encoded, _ := json.Marshal(jobAttemptCursor{Number: number})
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeJobAttemptCursor(number int) (string, error) {
+	return encodeOpaqueCursor(jobAttemptCursor{Number: number}, jobAttemptCursorSpec())
 }
 func decodeJobAttemptCursor(raw string) (int, error) {
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return 0, err
-	}
-	var cursor jobAttemptCursor
-	if err = json.Unmarshal(decoded, &cursor); err != nil || cursor.Number <= 0 {
-		return 0, errors.New("invalid job attempt cursor")
-	}
-	return cursor.Number, nil
+	cursor, err := decodeOpaqueCursor(raw, jobAttemptCursorSpec())
+	return cursor.Number, err
 }
-func encodeJobCursor(cursor jobCursor) string {
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeJobCursor(cursor jobCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, jobCursorSpec())
 }
 func decodeJobCursor(raw string) (jobCursor, error) {
-	var cursor jobCursor
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, err
+	return decodeOpaqueCursor(raw, jobCursorSpec())
+}
+func jobCursorSpec() opaqueCursorSpec[jobCursor] {
+	return opaqueCursorSpec[jobCursor]{
+		label: "job", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "created_at", "id"},
+		version:        func(cursor jobCursor) int { return cursor.Version },
+		setVersion:     func(cursor *jobCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		validate: func(cursor jobCursor) error {
+			if cursor.CreatedAt <= 0 || !model.IsValidId(cursor.ID) {
+				return errors.New("invalid job keyset")
+			}
+			return nil
+		},
 	}
-	if err = json.Unmarshal(decoded, &cursor); err != nil || cursor.CreatedAt <= 0 || !model.IsValidId(cursor.ID) {
-		return cursor, errors.New("invalid job cursor")
+}
+func jobAttemptCursorSpec() opaqueCursorSpec[jobAttemptCursor] {
+	return opaqueCursorSpec[jobAttemptCursor]{
+		label: "job attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "number"},
+		version:        func(cursor jobAttemptCursor) int { return cursor.Version },
+		setVersion:     func(cursor *jobAttemptCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		validate: func(cursor jobAttemptCursor) error {
+			if cursor.Number <= 0 {
+				return errors.New("invalid job attempt keyset")
+			}
+			return nil
+		},
 	}
-	return cursor, nil
 }
 func jobResponseFromApplication(view application.JobView) jobResponse {
 	response := jobResponse{ID: view.ID.String(), Type: view.Type, Status: view.Status, CreateAt: model.MillisFromTime(view.CreatedAt), UpdateAt: model.MillisFromTime(view.UpdatedAt), AvailableAt: model.MillisFromTime(view.AvailableAt), PublicErrorCode: view.PublicErrorCode, AttemptCount: view.AttemptCount, MaximumAttempts: view.MaximumAttempts, Revision: view.Revision}

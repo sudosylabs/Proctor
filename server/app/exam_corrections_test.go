@@ -14,7 +14,7 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestCorrectionApplyIdempotencyPreservesInstructionsPresenceAndManifestOrder(t *testing.T) {
+func TestCorrectionApplyForwardsInstructionsManifestOrderAndRawKey(t *testing.T) {
 	t.Parallel()
 	fake := &examCorrectionUseCasesFake{}
 	application := &App{examCorrections: fake}
@@ -25,25 +25,13 @@ func TestCorrectionApplyIdempotencyPreservesInstructionsPresenceAndManifestOrder
 	if _, err := application.ApplyExamSittingCorrection(context.Background(), invocation, base); err != nil {
 		t.Fatal(err)
 	}
-	present := fake.apply.Idempotency.Fingerprint
-	base.Instructions.Present = false
-	if _, err := application.ApplyExamSittingCorrection(context.Background(), invocation, base); err != nil {
-		t.Fatal(err)
-	}
-	if present == fake.apply.Idempotency.Fingerprint {
-		t.Fatal("fingerprint erased instructions presence")
-	}
-	base.Instructions.Present = true
-	base.Resources[0], base.Resources[1] = base.Resources[1], base.Resources[0]
-	if _, err := application.ApplyExamSittingCorrection(context.Background(), invocation, base); err != nil {
-		t.Fatal(err)
-	}
-	if present == fake.apply.Idempotency.Fingerprint {
-		t.Fatal("fingerprint erased complete manifest order")
+	if !fake.apply.Instructions.Present || len(fake.apply.Resources) != 2 || fake.apply.Resources[0].ResourceID != first ||
+		fake.apply.Resources[1].ResourceID != second || fake.apply.IdempotencyKey != "same" {
+		t.Fatalf("child command = %#v", fake.apply)
 	}
 }
 
-func TestCorrectionStageFingerprintExcludesBodyAndIncludesDeclaredDigest(t *testing.T) {
+func TestCorrectionStageForwardsBodyDigestAndRawKey(t *testing.T) {
 	t.Parallel()
 	fake := &examCorrectionUseCasesFake{}
 	application := &App{examCorrections: fake}
@@ -52,20 +40,8 @@ func TestCorrectionStageFingerprintExcludesBodyAndIncludesDeclaredDigest(t *test
 	if _, err := application.StageExamSittingCorrectionResourceContent(context.Background(), invocation, command); err != nil {
 		t.Fatal(err)
 	}
-	first := fake.stage.Idempotency.Fingerprint
-	command.Body = strings.NewReader("two")
-	if _, err := application.StageExamSittingCorrectionResourceContent(context.Background(), invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if first != fake.stage.Idempotency.Fingerprint {
-		t.Fatal("body reader identity entered fingerprint")
-	}
-	command.ExpectedSHA256 = strings.Repeat("b", 64)
-	if _, err := application.StageExamSittingCorrectionResourceContent(context.Background(), invocation, command); err != nil {
-		t.Fatal(err)
-	}
-	if first == fake.stage.Idempotency.Fingerprint {
-		t.Fatal("declared digest omitted from fingerprint")
+	if fake.stage.Body == nil || fake.stage.ExpectedSHA256 != strings.Repeat("a", 64) || fake.stage.IdempotencyKey != "same" {
+		t.Fatalf("child command = %#v", fake.stage)
 	}
 }
 

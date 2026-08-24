@@ -120,10 +120,7 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	transaction := pendingDesktopAuthorizationTransaction(at)
-	userID := NewUserID()
-	codeHash := HashToken(NewCredentialToken())
-	transaction.PrepareCodeIssued(userID, "oidc", "campus", NewExternalIdentityID(), AuthenticationMultiFactor,
-		at.Add(-time.Minute), OptionalTimeFrom(at), codeHash, at.Add(30*time.Second), at)
+	prepareCodeIssuedTransactionFixture(transaction, at, at.Add(30*time.Second), AuthenticationMultiFactor)
 	if err := transaction.Validate(); err != nil {
 		t.Fatalf("issued transaction: %v", err)
 	}
@@ -131,7 +128,7 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 		transaction.State != BrowserAuthenticationStateCodeIssued {
 		t.Fatalf("issued transaction retained browser secrets: %#v", transaction)
 	}
-	transaction.PrepareExchanged(at.Add(time.Second))
+	prepareExchangedTransactionFixture(transaction, at.Add(time.Second))
 	if err := transaction.Validate(); err != nil {
 		t.Fatalf("exchanged transaction: %v", err)
 	}
@@ -140,7 +137,7 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 	}
 
 	cancelled := pendingDesktopAuthorizationTransaction(at)
-	cancelled.PrepareCancelled(at)
+	prepareCancelledTransactionFixture(cancelled, at)
 	if err := cancelled.Validate(); err != nil {
 		t.Fatalf("cancelled transaction: %v", err)
 	}
@@ -155,7 +152,7 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	pending := pendingDesktopAuthorizationTransaction(at)
-	pending.PrepareExpired(at.Add(10 * time.Minute))
+	prepareExpiredTransactionFixture(pending)
 	if err := pending.Validate(); err != nil {
 		t.Fatalf("expired pending transaction: %v", err)
 	}
@@ -167,9 +164,8 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 	}
 
 	issued := pendingDesktopAuthorizationTransaction(at)
-	issued.PrepareCodeIssued(NewUserID(), "oidc", "campus", NewExternalIdentityID(), AuthenticationSingleFactor,
-		at, OptionalTime{}, HashToken(NewCredentialToken()), at.Add(time.Minute), at)
-	issued.PrepareExpired(at.Add(2 * time.Minute))
+	prepareCodeIssuedTransactionFixture(issued, at, at.Add(time.Minute), AuthenticationSingleFactor)
+	prepareExpiredTransactionFixture(issued)
 	if err := issued.Validate(); err != nil {
 		t.Fatalf("expired issued-code transaction: %v", err)
 	}
@@ -195,7 +191,12 @@ func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing
 		t.Fatalf("pending invitation transaction: %v", err)
 	}
 
-	transaction.PrepareInvitationCompleted(NewUserID(), at.Add(time.Minute))
+	completedAt := at.Add(time.Minute)
+	transaction.UpdatedAt = completedAt
+	transaction.State = BrowserAuthenticationStateCompleted
+	transaction.HandleHash, transaction.BrowserProofHash, transaction.InvitationClaimHash = "", "", ""
+	transaction.UserID = NewUserID()
+	transaction.CompletedAt = OptionalTimeFrom(completedAt)
 	if err := transaction.Validate(); err != nil {
 		t.Fatalf("completed invitation transaction: %v", err)
 	}
@@ -215,4 +216,51 @@ func pendingDesktopAuthorizationTransaction(at time.Time) *BrowserAuthentication
 	}
 	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
 	return transaction
+}
+
+func prepareCodeIssuedTransactionFixture(transaction *BrowserAuthenticationTransaction, at, codeExpiresAt time.Time, strength AuthenticationStrength) {
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateCodeIssued
+	transaction.HandleHash, transaction.BrowserProofHash = "", ""
+	transaction.UserID = NewUserID()
+	transaction.AuthenticationMethod = transaction.ExpectedAuthenticationMethod
+	transaction.AuthenticationProviderID = transaction.ExpectedProviderID
+	transaction.ExternalIdentityID = NewExternalIdentityID()
+	transaction.AuthenticationStrength = strength
+	transaction.AuthenticatedAt = OptionalTimeFrom(at.Add(-time.Minute))
+	if strength == AuthenticationMultiFactor {
+		transaction.MFACompletedAt = OptionalTimeFrom(at)
+	}
+	transaction.CodeHash = HashToken(NewCredentialToken())
+	transaction.CodeExpiresAt = OptionalTimeFrom(codeExpiresAt)
+}
+
+func prepareExchangedTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateExchanged
+	transaction.StateHash, transaction.CallbackURL, transaction.CodeChallenge, transaction.CodeHash = "", "", "", ""
+	transaction.CodeExpiresAt = OptionalTime{}
+	transaction.ExchangedAt = OptionalTimeFrom(at)
+}
+
+func prepareCancelledTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateCancelled
+	transaction.HandleHash, transaction.BrowserProofHash, transaction.StateHash = "", "", ""
+	transaction.CallbackURL, transaction.CodeChallenge = "", ""
+	transaction.CancelledAt = OptionalTimeFrom(at)
+}
+
+func prepareExpiredTransactionFixture(transaction *BrowserAuthenticationTransaction) {
+	deadline := transaction.ExpiresAt
+	if transaction.CodeExpiresAt.Valid && transaction.CodeExpiresAt.Time.Before(deadline) {
+		deadline = transaction.CodeExpiresAt.Time
+	}
+	transaction.UpdatedAt = deadline
+	transaction.State = BrowserAuthenticationStateExpired
+	transaction.HandleHash, transaction.BrowserProofHash, transaction.StateHash = "", "", ""
+	transaction.InvitationClaimHash = ""
+	transaction.CallbackURL, transaction.CodeChallenge, transaction.CodeHash = "", "", ""
+	transaction.CodeExpiresAt = OptionalTime{}
+	transaction.ExpiredAt = OptionalTimeFrom(deadline)
 }

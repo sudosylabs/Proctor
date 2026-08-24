@@ -1675,12 +1675,48 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	if err != nil {
 		t.Fatalf("create browser Invitation transaction: %v", err)
 	}
-	if transaction.Purpose != model.BrowserAuthenticationPurposeInvitationAcceptance ||
-		transaction.InvitationID != invitation.ID || transaction.ExpiresAt.After(invitation.ExpiresAt) {
+	if transaction.ID.IsZero() || transaction.ExpiresAt.After(invitation.ExpiresAt) {
 		t.Fatalf("browser Invitation transaction = %#v", transaction)
 	}
 	acceptance.BrowserTransaction = &store.BrowserInvitationTransactionProof{
 		ID: transaction.ID, HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
+	}
+	otherIssue := studentClassInvitationIssueFixture(t, ss, inviter, class, fixture.period, model.NowUTC())
+	otherIssue.Invitation.TargetEmail = "cross-proof-" + model.NewId() + "@example.edu"
+	otherIssue.Invitation.Suggestions.Username = "cross-proof-" + model.NewId()
+	otherInvitation, err := ss.Invitation().IssueStudentClass(ctx, otherIssue)
+	requireNoError(t, err)
+	otherAcceptance := studentClassInvitationAcceptanceFixture(t, otherInvitation, model.NowUTC())
+	otherHandle, otherProof := model.NewCredentialToken(), model.NewCredentialToken()
+	otherTransaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, &store.BrowserInvitationTransactionCreation{
+		ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: fixture.institution.ID,
+		Issuer: "https://proctor.example.edu", InvitationID: otherInvitation.ID,
+		InvitationPurpose: otherInvitation.Purpose, InvitationClaimHash: otherInvitation.ClaimHash,
+		HandleHash: model.HashToken(otherHandle), BrowserProofHash: model.HashToken(otherProof),
+	})
+	requireNoError(t, err)
+	otherAcceptance.BrowserTransaction = &store.BrowserInvitationTransactionProof{ID: otherTransaction.ID,
+		HandleHash: model.HashToken(otherHandle), BrowserProofHash: model.HashToken(otherProof)}
+	crossInvitation := *acceptance
+	crossProof := *otherAcceptance.BrowserTransaction
+	crossInvitation.BrowserTransaction = &crossProof
+	if _, err = ss.Invitation().AcceptStudentClass(ctx, &crossInvitation); err == nil {
+		t.Fatal("AcceptStudentClass accepted another Invitation's valid browser proof")
+	}
+	for _, candidate := range []struct {
+		invitation *model.Invitation
+		handle     string
+		proof      string
+	}{{invitation, handle, proof}, {otherInvitation, otherHandle, otherProof}} {
+		pending, getErr := ss.Invitation().Get(ctx, candidate.invitation.ID)
+		requireNoError(t, getErr)
+		if pending.State != model.InvitationPending {
+			t.Fatalf("cross-Invitation proof changed Invitation %s to %q", pending.ID, pending.State)
+		}
+		if _, resolveErr := ss.BrowserAuthentication().ResolveInvitation(ctx,
+			model.HashToken(candidate.handle), model.HashToken(candidate.proof)); resolveErr != nil {
+			t.Fatalf("cross-Invitation rejection consumed transaction for %s: %v", pending.ID, resolveErr)
+		}
 	}
 	rejected := *acceptance
 	rejectedProof := *acceptance.BrowserTransaction
@@ -1694,6 +1730,9 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	if stillPending.State != model.InvitationPending {
 		t.Fatalf("mismatched browser proof consumed Invitation: %#v", stillPending)
 	}
+	if _, err = ss.BrowserAuthentication().ResolveInvitation(ctx, model.HashToken(handle), model.HashToken(proof)); err != nil {
+		t.Fatalf("failed acceptance transaction consumed the valid browser Invitation proof: %v", err)
+	}
 	accepted, err := ss.Invitation().AcceptStudentClass(ctx, acceptance)
 	requireNoError(t, err)
 	if accepted.User.ID != existing.ID || !accepted.User.EmailVerified || accepted.ClassMember.UserID != existing.ID || accepted.Affiliation.UserID != existing.ID {
@@ -1701,6 +1740,11 @@ func testInvitationAcceptStudentClassResolvesExistingUser(t *testing.T, ss store
 	}
 	if _, err = ss.BrowserAuthentication().ResolveInvitation(ctx, model.HashToken(handle), model.HashToken(proof)); !store.IsNotFound(err) {
 		t.Fatalf("resolved consumed browser Invitation transaction: %v", err)
+	}
+	otherAccepted, err := ss.Invitation().AcceptStudentClass(ctx, otherAcceptance)
+	requireNoError(t, err)
+	if otherAccepted.Invitation.ID != otherInvitation.ID || otherAccepted.Invitation.State != model.InvitationAccepted {
+		t.Fatalf("other Invitation was not usable after cross-proof rejection: %#v", otherAccepted)
 	}
 	if _, err = ss.BrowserAuthentication().CreateInvitation(ctx, &store.BrowserInvitationTransactionCreation{
 		ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: fixture.institution.ID,
@@ -1759,13 +1803,50 @@ func testBrowserInvitationTransactionCreation(t *testing.T, ss store.Store, prob
 		}
 	}
 
+	t.Run("RejectsInvalidCreations", func(t *testing.T) {
+		invitation := issueInvitation(t, class, fixture.period, issuedAt, model.OptionalTimeFrom(fixture.period.EndsAt))
+		valid, _, _ := newCreation(invitation)
+		tests := []struct {
+			name   string
+			input  *store.BrowserInvitationTransactionCreation
+			mutate func(*store.BrowserInvitationTransactionCreation)
+		}{
+			{name: "nil", input: nil},
+			{name: "ID", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.ID = "" }},
+			{name: "institution", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.InstitutionID = "" }},
+			{name: "issuer", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.Issuer = "http://proctor.example.edu" }},
+			{name: "Invitation ID", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.InvitationID = "" }},
+			{name: "Invitation purpose", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.InvitationPurpose = "unknown" }},
+			{name: "claim hash", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.InvitationClaimHash = "raw-claim" }},
+			{name: "handle hash", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.HandleHash = "raw-handle" }},
+			{name: "proof hash", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.BrowserProofHash = "raw-proof" }},
+			{name: "equal handle and proof hashes", mutate: func(value *store.BrowserInvitationTransactionCreation) { value.BrowserProofHash = value.HandleHash }},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				input := test.input
+				if test.mutate != nil {
+					candidate := *valid
+					test.mutate(&candidate)
+					input = &candidate
+				}
+				if _, createErr := ss.BrowserAuthentication().CreateInvitation(ctx, input); !isInvalidInput(createErr) {
+					t.Fatalf("CreateInvitation() error = %v, want invalid input", createErr)
+				}
+			})
+		}
+	})
+
 	t.Run("FiveMinuteLifetime", func(t *testing.T) {
 		invitation := issueInvitation(t, class, fixture.period, issuedAt, model.OptionalTimeFrom(fixture.period.EndsAt))
 		input, _, _ := newCreation(invitation)
+		before := model.NowUTC()
 		transaction, err := ss.BrowserAuthentication().CreateInvitation(ctx, input)
+		after := model.NowUTC()
 		requireNoError(t, err)
-		if lifetime := transaction.ExpiresAt.Sub(transaction.CreatedAt); lifetime != model.BrowserAuthenticationTransactionLifetime {
-			t.Fatalf("browser Invitation transaction lifetime = %s, want %s", lifetime, model.BrowserAuthenticationTransactionLifetime)
+		if transaction.ExpiresAt.Before(before.Add(model.BrowserAuthenticationTransactionLifetime-time.Second)) ||
+			transaction.ExpiresAt.After(after.Add(model.BrowserAuthenticationTransactionLifetime+time.Second)) {
+			t.Fatalf("browser Invitation transaction expiry = %s, call window = %s..%s", transaction.ExpiresAt, before, after)
 		}
 	})
 

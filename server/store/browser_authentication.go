@@ -5,9 +5,33 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+// DesktopAuthorizationCreation is the closed input for creating a pending
+// desktop browser handoff. The Store owns the initial state and all timestamps.
+type DesktopAuthorizationCreation struct {
+	ID                           model.BrowserAuthenticationTransactionID
+	InstitutionID                model.InstitutionID
+	Issuer                       string
+	HandleHash                   string
+	BrowserProofHash             string
+	StateHash                    string
+	CallbackURL                  string
+	CodeChallenge                string
+	ExpectedAuthenticationMethod string
+	ExpectedProviderID           string
+	DeviceID                     string
+	DeviceName                   string
+	Lifetime                     time.Duration
+}
+
+type DesktopAuthorizationCreated struct {
+	ID        model.BrowserAuthenticationTransactionID
+	ExpiresAt time.Time
+}
 
 // BrowserInvitationTransactionProof lets an Invitation acceptance aggregate
 // consume the already-proved browser transaction in the same database commit.
@@ -32,6 +56,17 @@ type BrowserInvitationTransactionCreation struct {
 	BrowserProofHash    string
 }
 
+type BrowserInvitationCreated struct {
+	ID        model.BrowserAuthenticationTransactionID
+	ExpiresAt time.Time
+}
+
+type BrowserInvitationResolution struct {
+	ID                  model.BrowserAuthenticationTransactionID
+	InvitationID        model.InvitationID
+	InvitationClaimHash string
+}
+
 // BrowserAuthenticationMaintenanceResult describes one bounded, authoritative
 // database-clock maintenance page. More reports that immediately eligible work
 // remains for a subsequent page or scheduled occurrence.
@@ -45,11 +80,11 @@ type BrowserAuthenticationMaintenanceResult struct {
 // transaction aggregate used by desktop authorization and hosted Invitation
 // acceptance. No raw browser credential crosses this boundary.
 type BrowserAuthenticationStore interface {
-	CreateDesktopAuthorization(context.Context, *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error)
-	CreateInvitation(context.Context, *BrowserInvitationTransactionCreation) (*model.BrowserAuthenticationTransaction, error)
-	ResolveInvitation(context.Context, string, string) (*model.BrowserAuthenticationTransaction, error)
-	IssueCode(context.Context, *DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error)
-	Cancel(context.Context, *DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error)
+	CreateDesktopAuthorization(context.Context, *DesktopAuthorizationCreation) (*DesktopAuthorizationCreated, error)
+	CreateInvitation(context.Context, *BrowserInvitationTransactionCreation) (*BrowserInvitationCreated, error)
+	ResolveInvitation(context.Context, string, string) (*BrowserInvitationResolution, error)
+	IssueCode(context.Context, *DesktopAuthorizationCodeIssue) (*DesktopAuthorizationCodeIssued, error)
+	Cancel(context.Context, *DesktopAuthorizationCancellation) error
 	Exchange(context.Context, *DesktopAuthorizationExchange) (*DesktopAuthorizationExchangeResult, error)
 	Maintain(context.Context, int) (*BrowserAuthenticationMaintenanceResult, error)
 }

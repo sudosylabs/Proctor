@@ -4,19 +4,14 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
-	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -69,7 +64,7 @@ func (fake *submissionAuthorizationSittingFake) AuthorizeSubmissionView(_ contex
 	return nil
 }
 
-func TestConnectExamAttemptFingerprintBindsSessionAndNeverStoresRawCredential(t *testing.T) {
+func TestConnectExamAttemptForwardsRawKeyAndCredentialToChild(t *testing.T) {
 	t.Parallel()
 	fake := &examAttemptUseCasesFake{}
 	application := &App{examAttempts: fake}
@@ -80,177 +75,20 @@ func TestConnectExamAttemptFingerprintBindsSessionAndNeverStoresRawCredential(t 
 	if _, err := application.ConnectExamAttempt(context.Background(), invocation, command); err != nil {
 		t.Fatal(err)
 	}
-	first := *fake.connects[0].Idempotency
-	if first.Operation != store.ExamAttemptConnectOperation || fake.connects[0].ContinuityCredential != credential {
-		t.Fatalf("connect command = %#v idempotency=%#v", fake.connects[0], first)
+	if fake.connects[0].IdempotencyKey != "retry-key" || fake.connects[0].ContinuityCredential != credential {
+		t.Fatalf("connect command = %#v", fake.connects[0])
 	}
 
 	principal.SessionID = model.NewSessionID()
 	if _, err := application.ConnectExamAttempt(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "connect-two"}), command); err != nil {
 		t.Fatal(err)
 	}
-	second := fake.connects[1].Idempotency
-	if first.Fingerprint == second.Fingerprint {
-		t.Fatal("Connect fingerprint did not bind the authenticated Session")
+	if fake.connects[1].IdempotencyKey != "retry-key" {
+		t.Fatalf("second connect command = %#v", fake.connects[1])
 	}
 }
 
-type terminalObservationStub struct {
-	lost    bool
-	started chan struct{}
-	closed  chan struct{}
-	once    sync.Once
-}
-
-func newTerminalObservationStub(lost bool) *terminalObservationStub {
-	return &terminalObservationStub{lost: lost, started: make(chan struct{}), closed: make(chan struct{})}
-}
-
-func (stub *terminalObservationStub) Cursor() appexecution.Cursor { return "cursor" }
-func (stub *terminalObservationStub) Next(ctx context.Context) (appexecution.Event, error) {
-	stub.once.Do(func() { close(stub.started) })
-	if stub.lost {
-		return appexecution.Event{}, appexecution.ErrObservationLost
-	}
-	select {
-	case <-ctx.Done():
-		return appexecution.Event{}, ctx.Err()
-	case <-stub.closed:
-		return appexecution.Event{}, io.EOF
-	}
-}
-func (stub *terminalObservationStub) Close() error {
-	select {
-	case <-stub.closed:
-	default:
-		close(stub.closed)
-	}
-	return nil
-}
-
-type candidateTerminalStub struct {
-	closed chan struct{}
-	once   sync.Once
-}
-
-func newCandidateTerminalStub() *candidateTerminalStub {
-	return &candidateTerminalStub{closed: make(chan struct{})}
-}
-func (stub *candidateTerminalStub) Read([]byte) (int, error)                     { <-stub.closed; return 0, io.EOF }
-func (*candidateTerminalStub) Write(data []byte) (int, error)                    { return len(data), nil }
-func (*candidateTerminalStub) Resize(context.Context, appexecution.Window) error { return nil }
-func (stub *candidateTerminalStub) Close() error {
-	stub.once.Do(func() { close(stub.closed) })
-	return nil
-}
-
-type terminalAuditStoreStub struct {
-	store.AuditStore
-	mu        sync.Mutex
-	saved     *model.AuditEvent
-	completed model.AuditStatus
-}
-
-func (stub *terminalAuditStoreStub) Save(_ context.Context, event *model.AuditEvent) (*model.AuditEvent, error) {
-	stub.mu.Lock()
-	defer stub.mu.Unlock()
-	copy := event.Clone()
-	copy.PrepareCreate(model.NewAuditEventID(), time.Now().UTC())
-	stub.saved = copy.Clone()
-	return copy, nil
-}
-
-func (stub *terminalAuditStoreStub) Complete(_ context.Context, _ string, status model.AuditStatus, _ string, _ []byte, _ int64) (*model.AuditEvent, error) {
-	stub.mu.Lock()
-	defer stub.mu.Unlock()
-	stub.completed = status
-	copy := stub.saved.Clone()
-	copy.Status = status
-	return copy, nil
-}
-
-func TestOpenCandidateExamTerminalAuditsPlacementAndRecoversLostObservation(t *testing.T) {
-	t.Parallel()
-	attemptID, sittingID, classID := model.NewExamAttemptID(), model.NewExamSittingID(), model.NewClassID()
-	first, resumed := newTerminalObservationStub(true), newTerminalObservationStub(false)
-	nativeTerminal := newCandidateTerminalStub()
-	execution := &executionUseCasesStub{
-		placement:    &appexecution.Placement{GrantID: model.NewExecutionGrantID(), AttemptID: attemptID, Ready: true},
-		observations: []appexecution.Observation{first, resumed}, terminal: nativeTerminal,
-	}
-	attempts := &examAttemptUseCasesFake{presentation: examattempt.Presentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
-		ExecutionProfile: model.ExecutionProfile{Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone}}}
-	audits := &terminalAuditStoreStub{}
-	application := &App{examAttempts: attempts, execution: execution,
-		audit: &auditService{audits: audits, nodeID: "node-terminal", now: time.Now}}
-	principal := examAttemptPrincipal()
-	access := CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: model.NewAttemptConnectionID(), ContinuityCredential: model.NewCredentialToken()}
-	terminal, err := application.OpenCandidateExamTerminal(context.Background(), NewInvocation(principal, model.RequestMetadata{RequestID: "terminal-open"}), OpenCandidateExamTerminalCommand{
-		Access: access, SittingID: sittingID, ClassID: classID, ParticipationID: model.NewAttemptParticipationID(), Generation: 2,
-		Window: CandidateExamTerminalWindow{Cols: 100, Rows: 30},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-resumed.started:
-	case <-time.After(time.Second):
-		t.Fatal("lost observation was not resynchronized")
-	}
-	if err := terminal.Close(); err != nil {
-		t.Fatal(err)
-	}
-	execution.mu.Lock()
-	ensure, synchronized, watchCalls := append([]appexecution.Request(nil), execution.ensure...), append([]model.ExamAttemptID(nil), execution.synchronized...), execution.watchCalls
-	execution.mu.Unlock()
-	if len(ensure) != 1 || ensure[0].AttemptID != attemptID || len(synchronized) != 1 || synchronized[0] != attemptID || watchCalls != 2 {
-		t.Fatalf("execution calls = ensure %#v sync %#v watches %d", ensure, synchronized, watchCalls)
-	}
-	audits.mu.Lock()
-	saved, completed := audits.saved.Clone(), audits.completed
-	audits.mu.Unlock()
-	if saved == nil || saved.Action != string(model.ActionExamSittingParticipate) || saved.Resource.ID != sittingID.String() ||
-		saved.ScopeType != model.RoleScopeClass || saved.ScopeID != classID.String() || completed != model.AuditStatusSuccess {
-		t.Fatalf("terminal audit = %#v completed=%s", saved, completed)
-	}
-}
-
-func TestCandidateExecutionCreatePersistsThroughAuthoritativeWorkspaceCommand(t *testing.T) {
-	t.Parallel()
-	body := []byte("package main\n")
-	attempts := &examAttemptUseCasesFake{workspacePage: examattempt.WorkspacePage{}}
-	execution := &executionUseCasesStub{openBody: io.NopCloser(bytes.NewReader(body))}
-	application := &App{examAttempts: attempts, execution: execution}
-	access := CandidateExamAttemptAccess{AttemptID: model.NewExamAttemptID(), ConnectionID: model.NewAttemptConnectionID(), ContinuityCredential: model.NewCredentialToken()}
-	command := OpenCandidateExamTerminalCommand{Access: access, ParticipationID: model.NewAttemptParticipationID(), Generation: 3}
-	event := appexecution.Event{Cursor: "guest-cursor-1", Operation: appexecution.OperationCreate, Path: "main.go"}
-	if err := application.applyCandidateExecutionEvent(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command, event); err != nil {
-		t.Fatal(err)
-	}
-	if len(attempts.workspaceFiles) != 1 || len(attempts.workspaceFileBodies) != 1 || !bytes.Equal(attempts.workspaceFileBodies[0], body) {
-		t.Fatalf("workspace file calls/bodies = %#v / %#v", attempts.workspaceFiles, attempts.workspaceFileBodies)
-	}
-	digest := sha256.Sum256(body)
-	created := attempts.workspaceFiles[0]
-	if created.Path != "main.go" || created.ExpectedSHA256 != hex.EncodeToString(digest[:]) || created.Size != int64(len(body)) ||
-		created.Access.ParticipationID != command.ParticipationID || created.Access.Generation != command.Generation || created.Idempotency == nil {
-		t.Fatalf("workspace create = %#v", created)
-	}
-}
-
-func TestIgnoredExecutionPathRejectsReservedAndDependencySegments(t *testing.T) {
-	t.Parallel()
-	for path, want := range map[string]bool{
-		".proctor/state": true, "src/.git/index": true, "web/node_modules/pkg": true,
-		"target/debug/app": true, "pkg/__pycache__/x": true, "src/main.go": false,
-	} {
-		if got := ignoredExecutionPath(path); got != want {
-			t.Fatalf("ignoredExecutionPath(%q) = %t, want %t", path, got, want)
-		}
-	}
-}
-
-func TestWorkspaceMutationFingerprintSurvivesReconnectWhileChildReceivesCurrentAccess(t *testing.T) {
+func TestWorkspaceMutationRawKeySurvivesReconnectWhileChildReceivesCurrentAccess(t *testing.T) {
 	t.Parallel()
 	fake := &examAttemptUseCasesFake{}
 	application := &App{examAttempts: fake}
@@ -262,7 +100,10 @@ func TestWorkspaceMutationFingerprintSurvivesReconnectWhileChildReceivesCurrentA
 	if _, err := application.CreateCandidateExamWorkspaceDirectory(context.Background(), NewInvocation(principal, model.RequestMetadata{}), command); err != nil {
 		t.Fatal(err)
 	}
-	first := fake.workspaceDirectories[0].Idempotency.Fingerprint
+	first := fake.workspaceDirectories[0].IdempotencyKey
+	if fake.workspaceDirectories[0].Origin != examattempt.WorkspaceMutationOriginCandidate {
+		t.Fatalf("candidate facade origin = %q", fake.workspaceDirectories[0].Origin)
+	}
 	principal.SessionID = model.NewSessionID()
 	command.Access.ConnectionID, command.Access.ParticipationID, command.Access.Generation = model.NewAttemptConnectionID(), model.NewAttemptParticipationID(), 2
 	command.Access.ContinuityCredential = model.NewCredentialToken()
@@ -270,7 +111,7 @@ func TestWorkspaceMutationFingerprintSurvivesReconnectWhileChildReceivesCurrentA
 		t.Fatal(err)
 	}
 	second := fake.workspaceDirectories[1]
-	if first != second.Idempotency.Fingerprint || second.Access.ConnectionID != command.Access.ConnectionID ||
+	if first != second.IdempotencyKey || second.Access.ConnectionID != command.Access.ConnectionID ||
 		second.Access.ParticipationID != command.Access.ParticipationID || second.Access.Generation != 2 {
 		t.Fatalf("first=%x second=%#v", first, second)
 	}
@@ -302,11 +143,11 @@ func TestTrustedConnectionCloseFacadeConcealsOwnershipMismatch(t *testing.T) {
 
 func TestConnectExamAttemptRequiresAnIdempotencyKeyBeforeChildCall(t *testing.T) {
 	t.Parallel()
-	fake := &examAttemptUseCasesFake{}
+	fake := &examAttemptUseCasesFake{err: &examattempt.Fault{Code: "idempotency.key_required"}}
 	application := &App{examAttempts: fake}
 	_, err := application.ConnectExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}),
 		ConnectExamAttemptCommand{SittingID: model.NewExamSittingID(), ContinuityCredential: model.NewCredentialToken()})
-	if !Is(err, "idempotency.key_required") || len(fake.connects) != 0 {
+	if !Is(err, "idempotency.key_required") || len(fake.connects) != 1 {
 		t.Fatalf("error=%v calls=%d", err, len(fake.connects))
 	}
 }
@@ -352,8 +193,7 @@ func TestReallowExamAttemptBuildsExactPrivateReasonFingerprintAndDelegates(t *te
 		t.Fatal(err)
 	}
 	if len(fake.reallows) != 1 || fake.reallows[0].ExamID != command.ExamID || fake.reallows[0].SuspensionID != command.SuspensionID ||
-		fake.reallows[0].PrivateReason != command.PrivateReason || fake.reallows[0].Idempotency == nil ||
-		fake.reallows[0].Idempotency.Operation != store.ExamAttemptReallowOperation {
+		fake.reallows[0].PrivateReason != command.PrivateReason || fake.reallows[0].IdempotencyKey != "reallow-once" {
 		t.Fatalf("reallow calls = %#v", fake.reallows)
 	}
 }

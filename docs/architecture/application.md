@@ -15,6 +15,14 @@ Domain models own local invariants and transitions. Application services own use
 
 Background jobs call application use cases with a system/service invocation. They do not manipulate stores directly.
 
+The `app/idempotency` leaf owns the shared validation, canonical JSON, and
+SHA-256 preparation algorithm for durable command idempotency. It does not own
+any business operation. Each command owner decides whether a key is required,
+defines its stable operation name, normalizes its own semantic inputs, and
+constructs the semantic document whose compatibility is preserved across
+retries. Exam parent facades forward the bounded raw key; the owning Exam
+service prepares the persistence contract beside the command policy.
+
 The `app/job` child module owns the generic durable execution engine: immutable
 descriptor validation, claiming, leases, fenced transitions, checkpoints,
 work budgets, retry, cancellation observation, and bounded lifecycle. Domain
@@ -79,6 +87,16 @@ receipt and repeats neither effect. Manager queries authorize the canonical
 Submission resource before concealing any nested ownership mismatch, and
 stream retained file bytes only through the narrow content port.
 
+The Attempt Terminal bridge is a focused unexported parent-application service.
+It coordinates the Attempt and Execution modules through narrow consumer-owned
+ports because neither child owns the complete cross-module workflow. Workspace
+mutation origin is an explicit closed command value: candidate mutations may
+synchronize to the Execution Environment, while execution-host mutations still
+publish realtime results but never echo back to the host. Context remains only
+for cancellation and deadlines, not mutation provenance. Origin is deliberately
+excluded from the retained version-one Workspace fingerprint: both origins
+commit the same durable change, and replay repeats neither post-commit effect.
+
 The package is introduced with the first working vertical slice, not as an
 empty architectural placeholder. Its `doc.go` must define the Exam, Draft,
 Revision, Sitting, Attempt, Participation, Resource, Starter Workspace,
@@ -107,6 +125,13 @@ Atomic store operations are explicit named aggregate operations such as bootstra
 The name and contract expose the complete atomic and race guarantee to callers
 and reusable conformance tests. A generic transaction callback would leak
 adapter mechanics while leaving the business guarantee undiscoverable.
+
+Browser Authentication application services consume purpose-specific Store
+facts rather than persisted transaction aggregates. Creation, Invitation
+resolution, code issue, cancellation, and exchange expose only the identities,
+callbacks, deadlines, Session, and credential expiries needed for the next
+application decision. Persistence retains ownership of locking, PostgreSQL
+time, proof destruction, and atomic terminal transitions.
 
 ## Interfaces and public surface
 

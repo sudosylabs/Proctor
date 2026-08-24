@@ -6,6 +6,7 @@ package exam
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, Idempotency: &store.CommandIdempotency{}}
+	command := PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"}
 	got, err := service.Publish(context.Background(), f.call, command)
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +33,8 @@ func TestPublicationPublishesAfterCurrentManagerAuthorizationAndSuppressesReplay
 	if f.authorizer.action != model.ActionExamPublish || revisions.input == nil || revisions.input.ManagerOverride || got.ID != revisions.summary.ID || effects.calls != 1 {
 		t.Fatalf("publication action=%q input=%#v result=%#v effects=%d", f.authorizer.action, revisions.input, got, effects.calls)
 	}
+	assertStoreIdempotency(t, revisions.idempotency, f.userID, idempotencyOperationPublishRevision, "test-key",
+		fmt.Sprintf(`{"exam_id":%q,"expected_draft_revision":3}`, f.examID))
 	revisions.replayed = true
 	if _, err = service.Publish(context.Background(), f.call, command); err != nil {
 		t.Fatal(err)
@@ -49,7 +52,7 @@ func TestPublicationUsesOverrideForNonManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Publish(context.Background(), f.call, PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 1, Idempotency: &store.CommandIdempotency{}})
+	_, err = service.Publish(context.Background(), f.call, PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 1, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +73,7 @@ func TestPublicationMapsCapacityConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = service.Publish(context.Background(), f.call,
-		PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, Idempotency: &store.CommandIdempotency{}})
+		PublishRevisionCommand{ExamID: f.examID, ExpectedDraftRevision: 3, IdempotencyKey: "test-key"})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.revision.capacity_exceeded" {
 		t.Fatalf("Publish() error = %v", err)
@@ -88,14 +91,15 @@ func (f *publicationEffectsFake) RevisionPublished(context.Context, store.ExamRe
 
 type revisionStoreFake struct {
 	store.ExamRevisionStore
-	input    *store.ExamRevisionPublication
-	replayed bool
-	summary  store.ExamRevisionSummary
-	err      error
+	input       *store.ExamRevisionPublication
+	idempotency *store.CommandIdempotency
+	replayed    bool
+	summary     store.ExamRevisionSummary
+	err         error
 }
 
-func (f *revisionStoreFake) Publish(_ context.Context, input *store.ExamRevisionPublication, _ *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
-	f.input = input
+func (f *revisionStoreFake) Publish(_ context.Context, input *store.ExamRevisionPublication, command *store.CommandIdempotency) (*store.ExamRevisionPublicationResult, error) {
+	f.input, f.idempotency = input, command
 	if f.err != nil {
 		return nil, f.err
 	}

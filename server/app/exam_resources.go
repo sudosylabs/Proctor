@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -74,74 +73,36 @@ type examResourceUseCases interface {
 }
 
 func (a *App) CreateExamResource(ctx context.Context, invocation Invocation, c CreateExamResourceCommand) (ExamResourceRecord, error) {
-	idempotency, err := newExamResourceIdempotency(invocation, "exam.resource.add.v1", c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, "", strings.TrimSpace(c.DisplayName), c.DescriptionMarkdown, c.MediaType, c.Size, c.ExpectedSHA256, nil)
-	if err != nil {
-		return ExamResourceRecord{}, err
-	}
-	result, err := a.examResources.Create(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.CreateCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, Idempotency: idempotency})
+	result, err := a.examResources.Create(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.CreateCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, IdempotencyKey: c.IdempotencyKey})
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) ReplaceExamResourceContent(ctx context.Context, invocation Invocation, c ReplaceExamResourceContentCommand) (ExamResourceRecord, error) {
-	idempotency, err := newExamResourceIdempotency(invocation, "exam.resource.content.replace.v1", c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, c.ResourceID.String(), "", "", c.MediaType, c.Size, c.ExpectedSHA256, nil)
-	if err != nil {
-		return ExamResourceRecord{}, err
-	}
-	result, err := a.examResources.ReplaceContent(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReplaceContentCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, Idempotency: idempotency})
+	result, err := a.examResources.ReplaceContent(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReplaceContentCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, IdempotencyKey: c.IdempotencyKey})
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocation, c EditExamResourceMetadataCommand) (ExamResourceRecord, error) {
-	idempotency, err := newExamResourceMetadataIdempotency(invocation, c)
-	if err != nil {
-		return ExamResourceRecord{}, err
-	}
-	result, err := a.examResources.EditMetadata(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.EditMetadataCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, Idempotency: idempotency})
+	result, err := a.examResources.EditMetadata(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.EditMetadataCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, IdempotencyKey: c.IdempotencyKey})
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 
-func newExamResourceMetadataIdempotency(invocation Invocation, c EditExamResourceMetadataCommand) (*store.CommandIdempotency, error) {
-	var normalizedName *string
-	if c.DisplayName != nil {
-		value := strings.TrimSpace(*c.DisplayName)
-		normalizedName = &value
-	}
-	return newCommandIdempotency(invocation, "exam.resource.metadata.edit.v1", c.IdempotencyKey, struct {
-		ExamID                string  `json:"exam_id"`
-		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
-		ResourceID            string  `json:"resource_id"`
-		DisplayName           *string `json:"display_name"`
-		DescriptionMarkdown   *string `json:"description_markdown"`
-	}{c.ExamID.String(), c.ExpectedDraftRevision, c.ResourceID.String(), normalizedName, c.DescriptionMarkdown})
-}
 func (a *App) ReorderExamResources(ctx context.Context, invocation Invocation, c ReorderExamResourcesCommand) ([]ExamResourceRecord, error) {
-	ids := make([]string, len(c.ResourceIDs))
-	for i, id := range c.ResourceIDs {
-		ids[i] = id.String()
-	}
-	idempotency, err := newExamResourceIdempotency(invocation, "exam.resource.reorder.v1", c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, "", "", "", "", 0, "", ids)
-	if err != nil {
-		return nil, err
-	}
-	result, err := a.examResources.Reorder(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReorderCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), Idempotency: idempotency})
+	result, err := a.examResources.Reorder(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReorderCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), IdempotencyKey: c.IdempotencyKey})
 	if err != nil {
 		return nil, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) RemoveExamResource(ctx context.Context, invocation Invocation, c RemoveExamResourceCommand) (ExamResourceRecord, error) {
-	idempotency, err := newExamResourceIdempotency(invocation, "exam.resource.remove.v1", c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, c.ResourceID.String(), "", "", "", 0, "", nil)
-	if err != nil {
-		return ExamResourceRecord{}, err
-	}
-	result, err := a.examResources.Remove(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.RemoveCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, Idempotency: idempotency})
+	result, err := a.examResources.Remove(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.RemoveCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, IdempotencyKey: c.IdempotencyKey})
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
@@ -162,22 +123,6 @@ func (a *App) OpenExamResource(ctx context.Context, invocation Invocation, q Ope
 	return result, nil
 }
 
-func newExamResourceIdempotency(invocation Invocation, operation, key string, examID model.ExamID, revision int64, resourceID, name, description string, media model.ExamResourceMediaType, size int64, sha string, ids []string) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, NewError("idempotency.key_required")
-	}
-	return newCommandIdempotency(invocation, operation, key, struct {
-		ExamID                string   `json:"exam_id"`
-		ExpectedDraftRevision int64    `json:"expected_draft_revision"`
-		ResourceID            string   `json:"resource_id,omitempty"`
-		DisplayName           string   `json:"display_name,omitempty"`
-		DescriptionMarkdown   string   `json:"description_markdown,omitempty"`
-		MediaType             string   `json:"media_type,omitempty"`
-		Size                  int64    `json:"size,omitempty"`
-		SHA256                string   `json:"sha256,omitempty"`
-		ResourceIDs           []string `json:"resource_ids,omitempty"`
-	}{examID.String(), revision, resourceID, name, description, string(media), size, sha, ids})
-}
 func examResourceError(err error, conceal bool) error {
 	if err == nil {
 		return nil

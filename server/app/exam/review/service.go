@@ -126,11 +126,11 @@ type SaveDecisionCommand struct {
 	ExpectedDecisionRevision int64
 	Outcome                  model.IntegrityReviewOutcome
 	PrivateRationale         string
-	Idempotency              *store.CommandIdempotency
+	IdempotencyKey           string
 }
 
 func (service *Service) SaveDecision(ctx context.Context, call Call, command SaveDecisionCommand) (Result, error) {
-	if command.Idempotency == nil || !command.SubmissionID.IsValid() || !command.FlagID.IsValid() ||
+	if !command.SubmissionID.IsValid() || !command.FlagID.IsValid() ||
 		command.ExpectedReviewRevision < 0 || command.ExpectedDecisionRevision < 0 ||
 		(command.ExpectedReviewRevision == 0 && !command.ReviewID.IsZero()) ||
 		(command.ExpectedReviewRevision > 0 && !command.ReviewID.IsValid()) {
@@ -139,6 +139,10 @@ func (service *Service) SaveDecision(ctx context.Context, call Call, command Sav
 	principal := call.Principal()
 	if principal.Validate() != nil {
 		return Result{}, invalid("principal")
+	}
+	idempotency, err := prepareDecisionIdempotency(call, command)
+	if err != nil {
+		return Result{}, err
 	}
 	reviewID := command.ReviewID
 	if reviewID.IsZero() {
@@ -169,7 +173,7 @@ func (service *Service) SaveDecision(ctx context.Context, call Call, command Sav
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedReviewRevision: command.ExpectedReviewRevision,
 		ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
 		PrivateRationale: command.PrivateRationale, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return Result{}, service.failAudit(ctx, auditID, err)
 	}
@@ -190,11 +194,11 @@ type UpdateDraftCommand struct {
 	ExpectedReviewRevision int64
 	ManagerNotes           string
 	StudentRemarksMarkdown string
-	Idempotency            *store.CommandIdempotency
+	IdempotencyKey         string
 }
 
 func (service *Service) UpdateDraft(ctx context.Context, call Call, command UpdateDraftCommand) (Result, error) {
-	if command.Idempotency == nil || !command.SubmissionID.IsValid() || command.ExpectedReviewRevision < 0 ||
+	if !command.SubmissionID.IsValid() || command.ExpectedReviewRevision < 0 ||
 		(command.ExpectedReviewRevision == 0 && !command.ReviewID.IsZero()) ||
 		(command.ExpectedReviewRevision > 0 && !command.ReviewID.IsValid()) {
 		return Result{}, invalid("draft")
@@ -202,6 +206,10 @@ func (service *Service) UpdateDraft(ctx context.Context, call Call, command Upda
 	principal := call.Principal()
 	if principal.Validate() != nil {
 		return Result{}, invalid("principal")
+	}
+	idempotency, err := prepareDraftIdempotency(call, command)
+	if err != nil {
+		return Result{}, err
 	}
 	reviewID := command.ReviewID
 	if reviewID.IsZero() {
@@ -231,7 +239,7 @@ func (service *Service) UpdateDraft(ctx context.Context, call Call, command Upda
 		ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
 		StudentRemarksMarkdown: command.StudentRemarksMarkdown, ChangedAt: at, AuditEventID: auditID,
 		AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return Result{}, service.failAudit(ctx, auditID, err)
 	}
@@ -250,7 +258,7 @@ type FinalizeCommand struct {
 	SubmissionID           model.SubmissionID
 	ReviewID               model.SubmissionReviewID
 	ExpectedReviewRevision int64
-	Idempotency            *store.CommandIdempotency
+	IdempotencyKey         string
 }
 
 type terminalMutationKind uint8
@@ -262,26 +270,26 @@ const (
 
 func (service *Service) Finalize(ctx context.Context, call Call, command FinalizeCommand) (Result, error) {
 	return service.terminalMutation(ctx, call, command.SubmissionID, command.ReviewID,
-		command.ExpectedReviewRevision, command.Idempotency, terminalFinalize)
+		command.ExpectedReviewRevision, command.IdempotencyKey, terminalFinalize)
 }
 
 type ReleaseCommand struct {
 	SubmissionID           model.SubmissionID
 	ReviewID               model.SubmissionReviewID
 	ExpectedReviewRevision int64
-	Idempotency            *store.CommandIdempotency
+	IdempotencyKey         string
 }
 
 func (service *Service) Release(ctx context.Context, call Call, command ReleaseCommand) (Result, error) {
 	return service.terminalMutation(ctx, call, command.SubmissionID, command.ReviewID,
-		command.ExpectedReviewRevision, command.Idempotency, terminalRelease)
+		command.ExpectedReviewRevision, command.IdempotencyKey, terminalRelease)
 }
 
 func (service *Service) terminalMutation(ctx context.Context, call Call, submissionID model.SubmissionID,
-	reviewID model.SubmissionReviewID, expectedRevision int64, idempotency *store.CommandIdempotency,
+	reviewID model.SubmissionReviewID, expectedRevision int64, idempotencyKey string,
 	kind terminalMutationKind,
 ) (Result, error) {
-	if idempotency == nil || !submissionID.IsValid() || !reviewID.IsValid() || expectedRevision < 1 ||
+	if !submissionID.IsValid() || !reviewID.IsValid() || expectedRevision < 1 ||
 		(kind != terminalFinalize && kind != terminalRelease) {
 		return Result{}, invalid("review")
 	}
@@ -289,9 +297,16 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 	if principal.Validate() != nil {
 		return Result{}, invalid("principal")
 	}
+	operation := store.ExamIntegrityReviewFinalizeOperation
+	if kind == terminalRelease {
+		operation = store.ExamIntegrityReviewReleaseOperation
+	}
+	idempotency, err := prepareTerminalIdempotency(call, operation, idempotencyKey, submissionID, reviewID, expectedRevision)
+	if err != nil {
+		return Result{}, err
+	}
 	var override bool
 	var authorization *store.ExamIntegrityReviewAuthorization
-	var err error
 	if kind == terminalRelease {
 		override, authorization, err = service.authorizeReleaseMutation(ctx, call, submissionID)
 	} else {
@@ -312,9 +327,9 @@ func (service *Service) terminalMutation(ctx context.Context, call Call, submiss
 		}
 		at = model.TimeUTC(releasePreparation.ReleaseAt)
 	}
-	action, operation := model.ActionSubmissionReview, store.ExamIntegrityReviewFinalizeOperation
+	action := model.ActionSubmissionReview
 	if kind == terminalRelease {
-		action, operation = model.ActionSubmissionRelease, store.ExamIntegrityReviewReleaseOperation
+		action = model.ActionSubmissionRelease
 	}
 	auditID, err := service.deps.Auditor.Begin(ctx, call, action,
 		model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}, model.RoleScopeAcademicUnit,

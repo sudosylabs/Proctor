@@ -20,6 +20,7 @@ type examinationConstruction struct {
 	sittingMail            *appmail.SittingComposer
 	sittingMailPreparation sittingScheduleMailPreparationAdapter
 	attempts               examAttemptUseCases
+	attemptTerminals       examAttemptTerminalUseCases
 	reviews                examReviewUseCases
 	resources              examResourceUseCases
 	corrections            examCorrectionUseCases
@@ -225,6 +226,7 @@ func assembleApplication(
 		examRevisions:                     examinations.revisions,
 		examSittings:                      examinations.sittings,
 		examAttempts:                      examinations.attempts,
+		examAttemptTerminals:              examinations.attemptTerminals,
 		examReviews:                       examinations.reviews,
 		examResources:                     examinations.resources,
 		examCorrections:                   examinations.corrections,

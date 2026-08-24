@@ -12,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,17 @@ func TestCandidateExamWorkspaceUsesBoundedOpaqueCursor(t *testing.T) {
 		fake.workspaceQuery.ExpectedCursor != -1 {
 		t.Fatalf("Workspace cursor = %#v, %v", cursor, err)
 	}
+	fake.workspacePage.HasMore = false
+	second := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/workspace?cursor="+url.QueryEscape(page.NextCursor))
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusOK || fake.workspaceQuery.ExpectedCursor != cursor.ExpectedCursor || fake.workspaceQuery.AfterEntryID != cursor.ID {
+		t.Fatalf("Workspace cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.workspaceQuery, secondResponse.Body.String())
+	}
+	malformed := fake.candidateRequest(http.MethodGet, "/api/v1/exam-attempts/"+fake.attempt.ID.String()+"/workspace?cursor=not-a-cursor")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 }
 
 func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceipt(t *testing.T) {
@@ -129,7 +141,10 @@ func TestSubmissionManifestCursorIsVersionedStrictAndPathFree(t *testing.T) {
 	t.Parallel()
 
 	entryID := model.NewAttemptWorkspaceEntryID()
-	raw := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entryID})
+	raw, err := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entryID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	decoded, err := decodeSubmissionManifestCursor(raw)
 	if err != nil || decoded.EntryID != entryID {
 		t.Fatalf("decoded cursor = %#v, %v", decoded, err)
@@ -205,6 +220,23 @@ func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" {
 		t.Fatalf("manager page = %#v, %v", page, err)
 	}
+	cursor, err := decodeExamAttemptManagerCursor(page.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.managerPage.HasMore = false
+	second := httptest.NewRequest(http.MethodGet, path+"&cursor="+url.QueryEscape(page.NextCursor), nil)
+	second.Header.Set("Authorization", "Bearer credential")
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusOK || !fake.managerList.BeforeCreatedAt.Equal(cursor.CreatedAt) || fake.managerList.BeforeAttemptID != cursor.ID {
+		t.Fatalf("manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
+	}
+	malformed := httptest.NewRequest(http.MethodGet, path+"&cursor=not-a-cursor", nil)
+	malformed.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 
 	member := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() + "/attempts/" + fake.attempt.ID.String()
 	request = httptest.NewRequest(http.MethodGet, member, nil)
@@ -243,8 +275,25 @@ func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *t
 		fake.submissionManifestQuery.SubmissionID != fake.submissionView.Submission.ID {
 		t.Fatalf("get=%#v manifest=%#v", fake.submissionGet, fake.submissionManifestQuery)
 	}
-
 	entry := fake.submissionManifest.Items[0]
+	cursor, err := encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: entry.EntryID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.submissionManifest.HasMore = false
+	cursorRequest := httptest.NewRequest(http.MethodGet, base+"/manifest?cursor="+url.QueryEscape(cursor), nil)
+	cursorRequest.Header.Set("Authorization", "Bearer credential")
+	cursorResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(cursorResponse, cursorRequest)
+	if cursorResponse.Code != http.StatusOK || fake.submissionManifestQuery.AfterEntryID != entry.EntryID {
+		t.Fatalf("manifest cursor forwarding = %d query=%#v body=%s", cursorResponse.Code, fake.submissionManifestQuery, cursorResponse.Body.String())
+	}
+	malformed := httptest.NewRequest(http.MethodGet, base+"/manifest?cursor=not-a-cursor", nil)
+	malformed.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
+
 	contentPath := base + "/files/" + entry.EntryID.String() + "/content"
 	request := httptest.NewRequest(http.MethodGet, contentPath, nil)
 	request.Header.Set("Authorization", "Bearer credential")
@@ -315,7 +364,10 @@ func TestCandidateAttemptHeadersRequireOneCanonicalSensitiveCredentialAndConnect
 func TestExamAttemptManagerCursorIsOpaqueStrictAndVersioned(t *testing.T) {
 	t.Parallel()
 	want := examAttemptManagerCursor{CreatedAt: time.Date(2026, time.August, 17, 9, 0, 0, 123000000, time.UTC), ID: model.NewExamAttemptID()}
-	encoded := encodeExamAttemptManagerCursor(want)
+	encoded, err := encodeExamAttemptManagerCursor(want)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if encoded == "" || strings.ContainsAny(encoded, "+/=") {
 		t.Fatalf("cursor is not raw URL-safe: %q", encoded)
 	}
@@ -333,7 +385,10 @@ func TestExamAttemptManagerCursorIsOpaqueStrictAndVersioned(t *testing.T) {
 func TestCandidateWorkspaceCursorContainsNoReversiblePath(t *testing.T) {
 	t.Parallel()
 	want := candidateWorkspaceCursor{ExpectedCursor: 7, ID: model.NewAttemptWorkspaceEntryID()}
-	encoded := encodeCandidateWorkspaceCursor(want)
+	encoded, err := encodeCandidateWorkspaceCursor(want)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := decodeCandidateWorkspaceCursor(encoded)
 	if err != nil || got != want {
 		t.Fatalf("round trip = %#v, %v; want %#v", got, err, want)
@@ -342,7 +397,18 @@ func TestCandidateWorkspaceCursorContainsNoReversiblePath(t *testing.T) {
 	if err != nil || strings.Contains(string(decoded), "cmd/main.go") || strings.Contains(string(decoded), `"path"`) {
 		t.Fatalf("cursor exposes Workspace path: %q, %v", decoded, err)
 	}
-	for _, invalid := range []string{"", "%%%", encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: -1, ID: want.ID})} {
+	if _, encodeErr := encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: -1, ID: want.ID}); encodeErr == nil {
+		t.Fatal("negative Workspace cursor encoded successfully")
+	}
+	withoutEntry, err := encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: want.ExpectedCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedWithoutEntry, err := decodeCandidateWorkspaceCursor(withoutEntry)
+	if err != nil || decodedWithoutEntry.ExpectedCursor != want.ExpectedCursor || decodedWithoutEntry.ID.IsValid() {
+		t.Fatalf("snapshot-only Workspace cursor = %#v, %v", decodedWithoutEntry, err)
+	}
+	for _, invalid := range []string{"", "%%%"} {
 		if _, decodeErr := decodeCandidateWorkspaceCursor(invalid); decodeErr == nil {
 			t.Fatalf("invalid cursor %q was accepted", invalid)
 		}

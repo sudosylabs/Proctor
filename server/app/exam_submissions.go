@@ -28,20 +28,9 @@ func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 	command SubmitExamAttemptCommand,
 ) (response ExamSubmissionReceipt, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "submit", resultErr) }()
-	if command.IdempotencyKey == "" {
-		return ExamSubmissionReceipt{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, store.ExamSubmissionSealOperation, command.IdempotencyKey, struct {
-		AttemptID              string `json:"exam_attempt_id"`
-		WorkspaceCursor        int64  `json:"expected_workspace_cursor"`
-		FinalFocusLossSequence int64  `json:"final_focus_loss_sequence"`
-	}{command.Access.AttemptID.String(), command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence})
-	if err != nil {
-		return ExamSubmissionReceipt{}, err
-	}
 	result, err := a.examAttempts.Submit(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examattempt.SubmitCommand{Access: command.Access, ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor,
-			FinalFocusLossSequence: command.FinalFocusLossSequence, Idempotency: idempotency})
+			FinalFocusLossSequence: command.FinalFocusLossSequence, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamSubmissionReceipt{}, examAttemptError(err, true)
 	}

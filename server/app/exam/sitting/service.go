@@ -60,7 +60,7 @@ type ScheduleCommand struct {
 	ClassID          model.ClassID
 	ScheduledStartAt time.Time
 	ScheduledEndAt   time.Time
-	Idempotency      *store.CommandIdempotency
+	IdempotencyKey   string
 }
 
 type UpdateScheduleCommand struct {
@@ -71,7 +71,7 @@ type UpdateScheduleCommand struct {
 	ClassID          *model.ClassID
 	ScheduledStartAt *time.Time
 	ScheduledEndAt   *time.Time
-	Idempotency      *store.CommandIdempotency
+	IdempotencyKey   string
 }
 
 type CancelCommand struct {
@@ -79,7 +79,7 @@ type CancelCommand struct {
 	SittingID        model.ExamSittingID
 	ExpectedRevision int64
 	PrivateReason    string
-	Idempotency      *store.CommandIdempotency
+	IdempotencyKey   string
 }
 
 type PauseCommand struct {
@@ -87,7 +87,7 @@ type PauseCommand struct {
 	SittingID        model.ExamSittingID
 	ExpectedRevision int64
 	PrivateReason    string
-	Idempotency      *store.CommandIdempotency
+	IdempotencyKey   string
 }
 
 type ResumeCommand = PauseCommand
@@ -100,7 +100,7 @@ type ExtendCommand struct {
 	ExpectedRevision int64
 	ScheduledEndAt   time.Time
 	PrivateReason    string
-	Idempotency      *store.CommandIdempotency
+	IdempotencyKey   string
 }
 
 // SystemCall identifies one durable Job execution without manufacturing a
@@ -220,12 +220,15 @@ func New(persistence store.ExamSittingStore, access accessStore, memberships mem
 }
 
 func (service *Service) Schedule(ctx context.Context, call Call, command ScheduleCommand) (store.ExamSittingSnapshot, error) {
+	command.ScheduledStartAt = model.TimeUTC(command.ScheduledStartAt)
+	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.ExamRevisionID.IsValid() || !command.ClassID.IsValid() ||
 		command.ScheduledStartAt.IsZero() || !command.ScheduledStartAt.Before(command.ScheduledEndAt) {
 		return store.ExamSittingSnapshot{}, invalid("schedule")
 	}
-	if command.Idempotency == nil {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareScheduleIdempotency(call, command)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
 	}
 	principal := call.Principal()
 	if principal.Validate() != nil {
@@ -260,7 +263,7 @@ func (service *Service) Schedule(ctx context.Context, call Call, command Schedul
 		return store.ExamSittingSnapshot{}, err
 	}
 	result, err := service.persistence.Schedule(ctx, &store.ExamSittingSchedule{Sitting: sitting, OpenJob: openJob, DeadlineJob: deadlineJob, ActorUserID: principal.UserID,
-		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail}, command.Idempotency)
+		ManagerOverride: authorization.override, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}
@@ -435,14 +438,17 @@ func (service *Service) List(ctx context.Context, call Call, query ListQuery) (P
 }
 
 func (service *Service) UpdateSchedule(ctx context.Context, call Call, command UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
+	command.ScheduledStartAt = canonicalTimePointer(command.ScheduledStartAt)
+	command.ScheduledEndAt = canonicalTimePointer(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 ||
 		(command.ExamRevisionID == nil && command.ClassID == nil && command.ScheduledStartAt == nil && command.ScheduledEndAt == nil) ||
 		command.ExamRevisionID != nil && !command.ExamRevisionID.IsValid() || command.ClassID != nil && !command.ClassID.IsValid() ||
 		command.ScheduledStartAt != nil && command.ScheduledStartAt.IsZero() || command.ScheduledEndAt != nil && command.ScheduledEndAt.IsZero() {
 		return store.ExamSittingSnapshot{}, invalid("schedule")
 	}
-	if command.Idempotency == nil {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareScheduleUpdateIdempotency(call, command)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
 	at := model.TimeUTC(service.now())
@@ -509,7 +515,7 @@ func (service *Service) UpdateSchedule(ctx context.Context, call Call, command U
 		ExamRevisionID: revisionID, ClassID: classID, ScheduledStartAt: startAt, ScheduledEndAt: endAt,
 		OpenJob: openJob, DeadlineJob: deadlineJob,
 		ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}
@@ -529,8 +535,9 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
 		return store.ExamSittingSnapshot{}, invalid("cancellation")
 	}
-	if command.Idempotency == nil {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareTransitionIdempotency(call, idempotencyOperationCancel, PauseCommand(command))
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
 	at := model.TimeUTC(service.now())
@@ -565,7 +572,7 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 		ExamID: command.ExamID, SittingID: command.SittingID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		PrivateReason: command.PrivateReason, CanceledAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Mail: mail,
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}
@@ -582,21 +589,21 @@ func (service *Service) Cancel(ctx context.Context, call Call, command CancelCom
 }
 
 func (service *Service) Pause(ctx context.Context, call Call, command PauseCommand) (store.ExamSittingSnapshot, error) {
-	return service.runManagerTransition(ctx, call, command, "pause", store.ExamSittingTransitionManagerPaused, true, false,
+	return service.runManagerTransition(ctx, call, command, "pause", idempotencyOperationPause, store.ExamSittingTransitionManagerPaused, true, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.persistence.Pause(ctx, input, idempotency)
 		})
 }
 
 func (service *Service) Resume(ctx context.Context, call Call, command ResumeCommand) (store.ExamSittingSnapshot, error) {
-	return service.runManagerTransition(ctx, call, command, "resume", store.ExamSittingTransitionManagerResumed, false, false,
+	return service.runManagerTransition(ctx, call, command, "resume", idempotencyOperationResume, store.ExamSittingTransitionManagerResumed, false, false,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.persistence.Resume(ctx, input, idempotency)
 		})
 }
 
 func (service *Service) EarlyClose(ctx context.Context, call Call, command EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
-	return service.runManagerTransition(ctx, call, command, "early_close", store.ExamSittingTransitionManagerClosed, true, true,
+	return service.runManagerTransition(ctx, call, command, "early_close", idempotencyOperationClose, store.ExamSittingTransitionManagerClosed, true, true,
 		func(ctx context.Context, input *store.ExamSittingManagerTransition, idempotency *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error) {
 			return service.persistence.EarlyClose(ctx, input, idempotency)
 		})
@@ -604,14 +611,15 @@ func (service *Service) EarlyClose(ctx context.Context, call Call, command Early
 
 type managerTransitionStoreCall func(context.Context, *store.ExamSittingManagerTransition, *store.CommandIdempotency) (*store.ExamSittingLifecycleResult, error)
 
-func (service *Service) runManagerTransition(ctx context.Context, call Call, command PauseCommand, operation string,
+func (service *Service) runManagerTransition(ctx context.Context, call Call, command PauseCommand, operation, idempotencyOperation string,
 	transition store.ExamSittingLifecycleTransitionCode, allowArchived, finalize bool, run managerTransitionStoreCall,
 ) (store.ExamSittingSnapshot, error) {
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || !validPrivateReason(command.PrivateReason) {
 		return store.ExamSittingSnapshot{}, invalid(operation)
 	}
-	if command.Idempotency == nil {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareTransitionIdempotency(call, idempotencyOperation, command)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
 	at := model.TimeUTC(service.now())
@@ -640,7 +648,7 @@ func (service *Service) runManagerTransition(ctx context.Context, call Call, com
 		ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
 		FinalizeJob: finalizeJob}
-	result, err := run(ctx, input, command.Idempotency)
+	result, err := run(ctx, input, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}
@@ -653,12 +661,14 @@ func (service *Service) runManagerTransition(ctx context.Context, call Call, com
 }
 
 func (service *Service) Extend(ctx context.Context, call Call, command ExtendCommand) (store.ExamSittingSnapshot, error) {
+	command.ScheduledEndAt = model.TimeUTC(command.ScheduledEndAt)
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || command.ExpectedRevision < 1 || command.ScheduledEndAt.IsZero() ||
 		!validPrivateReason(command.PrivateReason) {
 		return store.ExamSittingSnapshot{}, invalid("extend")
 	}
-	if command.Idempotency == nil {
-		return store.ExamSittingSnapshot{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareExtensionIdempotency(call, command)
+	if err != nil {
+		return store.ExamSittingSnapshot{}, err
 	}
 	resource := model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}
 	at := model.TimeUTC(service.now())
@@ -684,7 +694,7 @@ func (service *Service) Extend(ctx context.Context, call Call, command ExtendCom
 	result, err := service.persistence.Extend(ctx, &store.ExamSittingExtension{ExamID: command.ExamID, SittingID: command.SittingID,
 		ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedRevision: command.ExpectedRevision,
 		ScheduledEndAt: deadline, DeadlineJob: deadlineJob, PrivateReason: command.PrivateReason, ChangedAt: at,
-		AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamSittingSnapshot{}, service.failAudit(ctx, auditID, err)
 	}

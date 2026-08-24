@@ -8,8 +8,7 @@
 package httpapi
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -20,6 +19,7 @@ import (
 const defaultAuditPageSize = 50
 
 type auditCursor struct {
+	Version  int    `json:"version,omitempty"`
 	CreateAt int64  `json:"create_at"`
 	Id       string `json:"id"`
 }
@@ -101,10 +101,13 @@ func (module auditResourceModule) list(request operationRequest) (operationResul
 	}
 	if len(events) == query.Limit {
 		last := events[len(events)-1]
-		response.NextCursor = encodeAuditCursor(auditCursor{
+		response.NextCursor, err = encodeAuditCursor(auditCursor{
 			CreateAt: model.MillisFromTime(last.CreatedAt),
 			Id:       last.ID.String(),
 		})
+		if err != nil {
+			return operationResult{}, application.NewError("audit.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -151,20 +154,26 @@ func (e auditQueryError) Error() string { return string(e) }
 
 func errAuditQuery(field string) error { return auditQueryError(field) }
 
-func encodeAuditCursor(cursor auditCursor) string {
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeAuditCursor(cursor auditCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, auditCursorSpec())
 }
 
 func decodeAuditCursor(raw string) (auditCursor, error) {
-	var cursor auditCursor
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, err
+	return decodeOpaqueCursor(raw, auditCursorSpec())
+}
+
+func auditCursorSpec() opaqueCursorSpec[auditCursor] {
+	return opaqueCursorSpec[auditCursor]{
+		label: "audit", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "create_at", "id"},
+		version:        func(cursor auditCursor) int { return cursor.Version },
+		setVersion:     func(cursor *auditCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		validate: func(cursor auditCursor) error {
+			if cursor.CreateAt <= 0 || !model.IsValidId(cursor.Id) {
+				return errors.New("invalid audit keyset")
+			}
+			return nil
+		},
 	}
-	if err := json.Unmarshal(decoded, &cursor); err != nil ||
-		cursor.CreateAt <= 0 || !model.IsValidId(cursor.Id) {
-		return cursor, errInvalidAuditResource
-	}
-	return cursor, nil
 }

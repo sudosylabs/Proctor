@@ -6,6 +6,7 @@ package exam
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ func TestAddManagerChecksEligibilityBeforeAuditedAtomicMutation(t *testing.T) {
 		target.String():         {{AcademicUnitID: fixture.unitID}},
 	}
 	command := AddManagerCommand{ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1,
-		Idempotency: &store.CommandIdempotency{UserID: fixture.userID}}
+		IdempotencyKey: "test-key"}
 
 	result, err := fixture.service.AddManager(context.Background(), fixture.call, command)
 	if err != nil {
@@ -76,6 +77,8 @@ func TestAddManagerChecksEligibilityBeforeAuditedAtomicMutation(t *testing.T) {
 		fixture.persistence.managerMutation.Notices[0].Delivery.TargetUserID != target {
 		t.Fatalf("atomic mail input = %#v", fixture.persistence.managerMutation.Notices)
 	}
+	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationAddManager, "test-key",
+		fmt.Sprintf(`{"exam_id":%q,"user_id":%q,"expected_exam_revision":1}`, fixture.examID, target))
 }
 
 func TestAddManagerRejectsInactiveOrUnrelatedTargetBeforeAudit(t *testing.T) {
@@ -103,7 +106,7 @@ func TestAddManagerRejectsInactiveOrUnrelatedTargetBeforeAudit(t *testing.T) {
 				fixture.memberships.itemsByUser = map[string][]*model.AcademicUnitMember{target.String(): {}}
 			}
 			_, err := fixture.service.AddManager(context.Background(), fixture.call, AddManagerCommand{
-				ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1, Idempotency: &store.CommandIdempotency{UserID: fixture.userID},
+				ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1, IdempotencyKey: "test-key",
 			})
 			if faultCode(err) != "exam.manager.ineligible" {
 				t.Fatalf("error = %v", err)
@@ -126,7 +129,7 @@ func TestManagerMailPreparationFailureStartsNoMutationAndFailsAudit(t *testing.T
 
 	_, err := fixture.service.AddManager(context.Background(), fixture.call, AddManagerCommand{
 		ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1,
-		Idempotency: &store.CommandIdempotency{UserID: fixture.userID},
+		IdempotencyKey: "test-key",
 	})
 	if faultCode(err) != "exam.unavailable" {
 		t.Fatalf("error = %v", err)
@@ -142,11 +145,13 @@ func TestRemoveAndTransferPreserveStoreInvariantFailures(t *testing.T) {
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID}}
 	fixture.persistence.managerErr = store.NewErrConflict("exam_manager", "exam_owner_manager", nil)
 	_, err := fixture.service.RemoveManager(context.Background(), fixture.call, RemoveManagerCommand{
-		ExamID: fixture.examID, UserID: fixture.userID, ExpectedExamRevision: 1, Idempotency: &store.CommandIdempotency{UserID: fixture.userID},
+		ExamID: fixture.examID, UserID: fixture.userID, ExpectedExamRevision: 1, IdempotencyKey: "test-key",
 	})
 	if faultCode(err) != "exam.manager.owner_protected" {
 		t.Fatalf("remove owner error = %v", err)
 	}
+	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationRemoveManager, "test-key",
+		fmt.Sprintf(`{"exam_id":%q,"user_id":%q,"expected_exam_revision":1}`, fixture.examID, fixture.userID))
 	if _, exists := fixture.auditor.value["target_eligible"]; exists {
 		t.Fatalf("removal audit claims an eligibility decision: %#v", fixture.auditor.value)
 	}
@@ -162,7 +167,7 @@ func TestRemoveAndTransferPreserveStoreInvariantFailures(t *testing.T) {
 	}
 	fixture.memberships.itemsByUser = map[string][]*model.AcademicUnitMember{target.String(): {{AcademicUnitID: fixture.unitID}}}
 	transferred, err := fixture.service.TransferOwner(context.Background(), fixture.call, TransferOwnerCommand{
-		ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1, Idempotency: &store.CommandIdempotency{UserID: fixture.userID},
+		ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1, IdempotencyKey: "test-key",
 	})
 	if err != nil || transferred.Exam == nil || transferred.Exam.OwnerUserID != target {
 		t.Fatalf("transfer = %#v, %v", transferred, err)
@@ -175,6 +180,8 @@ func TestRemoveAndTransferPreserveStoreInvariantFailures(t *testing.T) {
 		fixture.mail.requests[1].Relationship != ManagerMailRelationshipOwner {
 		t.Fatalf("ownership mail preparations = %#v", fixture.mail.requests)
 	}
+	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationTransferOwner, "test-key",
+		fmt.Sprintf(`{"exam_id":%q,"user_id":%q,"expected_exam_revision":1}`, fixture.examID, target))
 }
 
 func activeTestUser(id model.UserID) *model.User {

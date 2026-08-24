@@ -21,7 +21,7 @@ func TestOpenAPIAgreesWithRuntime(t *testing.T) {
 
 	document := readOpenAPIDocument(t)
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -86,7 +86,7 @@ func TestIdentityAndSystemOpenAPISchemasAgreeWithDTOs(t *testing.T) {
 	t.Parallel()
 
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 	suite := identityAndSystemOpenAPIAgreementSuite()

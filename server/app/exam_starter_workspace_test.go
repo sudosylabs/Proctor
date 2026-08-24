@@ -4,7 +4,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -13,26 +12,6 @@ import (
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
 	"github.com/sudosylabs/proctor/server/model"
 )
-
-func TestExamStarterWorkspaceReplacementFingerprintIncludesExpectedContentVersion(t *testing.T) {
-	t.Parallel()
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	examID := model.NewExamID()
-	entryID := model.NewStarterWorkspaceEntryID().String()
-	first, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.file.replace.v1", "replace-key", examID, 2,
-		model.WorkspaceContentVersion("aaaaaaaaaaaaaaaaaaaaaaaaaa"), entryID, "", "text/plain", 1, "checksum")
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.file.replace.v1", "replace-key", examID, 2,
-		model.WorkspaceContentVersion("bbbbbbbbbbbbbbbbbbbbbbbbbb"), entryID, "", "text/plain", 1, "checksum")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(first.Fingerprint[:], second.Fingerprint[:]) {
-		t.Fatal("expected content version was omitted from idempotency fingerprint")
-	}
-}
 
 func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *testing.T) {
 	t.Parallel()

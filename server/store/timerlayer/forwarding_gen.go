@@ -813,32 +813,32 @@ func (s *timedAccessPolicyStore) Replace(arg0 context.Context, arg1 *store.Acces
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 context.Context, arg1 *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func() (*model.BrowserAuthenticationTransaction, error) {
+func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationCreation) (*store.DesktopAuthorizationCreated, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateDesktopAuthorization), func() (*store.DesktopAuthorizationCreated, error) {
 		return s.next.CreateDesktopAuthorization(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*model.BrowserAuthenticationTransaction, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*model.BrowserAuthenticationTransaction, error) {
+func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*store.BrowserInvitationCreated, error) {
 		return s.next.CreateInvitation(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) ResolveInvitation(arg0 context.Context, arg1 string, arg2 string) (*model.BrowserAuthenticationTransaction, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func() (*model.BrowserAuthenticationTransaction, error) {
+func (s *timedBrowserAuthenticationStore) ResolveInvitation(arg0 context.Context, arg1 string, arg2 string) (*store.BrowserInvitationResolution, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveInvitation), func() (*store.BrowserInvitationResolution, error) {
 		return s.next.ResolveInvitation(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func() (*model.BrowserAuthenticationTransaction, error) {
+func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodIssueCode), func() (*store.DesktopAuthorizationCodeIssued, error) {
 		return s.next.IssueCode(arg0, arg1)
 	})
 }
 
-func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() (*model.BrowserAuthenticationTransaction, error) {
+func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() error {
 		return s.next.Cancel(arg0, arg1)
 	})
 }

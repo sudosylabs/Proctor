@@ -16,9 +16,9 @@ import (
 )
 
 type desktopAuthorizationStore interface {
-	CreateDesktopAuthorization(context.Context, *model.BrowserAuthenticationTransaction) (*model.BrowserAuthenticationTransaction, error)
-	IssueCode(context.Context, *store.DesktopAuthorizationCodeIssue) (*model.BrowserAuthenticationTransaction, error)
-	Cancel(context.Context, *store.DesktopAuthorizationCancellation) (*model.BrowserAuthenticationTransaction, error)
+	CreateDesktopAuthorization(context.Context, *store.DesktopAuthorizationCreation) (*store.DesktopAuthorizationCreated, error)
+	IssueCode(context.Context, *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error)
+	Cancel(context.Context, *store.DesktopAuthorizationCancellation) error
 	Exchange(context.Context, *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error)
 }
 
@@ -210,7 +210,7 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 		}
 		return nil, failure
 	}
-	if issued == nil || issued.Validate() != nil || issued.State != model.BrowserAuthenticationStateCodeIssued {
+	if issued == nil || model.ValidateDesktopAuthorizationCallback(issued.CallbackURL) != nil || issued.CodeExpiresAt.IsZero() {
 		failure := NewError("authentication.desktop_authorization.unavailable")
 		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
 			return nil, NewError("audit.unavailable").Wrap(auditErr)
@@ -221,15 +221,15 @@ func (s *desktopAuthorizationService) Approve(ctx context.Context, invocation In
 	if err != nil {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
-	return &DesktopAuthorizationApproval{RedirectURL: redirect, ExpiresAt: issued.CodeExpiresAt.Millis()}, nil
+	return &DesktopAuthorizationApproval{RedirectURL: redirect, ExpiresAt: issued.CodeExpiresAt.UnixMilli()}, nil
 }
 
 func (s *desktopAuthorizationService) Cancel(ctx context.Context, command ApproveDesktopAuthorizationCommand) error {
 	if !model.IsValidCredentialToken(command.Handle) || !model.IsValidCredentialToken(command.BrowserProof) || !model.IsValidCredentialToken(command.State) {
 		return NewError("authentication.desktop_authorization.invalid")
 	}
-	_, err := s.transactions.Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(command.Handle),
-		BrowserProofHash: model.HashToken(command.BrowserProof), StateHash: model.HashToken(command.State), CancelledAt: s.now().UnixMilli()})
+	err := s.transactions.Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(command.Handle),
+		BrowserProofHash: model.HashToken(command.BrowserProof), StateHash: model.HashToken(command.State)})
 	if err != nil {
 		return desktopAuthorizationStoreError(err)
 	}
@@ -272,8 +272,7 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		}
 		return nil, failure
 	}
-	accessExpiry, refreshExpiry := desktopAuthorizationCredentialExpiries(result)
-	if result == nil || result.Session == nil || accessExpiry.IsZero() || refreshExpiry.IsZero() {
+	if !validDesktopAuthorizationExchangeResult(result, s.sessionPolicy) {
 		failure := NewError("authentication.desktop_authorization.unavailable")
 		if auditErr := s.audit.Fail(ctx, audit.ID.String(), failure.Code()); auditErr != nil {
 			return nil, NewError("audit.unavailable").Wrap(auditErr)
@@ -281,26 +280,18 @@ func (s *desktopAuthorizationService) Exchange(ctx context.Context, invocation I
 		return nil, failure
 	}
 	return &DesktopAuthorizationExchangeResult{Session: result.Session, Tokens: &model.AuthenticationTokens{AccessToken: accessToken,
-		RefreshToken: refreshToken, AccessExpiresAt: accessExpiry, RefreshExpiresAt: refreshExpiry}}, nil
+		RefreshToken: refreshToken, AccessExpiresAt: result.AccessExpiresAt, RefreshExpiresAt: result.RefreshExpiresAt}}, nil
 }
 
-func desktopAuthorizationCredentialExpiries(result *store.DesktopAuthorizationExchangeResult) (time.Time, time.Time) {
-	if result == nil {
-		return time.Time{}, time.Time{}
+func validDesktopAuthorizationExchangeResult(result *store.DesktopAuthorizationExchangeResult, policy SessionPolicy) bool {
+	if result == nil || result.Session == nil || result.Session.Validate() != nil ||
+		result.Session.ClientType != model.SessionClientDesktop || result.Session.ArchivedAt.Valid || result.Session.RevokedAt.Valid ||
+		result.AccessExpiresAt.IsZero() || result.RefreshExpiresAt.IsZero() ||
+		!result.AccessExpiresAt.After(result.Session.CreatedAt) || !result.RefreshExpiresAt.After(result.Session.CreatedAt) {
+		return false
 	}
-	var access, refresh time.Time
-	for _, credential := range result.Credentials {
-		if credential == nil {
-			continue
-		}
-		switch credential.Kind {
-		case model.SessionCredentialAccess:
-			access = credential.ExpiresAt
-		case model.SessionCredentialRefresh:
-			refresh = credential.ExpiresAt
-		}
-	}
-	return access, refresh
+	return !result.AccessExpiresAt.After(result.Session.CreatedAt.Add(policy.AccessTTL)) &&
+		!result.RefreshExpiresAt.After(result.Session.CreatedAt.Add(policy.RefreshTTL))
 }
 
 func desktopAuthorizationRedirectURL(callback, code, state string) (string, error) {
@@ -404,38 +395,33 @@ func (s *desktopAuthorizationService) Start(
 		return nil, NewError("authentication.desktop_authorization.disabled")
 	}
 	institution, err := s.institutions.GetSingleton(ctx)
-	if err != nil {
+	if err != nil || institution == nil || !institution.ID.IsValid() {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
 	handle := s.newCredential()
 	proof := s.newCredential()
-	if !model.IsValidCredentialToken(handle) || !model.IsValidCredentialToken(proof) {
+	if !model.IsValidCredentialToken(handle) || !model.IsValidCredentialToken(proof) || handle == proof {
 		return nil, NewError("authentication.desktop_authorization.unavailable")
 	}
-	at := model.TimeUTC(s.now())
-	transaction := &model.BrowserAuthenticationTransaction{
-		Purpose:       model.BrowserAuthenticationPurposeDesktopAuthorization,
-		InstitutionID: institution.ID, Issuer: strings.TrimSuffix(s.policy.Issuer, "/"),
+	creation := &store.DesktopAuthorizationCreation{
+		ID: model.NewBrowserAuthenticationTransactionID(), InstitutionID: institution.ID,
+		Issuer:     strings.TrimSuffix(s.policy.Issuer, "/"),
 		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
 		StateHash: model.HashToken(command.State), CallbackURL: command.CallbackURL,
-		CodeChallenge: command.CodeChallenge, ClientType: model.SessionClientDesktop,
+		CodeChallenge:                command.CodeChallenge,
 		ExpectedAuthenticationMethod: command.AuthenticationMethod,
 		ExpectedProviderID:           command.ProviderID,
 		DeviceID:                     command.DeviceID, DeviceName: command.DeviceName,
-		ExpiresAt: at.Add(s.policy.TransactionLifetime),
+		Lifetime: s.policy.TransactionLifetime,
 	}
-	transaction.PrepareCreate(model.NewBrowserAuthenticationTransactionID(), at)
-	if transaction.Validate() != nil {
-		return nil, NewError("authentication.desktop_authorization.invalid")
-	}
-	saved, err := s.transactions.CreateDesktopAuthorization(ctx, transaction)
+	saved, err := s.transactions.CreateDesktopAuthorization(ctx, creation)
 	if err != nil {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}
-	if saved == nil || saved.Validate() != nil {
+	if saved == nil || saved.ID != creation.ID || saved.ExpiresAt.IsZero() {
 		return nil, NewError("authentication.desktop_authorization.unavailable")
 	}
-	authorizationURL, err := desktopAuthorizationURL(saved.Issuer, handle, proof, command.State)
+	authorizationURL, err := desktopAuthorizationURL(creation.Issuer, handle, proof, command.State)
 	if err != nil {
 		return nil, NewError("authentication.desktop_authorization.unavailable").Wrap(err)
 	}

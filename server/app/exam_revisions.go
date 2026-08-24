@@ -42,18 +42,8 @@ type examRevisionUseCases interface {
 
 func (a *App) PublishExamRevision(ctx context.Context, invocation Invocation, command PublishExamRevisionCommand) (result ExamRevisionSummary, resultErr error) {
 	defer func() { a.recordOperational("exam", "publish_revision", resultErr) }()
-	if command.IdempotencyKey == "" {
-		return ExamRevisionSummary{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.revision.publish.v1", command.IdempotencyKey, struct {
-		ExamID                string `json:"exam_id"`
-		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
-	}{command.ExamID.String(), command.ExpectedDraftRevision})
-	if err != nil {
-		return ExamRevisionSummary{}, err
-	}
 	summary, err := a.examRevisions.Publish(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.PublishRevisionCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Idempotency: idempotency,
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamRevisionSummary{}, examError(err, true)

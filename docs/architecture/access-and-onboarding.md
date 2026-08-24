@@ -291,6 +291,16 @@ HttpOnly, SameSite=Lax cookie scoped to the authentication path carries an
 opaque browser proof, never encoded User, Invitation, provider, purpose, or
 redirect state.
 
+The application-facing Browser Authentication Store is purpose-specific. Its
+named operations return only the facts required for the next decision: a new
+identity and expiry, an Invitation identity and claim hash, an approved
+callback and code expiry, or the created Session with authoritative credential
+expiries. They never return a mutable whole transaction for application code to
+transition. PostgreSQL acquires the necessary locks, obtains one authoritative
+timestamp for each transition, computes deadlines, and destroys consumed or
+cancelled proofs in the same atomic operation. Application code validates the
+narrow result and cannot reconstruct transition state from a broad aggregate.
+
 The hosted `/account/connect-provider` orchestration remains part of the later
 server-page phase. Until that page exists, the implemented API starts the
 provider-protocol leg directly: `ExternalLoginState` carries a closed

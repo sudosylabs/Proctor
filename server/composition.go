@@ -38,6 +38,34 @@ type composedWebSocket interface {
 	apprealtime.Sink
 }
 
+var (
+	_ httpapi.Application                            = (*app.App)(nil)
+	_ httpapi.AcademicUnitApplication                = (*app.App)(nil)
+	_ httpapi.InstitutionApplication                 = (*app.App)(nil)
+	_ httpapi.ProgrammeApplication                   = (*app.App)(nil)
+	_ httpapi.ProgrammeLevelApplication              = (*app.App)(nil)
+	_ httpapi.AcademicPeriodApplication              = (*app.App)(nil)
+	_ httpapi.ClassApplication                       = (*app.App)(nil)
+	_ httpapi.AffiliationApplication                 = (*app.App)(nil)
+	_ httpapi.AcademicUnitMemberApplication          = (*app.App)(nil)
+	_ httpapi.ClassMemberApplication                 = (*app.App)(nil)
+	_ httpapi.InvitationApplication                  = (*app.App)(nil)
+	_ httpapi.BrowserInvitationApplication           = (*app.App)(nil)
+	_ httpapi.OnboardingImportApplication            = (*app.App)(nil)
+	_ httpapi.StudentProgressionApplication          = (*app.App)(nil)
+	_ httpapi.AcademicAdministrationBatchApplication = (*app.App)(nil)
+	_ httpapi.UserProfileApplication                 = (*app.App)(nil)
+	_ httpapi.UserSettingsApplication                = (*app.App)(nil)
+	_ httpapi.AccountStateApplication                = (*app.App)(nil)
+	_ httpapi.SessionAdministrationApplication       = (*app.App)(nil)
+	_ httpapi.RoleApplication                        = (*app.App)(nil)
+	_ httpapi.RoleBindingApplication                 = (*app.App)(nil)
+	_ httpapi.AuditListingApplication                = (*app.App)(nil)
+	_ httpapi.BootstrapApplication                   = (*app.App)(nil)
+	_ httpapi.AccessPolicyApplication                = (*app.App)(nil)
+	_ httpapi.MailApplication                        = (*app.App)(nil)
+)
+
 // consumerConstructors is a package-private failure seam used by composition
 // tests. Production and NewForTesting always use the same default constructor
 // set; no constructor substitution is exported.
@@ -254,6 +282,8 @@ func composeConsumers(
 		ClassMembers: application, UserProfiles: application, UserSettings: application, AccountStates: application,
 		Invitations:                   application,
 		BrowserInvitations:            application,
+		OnboardingImports:             application,
+		StudentProgressions:           application,
 		AcademicAdministrationBatches: application,
 		SessionAdministrations:        application, Roles: application, RoleBindings: application,
 		AuditListings: application, Bootstrap: application, AccessPolicy: application, BuildInfo: buildInfo,

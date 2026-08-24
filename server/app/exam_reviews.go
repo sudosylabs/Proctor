@@ -85,25 +85,11 @@ type examReviewUseCases interface {
 func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocation,
 	command SaveExamIntegrityDecisionCommand,
 ) (ExamIntegrityReviewResult, error) {
-	idempotency, err := newCommandIdempotency(invocation, store.ExamIntegrityReviewDecisionOperation,
-		command.IdempotencyKey, struct {
-			SubmissionID             string `json:"submission_id"`
-			ReviewID                 string `json:"submission_review_id,omitempty"`
-			FlagID                   string `json:"integrity_flag_id"`
-			ExpectedReviewRevision   int64  `json:"expected_review_revision"`
-			ExpectedDecisionRevision int64  `json:"expected_decision_revision"`
-			Outcome                  string `json:"outcome"`
-			PrivateRationale         string `json:"private_rationale"`
-		}{command.SubmissionID.String(), command.ReviewID.String(), command.FlagID.String(),
-			command.ExpectedReviewRevision, command.ExpectedDecisionRevision, string(command.Outcome), command.PrivateRationale})
-	if err != nil {
-		return ExamIntegrityReviewResult{}, err
-	}
 	result, err := a.examReviews.SaveDecision(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examreview.SaveDecisionCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			FlagID: command.FlagID, ExpectedReviewRevision: command.ExpectedReviewRevision,
 			ExpectedDecisionRevision: command.ExpectedDecisionRevision, Outcome: command.Outcome,
-			PrivateRationale: command.PrivateRationale, Idempotency: idempotency})
+			PrivateRationale: command.PrivateRationale, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -113,22 +99,10 @@ func (a *App) SaveExamIntegrityDecision(ctx context.Context, invocation Invocati
 func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command UpdateExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	idempotency, err := newCommandIdempotency(invocation, store.ExamIntegrityReviewDraftOperation,
-		command.IdempotencyKey, struct {
-			SubmissionID           string `json:"submission_id"`
-			ReviewID               string `json:"submission_review_id,omitempty"`
-			ExpectedReviewRevision int64  `json:"expected_review_revision"`
-			ManagerNotes           string `json:"manager_notes"`
-			StudentRemarksMarkdown string `json:"student_remarks_markdown"`
-		}{command.SubmissionID.String(), command.ReviewID.String(), command.ExpectedReviewRevision,
-			command.ManagerNotes, command.StudentRemarksMarkdown})
-	if err != nil {
-		return ExamIntegrityReviewResult{}, err
-	}
 	result, err := a.examReviews.UpdateDraft(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examreview.UpdateDraftCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
 			ExpectedReviewRevision: command.ExpectedReviewRevision, ManagerNotes: command.ManagerNotes,
-			StudentRemarksMarkdown: command.StudentRemarksMarkdown, Idempotency: idempotency})
+			StudentRemarksMarkdown: command.StudentRemarksMarkdown, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -138,14 +112,9 @@ func (a *App) UpdateExamIntegrityReview(ctx context.Context, invocation Invocati
 func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invocation,
 	command FinalizeExamIntegrityReviewCommand,
 ) (ExamIntegrityReviewResult, error) {
-	idempotency, err := newExamReviewTerminalIdempotency(invocation, store.ExamIntegrityReviewFinalizeOperation,
-		command.IdempotencyKey, command.SubmissionID, command.ReviewID, command.ExpectedReviewRevision)
-	if err != nil {
-		return ExamIntegrityReviewResult{}, err
-	}
 	result, err := a.examReviews.Finalize(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examreview.FinalizeCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			ExpectedReviewRevision: command.ExpectedReviewRevision, Idempotency: idempotency})
+			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
@@ -155,28 +124,13 @@ func (a *App) FinalizeExamIntegrityReview(ctx context.Context, invocation Invoca
 func (a *App) ReleaseStudentExamResult(ctx context.Context, invocation Invocation,
 	command ReleaseStudentExamResultCommand,
 ) (ExamIntegrityReviewResult, error) {
-	idempotency, err := newExamReviewTerminalIdempotency(invocation, store.ExamIntegrityReviewReleaseOperation,
-		command.IdempotencyKey, command.SubmissionID, command.ReviewID, command.ExpectedReviewRevision)
-	if err != nil {
-		return ExamIntegrityReviewResult{}, err
-	}
 	result, err := a.examReviews.Release(ctx, examreview.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examreview.ReleaseCommand{SubmissionID: command.SubmissionID, ReviewID: command.ReviewID,
-			ExpectedReviewRevision: command.ExpectedReviewRevision, Idempotency: idempotency})
+			ExpectedReviewRevision: command.ExpectedReviewRevision, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamIntegrityReviewResult{}, examReviewError(err, true)
 	}
 	return result, nil
-}
-
-func newExamReviewTerminalIdempotency(invocation Invocation, operation, key string, submissionID model.SubmissionID,
-	reviewID model.SubmissionReviewID, expectedRevision int64,
-) (*store.CommandIdempotency, error) {
-	return newCommandIdempotency(invocation, operation, key, struct {
-		SubmissionID     string `json:"submission_id"`
-		ReviewID         string `json:"submission_review_id"`
-		ExpectedRevision int64  `json:"expected_review_revision"`
-	}{submissionID.String(), reviewID.String(), expectedRevision})
 }
 
 func (a *App) GetExamIntegrityReview(ctx context.Context, invocation Invocation,

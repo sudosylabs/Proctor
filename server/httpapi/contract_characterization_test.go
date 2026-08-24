@@ -32,7 +32,7 @@ func TestV1HTTPContractCharacterization(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeAPI := newRoutingTestAPI(model.APIURLSuffix)
-	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(Options{}, browserCookies{}, nil)...); err != nil {
+	if err := runtimeAPI.collectResources(model.APIURLSuffix, productionResources(agreementResourceApplications(), nil, BuildInfo{}, browserCookies{}, nil)...); err != nil {
 		t.Fatal(err)
 	}
 	runtimeRoutes, err := json.Marshal(runtimeAPI.Routes())

@@ -6,7 +6,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -260,32 +259,48 @@ func (module examSittingHTTPModule) listNoShows(request operationRequest) (opera
 	for _, item := range page.Items {
 		response.Items = append(response.Items, examSittingNoShowResponse{CandidateUserID: item.CandidateUserID.String()})
 	}
-	if page.HasMore && len(page.Items) != 0 {
-		response.NextCursor = encodeExamSittingNoShowCursor(page.Items[len(page.Items)-1].CandidateUserID)
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, application.NewError("exam.sitting.unavailable").Wrap(errors.New("no-show page made no progress"))
+	}
+	if page.HasMore {
+		response.NextCursor, err = encodeExamSittingNoShowCursor(page.Items[len(page.Items)-1].CandidateUserID)
+		if err != nil {
+			return operationResult{}, application.NewError("exam.sitting.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
 
-func encodeExamSittingNoShowCursor(id model.UserID) string {
-	document, _ := json.Marshal(examSittingNoShowCursorWire{Version: 1, CandidateUserID: id.String()})
-	return base64.RawURLEncoding.EncodeToString(document)
+func encodeExamSittingNoShowCursor(id model.UserID) (string, error) {
+	return encodeOpaqueCursor(examSittingNoShowCursorWire{CandidateUserID: id.String()}, examSittingNoShowCursorSpec())
 }
 
 func decodeExamSittingNoShowCursor(raw string) (model.UserID, error) {
-	var zero model.UserID
-	document, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil || len(document) == 0 || len(document) > 256 {
-		return zero, errors.New("invalid no-show cursor")
-	}
-	var wire examSittingNoShowCursorWire
-	if err = decodeDuplicateFreeExamSittingObject(document, &wire); err != nil || wire.Version != 1 {
-		return zero, errors.New("invalid no-show cursor")
+	wire, err := decodeOpaqueCursor(raw, examSittingNoShowCursorSpec())
+	if err != nil {
+		return "", err
 	}
 	id, err := model.ParseUserID(wire.CandidateUserID)
 	if err != nil {
-		return zero, errors.New("invalid no-show cursor")
+		return "", errors.New("invalid no-show cursor")
 	}
 	return id, nil
+}
+
+func examSittingNoShowCursorSpec() opaqueCursorSpec[examSittingNoShowCursorWire] {
+	return opaqueCursorSpec[examSittingNoShowCursorWire]{
+		label: "no-show", maximumEncodedLength: 342, currentVersion: 1,
+		members:        []string{"version", "candidate_user_id"},
+		version:        func(cursor examSittingNoShowCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *examSittingNoShowCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 1 },
+		validate: func(cursor examSittingNoShowCursorWire) error {
+			if !model.UserID(cursor.CandidateUserID).IsValid() {
+				return errors.New("invalid no-show keyset")
+			}
+			return nil
+		},
+	}
 }
 
 func examSittingMutationErrorCodes(specific ...string) []string {
@@ -429,10 +444,17 @@ func (module examSittingHTTPModule) list(request operationRequest) (operationRes
 	for _, view := range page.Items {
 		response.Items = append(response.Items, examSittingResponseFromView(view))
 	}
-	if page.HasMore && len(page.Items) > 0 {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, application.NewError("exam.sitting.unavailable").Wrap(errors.New("sitting page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1].Sitting
-		if last != nil {
-			response.NextCursor = encodeExamSittingCursor(examSittingCursor{StartAt: last.ScheduledStartAt, ID: last.ID})
+		if last == nil {
+			return operationResult{}, application.NewError("exam.sitting.unavailable")
+		}
+		response.NextCursor, err = encodeExamSittingCursor(examSittingCursor{StartAt: last.ScheduledStartAt, ID: last.ID})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.sitting.unavailable").Wrap(err)
 		}
 	}
 	return jsonResult(http.StatusOK, response), nil
@@ -677,34 +699,34 @@ func examSittingResponseFromView(view application.ExamSittingView) examSittingRe
 	}
 }
 
-func encodeExamSittingCursor(cursor examSittingCursor) string {
+func encodeExamSittingCursor(cursor examSittingCursor) (string, error) {
 	wire := examSittingCursorWire{Version: examSittingCursorVersion, StartAt: model.TimeUTC(cursor.StartAt).Format(time.RFC3339Nano), ID: cursor.ID.String()}
-	encoded, _ := json.Marshal(wire)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+	return encodeOpaqueCursor(wire, examSittingCursorSpec())
 }
 
 func decodeExamSittingCursor(raw string) (examSittingCursor, error) {
-	var wire examSittingCursorWire
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	wire, err := decodeOpaqueCursor(raw, examSittingCursorSpec())
 	if err != nil {
-		return examSittingCursor{}, errors.New("invalid Exam Sitting cursor")
+		return examSittingCursor{}, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&wire); err != nil || wire.Version != examSittingCursorVersion {
-		return examSittingCursor{}, errors.New("invalid Exam Sitting cursor")
-	}
-	var trailing any
-	if err = decoder.Decode(&trailing); err != io.EOF {
-		return examSittingCursor{}, errors.New("invalid Exam Sitting cursor")
-	}
-	startAt, err := time.Parse(time.RFC3339Nano, wire.StartAt)
-	if err != nil || startAt.IsZero() {
-		return examSittingCursor{}, errors.New("invalid Exam Sitting cursor")
-	}
-	id, err := model.ParseExamSittingID(wire.ID)
-	if err != nil {
-		return examSittingCursor{}, errors.New("invalid Exam Sitting cursor")
-	}
+	startAt, _ := time.Parse(time.RFC3339Nano, wire.StartAt)
+	id, _ := model.ParseExamSittingID(wire.ID)
 	return examSittingCursor{StartAt: model.TimeUTC(startAt), ID: id}, nil
+}
+
+func examSittingCursorSpec() opaqueCursorSpec[examSittingCursorWire] {
+	return opaqueCursorSpec[examSittingCursorWire]{
+		label: "Exam Sitting", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examSittingCursorVersion,
+		members:        []string{"version", "start_at", "id"},
+		version:        func(cursor examSittingCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *examSittingCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == examSittingCursorVersion },
+		validate: func(cursor examSittingCursorWire) error {
+			startAt, err := time.Parse(time.RFC3339Nano, cursor.StartAt)
+			if err != nil || startAt.IsZero() || !model.ExamSittingID(cursor.ID).IsValid() {
+				return errors.New("invalid Exam Sitting keyset")
+			}
+			return nil
+		},
+	}
 }

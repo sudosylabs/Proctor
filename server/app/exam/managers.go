@@ -33,7 +33,7 @@ type AddManagerCommand struct {
 	ExamID               model.ExamID
 	UserID               model.UserID
 	ExpectedExamRevision int64
-	Idempotency          *store.CommandIdempotency
+	IdempotencyKey       string
 }
 
 type RemoveManagerCommand = AddManagerCommand
@@ -80,26 +80,27 @@ type managerMutation func(context.Context, *store.ExamManagerMutation, *store.Co
 type managerEffect func(context.Context, Effects, model.ExamID, model.UserID, int64, time.Time) error
 
 type managerTransition struct {
-	operation           string
-	eligibilityRequired bool
-	templateKey         model.MailTemplateKey
-	relationship        ManagerMailRelationship
-	ownershipTransfer   bool
-	publish             managerEffect
+	operation            string
+	idempotencyOperation string
+	eligibilityRequired  bool
+	templateKey          model.MailTemplateKey
+	relationship         ManagerMailRelationship
+	ownershipTransfer    bool
+	publish              managerEffect
 }
 
 var (
-	managerAddition = managerTransition{operation: "add_manager", eligibilityRequired: true,
+	managerAddition = managerTransition{operation: "add_manager", idempotencyOperation: idempotencyOperationAddManager, eligibilityRequired: true,
 		templateKey: model.MailTemplateExamManagerAdded, relationship: ManagerMailRelationshipManager,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.ManagerChanged(ctx, examID, userID, true, revision, changedAt)
 		}}
-	managerRemoval = managerTransition{operation: "remove_manager",
+	managerRemoval = managerTransition{operation: "remove_manager", idempotencyOperation: idempotencyOperationRemoveManager,
 		templateKey: model.MailTemplateExamManagerRemoved, relationship: ManagerMailRelationshipNoLongerManager,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.ManagerChanged(ctx, examID, userID, false, revision, changedAt)
 		}}
-	ownershipTransfer = managerTransition{operation: "transfer_owner", eligibilityRequired: true, ownershipTransfer: true,
+	ownershipTransfer = managerTransition{operation: "transfer_owner", idempotencyOperation: idempotencyOperationTransferOwner, eligibilityRequired: true, ownershipTransfer: true,
 		publish: func(ctx context.Context, effects Effects, examID model.ExamID, userID model.UserID, revision int64, changedAt time.Time) error {
 			return effects.OwnerTransferred(ctx, examID, userID, revision, changedAt)
 		}}
@@ -110,8 +111,13 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if principal.Validate() != nil || !command.ExamID.IsValid() || !command.UserID.IsValid() || command.ExpectedExamRevision < 1 {
 		return ManagerChange{}, invalid("manager_command")
 	}
-	if command.Idempotency == nil {
-		return ManagerChange{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareIdempotency(call, transition.idempotencyOperation, command.IdempotencyKey, struct {
+		ExamID               string `json:"exam_id"`
+		UserID               string `json:"user_id"`
+		ExpectedExamRevision int64  `json:"expected_exam_revision"`
+	}{command.ExamID.String(), command.UserID.String(), command.ExpectedExamRevision})
+	if err != nil {
+		return ManagerChange{}, err
 	}
 	at := model.TimeFromMillis(model.MillisFromTime(a.now()))
 	access, action, err := a.authorizeManagement(ctx, call, command.ExamID, at)
@@ -156,7 +162,7 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 		ExamID: command.ExamID, ActorUserID: principal.UserID, TargetUserID: command.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
 		ChangedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notices: notices,
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		if auditErr := a.auditor.Fail(ctx, auditID, faultCodeForAudit(mapped)); auditErr != nil {

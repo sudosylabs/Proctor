@@ -247,7 +247,13 @@ func TestClassSearchMapsMissingAcademicUnit(t *testing.T) {
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor, ClientType: model.SessionClientCLI, AuthenticatedAt: time.Now()}
 	classes := &classHTTPApplication{searchErr: application.NewError("resource.not_found").WithField("resource", "academic_unit")}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: classes, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	options := validHTTPOptions(t)
+	options.Logger = logger
+	options.Application = transport
+	options.AcademicUnits = transport
+	options.Institutions = transport
+	options.Classes = classes
+	httpAPI, err := New(options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +284,13 @@ func TestClassHTTPMapsBothParentsAndIgnoresServerOwnedFields(t *testing.T) {
 	class := &model.Class{ID: model.ClassID(model.NewId()), ProgrammeLevelID: model.ProgrammeLevelID(model.NewId()), AcademicPeriodID: model.AcademicPeriodID(model.NewId()), Name: "class-a", DisplayName: "Class A"}
 	classes := &classHTTPApplication{result: class}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: transport, AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{}, ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{}, Classes: classes, Affiliations: &affiliationHTTPApplication{}, AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{}, BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a"})
+	options := validHTTPOptions(t)
+	options.Logger = logger
+	options.Application = transport
+	options.AcademicUnits = transport
+	options.Institutions = transport
+	options.Classes = classes
+	httpAPI, err := New(options)
 	if err != nil {
 		t.Fatal(err)
 	}

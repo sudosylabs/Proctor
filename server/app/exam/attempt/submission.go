@@ -16,7 +16,7 @@ type SubmitCommand struct {
 	Access                  WorkspaceMutationAccess
 	ExpectedWorkspaceCursor int64
 	FinalFocusLossSequence  int64
-	Idempotency             *store.CommandIdempotency
+	IdempotencyKey          string
 }
 
 type SubmissionResult struct {
@@ -218,8 +218,13 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	if command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 || command.Idempotency == nil {
+	if command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 {
 		return SubmissionResult{}, invalid("submission")
+	}
+	idempotency, err := prepareSubmissionIdempotency(call, command.IdempotencyKey, workspaceAccess.AttemptID,
+		command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence)
+	if err != nil {
+		return SubmissionResult{}, err
 	}
 	access := store.ExamSubmissionSealAccess{AttemptID: workspaceAccess.AttemptID,
 		ParticipationID: workspaceAccess.ParticipationID, Generation: workspaceAccess.Generation,
@@ -262,7 +267,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	}
 	stored, err := service.deps.Submissions.Seal(ctx, &store.ExamSubmissionSeal{SubmissionID: submissionID,
 		Access: access, AuditEventID: auditID, AuditAt: model.MillisFromTime(at), Notice: notice,
-		ExpectedRecipientRevision: expectedRecipientRevision}, command.Idempotency)
+		ExpectedRecipientRevision: expectedRecipientRevision}, idempotency)
 	if err != nil {
 		return SubmissionResult{}, service.failAudit(ctx, auditID, err)
 	}

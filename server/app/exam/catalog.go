@@ -29,7 +29,7 @@ type CatalogPage struct {
 type ArchiveCommand struct {
 	ExamID               model.ExamID
 	ExpectedExamRevision int64
-	Idempotency          *store.CommandIdempotency
+	IdempotencyKey       string
 }
 
 func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (CatalogPage, error) {
@@ -66,8 +66,12 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedExamRevision < 1 {
 		return model.Exam{}, invalid("exam_revision")
 	}
-	if command.Idempotency == nil {
-		return model.Exam{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationArchive, command.IdempotencyKey, struct {
+		ExamID               string `json:"exam_id"`
+		ExpectedExamRevision int64  `json:"expected_exam_revision"`
+	}{ExamID: command.ExamID.String(), ExpectedExamRevision: command.ExpectedExamRevision})
+	if err != nil {
+		return model.Exam{}, err
 	}
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
@@ -94,7 +98,7 @@ func (a *Authoring) Archive(ctx context.Context, call Call, command ArchiveComma
 	}
 	result, err := a.persistence.Archive(ctx, &store.ExamArchive{ExamID: command.ExamID, ActorUserID: principal.UserID,
 		ManagerOverride: action == model.ActionExamManageOverride, ExpectedRevision: command.ExpectedExamRevision,
-		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+		ArchivedAt: model.MillisFromTime(at), AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault

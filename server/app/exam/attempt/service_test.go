@@ -21,7 +21,7 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
 	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: credential, Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -46,6 +46,13 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	if f.audit.values["continuity_credential"] != nil || f.audit.values["credential_hash"] != nil {
 		t.Fatalf("credential entered audit = %#v", f.audit.values)
 	}
+	wantIdempotency, prepareErr := prepareConnectIdempotency(f.call, ConnectCommand{
+		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
+	})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
 	if strings.Contains(auditCapture, credential) || strings.Contains(auditCapture, model.HashToken(credential)) {
 		t.Fatalf("credential material entered audit = %s", auditCapture)
@@ -68,10 +75,10 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 		CandidateUserID: f.userID, WorkspaceID: workspaceID,
 		Entry: &store.CandidateAttemptWorkspaceItem{EntryID: entryID, Kind: model.StarterWorkspaceEntryDirectory, Path: "src"}, Change: change}
 
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Origin: WorkspaceMutationOriginCandidate,
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
 			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 4},
-		Path: "src", Idempotency: &store.CommandIdempotency{},
+		Path: "src", IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -94,6 +101,14 @@ func TestCreateWorkspaceDirectoryRevalidatesMutationAccessAuditsAndPublishesSafe
 	if got := strings.Join(f.order, ","); got != "workspace.resolve,audit,workspace.apply,effect.workspace" {
 		t.Fatalf("order = %s", got)
 	}
+	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.call, "test-key", f.attemptID,
+		model.AttemptWorkspaceMutationCreateDirectory, struct {
+			Path string `json:"path"`
+		}{"src"})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.workspace.idempotency, wantIdempotency)
 }
 
 func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffects(t *testing.T) {
@@ -111,11 +126,11 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 		model.AttemptWorkspaceMutationCreateFile, "", "main.go", version, false)
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
 
-	result, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{
+	result, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate,
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID, ConnectionID: f.connectionID,
 			ContinuityCredential: credential}, ParticipationID: participationID, Generation: 2},
 		Path: "main.go", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4,
-		Idempotency: &store.CommandIdempotency{},
+		IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +150,43 @@ func TestCreateWorkspaceFileStagesBeforeAtomicMutationAndSuppressesPrivateEffect
 	if got := strings.Join(f.order, ","); got != "workspace.resolve,workspace.reserve,content.stage,workspace.ready,audit,workspace.apply,effect.workspace" {
 		t.Fatalf("order = %s", got)
 	}
+	wantIdempotency, prepareErr := prepareWorkspaceMutationIdempotency(f.call, "test-key", f.attemptID,
+		model.AttemptWorkspaceMutationCreateFile, struct {
+			Path, MediaType, SHA256 string
+			Size                    int64
+		}{"main.go", "text/plain", checksum, 4})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.workspace.idempotency, wantIdempotency)
+}
+
+func TestReplaceWorkspaceFilePassesOwnedIdempotencyToStore(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	workspaceID, entryID := model.NewExamAttemptWorkspaceID(), model.NewAttemptWorkspaceEntryID()
+	currentVersion, nextVersion := model.NewWorkspaceContentVersion(), model.NewWorkspaceContentVersion()
+	checksum := strings.Repeat("c", 64)
+	f.workspace.target = &store.ExamAttemptWorkspaceMutationTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, entryID, model.StarterWorkspaceEntryFile,
+		model.AttemptWorkspaceMutationReplaceFile, "main.go", "main.go", nextVersion, false)
+	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 4, SHA256: checksum}
+	command := ReplaceWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+		EntryID: entryID, ExpectedPath: "main.go", ExpectedContentVersion: currentVersion, MediaType: "text/plain",
+		ExpectedSHA256: checksum, Body: strings.NewReader("main"), Size: 4, IdempotencyKey: "replace-key"}
+	if _, err := f.service.ReplaceWorkspaceFile(context.Background(), f.call, command); err != nil {
+		t.Fatal(err)
+	}
+	want, err := prepareWorkspaceMutationIdempotency(f.call, "replace-key", f.attemptID,
+		model.AttemptWorkspaceMutationReplaceFile, struct {
+			EntryID, Path, Version, MediaType, SHA256 string
+			Size                                      int64
+		}{entryID.String(), "main.go", currentVersion.String(), "text/plain", checksum, 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, f.workspace.idempotency, want)
 }
 
 func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T) {
@@ -149,9 +201,9 @@ func TestWorkspaceFileReplayReclaimsLosingStageAndPublishesNoEffect(t *testing.T
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
 	f.workspace.proposedVersion = model.NewWorkspaceContentVersion()
 	f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-	_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{
+	_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate,
 		Access: validWorkspaceMutationAccess(f), Path: "retry.txt", MediaType: "text/plain", ExpectedSHA256: checksum,
-		Body: strings.NewReader("x"), Size: 1, Idempotency: &store.CommandIdempotency{},
+		Body: strings.NewReader("x"), Size: 1, IdempotencyKey: "test-key",
 	})
 	if err != nil || len(f.workspace.reclaimable) != 1 || f.effects.workspaceChanged != 0 ||
 		f.workspace.mutation.EntryID != f.workspace.proposedEntryID || f.workspace.mutation.EntryID == entryID ||
@@ -169,12 +221,26 @@ func TestWorkspaceDirectoryReplayAcceptsRetainedEntryInsteadOfFreshProposal(t *t
 	f.workspace.mutationResult = workspaceMutationResultFixture(f, workspaceID, retainedID, model.StarterWorkspaceEntryDirectory,
 		model.AttemptWorkspaceMutationCreateDirectory, "", "src", "", true)
 	f.workspace.proposedEntryID = model.NewAttemptWorkspaceEntryID()
-	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
-		Access: validWorkspaceMutationAccess(f), Path: "src", Idempotency: &store.CommandIdempotency{},
+	result, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{Origin: WorkspaceMutationOriginCandidate,
+		Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key",
 	})
 	if err != nil || result.Entry == nil || result.Entry.EntryID != retainedID || f.workspace.mutation.EntryID != f.workspace.proposedEntryID ||
 		f.workspace.mutation.EntryID == retainedID || f.effects.workspaceChanged != 0 {
 		t.Fatalf("result=%#v mutation=%#v error=%v", result, f.workspace.mutation, err)
+	}
+}
+
+func TestWorkspaceMutationOriginFailsClosed(t *testing.T) {
+	t.Parallel()
+	for _, origin := range []WorkspaceMutationOrigin{"", "unknown"} {
+		f := newFixture(t)
+		_, err := f.service.CreateWorkspaceDirectory(context.Background(), f.call, CreateWorkspaceDirectoryCommand{
+			Origin: origin, Access: validWorkspaceMutationAccess(f), Path: "src", IdempotencyKey: "test-key",
+		})
+		var fault *Fault
+		if !errors.As(err, &fault) || fault.Code != "exam.attempt.invalid" || f.workspace.mutation != nil {
+			t.Fatalf("origin %q error/mutation = %v/%#v", origin, err, f.workspace.mutation)
+		}
 	}
 }
 
@@ -199,9 +265,9 @@ func TestWorkspaceReadyObjectReclamationDistinguishesStableAndUnknownApplyOutcom
 			f.workspace.mutationErr = test.err
 			checksum := strings.Repeat("d", 64)
 			f.content.attemptContent = &model.AttemptWorkspaceContent{MediaType: "text/plain", SizeBytes: 1, SHA256: checksum}
-			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Access: validWorkspaceMutationAccess(f),
+			_, err := f.service.CreateWorkspaceFile(context.Background(), f.call, CreateWorkspaceFileCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
 				Path: "work.txt", MediaType: "text/plain", ExpectedSHA256: checksum, Body: strings.NewReader("x"), Size: 1,
-				Idempotency: &store.CommandIdempotency{}})
+				IdempotencyKey: "test-key"})
 			var fault *Fault
 			if !errors.As(err, &fault) || fault.Code != test.wantCode || len(f.workspace.reclaimable) != test.wantReclaim {
 				t.Fatalf("error=%v reclaimable=%v", err, f.workspace.reclaimable)
@@ -219,8 +285,8 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 		check     func(*testing.T, *store.ExamAttemptWorkspaceMutation)
 	}{
 		{name: "move", operation: model.AttemptWorkspaceMutationMoveEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, _ model.WorkspaceContentVersion) error {
-			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.call, MoveWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
-				EntryID: id, ExpectedPath: "old", DestinationPath: "new", Idempotency: &store.CommandIdempotency{}})
+			_, err := f.service.MoveWorkspaceEntry(context.Background(), f.call, MoveWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+				EntryID: id, ExpectedPath: "old", DestinationPath: "new", IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
 			if mutation.ExpectedPath != "old" || mutation.DestinationPath != "new" {
@@ -228,8 +294,8 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 			}
 		}},
 		{name: "delete_file", operation: model.AttemptWorkspaceMutationDeleteEntry, invoke: func(f *fixture, id model.AttemptWorkspaceEntryID, version model.WorkspaceContentVersion) error {
-			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, DeleteWorkspaceEntryCommand{Access: validWorkspaceMutationAccess(f),
-				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, Idempotency: &store.CommandIdempotency{}})
+			_, err := f.service.DeleteWorkspaceEntry(context.Background(), f.call, DeleteWorkspaceEntryCommand{Origin: WorkspaceMutationOriginCandidate, Access: validWorkspaceMutationAccess(f),
+				EntryID: id, ExpectedPath: "old", ExpectedContentVersion: version, IdempotencyKey: "test-key"})
 			return err
 		}, check: func(t *testing.T, mutation *store.ExamAttemptWorkspaceMutation) {
 			if mutation.ExpectedPath != "old" || mutation.ExpectedContentVersion.IsZero() {
@@ -252,6 +318,18 @@ func TestWorkspaceMetadataMutationsCarrySelectiveEntryFences(t *testing.T) {
 				t.Fatal(err)
 			}
 			test.check(t, f.workspace.mutation)
+			var semantic any
+			switch test.operation {
+			case model.AttemptWorkspaceMutationMoveEntry:
+				semantic = struct{ EntryID, ExpectedPath, DestinationPath string }{entryID.String(), "old", "new"}
+			case model.AttemptWorkspaceMutationDeleteEntry:
+				semantic = struct{ EntryID, ExpectedPath, ExpectedContentVersion string }{entryID.String(), "old", version.String()}
+			}
+			want, prepareErr := prepareWorkspaceMutationIdempotency(f.call, "test-key", f.attemptID, test.operation, semantic)
+			if prepareErr != nil {
+				t.Fatal(prepareErr)
+			}
+			assertStoreBoundaryCommand(t, f.workspace.idempotency, want)
 		})
 	}
 }
@@ -274,7 +352,7 @@ func TestConnectRejectsMalformedCredentialAndPATBeforeReads(t *testing.T) {
 		f := newFixture(t)
 		mutate(f)
 		_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-			SittingID: f.sitting.ID, ContinuityCredential: "not-canonical", Idempotency: &store.CommandIdempotency{},
+			SittingID: f.sitting.ID, ContinuityCredential: "not-canonical", IdempotencyKey: "test-key",
 		})
 		if err == nil || len(f.order) != 0 {
 			t.Fatalf("error=%v order=%v", err, f.order)
@@ -493,7 +571,7 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	reason := "manager verified secure connectivity"
 	result, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
-		ExpectedAttemptRevision: 2, PrivateReason: reason, Idempotency: &store.CommandIdempotency{},
+		ExpectedAttemptRevision: 2, PrivateReason: reason, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -513,6 +591,14 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 			t.Fatalf("private reason escaped persistence input: %#v", capture)
 		}
 	}
+	wantIdempotency, prepareErr := prepareReallowIdempotency(f.call, ReallowCommand{
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
+		ExpectedAttemptRevision: 2, PrivateReason: reason, IdempotencyKey: "test-key",
+	})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
 }
 
 func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
@@ -521,7 +607,7 @@ func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
 		f := newFixture(t)
 		_, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
 			ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: model.NewAttemptSuspensionID(),
-			ExpectedAttemptRevision: 1, PrivateReason: reason, Idempotency: &store.CommandIdempotency{},
+			ExpectedAttemptRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key",
 		})
 		if err == nil || len(f.order) != 0 || f.persistence.reallow != nil {
 			t.Fatalf("reason=%q error=%v order=%v", reason, err, f.order)
@@ -537,7 +623,7 @@ func TestReallowReplaySuppressesEffectAndPropagatesAuthorizedOverride(t *testing
 	f.persistence.reallowResult = reallowResultFixture(t, f, suspensionID, true)
 	result, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
-		ExpectedAttemptRevision: 2, PrivateReason: "authorized override review", Idempotency: &store.CommandIdempotency{},
+		ExpectedAttemptRevision: 2, PrivateReason: "authorized override review", IdempotencyKey: "test-key",
 	})
 	if err != nil || !result.Replayed || !f.persistence.reallow.ManagerOverride || f.effects.reallowed != 0 {
 		t.Fatalf("result=%#v input=%#v error=%v effects=%#v", result, f.persistence.reallow, err, f.effects)
@@ -604,7 +690,7 @@ func TestConnectReplayAfterCorrectionAndPauseSuppressesTransientOpenEvent(t *tes
 	f.sitting.State = model.ExamSittingPaused
 	f.sitting.ExamRevisionID = model.NewExamRevisionID()
 	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	if err != nil || !result.Replayed || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect" {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
@@ -616,7 +702,7 @@ func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
 	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	if err != nil || result.FirstAdmission || !result.ConnectionOpened || result.Replayed || f.effects.opened != 1 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
@@ -629,7 +715,7 @@ func TestDifferentKeyConvergenceOnExistingOpenConnectionPublishesNoEffect(t *tes
 	f.persistence.firstAdmission = false
 	f.persistence.connectionOpened = false
 	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	if err != nil || result.FirstAdmission || result.ConnectionOpened || result.Replayed || f.effects.opened != 0 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
@@ -642,7 +728,7 @@ func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
 	f.persistence.replayed = true
 	f.persistence.connectClosed = true
 	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
@@ -656,7 +742,7 @@ func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
 	f.persistence.replayed = true
 	f.persistence.participationEnded = true
 	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
@@ -669,7 +755,7 @@ func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectionSession = model.NewSessionID()
 	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" || f.effects.opened != 0 {
@@ -682,7 +768,7 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
 	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.sitting_unavailable" ||
@@ -696,7 +782,7 @@ func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
 	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_lost" || f.effects.opened != 0 {
@@ -931,7 +1017,7 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
 	connected, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: credential, Idempotency: &store.CommandIdempotency{},
+		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -966,7 +1052,7 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 	} {
 		f := newFixture(t)
 		connected, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-			SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), Idempotency: &store.CommandIdempotency{},
+			SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -1263,6 +1349,7 @@ type attemptStoreFake struct {
 	reallow            *store.ExamAttemptReallow
 	reallowResult      *store.ExamAttemptReallowResult
 	reallowErr         error
+	idempotency        *store.CommandIdempotency
 }
 
 type attemptWorkspaceStoreFake struct {
@@ -1283,6 +1370,7 @@ type attemptWorkspaceStoreFake struct {
 	journalPage     *store.CandidateWorkspaceJournalPage
 	proposedEntryID model.AttemptWorkspaceEntryID
 	proposedVersion model.WorkspaceContentVersion
+	idempotency     *store.CommandIdempotency
 }
 
 func entryIDOrNew(fake *attemptWorkspaceStoreFake) model.AttemptWorkspaceEntryID {
@@ -1374,9 +1462,9 @@ func (fake *attemptWorkspaceStoreFake) MarkObjectReady(_ context.Context, input 
 	}
 	return object, nil
 }
-func (fake *attemptWorkspaceStoreFake) ApplyMutation(_ context.Context, mutation *store.ExamAttemptWorkspaceMutation, _ *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
+func (fake *attemptWorkspaceStoreFake) ApplyMutation(_ context.Context, mutation *store.ExamAttemptWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamAttemptWorkspaceMutationResult, error) {
 	fake.f.order = append(fake.f.order, "workspace.apply")
-	fake.mutation = mutation
+	fake.mutation, fake.idempotency = mutation, command
 	return fake.mutationResult, fake.mutationErr
 }
 
@@ -1394,9 +1482,9 @@ func (*attemptWorkspaceStoreFake) ReleaseObjectCleanup(context.Context, model.At
 	return nil
 }
 
-func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemptConnect, _ *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
+func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemptConnect, command *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
 	fake.f.order = append(fake.f.order, "connect")
-	fake.connect = input
+	fake.connect, fake.idempotency = input, command
 	if fake.connectErr != nil {
 		return nil, fake.connectErr
 	}
@@ -1473,9 +1561,9 @@ func (fake *attemptStoreFake) ExpireParticipation(_ context.Context, input *stor
 	fake.expireInput = input
 	return fake.expireResult, fake.expireErr
 }
-func (fake *attemptStoreFake) ReallowAttempt(_ context.Context, input *store.ExamAttemptReallow, _ *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
+func (fake *attemptStoreFake) ReallowAttempt(_ context.Context, input *store.ExamAttemptReallow, command *store.CommandIdempotency) (*store.ExamAttemptReallowResult, error) {
 	fake.f.order = append(fake.f.order, "reallow")
-	fake.reallow = input
+	fake.reallow, fake.idempotency = input, command
 	return fake.reallowResult, fake.reallowErr
 }
 func (fake *attemptStoreFake) CloseConnection(_ context.Context, input *store.ExamAttemptConnectionClose) (*store.ExamAttemptConnectionCloseResult, error) {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -150,6 +151,13 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 	if page.NextCursor == "" {
 		t.Fatal("full audit page did not return an opaque cursor")
 	}
+	audits.events = nil
+	second := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?limit=1&cursor="+url.QueryEscape(page.NextCursor), "", true)
+	if second.Code != http.StatusOK || audits.query.BeforeTime != model.MillisFromTime(last.CreatedAt) || audits.query.BeforeID != last.ID.String() {
+		t.Fatalf("second page status/query = %d/%#v: %s", second.Code, audits.query, second.Body.String())
+	}
+	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits?cursor=not-a-cursor", "", true)
+	assertHTTPProblem(t, malformed, http.StatusBadRequest, "audit.query.invalid")
 
 	audits.err = application.NewError("audit.unavailable")
 	errorResponse := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/audits", "", true)
@@ -164,10 +172,11 @@ func TestAuditResourcePreservesOpaqueCursorAndSafeErrors(t *testing.T) {
 }
 
 type focusedJobApplication struct {
-	listQuery application.ListJobsQuery
-	cancel    application.CancelJobCommand
-	retry     application.RetryJobCommand
-	view      application.JobView
+	listQuery    application.ListJobsQuery
+	attemptQuery application.ListJobAttemptsQuery
+	cancel       application.CancelJobCommand
+	retry        application.RetryJobCommand
+	view         application.JobView
 }
 
 func (fake *focusedJobApplication) ListJobs(_ context.Context, _ application.Invocation, query application.ListJobsQuery) (application.JobPage, error) {
@@ -177,7 +186,8 @@ func (fake *focusedJobApplication) ListJobs(_ context.Context, _ application.Inv
 func (fake *focusedJobApplication) GetJob(context.Context, application.Invocation, application.GetJobQuery) (application.JobView, error) {
 	return fake.view, nil
 }
-func (*focusedJobApplication) ListJobAttempts(context.Context, application.Invocation, application.ListJobAttemptsQuery) (application.JobAttemptPage, error) {
+func (fake *focusedJobApplication) ListJobAttempts(_ context.Context, _ application.Invocation, query application.ListJobAttemptsQuery) (application.JobAttemptPage, error) {
+	fake.attemptQuery = query
 	return application.JobAttemptPage{}, nil
 }
 func (fake *focusedJobApplication) CancelJob(_ context.Context, _ application.Invocation, command application.CancelJobCommand) (application.JobView, error) {
@@ -210,6 +220,27 @@ func TestJobResourcePreservesPrivateProjectionAndBoundedControls(t *testing.T) {
 			t.Fatalf("job list exposed %q: %s", private, list.Body.String())
 		}
 	}
+	cursor, err := encodeJobCursor(jobCursor{CreatedAt: model.MillisFromTime(now), ID: jobID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs?cursor="+url.QueryEscape(cursor), "", true)
+	if page.Code != http.StatusOK || !jobs.listQuery.BeforeCreatedAt.Equal(model.TimeFromMillis(model.MillisFromTime(now))) || jobs.listQuery.BeforeID != jobID {
+		t.Fatalf("job cursor forwarding = %d query=%#v body=%s", page.Code, jobs.listQuery, page.Body.String())
+	}
+	malformed := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs?cursor=not-a-cursor", "", true)
+	assertHTTPProblem(t, malformed, http.StatusBadRequest, "job.query.invalid")
+
+	attemptCursor, err := encodeJobAttemptCursor(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempts := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs/"+jobID.String()+"/attempts?cursor="+url.QueryEscape(attemptCursor), "", true)
+	if attempts.Code != http.StatusOK || jobs.attemptQuery.JobID != jobID || jobs.attemptQuery.BeforeNumber != 7 {
+		t.Fatalf("job attempt cursor forwarding = %d query=%#v body=%s", attempts.Code, jobs.attemptQuery, attempts.Body.String())
+	}
+	malformedAttempts := serveOperatorRequest(httpAPI, http.MethodGet, "/api/v1/jobs/"+jobID.String()+"/attempts?cursor=not-a-cursor", "", true)
+	assertHTTPProblem(t, malformedAttempts, http.StatusBadRequest, "job.query.invalid")
 	for _, action := range []string{"cancel", "retry"} {
 		response := serveOperatorRequest(httpAPI, http.MethodPost, "/api/v1/jobs/"+jobID.String()+"/"+action, "", true)
 		if response.Code != http.StatusOK {

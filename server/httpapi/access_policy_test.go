@@ -17,8 +17,9 @@ import (
 )
 
 type replayingAccessPolicyHTTPApplication struct {
-	command *application.ReplaceAccessPolicyCommand
-	view    application.AccessPolicyView
+	command     *application.ReplaceAccessPolicyCommand
+	view        application.AccessPolicyView
+	discoveries int
 }
 
 func (a *replayingAccessPolicyHTTPApplication) GetAccessPolicy(context.Context, application.Invocation) (application.AccessPolicyView, error) {
@@ -28,6 +29,7 @@ func (a *replayingAccessPolicyHTTPApplication) PreflightAccessPolicy(context.Con
 	return application.AccessPolicyPreflightResult{}, nil
 }
 func (a *replayingAccessPolicyHTTPApplication) DiscoverAccess(context.Context) (application.PublicAccessDiscovery, error) {
+	a.discoveries++
 	return application.PublicAccessDiscovery{}, nil
 }
 func (a *replayingAccessPolicyHTTPApplication) ReplaceAccessPolicy(_ context.Context, _ application.Invocation, command application.ReplaceAccessPolicyCommand) (application.AccessPolicyView, error) {

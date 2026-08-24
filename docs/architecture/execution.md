@@ -136,6 +136,19 @@ Attempt state commits. Confirmed connection loss revokes after a short grace.
 Reconnect after freeze or grace always replaces the tree from acknowledged
 workspace state before attaching a PTY.
 
+Terminal open resolves the protected Attempt presentation before beginning the
+critical audit, then ensures placement, starts Workspace observation, attaches
+the PTY, and completes the audit. Every failure during that open transaction,
+after placement and before ownership is returned, closes acquired observation
+or terminal resources and retries release of the exact grant until its durable
+fence succeeds, even when the request context has already ended. After return,
+observation loss or an unacknowledgeable event closes the caller-owned terminal and
+releases that exact grant, forcing the next authorized open to build a fresh
+projection from durable Workspace state. A normal caller close does not revoke
+the placement; the Attempt lifecycle remains the authority for when that grant
+may otherwise exist. This bridge does not create an independent terminal
+lifecycle.
+
 ## Projection
 
 The Attempt Workspace remains the durable authority. The Execution
@@ -149,12 +162,49 @@ Guest writes under the workspace mount become workspace mutations only after
 the server harvests them through `Watch` and `Open` and they pass the same
 acknowledgement rules, quotas, path contract, and reserved `.proctor` root.
 
+Every Workspace mutation carries a closed origin: `candidate` or
+`execution_host`. Both origins commit through the same Attempt service and
+publish the same safe realtime result. Only candidate-originated changes are
+applied to the host; execution-host changes are already present there and must
+not echo through `Apply`. Mutation provenance is never inferred from context.
+
+Observation loss closes the terminal and releases its exact execution grant.
+The host API cannot atomically reset the projection and install a replacement
+watch, so in-place recovery could miss writes from an already-running guest
+process. A later authorized open receives a fresh environment constructed from
+durable Workspace state. Harvesting reads files through a bounded stream,
+enforces the Workspace per-file limit before mutation, and uses the host event
+cursor to derive deterministic retry keys. An unacknowledgeable non-ignored
+event fails the terminal rather than silently claiming durability.
+
+An asynchronous failure fences PTY writes and terminal close, durably releases
+the exact grant, and only then wakes the transport reader. The native PTY closes
+immediately; transient durable-release failures retry with bounded backoff while
+the reader and caller-facing close remain fenced. This ordering keeps the
+connection's terminal slot occupied until a reopen is guaranteed to select a
+successor grant rather than exposing the still-current placement.
+
 A default ignore set excludes dependency and build trees such as
 `node_modules`, `target`, `__pycache__`, and `.git`. Ignored, over-quota, or
 invalid writes stay on the ephemeral guest disk and never enter the
-Submission. Non-ignored writes that cannot be acknowledged must surface an
-error in the terminal. Paths outside the workspace mount, including `/tmp`,
-are ephemeral.
+Submission. A move wholly within ignored trees remains ignored. A file move
+across the boundary is acknowledged as an authoritative delete when its
+destination is ignored, or an authoritative create when its source is ignored.
+Directory moves across the boundary fail the terminal because the host event
+cannot enumerate an ignored subtree and the durable Store rejects deleting a
+non-empty directory; partially projecting such a move is forbidden. The
+isolated execenv v0.2 watcher also expands a directory rename into unordered
+per-path deletes followed by creates, with no atomic batch boundary. The bridge
+therefore rejects a directory create, a directory or descendant delete, and a
+create whose parent tree is not already authoritative before committing any
+member. An adapter that supplies one atomic `Move` event can still acknowledge
+that directory move. Until the reusable host contract exposes batch topology,
+students create and remove directory trees through the authoritative Workspace
+protocol rather than the terminal shell. A kind-changing event that presents an
+authoritative directory as a host file is likewise rejected before mutation;
+delete-then-create is not an atomic repair.
+Non-ignored writes that cannot be acknowledged must surface an error in the
+terminal. Paths outside the workspace mount, including `/tmp`, are ephemeral.
 
 ## Attempt Terminal transport
 

@@ -4,15 +4,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
-	"strings"
-	"sync"
 	"time"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
@@ -47,8 +42,6 @@ type OpenCandidateExamTerminalCommand struct {
 	Generation      int64
 	Window          appexecution.Window
 }
-
-type guestExecutionMutationContextKey struct{}
 
 type ConnectExamAttemptCommand struct {
 	SittingID            model.ExamSittingID
@@ -200,328 +193,18 @@ func (a *App) ListCandidateExamWorkspaceJournal(ctx context.Context, invocation 
 	return result, nil
 }
 
-// OpenCandidateExamTerminal authorizes the immutable principal and current
-// Attempt connection before any host is selected or terminal is attached.
-// The caller owns and must close the returned terminal.
 func (a *App) OpenCandidateExamTerminal(ctx context.Context, invocation Invocation, command OpenCandidateExamTerminalCommand) (CandidateExamTerminal, error) {
-	if a.execution == nil || a.audit == nil || !command.SittingID.IsValid() || !command.ClassID.IsValid() ||
-		!command.ParticipationID.IsValid() || command.Generation < 1 || command.Window.Cols < 1 || command.Window.Rows < 1 {
+	if a == nil || a.examAttemptTerminals == nil {
 		return nil, NewError("exam.attempt.terminal_unavailable")
 	}
-	presentation, err := a.examAttempts.GetPresentation(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command.Access)
-	if err != nil {
-		return nil, examAttemptError(err, true)
-	}
-	if presentation.AttemptID != command.Access.AttemptID || presentation.SittingID != command.SittingID || presentation.ClassID != command.ClassID {
-		return nil, NewError("exam.attempt.terminal_unavailable")
-	}
-	profile := presentation.ExecutionProfile
-	if !profile.Enabled {
-		return nil, NewError("exam.attempt.terminal_disabled")
-	}
-	auditEvent, auditErr := a.audit.BeginCriticalActionAtScope(ctx, invocation.Principal(), model.ActionExamSittingParticipate,
-		model.Resource{Type: model.ResourceExamSitting, ID: command.SittingID.String()}, model.RoleScopeClass, command.ClassID.String(),
-		invocation.RequestMetadata(), map[string]any{"operation": "open_attempt_terminal", "value": map[string]any{
-			"exam_attempt_id": presentation.AttemptID.String(), "generation": command.Generation,
-			"image": profile.Image, "network": string(profile.Network),
-		}}, nil)
-	if auditErr != nil {
-		return nil, auditErr
-	}
-	placement, err := a.execution.Ensure(ctx, appexecution.Request{AttemptID: presentation.AttemptID, Image: profile.Image, Network: appexecution.Network(profile.Network)})
-	if err != nil {
-		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
-	}
-	if placement == nil || !placement.GrantID.IsValid() || placement.AttemptID != presentation.AttemptID || !placement.Ready {
-		_ = a.execution.Release(ctx, presentation.AttemptID)
-		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), NewError("exam.attempt.terminal_unavailable"))
-	}
-	observation, err := a.execution.Watch(ctx, presentation.AttemptID, "")
-	if err != nil || observation == nil {
-		_ = a.execution.Release(ctx, presentation.AttemptID)
-		if err == nil {
-			err = appexecution.ErrUnavailable
-		}
-		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
-	}
-	terminal, err := a.execution.Attach(ctx, presentation.AttemptID, command.Window)
-	if err != nil || terminal == nil {
-		_ = observation.Close()
-		_ = a.execution.Release(ctx, presentation.AttemptID)
-		if err == nil {
-			err = appexecution.ErrUnavailable
-		}
-		return nil, a.failCandidateTerminalAudit(ctx, auditEvent.ID.String(), executionError(err))
-	}
-	if _, err := a.audit.CompleteCriticalAction(ctx, auditEvent.ID.String(), model.AuditStatusSuccess, "", map[string]any{
-		"exam_attempt_id": presentation.AttemptID.String(), "execution_grant_id": placement.GrantID.String(),
-	}); err != nil {
-		_ = observation.Close()
-		_ = terminal.Close()
-		_ = a.execution.Release(ctx, presentation.AttemptID)
-		return nil, err
-	}
-	watchCtx, cancel := context.WithCancel(ctx)
-	wrapped := &candidateExamTerminal{Terminal: terminal, cancel: cancel, observation: observation}
-	go a.synchronizeCandidateTerminalWorkspace(watchCtx, invocation, command, observation, wrapped)
-	return wrapped, nil
-}
-
-func (a *App) failCandidateTerminalAudit(ctx context.Context, auditID string, failure error) error {
-	code := "exam.attempt.terminal_unavailable"
-	if appErr, ok := As(failure); ok {
-		code = appErr.Code()
-	}
-	if _, err := a.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusFail, code, nil); err != nil {
-		return err
-	}
-	return failure
-}
-
-type candidateExamTerminal struct {
-	appexecution.Terminal
-	cancel      context.CancelFunc
-	observation appexecution.Observation
-	once        sync.Once
-	failureMu   sync.Mutex
-	failure     error
-}
-
-func (terminal *candidateExamTerminal) Read(buffer []byte) (int, error) {
-	count, err := terminal.Terminal.Read(buffer)
-	if err != nil {
-		terminal.failureMu.Lock()
-		failure := terminal.failure
-		terminal.failureMu.Unlock()
-		if failure != nil {
-			return count, failure
-		}
-	}
-	return count, err
-}
-
-func (terminal *candidateExamTerminal) fail(err error) {
-	terminal.failureMu.Lock()
-	terminal.failure = err
-	terminal.failureMu.Unlock()
-	_ = terminal.Terminal.Close()
-}
-
-func (terminal *candidateExamTerminal) Close() error {
-	var result error
-	terminal.once.Do(func() {
-		terminal.cancel()
-		result = errors.Join(terminal.observation.Close(), terminal.Terminal.Close())
-	})
-	return result
-}
-
-func (a *App) synchronizeCandidateTerminalWorkspace(ctx context.Context, invocation Invocation,
-	command OpenCandidateExamTerminalCommand, observation appexecution.Observation, terminal appexecution.Terminal,
-) {
-	defer func() { _ = observation.Close() }()
-	for {
-		event, err := observation.Next(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			if errors.Is(err, appexecution.ErrObservationLost) {
-				if syncErr := a.execution.Sync(ctx, command.Access.AttemptID); syncErr == nil {
-					_ = observation.Close()
-					observation, err = a.execution.Watch(ctx, command.Access.AttemptID, "")
-					if err == nil {
-						continue
-					}
-				}
-			}
-			if wrapped, ok := terminal.(*candidateExamTerminal); ok {
-				wrapped.fail(err)
-			} else {
-				_ = terminal.Close()
-			}
-			return
-		}
-		if ignoredExecutionPath(event.Path) || ignoredExecutionPath(event.From) {
-			continue
-		}
-		if err := a.applyCandidateExecutionEvent(ctx, invocation, command, event); err != nil {
-			if wrapped, ok := terminal.(*candidateExamTerminal); ok {
-				wrapped.fail(err)
-			} else {
-				_ = terminal.Close()
-			}
-			return
-		}
-	}
-}
-
-func ignoredExecutionPath(path string) bool {
-	if path == "" {
-		return false
-	}
-	for _, segment := range strings.Split(path, "/") {
-		switch segment {
-		case ".proctor", ".git", "node_modules", "target", "__pycache__":
-			return true
-		}
-	}
-	return false
-}
-
-func (a *App) applyCandidateExecutionEvent(ctx context.Context, invocation Invocation,
-	command OpenCandidateExamTerminalCommand, event appexecution.Event,
-) error {
-	ctx = context.WithValue(ctx, guestExecutionMutationContextKey{}, true)
-	items, err := a.candidateWorkspaceManifest(ctx, invocation, command.Access)
-	if err != nil {
-		return err
-	}
-	byPath := make(map[string]CandidateExamWorkspaceItem, len(items))
-	for _, item := range items {
-		byPath[item.Path] = item
-	}
-	access := ExamAttemptWorkspaceMutationAccess{CandidateAccess: command.Access,
-		ParticipationID: command.ParticipationID, Generation: command.Generation}
-	idempotency := executionEventIdempotency(event)
-	switch event.Operation {
-	case appexecution.OperationCreate:
-		if _, exists := byPath[event.Path]; exists {
-			return errors.New("execution create conflicts with authoritative workspace")
-		}
-		body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
-		if errors.Is(openErr, appexecution.ErrNotFound) {
-			_, err = a.CreateCandidateExamWorkspaceDirectory(ctx, invocation, CreateCandidateExamWorkspaceDirectoryCommand{Access: access, Path: event.Path, IdempotencyKey: idempotency})
-			return err
-		}
-		if openErr != nil {
-			return openErr
-		}
-		return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, CandidateExamWorkspaceItem{}, body, idempotency, false)
-	case appexecution.OperationReplace:
-		item, exists := byPath[event.Path]
-		if !exists || item.Kind != model.StarterWorkspaceEntryFile {
-			return errors.New("execution replace target is not an authoritative file")
-		}
-		body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
-		if openErr != nil {
-			return openErr
-		}
-		return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, item, body, idempotency, true)
-	case appexecution.OperationMove:
-		item, exists := byPath[event.From]
-		if !exists {
-			return errors.New("execution move source is not authoritative")
-		}
-		// execenv v0.2 reports a create without a kind. A file that moved
-		// before its create was harvested may therefore have been conservatively
-		// acknowledged as a directory. Open at the destination repairs that
-		// bounded race without guessing from a path or extension.
-		if item.Kind == model.StarterWorkspaceEntryDirectory {
-			body, openErr := a.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
-			if openErr == nil {
-				if _, deleteErr := a.DeleteCandidateExamWorkspaceEntry(ctx, invocation, DeleteCandidateExamWorkspaceEntryCommand{Access: access,
-					EntryID: item.EntryID, ExpectedPath: event.From, IdempotencyKey: idempotency + "-delete"}); deleteErr != nil {
-					_ = body.Close()
-					return deleteErr
-				}
-				return a.persistCandidateExecutionFile(ctx, invocation, access, event.Path, CandidateExamWorkspaceItem{}, body, idempotency+"-create", false)
-			}
-			if !errors.Is(openErr, appexecution.ErrNotFound) {
-				return openErr
-			}
-		}
-		_, err = a.MoveCandidateExamWorkspaceEntry(ctx, invocation, MoveCandidateExamWorkspaceEntryCommand{Access: access,
-			EntryID: item.EntryID, ExpectedPath: event.From, DestinationPath: event.Path, IdempotencyKey: idempotency})
-		return err
-	case appexecution.OperationDelete:
-		item, exists := byPath[event.Path]
-		if !exists {
-			return errors.New("execution delete target is not authoritative")
-		}
-		_, err = a.DeleteCandidateExamWorkspaceEntry(ctx, invocation, DeleteCandidateExamWorkspaceEntryCommand{Access: access,
-			EntryID: item.EntryID, ExpectedPath: event.Path, ExpectedContentVersion: item.ContentVersion, IdempotencyKey: idempotency})
-		return err
-	default:
-		return errors.New("unsupported execution workspace event")
-	}
-}
-
-func (a *App) candidateWorkspaceManifest(ctx context.Context, invocation Invocation, access CandidateExamAttemptAccess) ([]CandidateExamWorkspaceItem, error) {
-	result := make([]CandidateExamWorkspaceItem, 0)
-	expected := int64(-1)
-	var after model.AttemptWorkspaceEntryID
-	for {
-		page, err := a.ListCandidateExamWorkspace(ctx, invocation, ListCandidateExamWorkspaceQuery{Access: access,
-			ExpectedCursor: expected, AfterEntryID: after, Limit: model.AttemptWorkspaceJournalReadMaximum})
-		if err != nil {
-			return nil, err
-		}
-		if page.RefreshRequired {
-			return nil, errors.New("execution workspace manifest changed during read")
-		}
-		result = append(result, page.Items...)
-		if !page.HasMore {
-			return result, nil
-		}
-		if len(page.Items) == 0 {
-			return nil, errors.New("execution workspace pagination made no progress")
-		}
-		expected, after = page.Cursor, page.Items[len(page.Items)-1].EntryID
-	}
-}
-
-func (a *App) persistCandidateExecutionFile(ctx context.Context, invocation Invocation, access ExamAttemptWorkspaceMutationAccess,
-	path string, item CandidateExamWorkspaceItem, body io.ReadCloser, idempotency string, replace bool,
-) error {
-	defer body.Close()
-	data, err := io.ReadAll(io.LimitReader(body, model.AttemptWorkspaceMaximumFileBytes+1))
-	if err != nil || int64(len(data)) > model.AttemptWorkspaceMaximumFileBytes {
-		return errors.Join(err, errors.New("execution file exceeds workspace limit"))
-	}
-	digest := sha256.Sum256(data)
-	sha := hex.EncodeToString(digest[:])
-	if replace {
-		_, err = a.ReplaceCandidateExamWorkspaceFile(ctx, invocation, ReplaceCandidateExamWorkspaceFileCommand{Access: access,
-			EntryID: item.EntryID, ExpectedPath: path, ExpectedContentVersion: item.ContentVersion,
-			MediaType: "application/octet-stream", ExpectedSHA256: sha, Body: bytes.NewReader(data), Size: int64(len(data)), IdempotencyKey: idempotency})
-	} else {
-		_, err = a.CreateCandidateExamWorkspaceFile(ctx, invocation, CreateCandidateExamWorkspaceFileCommand{Access: access,
-			Path: path, MediaType: "application/octet-stream", ExpectedSHA256: sha, Body: bytes.NewReader(data), Size: int64(len(data)), IdempotencyKey: idempotency})
-	}
-	return err
-}
-
-func executionEventIdempotency(event appexecution.Event) string {
-	digest := sha256.Sum256([]byte(event.Cursor))
-	return "execution-" + hex.EncodeToString(digest[:])
-}
-
-func executionError(err error) error {
-	switch {
-	case errors.Is(err, appexecution.ErrInvalid):
-		return NewError("exam.attempt.terminal_invalid").Wrap(err)
-	case errors.Is(err, appexecution.ErrConflict):
-		return NewError("exam.attempt.terminal_conflict").Wrap(err)
-	case errors.Is(err, appexecution.ErrCapacity):
-		return NewError("exam.attempt.terminal_capacity").Wrap(err)
-	default:
-		return NewError("exam.attempt.terminal_unavailable").Wrap(err)
-	}
+	return a.examAttemptTerminals.Open(ctx, invocation, command)
 }
 
 func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocation Invocation,
 	command CreateCandidateExamWorkspaceDirectoryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
-		model.AttemptWorkspaceMutationCreateDirectory, struct {
-			Path string `json:"path"`
-		}{command.Path})
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, err
-	}
 	result, err := a.examAttempts.CreateWorkspaceDirectory(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Path: command.Path, Idempotency: idempotency})
+		examattempt.CreateWorkspaceDirectoryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -531,17 +214,9 @@ func (a *App) CreateCandidateExamWorkspaceDirectory(ctx context.Context, invocat
 func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
 	command CreateCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
-		model.AttemptWorkspaceMutationCreateFile, struct {
-			Path, MediaType, SHA256 string
-			Size                    int64
-		}{command.Path, command.MediaType, command.ExpectedSHA256, command.Size})
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, err
-	}
 	result, err := a.examAttempts.CreateWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Path: command.Path, MediaType: command.MediaType,
-			ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, Idempotency: idempotency})
+		examattempt.CreateWorkspaceFileCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, Path: command.Path, MediaType: command.MediaType,
+			ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -551,18 +226,10 @@ func (a *App) CreateCandidateExamWorkspaceFile(ctx context.Context, invocation I
 func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation Invocation,
 	command ReplaceCandidateExamWorkspaceFileCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
-		model.AttemptWorkspaceMutationReplaceFile, struct {
-			EntryID, Path, Version, MediaType, SHA256 string
-			Size                                      int64
-		}{command.EntryID.String(), command.ExpectedPath, command.ExpectedContentVersion.String(), command.MediaType, command.ExpectedSHA256, command.Size})
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, err
-	}
 	result, err := a.examAttempts.ReplaceWorkspaceFile(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+		examattempt.ReplaceWorkspaceFileCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
 			ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType, ExpectedSHA256: command.ExpectedSHA256,
-			Body: command.Body, Size: command.Size, Idempotency: idempotency})
+			Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -572,15 +239,9 @@ func (a *App) ReplaceCandidateExamWorkspaceFile(ctx context.Context, invocation 
 func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
 	command MoveCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
-		model.AttemptWorkspaceMutationMoveEntry, struct{ EntryID, ExpectedPath, DestinationPath string }{
-			command.EntryID.String(), command.ExpectedPath, command.DestinationPath})
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, err
-	}
 	result, err := a.examAttempts.MoveWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			DestinationPath: command.DestinationPath, Idempotency: idempotency})
+		examattempt.MoveWorkspaceEntryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+			DestinationPath: command.DestinationPath, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -590,53 +251,19 @@ func (a *App) MoveCandidateExamWorkspaceEntry(ctx context.Context, invocation In
 func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation Invocation,
 	command DeleteCandidateExamWorkspaceEntryCommand,
 ) (ExamAttemptWorkspaceMutationResult, error) {
-	idempotency, err := candidateWorkspaceIdempotency(invocation, command.IdempotencyKey, command.Access,
-		model.AttemptWorkspaceMutationDeleteEntry, struct{ EntryID, ExpectedPath, ExpectedContentVersion string }{
-			command.EntryID.String(), command.ExpectedPath, command.ExpectedContentVersion.String()})
-	if err != nil {
-		return ExamAttemptWorkspaceMutationResult{}, err
-	}
 	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			ExpectedContentVersion: command.ExpectedContentVersion, Idempotency: idempotency})
+		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
+			ExpectedContentVersion: command.ExpectedContentVersion, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
 	return result, nil
 }
 
-func candidateWorkspaceIdempotency(invocation Invocation, key string, access ExamAttemptWorkspaceMutationAccess,
-	operation model.AttemptWorkspaceMutationKind, semantic any,
-) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, NewError("idempotency.key_required")
-	}
-	return newCommandIdempotency(invocation, store.ExamAttemptWorkspaceMutationOperation, key, struct {
-		AttemptID string `json:"exam_attempt_id"`
-		Operation string `json:"operation"`
-		Command   any    `json:"command"`
-	}{access.AttemptID.String(), string(operation), semantic})
-}
-
 func (a *App) ReallowExamAttempt(ctx context.Context, invocation Invocation, command ReallowExamAttemptCommand) (ExamAttemptReallowResult, error) {
-	if command.IdempotencyKey == "" {
-		return ExamAttemptReallowResult{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, store.ExamAttemptReallowOperation, command.IdempotencyKey, struct {
-		ExamID                  string `json:"exam_id"`
-		SittingID               string `json:"exam_sitting_id"`
-		AttemptID               string `json:"exam_attempt_id"`
-		SuspensionID            string `json:"suspension_id"`
-		ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
-		PrivateReason           string `json:"private_reason"`
-	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(), command.SuspensionID.String(),
-		command.ExpectedAttemptRevision, command.PrivateReason})
-	if err != nil {
-		return ExamAttemptReallowResult{}, err
-	}
 	result, err := a.examAttempts.Reallow(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ReallowCommand{
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
-		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason, Idempotency: idempotency,
+		ExpectedAttemptRevision: command.ExpectedAttemptRevision, PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamAttemptReallowResult{}, examAttemptError(err, true)
@@ -667,19 +294,8 @@ func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invoc
 
 func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
-	if command.IdempotencyKey == "" {
-		return ExamAttemptConnection{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, store.ExamAttemptConnectOperation, command.IdempotencyKey, struct {
-		SittingID                string `json:"exam_sitting_id"`
-		SessionID                string `json:"session_id"`
-		ContinuityCredentialHash string `json:"continuity_credential_hash"`
-	}{command.SittingID.String(), invocation.Principal().SessionID.String(), model.HashToken(command.ContinuityCredential)})
-	if err != nil {
-		return ExamAttemptConnection{}, err
-	}
 	result, err := a.examAttempts.Connect(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ConnectCommand{
-		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential, Idempotency: idempotency,
+		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamAttemptConnection{}, examAttemptError(err, true)
@@ -908,8 +524,7 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 		return err
 	}
 	var executionErr error
-	guestMutation, _ := ctx.Value(guestExecutionMutationContextKey{}).(bool)
-	if effects.execution != nil && !guestMutation {
+	if effects.execution != nil && result.Origin == examattempt.WorkspaceMutationOriginCandidate {
 		executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
 	}
 	return errors.Join(effects.realtime.Publish(ctx, event), executionErr)

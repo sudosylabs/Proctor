@@ -13,19 +13,20 @@ import (
 )
 
 type browserInvitationTransactionStoreFake struct {
-	created       *store.BrowserInvitationTransactionCreation
-	createdAt     time.Time
-	expiresAt     time.Time
-	createResult  *model.BrowserAuthenticationTransaction
-	createErr     error
-	createNil     bool
-	resolveResult *model.BrowserAuthenticationTransaction
-	resolveErr    error
-	resolveNil    bool
-	resolveCalls  int
+	created         *store.BrowserInvitationTransactionCreation
+	createdAt       time.Time
+	expiresAt       time.Time
+	createResult    *store.BrowserInvitationCreated
+	createTransform func(*store.BrowserInvitationCreated)
+	createErr       error
+	createNil       bool
+	resolveResult   *store.BrowserInvitationResolution
+	resolveErr      error
+	resolveNil      bool
+	resolveCalls    int
 }
 
-func (s *browserInvitationTransactionStoreFake) CreateInvitation(_ context.Context, input *store.BrowserInvitationTransactionCreation) (*model.BrowserAuthenticationTransaction, error) {
+func (s *browserInvitationTransactionStoreFake) CreateInvitation(_ context.Context, input *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
 	copy := *input
 	s.created = &copy
 	if s.createNil {
@@ -42,17 +43,14 @@ func (s *browserInvitationTransactionStoreFake) CreateInvitation(_ context.Conte
 	if expiresAt.IsZero() {
 		expiresAt = createdAt.Add(model.BrowserAuthenticationTransactionLifetime)
 	}
-	transaction := &model.BrowserAuthenticationTransaction{
-		Purpose:       model.BrowserAuthenticationPurposeInvitationAcceptance,
-		InstitutionID: input.InstitutionID, Issuer: input.Issuer, InvitationID: input.InvitationID,
-		HandleHash: input.HandleHash, BrowserProofHash: input.BrowserProofHash,
-		InvitationClaimHash: input.InvitationClaimHash, ClientType: model.SessionClientWeb, ExpiresAt: expiresAt,
+	created := &store.BrowserInvitationCreated{ID: input.ID, ExpiresAt: expiresAt}
+	if s.createTransform != nil {
+		s.createTransform(created)
 	}
-	transaction.PrepareCreate(input.ID, createdAt)
-	return transaction, nil
+	return created, nil
 }
 
-func (s *browserInvitationTransactionStoreFake) ResolveInvitation(context.Context, string, string) (*model.BrowserAuthenticationTransaction, error) {
+func (s *browserInvitationTransactionStoreFake) ResolveInvitation(context.Context, string, string) (*store.BrowserInvitationResolution, error) {
 	s.resolveCalls++
 	if s.resolveNil {
 		return nil, nil
@@ -178,6 +176,88 @@ func TestBrowserInvitationStoreNilResultsFailClosed(t *testing.T) {
 	_, _, err = service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
 	if !Is(err, "invitation.unavailable") {
 		t.Fatalf("resolve error = %v, want invitation.unavailable", err)
+	}
+}
+
+func TestBrowserInvitationMalformedStoreFactsFailClosed(t *testing.T) {
+	t.Parallel()
+	now := model.TimeUTC(time.Now())
+	claim := model.NewCredentialToken()
+	invitation := &model.Invitation{
+		ID: model.NewInvitationID(), Purpose: model.InvitationPurposeStudentClass,
+		State: model.InvitationPending, ClaimHash: model.HashInvitationClaim(claim), ExpiresAt: now.Add(time.Minute),
+	}
+	invitationService := &invitationService{
+		store: browserInvitationStoreFake{invitation: invitation}, attempts: &browserInvitationAttemptLimiterFake{},
+	}
+	for name, institution := range map[string]*model.Institution{
+		"nil Institution":              nil,
+		"invalid Institution identity": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, err := newBrowserInvitationService(
+				&browserInvitationTransactionStoreFake{}, browserInvitationInstitutionStoreFake{institution: institution},
+				invitationService, "https://proctor.example.edu", model.NewCredentialToken,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			if !Is(err, "invitation.unavailable") {
+				t.Fatalf("Start error = %v", err)
+			}
+		})
+	}
+	newService := func(transactions *browserInvitationTransactionStoreFake) *browserInvitationService {
+		service, err := newBrowserInvitationService(
+			transactions,
+			browserInvitationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+			invitationService, "https://proctor.example.edu", model.NewCredentialToken,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return service
+	}
+
+	for name, result := range map[string]*store.BrowserInvitationCreated{
+		"wrong identity": {ID: model.NewBrowserAuthenticationTransactionID(), ExpiresAt: now.Add(time.Second)},
+		"zero expiry":    {ID: "placeholder"},
+		"late expiry":    {ID: "placeholder", ExpiresAt: invitation.ExpiresAt.Add(time.Second)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			transactions := &browserInvitationTransactionStoreFake{createResult: result}
+			service := newService(transactions)
+			if result.ID == "placeholder" {
+				// The created ID is unknown until the command reaches the fake;
+				// make only the expiry malformed in these two cases.
+				transactions.createResult = nil
+				transactions.createTransform = func(created *store.BrowserInvitationCreated) {
+					created.ExpiresAt = result.ExpiresAt
+				}
+			}
+			_, err := service.Start(context.Background(), Invocation{}, StartBrowserInvitationCommand{Claim: claim, Source: "source"})
+			if !Is(err, "invitation.unavailable") {
+				t.Fatalf("Start error = %v", err)
+			}
+		})
+	}
+
+	for name, result := range map[string]*store.BrowserInvitationResolution{
+		"invalid transaction": {InvitationID: invitation.ID, InvitationClaimHash: invitation.ClaimHash},
+		"invalid Invitation":  {ID: model.NewBrowserAuthenticationTransactionID(), InvitationClaimHash: invitation.ClaimHash},
+		"invalid claim": {ID: model.NewBrowserAuthenticationTransactionID(), InvitationID: invitation.ID,
+			InvitationClaimHash: "invalid"},
+		"mismatched Invitation": {ID: model.NewBrowserAuthenticationTransactionID(), InvitationID: model.NewInvitationID(),
+			InvitationClaimHash: invitation.ClaimHash},
+	} {
+		t.Run("resolve "+name, func(t *testing.T) {
+			service := newService(&browserInvitationTransactionStoreFake{resolveResult: result})
+			_, _, err := service.resolve(context.Background(), model.NewCredentialToken(), model.NewCredentialToken())
+			if !Is(err, "invitation.unavailable") {
+				t.Fatalf("resolve error = %v", err)
+			}
+		})
 	}
 }
 

@@ -58,9 +58,6 @@ type academicAdministrationBatchResourceModule struct {
 }
 
 func academicAdministrationBatchResource(batches AcademicAdministrationBatchApplication) resource {
-	if batches == nil {
-		batches = unavailableAcademicAdministrationBatchApplication{}
-	}
 	module := academicAdministrationBatchResourceModule{batches: batches}
 	return newResource("academic-administration-batches",
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, apiPath(literal("academic-administration-batches")),

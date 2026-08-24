@@ -5,10 +5,8 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -330,7 +328,10 @@ func (m examResourceModule) list(request operationRequest) (operationResult, err
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.TimeUTC(last.UpdatedAt).Format(time.RFC3339Nano), ExamID: last.ID.String()})
+		response.NextCursor, err = encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: model.TimeUTC(last.UpdatedAt).Format(time.RFC3339Nano), ExamID: last.ID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -553,7 +554,10 @@ func (m examResourceModule) listManagers(request operationRequest) (operationRes
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1].Manager
-		response.NextCursor = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.TimeUTC(last.GrantedAt).Format(time.RFC3339Nano), UserID: last.UserID.String()})
+		response.NextCursor, err = encodeExamManagerCursor(examManagerCursor{GrantedAt: model.TimeUTC(last.GrantedAt).Format(time.RFC3339Nano), UserID: last.UserID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -654,31 +658,29 @@ func parseExamManagerRequest(rawUserID string, revision int64) (model.UserID, er
 	return userID, nil
 }
 
-func encodeExamManagerCursor(cursor examManagerCursor) string {
-	cursor.Version = 1
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeExamManagerCursor(cursor examManagerCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, examManagerCursorSpec())
 }
 
 func decodeExamManagerCursor(raw string) (examManagerCursor, error) {
-	var cursor examManagerCursor
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, errors.New("invalid Exam Manager cursor")
+	return decodeOpaqueCursor(raw, examManagerCursorSpec())
+}
+
+func examManagerCursorSpec() opaqueCursorSpec[examManagerCursor] {
+	return opaqueCursorSpec[examManagerCursor]{
+		label: "Exam Manager", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "granted_at", "user_id"},
+		version:        func(cursor examManagerCursor) int { return cursor.Version },
+		setVersion:     func(cursor *examManagerCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 1 },
+		validate: func(cursor examManagerCursor) error {
+			grantedAt, err := time.Parse(time.RFC3339Nano, cursor.GrantedAt)
+			if err != nil || grantedAt.IsZero() || !model.UserID(cursor.UserID).IsValid() {
+				return errors.New("invalid Exam Manager keyset")
+			}
+			return nil
+		},
 	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cursor); err != nil || cursor.Version != 1 || !model.UserID(cursor.UserID).IsValid() {
-		return cursor, errors.New("invalid Exam Manager cursor")
-	}
-	if _, err := time.Parse(time.RFC3339Nano, cursor.GrantedAt); err != nil {
-		return cursor, errors.New("invalid Exam Manager cursor")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return cursor, errors.New("invalid Exam Manager cursor")
-	}
-	return cursor, nil
 }
 
 func examManagerResponseFromSummary(summary application.ExamManagerSummary) examManagerResponse {
@@ -735,31 +737,29 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 	return query, nil
 }
 
-func encodeExamCatalogCursor(cursor examCatalogCursor) string {
-	cursor.Version = examCatalogCursorVersion
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeExamCatalogCursor(cursor examCatalogCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, examCatalogCursorSpec())
 }
 
 func decodeExamCatalogCursor(raw string) (examCatalogCursor, error) {
-	var cursor examCatalogCursor
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, err
+	return decodeOpaqueCursor(raw, examCatalogCursorSpec())
+}
+
+func examCatalogCursorSpec() opaqueCursorSpec[examCatalogCursor] {
+	return opaqueCursorSpec[examCatalogCursor]{
+		label: "Exam catalog", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examCatalogCursorVersion,
+		members:        []string{"version", "updated_at", "exam_id"},
+		version:        func(cursor examCatalogCursor) int { return cursor.Version },
+		setVersion:     func(cursor *examCatalogCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 0 || version == examCatalogCursorVersion },
+		validate: func(cursor examCatalogCursor) error {
+			updatedAt, err := time.Parse(time.RFC3339Nano, cursor.UpdatedAt)
+			if err != nil || updatedAt.IsZero() || !model.ExamID(cursor.ExamID).IsValid() {
+				return errors.New("invalid Exam catalog keyset")
+			}
+			return nil
+		},
 	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cursor); err != nil || cursor.Version != 0 && cursor.Version != examCatalogCursorVersion || cursor.UpdatedAt == "" || !model.ExamID(cursor.ExamID).IsValid() {
-		return cursor, errors.New("invalid Exam catalog cursor")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return cursor, errors.New("invalid Exam catalog cursor")
-	}
-	if _, err := time.Parse(time.RFC3339Nano, cursor.UpdatedAt); err != nil {
-		return cursor, errors.New("invalid Exam catalog cursor")
-	}
-	return cursor, nil
 }
 
 func examSummaryResponseFromApplication(summary application.ExamSummary) examSummaryResponse {

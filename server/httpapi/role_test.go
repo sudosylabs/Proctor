@@ -28,17 +28,13 @@ func TestRoleHTTPCreateUsesApplicationCommandWithoutPreflight(t *testing.T) {
 		Permissions: []string{string(model.ActionClassView)},
 	}}
 	transport := &academicUnitHTTPApplication{principal: principal}
-	httpAPI, err := New(Options{
-		Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: transport,
-		AcademicUnits: transport, Institutions: transport, Programmes: &programmeHTTPApplication{},
-		ProgrammeLevels: &programmeLevelHTTPApplication{}, AcademicPeriods: &academicPeriodHTTPApplication{},
-		Classes: &classHTTPApplication{}, Affiliations: &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{},
-		UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{},
-		SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: roles, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"}, PublicURL: "http://localhost:8065",
-		MaxBodyBytes: 1 << 20, RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
+	options := validHTTPOptions(t)
+	options.Logger = logger
+	options.Application = transport
+	options.AcademicUnits = transport
+	options.Institutions = transport
+	options.Roles = roles
+	httpAPI, err := New(options)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,87 +3,56 @@
 
 package httpapi
 
-// productionResources is the single, visible inventory of HTTP resource
-// modules. Each resource owns its route declarations and DTO adapters; the
-// catalog compiler validates and seals the combined manifest in New.
-func productionResources(options Options, cookies browserCookies, webSocket WebSocketTransport) []resource {
-	accessPolicy := options.AccessPolicy
-	if accessPolicy == nil {
-		accessPolicy = unavailableAccessPolicyApplication{}
-	}
-	invitations := options.Invitations
-	if invitations == nil {
-		invitations, _ = options.Application.(InvitationApplication)
-	}
-	onboardingImports := options.OnboardingImports
-	if onboardingImports == nil {
-		onboardingImports, _ = options.Application.(OnboardingImportApplication)
-	}
-	if onboardingImports == nil {
-		onboardingImports = unavailableOnboardingImportApplication{}
-	}
-	studentProgressions := options.StudentProgressions
-	if studentProgressions == nil {
-		studentProgressions, _ = options.Application.(StudentProgressionApplication)
-	}
-	if studentProgressions == nil {
-		studentProgressions = unavailableStudentProgressionApplication{}
-	}
-	if invitations == nil {
-		invitations = unavailableInvitationApplication{}
-	}
-	browserInvitations := options.BrowserInvitations
-	if browserInvitations == nil {
-		browserInvitations, _ = options.Application.(BrowserInvitationApplication)
-	}
-	if browserInvitations == nil {
-		browserInvitations = unavailableBrowserInvitationApplication{}
-	}
-	academicAdministrationBatches := options.AcademicAdministrationBatches
-	if academicAdministrationBatches == nil {
-		academicAdministrationBatches, _ = options.Application.(AcademicAdministrationBatchApplication)
-	}
+// productionResources is the single, visible and policy-free inventory of HTTP
+// resource modules. Preserve this order: it is part of route-catalog review.
+func productionResources(
+	applications resourceApplications,
+	health Health,
+	buildInfo BuildInfo,
+	cookies browserCookies,
+	webSocket WebSocketTransport,
+) []resource {
 	return []resource{
-		systemResource(options.Health, options.BuildInfo),
-		bootstrapResource(options.Bootstrap),
-		accessPolicyResource(accessPolicy),
-		authenticationResource(options.Application, cookies),
-		authenticationMethodResource(options.Application, cookies),
-		desktopAuthorizationResource(options.Application),
-		externalAuthenticationResource(options.Application, cookies),
-		browserInvitationResource(browserInvitations, cookies),
-		userProfileResource(options.UserProfiles),
-		userSettingsResource(options.UserSettings),
-		userAdministrationResource(options.AccountStates, options.SessionAdministrations),
-		sessionResource(options.Application, cookies),
-		mfaResource(options.Application),
-		personalAccessTokenResource(options.Application),
-		institutionResource(options.Institutions),
-		academicUnitResource(options.AcademicUnits),
-		examResource(options.Application),
-		examRevisionResource(options.Application),
-		examSittingResource(options.Application),
-		examSittingCorrectionResource(options.Application),
-		examResourceHTTPResource(options.Application),
-		examStarterWorkspaceHTTPResource(options.Application),
-		examAttemptResource(options.Application),
-		examIntegrityReviewResource(options.Application),
-		programmeResource(options.Programmes),
-		programmeLevelResource(options.ProgrammeLevels),
-		academicPeriodResource(options.AcademicPeriods),
-		classResource(options.Classes),
-		affiliationResource(options.Affiliations),
-		academicUnitMemberResource(options.AcademicUnitMembers),
-		classMemberResource(options.ClassMembers),
-		invitationResource(invitations),
-		onboardingImportResource(onboardingImports),
-		studentProgressionResource(studentProgressions),
-		academicAdministrationBatchResource(academicAdministrationBatches),
-		roleResource(options.Roles),
-		roleBindingResource(options.RoleBindings),
-		auditResource(options.AuditListings),
-		jobResource(options.Application),
-		mailResource(options.Mail),
+		systemResource(health, buildInfo),
+		bootstrapResource(applications.bootstrap),
+		accessPolicyResource(applications.accessPolicy),
+		authenticationResource(applications.authentication, cookies),
+		authenticationMethodResource(applications.authenticationMethods, cookies),
+		desktopAuthorizationResource(applications.desktopAuthorization),
+		externalAuthenticationResource(applications.externalAuthentication, cookies),
+		browserInvitationResource(applications.browserInvitations, cookies),
+		userProfileResource(applications.userProfiles),
+		userSettingsResource(applications.userSettings),
+		userAdministrationResource(applications.accountStates, applications.sessionAdministration),
+		sessionResource(applications.sessions, cookies),
+		mfaResource(applications.mfa),
+		personalAccessTokenResource(applications.personalAccessTokens),
+		institutionResource(applications.institutions),
+		academicUnitResource(applications.academicUnits),
+		examResource(applications.exams),
+		examRevisionResource(applications.examRevisions),
+		examSittingResource(applications.examSittings),
+		examSittingCorrectionResource(applications.examCorrections),
+		examResourceHTTPResource(applications.examResources),
+		examStarterWorkspaceHTTPResource(applications.examStarterWorkspace),
+		examAttemptResource(applications.examAttempts),
+		examIntegrityReviewResource(applications.examIntegrityReviews),
+		programmeResource(applications.programmes),
+		programmeLevelResource(applications.programmeLevels),
+		academicPeriodResource(applications.academicPeriods),
+		classResource(applications.classes),
+		affiliationResource(applications.affiliations),
+		academicUnitMemberResource(applications.academicUnitMembers),
+		classMemberResource(applications.classMembers),
+		invitationResource(applications.invitations),
+		onboardingImportResource(applications.onboardingImports),
+		studentProgressionResource(applications.studentProgressions),
+		academicAdministrationBatchResource(applications.academicAdministrationBatches),
+		roleResource(applications.roles),
+		roleBindingResource(applications.roleBindings),
+		auditResource(applications.audit),
+		jobResource(applications.jobs),
+		mailResource(applications.mail),
 		webSocketResource(webSocket),
 	}
 }

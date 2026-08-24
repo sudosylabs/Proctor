@@ -39,7 +39,7 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	result, err := f.service.Submit(context.Background(), f.call, SubmitCommand{
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID,
 			ConnectionID: f.connectionID, ContinuityCredential: credential}, ParticipationID: participationID, Generation: 3},
-		ExpectedWorkspaceCursor: 11, FinalFocusLossSequence: 7, Idempotency: &store.CommandIdempotency{},
+		ExpectedWorkspaceCursor: 11, FinalFocusLossSequence: 7, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +62,11 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	if len(f.audit.values) != 1 || f.audit.values["exam_attempt_id"] != f.attemptID.String() {
 		t.Fatalf("Submission audit fields=%#v", f.audit.values)
 	}
+	wantIdempotency, prepareErr := prepareSubmissionIdempotency(f.call, "test-key", f.attemptID, 11, 7)
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.submissions.idempotency, wantIdempotency)
 	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ExamID != f.sitting.ExamID ||
 		f.mail.request.SittingID != f.sitting.ID || f.mail.request.SubmissionID != submissionID ||
 		!f.mail.request.SealedAt.Equal(f.at) || f.mail.request.Automatic || f.submissions.seal.Notice == nil ||
@@ -89,7 +94,7 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 		ParticipationID: access.ParticipationID, Generation: access.Generation, ConnectionID: access.ConnectionID, Replayed: true}
 
 	result, err := f.service.Submit(context.Background(), f.call, SubmitCommand{Access: access,
-		ExpectedWorkspaceCursor: 0, FinalFocusLossSequence: 0, Idempotency: &store.CommandIdempotency{}})
+		ExpectedWorkspaceCursor: 0, FinalFocusLossSequence: 0, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,6 +330,7 @@ type submissionStoreFake struct {
 	automaticOptions store.ExamSubmissionAutomaticSealListOptions
 	automaticInput   *store.ExamSubmissionAutomaticSeal
 	automaticResult  *store.ExamSubmissionAutomaticSealResult
+	idempotency      *store.CommandIdempotency
 }
 
 type submissionMailFake struct {
@@ -364,9 +370,9 @@ func (fake *submissionStoreFake) ResolveSealTarget(_ context.Context, access sto
 	return fake.target, fake.err
 }
 
-func (fake *submissionStoreFake) Seal(_ context.Context, input *store.ExamSubmissionSeal, _ *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
+func (fake *submissionStoreFake) Seal(_ context.Context, input *store.ExamSubmissionSeal, command *store.CommandIdempotency) (*store.ExamSubmissionSealResult, error) {
 	fake.f.order = append(fake.f.order, "submission.seal")
-	fake.seal = input
+	fake.seal, fake.idempotency = input, command
 	return fake.sealResult, fake.err
 }
 

@@ -276,19 +276,12 @@ func TestAcademicUnitHTTPCreateMapsCommandWithoutPermissionPreflight(t *testing.
 				},
 				unit: created, created: created,
 			}
-			httpAPI, err := New(Options{
-				Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-				AcademicUnits: fakeApplication, Institutions: fakeApplication,
-				Programmes:          &programmeHTTPApplication{},
-				ProgrammeLevels:     &programmeLevelHTTPApplication{},
-				AcademicPeriods:     &academicPeriodHTTPApplication{},
-				Classes:             &classHTTPApplication{},
-				Affiliations:        &affiliationHTTPApplication{},
-				AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-				BuildInfo: BuildInfo{Version: "test"},
-				PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
-				RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-			})
+			options := validHTTPOptions(t)
+			options.Logger = logger
+			options.Application = fakeApplication
+			options.AcademicUnits = fakeApplication
+			options.Institutions = fakeApplication
+			httpAPI, err := New(options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -352,19 +345,12 @@ func TestAcademicUnitHTTPMutationsMapCommandsWithoutPermissionPreflight(t *testi
 		unit: unit,
 	}
 	logger, _ := newTestLogger(t)
-	httpAPI, err := New(Options{
-		Logger: logger, Localizer: newTestLocalizer(t), Health: academicUnitHTTPHealth{}, Application: fakeApplication,
-		AcademicUnits: fakeApplication, Institutions: fakeApplication,
-		Programmes:          &programmeHTTPApplication{},
-		ProgrammeLevels:     &programmeLevelHTTPApplication{},
-		AcademicPeriods:     &academicPeriodHTTPApplication{},
-		Classes:             &classHTTPApplication{},
-		Affiliations:        &affiliationHTTPApplication{},
-		AcademicUnitMembers: &academicUnitMemberHTTPApplication{}, ClassMembers: &classMemberHTTPApplication{}, UserProfiles: &userProfileHTTPApplication{}, AccountStates: &accountStateHTTPApplication{}, SessionAdministrations: &sessionAdministrationHTTPApplication{}, Roles: &roleHTTPApplication{}, RoleBindings: &roleBindingHTTPApplication{}, AuditListings: &auditListingHTTPApplication{}, Bootstrap: &bootstrapHTTPApplication{},
-		BuildInfo: BuildInfo{Version: "test"},
-		PublicURL: "http://localhost:8065", MaxBodyBytes: 1 << 20,
-		RecentAuthenticationTTL: time.Minute, NodeID: "node-a",
-	})
+	options := validHTTPOptions(t)
+	options.Logger = logger
+	options.Application = fakeApplication
+	options.AcademicUnits = fakeApplication
+	options.Institutions = fakeApplication
+	httpAPI, err := New(options)
 	if err != nil {
 		t.Fatal(err)
 	}

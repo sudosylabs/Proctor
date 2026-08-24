@@ -15,43 +15,23 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
-func TestExamSittingScheduleUpdateIdempotencyPreservesPatchPresence(t *testing.T) {
+func TestExamSittingScheduleUpdateForwardsPatchPresenceAndRawKey(t *testing.T) {
 	t.Parallel()
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
-	revisionID, classID := model.NewExamRevisionID(), model.NewClassID()
-	first, err := newExamSittingScheduleUpdateIdempotency(invocation, UpdateExamSittingScheduleCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ExamRevisionID: &revisionID, IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := newExamSittingScheduleUpdateIdempotency(invocation, UpdateExamSittingScheduleCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ClassID: &classID, IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Fingerprint == second.Fingerprint {
-		t.Fatal("schedule update fingerprint erased patch field presence")
-	}
-
+	revisionID := model.NewExamRevisionID()
 	instant := time.Date(2026, 8, 15, 12, 0, 0, 0, time.FixedZone("fixture", 2*60*60))
-	utc := instant.UTC()
-	withZone, err := newExamSittingScheduleUpdateIdempotency(invocation, UpdateExamSittingScheduleCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ScheduledStartAt: &instant, IdempotencyKey: "same-key",
+	fake := &examSittingUseCasesFake{}
+	_, err := (&App{examSittings: fake}).UpdateExamSittingSchedule(context.Background(), invocation, UpdateExamSittingScheduleCommand{
+		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ExamRevisionID: &revisionID,
+		ScheduledStartAt: &instant, IdempotencyKey: "same-key",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	withUTC, err := newExamSittingScheduleUpdateIdempotency(invocation, UpdateExamSittingScheduleCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ScheduledStartAt: &utc, IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if withZone.Fingerprint != withUTC.Fingerprint {
-		t.Fatal("equivalent schedule instants produced different fingerprints")
+	if fake.update.ExamRevisionID == nil || *fake.update.ExamRevisionID != revisionID || fake.update.ClassID != nil ||
+		fake.update.ScheduledStartAt == nil || !fake.update.ScheduledStartAt.Equal(instant) || fake.update.IdempotencyKey != "same-key" {
+		t.Fatalf("update command = %#v", fake.update)
 	}
 }
 
@@ -86,30 +66,29 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 	}
 }
 
-func TestExamSittingManagerTransitionsUseOperationSpecificIdempotencyFingerprints(t *testing.T) {
+func TestExamSittingManagerTransitionsForwardRawKeys(t *testing.T) {
 	t.Parallel()
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{RequestID: "manager-transition"})
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	base := PauseExamSittingCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, PrivateReason: "first reason", IdempotencyKey: "same-key"}
 
 	tests := []struct {
-		name      string
-		operation string
-		invoke    func(*App, PauseExamSittingCommand) error
-		captured  func(*examSittingUseCasesFake) *store.CommandIdempotency
+		name     string
+		invoke   func(*App, PauseExamSittingCommand) error
+		captured func(*examSittingUseCasesFake) examsitting.PauseCommand
 	}{
-		{name: "pause", operation: "exam.sitting.pause.v1", invoke: func(app *App, command PauseExamSittingCommand) error {
+		{name: "pause", invoke: func(app *App, command PauseExamSittingCommand) error {
 			_, err := app.PauseExamSitting(context.Background(), invocation, command)
 			return err
-		}, captured: func(fake *examSittingUseCasesFake) *store.CommandIdempotency { return fake.pause.Idempotency }},
-		{name: "resume", operation: "exam.sitting.resume.v1", invoke: func(app *App, command PauseExamSittingCommand) error {
+		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.pause }},
+		{name: "resume", invoke: func(app *App, command PauseExamSittingCommand) error {
 			_, err := app.ResumeExamSitting(context.Background(), invocation, command)
 			return err
-		}, captured: func(fake *examSittingUseCasesFake) *store.CommandIdempotency { return fake.resume.Idempotency }},
-		{name: "close", operation: "exam.sitting.close.v1", invoke: func(app *App, command PauseExamSittingCommand) error {
+		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.resume }},
+		{name: "close", invoke: func(app *App, command PauseExamSittingCommand) error {
 			_, err := app.CloseExamSitting(context.Background(), invocation, command)
 			return err
-		}, captured: func(fake *examSittingUseCasesFake) *store.CommandIdempotency { return fake.close.Idempotency }},
+		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.close }},
 	}
 	for _, test := range tests {
 		test := test
@@ -119,18 +98,9 @@ func TestExamSittingManagerTransitionsUseOperationSpecificIdempotencyFingerprint
 			if err := test.invoke(&App{examSittings: first}, base); err != nil {
 				t.Fatal(err)
 			}
-			firstIdempotency := test.captured(first)
-			if firstIdempotency == nil || firstIdempotency.Operation != test.operation {
-				t.Fatalf("idempotency = %#v", firstIdempotency)
-			}
-			changed := base
-			changed.PrivateReason = "second reason"
-			second := &examSittingUseCasesFake{}
-			if err := test.invoke(&App{examSittings: second}, changed); err != nil {
-				t.Fatal(err)
-			}
-			if firstIdempotency.Fingerprint == test.captured(second).Fingerprint {
-				t.Fatal("private lifecycle reason was absent from the command fingerprint")
+			captured := test.captured(first)
+			if captured.IdempotencyKey != "same-key" || captured.PrivateReason != base.PrivateReason {
+				t.Fatalf("child command = %#v", captured)
 			}
 		})
 	}
@@ -144,28 +114,8 @@ func TestExamSittingManagerTransitionsUseOperationSpecificIdempotencyFingerprint
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := &examSittingUseCasesFake{}
-	_, err = (&App{examSittings: second}).ExtendExamSitting(context.Background(), invocation, ExtendExamSittingCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, ScheduledEndAt: deadline.UTC(),
-		PrivateReason: "needed time", IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.extend.Idempotency == nil || first.extend.Idempotency.Operation != "exam.sitting.extend.v1" ||
-		first.extend.Idempotency.Fingerprint != second.extend.Idempotency.Fingerprint {
-		t.Fatalf("extension idempotency = %#v / %#v", first.extend.Idempotency, second.extend.Idempotency)
-	}
-	third := &examSittingUseCasesFake{}
-	_, err = (&App{examSittings: third}).ExtendExamSitting(context.Background(), invocation, ExtendExamSittingCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, ScheduledEndAt: deadline.Add(time.Minute),
-		PrivateReason: "needed time", IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.extend.Idempotency.Fingerprint == third.extend.Idempotency.Fingerprint {
-		t.Fatal("extended deadline was absent from the command fingerprint")
+	if first.extend.IdempotencyKey != "same-key" || !first.extend.ScheduledEndAt.Equal(deadline) {
+		t.Fatalf("extension command = %#v", first.extend)
 	}
 }
 
@@ -301,9 +251,15 @@ type examSittingUseCasesFake struct {
 	resume      examsitting.ResumeCommand
 	extend      examsitting.ExtendCommand
 	close       examsitting.EarlyCloseCommand
+	update      examsitting.UpdateScheduleCommand
 	advance     store.ExamSittingLifecycleResult
 	advanceCall examsitting.SystemCall
 	err         error
+}
+
+func (fake *examSittingUseCasesFake) UpdateSchedule(_ context.Context, _ examsitting.Call, command examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
+	fake.update = command
+	return store.ExamSittingSnapshot{}, fake.err
 }
 
 func (fake *examSittingUseCasesFake) AuthorizeView(_ context.Context, call examsitting.Call, sittingID model.ExamSittingID) error {

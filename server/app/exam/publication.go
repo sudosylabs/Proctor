@@ -15,7 +15,7 @@ import (
 type PublishRevisionCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type ListRevisionsQuery struct {
@@ -60,8 +60,12 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return store.ExamRevisionSummary{}, invalid("publication")
 	}
-	if command.Idempotency == nil {
-		return store.ExamRevisionSummary{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationPublishRevision, command.IdempotencyKey, struct {
+		ExamID                string `json:"exam_id"`
+		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision})
+	if err != nil {
+		return store.ExamRevisionSummary{}, err
 	}
 	at := model.TimeUTC(p.now())
 	revisionID := p.newID()
@@ -92,7 +96,7 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	result, err := p.store.Publish(ctx, &store.ExamRevisionPublication{RevisionID: revisionID, ExamID: command.ExamID,
 		ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamPublishOverride,
 		ExpectedDraftRevision: command.ExpectedDraftRevision, Kind: model.ExamRevisionPublicationStandard,
-		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, command.Idempotency)
+		PublishedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault

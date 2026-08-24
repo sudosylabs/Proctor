@@ -35,6 +35,7 @@ type invitationHTTPApplication struct {
 	replace               application.ReplaceInvitationCommand
 	list                  application.ListInvitationsQuery
 	listMore              bool
+	listEmpty             bool
 	getID                 string
 	acceptance            *application.InvitationAcceptanceView
 	batch                 application.RunInvitationBatchCommand
@@ -101,7 +102,28 @@ func (a *invitationHTTPApplication) AcceptStudentClassInvitation(_ context.Conte
 }
 func (a *invitationHTTPApplication) ListInvitations(_ context.Context, _ application.Invocation, query application.ListInvitationsQuery) (application.InvitationAdministrationPage, error) {
 	a.list = query
+	if a.listEmpty {
+		return application.InvitationAdministrationPage{More: a.listMore}, nil
+	}
 	return application.InvitationAdministrationPage{Items: []application.InvitationAdministrationView{a.administrationView()}, More: a.listMore}, nil
+}
+
+func TestInvitationAdministrationRejectsNoProgressPage(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	applicationFake := &invitationHTTPApplication{listMore: true, listEmpty: true}
+	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationMultiFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now(), MFACompletedAt: model.OptionalTimeFrom(time.Now())}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/invitations", nil)
+	request.Header.Set("Authorization", "Bearer session")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("no-progress status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T) {
@@ -139,11 +161,17 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 	if !ok || cursor == "" {
 		t.Fatalf("Invitation list cursor = %#v", listed["next_cursor"])
 	}
+	decodedCursor, err := decodeInvitationCursor(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
 	secondPage := httptest.NewRequest(http.MethodGet, "/api/v1/invitations?limit=25&cursor="+url.QueryEscape(cursor), nil)
 	secondPage.Header.Set("Authorization", "Bearer session")
 	secondPageResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondPageResponse, secondPage)
-	if secondPageResponse.Code != http.StatusOK || applicationFake.list.BeforeCreatedAt.IsZero() || !applicationFake.list.BeforeID.IsValid() {
+	if secondPageResponse.Code != http.StatusOK ||
+		applicationFake.list.BeforeCreatedAt.Format(time.RFC3339Nano) != decodedCursor.CreatedAt ||
+		applicationFake.list.BeforeID.String() != decodedCursor.ID {
 		t.Fatalf("second Invitation page = %d %s query=%#v", secondPageResponse.Code, secondPageResponse.Body.String(), applicationFake.list)
 	}
 

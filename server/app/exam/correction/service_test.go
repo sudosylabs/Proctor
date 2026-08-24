@@ -22,7 +22,7 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 	got, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
-		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: sha, Idempotency: &store.CommandIdempotency{},
+		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: sha, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -44,13 +44,22 @@ func TestStageResourceContentReservesBeforeDeterministicWriteAndReturnsAuthorita
 			t.Fatalf("unsafe audit field %q in %#v", forbidden, f.auditor.value)
 		}
 	}
+	wantIdempotency, prepareErr := prepareStageIdempotency(f.call, StageResourceContentCommand{
+		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
+		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
+		Size: 5, ExpectedSHA256: sha, IdempotencyKey: "test-key",
+	})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
 }
 
 func TestStageResourceContentReadyReplaySkipsContentWrite(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.returnReady = true
-	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), Idempotency: &store.CommandIdempotency{}})
+	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +75,7 @@ func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
 	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{
 		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
 		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
-		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), Idempotency: &store.CommandIdempotency{},
+		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +89,7 @@ func TestStageResourceContentUsesExplicitOverrideWithoutCurrentUnitMembership(t 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.memberships.empty = true
-	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), Idempotency: &store.CommandIdempotency{}})
+	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +103,7 @@ func TestStageReplacementPinsFileEntryFromExactBaseRevision(t *testing.T) {
 	f := newCorrectionFixture(t)
 	resourceID, entryID := model.NewExamResourceID(), model.NewFileEntryID()
 	f.revisions.snapshot = &model.ExamRevision{ID: f.baseRevisionID, ExamID: f.examID, Resources: []model.ExamRevisionResource{{ResourceID: resourceID, FileEntryID: entryID}}}
-	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), Idempotency: &store.CommandIdempotency{}})
+	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceReplacement, ResourceID: resourceID, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +116,7 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.persistence.applyReplayed = true
-	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, PrivateReason: "Correct a discovered ambiguity", Idempotency: &store.CommandIdempotency{}})
+	result, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{}, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,13 +135,21 @@ func TestApplyUsesOneAtomicStoreCommandAndSuppressesReplayEffects(t *testing.T) 
 			t.Fatalf("unsafe audit field %q", forbidden)
 		}
 	}
+	wantIdempotency, prepareErr := prepareApplyIdempotency(f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID,
+		ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID,
+		Instructions: OptionalInstructions{Present: true, Markdown: "Updated"}, Resources: []ResourceManifestItem{},
+		PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
 }
 
 func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
 	f.effects.err = errors.New("realtime unavailable")
-	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Resources: []ResourceManifestItem{}, PrivateReason: "Correct a discovered ambiguity", Idempotency: &store.CommandIdempotency{}})
+	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, Resources: []ResourceManifestItem{}, PrivateReason: "Correct a discovered ambiguity", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +161,7 @@ func TestApplyPublishesOnlyAfterCommitAndReportsTransientFailure(t *testing.T) {
 func TestApplyRejectsNonCanonicalPrivateReasonBeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
-	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", Idempotency: &store.CommandIdempotency{}})
+	_, err := f.service.Apply(context.Background(), f.call, ApplyCommand{ExamID: f.examID, SittingID: f.sittingID, ExpectedSittingRevision: 3, ExpectedCurrentRevisionID: f.baseRevisionID, PrivateReason: " padded ", IdempotencyKey: "test-key"})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.sitting.correction.invalid" || len(f.order) != 0 {
 		t.Fatalf("error=%v order=%v", err, f.order)
@@ -199,11 +216,12 @@ type correctionStoreFake struct {
 	returnReady    bool
 	application    *store.ExamCorrectionApplication
 	applyReplayed  bool
+	idempotency    *store.CommandIdempotency
 }
 
-func (s *correctionStoreFake) ReserveResourceStage(_ context.Context, in *store.ExamCorrectionResourceStageReservation, _ *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
+func (s *correctionStoreFake) ReserveResourceStage(_ context.Context, in *store.ExamCorrectionResourceStageReservation, command *store.CommandIdempotency) (*store.ExamCorrectionResourceStage, error) {
 	s.f.order = append(s.f.order, "reserve")
-	s.reservation = in
+	s.reservation, s.idempotency = in, command
 	stage := &store.ExamCorrectionResourceStage{ID: in.StageID, ExamID: in.ExamID, SittingID: in.SittingID, BaseRevisionID: in.BaseRevisionID, Target: in.Target, ResourceID: in.ResourceID, FileEntryID: in.FileEntryID, FileRevisionID: in.Revision.ID, UploadLeaseID: in.Lease.ID, RenditionID: in.RenditionID, CreatedByUserID: in.ActorUserID, State: store.ExamCorrectionResourceStagePending, CreatedAt: in.CreatedAt, ExpiresAt: in.Lease.ExpiresAt}
 	if !s.stageCreatedAt.IsZero() {
 		stage.CreatedAt = s.stageCreatedAt
@@ -220,9 +238,9 @@ func (s *correctionStoreFake) MarkResourceStageReady(_ context.Context, in *stor
 	r := in.Rendition
 	return &store.ExamCorrectionResourceStage{ID: s.reservation.StageID, ExamID: s.reservation.ExamID, SittingID: s.reservation.SittingID, BaseRevisionID: s.reservation.BaseRevisionID, Target: s.reservation.Target, ResourceID: s.reservation.ResourceID, FileEntryID: s.reservation.FileEntryID, FileRevisionID: s.reservation.Revision.ID, UploadLeaseID: s.reservation.Lease.ID, RenditionID: s.reservation.RenditionID, CreatedByUserID: s.reservation.ActorUserID, State: store.ExamCorrectionResourceStageReady, ExpiresAt: s.reservation.Lease.ExpiresAt, Rendition: r}, nil
 }
-func (s *correctionStoreFake) Apply(_ context.Context, in *store.ExamCorrectionApplication, _ *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
+func (s *correctionStoreFake) Apply(_ context.Context, in *store.ExamCorrectionApplication, command *store.CommandIdempotency) (*store.ExamCorrectionResult, error) {
 	s.f.order = append(s.f.order, "apply")
-	s.application = in
+	s.application, s.idempotency = in, command
 	sitting := &model.ExamSitting{ID: in.SittingID, ExamID: in.ExamID, ExamRevisionID: in.RevisionID, State: model.ExamSittingOpen, Revision: in.ExpectedSittingRevision + 1, UpdatedAt: in.AppliedAt}
 	effectiveAt := in.AppliedAt.Add(-time.Minute)
 	return &store.ExamCorrectionResult{Revision: &store.ExamRevisionSummary{ID: in.RevisionID, ExamID: in.ExamID, Number: 2, Kind: model.ExamRevisionPublicationLiveCorrection, PublishedAt: effectiveAt}, Sitting: &store.ExamSittingSnapshot{Sitting: sitting}, PreviousRevisionID: in.CurrentRevisionID, EffectiveAt: effectiveAt, Replayed: s.applyReplayed}, nil

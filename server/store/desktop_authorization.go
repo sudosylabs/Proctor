@@ -36,7 +36,11 @@ type DesktopAuthorizationCancellation struct {
 	HandleHash       string
 	BrowserProofHash string
 	StateHash        string
-	CancelledAt      int64
+}
+
+type DesktopAuthorizationCodeIssued struct {
+	CallbackURL   string
+	CodeExpiresAt time.Time
 }
 
 // DesktopAuthorizationExchange atomically consumes one code and creates an
@@ -60,7 +64,7 @@ type DesktopAuthorizationExchange struct {
 }
 
 type DesktopAuthorizationExchangeResult struct {
-	Transaction *model.BrowserAuthenticationTransaction
-	Session     *model.Session
-	Credentials []*model.SessionCredential
+	Session          *model.Session
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
 }

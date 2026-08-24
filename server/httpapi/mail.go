@@ -5,8 +5,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -121,6 +119,7 @@ type mailMetricsResponse struct {
 }
 
 type mailDeliveryCursor struct {
+	Version   int    `json:"version,omitempty"`
 	CreatedAt string `json:"created_at"`
 	ID        string `json:"id"`
 }
@@ -286,7 +285,10 @@ func (m mailResourceModule) listDeliveries(request operationRequest) (operationR
 	}
 	if len(page.Items) == query.Limit {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID.String()})
+		response.NextCursor, err = encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("mail.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -401,27 +403,29 @@ func parseMailFilterTime(raw string) (time.Time, error) {
 	return model.TimeFromMillis(millis), nil
 }
 
-func encodeMailDeliveryCursor(cursor mailDeliveryCursor) string {
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeMailDeliveryCursor(cursor mailDeliveryCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, mailDeliveryCursorSpec())
 }
 
 func decodeMailDeliveryCursor(raw string) (mailDeliveryCursor, error) {
-	var cursor mailDeliveryCursor
-	if len(raw) == 0 || len(raw) > 512 {
-		return cursor, errors.New("invalid mail delivery cursor")
+	return decodeOpaqueCursor(raw, mailDeliveryCursorSpec())
+}
+
+func mailDeliveryCursorSpec() opaqueCursorSpec[mailDeliveryCursor] {
+	return opaqueCursorSpec[mailDeliveryCursor]{
+		label: "mail delivery", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "created_at", "id"},
+		version:        func(cursor mailDeliveryCursor) int { return cursor.Version },
+		setVersion:     func(cursor *mailDeliveryCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 0 || version == 1 },
+		validate: func(cursor mailDeliveryCursor) error {
+			parsed, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			if err != nil || parsed.IsZero() || !model.MailDeliveryID(cursor.ID).IsValid() {
+				return errors.New("invalid mail delivery keyset")
+			}
+			return nil
+		},
 	}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, err
-	}
-	if err = json.Unmarshal(decoded, &cursor); err != nil || cursor.CreatedAt == "" || !model.MailDeliveryID(cursor.ID).IsValid() {
-		return cursor, errors.New("invalid mail delivery cursor")
-	}
-	if parsed, parseErr := time.Parse(time.RFC3339Nano, cursor.CreatedAt); parseErr != nil || parsed.IsZero() {
-		return cursor, errors.New("invalid mail delivery cursor")
-	}
-	return cursor, nil
 }
 
 func mailResponse(view application.MailDeliveryView) mailDeliveryResponse {

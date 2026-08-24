@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	examengine "github.com/sudosylabs/proctor/server/app/exam"
@@ -78,20 +77,9 @@ type examUseCases interface {
 
 func (a *App) CreateExam(ctx context.Context, invocation Invocation, command CreateExamCommand) (result ExamView, resultErr error) {
 	defer func() { a.recordOperational("exam", "create", resultErr) }()
-	if command.IdempotencyKey == "" {
-		return ExamView{}, NewError("idempotency.key_required")
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.create.v1", command.IdempotencyKey, struct {
-		AcademicUnitID       string `json:"academic_unit_id"`
-		Title                string `json:"title"`
-		InstructionsMarkdown string `json:"instructions_markdown"`
-	}{command.AcademicUnitID.String(), command.Title, command.InstructionsMarkdown})
-	if err != nil {
-		return ExamView{}, err
-	}
 	view, err := a.exams.Create(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.CreateCommand{
 		AcademicUnitID: command.AcademicUnitID, Title: command.Title,
-		InstructionsMarkdown: command.InstructionsMarkdown, Idempotency: idempotency,
+		InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, false)
@@ -108,26 +96,9 @@ func (a *App) GetExam(ctx context.Context, invocation Invocation, query GetExamQ
 }
 
 func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, command EditExamDraftTextCommand) (ExamView, error) {
-	if command.IdempotencyKey == "" {
-		return ExamView{}, NewError("idempotency.key_required")
-	}
-	var normalizedTitle *string
-	if command.Title != nil {
-		value := strings.TrimSpace(*command.Title)
-		normalizedTitle = &value
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.draft.text.edit.v1", command.IdempotencyKey, struct {
-		ExamID                string  `json:"exam_id"`
-		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
-		Title                 *string `json:"title"`
-		InstructionsMarkdown  *string `json:"instructions_markdown"`
-	}{command.ExamID.String(), command.ExpectedDraftRevision, normalizedTitle, command.InstructionsMarkdown})
-	if err != nil {
-		return ExamView{}, err
-	}
 	view, err := a.exams.EditDraftText(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.EditDraftTextCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Title: normalizedTitle, InstructionsMarkdown: command.InstructionsMarkdown, Idempotency: idempotency,
+		Title: command.Title, InstructionsMarkdown: command.InstructionsMarkdown, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, true)
@@ -136,31 +107,10 @@ func (a *App) EditExamDraftText(ctx context.Context, invocation Invocation, comm
 }
 
 func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invocation, command ConfigureExamDraftFocusLossCommand) (ExamView, error) {
-	if command.IdempotencyKey == "" {
-		return ExamView{}, NewError("idempotency.key_required")
-	}
-	minimumDuration := time.Duration(command.MinimumDuration.Milliseconds()) * time.Millisecond
-	window := time.Duration(command.Window.Milliseconds()) * time.Millisecond
-	idempotency, err := newCommandIdempotency(invocation, "exam.draft.focus_loss.configure.v1", command.IdempotencyKey, struct {
-		ExamID                      string                          `json:"exam_id"`
-		ExpectedDraftRevision       int64                           `json:"expected_draft_revision"`
-		Enabled                     bool                            `json:"enabled"`
-		MinimumDurationMilliseconds int64                           `json:"minimum_duration_milliseconds"`
-		IncidentCount               int                             `json:"incident_count"`
-		WindowMilliseconds          int64                           `json:"window_milliseconds"`
-		Outcome                     model.IntegrityThresholdOutcome `json:"outcome"`
-	}{
-		ExamID: command.ExamID.String(), ExpectedDraftRevision: command.ExpectedDraftRevision,
-		Enabled: command.Enabled, MinimumDurationMilliseconds: minimumDuration.Milliseconds(),
-		IncidentCount: command.IncidentCount, WindowMilliseconds: window.Milliseconds(), Outcome: command.Outcome,
-	})
-	if err != nil {
-		return ExamView{}, err
-	}
 	view, err := a.exams.ConfigureDraftFocusLoss(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftFocusLossCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		FocusLoss:   model.FocusLossPolicy{Enabled: command.Enabled, MinimumDuration: minimumDuration, IncidentCount: command.IncidentCount, Window: window, Outcome: command.Outcome},
-		Idempotency: idempotency,
+		FocusLoss:      model.FocusLossPolicy{Enabled: command.Enabled, MinimumDuration: command.MinimumDuration, IncidentCount: command.IncidentCount, Window: command.Window, Outcome: command.Outcome},
+		IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, true)
@@ -169,23 +119,9 @@ func (a *App) ConfigureExamDraftFocusLoss(ctx context.Context, invocation Invoca
 }
 
 func (a *App) ConfigureExamDraftExecutionProfile(ctx context.Context, invocation Invocation, command ConfigureExamDraftExecutionProfileCommand) (ExamView, error) {
-	if command.IdempotencyKey == "" {
-		return ExamView{}, NewError("idempotency.key_required")
-	}
-	profile := model.ExecutionProfile{Enabled: command.Enabled, Image: strings.TrimSpace(command.Image), Network: command.Network}
-	if err := profile.Validate(); err != nil {
-		return ExamView{}, NewError("exam.invalid").Wrap(err)
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.draft.execution_profile.configure.v1", command.IdempotencyKey, struct {
-		ExamID                string                 `json:"exam_id"`
-		ExpectedDraftRevision int64                  `json:"expected_draft_revision"`
-		Profile               model.ExecutionProfile `json:"profile"`
-	}{command.ExamID.String(), command.ExpectedDraftRevision, profile})
-	if err != nil {
-		return ExamView{}, err
-	}
 	view, err := a.exams.ConfigureDraftExecutionProfile(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftExecutionProfileCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Profile: profile, Idempotency: idempotency,
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
+		Profile: model.ExecutionProfile{Enabled: command.Enabled, Image: command.Image, Network: command.Network}, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, true)
@@ -229,7 +165,7 @@ func executionCatalogSupports(images []appexecution.ImageOption, profile model.E
 	return false
 }
 
-type examExecutionProfileCatalog struct{ execution executionUseCases }
+type examExecutionProfileCatalog struct{ execution executionImageCatalog }
 
 func (catalog examExecutionProfileCatalog) Supports(ctx context.Context, profile model.ExecutionProfile) (bool, error) {
 	if !profile.Enabled {

@@ -85,23 +85,10 @@ type examCorrectionUseCases interface {
 }
 
 func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, invocation Invocation, command StageExamSittingCorrectionResourceContentCommand) (ExamSittingCorrectionResourceStage, error) {
-	idempotency, err := newCommandIdempotency(invocation, store.ExamCorrectionResourceStageOperation, command.IdempotencyKey, struct {
-		ExamID         string `json:"exam_id"`
-		SittingID      string `json:"exam_sitting_id"`
-		BaseRevisionID string `json:"base_revision_id"`
-		Target         string `json:"target"`
-		ResourceID     string `json:"resource_id,omitempty"`
-		MediaType      string `json:"media_type"`
-		Size           int64  `json:"size"`
-		SHA256         string `json:"sha256"`
-	}{command.ExamID.String(), command.SittingID.String(), command.BaseRevisionID.String(), string(command.Target), command.ResourceID.String(), string(command.MediaType), command.Size, command.ExpectedSHA256})
-	if err != nil {
-		return ExamSittingCorrectionResourceStage{}, err
-	}
 	result, err := a.examCorrections.StageResourceContent(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), examcorrection.StageResourceContentCommand{
 		ExamID: command.ExamID, SittingID: command.SittingID, BaseRevisionID: command.BaseRevisionID, Target: command.Target,
 		ResourceID: command.ResourceID, MediaType: command.MediaType, Body: command.Body, Size: command.Size,
-		ExpectedSHA256: command.ExpectedSHA256, Idempotency: idempotency,
+		ExpectedSHA256: command.ExpectedSHA256, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamSittingCorrectionResourceStage{}, examCorrectionError(err, true)
@@ -110,34 +97,14 @@ func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, inv
 }
 
 func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocation, command ApplyExamSittingCorrectionCommand) (ExamSittingCorrectionResult, error) {
-	resources := make([]struct {
-		ResourceID          string `json:"resource_id"`
-		DisplayName         string `json:"display_name"`
-		DescriptionMarkdown string `json:"description_markdown"`
-		StageID             string `json:"stage_id,omitempty"`
-	}, len(command.Resources))
 	childResources := make([]examcorrection.ResourceManifestItem, len(command.Resources))
 	for index, item := range command.Resources {
-		resources[index].ResourceID, resources[index].DisplayName, resources[index].DescriptionMarkdown, resources[index].StageID = item.ResourceID.String(), item.DisplayName, item.DescriptionMarkdown, item.StageID.String()
 		childResources[index] = examcorrection.ResourceManifestItem{ResourceID: item.ResourceID, DisplayName: item.DisplayName, DescriptionMarkdown: item.DescriptionMarkdown, StageID: item.StageID}
-	}
-	idempotency, err := newCommandIdempotency(invocation, "exam.sitting.correction.apply.v1", command.IdempotencyKey, struct {
-		ExamID                    string `json:"exam_id"`
-		SittingID                 string `json:"exam_sitting_id"`
-		ExpectedSittingRevision   int64  `json:"expected_sitting_revision"`
-		ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
-		InstructionsPresent       bool   `json:"instructions_present"`
-		InstructionsMarkdown      string `json:"instructions_markdown"`
-		Resources                 any    `json:"resources"`
-		PrivateReason             string `json:"private_reason"`
-	}{command.ExamID.String(), command.SittingID.String(), command.ExpectedSittingRevision, command.ExpectedCurrentRevisionID.String(), command.Instructions.Present, command.Instructions.Markdown, resources, command.PrivateReason})
-	if err != nil {
-		return ExamSittingCorrectionResult{}, err
 	}
 	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), examcorrection.ApplyCommand{
 		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedSittingRevision: command.ExpectedSittingRevision,
 		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID, Instructions: examcorrection.OptionalInstructions{Present: command.Instructions.Present, Markdown: command.Instructions.Markdown},
-		Resources: childResources, PrivateReason: command.PrivateReason, Idempotency: idempotency,
+		Resources: childResources, PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamSittingCorrectionResult{}, examCorrectionError(err, true)

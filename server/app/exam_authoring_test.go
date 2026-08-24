@@ -28,14 +28,14 @@ func TestCreateExamBuildsChildCallAndIdempotency(t *testing.T) {
 	if view != child.view || child.call.Principal().UserID != userID || child.call.RequestMetadata().RequestID != "request-1" {
 		t.Fatalf("view/call = %#v / %#v", view, child.call)
 	}
-	if child.create.Idempotency == nil || child.create.Idempotency.Operation != "exam.create.v1" || child.create.Idempotency.UserID != userID {
-		t.Fatalf("idempotency = %#v", child.create.Idempotency)
+	if child.create.IdempotencyKey != "retry-key" {
+		t.Fatalf("idempotency key = %q", child.create.IdempotencyKey)
 	}
 }
 
 func TestCreateExamRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{}}
+	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
 	_, err := application.CreateExam(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), CreateExamCommand{AcademicUnitID: model.NewAcademicUnitID(), Title: "Algorithms"})
 	if !Is(err, "idempotency.key_required") {
 		t.Fatalf("error = %v, want idempotency.key_required", err)
@@ -73,14 +73,14 @@ func TestEditExamDraftTextBuildsPresenceAwareIdempotentChildCommand(t *testing.T
 	if view != child.view || child.edit.ExamID != examID || child.edit.ExpectedDraftRevision != 4 || child.edit.Title == nil || *child.edit.Title != title || child.edit.InstructionsMarkdown != nil {
 		t.Fatalf("view/edit = %#v / %#v", view, child.edit)
 	}
-	if child.edit.Idempotency == nil || child.edit.Idempotency.Operation != "exam.draft.text.edit.v1" || child.edit.Idempotency.UserID != userID {
-		t.Fatalf("idempotency = %#v", child.edit.Idempotency)
+	if child.edit.IdempotencyKey != "edit-once" {
+		t.Fatalf("idempotency key = %q", child.edit.IdempotencyKey)
 	}
 }
 
 func TestEditExamDraftTextRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{}}
+	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
 	title := "Algorithms"
 	_, err := application.EditExamDraftText(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), EditExamDraftTextCommand{
 		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Title: &title,
@@ -90,30 +90,21 @@ func TestEditExamDraftTextRequiresIdempotencyKey(t *testing.T) {
 	}
 }
 
-func TestEditExamDraftTextFingerprintsNormalizedTitle(t *testing.T) {
+func TestEditExamDraftTextForwardsRawTitleAndKey(t *testing.T) {
 	t.Parallel()
 	userID := model.NewUserID()
 	child := &examUseCasesFake{}
 	application := &App{exams: child}
 	invocation := NewInvocation(testExamPrincipal(userID), model.RequestMetadata{})
 	examID := model.NewExamID()
-	plain, padded := "Algorithms", "  Algorithms  "
-	var first [32]byte
-	for index, title := range []*string{&plain, &padded} {
-		if _, err := application.EditExamDraftText(context.Background(), invocation, EditExamDraftTextCommand{
-			ExamID: examID, ExpectedDraftRevision: 1, Title: title, IdempotencyKey: "same-key",
-		}); err != nil {
-			t.Fatal(err)
-		}
-		if child.edit.Title == nil || *child.edit.Title != plain {
-			t.Fatalf("child title = %#v", child.edit.Title)
-		}
-		if index == 0 {
-			first = child.edit.Idempotency.Fingerprint
-		}
+	padded := "  Algorithms  "
+	if _, err := application.EditExamDraftText(context.Background(), invocation, EditExamDraftTextCommand{
+		ExamID: examID, ExpectedDraftRevision: 1, Title: &padded, IdempotencyKey: "same-key",
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if child.edit.Idempotency.Fingerprint != first {
-		t.Fatal("semantically identical titles produced different fingerprints")
+	if child.edit.Title == nil || *child.edit.Title != padded || child.edit.IdempotencyKey != "same-key" {
+		t.Fatalf("child command = %#v", child.edit)
 	}
 }
 
@@ -134,18 +125,18 @@ func TestConfigureExamDraftFocusLossBuildsTypedIdempotentChildCommand(t *testing
 	}
 	got := child.focusLoss
 	if view != child.view || got.ExamID != examID || got.ExpectedDraftRevision != 4 || got.FocusLoss != (model.FocusLossPolicy{
-		Enabled: false, MinimumDuration: 500 * time.Millisecond, IncidentCount: 100, Window: 4 * time.Hour, Outcome: model.IntegrityOutcomeFlagAndSuspend,
+		Enabled: false, MinimumDuration: 500*time.Millisecond + time.Nanosecond, IncidentCount: 100, Window: 4*time.Hour + time.Nanosecond, Outcome: model.IntegrityOutcomeFlagAndSuspend,
 	}) {
 		t.Fatalf("view/command = %#v / %#v", view, got)
 	}
-	if got.Idempotency == nil || got.Idempotency.Operation != "exam.draft.focus_loss.configure.v1" || got.Idempotency.UserID != userID {
-		t.Fatalf("idempotency = %#v", got.Idempotency)
+	if got.IdempotencyKey != "configure-focus-once" {
+		t.Fatalf("idempotency key = %q", got.IdempotencyKey)
 	}
 }
 
 func TestConfigureExamDraftFocusLossRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{}}
+	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
 	_, err := application.ConfigureExamDraftFocusLoss(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ConfigureExamDraftFocusLossCommand{
 		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Enabled: true, MinimumDuration: time.Second,
 		IncidentCount: 1, Window: time.Minute, Outcome: model.IntegrityOutcomeFlag,
@@ -174,14 +165,14 @@ func TestConfigureExamDraftExecutionProfileBuildsTypedIdempotentChildCommand(t *
 	}) {
 		t.Fatalf("view/command = %#v / %#v", view, got)
 	}
-	if got.Idempotency == nil || got.Idempotency.Operation != "exam.draft.execution_profile.configure.v1" || got.Idempotency.UserID != userID {
-		t.Fatalf("idempotency = %#v", got.Idempotency)
+	if got.IdempotencyKey != "configure-execution-once" {
+		t.Fatalf("idempotency key = %q", got.IdempotencyKey)
 	}
 }
 
 func TestConfigureExamDraftExecutionProfileRequiresIdempotencyKey(t *testing.T) {
 	t.Parallel()
-	application := &App{exams: &examUseCasesFake{}}
+	application := &App{exams: &examUseCasesFake{err: &examengine.Fault{Code: "idempotency.key_required"}}}
 	_, err := application.ConfigureExamDraftExecutionProfile(context.Background(), NewInvocation(testExamPrincipal(model.NewUserID()), model.RequestMetadata{}), ConfigureExamDraftExecutionProfileCommand{
 		ExamID: model.NewExamID(), ExpectedDraftRevision: 1, Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkNone,
 	})

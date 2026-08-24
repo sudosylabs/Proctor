@@ -274,6 +274,34 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "idempotency application",
+		sources:        []pathPattern{exact(serverModule + "/app/idempotency")},
+		deniedStandard: standardInfrastructure,
+		project: only(
+			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
+		),
+	},
+	{
+		name: "exam idempotency consumers",
+		sources: []pathPattern{
+			exact(serverModule + "/app/exam"),
+			exact(serverModule + "/app/exam/attempt"),
+			exact(serverModule + "/app/exam/correction"),
+			exact(serverModule + "/app/exam/resource"),
+			exact(serverModule + "/app/exam/review"),
+			exact(serverModule + "/app/exam/sitting"),
+			exact(serverModule + "/app/exam/workspace"),
+		},
+		deniedStandard: standardInfrastructure,
+		project: only(
+			exact(serverModule+"/app/idempotency"),
+			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
+			exact(serverModule+"/app/exam/safemarkdown"),
+		),
+	},
+	{
 		name:           "exam application",
 		sources:        []pathPattern{subtree(serverModule + "/app/exam")},
 		deniedStandard: standardInfrastructure,
@@ -318,6 +346,7 @@ var dependencyRules = []dependencyRule{
 		sources:        []pathPattern{subtree(serverModule + "/app")},
 		deniedStandard: standardInfrastructure,
 		project: only(
+			exact(serverModule+"/app/idempotency"),
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
 			exact(serverModule+"/app/job"),
@@ -513,7 +542,9 @@ func TestDependencyRulePrecedence(t *testing.T) {
 		wantRule    string
 	}{
 		{packagePath: serverModule + "/app/jobs", wantRule: "concrete jobs"},
-		{packagePath: serverModule + "/app/exam/review", wantRule: "exam application"},
+		{packagePath: serverModule + "/app/idempotency", wantRule: "idempotency application"},
+		{packagePath: serverModule + "/app/exam/review", wantRule: "exam idempotency consumers"},
+		{packagePath: serverModule + "/app/exam/safemarkdown", wantRule: "exam application"},
 		{packagePath: serverModule + "/store/sqlstore", wantRule: "SQL store adapter"},
 		{packagePath: serverModule + "/platform/externalauth/oidc", wantRule: "external-auth adapters"},
 		{packagePath: serverModule + "/cmd/proctor-healthcheck", wantRule: "healthcheck executable"},
@@ -531,6 +562,30 @@ func TestDependencyRulePrecedence(t *testing.T) {
 				t.Fatalf("dependencyRuleFor(%q) = %q, want %q", tt.packagePath, rule.name, tt.wantRule)
 			}
 		})
+	}
+}
+
+func TestExamIdempotencyConsumerAllowlist(t *testing.T) {
+	t.Parallel()
+
+	for _, packagePath := range []string{
+		serverModule + "/app/exam",
+		serverModule + "/app/exam/attempt",
+		serverModule + "/app/exam/correction",
+		serverModule + "/app/exam/resource",
+		serverModule + "/app/exam/review",
+		serverModule + "/app/exam/sitting",
+		serverModule + "/app/exam/workspace",
+	} {
+		if forbiddenImport(packagePath, serverModule+"/app/idempotency") {
+			t.Errorf("%s cannot import the shared idempotency leaf", packagePath)
+		}
+	}
+	if !forbiddenImport(serverModule+"/app/exam/safemarkdown", serverModule+"/app/idempotency") {
+		t.Error("unlisted Exam child can import the shared idempotency leaf")
+	}
+	if !forbiddenImport(serverModule+"/app/exam/attempt/internal", serverModule+"/app/idempotency") {
+		t.Error("descendant of a listed Exam command owner can import the shared idempotency leaf")
 	}
 }
 

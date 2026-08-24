@@ -4,12 +4,8 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -147,9 +143,15 @@ func (module examRevisionHTTPModule) list(request operationRequest) (operationRe
 	for _, item := range page.Items {
 		response.Items = append(response.Items, examRevisionResponseFromSummary(item))
 	}
-	if page.HasMore && len(page.Items) > 0 {
+	if page.HasMore && len(page.Items) == 0 {
+		return operationResult{}, application.NewError("exam.unavailable").Wrap(errors.New("revision page made no progress"))
+	}
+	if page.HasMore {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeExamRevisionCursor(examRevisionCursor{Number: last.Number, RevisionID: last.ID.String()})
+		response.NextCursor, err = encodeExamRevisionCursor(examRevisionCursor{Number: last.Number, RevisionID: last.ID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response), nil
 }
@@ -197,26 +199,26 @@ func examRevisionResponseFromSummary(summary application.ExamRevisionSummary) ex
 	}
 }
 
-func encodeExamRevisionCursor(cursor examRevisionCursor) string {
-	cursor.Version = examRevisionCursorVersion
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeExamRevisionCursor(cursor examRevisionCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, examRevisionCursorSpec())
 }
 
 func decodeExamRevisionCursor(raw string) (examRevisionCursor, error) {
-	var cursor examRevisionCursor
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, errors.New("invalid Exam Revision cursor")
+	return decodeOpaqueCursor(raw, examRevisionCursorSpec())
+}
+
+func examRevisionCursorSpec() opaqueCursorSpec[examRevisionCursor] {
+	return opaqueCursorSpec[examRevisionCursor]{
+		label: "Exam Revision", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examRevisionCursorVersion,
+		members:        []string{"version", "number", "revision_id"},
+		version:        func(cursor examRevisionCursor) int { return cursor.Version },
+		setVersion:     func(cursor *examRevisionCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == examRevisionCursorVersion },
+		validate: func(cursor examRevisionCursor) error {
+			if cursor.Number < 1 || !model.ExamRevisionID(cursor.RevisionID).IsValid() {
+				return errors.New("invalid Exam Revision keyset")
+			}
+			return nil
+		},
 	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&cursor); err != nil || cursor.Version != examRevisionCursorVersion || cursor.Number < 1 || !model.ExamRevisionID(cursor.RevisionID).IsValid() {
-		return cursor, errors.New("invalid Exam Revision cursor")
-	}
-	var trailing any
-	if err = decoder.Decode(&trailing); err != io.EOF {
-		return cursor, errors.New("invalid Exam Revision cursor")
-	}
-	return cursor, nil
 }

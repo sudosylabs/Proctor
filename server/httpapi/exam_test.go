@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -73,12 +74,33 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"title":"Systems"`)) || bytes.Contains(response.Body.Bytes(), []byte("instructions_markdown")) || bytes.Contains(response.Body.Bytes(), []byte("policy")) {
 		t.Fatalf("unsafe list response = %s", response.Body.String())
 	}
+	before := time.Date(2026, 8, 13, 7, 6, 5, 432, time.UTC)
+	cursor, err := encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: before.Format(time.RFC3339Nano), ExamID: examID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := httptest.NewRequest(http.MethodGet, "/api/v1/exams?cursor="+url.QueryEscape(cursor), nil)
+	second.Header.Set("Authorization", "Bearer credential")
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusOK || !fake.list.BeforeUpdatedAt.Equal(before) || fake.list.BeforeExamID != examID {
+		t.Fatalf("catalog cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.list, secondResponse.Body.String())
+	}
+	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/exams?cursor=not-a-cursor", nil)
+	malformed.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 }
 
 func TestExamCatalogCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 	cursor := examCatalogCursor{Version: 1, UpdatedAt: "2026-08-14T08:00:00.123456789Z", ExamID: model.NewExamID().String()}
-	got, err := decodeExamCatalogCursor(encodeExamCatalogCursor(cursor))
+	encodedCursor, err := encodeExamCatalogCursor(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeExamCatalogCursor(encodedCursor)
 	if err != nil || got != cursor {
 		t.Fatalf("cursor = %#v, %v", got, err)
 	}
@@ -125,6 +147,22 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 	if listed.Code != http.StatusOK || fake.managerList.Limit != 1 || !bytes.Contains(listed.Body.Bytes(), []byte(target.String())) || bytes.Contains(listed.Body.Bytes(), []byte("display_name")) {
 		t.Fatalf("list = %d query=%#v body=%s", listed.Code, fake.managerList, listed.Body.String())
 	}
+	cursor, err := encodeExamManagerCursor(examManagerCursor{GrantedAt: grantedAt.Format(time.RFC3339Nano), UserID: target.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+view.Exam.ID.String()+"/managers?cursor="+url.QueryEscape(cursor), nil)
+	second.Header.Set("Authorization", "Bearer credential")
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusOK || !fake.managerList.BeforeGrantedAt.Equal(grantedAt) || fake.managerList.BeforeUserID != target {
+		t.Fatalf("manager cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.managerList, secondResponse.Body.String())
+	}
+	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+view.Exam.ID.String()+"/managers?cursor=not-a-cursor", nil)
+	malformed.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 
 	add := httptest.NewRequest(http.MethodPost, "/api/v1/exams/"+view.Exam.ID.String()+"/managers", bytes.NewReader([]byte(`{"user_id":"`+target.String()+`","expected_exam_revision":1}`)))
 	add.Header.Set("Authorization", "Bearer credential")
@@ -150,7 +188,11 @@ func TestExamManagerHTTPListAndMutationsUseStrictBoundedContracts(t *testing.T) 
 func TestExamManagerCursorIsVersionedAndStrict(t *testing.T) {
 	t.Parallel()
 	cursor := examManagerCursor{Version: 1, GrantedAt: "2026-08-14T10:00:00Z", UserID: model.NewUserID().String()}
-	decoded, err := decodeExamManagerCursor(encodeExamManagerCursor(cursor))
+	encodedCursor, err := encodeExamManagerCursor(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeExamManagerCursor(encodedCursor)
 	if err != nil || decoded != cursor {
 		t.Fatalf("cursor = %#v, %v", decoded, err)
 	}

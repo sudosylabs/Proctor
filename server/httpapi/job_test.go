@@ -27,8 +27,12 @@ func TestJobResponseCannotExposePrivateExecutionDocuments(t *testing.T) {
 }
 
 func TestJobCursorIsOpaqueAndRejectsInvalidInput(t *testing.T) {
-	cursor := jobCursor{CreatedAt: 123, ID: model.NewId()}
-	roundTrip, err := decodeJobCursor(encodeJobCursor(cursor))
+	cursor := jobCursor{Version: 1, CreatedAt: 123, ID: model.NewId()}
+	encoded, err := encodeJobCursor(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := decodeJobCursor(encoded)
 	if err != nil || roundTrip != cursor {
 		t.Fatalf("cursor = %#v, %v", roundTrip, err)
 	}

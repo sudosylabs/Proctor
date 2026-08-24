@@ -281,7 +281,7 @@ func validActiveSuspension(view *store.ExamAttemptSuspensionView, attemptID mode
 type ConnectCommand struct {
 	SittingID            model.ExamSittingID
 	ContinuityCredential string
-	Idempotency          *store.CommandIdempotency
+	IdempotencyKey       string
 }
 
 type ConnectionResult struct {
@@ -346,7 +346,7 @@ type ReallowCommand struct {
 	SuspensionID            model.AttemptSuspensionID
 	ExpectedAttemptRevision int64
 	PrivateReason           string
-	Idempotency             *store.CommandIdempotency
+	IdempotencyKey          string
 }
 
 type ReallowResult struct {
@@ -361,15 +361,16 @@ type ReallowResult struct {
 
 func (service *Service) Reallow(ctx context.Context, call Call, command ReallowCommand) (ReallowResult, error) {
 	principal := call.Principal()
-	if command.Idempotency == nil {
-		return ReallowResult{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if principal.Validate() != nil {
 		return ReallowResult{}, &Fault{Code: "authentication.invalid_token"}
 	}
 	if !command.ExamID.IsValid() || !command.SittingID.IsValid() || !command.AttemptID.IsValid() ||
 		!command.SuspensionID.IsValid() || command.ExpectedAttemptRevision < 1 || !validReallowReason(command.PrivateReason) {
 		return ReallowResult{}, invalid("reallow")
+	}
+	idempotency, err := prepareReallowIdempotency(call, command)
+	if err != nil {
+		return ReallowResult{}, err
 	}
 	override, err := service.deps.Managers.AuthorizeSittingManage(ctx, call, command.SittingID)
 	if err != nil {
@@ -396,7 +397,7 @@ func (service *Service) Reallow(ctx context.Context, call Call, command ReallowC
 		ExamID: command.ExamID, SittingID: command.SittingID, AttemptID: command.AttemptID, SuspensionID: command.SuspensionID,
 		ActorUserID: principal.UserID, ManagerOverride: override, ExpectedAttemptRevision: command.ExpectedAttemptRevision,
 		PrivateReason: command.PrivateReason, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return ReallowResult{}, service.failAudit(ctx, auditID, err)
 	}
@@ -584,9 +585,6 @@ func (service *Service) RenewParticipation(ctx context.Context, call Call, comma
 
 func (service *Service) Connect(ctx context.Context, call Call, command ConnectCommand) (ConnectionResult, error) {
 	principal := call.Principal()
-	if command.Idempotency == nil {
-		return ConnectionResult{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
 		return ConnectionResult{}, &Fault{Code: "authentication.invalid_token"}
 	}
@@ -595,6 +593,10 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 	}
 	if !model.IsValidCredentialToken(command.ContinuityCredential) {
 		return ConnectionResult{}, invalid("continuity_credential")
+	}
+	idempotency, err := prepareConnectIdempotency(call, command)
+	if err != nil {
+		return ConnectionResult{}, err
 	}
 	snapshot, err := service.deps.Sittings.Resolve(ctx, command.SittingID)
 	if err != nil {
@@ -623,7 +625,7 @@ func (service *Service) Connect(ctx context.Context, call Call, command ConnectC
 		AttemptID: attemptID, WorkspaceID: workspaceID, ParticipationID: participationID, ConnectionID: connectionID,
 		ContinuityCredentialHash: credentialHash,
 		AuditEventID:             auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		return ConnectionResult{}, service.failAudit(ctx, auditID, err)
 	}

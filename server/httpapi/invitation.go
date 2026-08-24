@@ -5,12 +5,9 @@ package httpapi
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -336,10 +333,16 @@ func (m invitationResourceModule) list(request operationRequest) (operationResul
 	for _, item := range page.Items {
 		response.Items = append(response.Items, invitationAdministrationResponseFromView(item))
 	}
-	if page.More && len(page.Items) > 0 {
+	if page.More && len(page.Items) == 0 {
+		return operationResult{}, application.NewError("invitation.unavailable").Wrap(errors.New("invitation page made no progress"))
+	}
+	if page.More {
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeInvitationCursor(invitationCursor{Version: 1,
+		response.NextCursor, err = encodeInvitationCursor(invitationCursor{
 			CreatedAt: model.TimeUTC(last.CreatedAt).Format(time.RFC3339Nano), ID: last.ID.String()})
+		if err != nil {
+			return operationResult{}, application.NewError("invitation.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -469,32 +472,29 @@ func parseInvitationFilterTime(raw string) (time.Time, error) {
 	return model.TimeFromMillis(millis), nil
 }
 
-func encodeInvitationCursor(cursor invitationCursor) string {
-	encoded, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeInvitationCursor(cursor invitationCursor) (string, error) {
+	return encodeOpaqueCursor(cursor, invitationCursorSpec())
 }
 
 func decodeInvitationCursor(raw string) (invitationCursor, error) {
-	var cursor invitationCursor
-	if len(raw) == 0 || len(raw) > 512 {
-		return cursor, errors.New("invalid Invitation cursor")
+	return decodeOpaqueCursor(raw, invitationCursorSpec())
+}
+
+func invitationCursorSpec() opaqueCursorSpec[invitationCursor] {
+	return opaqueCursorSpec[invitationCursor]{
+		label: "Invitation", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: 1,
+		members:        []string{"version", "created_at", "id"},
+		version:        func(cursor invitationCursor) int { return cursor.Version },
+		setVersion:     func(cursor *invitationCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == 1 },
+		validate: func(cursor invitationCursor) error {
+			createdAt, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			if err != nil || createdAt.IsZero() || !model.InvitationID(cursor.ID).IsValid() {
+				return errors.New("invalid Invitation keyset")
+			}
+			return nil
+		},
 	}
-	decoded, err := base64.RawURLEncoding.DecodeString(raw)
-	if err != nil {
-		return cursor, err
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(decoded)))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&cursor); err != nil || cursor.Version != 1 || !model.InvitationID(cursor.ID).IsValid() {
-		return cursor, errors.New("invalid Invitation cursor")
-	}
-	if parsed, parseErr := time.Parse(time.RFC3339Nano, cursor.CreatedAt); parseErr != nil || parsed.IsZero() {
-		return cursor, errors.New("invalid Invitation cursor")
-	}
-	if decoder.Decode(&struct{}{}) == nil {
-		return cursor, errors.New("invalid Invitation cursor")
-	}
-	return cursor, nil
 }
 
 func (m invitationResourceModule) issueAcademicUnitRole(request operationRequest) (operationResult, error) {

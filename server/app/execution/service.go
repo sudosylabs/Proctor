@@ -256,6 +256,23 @@ func (s *Service) Release(ctx context.Context, attemptID model.ExamAttemptID) er
 	return nil
 }
 
+// ReleaseGrant releases only the named placement. Connection-scoped cleanup
+// uses this fence so it can never revoke a successor that another node placed
+// for the same Attempt.
+func (s *Service) ReleaseGrant(ctx context.Context, grantID model.ExecutionGrantID) error {
+	grant, err := s.grants.ReleaseGrant(ctx, grantID, s.now())
+	if store.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("release exact execution placement: %w", err)
+	}
+	if err := s.revokeReleased(ctx, grant); err != nil {
+		return fmt.Errorf("revoke exact released execution environment: %w", err)
+	}
+	return nil
+}
+
 // Sync converges an existing ready grant after an acknowledged IDE mutation.
 // Attempts without a grant require no transient work.
 func (s *Service) Sync(ctx context.Context, attemptID model.ExamAttemptID) error {

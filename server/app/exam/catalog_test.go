@@ -6,6 +6,7 @@ package exam
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 	fixture.persistence.actorIsManager = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	result, err := fixture.service.Archive(context.Background(), fixture.call, ArchiveCommand{ExamID: fixture.examID,
-		ExpectedExamRevision: 1, Idempotency: &store.CommandIdempotency{Operation: "exam.archive.v1"}})
+		ExpectedExamRevision: 1, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +55,8 @@ func TestArchiveOwnsAuthorizationAuditPersistenceAndSafeEffect(t *testing.T) {
 	if fixture.authorizer.action != model.ActionExamManage || len(fixture.auditor.value) != 3 || fixture.auditor.value["exam_id"] != fixture.examID.String() || fixture.auditor.value["expected_exam_revision"] != int64(1) || fixture.auditor.value["exam_revision"] != int64(2) {
 		t.Fatalf("authorization/audit = %s / %#v", fixture.authorizer.action, fixture.auditor.value)
 	}
+	assertStoreIdempotency(t, fixture.persistence.idempotency, fixture.userID, idempotencyOperationArchive, "test-key",
+		fmt.Sprintf(`{"exam_id":%q,"expected_exam_revision":1}`, fixture.examID))
 	want := []string{"store.access", "membership", "authorize", "audit.begin", "store.archive", "effect.archived"}
 	if !reflect.DeepEqual(*fixture.order, want) {
 		t.Fatalf("order = %v, want %v", *fixture.order, want)
@@ -68,7 +71,7 @@ func TestArchiveReplayAfterCurrentArchiveDoesNotRepublish(t *testing.T) {
 	fixture.persistence.replayed = true
 	fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 	if _, err := fixture.service.Archive(context.Background(), fixture.call, ArchiveCommand{ExamID: fixture.examID,
-		ExpectedExamRevision: 1, Idempotency: &store.CommandIdempotency{Operation: "exam.archive.v1"}}); err != nil {
+		ExpectedExamRevision: 1, IdempotencyKey: "test-key"}); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.persistence.archive == nil || fixture.effects.archivedRevision != 0 {
@@ -90,7 +93,7 @@ func TestArchiveNewAttemptRejectsArchivedAndStaleExamThroughAuditedStoreGuard(t 
 			fixture.persistence.archived = test.archived
 			fixture.memberships.items = []*model.AcademicUnitMember{{AcademicUnitID: fixture.unitID, UserID: fixture.userID}}
 			_, err := fixture.service.Archive(context.Background(), fixture.call, ArchiveCommand{ExamID: fixture.examID,
-				ExpectedExamRevision: test.revision, Idempotency: &store.CommandIdempotency{Operation: "exam.archive.v1"}})
+				ExpectedExamRevision: test.revision, IdempotencyKey: "test-key"})
 			var fault *Fault
 			if !errors.As(err, &fault) || fault.Code != test.want || fixture.auditor.failedCode != test.want {
 				t.Fatalf("archive error/audit = %v/%s, want %s", err, fixture.auditor.failedCode, test.want)

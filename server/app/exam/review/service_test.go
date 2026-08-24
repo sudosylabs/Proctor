@@ -19,7 +19,7 @@ func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *
 	result, err := f.service.SaveDecision(context.Background(), f.call, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
 		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
-		PrivateRationale: "The retained continuity evidence was verified.", Idempotency: &store.CommandIdempotency{},
+		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatalf("SaveDecision() error = %v", err)
@@ -36,6 +36,30 @@ func TestSaveDecisionAuthorizesAuditsAtomicallyAndSuppressesPrivateRationale(t *
 			t.Fatalf("private field %q in audit %#v", forbidden, f.auditor.value)
 		}
 	}
+	wantIdempotency, prepareErr := prepareDecisionIdempotency(f.call, SaveDecisionCommand{
+		SubmissionID: f.submissionID, FlagID: f.flagID, ExpectedReviewRevision: 0,
+		ExpectedDecisionRevision: 0, Outcome: model.IntegrityReviewConfirmed,
+		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
+	})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+}
+
+func TestUpdateDraftPassesOwnedIdempotencyToStore(t *testing.T) {
+	t.Parallel()
+	f := newReviewFixture(t)
+	command := UpdateDraftCommand{SubmissionID: f.submissionID, ReviewID: f.reviewID, ExpectedReviewRevision: 1,
+		ManagerNotes: "private", StudentRemarksMarkdown: "Visible", IdempotencyKey: "draft-key"}
+	if _, err := f.service.UpdateDraft(context.Background(), f.call, command); err != nil {
+		t.Fatal(err)
+	}
+	want, err := prepareDraftIdempotency(f.call, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, want)
 }
 
 func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
@@ -44,7 +68,7 @@ func TestExactDecisionReplayReturnsRetainedResultWithoutEffect(t *testing.T) {
 	f.persistence.replayed = true
 	result, err := f.service.SaveDecision(context.Background(), f.call, SaveDecisionCommand{
 		SubmissionID: f.submissionID, FlagID: f.flagID, Outcome: model.IntegrityReviewConfirmed,
-		PrivateRationale: "The retained continuity evidence was verified.", Idempotency: &store.CommandIdempotency{},
+		PrivateRationale: "The retained continuity evidence was verified.", IdempotencyKey: "test-key",
 	})
 	if err != nil || !result.Replayed || f.effects.changed != 0 {
 		t.Fatalf("result=%#v error=%v effects=%d", result, err, f.effects.changed)
@@ -56,16 +80,28 @@ func TestFinalizeAndReleaseUseDistinctAuthorizationAndEffects(t *testing.T) {
 	f := newReviewFixture(t)
 	f.persistence.mode = "finalize"
 	finalized, err := f.service.Finalize(context.Background(), f.call, FinalizeCommand{SubmissionID: f.submissionID,
-		ReviewID: f.reviewID, ExpectedReviewRevision: 2, Idempotency: &store.CommandIdempotency{}})
+		ReviewID: f.reviewID, ExpectedReviewRevision: 2, IdempotencyKey: "test-key"})
 	if err != nil || finalized.Review.State != model.SubmissionReviewFinalized || f.authorizer.reviewCalls != 1 || f.effects.finalized != 1 {
 		t.Fatalf("finalized=%#v error=%v auth=%#v effects=%#v", finalized, err, f.authorizer, f.effects)
 	}
+	wantFinalize, prepareErr := prepareTerminalIdempotency(f.call, store.ExamIntegrityReviewFinalizeOperation,
+		"test-key", f.submissionID, f.reviewID, 2)
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantFinalize)
 	f.persistence.mode = "release"
 	released, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
-		ReviewID: f.reviewID, ExpectedReviewRevision: 3, Idempotency: &store.CommandIdempotency{}})
+		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || released.Review.ReleaseState != model.SubmissionReviewReleased || f.authorizer.releaseCalls != 1 || f.effects.released != 1 {
 		t.Fatalf("released=%#v error=%v auth=%#v effects=%#v", released, err, f.authorizer, f.effects)
 	}
+	wantRelease, prepareErr := prepareTerminalIdempotency(f.call, store.ExamIntegrityReviewReleaseOperation,
+		"test-key", f.submissionID, f.reviewID, 3)
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantRelease)
 	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ReviewID != f.reviewID ||
 		!f.mail.request.ReleasedAt.Equal(f.at.Add(time.Minute)) || f.persistence.release == nil ||
 		f.persistence.release.Notice == nil || f.persistence.release.ExpectedRecipientRevision != 2 {
@@ -78,7 +114,7 @@ func TestReleaseReplayReturnsRetainedResultWithoutPreparingMail(t *testing.T) {
 	f := newReviewFixture(t)
 	f.persistence.mode, f.persistence.replayed = "release", true
 	released, err := f.service.Release(context.Background(), f.call, ReleaseCommand{SubmissionID: f.submissionID,
-		ReviewID: f.reviewID, ExpectedReviewRevision: 3, Idempotency: &store.CommandIdempotency{}})
+		ReviewID: f.reviewID, ExpectedReviewRevision: 3, IdempotencyKey: "test-key"})
 	if err != nil || !released.Replayed || f.effects.released != 0 || f.mail.calls != 0 ||
 		f.persistence.release == nil || f.persistence.release.Notice != nil {
 		t.Fatalf("released=%#v error=%v effects=%#v mail=%#v release=%#v", released, err, f.effects,
@@ -151,12 +187,14 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 }
 
 type reviewStoreFake struct {
-	f        *reviewFixture
-	decision *store.ExamIntegrityReviewDecisionMutation
-	replayed bool
-	mode     string
-	student  *model.StudentResult
-	release  *store.ExamIntegrityReviewRelease
+	f           *reviewFixture
+	decision    *store.ExamIntegrityReviewDecisionMutation
+	replayed    bool
+	mode        string
+	student     *model.StudentResult
+	release     *store.ExamIntegrityReviewRelease
+	draft       *store.ExamIntegrityReviewDraftMutation
+	idempotency *store.CommandIdempotency
 }
 
 func (fake *reviewStoreFake) PrepareRelease(context.Context, model.SubmissionID, model.SubmissionReviewID,
@@ -180,24 +218,30 @@ func (fake *reviewStoreFake) ListEvidence(context.Context, store.ExamIntegrityEv
 func (fake *reviewStoreFake) ListDiscrepancies(context.Context, store.ExamIntegrityDiscrepancyListOptions) (*store.ExamIntegrityDiscrepancyPage, error) {
 	return nil, errors.New("unused")
 }
-func (fake *reviewStoreFake) SaveDecision(_ context.Context, input *store.ExamIntegrityReviewDecisionMutation, _ *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	fake.decision = input
+func (fake *reviewStoreFake) SaveDecision(_ context.Context, input *store.ExamIntegrityReviewDecisionMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	fake.decision, fake.idempotency = input, command
 	review, _ := model.NewSubmissionReview(input.ReviewID, fake.f.submissionID, fake.f.userID, fake.f.at)
 	decision, _ := model.NewIntegrityReviewDecision(input.DecisionID, review.ID, fake.f.flagID,
 		model.IntegrityReviewConfirmed, fake.f.userID, "The retained continuity evidence was verified.", fake.f.at)
 	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review, Decision: decision, Replayed: fake.replayed}, nil
 }
-func (fake *reviewStoreFake) UpdateDraft(context.Context, *store.ExamIntegrityReviewDraftMutation, *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	return nil, errors.New("unused")
+func (fake *reviewStoreFake) UpdateDraft(_ context.Context, input *store.ExamIntegrityReviewDraftMutation, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	fake.draft, fake.idempotency = input, command
+	review, _ := model.NewSubmissionReview(fake.f.reviewID, fake.f.submissionID, fake.f.userID, fake.f.at.Add(-time.Minute))
+	_ = review.UpdateDraft(input.ExpectedReviewRevision, input.ManagerNotes, input.StudentRemarksMarkdown, fake.f.at)
+	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review}, nil
 }
-func (fake *reviewStoreFake) Finalize(context.Context, *store.ExamIntegrityReviewFinalize, *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+func (fake *reviewStoreFake) Finalize(_ context.Context, _ *store.ExamIntegrityReviewFinalize, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	if command != nil {
+		fake.idempotency = command
+	}
 	review, _ := model.NewSubmissionReview(fake.f.reviewID, fake.f.submissionID, fake.f.userID, fake.f.at.Add(-time.Minute))
 	_ = review.UpdateDraft(1, "", "", fake.f.at.Add(-30*time.Second))
 	_ = review.Finalize(2, fake.f.userID, 0, 0, 0, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", fake.f.at)
 	return &store.ExamIntegrityReviewMutationResult{Authorization: *mustReviewAuthorization(fake), Review: review}, nil
 }
-func (fake *reviewStoreFake) Release(_ context.Context, input *store.ExamIntegrityReviewRelease, _ *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
-	fake.release = input
+func (fake *reviewStoreFake) Release(_ context.Context, input *store.ExamIntegrityReviewRelease, command *store.CommandIdempotency) (*store.ExamIntegrityReviewMutationResult, error) {
+	fake.release, fake.idempotency = input, command
 	result, _ := fake.Finalize(context.Background(), nil, nil)
 	_ = result.Review.Release(3, fake.f.userID, fake.f.at.Add(time.Minute))
 	result.Replayed = fake.replayed

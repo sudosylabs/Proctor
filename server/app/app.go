@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"errors"
-	"io"
 	"time"
 
 	appexecution "github.com/sudosylabs/proctor/server/app/execution"
@@ -15,15 +14,8 @@ import (
 	"github.com/sudosylabs/proctor/server/secretseal"
 )
 
-type executionUseCases interface {
-	Ensure(context.Context, appexecution.Request) (*appexecution.Placement, error)
+type executionImageCatalog interface {
 	Images(context.Context) ([]appexecution.ImageOption, error)
-	Watch(context.Context, model.ExamAttemptID, appexecution.Cursor) (appexecution.Observation, error)
-	Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error)
-	OpenFile(context.Context, model.ExamAttemptID, string) (io.ReadCloser, error)
-	Sync(context.Context, model.ExamAttemptID) error
-	SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
-	Release(context.Context, model.ExamAttemptID) error
 }
 
 // App is the long-lived application facade. Construction receives only the
@@ -58,7 +50,8 @@ type App struct {
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
 	examAttempts                      examAttemptUseCases
-	execution                         executionUseCases
+	examAttemptTerminals              examAttemptTerminalUseCases
+	execution                         executionImageCatalog
 	examReviews                       examReviewUseCases
 	examResources                     examResourceUseCases
 	examCorrections                   examCorrectionUseCases

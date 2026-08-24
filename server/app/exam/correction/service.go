@@ -89,7 +89,7 @@ type StageResourceContentCommand struct {
 	Body           io.Reader
 	Size           int64
 	ExpectedSHA256 string
-	Idempotency    *store.CommandIdempotency
+	IdempotencyKey string
 }
 type ResourceStage struct {
 	StageID    model.ExamCorrectionResourceStageID
@@ -117,7 +117,7 @@ type ApplyCommand struct {
 	Instructions              OptionalInstructions
 	Resources                 []ResourceManifestItem
 	PrivateReason             string
-	Idempotency               *store.CommandIdempotency
+	IdempotencyKey            string
 }
 type Result struct {
 	ExamID             model.ExamID
@@ -165,11 +165,12 @@ func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, m
 }
 
 func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageResourceContentCommand) (ResourceStage, error) {
-	if c.Idempotency == nil {
-		return ResourceStage{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if !c.ExamID.IsValid() || !c.SittingID.IsValid() || !c.BaseRevisionID.IsValid() || !c.Target.IsValid() || !c.MediaType.IsValid() || c.Body == nil || c.Size < 0 || c.Size > model.ExamResourceMaximumBytes || !validSHA256(c.ExpectedSHA256) || (c.Target == store.ExamCorrectionResourceAddition && !c.ResourceID.IsZero()) || (c.Target == store.ExamCorrectionResourceReplacement && !c.ResourceID.IsValid()) {
 		return ResourceStage{}, invalid("upload")
+	}
+	idempotency, err := prepareStageIdempotency(call, c)
+	if err != nil {
+		return ResourceStage{}, err
 	}
 	auth, err := s.authorize(ctx, call, c.ExamID, c.SittingID)
 	if err != nil {
@@ -223,7 +224,7 @@ func (s *Service) StageResourceContent(ctx context.Context, call Call, c StageRe
 	if err != nil {
 		return ResourceStage{}, err
 	}
-	stage, err := s.persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.newStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, c.Idempotency)
+	stage, err := s.persistence.ReserveResourceStage(ctx, &store.ExamCorrectionResourceStageReservation{StageID: s.newStageID(), ExamID: c.ExamID, SittingID: c.SittingID, BaseRevisionID: c.BaseRevisionID, Target: c.Target, ResourceID: resourceID, Entry: entry, FileEntryID: entryID, Revision: revision, Lease: lease, RenditionID: renditionID, ActorUserID: principal.UserID, ManagerOverride: auth.override, CreatedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return ResourceStage{}, s.failAudit(ctx, auditID, err)
 	}
@@ -276,10 +277,12 @@ func projectStage(stage *store.ExamCorrectionResourceStage) ResourceStage {
 }
 
 func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result, error) {
-	if c.Idempotency == nil {
-		return Result{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if err := validateApply(c); err != nil {
+		return Result{}, err
+	}
+	c.Resources = append([]ResourceManifestItem(nil), c.Resources...)
+	idempotency, err := prepareApplyIdempotency(call, c)
+	if err != nil {
 		return Result{}, err
 	}
 	auth, err := s.authorize(ctx, call, c.ExamID, c.SittingID)
@@ -301,7 +304,7 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 	for i, r := range c.Resources {
 		resources[i] = store.ExamCorrectionResourceManifestItem{ResourceID: r.ResourceID, DisplayName: strings.TrimSpace(r.DisplayName), DescriptionMarkdown: r.DescriptionMarkdown, StageID: r.StageID}
 	}
-	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, Resources: resources, PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, c.Idempotency)
+	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, Resources: resources, PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
 	}

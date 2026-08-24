@@ -424,6 +424,34 @@ func TestLostLifecycleLeaseReleasesExactGrantAfterHostEffect(t *testing.T) {
 	}
 }
 
+func TestReleaseGrantCannotRevokeSuccessorPlacement(t *testing.T) {
+	t.Parallel()
+	var events []string
+	now := time.Now().UTC()
+	attemptID := model.NewExamAttemptID()
+	old := &model.ExecutionGrant{ID: model.NewExecutionGrantID(), AttemptID: attemptID, HostID: "runner-old",
+		Image: "go", Network: model.ExecutionNetworkNone, State: model.ExecutionGrantReady,
+		AppliedSittingState: model.ExamSittingOpen, AppliedSittingRevision: 1, CreatedAt: now, UpdatedAt: now, Revision: 2}
+	successor := &model.ExecutionGrant{ID: model.NewExecutionGrantID(), AttemptID: attemptID, HostID: "runner-new",
+		Image: "go", Network: model.ExecutionNetworkNone, State: model.ExecutionGrantReady,
+		AppliedSittingState: model.ExamSittingOpen, AppliedSittingRevision: 1, CreatedAt: now, UpdatedAt: now, Revision: 2}
+	grants := &grantStoreFake{current: successor, all: map[model.ExecutionGrantID]*model.ExecutionGrant{
+		old.ID: old, successor.ID: successor,
+	}, events: &events}
+	service, err := New(grants, hostsFake{events: &events}, contentFake{}, func() time.Time { return now.Add(time.Second) }, model.NewExecutionGrantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ReleaseGrant(context.Background(), old.ID); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"release:runner-old", "revoke:runner-old", "revoked:runner-old"}
+	if !reflect.DeepEqual(events, want) || grants.current == nil || grants.current.ID != successor.ID ||
+		grants.current.State != model.ExecutionGrantReady {
+		t.Fatalf("events/current = %v/%#v; want %v/successor ready", events, grants.current, want)
+	}
+}
+
 func TestEnsureRejectsUnavailableCatalog(t *testing.T) {
 	t.Parallel()
 	service, err := New(&grantStoreFake{events: &[]string{}}, hostsFake{}, contentFake{}, time.Now, model.NewExecutionGrantID)

@@ -6,7 +6,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -38,42 +37,37 @@ type examIntegrityReviewHTTPModule struct {
 }
 
 type examIntegrityReviewIDCursor struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
+	Version int    `json:"version"`
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
 }
 
-func encodeExamIntegrityReviewCursor(kind, id string) string {
-	encoded, _ := json.Marshal(struct {
-		Version int    `json:"version"`
-		Kind    string `json:"kind"`
-		ID      string `json:"id"`
-	}{examIntegrityReviewCursorVersion, kind, id})
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeExamIntegrityReviewCursor(kind, id string) (string, error) {
+	return encodeOpaqueCursor(examIntegrityReviewIDCursor{Kind: kind, ID: id}, examIntegrityReviewCursorSpec(kind))
 }
 
 func decodeExamIntegrityReviewCursor(raw, kind string) (string, error) {
-	if raw == "" {
-		return "", errors.New("cursor is required")
-	}
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(raw)
+	wire, err := decodeOpaqueCursor(raw, examIntegrityReviewCursorSpec(kind))
 	if err != nil {
 		return "", err
 	}
-	var wire struct {
-		Version int    `json:"version"`
-		Kind    string `json:"kind"`
-		ID      string `json:"id"`
-	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&wire); err != nil || wire.Version != examIntegrityReviewCursorVersion || wire.Kind != kind || !model.IsValidId(wire.ID) {
-		return "", errors.New("invalid Integrity Review cursor")
-	}
-	var trailing any
-	if err = decoder.Decode(&trailing); err != io.EOF {
-		return "", errors.New("Integrity Review cursor has trailing data")
-	}
 	return wire.ID, nil
+}
+
+func examIntegrityReviewCursorSpec(kind string) opaqueCursorSpec[examIntegrityReviewIDCursor] {
+	return opaqueCursorSpec[examIntegrityReviewIDCursor]{
+		label: "Integrity Review", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examIntegrityReviewCursorVersion,
+		members:        []string{"version", "kind", "id"},
+		version:        func(cursor examIntegrityReviewIDCursor) int { return cursor.Version },
+		setVersion:     func(cursor *examIntegrityReviewIDCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == examIntegrityReviewCursorVersion },
+		validate: func(cursor examIntegrityReviewIDCursor) error {
+			if cursor.Kind != kind || !model.IsValidId(cursor.ID) {
+				return errors.New("invalid Integrity Review keyset")
+			}
+			return nil
+		},
+	}
 }
 
 type saveExamIntegrityDecisionRequest struct {
@@ -359,7 +353,10 @@ func (module examIntegrityReviewHTTPModule) listFlags(request operationRequest) 
 		if len(page.Items) == 0 {
 			return operationResult{}, errors.New("Integrity Review application returned an invalid Flag page")
 		}
-		response.NextCursor = encodeExamIntegrityReviewCursor("flag", page.Items[len(page.Items)-1].Flag.ID.String())
+		response.NextCursor, err = encodeExamIntegrityReviewCursor("flag", page.Items[len(page.Items)-1].Flag.ID.String())
+		if err != nil {
+			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -398,7 +395,10 @@ func (module examIntegrityReviewHTTPModule) listEvidence(request operationReques
 		if len(page.Items) == 0 {
 			return operationResult{}, errors.New("Integrity Review application returned an invalid Evidence page")
 		}
-		response.NextCursor = encodeExamIntegrityReviewCursor("evidence", page.Items[len(page.Items)-1].ID.String())
+		response.NextCursor, err = encodeExamIntegrityReviewCursor("evidence", page.Items[len(page.Items)-1].ID.String())
+		if err != nil {
+			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -432,7 +432,10 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 		if len(page.Items) == 0 {
 			return operationResult{}, errors.New("Integrity Review application returned an invalid Discrepancy page")
 		}
-		response.NextCursor = encodeExamIntegrityReviewCursor("discrepancy", page.Items[len(page.Items)-1].ID.String())
+		response.NextCursor, err = encodeExamIntegrityReviewCursor("discrepancy", page.Items[len(page.Items)-1].ID.String())
+		if err != nil {
+			return operationResult{}, application.NewError("exam.integrity_review.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }

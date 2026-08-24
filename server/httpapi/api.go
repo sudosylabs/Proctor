@@ -54,57 +54,6 @@ func New(options Options) (*API, error) {
 	if options.Health == nil {
 		return nil, errors.New("health state is required")
 	}
-	if options.Application == nil {
-		return nil, errors.New("application is required")
-	}
-	if options.AcademicUnits == nil {
-		return nil, errors.New("academic unit reads are required")
-	}
-	if options.Institutions == nil {
-		return nil, errors.New("institution application is required")
-	}
-	if options.Programmes == nil {
-		return nil, errors.New("programme application is required")
-	}
-	if options.ProgrammeLevels == nil {
-		return nil, errors.New("programme level application is required")
-	}
-	if options.AcademicPeriods == nil {
-		return nil, errors.New("academic period application is required")
-	}
-	if options.Classes == nil {
-		return nil, errors.New("class application is required")
-	}
-	if options.Affiliations == nil {
-		return nil, errors.New("affiliation application is required")
-	}
-	if options.AcademicUnitMembers == nil {
-		return nil, errors.New("academic unit member application is required")
-	}
-	if options.ClassMembers == nil {
-		return nil, errors.New("class member application is required")
-	}
-	if options.UserProfiles == nil {
-		return nil, errors.New("user profile application is required")
-	}
-	if options.AccountStates == nil {
-		return nil, errors.New("account state application is required")
-	}
-	if options.SessionAdministrations == nil {
-		return nil, errors.New("session administration application is required")
-	}
-	if options.Roles == nil {
-		return nil, errors.New("role application is required")
-	}
-	if options.RoleBindings == nil {
-		return nil, errors.New("role binding application is required")
-	}
-	if options.AuditListings == nil {
-		return nil, errors.New("audit listing application is required")
-	}
-	if options.Bootstrap == nil {
-		return nil, errors.New("bootstrap application is required")
-	}
 	if options.MaxBodyBytes <= 0 {
 		return nil, errors.New("maximum body size must be greater than zero")
 	}
@@ -114,26 +63,29 @@ func New(options Options) (*API, error) {
 	if options.NodeID == "" {
 		return nil, errors.New("cluster node ID is required")
 	}
+	if options.WebSocket == nil {
+		return nil, errors.New("websocket transport is required")
+	}
 	cookies, err := newBrowserCookies(options.PublicURL)
 	if err != nil {
 		return nil, fmt.Errorf("configure browser cookies: %w", err)
 	}
+	applications, err := resolveResourceApplications(options)
+	if err != nil {
+		return nil, err
+	}
 
 	api := &API{
-		authenticator:           options.Application,
+		authenticator:           applications.authenticator,
 		logger:                  options.Logger,
 		metrics:                 options.Metrics,
 		localizer:               options.Localizer,
 		cookies:                 cookies,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		webSocket:               options.WebSocket,
+		maxBodyBytes:            options.MaxBodyBytes,
 	}
-	if api.webSocket == nil {
-		// Unit tests that exercise only HTTP DTO mapping may omit the hub.
-		// Production composition always supplies the sibling websocket.Hub.
-		api.webSocket = noopWebSocketTransport{}
-	}
-	resources := productionResources(options, cookies, api.webSocket)
+	resources := productionResources(applications, options.Health, options.BuildInfo, cookies, api.webSocket)
 	if err := api.buildRoutingKernel(
 		model.APIURLSuffix,
 		options.MaxBodyBytes,
@@ -200,20 +152,6 @@ func (a *API) Close() error {
 	// The HTTP transport borrows the sibling WebSocket transport for upgrade
 	// dispatch. Node Runtime owns and closes that sibling explicitly.
 	return nil
-}
-
-type noopWebSocketTransport struct{}
-
-func (noopWebSocketTransport) Accept(
-	http.ResponseWriter,
-	*http.Request,
-	model.Principal,
-	model.RequestMetadata,
-	string,
-	int64,
-	bool,
-) error {
-	return errors.New("websocket transport is not configured")
 }
 
 func canonicalIDRoutePattern() string {

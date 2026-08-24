@@ -6,7 +6,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -41,22 +40,34 @@ type submissionManifestCursorWire struct {
 	EntryID string `json:"after_entry_id"`
 }
 
-func encodeSubmissionManifestCursor(cursor submissionManifestCursor) string {
-	wire := submissionManifestCursorWire{Version: submissionManifestCursorVersion, EntryID: cursor.EntryID.String()}
-	encoded, _ := json.Marshal(wire)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+func encodeSubmissionManifestCursor(cursor submissionManifestCursor) (string, error) {
+	wire := submissionManifestCursorWire{EntryID: cursor.EntryID.String()}
+	return encodeOpaqueCursor(wire, submissionManifestCursorSpec())
 }
 
 func decodeSubmissionManifestCursor(raw string) (submissionManifestCursor, error) {
-	var wire submissionManifestCursorWire
-	if err := decodeStrictAttemptCursor(raw, &wire); err != nil || wire.Version != submissionManifestCursorVersion {
-		return submissionManifestCursor{}, errors.New("invalid Submission manifest cursor")
-	}
-	entryID, err := model.ParseAttemptWorkspaceEntryID(wire.EntryID)
+	wire, err := decodeOpaqueCursor(raw, submissionManifestCursorSpec())
 	if err != nil {
-		return submissionManifestCursor{}, errors.New("invalid Submission manifest cursor")
+		return submissionManifestCursor{}, err
 	}
+	entryID, _ := model.ParseAttemptWorkspaceEntryID(wire.EntryID)
 	return submissionManifestCursor{EntryID: entryID}, nil
+}
+
+func submissionManifestCursorSpec() opaqueCursorSpec[submissionManifestCursorWire] {
+	return opaqueCursorSpec[submissionManifestCursorWire]{
+		label: "Submission manifest", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: submissionManifestCursorVersion,
+		members:        []string{"version", "after_entry_id"},
+		version:        func(cursor submissionManifestCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *submissionManifestCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == submissionManifestCursorVersion },
+		validate: func(cursor submissionManifestCursorWire) error {
+			if !model.AttemptWorkspaceEntryID(cursor.EntryID).IsValid() {
+				return errors.New("invalid Submission manifest keyset")
+			}
+			return nil
+		},
+	}
 }
 
 func candidateAttemptAccessHeaders(request *http.Request) (candidateAttemptHeaderAccess, error) {
@@ -86,27 +97,37 @@ type examAttemptManagerCursorWire struct {
 	ID        string `json:"id"`
 }
 
-func encodeExamAttemptManagerCursor(cursor examAttemptManagerCursor) string {
-	wire := examAttemptManagerCursorWire{Version: examAttemptManagerCursorVersion,
+func encodeExamAttemptManagerCursor(cursor examAttemptManagerCursor) (string, error) {
+	wire := examAttemptManagerCursorWire{
 		CreatedAt: model.TimeUTC(cursor.CreatedAt).Format(time.RFC3339Nano), ID: cursor.ID.String()}
-	encoded, _ := json.Marshal(wire)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+	return encodeOpaqueCursor(wire, examAttemptManagerCursorSpec())
 }
 
 func decodeExamAttemptManagerCursor(raw string) (examAttemptManagerCursor, error) {
-	var wire examAttemptManagerCursorWire
-	if err := decodeStrictAttemptCursor(raw, &wire); err != nil || wire.Version != examAttemptManagerCursorVersion {
-		return examAttemptManagerCursor{}, errors.New("invalid Exam Attempt cursor")
-	}
-	createdAt, err := time.Parse(time.RFC3339Nano, wire.CreatedAt)
-	if err != nil || createdAt.IsZero() {
-		return examAttemptManagerCursor{}, errors.New("invalid Exam Attempt cursor")
-	}
-	id, err := model.ParseExamAttemptID(wire.ID)
+	wire, err := decodeOpaqueCursor(raw, examAttemptManagerCursorSpec())
 	if err != nil {
-		return examAttemptManagerCursor{}, errors.New("invalid Exam Attempt cursor")
+		return examAttemptManagerCursor{}, err
 	}
+	createdAt, _ := time.Parse(time.RFC3339Nano, wire.CreatedAt)
+	id, _ := model.ParseExamAttemptID(wire.ID)
 	return examAttemptManagerCursor{CreatedAt: model.TimeUTC(createdAt), ID: id}, nil
+}
+
+func examAttemptManagerCursorSpec() opaqueCursorSpec[examAttemptManagerCursorWire] {
+	return opaqueCursorSpec[examAttemptManagerCursorWire]{
+		label: "Exam Attempt", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: examAttemptManagerCursorVersion,
+		members:        []string{"version", "created_at", "id"},
+		version:        func(cursor examAttemptManagerCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *examAttemptManagerCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == examAttemptManagerCursorVersion },
+		validate: func(cursor examAttemptManagerCursorWire) error {
+			createdAt, err := time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+			if err != nil || createdAt.IsZero() || !model.ExamAttemptID(cursor.ID).IsValid() {
+				return errors.New("invalid Exam Attempt keyset")
+			}
+			return nil
+		},
+	}
 }
 
 type candidateWorkspaceCursor struct {
@@ -120,50 +141,38 @@ type candidateWorkspaceCursorWire struct {
 	ID             string `json:"after_entry_id,omitempty"`
 }
 
-func encodeCandidateWorkspaceCursor(cursor candidateWorkspaceCursor) string {
-	wire := candidateWorkspaceCursorWire{Version: candidateWorkspaceCursorVersion,
+func encodeCandidateWorkspaceCursor(cursor candidateWorkspaceCursor) (string, error) {
+	wire := candidateWorkspaceCursorWire{
 		ExpectedCursor: cursor.ExpectedCursor, ID: cursor.ID.String()}
-	encoded, _ := json.Marshal(wire)
-	return base64.RawURLEncoding.EncodeToString(encoded)
+	return encodeOpaqueCursor(wire, candidateWorkspaceCursorSpec())
 }
 
 func decodeCandidateWorkspaceCursor(raw string) (candidateWorkspaceCursor, error) {
-	var wire candidateWorkspaceCursorWire
-	if err := decodeStrictAttemptCursor(raw, &wire); err != nil || wire.Version != candidateWorkspaceCursorVersion {
-		return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
-	}
-	if wire.ExpectedCursor < 0 {
-		return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
+	wire, err := decodeOpaqueCursor(raw, candidateWorkspaceCursorSpec())
+	if err != nil {
+		return candidateWorkspaceCursor{}, err
 	}
 	var id model.AttemptWorkspaceEntryID
 	if wire.ID != "" {
-		var err error
-		id, err = model.ParseAttemptWorkspaceEntryID(wire.ID)
-		if err != nil {
-			return candidateWorkspaceCursor{}, errors.New("invalid candidate Workspace cursor")
-		}
+		id, _ = model.ParseAttemptWorkspaceEntryID(wire.ID)
 	}
 	return candidateWorkspaceCursor{ExpectedCursor: wire.ExpectedCursor, ID: id}, nil
 }
 
-func decodeStrictAttemptCursor(raw string, target any) error {
-	if raw == "" {
-		return errors.New("cursor is required")
+func candidateWorkspaceCursorSpec() opaqueCursorSpec[candidateWorkspaceCursorWire] {
+	return opaqueCursorSpec[candidateWorkspaceCursorWire]{
+		label: "candidate Workspace", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: candidateWorkspaceCursorVersion,
+		members:        []string{"version", "workspace_cursor", "after_entry_id"},
+		version:        func(cursor candidateWorkspaceCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *candidateWorkspaceCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == candidateWorkspaceCursorVersion },
+		validate: func(cursor candidateWorkspaceCursorWire) error {
+			if cursor.ExpectedCursor < 0 || cursor.ID != "" && !model.AttemptWorkspaceEntryID(cursor.ID).IsValid() {
+				return errors.New("invalid candidate Workspace keyset")
+			}
+			return nil
+		},
 	}
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(raw)
-	if err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(decoded))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(target); err != nil {
-		return err
-	}
-	var trailing any
-	if err = decoder.Decode(&trailing); err != io.EOF {
-		return errors.New("cursor has trailing data")
-	}
-	return nil
 }
 
 type ExamAttemptApplication interface {
@@ -599,7 +608,10 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 			return operationResult{}, errors.New("Exam Attempt application returned an invalid page")
 		}
 		last := page.Items[len(page.Items)-1].Attempt
-		response.NextCursor = encodeExamAttemptManagerCursor(examAttemptManagerCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		response.NextCursor, err = encodeExamAttemptManagerCursor(examAttemptManagerCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -616,7 +628,7 @@ func (module examAttemptHTTPModule) presentation(request operationRequest) (oper
 	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(),
 		AdmissionRevisionID: view.AdmissionRevisionID.String(), CurrentRevisionID: view.CurrentRevisionID.String(), Title: view.Title,
 		InstructionsMarkdown: view.InstructionsMarkdown, FocusLossCollectionEnabled: view.FocusLossCollectionEnabled,
-		Capacity: examCapacityPolicyResponseFromModel(view.Capacity),
+		Capacity:  examCapacityPolicyResponseFromModel(view.Capacity),
 		Resources: make([]candidateExamResourceResponse, 0, len(view.Resources))}
 	for _, resource := range view.Resources {
 		response.Resources = append(response.Resources, candidateExamResourceResponse{ID: resource.ResourceID.String(), DisplayName: resource.DisplayName,
@@ -665,7 +677,10 @@ func (module examAttemptHTTPModule) workspace(request operationRequest) (operati
 			return operationResult{}, errors.New("Exam Attempt application returned an invalid Workspace page")
 		}
 		last := page.Items[len(page.Items)-1]
-		response.NextCursor = encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: page.Cursor, ID: last.EntryID})
+		response.NextCursor, err = encodeCandidateWorkspaceCursor(candidateWorkspaceCursor{ExpectedCursor: page.Cursor, ID: last.EntryID})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -816,7 +831,10 @@ func (module examAttemptHTTPModule) listSubmissionManifest(request operationRequ
 		if len(page.Items) == 0 {
 			return operationResult{}, errors.New("Exam Attempt application returned an invalid Submission manifest page")
 		}
-		response.NextCursor = encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: page.Items[len(page.Items)-1].EntryID})
+		response.NextCursor, err = encodeSubmissionManifestCursor(submissionManifestCursor{EntryID: page.Items[len(page.Items)-1].EntryID})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }

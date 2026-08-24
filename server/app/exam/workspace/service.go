@@ -56,7 +56,7 @@ type CreateDirectoryCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
 	Path                  string
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type CreateFileCommand struct {
@@ -67,7 +67,7 @@ type CreateFileCommand struct {
 	ExpectedSHA256        string
 	Body                  io.Reader
 	Size                  int64
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type MoveEntryCommand struct {
@@ -75,7 +75,7 @@ type MoveEntryCommand struct {
 	EntryID               model.StarterWorkspaceEntryID
 	ExpectedDraftRevision int64
 	Path                  string
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type ReplaceFileCommand struct {
@@ -87,14 +87,14 @@ type ReplaceFileCommand struct {
 	ExpectedSHA256         string
 	Body                   io.Reader
 	Size                   int64
-	Idempotency            *store.CommandIdempotency
+	IdempotencyKey         string
 }
 
 type RemoveEntryCommand struct {
 	ExamID                model.ExamID
 	EntryID               model.StarterWorkspaceEntryID
 	ExpectedDraftRevision int64
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type Result struct {
@@ -212,7 +212,12 @@ func (service *Service) OpenFile(ctx context.Context, call Call, examID model.Ex
 }
 
 func (service *Service) CreateDirectory(ctx context.Context, call Call, command CreateDirectoryCommand) (Result, error) {
-	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path, command.Idempotency)
+	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
+	if err != nil {
+		return Result{}, err
+	}
+	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationCreateDirectory, command.IdempotencyKey,
+		command.ExamID, command.ExpectedDraftRevision, "", "", path, "", 0, "")
 	if err != nil {
 		return Result{}, err
 	}
@@ -228,27 +233,37 @@ func (service *Service) CreateDirectory(ctx context.Context, call Call, command 
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
-	return service.runMutation(ctx, call, authorization, "directory_create", ChangeDirectoryCreated, mutation, command.Idempotency, service.persistence.CreateDirectory)
+	return service.runMutation(ctx, call, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, service.persistence.CreateDirectory)
 }
 
 func (service *Service) CreateFile(ctx context.Context, call Call, command CreateFileCommand) (Result, error) {
-	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path, command.Idempotency)
+	path, err := validateMutation(command.ExamID, "", command.ExpectedDraftRevision, command.Path)
 	if err != nil || command.Body == nil || command.Size < -1 || command.Size > model.StarterWorkspaceMaximumFileBytes || command.MediaType == "" {
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{}, invalid("content")
 	}
+	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationCreateFile, command.IdempotencyKey,
+		command.ExamID, command.ExpectedDraftRevision, "", "", path, command.MediaType, command.Size, command.ExpectedSHA256)
+	if err != nil {
+		return Result{}, err
+	}
 	authorization, err := service.authorize(ctx, call, command.ExamID, true)
 	if err != nil {
 		return Result{}, err
 	}
 	return service.stageAndFinalize(ctx, call, authorization, command.ExamID, "", command.ExpectedDraftRevision, path,
-		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.Idempotency, "file_create", ChangeFileCreated, service.persistence.CreateFile)
+		"", command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_create", ChangeFileCreated, service.persistence.CreateFile)
 }
 
 func (service *Service) MoveEntry(ctx context.Context, call Call, command MoveEntryCommand) (Result, error) {
-	path, err := validateMutation(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Path, command.Idempotency)
+	path, err := validateMutation(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Path)
+	if err != nil {
+		return Result{}, err
+	}
+	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationMoveEntry, command.IdempotencyKey,
+		command.ExamID, command.ExpectedDraftRevision, "", command.EntryID.String(), path, "", 0, "")
 	if err != nil {
 		return Result{}, err
 	}
@@ -260,26 +275,36 @@ func (service *Service) MoveEntry(ctx context.Context, call Call, command MoveEn
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID, Path: path}
-	return service.runMutation(ctx, call, authorization, "entry_move", ChangeEntryMoved, mutation, command.Idempotency, service.persistence.MoveEntry)
+	return service.runMutation(ctx, call, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, service.persistence.MoveEntry)
 }
 
 func (service *Service) ReplaceFile(ctx context.Context, call Call, command ReplaceFileCommand) (Result, error) {
-	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Idempotency); err != nil {
+	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
 		return Result{}, err
 	}
 	if !command.ExpectedContentVersion.IsValid() || command.Body == nil || command.Size < -1 || command.Size > model.StarterWorkspaceMaximumFileBytes || command.MediaType == "" {
 		return Result{}, invalid("content")
+	}
+	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationReplaceFile, command.IdempotencyKey,
+		command.ExamID, command.ExpectedDraftRevision, command.ExpectedContentVersion, command.EntryID.String(), "", command.MediaType, command.Size, command.ExpectedSHA256)
+	if err != nil {
+		return Result{}, err
 	}
 	authorization, err := service.authorize(ctx, call, command.ExamID, true)
 	if err != nil {
 		return Result{}, err
 	}
 	return service.stageAndFinalize(ctx, call, authorization, command.ExamID, command.EntryID, command.ExpectedDraftRevision, "",
-		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, command.Idempotency, "file_replace", ChangeFileReplaced, service.persistence.ReplaceFile)
+		command.ExpectedContentVersion, command.MediaType, command.ExpectedSHA256, command.Body, command.Size, idempotency, "file_replace", ChangeFileReplaced, service.persistence.ReplaceFile)
 }
 
 func (service *Service) RemoveEntry(ctx context.Context, call Call, command RemoveEntryCommand) (Result, error) {
-	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision, command.Idempotency); err != nil {
+	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
+		return Result{}, err
+	}
+	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationRemoveEntry, command.IdempotencyKey,
+		command.ExamID, command.ExpectedDraftRevision, "", command.EntryID.String(), "", "", 0, "")
+	if err != nil {
 		return Result{}, err
 	}
 	authorization, err := service.authorize(ctx, call, command.ExamID, true)
@@ -290,7 +315,7 @@ func (service *Service) RemoveEntry(ctx context.Context, call Call, command Remo
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID}
-	return service.runMutation(ctx, call, authorization, "entry_remove", ChangeEntryRemoved, mutation, command.Idempotency, service.persistence.RemoveEntry)
+	return service.runMutation(ctx, call, authorization, "entry_remove", ChangeEntryRemoved, mutation, idempotency, service.persistence.RemoveEntry)
 }
 
 type authorization struct {
@@ -425,8 +450,8 @@ func validSHA256(value string) bool {
 	return err == nil
 }
 
-func validateMutation(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64, path string, idempotency *store.CommandIdempotency) (string, error) {
-	if err := validateMutationBase(examID, entryID, revision, idempotency); err != nil {
+func validateMutation(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64, path string) (string, error) {
+	if err := validateMutationBase(examID, entryID, revision); err != nil {
 		return "", err
 	}
 	normalized, err := NormalizePath(path)
@@ -436,8 +461,8 @@ func validateMutation(examID model.ExamID, entryID model.StarterWorkspaceEntryID
 	return normalized, nil
 }
 
-func validateMutationBase(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64, idempotency *store.CommandIdempotency) error {
-	if !examID.IsValid() || revision < 1 || idempotency == nil || !entryID.IsZero() && !entryID.IsValid() {
+func validateMutationBase(examID model.ExamID, entryID model.StarterWorkspaceEntryID, revision int64) error {
+	if !examID.IsValid() || revision < 1 || !entryID.IsZero() && !entryID.IsValid() {
 		return invalid("command")
 	}
 	return nil

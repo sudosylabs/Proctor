@@ -6,6 +6,7 @@ package exam
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -26,7 +27,7 @@ type CreateCommand struct {
 	AcademicUnitID       model.AcademicUnitID
 	Title                string
 	InstructionsMarkdown string
-	Idempotency          *store.CommandIdempotency
+	IdempotencyKey       string
 }
 
 type EditDraftTextCommand struct {
@@ -34,21 +35,21 @@ type EditDraftTextCommand struct {
 	ExpectedDraftRevision int64
 	Title                 *string
 	InstructionsMarkdown  *string
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type ConfigureDraftFocusLossCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
 	FocusLoss             model.FocusLossPolicy
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 type ConfigureDraftExecutionProfileCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
 	Profile               model.ExecutionProfile
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 
 // Call is immutable security and safe audit context owned by this child
@@ -179,8 +180,13 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	if !command.AcademicUnitID.IsValid() {
 		return View{}, invalid("academic_unit_id")
 	}
-	if command.Idempotency == nil {
-		return View{}, &Fault{Code: "idempotency.key_required"}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationCreate, command.IdempotencyKey, struct {
+		AcademicUnitID       string `json:"academic_unit_id"`
+		Title                string `json:"title"`
+		InstructionsMarkdown string `json:"instructions_markdown"`
+	}{command.AcademicUnitID.String(), command.Title, command.InstructionsMarkdown})
+	if err != nil {
+		return View{}, err
 	}
 	at := model.TimeUTC(a.now())
 	examID := a.newID()
@@ -219,7 +225,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 		return View{}, err
 	}
 	creation := &store.ExamAuthoringCreation{Exam: exam, Draft: draft, Manager: manager, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}
-	result, err := a.persistence.Create(ctx, creation, command.Idempotency)
+	result, err := a.persistence.Create(ctx, creation, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault
@@ -298,14 +304,23 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, invalid("draft_revision")
 	}
-	if command.Idempotency == nil {
-		return View{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if command.Title == nil && command.InstructionsMarkdown == nil {
 		return View{}, invalid("fields")
 	}
 	title := cloneStringPointer(command.Title)
+	if title != nil {
+		*title = strings.TrimSpace(*title)
+	}
 	instructions := cloneStringPointer(command.InstructionsMarkdown)
+	idempotency, err := prepareIdempotency(call, idempotencyOperationEditDraftText, command.IdempotencyKey, struct {
+		ExamID                string  `json:"exam_id"`
+		ExpectedDraftRevision int64   `json:"expected_draft_revision"`
+		Title                 *string `json:"title"`
+		InstructionsMarkdown  *string `json:"instructions_markdown"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, title, instructions})
+	if err != nil {
+		return View{}, err
+	}
 	at := model.TimeUTC(a.now())
 
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
@@ -356,7 +371,7 @@ func (a *Authoring) EditDraftText(ctx context.Context, call Call, command EditDr
 		ExpectedRevision: command.ExpectedDraftRevision,
 		Title:            title, InstructionsMarkdown: instructions, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault
@@ -387,13 +402,28 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, invalid("draft_revision")
 	}
-	if command.Idempotency == nil {
-		return View{}, &Fault{Code: "idempotency.key_required"}
-	}
+	command.FocusLoss.MinimumDuration = time.Duration(command.FocusLoss.MinimumDuration.Milliseconds()) * time.Millisecond
+	command.FocusLoss.Window = time.Duration(command.FocusLoss.Window.Milliseconds()) * time.Millisecond
 	policy := model.DefaultExamPolicySet()
 	policy.FocusLoss = command.FocusLoss
 	if err := policy.Validate(); err != nil {
 		return View{}, invalidCause("focus_loss", err)
+	}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureDraftFocusLoss, command.IdempotencyKey, struct {
+		ExamID                      string                          `json:"exam_id"`
+		ExpectedDraftRevision       int64                           `json:"expected_draft_revision"`
+		Enabled                     bool                            `json:"enabled"`
+		MinimumDurationMilliseconds int64                           `json:"minimum_duration_milliseconds"`
+		IncidentCount               int                             `json:"incident_count"`
+		WindowMilliseconds          int64                           `json:"window_milliseconds"`
+		Outcome                     model.IntegrityThresholdOutcome `json:"outcome"`
+	}{
+		ExamID: command.ExamID.String(), ExpectedDraftRevision: command.ExpectedDraftRevision,
+		Enabled: command.FocusLoss.Enabled, MinimumDurationMilliseconds: command.FocusLoss.MinimumDuration.Milliseconds(),
+		IncidentCount: command.FocusLoss.IncidentCount, WindowMilliseconds: command.FocusLoss.Window.Milliseconds(), Outcome: command.FocusLoss.Outcome,
+	})
+	if err != nil {
+		return View{}, err
 	}
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
@@ -437,7 +467,7 @@ func (a *Authoring) ConfigureDraftFocusLoss(ctx context.Context, call Call, comm
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, FocusLoss: command.FocusLoss, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault
@@ -467,11 +497,17 @@ func (a *Authoring) ConfigureDraftExecutionProfile(ctx context.Context, call Cal
 	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
 		return View{}, invalid("draft_revision")
 	}
-	if command.Idempotency == nil {
-		return View{}, &Fault{Code: "idempotency.key_required"}
-	}
+	command.Profile.Image = strings.TrimSpace(command.Profile.Image)
 	if err := command.Profile.Validate(); err != nil {
 		return View{}, invalidCause("execution_profile", err)
+	}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureExecutionProfile, command.IdempotencyKey, struct {
+		ExamID                string                 `json:"exam_id"`
+		ExpectedDraftRevision int64                  `json:"expected_draft_revision"`
+		Profile               model.ExecutionProfile `json:"profile"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, command.Profile})
+	if err != nil {
+		return View{}, err
 	}
 	at := model.TimeUTC(a.now())
 	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
@@ -511,7 +547,7 @@ func (a *Authoring) ConfigureDraftExecutionProfile(ctx context.Context, call Cal
 	if err != nil {
 		return View{}, err
 	}
-	replayed, err := a.outcomes.Has(ctx, command.Idempotency)
+	replayed, err := a.outcomes.Has(ctx, idempotency)
 	if err != nil {
 		return View{}, a.failExecutionProfileAudit(ctx, auditID, mapStoreError(err))
 	}
@@ -522,7 +558,7 @@ func (a *Authoring) ConfigureDraftExecutionProfile(ctx context.Context, call Cal
 			// catalog is external and must never run while PostgreSQL holds an
 			// idempotency transaction open. Recheck before rejecting so a
 			// concurrent identical command that committed meanwhile can replay.
-			replayed, err = a.outcomes.Has(ctx, command.Idempotency)
+			replayed, err = a.outcomes.Has(ctx, idempotency)
 			if err != nil {
 				return View{}, a.failExecutionProfileAudit(ctx, auditID, mapStoreError(err))
 			}
@@ -538,7 +574,7 @@ func (a *Authoring) ConfigureDraftExecutionProfile(ctx context.Context, call Cal
 		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
 		ExpectedRevision: command.ExpectedDraftRevision, Profile: command.Profile, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
 		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
-	}, command.Idempotency)
+	}, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
 		var fault *Fault

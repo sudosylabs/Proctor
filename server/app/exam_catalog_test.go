@@ -39,7 +39,7 @@ func TestArchiveExamBuildsIdempotentChildCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != examID || child.archive.ExamID != examID || child.archive.ExpectedExamRevision != 3 || child.archive.Idempotency == nil || child.archive.Idempotency.Operation != "exam.archive.v1" || child.archive.Idempotency.UserID != userID {
+	if got.ID != examID || child.archive.ExamID != examID || child.archive.ExpectedExamRevision != 3 || child.archive.IdempotencyKey != "archive-once" {
 		t.Fatalf("result/command = %#v / %#v", got, child.archive)
 	}
 }

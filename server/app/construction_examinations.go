@@ -93,6 +93,11 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
+	attemptTerminals, err := newExamAttemptTerminalService(attempts, execution,
+		examAttemptTerminalAuditAdapter{audit: foundation.audit})
+	if err != nil {
+		return examinationConstruction{}, err
+	}
 	reviewEffects := examIntegrityReviewRealtimeEffects{realtime: foundation.realtime}
 	resultReleaseMail := examResultReleaseMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
@@ -143,7 +148,7 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		return examinationConstruction{}, err
 	}
 	return examinationConstruction{execution: execution, authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
-		sittingMailPreparation: sittingMailPreparation, attempts: attempts, reviews: reviews,
+		sittingMailPreparation: sittingMailPreparation, attempts: attempts, attemptTerminals: attemptTerminals, reviews: reviews,
 		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }
 

@@ -68,14 +68,23 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 		t.Fatalf("status = %d query = %#v body = %s", getResponse.Code, fake.get, getResponse.Body.String())
 	}
 
-	cursor := encodeExamRevisionCursor(examRevisionCursor{Number: 5, RevisionID: model.NewExamRevisionID().String()})
+	beforeRevisionID := model.NewExamRevisionID()
+	cursor, err := encodeExamRevisionCursor(examRevisionCursor{Number: 5, RevisionID: beforeRevisionID.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions?limit=2&cursor="+cursor, nil)
 	listRequest.Header.Set("Authorization", "Bearer credential")
 	listResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(listResponse, listRequest)
-	if listResponse.Code != http.StatusOK || fake.list.ExamID != fake.summary.ExamID || fake.list.Limit != 2 || fake.list.BeforeNumber != 5 || !fake.list.BeforeRevisionID.IsValid() {
+	if listResponse.Code != http.StatusOK || fake.list.ExamID != fake.summary.ExamID || fake.list.Limit != 2 || fake.list.BeforeNumber != 5 || fake.list.BeforeRevisionID != beforeRevisionID {
 		t.Fatalf("status = %d query = %#v body = %s", listResponse.Code, fake.list, listResponse.Body.String())
 	}
+	malformedRequest := httptest.NewRequest(http.MethodGet, "/api/v1/exams/"+fake.summary.ExamID.String()+"/revisions?cursor=not-a-cursor", nil)
+	malformedRequest.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformedRequest)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
 	var page examRevisionListResponse
 	if err := json.Unmarshal(listResponse.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
@@ -100,6 +109,12 @@ func TestExamRevisionHTTPGetAndListUseExactIdentityAndVersionedTupleCursor(t *te
 	}
 	if terminal.NextCursor != "" {
 		t.Fatalf("terminal page exposed cursor %q", terminal.NextCursor)
+	}
+	fake.page = application.ExamRevisionPage{HasMore: true}
+	noProgress := httptest.NewRecorder()
+	httpAPI.ServeHTTP(noProgress, listRequest.Clone(listRequest.Context()))
+	if noProgress.Code != http.StatusInternalServerError {
+		t.Fatalf("no-progress status = %d, body = %s", noProgress.Code, noProgress.Body.String())
 	}
 }
 

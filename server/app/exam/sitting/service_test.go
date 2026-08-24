@@ -22,11 +22,12 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
 	start, end := testNow.Add(time.Hour), testNow.Add(3*time.Hour)
-
-	got, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
+	command := ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
-		ScheduledStartAt: start, ScheduledEndAt: end, Idempotency: &store.CommandIdempotency{},
-	})
+		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
+	}
+
+	got, err := fixture.service.Schedule(context.Background(), fixture.call, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +44,11 @@ func TestScheduleCreatesAuthorizedSittingAndPublishesSafeEffect(t *testing.T) {
 		fixture.persistence.schedule.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailScheduled {
 		t.Fatalf("store schedule = %#v, command=%#v", fixture.persistence.schedule, fixture.persistence.command)
 	}
+	wantIdempotency, err := prepareScheduleIdempotency(fixture.call, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
 	wantAudit := map[string]any{
 		"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"exam_revision_id": fixture.revisionID.String(), "class_id": fixture.classID.String(),
@@ -206,10 +212,11 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 	fixture.persistence.snapshot = &store.ExamSittingSnapshot{Sitting: current}
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: updated}}
 
-	got, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
+	command := UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-		ScheduledStartAt: &changedStart, ScheduledEndAt: &changedEnd, Idempotency: &store.CommandIdempotency{},
-	})
+		ScheduledStartAt: &changedStart, ScheduledEndAt: &changedEnd, IdempotencyKey: "test-key",
+	}
+	got, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +230,11 @@ func TestUpdateScheduleUsesSittingManagementAndOptimisticFence(t *testing.T) {
 	if input == nil || input.ExpectedRevision != 1 || input.ManagerOverride || input.ChangedAt != changedAt || fixture.persistence.command == nil {
 		t.Fatalf("store update = %#v, command=%#v", input, fixture.persistence.command)
 	}
+	wantIdempotency, err := prepareScheduleUpdateIdempotency(fixture.call, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
 	if input.OpenJob != fixture.jobs.open || input.DeadlineJob != fixture.jobs.deadline || fixture.jobs.boundaryRevision != 2 ||
 		!fixture.jobs.boundaryStart.Equal(changedStart) || !fixture.jobs.boundaryEnd.Equal(changedEnd) {
 		t.Fatalf("boundary Jobs = %#v %#v, factory revision/times = %d %v %v", input.OpenJob, input.DeadlineJob,
@@ -254,7 +266,7 @@ func TestUpdateScheduleReturnsCurrentNoChangesOnlyForCurrentActiveScheduledState
 
 	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-		ExamRevisionID: &revisionID, Idempotency: &store.CommandIdempotency{},
+		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.no_changes")
 	if fixture.persistence.update != nil || fixture.auditor.operation != "" {
@@ -273,7 +285,7 @@ func TestUpdateScheduleSendsStaleNoOpToStore(t *testing.T) {
 
 	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-		ExamRevisionID: &revisionID, Idempotency: &store.CommandIdempotency{},
+		ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.revision_conflict")
 	if fixture.persistence.update == nil || fixture.auditor.operation != "update_schedule" {
@@ -295,7 +307,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 
 		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-			ExamRevisionID: &revisionID, Idempotency: &store.CommandIdempotency{},
+			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
 		assertFaultCode(t, err, "exam.archived")
 		if fixture.persistence.update == nil {
@@ -316,7 +328,7 @@ func TestUpdateScheduleSendsArchivedAndNonScheduledNoOpsToStore(t *testing.T) {
 
 		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
-			ExamRevisionID: &revisionID, Idempotency: &store.CommandIdempotency{},
+			ExamRevisionID: &revisionID, IdempotencyKey: "test-key",
 		})
 		assertFaultCode(t, err, "exam.sitting.state_conflict")
 		if fixture.persistence.update == nil {
@@ -333,7 +345,7 @@ func TestScheduleUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testin
 
 	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
-		ScheduledStartAt: start, ScheduledEndAt: end, Idempotency: &store.CommandIdempotency{},
+		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -351,7 +363,7 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 
 	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
-		ScheduledStartAt: start, ScheduledEndAt: end, Idempotency: &store.CommandIdempotency{},
+		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
 	if err == nil || fixture.persistence.schedule != nil || fixture.auditor.operation != "" {
 		t.Fatalf("unauthorized mutation continued: err=%v store=%#v audit=%q", err, fixture.persistence.schedule, fixture.auditor.operation)
@@ -370,7 +382,7 @@ func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
 
 	got, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
 		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
-		ScheduledStartAt: start, ScheduledEndAt: end, Idempotency: &store.CommandIdempotency{},
+		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +410,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 
 		_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-			ScheduledStartAt: &start, ScheduledEndAt: &end, Idempotency: &store.CommandIdempotency{},
+			ScheduledStartAt: &start, ScheduledEndAt: &end, IdempotencyKey: "test-key",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -420,7 +432,7 @@ func TestReplayedUpdateAndCancellationDoNotPublishEffects(t *testing.T) {
 
 		_, err := fixture.service.Cancel(context.Background(), fixture.call, CancelCommand{
 			ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-			PrivateReason: "Manager canceled", Idempotency: &store.CommandIdempotency{},
+			PrivateReason: "Manager canceled", IdempotencyKey: "test-key",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -533,7 +545,7 @@ func TestUpdateRejectsMismatchedStoreOutcome(t *testing.T) {
 
 	_, err := fixture.service.UpdateSchedule(context.Background(), fixture.call, UpdateScheduleCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-		ScheduledStartAt: &start, Idempotency: &store.CommandIdempotency{},
+		ScheduledStartAt: &start, IdempotencyKey: "test-key",
 	})
 	assertFaultCode(t, err, "exam.sitting.unavailable")
 	if len(fixture.effects.events) != 0 {
@@ -551,10 +563,11 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	}
 	fixture.persistence.result = &store.ExamSittingCommandResult{Value: &store.ExamSittingSnapshot{Sitting: canceled}}
 
-	got, err := fixture.service.Cancel(context.Background(), fixture.call, CancelCommand{
+	command := CancelCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1,
-		PrivateReason: "Room became unavailable", Idempotency: &store.CommandIdempotency{},
-	})
+		PrivateReason: "Room became unavailable", IdempotencyKey: "test-key",
+	}
+	got, err := fixture.service.Cancel(context.Background(), fixture.call, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,6 +580,11 @@ func TestCancelRetainsPrivateReasonOnlyInStoreCommand(t *testing.T) {
 	if fixture.persistence.cancel.Mail != fixture.mail.result || fixture.mail.request.ChangeKind != store.ExamSittingMailCancelled {
 		t.Fatalf("cancellation mail = %#v, store=%#v", fixture.mail.request, fixture.persistence.cancel.Mail)
 	}
+	wantIdempotency, err := prepareTransitionIdempotency(fixture.call, idempotencyOperationCancel, PauseCommand(command))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
 	wantAudit := map[string]any{"exam_id": fixture.examID.String(), "exam_sitting_id": fixture.sittingID.String(),
 		"expected_sitting_revision": int64(1), "reason_code": string(model.ExamSittingReasonManagerCanceled)}
 	if fixture.auditor.operation != "cancel" || !reflect.DeepEqual(fixture.auditor.value, wantAudit) {

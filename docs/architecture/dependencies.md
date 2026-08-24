@@ -5,6 +5,7 @@
 ~~~text
 identityprovider ← {model, config}
 model ← store ← app/job
+{model, store} ← app/idempotency ← {app, app/exam}
 {model, store, app/job, app/mail, app/exam} ← app/jobs ← app
 model ← app/realtime ← {app, websocket}
 {model, store} ← app/exam ← app
@@ -40,9 +41,10 @@ inside `app/` are application-owned modules, not transports.
 | `config` | Standard library, `identityprovider`, and narrowly scoped IDNA hostname validation | Domain models, application, persistence, transports |
 | `store` | `model` | `sqlstore`, HTTP, application services |
 | `app/job` | `model`, `store.JobStore`, standard library | parent `app`, concrete Jobs, transports, concrete adapters |
+| `app/idempotency` | `model`, `store`, standard library | business operation policy, parent `app`, Exam modules, transports, concrete adapters |
 | `app/jobs` | `model`, bounded `store` contracts, `app/job`, leaf `app/mail` and `app/exam` capabilities, `secretseal`, standard library | parent `app`, `store.Catalog`, transports, platform, concrete adapters |
 | `app/realtime` | `model`, standard library, consumer-owned ports | parent `app`, HTTP, WebSocket libraries, cluster adapters |
-| `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
+| `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/execution` | `model`, the bounded Execution Grant store, standard library, and consumer-owned host/content ports | parent `app`, execenv, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
@@ -50,7 +52,7 @@ inside `app/` are application-owned modules, not transports.
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
 | `logging` | Standard library and the hidden logging engine/target implementation | application, domain, persistence, transports, global logger state |
 | `metrics` | `config`, narrow store recorder contracts, standard library, and Prometheus client libraries | application policy, platform service location, concrete infrastructure adapters, global Prometheus registry |
-| `app` | `model`, `store`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
+| `app` | `model`, `store`, `app/idempotency`, `app/job`, `app/jobs`, `app/realtime`, `app/exam`, `app/mail`, consumer-owned ports | `platform`, `httpapi`, `sqlstore` |
 | `filecontent` | `model`, consumer-owned `app` content contracts, `packages/vfs`, narrowly allowlisted content codecs | persistence, transports, platform service location, Jobs, configuration, concrete VFS backends |
 | `httpapi` | `app`, `model`, `localization`, HTTP libraries | `store`, `sqlstore`, `platform` |
 | `webui` | Standard-library HTTP and filesystem contracts | Application, domain, persistence, configuration, concrete filesystems, third-party libraries |
@@ -68,6 +70,13 @@ inside `app/` are application-owned modules, not transports.
 Tests and `testlib` may cross production boundaries for verification. Ordered,
 declarative package rules enforce the production allowlist with no debt or
 waiver mechanism.
+
+The shared idempotency leaf has an exact inward dependency allowance of
+`model` and `store`. Within the Exam boundary its production consumers are
+limited to `app/exam`, `app/exam/attempt`, `app/exam/correction`,
+`app/exam/resource`, `app/exam/review`, `app/exam/sitting`, and
+`app/exam/workspace`; those command owners retain operation names and semantic
+fingerprints rather than moving policy into the leaf.
 
 ## Reusable capability boundaries
 
@@ -121,3 +130,9 @@ policies.
   `store.Store` family is grouped deliberately for shared conformance testing.
 - Import tests make inward dependency direction enforceable instead of relying
   on prose or review memory.
+- The Attempt Terminal workflow remains a focused unexported service in parent
+  `app` because it coordinates two sibling modules: Attempt owns authorized
+  Workspace mutation and lifecycle semantics, while Execution owns placement,
+  projection, observation, PTY attachment, and grant release. Moving the bridge
+  into either child would reverse the dependency graph or give one sibling the
+  other's policy.

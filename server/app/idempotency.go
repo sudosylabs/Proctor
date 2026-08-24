@@ -4,11 +4,10 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"time"
 
+	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -19,25 +18,16 @@ const (
 )
 
 func newCommandIdempotency(invocation Invocation, operation, key string, semantic any) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, nil
-	}
-	principal := invocation.Principal()
-	if !principal.UserID.IsValid() {
-		return nil, NewError("idempotency.invalid_key").Wrap(errors.New("idempotency requires an authenticated user"))
-	}
-	canonical, err := json.Marshal(semantic)
-	if err != nil {
+	prepared, err := applicationidempotency.Prepare(invocation.Principal().UserID, operation, key, semantic)
+	var semanticError *applicationidempotency.SemanticEncodingError
+	switch {
+	case errors.Is(err, applicationidempotency.ErrInvalidPrincipal):
+		return nil, NewError("idempotency.invalid_key").Wrap(err)
+	case errors.As(err, &semanticError):
 		return nil, NewError("request.invalid").Wrap(err)
+	default:
+		return prepared, err
 	}
-	keyDigest := sha256.Sum256([]byte(key))
-	fingerprintInput := append([]byte(operation+"\x00v1\x00"), canonical...)
-	fingerprint := sha256.Sum256(fingerprintInput)
-	return &store.CommandIdempotency{
-		UserID: principal.UserID, Operation: operation, KeyDigest: keyDigest,
-		FingerprintVersion: 1, Fingerprint: fingerprint, OutcomeVersion: 1,
-		Retention: commandIdempotencyRetention, Wait: commandIdempotencyWait,
-	}, nil
 }
 
 func idempotencyError(err error) error {

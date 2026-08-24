@@ -29,19 +29,18 @@ func TestSubmitExamAttemptBuildsSemanticFingerprintAndReturnsOnlySafeReceipt(t *
 		t.Fatal(err)
 	}
 	if got != receipt || len(fake.submits) != 1 || fake.submits[0].ExpectedWorkspaceCursor != 8 ||
-		fake.submits[0].FinalFocusLossSequence != 5 || fake.submits[0].Idempotency == nil ||
-		fake.submits[0].Idempotency.Operation != store.ExamSubmissionSealOperation {
+		fake.submits[0].FinalFocusLossSequence != 5 || fake.submits[0].IdempotencyKey != "submit-once" {
 		t.Fatalf("receipt=%#v submits=%#v", got, fake.submits)
 	}
 }
 
 func TestSubmitExamAttemptRequiresIdempotencyBeforeChildCall(t *testing.T) {
 	t.Parallel()
-	fake := &examSubmissionFacadeFake{}
+	fake := &examSubmissionFacadeFake{err: &examattempt.Fault{Code: "idempotency.key_required"}}
 	application := &App{examAttempts: fake}
 	_, err := application.SubmitExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}),
 		SubmitExamAttemptCommand{})
-	if !Is(err, "idempotency.key_required") || len(fake.submits) != 0 {
+	if !Is(err, "idempotency.key_required") || len(fake.submits) != 1 {
 		t.Fatalf("error=%v submits=%d", err, len(fake.submits))
 	}
 }
@@ -50,13 +49,14 @@ type examSubmissionFacadeFake struct {
 	examAttemptUseCases
 	submits      []examattempt.SubmitCommand
 	submitResult examattempt.SubmissionResult
+	err          error
 }
 
 func (fake *examSubmissionFacadeFake) Submit(_ context.Context, _ examattempt.Call,
 	command examattempt.SubmitCommand,
 ) (examattempt.SubmissionResult, error) {
 	fake.submits = append(fake.submits, command)
-	return fake.submitResult, nil
+	return fake.submitResult, fake.err
 }
 
 func (*examSubmissionFacadeFake) GetSubmission(context.Context, examattempt.Call,

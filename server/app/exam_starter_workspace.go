@@ -93,13 +93,8 @@ func (a *App) OpenExamStarterWorkspaceFile(ctx context.Context, invocation Invoc
 }
 
 func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceDirectoryCommand) (ExamStarterWorkspaceResult, error) {
-	idempotency, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.directory.create.v1", command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, "", "", command.Path, "", 0, "")
-	if err != nil {
-		return ExamStarterWorkspaceResult{}, err
-	}
 	result, err := a.examStarterWorkspace.CreateDirectory(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.CreateDirectoryCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, Idempotency: idempotency})
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -107,14 +102,9 @@ func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocatio
 }
 
 func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	idempotency, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.file.create.v1", command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, "", "", command.Path, command.MediaType, command.Size, command.ExpectedSHA256)
-	if err != nil {
-		return ExamStarterWorkspaceResult{}, err
-	}
 	result, err := a.examStarterWorkspace.CreateFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.CreateFileCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, MediaType: command.MediaType,
-		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, Idempotency: idempotency})
+		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -122,13 +112,8 @@ func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Inv
 }
 
 func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command MoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	idempotency, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.entry.move.v1", command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, "", command.EntryID.String(), command.Path, "", 0, "")
-	if err != nil {
-		return ExamStarterWorkspaceResult{}, err
-	}
 	result, err := a.examStarterWorkspace.MoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.MoveEntryCommand{
-		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, Idempotency: idempotency})
+		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -136,14 +121,9 @@ func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invo
 }
 
 func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command ReplaceExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	idempotency, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.file.replace.v1", command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, command.ExpectedContentVersion, command.EntryID.String(), "", command.MediaType, command.Size, command.ExpectedSHA256)
-	if err != nil {
-		return ExamStarterWorkspaceResult{}, err
-	}
 	result, err := a.examStarterWorkspace.ReplaceFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.ReplaceFileCommand{
 		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType,
-		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, Idempotency: idempotency})
+		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -151,34 +131,12 @@ func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation In
 }
 
 func (a *App) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command RemoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	idempotency, err := newExamStarterWorkspaceIdempotency(invocation, "exam.starter_workspace.entry.remove.v1", command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, "", command.EntryID.String(), "", "", 0, "")
-	if err != nil {
-		return ExamStarterWorkspaceResult{}, err
-	}
 	result, err := a.examStarterWorkspace.RemoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.RemoveEntryCommand{
-		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, Idempotency: idempotency})
+		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
 	return result, nil
-}
-
-func newExamStarterWorkspaceIdempotency(invocation Invocation, operation, key string, examID model.ExamID, revision int64,
-	expectedContentVersion model.WorkspaceContentVersion, entryID, path, mediaType string, size int64, sha256 string) (*store.CommandIdempotency, error) {
-	if key == "" {
-		return nil, NewError("idempotency.key_required")
-	}
-	return newCommandIdempotency(invocation, operation, key, struct {
-		ExamID                 string `json:"exam_id"`
-		ExpectedDraftRevision  int64  `json:"expected_draft_revision"`
-		ExpectedContentVersion string `json:"expected_content_version,omitempty"`
-		EntryID                string `json:"entry_id,omitempty"`
-		Path                   string `json:"path,omitempty"`
-		MediaType              string `json:"media_type,omitempty"`
-		Size                   int64  `json:"size,omitempty"`
-		SHA256                 string `json:"sha256,omitempty"`
-	}{examID.String(), revision, expectedContentVersion.String(), entryID, path, mediaType, size, sha256})
 }
 
 func examStarterWorkspaceError(err error, conceal bool) error {

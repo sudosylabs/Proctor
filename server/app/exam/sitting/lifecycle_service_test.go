@@ -28,7 +28,7 @@ func TestPauseAuthorizesCurrentManagerAndKeepsPrivateReasonOutOfAuditAndEffect(t
 
 	got, err := fixture.service.Pause(context.Background(), fixture.call, PauseCommand{
 		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
-		PrivateReason: "Candidate requested clarification", Idempotency: &store.CommandIdempotency{},
+		PrivateReason: "Candidate requested clarification", IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -47,6 +47,14 @@ func TestPauseAuthorizesCurrentManagerAndKeepsPrivateReasonOutOfAuditAndEffect(t
 	if fixture.persistence.pause == nil || fixture.persistence.pause.PrivateReason != "Candidate requested clarification" {
 		t.Fatalf("Store Pause = %#v", fixture.persistence.pause)
 	}
+	wantIdempotency, err := prepareTransitionIdempotency(fixture.call, idempotencyOperationPause, PauseCommand{
+		ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
+		PrivateReason: "Candidate requested clarification", IdempotencyKey: "test-key",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
 	if len(fixture.effects.events) != 1 || fixture.effects.events[0].kind != string(store.ExamSittingTransitionManagerPaused) {
 		t.Fatalf("effects = %#v", fixture.effects.events)
 	}
@@ -66,23 +74,34 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 		{name: "pause remains available after archive", archived: true, transition: store.ExamSittingTransitionManagerPaused,
 			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
 				return f.service.Pause(context.Background(), f.call, PauseCommand{ExamID: f.examID, SittingID: f.sittingID,
-					ExpectedRevision: current.Revision, PrivateReason: "Investigating active incident", Idempotency: &store.CommandIdempotency{}})
+					ExpectedRevision: current.Revision, PrivateReason: "Investigating active incident", IdempotencyKey: "test-key"})
 			}, input: func(fake *sittingStoreFake) any { return fake.pause }, wantAction: model.ActionExamSittingManage},
 		{name: "resume rejects archived Exam", archived: true, transition: store.ExamSittingTransitionManagerResumed,
 			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
 				return f.service.Resume(context.Background(), f.call, ResumeCommand{ExamID: f.examID, SittingID: f.sittingID,
-					ExpectedRevision: current.Revision, PrivateReason: "Issue resolved", Idempotency: &store.CommandIdempotency{}})
+					ExpectedRevision: current.Revision, PrivateReason: "Issue resolved", IdempotencyKey: "test-key"})
 			}, wantFault: "exam.archived"},
+		{name: "resume active Sitting", transition: store.ExamSittingTransitionManagerResumed,
+			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
+				return f.service.Resume(context.Background(), f.call, ResumeCommand{ExamID: f.examID, SittingID: f.sittingID,
+					ExpectedRevision: current.Revision, PrivateReason: "Issue resolved", IdempotencyKey: "test-key"})
+			}, input: func(fake *sittingStoreFake) any { return fake.resume }, wantAction: model.ActionExamSittingManage},
 		{name: "extend rejects archived Exam", archived: true, transition: store.ExamSittingTransitionManagerExtended,
 			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
 				return f.service.Extend(context.Background(), f.call, ExtendCommand{ExamID: f.examID, SittingID: f.sittingID,
 					ExpectedRevision: current.Revision, ScheduledEndAt: current.ScheduledEndAt.Add(time.Hour),
-					PrivateReason: "Compensating for disruption", Idempotency: &store.CommandIdempotency{}})
+					PrivateReason: "Compensating for disruption", IdempotencyKey: "test-key"})
 			}, wantFault: "exam.archived"},
+		{name: "extend active Sitting", transition: store.ExamSittingTransitionManagerExtended,
+			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
+				return f.service.Extend(context.Background(), f.call, ExtendCommand{ExamID: f.examID, SittingID: f.sittingID,
+					ExpectedRevision: current.Revision, ScheduledEndAt: current.ScheduledEndAt.Add(time.Hour),
+					PrivateReason: "Compensating for disruption", IdempotencyKey: "test-key"})
+			}, input: func(fake *sittingStoreFake) any { return fake.extend }, wantAction: model.ActionExamSittingManage},
 		{name: "early close remains available after archive", archived: true, transition: store.ExamSittingTransitionManagerClosed,
 			run: func(f fixture, current *model.ExamSitting) (store.ExamSittingSnapshot, error) {
 				return f.service.EarlyClose(context.Background(), f.call, EarlyCloseCommand{ExamID: f.examID, SittingID: f.sittingID,
-					ExpectedRevision: current.Revision, PrivateReason: "Safety stop", Idempotency: &store.CommandIdempotency{}})
+					ExpectedRevision: current.Revision, PrivateReason: "Safety stop", IdempotencyKey: "test-key"})
 			}, input: func(fake *sittingStoreFake) any { return fake.earlyClose }, wantAction: model.ActionExamSittingManage, finalizes: true},
 	}
 	for _, test := range tests {
@@ -128,6 +147,34 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 			if test.input(fixture.persistence) == nil || fixture.authorizer.action != test.wantAction {
 				t.Fatalf("Store input/action = %#v %q", test.input(fixture.persistence), fixture.authorizer.action)
 			}
+			var wantIdempotency *store.CommandIdempotency
+			switch test.transition {
+			case store.ExamSittingTransitionManagerPaused:
+				wantIdempotency, err = prepareTransitionIdempotency(fixture.call, idempotencyOperationPause, PauseCommand{
+					ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
+					PrivateReason: "Investigating active incident", IdempotencyKey: "test-key",
+				})
+			case store.ExamSittingTransitionManagerResumed:
+				wantIdempotency, err = prepareTransitionIdempotency(fixture.call, idempotencyOperationResume, PauseCommand{
+					ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
+					PrivateReason: "Issue resolved", IdempotencyKey: "test-key",
+				})
+			case store.ExamSittingTransitionManagerExtended:
+				wantIdempotency, err = prepareExtensionIdempotency(fixture.call, ExtendCommand{
+					ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
+					ScheduledEndAt: current.ScheduledEndAt.Add(time.Hour), PrivateReason: "Compensating for disruption",
+					IdempotencyKey: "test-key",
+				})
+			case store.ExamSittingTransitionManagerClosed:
+				wantIdempotency, err = prepareTransitionIdempotency(fixture.call, idempotencyOperationClose, PauseCommand{
+					ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: current.Revision,
+					PrivateReason: "Safety stop", IdempotencyKey: "test-key",
+				})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertStoreBoundaryCommand(t, fixture.persistence.command, wantIdempotency)
 			if test.finalizes && (fixture.jobs.finalizeRevision != current.Revision+1 || !fixture.jobs.finalizeAvailableAt.Equal(testNow)) {
 				t.Fatalf("finalize intent = revision %d at %s", fixture.jobs.finalizeRevision, fixture.jobs.finalizeAvailableAt)
 			}
@@ -141,7 +188,7 @@ func TestLifecycleManagerCommandsUseExplicitStatesJobsAndReplaySuppression(t *te
 	_ = paused.Pause(testNow)
 	fixture.persistence.lifecycle = lifecycleResult(paused, store.ExamSittingTransitionManagerPaused, true, true)
 	_, err := fixture.service.Pause(context.Background(), fixture.call, PauseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID,
-		ExpectedRevision: current.Revision, PrivateReason: "Replay", Idempotency: &store.CommandIdempotency{}})
+		ExpectedRevision: current.Revision, PrivateReason: "Replay", IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +208,7 @@ func TestPauseUsesExplicitOverrideWithoutCurrentExactUnitMembership(t *testing.T
 
 	_, err := fixture.service.Pause(context.Background(), fixture.call, PauseCommand{ExamID: fixture.examID,
 		SittingID: fixture.sittingID, ExpectedRevision: current.Revision, PrivateReason: "Administrator intervention",
-		Idempotency: &store.CommandIdempotency{}})
+		IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,19 +224,19 @@ func TestLifecycleCommandsValidatePrivateReasonBounds(t *testing.T) {
 		run  func(string) error
 	}{
 		{"pause", func(reason string) error {
-			_, err := fixture.service.Pause(context.Background(), fixture.call, PauseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, Idempotency: &store.CommandIdempotency{}})
+			_, err := fixture.service.Pause(context.Background(), fixture.call, PauseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key"})
 			return err
 		}},
 		{"resume", func(reason string) error {
-			_, err := fixture.service.Resume(context.Background(), fixture.call, ResumeCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, Idempotency: &store.CommandIdempotency{}})
+			_, err := fixture.service.Resume(context.Background(), fixture.call, ResumeCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key"})
 			return err
 		}},
 		{"extend", func(reason string) error {
-			_, err := fixture.service.Extend(context.Background(), fixture.call, ExtendCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, ScheduledEndAt: testNow.Add(time.Hour), PrivateReason: reason, Idempotency: &store.CommandIdempotency{}})
+			_, err := fixture.service.Extend(context.Background(), fixture.call, ExtendCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, ScheduledEndAt: testNow.Add(time.Hour), PrivateReason: reason, IdempotencyKey: "test-key"})
 			return err
 		}},
 		{"close", func(reason string) error {
-			_, err := fixture.service.EarlyClose(context.Background(), fixture.call, EarlyCloseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, Idempotency: &store.CommandIdempotency{}})
+			_, err := fixture.service.EarlyClose(context.Background(), fixture.call, EarlyCloseCommand{ExamID: fixture.examID, SittingID: fixture.sittingID, ExpectedRevision: 1, PrivateReason: reason, IdempotencyKey: "test-key"})
 			return err
 		}},
 	}

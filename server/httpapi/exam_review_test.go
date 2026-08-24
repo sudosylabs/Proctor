@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -80,6 +81,72 @@ func TestIntegrityReviewHTTPUsesBoundedOpaqueEvidenceCursor(t *testing.T) {
 	}
 }
 
+func TestIntegrityReviewEndpointsForwardExactCursorsAndMapMalformedCursors(t *testing.T) {
+	t.Parallel()
+	fake := newExamIntegrityReviewHTTPFake(t)
+	httpAPI := newExamIntegrityReviewFocusedAPI(t, fake)
+	flagID := model.NewIntegrityFlagID()
+	evidenceID := model.NewIntegrityEvidenceID()
+	discrepancyID := model.NewIntegrityDiscrepancyID()
+	tests := []struct {
+		name   string
+		kind   string
+		id     string
+		path   string
+		assert func(*testing.T)
+	}{
+		{
+			name: "flags", kind: "flag", id: flagID.String(),
+			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-flags",
+			assert: func(t *testing.T) {
+				if fake.flagQuery.AfterFlagID != flagID {
+					t.Fatalf("flag query = %#v", fake.flagQuery)
+				}
+			},
+		},
+		{
+			name: "evidence", kind: "evidence", id: evidenceID.String(),
+			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-flags/" + fake.flag.ID.String() + "/evidence",
+			assert: func(t *testing.T) {
+				if fake.evidenceQuery.AfterEvidenceID != evidenceID {
+					t.Fatalf("evidence query = %#v", fake.evidenceQuery)
+				}
+			},
+		},
+		{
+			name: "discrepancies", kind: "discrepancy", id: discrepancyID.String(),
+			path: "/api/v1/submissions/" + fake.submission.ID.String() + "/integrity-discrepancies",
+			assert: func(t *testing.T) {
+				if fake.discrepancyQuery.AfterDiscrepancyID != discrepancyID {
+					t.Fatalf("discrepancy query = %#v", fake.discrepancyQuery)
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cursor, err := encodeExamIntegrityReviewCursor(test.kind, test.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodGet, test.path+"?cursor="+url.QueryEscape(cursor), nil)
+			request.Header.Set("Authorization", "Bearer credential")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("cursor response = %d: %s", response.Code, response.Body.String())
+			}
+			test.assert(t)
+
+			malformed := httptest.NewRequest(http.MethodGet, test.path+"?cursor=not-a-cursor", nil)
+			malformed.Header.Set("Authorization", "Bearer credential")
+			malformedResponse := httptest.NewRecorder()
+			httpAPI.ServeHTTP(malformedResponse, malformed)
+			assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "request.invalid")
+		})
+	}
+}
+
 func TestStudentResultHTTPExposesOnlyReleasedSanitizedProjection(t *testing.T) {
 	t.Parallel()
 	fake := newExamIntegrityReviewHTTPFake(t)
@@ -137,6 +204,7 @@ type examIntegrityReviewHTTPFake struct {
 	attemptID        model.ExamAttemptID
 	authorization    store.ExamIntegrityReviewAuthorization
 	decision         application.SaveExamIntegrityDecisionCommand
+	flagQuery        application.ListExamIntegrityFlagsQuery
 	evidenceQuery    application.ListExamIntegrityEvidenceQuery
 	evidencePage     store.ExamIntegrityEvidencePage
 	discrepancyQuery application.ListExamIntegrityDiscrepanciesQuery
@@ -218,9 +286,10 @@ func (fake *examIntegrityReviewHTTPFake) GetExamIntegrityReview(context.Context,
 		Review: fake.review, Decisions: []model.IntegrityReviewDecision{*fake.decisionValue}}, nil
 }
 
-func (fake *examIntegrityReviewHTTPFake) ListExamIntegrityFlags(context.Context, application.Invocation,
-	application.ListExamIntegrityFlagsQuery,
+func (fake *examIntegrityReviewHTTPFake) ListExamIntegrityFlags(_ context.Context, _ application.Invocation,
+	query application.ListExamIntegrityFlagsQuery,
 ) (*application.ExamIntegrityFlagPage, error) {
+	fake.flagQuery = query
 	return &store.ExamIntegrityFlagPage{Items: []store.ExamIntegrityFlagSummary{{Flag: *fake.flag, EvidenceCount: 1}}}, nil
 }
 

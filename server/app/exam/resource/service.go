@@ -89,7 +89,7 @@ type CreateCommand struct {
 	Body                             io.Reader
 	Size                             int64
 	ExpectedSHA256                   string
-	Idempotency                      *store.CommandIdempotency
+	IdempotencyKey                   string
 }
 type ReplaceContentCommand struct {
 	ExamID                model.ExamID
@@ -99,7 +99,7 @@ type ReplaceContentCommand struct {
 	Body                  io.Reader
 	Size                  int64
 	ExpectedSHA256        string
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 type EditMetadataCommand struct {
 	ExamID                model.ExamID
@@ -107,23 +107,31 @@ type EditMetadataCommand struct {
 	ExpectedDraftRevision int64
 	DisplayName           *string
 	DescriptionMarkdown   *string
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 type ReorderCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
 	ResourceIDs           []model.ExamResourceID
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 type RemoveCommand struct {
 	ExamID                model.ExamID
 	ResourceID            model.ExamResourceID
 	ExpectedDraftRevision int64
-	Idempotency           *store.CommandIdempotency
+	IdempotencyKey        string
 }
 type Opened struct {
 	Record store.ExamResourceRecord
 	Body   io.ReadCloser
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 type Service struct {
@@ -184,11 +192,13 @@ func (s *Service) Open(ctx context.Context, call Call, examID model.ExamID, reso
 }
 
 func (s *Service) Create(ctx context.Context, call Call, command CreateCommand) (store.ExamResourceRecord, error) {
-	if command.Idempotency == nil {
-		return store.ExamResourceRecord{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
 		return store.ExamResourceRecord{}, invalid("upload")
+	}
+	command.DisplayName = strings.TrimSpace(command.DisplayName)
+	idempotency, err := prepareResourceIdempotency(call, idempotencyOperationAddResource, command.IdempotencyKey, command.ExamID, command.ExpectedDraftRevision, "", command.DisplayName, command.DescriptionMarkdown, command.MediaType, command.Size, command.ExpectedSHA256, nil)
+	if err != nil {
+		return store.ExamResourceRecord{}, err
 	}
 	authorization, err := s.authorize(ctx, call, command.ExamID, true)
 	if err != nil {
@@ -229,15 +239,16 @@ func (s *Service) Create(ctx context.Context, call Call, command CreateCommand) 
 		_ = s.content.RemoveExamResource(ctx, rendition.RevisionID, rendition.ID)
 		return store.ExamResourceRecord{}, &Fault{Code: "exam.resource.invalid_content", Cause: errors.New("content checksum mismatch")}
 	}
-	return s.finalize(ctx, call, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, command.Idempotency, "add")
+	return s.finalize(ctx, call, authorization, resource, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "add")
 }
 
 func (s *Service) ReplaceContent(ctx context.Context, call Call, command ReplaceContentCommand) (store.ExamResourceRecord, error) {
-	if command.Idempotency == nil {
-		return store.ExamResourceRecord{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.Body == nil || command.Size < 0 || command.Size > model.ExamResourceMaximumBytes || !command.MediaType.IsValid() || !validSHA256(command.ExpectedSHA256) {
 		return store.ExamResourceRecord{}, invalid("upload")
+	}
+	idempotency, err := prepareResourceIdempotency(call, idempotencyOperationReplaceResourceContent, command.IdempotencyKey, command.ExamID, command.ExpectedDraftRevision, command.ResourceID.String(), "", "", command.MediaType, command.Size, command.ExpectedSHA256, nil)
+	if err != nil {
+		return store.ExamResourceRecord{}, err
 	}
 	authorization, err := s.authorize(ctx, call, command.ExamID, true)
 	if err != nil {
@@ -276,7 +287,7 @@ func (s *Service) ReplaceContent(ctx context.Context, call Call, command Replace
 	if _, err = updated.ReplaceContent(revisionID, at); err != nil {
 		return store.ExamResourceRecord{}, invalidCause("content", err)
 	}
-	return s.finalize(ctx, call, authorization, &updated, leaseID, &rendition, command.ExpectedDraftRevision, command.Idempotency, "replace_content")
+	return s.finalize(ctx, call, authorization, &updated, leaseID, &rendition, command.ExpectedDraftRevision, idempotency, "replace_content")
 }
 
 type authorizationDecision struct {
@@ -307,11 +318,17 @@ func (s *Service) finalize(ctx context.Context, call Call, authorization authori
 }
 
 func (s *Service) EditMetadata(ctx context.Context, call Call, command EditMetadataCommand) (store.ExamResourceRecord, error) {
-	if command.Idempotency == nil {
-		return store.ExamResourceRecord{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if !command.ExamID.IsValid() || !command.ResourceID.IsValid() || command.ExpectedDraftRevision < 1 || command.DisplayName == nil && command.DescriptionMarkdown == nil {
 		return store.ExamResourceRecord{}, invalid("identity")
+	}
+	command.DisplayName = cloneStringPointer(command.DisplayName)
+	if command.DisplayName != nil {
+		*command.DisplayName = strings.TrimSpace(*command.DisplayName)
+	}
+	command.DescriptionMarkdown = cloneStringPointer(command.DescriptionMarkdown)
+	idempotency, err := prepareMetadataIdempotency(call, command)
+	if err != nil {
+		return store.ExamResourceRecord{}, err
 	}
 	authorization, err := s.authorize(ctx, call, command.ExamID, true)
 	if err != nil {
@@ -339,9 +356,9 @@ func (s *Service) EditMetadata(ctx context.Context, call Call, command EditMetad
 	if !changed && s.currentActiveDraft(ctx, call, command.ExamID, command.ExpectedDraftRevision) {
 		return store.ExamResourceRecord{}, &Fault{Code: "exam.resource.no_changes"}
 	}
-	return s.metadataMutation(ctx, call, authorization, command)
+	return s.metadataMutation(ctx, call, authorization, command, idempotency)
 }
-func (s *Service) metadataMutation(ctx context.Context, call Call, authorization authorizationDecision, c EditMetadataCommand) (store.ExamResourceRecord, error) {
+func (s *Service) metadataMutation(ctx context.Context, call Call, authorization authorizationDecision, c EditMetadataCommand, idempotency *store.CommandIdempotency) (store.ExamResourceRecord, error) {
 	at := model.TimeUTC(s.now())
 	action := model.ActionExamManage
 	if authorization.override {
@@ -366,7 +383,7 @@ func (s *Service) metadataMutation(ctx context.Context, call Call, authorization
 	if c.DescriptionMarkdown != nil {
 		descriptionMarkdown = *c.DescriptionMarkdown
 	}
-	result, err := s.persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, c.Idempotency)
+	result, err := s.persistence.UpdateMetadata(ctx, &store.ExamResourceMetadataUpdate{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, DisplayName: displayName, DescriptionMarkdown: descriptionMarkdown, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}
@@ -378,15 +395,8 @@ func (s *Service) metadataMutation(ctx context.Context, call Call, authorization
 }
 
 func (s *Service) Reorder(ctx context.Context, call Call, c ReorderCommand) ([]store.ExamResourceRecord, error) {
-	if c.Idempotency == nil {
-		return nil, &Fault{Code: "idempotency.key_required"}
-	}
 	if !c.ExamID.IsValid() || c.ExpectedDraftRevision < 1 {
 		return nil, invalid("identity")
-	}
-	authorization, err := s.authorize(ctx, call, c.ExamID, true)
-	if err != nil {
-		return nil, err
 	}
 	if len(c.ResourceIDs) > model.ExamResourceMaximumCount {
 		return nil, invalid("resource_ids")
@@ -400,6 +410,19 @@ func (s *Service) Reorder(ctx context.Context, call Call, c ReorderCommand) ([]s
 			return nil, invalid("resource_ids")
 		}
 		seen[id] = struct{}{}
+	}
+	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
+	ids := make([]string, len(c.ResourceIDs))
+	for index, id := range c.ResourceIDs {
+		ids[index] = id.String()
+	}
+	idempotency, err := prepareResourceIdempotency(call, idempotencyOperationReorderResources, c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, "", "", "", "", 0, "", ids)
+	if err != nil {
+		return nil, err
+	}
+	authorization, err := s.authorize(ctx, call, c.ExamID, true)
+	if err != nil {
+		return nil, err
 	}
 	current, err := s.persistence.List(ctx, c.ExamID)
 	if err != nil {
@@ -426,7 +449,7 @@ func (s *Service) Reorder(ctx context.Context, call Call, c ReorderCommand) ([]s
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, c.Idempotency)
+	result, err := s.persistence.Reorder(ctx, &store.ExamResourceReorder{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return nil, s.failAudit(ctx, auditID, err)
 	}
@@ -444,11 +467,12 @@ func (s *Service) Reorder(ctx context.Context, call Call, c ReorderCommand) ([]s
 }
 
 func (s *Service) Remove(ctx context.Context, call Call, c RemoveCommand) (store.ExamResourceRecord, error) {
-	if c.Idempotency == nil {
-		return store.ExamResourceRecord{}, &Fault{Code: "idempotency.key_required"}
-	}
 	if !c.ExamID.IsValid() || !c.ResourceID.IsValid() || c.ExpectedDraftRevision < 1 {
 		return store.ExamResourceRecord{}, invalid("identity")
+	}
+	idempotency, err := prepareResourceIdempotency(call, idempotencyOperationRemoveResource, c.IdempotencyKey, c.ExamID, c.ExpectedDraftRevision, c.ResourceID.String(), "", "", "", 0, "", nil)
+	if err != nil {
+		return store.ExamResourceRecord{}, err
 	}
 	authorization, err := s.authorize(ctx, call, c.ExamID, true)
 	if err != nil {
@@ -463,7 +487,7 @@ func (s *Service) Remove(ctx context.Context, call Call, c RemoveCommand) (store
 	if err != nil {
 		return store.ExamResourceRecord{}, err
 	}
-	result, err := s.persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, c.Idempotency)
+	result, err := s.persistence.Remove(ctx, &store.ExamResourceRemoval{ExamID: c.ExamID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceID: c.ResourceID, ChangedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return store.ExamResourceRecord{}, s.failAudit(ctx, auditID, err)
 	}

@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -17,13 +19,14 @@ import (
 )
 
 type recordingMailAPI struct {
-	sends    int
-	ids      []model.MailDeliveryID
-	view     application.MailDeliveryView
-	lists    int
-	metrics  int
-	rekeys   []string
-	rekeyIDs []model.JobID
+	sends     int
+	ids       []model.MailDeliveryID
+	view      application.MailDeliveryView
+	lists     int
+	listQuery application.ListMailDeliveriesQuery
+	metrics   int
+	rekeys    []string
+	rekeyIDs  []model.JobID
 }
 
 func (m *recordingMailAPI) GetMailKeyState(context.Context, application.Invocation) (application.MailKeyStateView, error) {
@@ -62,8 +65,9 @@ func (m *recordingMailAPI) GetMailDelivery(_ context.Context, _ application.Invo
 	m.ids = append(m.ids, id)
 	return m.view, nil
 }
-func (m *recordingMailAPI) ListMailDeliveries(context.Context, application.Invocation, application.ListMailDeliveriesQuery) (application.MailDeliveryPage, error) {
+func (m *recordingMailAPI) ListMailDeliveries(_ context.Context, _ application.Invocation, query application.ListMailDeliveriesQuery) (application.MailDeliveryPage, error) {
 	m.lists++
+	m.listQuery = query
 	return application.MailDeliveryPage{Items: []application.MailDeliveryView{m.view}}, nil
 }
 func (m *recordingMailAPI) CancelMailDelivery(_ context.Context, _ application.Invocation, id model.MailDeliveryID) (application.MailDeliveryView, error) {
@@ -108,7 +112,10 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 	if err != nil || result.status != http.StatusOK || fake.lists != 1 {
 		t.Fatalf("list result=%#v err=%v lists=%d", result, err, fake.lists)
 	}
-	cursor := encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: id.String()})
+	cursor, err := encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: id.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	decoded, err := decodeMailDeliveryCursor(cursor)
 	if err != nil || decoded.ID != id.String() || decoded.CreatedAt != at.Format(time.RFC3339Nano) {
 		t.Fatalf("cursor=%#v err=%v", decoded, err)
@@ -121,6 +128,32 @@ func TestMailDeliveryListCursorFiltersAndMutationBodiesAreBounded(t *testing.T) 
 	if _, err = module.retryDelivery(operationRequest{request: request, params: Params{MailDeliveryID: id.String()}}); !application.Is(err, "request.invalid") || len(fake.ids) != 0 {
 		t.Fatalf("retry body err=%v ids=%v", err, fake.ids)
 	}
+}
+
+func TestMailDeliveryEndpointForwardsExactCursorAndMapsMalformedCursor(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 24, 10, 11, 12, 345, time.UTC)
+	id := model.NewMailDeliveryID()
+	fake := &recordingMailAPI{view: application.MailDeliveryView{ID: model.NewMailDeliveryID(), CreatedAt: at.Add(-time.Minute)}}
+	logger, _ := newTestLogger(t)
+	httpAPI := newFocusedResourceAPI(t, logger, &academicUnitHTTPApplication{principal: operatorTestPrincipal()}, mailResource(fake))
+	cursor, err := encodeMailDeliveryCursor(mailDeliveryCursor{CreatedAt: at.Format(time.RFC3339Nano), ID: id.String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?cursor="+url.QueryEscape(cursor), nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !fake.listQuery.BeforeCreatedAt.Equal(at) || fake.listQuery.BeforeID != id {
+		t.Fatalf("cursor forwarding = %d query=%#v body=%s", response.Code, fake.listQuery, response.Body.String())
+	}
+
+	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/mail/deliveries?cursor=not-a-cursor", nil)
+	malformed.Header.Set("Authorization", "Bearer credential")
+	malformedResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(malformedResponse, malformed)
+	assertHTTPProblem(t, malformedResponse, http.StatusBadRequest, "mail.query.invalid")
 }
 
 func TestMailMetricsProjectsOnlyBoundedOperationalDimensions(t *testing.T) {

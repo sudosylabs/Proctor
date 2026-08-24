@@ -77,7 +77,10 @@ the code and component contracts for that detail.
 - The versioned HTTP API uses a sealed immutable routing catalog with narrow
   resource capabilities, explicit authentication classifications, transport
   DTOs, fail-closed Problem Details, OpenAPI agreement, request limits, and
-  cursor pagination.
+  strict opaque keyset cursor pagination. Construction resolves and validates
+  every explicit resource capability, including WebSocket, before compiling a
+  pure ordered resource inventory; production catalog assembly has no runtime
+  capability assertions or fallback dependencies.
 - Structural academic administration covers institution, academic units,
   programmes, programme levels, academic periods, classes, affiliations,
   organizational membership, and effective-dated student enrollment. Academic
@@ -720,5 +723,3 @@ to hosts. The complete contract is in
 
 - Expand the store cache allowlist only from measured need and after the
   documented staleness review.
-- Tighten residual broad transport aggregates when a vertical slice provides a
-  stable narrower interface.

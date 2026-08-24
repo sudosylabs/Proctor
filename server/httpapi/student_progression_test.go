@@ -21,13 +21,15 @@ type studentProgressionApplicationFake struct {
 	view    application.OnboardingImportView
 	rows    []application.OnboardingImportRowView
 	command application.DryRunStudentProgressionCommand
+	getID   string
 }
 
 func (f *studentProgressionApplicationFake) DryRunStudentProgression(_ context.Context, _ application.Invocation, command application.DryRunStudentProgressionCommand) (application.OnboardingImportView, error) {
 	f.command = command
 	return f.view, nil
 }
-func (f *studentProgressionApplicationFake) GetStudentProgression(context.Context, application.Invocation, string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+func (f *studentProgressionApplicationFake) GetStudentProgression(_ context.Context, _ application.Invocation, id string) (application.OnboardingImportView, []application.OnboardingImportRowView, error) {
+	f.getID = id
 	return f.view, f.rows, nil
 }
 func (f *studentProgressionApplicationFake) CommitStudentProgression(context.Context, application.Invocation, application.CommitStudentProgressionCommand) (application.OnboardingImportView, error) {
