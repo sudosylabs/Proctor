@@ -82,20 +82,21 @@ test('rejects changed Proctor metadata', () => {
   );
 });
 
-test('places the contract panel after generated imports', () => {
-  const source = '---\nid: example\n---\n\nimport One from "one";\nimport Two from "two";\n\n# Title\n';
+test('places the contract panel after the operation introduction', () => {
+  const source =
+    '---\nid: example\n---\n\nimport One from "one";\n\n# Title\n\nDescription.\n\n<ParamsDetails>\n</ParamsDetails>\n';
   const result = insertApiContractPanel(source);
 
   assert.match(
     result,
-    /import Two from "two";\n\n<ApiContractPanel \/>\n\n# Title/,
+    /Description\.\n\n<ApiContractPanel \/>\n\n<ParamsDetails>/,
   );
   assert.equal(insertApiContractPanel(result), result);
 });
 
-test('rejects generated output without an import seam', () => {
+test('rejects generated output without a request-details seam', () => {
   assert.throws(
     () => insertApiContractPanel('---\nid: broken\n---\n\n# Title\n', 'broken.api.mdx'),
-    /broken\.api\.mdx: could not locate the generated MDX import block/,
+    /broken\.api\.mdx: could not locate the generated request-details seam/,
   );
 });

@@ -37,6 +37,26 @@ The desktop reading structure is intentionally asymmetric:
 The API reference may use a denser specialist variant, but it inherits the
 same typography, colors, spacing, and interaction states.
 
+## Reading surfaces
+
+Guide pages keep a `72–76ch` prose measure, contextual section navigation on
+the left, and an on-page outline on the right when headings warrant one. A
+compact metadata line before the page heading identifies the intended audience
+and content maturity. That line is orientation, not a decorative badge row.
+
+API overview pages use the same reader but may begin with a contract summary:
+what is authoritative, how much of the contract is indexed, and whether the
+reference can send requests. Endpoint pages use the full available article
+width and split it `61/39` between the operation contract and code/request
+panel. Below the desktop breakpoint those panels stack in document order.
+
+An endpoint presents information in this order: operation name, exact method
+and OpenAPI path, purpose, Proctor request requirements, request details, then
+responses. HTTP methods identify protocol data but do not receive arbitrary
+rainbow colors; the selected technical accent remains purple. Teal and coral
+are reserved for successful and failed response states. Code-language tabs
+are neutral until selected.
+
 ## Core palette
 
 Six colors define the identity. Lighter surfaces and dark-mode values are

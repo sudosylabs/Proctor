@@ -1,0 +1,37 @@
+.meta {
+  align-items: center;
+  color: var(--proctor-ink-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-caption-size);
+  gap: var(--proctor-space-2);
+  letter-spacing: 0.025em;
+  margin: 0 0 var(--proctor-space-3);
+}
+
+.divider {
+  color: var(--proctor-border-strong);
+}
+
+.meta span:last-child {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--proctor-space-2);
+}
+
+.meta i {
+  background: currentColor;
+  border-radius: var(--proctor-radius-pill);
+  height: 0.4rem;
+  width: 0.4rem;
+}
+
+.available {
+  color: var(--proctor-complete);
+}
+
+.preview,
+.planned {
+  color: var(--proctor-attention);
+}

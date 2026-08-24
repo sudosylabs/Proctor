@@ -1,0 +1,223 @@
+body .theme-doc-markdown:has(> .theme-api-markdown) {
+  max-width: none;
+}
+
+.theme-api-markdown {
+  margin-inline: 0;
+  width: 100%;
+}
+
+.theme-api-markdown > .openapi-left-panel__container {
+  flex: 0 0 61%;
+  max-width: 61%;
+  min-width: 0;
+  padding: 0 var(--proctor-space-6) 0 var(--proctor-space-4);
+}
+
+.theme-api-markdown > .openapi-right-panel__container {
+  align-self: flex-start;
+  border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  flex: 0 0 39%;
+  max-width: 39%;
+  min-width: 0;
+  padding: 0 0 0 var(--proctor-space-5);
+  top: calc(var(--ifm-navbar-height) + var(--proctor-space-4));
+}
+
+.openapi__heading {
+  font-size: clamp(2.25rem, 4vw, 3.25rem) !important;
+  letter-spacing: -0.045em !important;
+  line-height: 1.02 !important;
+  margin-bottom: var(--proctor-space-5) !important;
+  max-width: 16ch !important;
+}
+
+.openapi__method-endpoint {
+  align-items: center;
+  background: var(--proctor-code);
+  border: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  border-radius: var(--proctor-radius-card);
+  display: flex;
+  gap: var(--proctor-space-3);
+  margin: 0 0 var(--proctor-space-5);
+  max-width: 100%;
+  min-width: 0;
+  padding: var(--proctor-space-3) var(--proctor-space-4);
+  white-space: normal;
+}
+
+.openapi__method-endpoint .badge {
+  background: var(--proctor-primary-soft) !important;
+  border: var(--proctor-stroke-hairline) solid
+    color-mix(in srgb, var(--proctor-primary) 35%, transparent);
+  border-radius: var(--proctor-radius-control);
+  color: var(--proctor-primary-strong) !important;
+  flex: none;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-caption-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: var(--proctor-space-1) var(--proctor-space-2);
+}
+
+.openapi__method-endpoint-path {
+  background: transparent;
+  border: 0;
+  color: var(--proctor-ink) !important;
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-body-size) !important;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 0 !important;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.openapi__divider {
+  background: var(--proctor-border);
+  height: var(--proctor-stroke-hairline);
+  margin: 0 0 var(--proctor-space-5);
+}
+
+.openapi-tabs__code-container,
+.openapi-tabs__code-container-inner,
+.openapi-explorer__request-form,
+.openapi-explorer__response-container {
+  background: var(--proctor-sidebar) !important;
+  border: var(--proctor-stroke-hairline) solid var(--proctor-border) !important;
+  border-radius: var(--proctor-radius-card) !important;
+  box-shadow: none !important;
+}
+
+.openapi-tabs__code-container-inner {
+  border: 0 !important;
+}
+
+.openapi-tabs__code-item,
+.openapi-tabs__code-item--variant {
+  border: var(--proctor-stroke-hairline) solid transparent !important;
+  border-radius: var(--proctor-radius-control) !important;
+  color: var(--proctor-ink-muted) !important;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-caption-size);
+  font-weight: 600;
+  min-width: 0 !important;
+}
+
+.openapi-tabs__code-item.active,
+.openapi-tabs__code-item--variant.active {
+  background: var(--proctor-primary-soft) !important;
+  border-color: var(--proctor-primary) !important;
+  color: var(--proctor-primary-strong) !important;
+}
+
+.openapi-explorer__code-block,
+.openapi-explorer__code-block-content,
+.openapi-explorer__code-block-lines,
+.openapi-explorer__code-block-code-line-number,
+.theme-api-markdown .prism-code {
+  background: var(--proctor-code) !important;
+  color: var(--proctor-ink) !important;
+}
+
+.theme-api-markdown .token,
+.theme-api-markdown .token-line {
+  color: var(--proctor-ink) !important;
+}
+
+.theme-api-markdown .token.comment {
+  color: var(--proctor-ink-muted) !important;
+}
+
+.openapi-tabs__response-code-item {
+  background: transparent !important;
+  border: var(--proctor-stroke-hairline) solid transparent !important;
+  border-radius: var(--proctor-radius-control) !important;
+  color: var(--proctor-ink-muted) !important;
+  font-family: var(--ifm-font-family-monospace);
+  font-weight: 600;
+}
+
+.openapi-tabs__response-code-item.success.active {
+  background: var(--proctor-complete-soft) !important;
+  border-color: var(--proctor-complete) !important;
+  color: var(--proctor-complete) !important;
+}
+
+.openapi-tabs__response-code-item.danger.active {
+  background: var(--proctor-danger-soft) !important;
+  border-color: var(--proctor-danger) !important;
+  color: var(--proctor-danger) !important;
+}
+
+.openapi-tabs__mime-item,
+.openapi-tabs__schema-item {
+  border-radius: var(--proctor-radius-control) !important;
+  color: var(--proctor-ink-muted) !important;
+  font-size: var(--proctor-type-caption-size);
+}
+
+.openapi-tabs__mime-item.active,
+.openapi-tabs__schema-item.active {
+  border-color: var(--proctor-primary) !important;
+  color: var(--proctor-primary-strong) !important;
+}
+
+.openapi-markdown__details,
+.openapi-schema__list-item {
+  background: var(--proctor-sidebar) !important;
+  border-color: var(--proctor-border) !important;
+  color: var(--proctor-ink-soft) !important;
+}
+
+.openapi-schema__property {
+  color: var(--proctor-ink) !important;
+}
+
+.openapi-schema__name,
+.openapi-schema__required {
+  color: var(--proctor-primary-strong) !important;
+  font-family: var(--ifm-font-family-monospace);
+}
+
+.openapi-explorer__request-form-header,
+.openapi-explorer__request-form-header-label {
+  color: var(--proctor-ink) !important;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--proctor-type-caption-size) !important;
+  letter-spacing: 0.04em;
+}
+
+.theme-api-markdown input,
+.theme-api-markdown select,
+.theme-api-markdown textarea {
+  background: var(--proctor-surface) !important;
+  border-color: var(--proctor-border-strong) !important;
+  border-radius: var(--proctor-radius-control) !important;
+  color: var(--proctor-ink) !important;
+}
+
+.theme-api-markdown .tabs__item:focus-visible {
+  outline: 3px solid var(--proctor-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 996px) {
+  .theme-api-markdown > .openapi-left-panel__container,
+  .theme-api-markdown > .openapi-right-panel__container {
+    flex-basis: 100%;
+    max-width: 100%;
+    padding-inline: 0;
+  }
+
+  .theme-api-markdown > .openapi-right-panel__container {
+    border-left: 0;
+    border-top: var(--proctor-stroke-hairline) solid var(--proctor-border);
+    margin-top: var(--proctor-space-7);
+    padding-top: var(--proctor-space-6);
+    position: static;
+  }
+}

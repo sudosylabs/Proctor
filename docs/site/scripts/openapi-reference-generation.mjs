@@ -3,13 +3,12 @@ export function insertApiContractPanel(source, name = 'generated endpoint') {
     return source;
   }
 
-  const imports = source.match(/(\n---\n\n)((?:import [^\n]+;\n)+)\n/);
-  if (!imports) {
-    throw new Error(`${name}: could not locate the generated MDX import block`);
+  if (!/\n<ParamsDetails\b/.test(source)) {
+    throw new Error(`${name}: could not locate the generated request-details seam`);
   }
 
   return source.replace(
-    imports[0],
-    `${imports[1]}${imports[2]}\n<ApiContractPanel />\n\n`,
+    /\n<ParamsDetails\b/,
+    '\n<ApiContractPanel />\n\n<ParamsDetails',
   );
 }

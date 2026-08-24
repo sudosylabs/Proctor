@@ -4,14 +4,10 @@ description: Use Proctor's reviewed OpenAPI contract, explicit authentication me
 audience: api-consumer
 maturity: preview
 slug: /
+hide_title: true
 ---
 
-# Proctor API
-
-Proctor exposes a versioned HTTP API described by a checked-in OpenAPI 3.1
-contract. The specification is reviewed alongside the routes and agreement
-tests; generated documentation is a view of that contract, never a second
-authority.
+<ApiOverviewHero />
 
 <Maturity state="preview">
   The contract and generated endpoint reference are available. Operations that
@@ -19,12 +15,12 @@ authority.
   status is recorded by the server project.
 </Maturity>
 
-## Download the Current Contract
+## Use the Contract as the Authority
 
-<a className="button button--primary" href="/openapi/openapi.json" download>{'Download openapi.json'}</a>
-
-The docs build copies this file directly from the tracked server contract. It
-does not infer endpoints from handlers or rewrite the canonical descriptions.
+The docs build publishes `openapi.json` directly from the tracked server
+contract. It does not infer endpoints from handlers or rewrite canonical
+descriptions. The generated reference is a reader for that contract, never a
+second source of route behavior.
 
 Browse the endpoint groups in the sidebar. Every endpoint page is generated
 from the same contract and displays its authentication, idempotency, and stable

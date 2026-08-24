@@ -50,7 +50,11 @@ const config: Config = {
         },
         blog: false,
         theme: {
-          customCss: ['./src/css/tokens.css', './src/css/custom.css'],
+          customCss: [
+            './src/css/tokens.css',
+            './src/css/custom.css',
+            './src/css/api.css',
+          ],
         },
       } satisfies Preset.Options,
     ],

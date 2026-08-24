@@ -6,10 +6,10 @@ This private Docusaurus package renders the task-oriented content in
 READMEs, and project status remain authoritative in their current locations.
 
 The current local build provides task-oriented navigation, public content
-validation, and a deterministic generated API reference. Its visual
-presentation remains provisional. Publication, the production hostname,
-content licensing, versioning, analytics, and hosting remain explicit decisions
-to settle before deployment.
+validation, a deliberate operator-first reading shell, and a deterministic
+generated API reference. Publication, the production hostname, content
+licensing, versioning, analytics, and hosting remain explicit decisions to
+settle before deployment.
 
 The search dialog uses a generated local index covering authored public and API
 guides, canonical glossary terms, OpenAPI product areas, and every operation.
@@ -93,9 +93,13 @@ is never edited or treated as an authority.
 
 `docusaurus-plugin-openapi-docs` renders that same contract into the ignored
 `docs/api/reference/` directory. `scripts/finalize-openapi-reference.mjs` adds
-the Proctor contract panel at the generator's documented MDX seam, and
-`scripts/verify-openapi-reference.mjs` proves that all operations, product-area
-tags, sidebar entries, and `x-proctor-*` declarations are present exactly once.
+the Proctor contract panel between each operation introduction and its request
+details. The local `ApiExplorer/MethodEndpoint` theme adapter presents the
+exact OpenAPI path without joining it to a display-only server URL. These
+adapters own presentation only; they never rewrite route or contract data.
+`scripts/verify-openapi-reference.mjs` then proves that all operations,
+product-area tags, sidebar entries, and `x-proctor-*` declarations are present
+exactly once.
 The authored `docs/api/index.mdx` overview and generator template remain small;
 route descriptions and schemas stay with their human-owned OpenAPI YAML
 fragments.
