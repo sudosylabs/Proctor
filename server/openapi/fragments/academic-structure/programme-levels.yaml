@@ -7,6 +7,8 @@ paths:
       summary: Get a Programme Level
       tags:
         - Academic structure
+      description: >-
+        Returns one active Programme Level when its owning Programme hierarchy is visible to the caller. The projection does not expand Classes or confer authority over their rosters.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -40,6 +42,8 @@ paths:
       summary: Update a Programme Level without changing its Programme owner
       tags:
         - Academic structure
+      description: >-
+        Applies a partial canonical or presentation update while preserving the Level's Programme owner. Dependent Classes retain their stable parent identity and block changes that would violate current structure.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -82,6 +86,15 @@ paths:
       summary: Archive a Programme Level that has no active Classes
       tags:
         - Academic structure
+      description: >-
+        Archives one Programme Level only when it has no active Classes. The transition retains history and never cascades into Class archival, enrollment termination, or Role Binding removal.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/programme-levels/<programme-level-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -119,11 +132,15 @@ paths:
 components:
   requestBodies:
     UpdateProgrammeLevel:
+      description: Partial Programme Level presentation update; its Programme owner cannot change.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateProgrammeLevelRequest'
+          example:
+            display_name: Level 100
+            description: First year of the programme.
   responses:
     ProgrammeLevelOK:
       description: Programme Level
@@ -138,6 +155,7 @@ components:
           $ref: '#/components/headers/NoStore'
   schemas:
     UpdateProgrammeLevelRequest:
+      description: Mutable Programme Level fields; omitted or null values remain unchanged.
       type: object
       additionalProperties: false
       properties:

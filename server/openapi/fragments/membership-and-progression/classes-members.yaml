@@ -7,6 +7,8 @@ paths:
       summary: List active or historical student enrollments for a Class
       tags:
         - Membership and progression
+      description: >-
+        Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -30,6 +32,7 @@ paths:
             type: integer
             format: int64
             minimum: 1
+          description: Unix time in milliseconds at which enrollment must be effective; ignored when history is true.
         - name: history
           in: query
           required: false
@@ -55,6 +58,8 @@ paths:
       summary: Enroll, transfer, or progress a student transactionally
       tags:
         - Membership and progression
+      description: >-
+        Enrolls an existing User in the route Class and atomically ends a conflicting active Class membership in the same Academic Period when the domain permits transfer or progression. The transaction preserves every prior enrollment interval.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -97,11 +102,15 @@ paths:
 components:
   requestBodies:
     EnrollClassMember:
+      description: Existing User and optional effective interval for enrollment in the route Class.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EnrollClassMemberRequest'
+          example:
+            user_id: ybndrfg8ejkmcpqxot1uwisza3
+            start_at: 1785542400000
   responses:
     ClassMemberListOK:
       description: Class Member collection

@@ -5,6 +5,8 @@ paths:
     post:
       operationId: resendInvitation
       summary: Rotate the claim and resend an unchanged pending Invitation
+      description: >-
+        Revision-fences one pending Invitation, rotates its one-time claim, and queues the unchanged package for durable redelivery. Any prior claim becomes unusable, while purpose, scope, Role, and effective dates remain identical.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required

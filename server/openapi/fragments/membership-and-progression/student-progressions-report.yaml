@@ -5,6 +5,8 @@ paths:
     get:
       operationId: downloadStudentProgressionReport
       summary: Download the authorized formula-safe student progression report
+      description: >-
+        Downloads the bounded report for one authorized progression preview or result with spreadsheet formulas neutralized as data. The response contains the reviewed row projection and no internal Job payload, credentials, or database selectors.
       x-proctor-auth: principal_required
       tags:
         - Membership and progression

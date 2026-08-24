@@ -5,6 +5,15 @@ paths:
     post:
       operationId: cancelStudentProgression
       summary: Cooperatively cancel a student progression
+      description: >-
+        Requests cancellation of one authorized progression while its dry-run or commit work is still cancelable. Cancellation is cooperative, preserves the preview and Job history, and cannot roll back a completed enrollment transaction.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/student-progressions/<progression-id>/cancel' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       tags:
         - Membership and progression

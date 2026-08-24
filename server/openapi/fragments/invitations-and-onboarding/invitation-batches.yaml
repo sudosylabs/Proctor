@@ -52,11 +52,19 @@ paths:
 components:
   requestBodies:
     RunInvitationBatch:
+      description: One homogeneous Invitation operation, exact scope, and at most 200 independently keyed items.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/InvitationBatchRequest'
+          example:
+            operation: student_class.create
+            scope_type: class
+            scope_id: ybndrfg8ejkmcpqxot1uwisza3
+            items:
+              - key: invite-student-001
+                email: student.one@example.edu
   responses:
     InvitationBatchOK:
       description: Ordered bounded per-item Invitation outcomes

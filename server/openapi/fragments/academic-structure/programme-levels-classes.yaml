@@ -7,6 +7,8 @@ paths:
       summary: List Classes for a Programme Level
       tags:
         - Academic structure
+      description: >-
+        Lists active Classes directly assigned to one authorized Programme Level. The collection returns structural Class metadata and excludes rosters, candidate Attempts, and permission grants.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -40,6 +42,8 @@ paths:
       summary: Create a Class for a Programme Level and Academic Period
       tags:
         - Academic structure
+      description: >-
+        Creates one concrete student roster under the Programme Level in the route and one eligible Academic Period in the body. Creation performs owner and period checks but does not enroll any student automatically.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -80,11 +84,17 @@ paths:
 components:
   requestBodies:
     CreateClass:
+      description: Academic Period and canonical presentation for a new Class under the route Programme Level.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateClassRequest'
+          example:
+            academic_period_id: ybndrfg8ejkmcpqxot1uwisza3
+            name: cs-level-100-a
+            display_name: Computer Science Level 100 — A
+            description: First-year Class A.
   responses:
     ClassCreated:
       description: Class created
@@ -94,6 +104,7 @@ components:
             $ref: '#/components/schemas/ClassResponse'
   schemas:
     CreateClassRequest:
+      description: Academic Period and presentation for a concrete student roster.
       type: object
       additionalProperties: false
       required:

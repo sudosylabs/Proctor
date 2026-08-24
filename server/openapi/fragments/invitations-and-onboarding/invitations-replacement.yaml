@@ -5,6 +5,8 @@ paths:
     post:
       operationId: replaceInvitation
       summary: Supersede a pending Invitation with a changed immutable package
+      description: >-
+        Revision-fences and revokes the pending Invitation, then issues a new immutable package and one-time claim with the requested changes. The old claim cannot accept the replacement and durable history links both records.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -54,11 +56,18 @@ paths:
 components:
   requestBodies:
     ReplaceInvitation:
+      description: Exact pending revision and complete immutable package for the replacement Invitation.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ReplaceInvitationRequest'
+          example:
+            expected_revision: 2
+            purpose: student_class
+            email: student.one@example.edu
+            class_id: ybndrfg8ejkmcpqxot1uwisza3
+            suggested_username: student-one
   responses:
     InvitationAdministrationCreated:
       description: Replacement Invitation created and prior Invitation superseded

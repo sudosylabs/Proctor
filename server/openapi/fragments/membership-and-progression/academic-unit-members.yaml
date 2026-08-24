@@ -7,6 +7,15 @@ paths:
       summary: End organizational membership while retaining history
       tags:
         - Membership and progression
+      description: >-
+        Ends one exact effective Academic Unit membership after authorizing its current Unit scope. Historical dates and audit provenance remain durable, and ending membership does not silently remove affiliations, Roles, or scoped Role Bindings.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/academic-unit-members/<membership-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

@@ -5,6 +5,8 @@ paths:
     post:
       operationId: issueTeacherAcademicUnitInvitation
       summary: Invite a teacher into one exact Academic Unit with one delegated Role package
+      description: >-
+        Issues an immutable teacher relationship and Role package for one exact Academic Unit after validating the recipient address, Role eligibility, effective interval, and inviter authority. The one-time claim is delivered through durable mail and is never returned to the administrator.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -31,11 +33,18 @@ paths:
         - sessionCookie: []
           csrfToken: []
       requestBody:
+        description: Recipient, delegated Role, optional effective interval, and suggested profile fields for a teacher Invitation.
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/IssueTeacherAcademicUnitInvitationRequest'
+            example:
+              email: teacher.one@example.edu
+              role_id: ybndrfg8ejkmcpqxot1uwisza3
+              suggested_username: teacher-one
+              suggested_display_name: Teacher One
+              start_at: 1785542400000
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure
@@ -63,6 +72,8 @@ paths:
     post:
       operationId: issueAcademicUnitRoleInvitation
       summary: Invite an existing User to one exact Academic Unit Role package
+      description: >-
+        Issues an immutable Role grant package scoped to the route Academic Unit for an existing User address. Acceptance cannot expand the recorded Role, scope, or effective interval, and claim material remains confined to the delivery and acceptance path.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -89,11 +100,16 @@ paths:
         - sessionCookie: []
           csrfToken: []
       requestBody:
+        description: Existing recipient, exact eligible Role, and optional effective interval for the route Academic Unit.
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/IssueScopedRoleInvitationRequest'
+            example:
+              email: reviewer.one@example.edu
+              role_id: ybndrfg8ejkmcpqxot1uwisza3
+              start_at: 1785542400000
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure

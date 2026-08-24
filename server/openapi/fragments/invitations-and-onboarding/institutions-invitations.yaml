@@ -5,6 +5,8 @@ paths:
     post:
       operationId: issueInstitutionRoleInvitation
       summary: Invite an existing User to one exact Institution Role package
+      description: >-
+        Issues an immutable Institution-scoped Role package after strong recent authentication and last-administrator safety checks. Acceptance cannot narrow or expand the recorded Role and scope, and the one-time claim remains confidential.
       tags:
         - Invitations and onboarding
       x-proctor-auth: strong_recent_session_required
@@ -33,11 +35,16 @@ paths:
         - sessionCookie: []
           csrfToken: []
       requestBody:
+        description: Existing recipient, exact eligible Role, and optional effective interval for the route Institution.
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/IssueScopedRoleInvitationRequest'
+            example:
+              email: administrator.one@example.edu
+              role_id: ybndrfg8ejkmcpqxot1uwisza3
+              start_at: 1785542400000
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure

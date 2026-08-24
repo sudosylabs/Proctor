@@ -7,6 +7,8 @@ paths:
       summary: Search Classes owned by an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Searches Classes whose Programme hierarchy is owned by the authorized Academic Unit, using bounded stable traversal. Results expose Class structure only and never enroll students or grant Class-scoped permission.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -37,6 +39,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+          description: Maximum number of Classes to return.
       responses:
         "200":
           $ref: '#/components/responses/ClassListOK'

@@ -7,6 +7,8 @@ paths:
       summary: List or search Programmes owned by an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Lists active Programmes directly owned by one authorized Academic Unit, optionally narrowed by the documented search input. The collection does not include Programmes owned by descendants unless requested through those Units.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -37,6 +39,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+          description: Maximum number of Programmes to return.
       responses:
         "200":
           $ref: '#/components/responses/ProgrammeListOK'
@@ -55,6 +58,8 @@ paths:
       summary: Create a Programme owned by an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Creates one Programme under the exact Academic Unit in the route after rechecking current management authority. Programme creation does not create levels, Classes, enrollments, Roles, or Role Bindings.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -95,11 +100,16 @@ paths:
 components:
   requestBodies:
     CreateProgramme:
+      description: Canonical and human-facing presentation for a Programme owned by the route Academic Unit.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateProgrammeRequest'
+          example:
+            name: bsc-computer-science
+            display_name: BSc Computer Science
+            description: Undergraduate computer science programme.
   responses:
     ProgrammeCreated:
       description: Programme created
@@ -119,6 +129,7 @@ components:
       items:
         $ref: '#/components/schemas/ProgrammeResponse'
     CreateProgrammeRequest:
+      description: Canonical and human-facing fields for a new Programme.
       type: object
       additionalProperties: false
       required:

@@ -16,11 +16,14 @@ components:
       description: The staged onboarding import identifier.
   requestBodies:
     MutateInvitation:
+      description: Exact current Invitation revision for resend or revocation.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/InvitationMutationRequest'
+          example:
+            expected_revision: 3
   responses:
     InvitationAdministrationOK:
       description: Authorized safe Invitation administration view

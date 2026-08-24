@@ -7,6 +7,8 @@ paths:
       summary: Get a Programme
       tags:
         - Academic structure
+      description: >-
+        Returns one active Programme when its owning Academic Unit is visible to the current principal. The bounded projection does not expand Levels or Classes.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -40,6 +42,8 @@ paths:
       summary: Update a Programme without changing its Academic Unit owner
       tags:
         - Academic structure
+      description: >-
+        Applies a partial canonical or presentation update while preserving the Programme's Academic Unit owner. Dependent Levels retain stable ownership and are not mutated by this command.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -82,6 +86,15 @@ paths:
       summary: Archive a Programme that has no active Programme Levels
       tags:
         - Academic structure
+      description: >-
+        Archives one Programme only after proving it has no active Programme Levels. The operation retains history and never cascades into Level, Class, enrollment, or authorization changes.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/programmes/<programme-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -119,11 +132,15 @@ paths:
 components:
   requestBodies:
     UpdateProgramme:
+      description: Partial Programme presentation update; its Academic Unit owner cannot change.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateProgrammeRequest'
+          example:
+            display_name: Bachelor of Science in Computer Science
+            description: Undergraduate computer science programme.
   responses:
     ProgrammeOK:
       description: Programme
@@ -138,6 +155,7 @@ components:
           $ref: '#/components/headers/NoStore'
   schemas:
     UpdateProgrammeRequest:
+      description: Mutable Programme fields; omitted or null values remain unchanged.
       type: object
       additionalProperties: false
       properties:

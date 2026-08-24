@@ -51,11 +51,19 @@ paths:
 components:
   requestBodies:
     RunAcademicAdministrationBatch:
+      description: One homogeneous operation, exact authorization scope, and at most 200 independently keyed existing-User items.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AcademicAdministrationBatchRequest'
+          example:
+            operation: user.enable
+            scope_type: institution
+            scope_id: ybndrfg8ejkmcpqxot1uwisza3
+            items:
+              - key: enable-user-001
+                user_id: ybndrfg8ejkmcpqxot1uwisza4
   responses:
     AcademicAdministrationBatchOK:
       description: Ordered bounded per-item existing-User academic administration outcomes

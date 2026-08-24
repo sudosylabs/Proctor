@@ -3,6 +3,8 @@ paths:
     post:
       operationId: uploadOnboardingImport
       summary: Upload a bounded onboarding CSV for asynchronous validation
+      description: >-
+        Stores one bounded formula-safe CSV source and creates a durable validation Job for the explicit mode and authorization scope. Upload performs no account, membership, or Role mutation; the resulting immutable preview must be reviewed and committed separately.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -30,6 +32,7 @@ paths:
         - name: mode
           in: query
           required: true
+          description: Selects the onboarding workflow and therefore the CSV columns and validation rules to apply.
           schema:
             type: string
             enum:
@@ -40,6 +43,7 @@ paths:
         - name: scope_type
           in: query
           required: true
+          description: Declares the kind of resource that owns every row in this import.
           schema:
             type: string
             enum:
@@ -49,21 +53,33 @@ paths:
         - name: scope_id
           in: query
           required: true
+          description: Identifies the exact Class, Academic Unit, or Institution that owns the import.
           schema:
             $ref: '#/components/schemas/ID'
         - name: role_id
           in: query
           required: false
+          description: Role to package into applicable teacher or institution Invitation rows; rejected for modes that do not use Roles.
           schema:
             $ref: '#/components/schemas/ID'
       requestBody:
         required: true
+        description: Contains the bounded UTF-8 CSV source to validate; the upload creates only a preview and performs no account or membership mutations.
         content:
           text/csv:
             schema:
               type: string
               format: binary
               maxLength: 10485760
+      x-codeSamples:
+        - lang: Shell
+          label: Upload a student Class roster
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Content-Type: text/csv" \
+              --data-binary '@./onboarding.csv' \
+              "https://proctor.example.edu/api/v1/onboarding-imports?mode=student_class&scope_type=class&scope_id=ybndrfg8ejkmcpqxot1uwisza3"
       responses:
         "202":
           $ref: '#/components/responses/OnboardingImportAccepted'
@@ -87,6 +103,8 @@ paths:
     get:
       operationId: getOnboardingImport
       summary: Get one authorized immutable onboarding preview or final report projection
+      description: >-
+        Returns the bounded authorized state, preview digest, and row outcomes for one onboarding import. The projection omits original claims, passwords, mail payloads, internal Job data, and unsafe parsing diagnostics.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required

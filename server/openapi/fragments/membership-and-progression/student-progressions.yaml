@@ -5,6 +5,8 @@ paths:
       summary: Create an asynchronous dry-run for one exact student progression
       tags:
         - Membership and progression
+      description: >-
+        Creates a durable Job that validates the exact source and destination Classes and Academic Periods without changing enrollment. Its immutable preview and digest expose bounded row outcomes for review before commit.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -56,6 +58,8 @@ paths:
       summary: Get one authorized student progression preview or result
       tags:
         - Membership and progression
+      description: >-
+        Returns the authorized immutable preview or terminal result for one progression Job. The projection is bounded and contains no credentials, student answers, or unsafe worker diagnostics.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -90,13 +94,21 @@ paths:
 components:
   requestBodies:
     DryRunStudentProgression:
+      description: Exact source and destination academic structure plus the future effective instant to validate without mutation.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentProgressionDryRunRequest'
+          example:
+            source_period_id: ybndrfg8ejkmcpqxot1uwisza3
+            source_class_id: ybndrfg8ejkmcpqxot1uwisza4
+            destination_period_id: ybndrfg8ejkmcpqxot1uwisza5
+            destination_class_id: ybndrfg8ejkmcpqxot1uwisza6
+            effective_at: "2027-08-01T00:00:00Z"
   schemas:
     StudentProgressionDryRunRequest:
+      description: Exact source, destination, and effective instant for an immutable progression preview.
       type: object
       additionalProperties: false
       required:

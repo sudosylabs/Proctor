@@ -7,6 +7,15 @@ paths:
       summary: End an Affiliation while retaining history
       tags:
         - Membership and progression
+      description: >-
+        Ends one exact effective Affiliation after authorizing the related User and scope. Other Affiliations may remain active, and this relationship change never revokes credentials or permissions implicitly.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/affiliations/<affiliation-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

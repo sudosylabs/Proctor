@@ -5,6 +5,8 @@ paths:
       summary: List or search Academic Periods visible through authorized owner scopes
       tags:
         - Academic structure
+      description: >-
+        Lists Academic Periods visible through the caller's current Institution or Academic Unit authority, with stable owner-aware filtering. Periods describe effective academic time windows and do not themselves grant access to Classes or students.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -35,6 +37,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+          description: Maximum number of visible Academic Periods to return.
       responses:
         "200":
           $ref: '#/components/responses/AcademicPeriodListOK'
@@ -53,6 +56,8 @@ paths:
       summary: Create an Institution- or Academic-Unit-owned Academic Period
       tags:
         - Academic structure
+      description: >-
+        Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are Unix-millisecond instants, and an optional Idempotency-Key makes uncertain retries safe.
       x-proctor-auth: principal_required
       x-proctor-idempotency: optional
       x-proctor-error-codes:
@@ -103,6 +108,8 @@ paths:
       summary: Get an Academic Period
       tags:
         - Academic structure
+      description: >-
+        Returns one Academic Period only when its durable owner is visible to the current principal. The response reports its owner and time bounds without implying access to every Class that references it.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -136,6 +143,8 @@ paths:
       summary: Update an Academic Period without changing its owner
       tags:
         - Academic structure
+      description: >-
+        Applies a partial presentation or time-window update while preserving the Period's original owner. The authoritative transition rejects bounds that would invalidate dependent academic structure or conflict with current durable state.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -178,6 +187,15 @@ paths:
       summary: Archive an Academic Period with no active Classes or enrollments
       tags:
         - Academic structure
+      description: >-
+        Archives one Academic Period only after proving that no active Class or enrollment still depends on it. History is retained, and the operation never cascades into Class deletion, membership termination, or student progression.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/academic-periods/<academic-period-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -223,17 +241,29 @@ components:
       description: The Academic Period identifier.
   requestBodies:
     CreateAcademicPeriod:
+      description: Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateAcademicPeriodRequest'
+          example:
+            owner_type: institution
+            owner_id: ybndrfg8ejkmcpqxot1uwisza3
+            name: 2026-2027
+            display_name: 2026–2027
+            start_at: 1785542400000
+            end_at: 1817078399000
     UpdateAcademicPeriod:
+      description: Partial Academic Period presentation or bounds update; ownership cannot change.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateAcademicPeriodRequest'
+          example:
+            display_name: Academic Year 2026–2027
+            end_at: 1819756799000
   responses:
     AcademicPeriodOK:
       description: Academic Period
@@ -314,6 +344,7 @@ components:
       items:
         $ref: '#/components/schemas/AcademicPeriodResponse'
     CreateAcademicPeriodRequest:
+      description: Complete owner, presentation, and time window for a new Academic Period.
       type: object
       additionalProperties: false
       required:
@@ -365,6 +396,7 @@ components:
           format: int64
           minimum: 1
     UpdateAcademicPeriodRequest:
+      description: Mutable Academic Period fields; omitted or null values leave the stored value unchanged.
       type: object
       additionalProperties: false
       properties:

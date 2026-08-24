@@ -448,31 +448,48 @@
       "BrowserInvitationAcceptance": {
         "content": {
           "application/json": {
+            "example": {
+              "display_name": "Student One",
+              "handle": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+              "locale": "en",
+              "password": "Correct-Horse-Battery-Staple-2048!",
+              "timezone": "Europe/Paris",
+              "username": "student-one"
+            },
             "schema": {
               "$ref": "#/components/schemas/BrowserInvitationAcceptanceRequest"
             }
           }
         },
+        "description": "Browser handle plus account credentials and optional profile fields for account-creating acceptance.",
         "required": true
       },
       "BrowserInvitationSessionAcceptance": {
         "content": {
           "application/json": {
+            "example": {
+              "handle": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+            },
             "schema": {
               "$ref": "#/components/schemas/BrowserInvitationSessionAcceptanceRequest"
             }
           }
         },
+        "description": "Purpose-bound browser handle to accept for the exact current Session User.",
         "required": true
       },
       "BrowserInvitationStart": {
         "content": {
           "application/json": {
+            "example": {
+              "claim": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
             "schema": {
               "$ref": "#/components/schemas/BrowserInvitationStartRequest"
             }
           }
         },
+        "description": "One-time Invitation claim to exchange for a short-lived purpose-bound browser handle.",
         "required": true
       },
       "CancelExamSitting": {
@@ -522,21 +539,32 @@
       "CommitOnboardingImport": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 4,
+              "policy": "require_all_valid",
+              "preview_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
             "schema": {
               "$ref": "#/components/schemas/OnboardingImportCommitRequest"
             }
           }
         },
+        "description": "Exact immutable preview revision and digest plus the explicit valid-row commit policy.",
         "required": true
       },
       "CommitStudentProgression": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 3,
+              "preview_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
             "schema": {
               "$ref": "#/components/schemas/StudentProgressionCommitRequest"
             }
           }
         },
+        "description": "Exact immutable preview revision and digest to apply transactionally.",
         "required": true
       },
       "CompleteEmailVerification": {
@@ -582,11 +610,20 @@
       "CreateAcademicPeriod": {
         "content": {
           "application/json": {
+            "example": {
+              "display_name": "2026–2027",
+              "end_at": 1817078399000,
+              "name": "2026-2027",
+              "owner_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "owner_type": "institution",
+              "start_at": 1785542400000
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateAcademicPeriodRequest"
             }
           }
         },
+        "description": "Exact owner, canonical presentation, and Unix-millisecond bounds for a new Academic Period.",
         "required": true
       },
       "CreateAcademicUnit": {
@@ -608,21 +645,31 @@
       "CreateAcademicUnitMember": {
         "content": {
           "application/json": {
+            "example": {
+              "start_at": 1785542400000,
+              "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateAcademicUnitMemberRequest"
             }
           }
         },
+        "description": "Existing User and optional effective start for membership in the route Academic Unit.",
         "required": true
       },
       "CreateAffiliation": {
         "content": {
           "application/json": {
+            "example": {
+              "kind": "teacher",
+              "start_at": 1785542400000
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateAffiliationRequest"
             }
           }
         },
+        "description": "Relationship kind and optional effective interval for the route User.",
         "required": true
       },
       "CreateCandidateWorkspaceDirectory": {
@@ -638,11 +685,18 @@
       "CreateClass": {
         "content": {
           "application/json": {
+            "example": {
+              "academic_period_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "description": "First-year Class A.",
+              "display_name": "Computer Science Level 100 — A",
+              "name": "cs-level-100-a"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateClassRequest"
             }
           }
         },
+        "description": "Academic Period and canonical presentation for a new Class under the route Programme Level.",
         "required": true
       },
       "CreateExam": {
@@ -684,21 +738,33 @@
       "CreateProgramme": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Undergraduate computer science programme.",
+              "display_name": "BSc Computer Science",
+              "name": "bsc-computer-science"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateProgrammeRequest"
             }
           }
         },
+        "description": "Canonical and human-facing presentation for a Programme owned by the route Academic Unit.",
         "required": true
       },
       "CreateProgrammeLevel": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "First year of the programme.",
+              "display_name": "Level 100",
+              "name": "level-100"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateProgrammeLevelRequest"
             }
           }
         },
+        "description": "Canonical and human-facing presentation for a Level owned by the route Programme.",
         "required": true
       },
       "CreateRole": {
@@ -781,11 +847,19 @@
       "DryRunStudentProgression": {
         "content": {
           "application/json": {
+            "example": {
+              "destination_class_id": "ybndrfg8ejkmcpqxot1uwisza6",
+              "destination_period_id": "ybndrfg8ejkmcpqxot1uwisza5",
+              "effective_at": "2027-08-01T00:00:00Z",
+              "source_class_id": "ybndrfg8ejkmcpqxot1uwisza4",
+              "source_period_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/StudentProgressionDryRunRequest"
             }
           }
         },
+        "description": "Exact source and destination academic structure plus the future effective instant to validate without mutation.",
         "required": true
       },
       "EditExamDraftText": {
@@ -811,11 +885,16 @@
       "EnrollClassMember": {
         "content": {
           "application/json": {
+            "example": {
+              "start_at": 1785542400000,
+              "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/EnrollClassMemberRequest"
             }
           }
         },
+        "description": "Existing User and optional effective interval for enrollment in the route Class.",
         "required": true
       },
       "EnrollPassword": {
@@ -895,11 +974,15 @@
       "MutateInvitation": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 3
+            },
             "schema": {
               "$ref": "#/components/schemas/InvitationMutationRequest"
             }
           }
         },
+        "description": "Exact current Invitation revision for resend or revocation.",
         "required": true
       },
       "PauseExamSitting": {
@@ -1040,11 +1123,19 @@
       "ReplaceInvitation": {
         "content": {
           "application/json": {
+            "example": {
+              "class_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "email": "student.one@example.edu",
+              "expected_revision": 2,
+              "purpose": "student_class",
+              "suggested_username": "student-one"
+            },
             "schema": {
               "$ref": "#/components/schemas/ReplaceInvitationRequest"
             }
           }
         },
+        "description": "Exact pending revision and complete immutable package for the replacement Invitation.",
         "required": true
       },
       "ReplaceUserSettings": {
@@ -1101,21 +1192,45 @@
       "RunAcademicAdministrationBatch": {
         "content": {
           "application/json": {
+            "example": {
+              "items": [
+                {
+                  "key": "enable-user-001",
+                  "user_id": "ybndrfg8ejkmcpqxot1uwisza4"
+                }
+              ],
+              "operation": "user.enable",
+              "scope_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "scope_type": "institution"
+            },
             "schema": {
               "$ref": "#/components/schemas/AcademicAdministrationBatchRequest"
             }
           }
         },
+        "description": "One homogeneous operation, exact authorization scope, and at most 200 independently keyed existing-User items.",
         "required": true
       },
       "RunInvitationBatch": {
         "content": {
           "application/json": {
+            "example": {
+              "items": [
+                {
+                  "email": "student.one@example.edu",
+                  "key": "invite-student-001"
+                }
+              ],
+              "operation": "student_class.create",
+              "scope_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "scope_type": "class"
+            },
             "schema": {
               "$ref": "#/components/schemas/InvitationBatchRequest"
             }
           }
         },
+        "description": "One homogeneous Invitation operation, exact scope, and at most 200 independently keyed items.",
         "required": true
       },
       "SaveExamIntegrityDecision": {
@@ -1211,31 +1326,46 @@
       "UpdateAcademicPeriod": {
         "content": {
           "application/json": {
+            "example": {
+              "display_name": "Academic Year 2026–2027",
+              "end_at": 1819756799000
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateAcademicPeriodRequest"
             }
           }
         },
+        "description": "Partial Academic Period presentation or bounds update; ownership cannot change.",
         "required": true
       },
       "UpdateAcademicUnit": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Computing teaching and research.",
+              "display_name": "School of Computer Science"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateAcademicUnitRequest"
             }
           }
         },
+        "description": "Partial Academic Unit presentation or parent change; omitted or null fields remain unchanged.",
         "required": true
       },
       "UpdateClass": {
         "content": {
           "application/json": {
+            "example": {
+              "academic_period_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "display_name": "Computer Science Level 100 — B"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateClassRequest"
             }
           }
         },
+        "description": "Partial Class presentation, Programme Level, or Academic Period change.",
         "required": true
       },
       "UpdateExamIntegrityReview": {
@@ -1273,31 +1403,46 @@
       "UpdateInstitution": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Teaching, learning, and examination services.",
+              "display_name": "Northbridge University"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateInstitutionRequest"
             }
           }
         },
+        "description": "Partial canonical or human-facing update for the installation's single Institution.",
         "required": true
       },
       "UpdateProgramme": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Undergraduate computer science programme.",
+              "display_name": "Bachelor of Science in Computer Science"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateProgrammeRequest"
             }
           }
         },
+        "description": "Partial Programme presentation update; its Academic Unit owner cannot change.",
         "required": true
       },
       "UpdateProgrammeLevel": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "First year of the programme.",
+              "display_name": "Level 100"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateProgrammeLevelRequest"
             }
           }
         },
+        "description": "Partial Programme Level presentation update; its Programme owner cannot change.",
         "required": true
       },
       "UpdateRole": {
@@ -5391,6 +5536,7 @@
       },
       "CreateAcademicPeriodRequest": {
         "additionalProperties": false,
+        "description": "Complete owner, presentation, and time window for a new Academic Period.",
         "properties": {
           "create_at": {
             "deprecated": true,
@@ -5632,6 +5778,7 @@
       },
       "CreateClassRequest": {
         "additionalProperties": false,
+        "description": "Academic Period and presentation for a concrete student roster.",
         "properties": {
           "academic_period_id": {
             "$ref": "#/components/schemas/ID"
@@ -5752,6 +5899,7 @@
       },
       "CreateProgrammeLevelRequest": {
         "additionalProperties": false,
+        "description": "Canonical and human-facing fields for a new Programme Level.",
         "properties": {
           "create_at": {
             "deprecated": true,
@@ -5799,6 +5947,7 @@
       },
       "CreateProgrammeRequest": {
         "additionalProperties": false,
+        "description": "Canonical and human-facing fields for a new Programme.",
         "properties": {
           "academic_unit_id": {
             "deprecated": true,
@@ -11868,6 +12017,7 @@
       },
       "StudentProgressionCommitRequest": {
         "additionalProperties": false,
+        "description": "Revision and SHA-256 digest fencing commit to the reviewed dry-run preview.",
         "properties": {
           "expected_revision": {
             "format": "int64",
@@ -11875,6 +12025,7 @@
             "type": "integer"
           },
           "preview_digest": {
+            "description": "SHA-256 digest of the exact immutable preview, encoded as lowercase hexadecimal.",
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           }
@@ -11887,6 +12038,7 @@
       },
       "StudentProgressionDryRunRequest": {
         "additionalProperties": false,
+        "description": "Exact source, destination, and effective instant for an immutable progression preview.",
         "properties": {
           "destination_class_id": {
             "$ref": "#/components/schemas/ID"
@@ -11987,6 +12139,7 @@
       },
       "UpdateAcademicPeriodRequest": {
         "additionalProperties": false,
+        "description": "Mutable Academic Period fields; omitted or null values leave the stored value unchanged.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -12030,6 +12183,7 @@
       },
       "UpdateAcademicUnitRequest": {
         "additionalProperties": false,
+        "description": "Mutable Academic Unit fields, including an optional hierarchy move.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -12064,6 +12218,7 @@
       },
       "UpdateClassRequest": {
         "additionalProperties": false,
+        "description": "Mutable Class fields; omitted or null values leave the stored value unchanged.",
         "properties": {
           "academic_period_id": {
             "description": "Omitted or null leaves the Academic Period unchanged.",
@@ -12188,6 +12343,7 @@
       },
       "UpdateInstitutionRequest": {
         "additionalProperties": false,
+        "description": "Mutable Institution presentation fields; omitted or null values remain unchanged.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -12260,6 +12416,7 @@
       },
       "UpdateProgrammeLevelRequest": {
         "additionalProperties": false,
+        "description": "Mutable Programme Level fields; omitted or null values remain unchanged.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -12287,6 +12444,7 @@
       },
       "UpdateProgrammeRequest": {
         "additionalProperties": false,
+        "description": "Mutable Programme fields; omitted or null values remain unchanged.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -12697,6 +12855,7 @@
     },
     "/api/v1/academic-periods": {
       "get": {
+        "description": "Lists Academic Periods visible through the caller's current Institution or Academic Unit authority, with stable owner-aware filtering. Periods describe effective academic time windows and do not themselves grant access to Classes or students.",
         "operationId": "listAcademicPeriods",
         "parameters": [
           {
@@ -12709,6 +12868,7 @@
             }
           },
           {
+            "description": "Maximum number of visible Academic Periods to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -12767,6 +12927,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
+        "description": "Creates one named Academic Period under the exact Institution or Academic Unit owner after terminal scope authorization. The inclusive start and exclusive end are Unix-millisecond instants, and an optional Idempotency-Key makes uncertain retries safe.",
         "operationId": "createAcademicPeriod",
         "parameters": [
           {
@@ -12836,6 +12997,7 @@
     },
     "/api/v1/academic-periods/{academic_period_id}": {
       "delete": {
+        "description": "Archives one Academic Period only after proving that no active Class or enrollment still depends on it. History is retained, and the operation never cascades into Class deletion, membership termination, or student progression.",
         "operationId": "archiveAcademicPeriod",
         "responses": {
           "204": {
@@ -12873,6 +13035,12 @@
         "tags": [
           "Academic structure"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/academic-periods/\u003cacademic-period-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -12891,6 +13059,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one Academic Period only when its durable owner is visible to the current principal. The response reports its owner and time bounds without implying access to every Class that references it.",
         "operationId": "getAcademicPeriod",
         "responses": {
           "200": {
@@ -12944,6 +13113,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial presentation or time-window update while preserving the Period's original owner. The authoritative transition rejects bounds that would invalidate dependent academic structure or conflict with current durable state.",
         "operationId": "updateAcademicPeriod",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateAcademicPeriod"
@@ -13005,6 +13175,7 @@
     },
     "/api/v1/academic-unit-members/{academic_unit_member_id}": {
       "delete": {
+        "description": "Ends one exact effective Academic Unit membership after authorizing its current Unit scope. Historical dates and audit provenance remain durable, and ending membership does not silently remove affiliations, Roles, or scoped Role Bindings.",
         "operationId": "endAcademicUnitMember",
         "responses": {
           "200": {
@@ -13041,6 +13212,12 @@
         "summary": "End organizational membership while retaining history",
         "tags": [
           "Membership and progression"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/academic-unit-members/\u003cmembership-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
@@ -13213,6 +13390,7 @@
     },
     "/api/v1/academic-units/{academic_unit_id}": {
       "delete": {
+        "description": "Archives one empty eligible Academic Unit while retaining hierarchy and audit history. Active descendants, Programmes, memberships, or authorization dependencies block the transition rather than being cascaded.",
         "operationId": "archiveAcademicUnit",
         "responses": {
           "204": {
@@ -13250,6 +13428,12 @@
         "tags": [
           "Academic structure"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/academic-units/\u003cacademic-unit-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -13268,6 +13452,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one active Academic Unit only when it is visible through the principal's current scoped authority. The bounded projection identifies its Institution and parent but does not recursively include descendants or permission grants.",
         "operationId": "getAcademicUnit",
         "responses": {
           "200": {
@@ -13320,6 +13505,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial presentation update and can move the Unit beneath another valid parent after authorizing both sides. The transition rejects cycles, cross-Institution ownership, stale dependencies, and invalid hierarchy changes atomically.",
         "operationId": "updateAcademicUnit",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateAcademicUnit"
@@ -13381,6 +13567,7 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/children": {
       "get": {
+        "description": "Lists only the immediate active child Units beneath one authorized Academic Unit. The operation does not recursively flatten the hierarchy or broaden the caller's visibility to concealed descendants.",
         "operationId": "listAcademicUnitChildren",
         "responses": {
           "200": {
@@ -13433,6 +13620,7 @@
         }
       ],
       "post": {
+        "description": "Creates one active Unit directly beneath the Academic Unit named by the route. Route scope is authoritative, and current permission is checked against the parent before the hierarchical relationship commits.",
         "operationId": "createAcademicUnitChild",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateAcademicUnit"
@@ -13494,6 +13682,7 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/classes": {
       "get": {
+        "description": "Searches Classes whose Programme hierarchy is owned by the authorized Academic Unit, using bounded stable traversal. Results expose Class structure only and never enroll students or grant Class-scoped permission.",
         "operationId": "searchClasses",
         "parameters": [
           {
@@ -13506,6 +13695,7 @@
             }
           },
           {
+            "description": "Maximum number of Classes to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -13576,15 +13766,22 @@
         }
       ],
       "post": {
+        "description": "Issues an immutable Role grant package scoped to the route Academic Unit for an existing User address. Acceptance cannot expand the recorded Role, scope, or effective interval, and claim material remains confined to the delivery and acceptance path.",
         "operationId": "issueAcademicUnitRoleInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "email": "reviewer.one@example.edu",
+                "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                "start_at": 1785542400000
+              },
               "schema": {
                 "$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"
               }
             }
           },
+          "description": "Existing recipient, exact eligible Role, and optional effective interval for the route Academic Unit.",
           "required": true
         },
         "responses": {
@@ -13662,15 +13859,24 @@
         }
       ],
       "post": {
+        "description": "Issues an immutable teacher relationship and Role package for one exact Academic Unit after validating the recipient address, Role eligibility, effective interval, and inviter authority. The one-time claim is delivered through durable mail and is never returned to the administrator.",
         "operationId": "issueTeacherAcademicUnitInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "email": "teacher.one@example.edu",
+                "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                "start_at": 1785542400000,
+                "suggested_display_name": "Teacher One",
+                "suggested_username": "teacher-one"
+              },
               "schema": {
                 "$ref": "#/components/schemas/IssueTeacherAcademicUnitInvitationRequest"
               }
             }
           },
+          "description": "Recipient, delegated Role, optional effective interval, and suggested profile fields for a teacher Invitation.",
           "required": true
         },
         "responses": {
@@ -13743,9 +13949,11 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/members": {
       "get": {
+        "description": "Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant.",
         "operationId": "listAcademicUnitMembers",
         "parameters": [
           {
+            "description": "Unix time in milliseconds at which membership must be effective; ignored when history is true.",
             "in": "query",
             "name": "active_at",
             "required": false,
@@ -13818,6 +14026,7 @@
         }
       ],
       "post": {
+        "description": "Creates one effective-dated relationship between an existing User and the Academic Unit in the route. The transaction rechecks Unit authority and overlap constraints but creates no Role or Role Binding.",
         "operationId": "createAcademicUnitMember",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateAcademicUnitMember"
@@ -13879,6 +14088,7 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/programmes": {
       "get": {
+        "description": "Lists active Programmes directly owned by one authorized Academic Unit, optionally narrowed by the documented search input. The collection does not include Programmes owned by descendants unless requested through those Units.",
         "operationId": "listProgrammes",
         "parameters": [
           {
@@ -13891,6 +14101,7 @@
             }
           },
           {
+            "description": "Maximum number of Programmes to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -13954,6 +14165,7 @@
         }
       ],
       "post": {
+        "description": "Creates one Programme under the exact Academic Unit in the route after rechecking current management authority. Programme creation does not create levels, Classes, enrollments, Roles, or Role Bindings.",
         "operationId": "createProgramme",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateProgramme"
@@ -14203,6 +14415,7 @@
     },
     "/api/v1/affiliations/{affiliation_id}": {
       "delete": {
+        "description": "Ends one exact effective Affiliation after authorizing the related User and scope. Other Affiliations may remain active, and this relationship change never revokes credentials or permissions implicitly.",
         "operationId": "endAffiliation",
         "responses": {
           "200": {
@@ -14239,6 +14452,12 @@
         "summary": "End an Affiliation while retaining history",
         "tags": [
           "Membership and progression"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/affiliations/\u003caffiliation-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
@@ -14366,6 +14585,7 @@
     },
     "/api/v1/auth/browser/invitations": {
       "post": {
+        "description": "Consumes no Invitation yet; it exchanges the one-time claim for a short-lived, same-origin browser handle bound to that exact Invitation purpose. The response omits the original claim and prevents it from entering subsequent browser URLs or logs.",
         "operationId": "startBrowserInvitation",
         "requestBody": {
           "$ref": "#/components/requestBodies/BrowserInvitationStart"
@@ -14402,6 +14622,7 @@
     },
     "/api/v1/auth/browser/invitations/accept": {
       "post": {
+        "description": "Creates the invited account and applies the immutable Invitation package through one purpose-bound browser handle. Password and profile inputs are validated, the handle is consumed atomically, and claim or credential material is never returned.",
         "operationId": "acceptBrowserInvitation",
         "requestBody": {
           "$ref": "#/components/requestBodies/BrowserInvitationAcceptance"
@@ -14441,6 +14662,7 @@
     },
     "/api/v1/auth/browser/invitations/accept-session": {
       "post": {
+        "description": "Applies an eligible scoped Role Invitation to the exact already-authenticated User bound to the browser handle. It never relinks the package to another User and consumes the transaction atomically.",
         "operationId": "acceptBrowserInvitationWithSession",
         "requestBody": {
           "$ref": "#/components/requestBodies/BrowserInvitationSessionAcceptance"
@@ -15613,6 +15835,7 @@
     },
     "/api/v1/class-members/{class_member_id}": {
       "delete": {
+        "description": "Ends one exact Class enrollment while preserving its Academic Period history. The command does not delete the User, Class, past participation, or audit data and never enrolls the student elsewhere automatically.",
         "operationId": "endClassMember",
         "responses": {
           "200": {
@@ -15650,6 +15873,12 @@
         "tags": [
           "Membership and progression"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/class-members/\u003cclass-member-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15676,6 +15905,7 @@
     },
     "/api/v1/classes/{class_id}": {
       "delete": {
+        "description": "Archives one Class only after proving it has no active members or Role Bindings. The operation retains historical enrollment and audit records and never ends relationships implicitly.",
         "operationId": "archiveClass",
         "responses": {
           "204": {
@@ -15713,6 +15943,12 @@
         "tags": [
           "Academic structure"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/classes/\u003cclass-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15731,6 +15967,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one active Class after authorizing the exact Class resource rather than inferring access from a broader directory read. The projection identifies its Programme Level and Academic Period without including its student roster.",
         "operationId": "getClass",
         "responses": {
           "200": {
@@ -15784,6 +16021,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial Class update and can change its Programme Level or Academic Period only when both targets remain eligible and authorized. Existing roster history is preserved and cross-period membership invariants are rechecked.",
         "operationId": "updateClass",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateClass"
@@ -15850,15 +16088,24 @@
         }
       ],
       "post": {
+        "description": "Issues an immutable account and Class-enrollment package for the route Class after validating current roster authority and effective dates. The claim is delivered through durable mail and is never exposed in the administrator response.",
         "operationId": "issueStudentClassInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "email": "student.one@example.edu",
+                "suggested_display_name": "Student One",
+                "suggested_locale": "en",
+                "suggested_timezone": "Europe/Paris",
+                "suggested_username": "student-one"
+              },
               "schema": {
                 "$ref": "#/components/schemas/IssueStudentClassInvitationRequest"
               }
             }
           },
+          "description": "Recipient, optional enrollment interval, and suggested account profile for the route Class.",
           "required": true
         },
         "responses": {
@@ -15931,9 +16178,11 @@
     },
     "/api/v1/classes/{class_id}/members": {
       "get": {
+        "description": "Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data.",
         "operationId": "listClassMembers",
         "parameters": [
           {
+            "description": "Unix time in milliseconds at which enrollment must be effective; ignored when history is true.",
             "in": "query",
             "name": "active_at",
             "required": false,
@@ -16006,6 +16255,7 @@
         }
       ],
       "post": {
+        "description": "Enrolls an existing User in the route Class and atomically ends a conflicting active Class membership in the same Academic Period when the domain permits transfer or progression. The transaction preserves every prior enrollment interval.",
         "operationId": "enrollClassMember",
         "requestBody": {
           "$ref": "#/components/requestBodies/EnrollClassMember"
@@ -20852,6 +21102,7 @@
     },
     "/api/v1/institution": {
       "get": {
+        "description": "Returns the single Institution represented by this Proctor installation to an authorized principal. One installation never routes among tenants, and the projection exposes no deployment secrets or infrastructure configuration.",
         "operationId": "getInstitution",
         "responses": {
           "200": {
@@ -20899,6 +21150,7 @@
         "x-proctor-idempotency": "none"
       },
       "patch": {
+        "description": "Applies a partial update to the single Institution's canonical or human-facing presentation after Institution-wide authorization. It cannot change installation identity, create another tenant, or rewrite owned resource identifiers.",
         "operationId": "updateInstitution",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateInstitution"
@@ -20965,15 +21217,22 @@
         }
       ],
       "post": {
+        "description": "Issues an immutable Institution-scoped Role package after strong recent authentication and last-administrator safety checks. Acceptance cannot narrow or expand the recorded Role and scope, and the one-time claim remains confidential.",
         "operationId": "issueInstitutionRoleInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "email": "administrator.one@example.edu",
+                "role_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                "start_at": 1785542400000
+              },
               "schema": {
                 "$ref": "#/components/schemas/IssueScopedRoleInvitationRequest"
               }
             }
           },
+          "description": "Existing recipient, exact eligible Role, and optional effective interval for the route Institution.",
           "required": true
         },
         "responses": {
@@ -21118,9 +21377,11 @@
     },
     "/api/v1/invitations": {
       "get": {
+        "description": "Lists bounded safe Invitation metadata visible through the caller's current Institution, Academic Unit, or Class authority. Claims, delivery payloads, recipient secrets, provider state, and acceptance credentials are never returned.",
         "operationId": "listInvitations",
         "parameters": [
           {
+            "description": "Restrict results to the immutable Invitation workflow that will be accepted.",
             "in": "query",
             "name": "purpose",
             "required": false,
@@ -21135,6 +21396,7 @@
             }
           },
           {
+            "description": "Restrict results to Invitations in this current lifecycle state.",
             "in": "query",
             "name": "state",
             "required": false,
@@ -21150,6 +21412,7 @@
             }
           },
           {
+            "description": "Match the normalized intended recipient email exactly.",
             "in": "query",
             "name": "email",
             "required": false,
@@ -21159,6 +21422,7 @@
             }
           },
           {
+            "description": "Match the exact Class, Academic Unit, or Institution targeted by the Invitation.",
             "in": "query",
             "name": "target_id",
             "required": false,
@@ -21167,6 +21431,7 @@
             }
           },
           {
+            "description": "Return Invitations created at or after this Unix timestamp in milliseconds.",
             "in": "query",
             "name": "created_after",
             "required": false,
@@ -21177,6 +21442,7 @@
             }
           },
           {
+            "description": "Return Invitations created before this Unix timestamp in milliseconds.",
             "in": "query",
             "name": "created_before",
             "required": false,
@@ -21187,6 +21453,7 @@
             }
           },
           {
+            "description": "Continue from the opaque cursor returned by the preceding page.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -21196,6 +21463,7 @@
             }
           },
           {
+            "description": "Maximum number of Invitations to return in this page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -21261,15 +21529,20 @@
     },
     "/api/v1/invitations/academic-unit-role/accept": {
       "post": {
+        "description": "Applies the exact Academic Unit Role package to the authenticated intended User after rechecking scope and policy. Acceptance cannot change the package or transfer it to another account.",
         "operationId": "acceptAcademicUnitRoleInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "claim": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+              },
               "schema": {
                 "$ref": "#/components/schemas/AcceptScopedRoleInvitationRequest"
               }
             }
           },
+          "description": "Supplies the one-time claim whose immutable Academic Unit Role package will be applied to the current User.",
           "required": true
         },
         "responses": {
@@ -21328,15 +21601,20 @@
     },
     "/api/v1/invitations/institution-role/accept": {
       "post": {
+        "description": "Applies the exact Institution Role package to the authenticated intended User after strong current authorization invariants are rechecked. The immutable package cannot be repurposed for another Role or User.",
         "operationId": "acceptInstitutionRoleInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "claim": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+              },
               "schema": {
                 "$ref": "#/components/schemas/AcceptScopedRoleInvitationRequest"
               }
             }
           },
+          "description": "Supplies the one-time claim whose immutable Institution Role package will be applied to the current User.",
           "required": true
         },
         "responses": {
@@ -21395,15 +21673,25 @@
     },
     "/api/v1/invitations/student-class/accept": {
       "post": {
+        "description": "Atomically creates or admits the student account and exact Class enrollment encoded by the claim. The transition rechecks Invitation state, policy, Class eligibility, and effective-period uniqueness before consuming the claim.",
         "operationId": "acceptStudentClassInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "claim": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "display_name": "Student One",
+                "locale": "en",
+                "password": "correct-horse-battery-staple-2026",
+                "timezone": "Europe/Paris",
+                "username": "student.one"
+              },
               "schema": {
                 "$ref": "#/components/schemas/AcceptStudentClassInvitationRequest"
               }
             }
           },
+          "description": "Supplies the one-time claim and profile credentials used to create or admit the student account.",
           "required": true
         },
         "responses": {
@@ -21448,15 +21736,25 @@
     },
     "/api/v1/invitations/teacher-academic-unit/accept": {
       "post": {
+        "description": "Atomically applies the immutable teacher relationship and delegated Academic Unit Role package after rechecking current policy and scope validity. The one-time claim is consumed and never becomes a reusable credential.",
         "operationId": "acceptTeacherAcademicUnitInvitation",
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "claim": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+                "display_name": "Teacher One",
+                "locale": "en",
+                "password": "careful-teacher-passphrase-2026",
+                "timezone": "Europe/Paris",
+                "username": "teacher.one"
+              },
               "schema": {
                 "$ref": "#/components/schemas/AcceptTeacherAcademicUnitInvitationRequest"
               }
             }
           },
+          "description": "Supplies the one-time claim and profile credentials used to create or admit the teacher account.",
           "required": true
         },
         "responses": {
@@ -21501,6 +21799,7 @@
     },
     "/api/v1/invitations/{invitation_id}": {
       "get": {
+        "description": "Returns one safe immutable Invitation package and lifecycle state when authorized for its exact scope. The projection omits its one-time claim and all mail payload or credential material.",
         "operationId": "getInvitation",
         "responses": {
           "200": {
@@ -21565,6 +21864,7 @@
         }
       ],
       "post": {
+        "description": "Revision-fences and revokes the pending Invitation, then issues a new immutable package and one-time claim with the requested changes. The old claim cannot accept the replacement and durable history links both records.",
         "operationId": "replaceInvitation",
         "requestBody": {
           "$ref": "#/components/requestBodies/ReplaceInvitation"
@@ -21639,6 +21939,7 @@
         }
       ],
       "post": {
+        "description": "Revision-fences one pending Invitation, rotates its one-time claim, and queues the unchanged package for durable redelivery. Any prior claim becomes unusable, while purpose, scope, Role, and effective dates remain identical.",
         "operationId": "resendInvitation",
         "requestBody": {
           "$ref": "#/components/requestBodies/MutateInvitation"
@@ -21709,6 +22010,7 @@
         }
       ],
       "post": {
+        "description": "Revision-fences and revokes one pending Invitation so its claim and browser transaction can no longer be accepted. The operation retains immutable package and audit history and does not undo an Invitation already accepted.",
         "operationId": "revokeInvitation",
         "requestBody": {
           "$ref": "#/components/requestBodies/MutateInvitation"
@@ -22762,9 +23064,11 @@
     },
     "/api/v1/onboarding-imports": {
       "post": {
+        "description": "Stores one bounded formula-safe CSV source and creates a durable validation Job for the explicit mode and authorization scope. Upload performs no account, membership, or Role mutation; the resulting immutable preview must be reviewed and committed separately.",
         "operationId": "uploadOnboardingImport",
         "parameters": [
           {
+            "description": "Selects the onboarding workflow and therefore the CSV columns and validation rules to apply.",
             "in": "query",
             "name": "mode",
             "required": true,
@@ -22779,6 +23083,7 @@
             }
           },
           {
+            "description": "Declares the kind of resource that owns every row in this import.",
             "in": "query",
             "name": "scope_type",
             "required": true,
@@ -22792,6 +23097,7 @@
             }
           },
           {
+            "description": "Identifies the exact Class, Academic Unit, or Institution that owns the import.",
             "in": "query",
             "name": "scope_id",
             "required": true,
@@ -22800,6 +23106,7 @@
             }
           },
           {
+            "description": "Role to package into applicable teacher or institution Invitation rows; rejected for modes that do not use Roles.",
             "in": "query",
             "name": "role_id",
             "required": false,
@@ -22818,6 +23125,7 @@
               }
             }
           },
+          "description": "Contains the bounded UTF-8 CSV source to validate; the upload creates only a preview and performs no account or membership mutations.",
           "required": true
         },
         "responses": {
@@ -22859,6 +23167,13 @@
         "tags": [
           "Invitations and onboarding"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Upload a student Class roster",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Content-Type: text/csv\" \\\n  --data-binary '@./onboarding.csv' \\\n  \"https://proctor.example.edu/api/v1/onboarding-imports?mode=student_class\u0026scope_type=class\u0026scope_id=ybndrfg8ejkmcpqxot1uwisza3\""
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -22881,6 +23196,7 @@
     },
     "/api/v1/onboarding-imports/{onboarding_import_id}": {
       "get": {
+        "description": "Returns the bounded authorized state, preview digest, and row outcomes for one onboarding import. The projection omits original claims, passwords, mail payloads, internal Job data, and unsafe parsing diagnostics.",
         "operationId": "getOnboardingImport",
         "responses": {
           "200": {
@@ -22945,6 +23261,7 @@
         }
       ],
       "post": {
+        "description": "Requests cooperative cancellation while the authorized onboarding validation or commit Job remains cancelable. It cannot roll back rows that already committed and preserves the immutable source, preview, and Job history.",
         "operationId": "cancelOnboardingImport",
         "responses": {
           "200": {
@@ -22985,6 +23302,12 @@
         "tags": [
           "Invitations and onboarding"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/onboarding-imports/\u003cimport-id\u003e/cancel' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -23012,6 +23335,7 @@
         }
       ],
       "post": {
+        "description": "Starts application of the exact immutable preview only when its revision, digest, and selected commit policy still match. Per-row transactions preserve bounded outcomes, and the operation never accepts an unvalidated or silently changed upload.",
         "operationId": "commitOnboardingImport",
         "parameters": [
           {
@@ -23084,6 +23408,7 @@
     },
     "/api/v1/onboarding-imports/{onboarding_import_id}/report": {
       "get": {
+        "description": "Downloads the bounded authorized preview or final row report with spreadsheet formulas neutralized as data. The report excludes credentials, one-time claims, mail payloads, and internal worker diagnostics.",
         "operationId": "downloadOnboardingImportReport",
         "responses": {
           "200": {
@@ -23147,6 +23472,7 @@
     },
     "/api/v1/programme-levels/{programme_level_id}": {
       "delete": {
+        "description": "Archives one Programme Level only when it has no active Classes. The transition retains history and never cascades into Class archival, enrollment termination, or Role Binding removal.",
         "operationId": "archiveProgrammeLevel",
         "responses": {
           "204": {
@@ -23184,6 +23510,12 @@
         "tags": [
           "Academic structure"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/programme-levels/\u003cprogramme-level-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -23202,6 +23534,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one active Programme Level when its owning Programme hierarchy is visible to the caller. The projection does not expand Classes or confer authority over their rosters.",
         "operationId": "getProgrammeLevel",
         "responses": {
           "200": {
@@ -23255,6 +23588,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial canonical or presentation update while preserving the Level's Programme owner. Dependent Classes retain their stable parent identity and block changes that would violate current structure.",
         "operationId": "updateProgrammeLevel",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateProgrammeLevel"
@@ -23316,6 +23650,7 @@
     },
     "/api/v1/programme-levels/{programme_level_id}/classes": {
       "get": {
+        "description": "Lists active Classes directly assigned to one authorized Programme Level. The collection returns structural Class metadata and excludes rosters, candidate Attempts, and permission grants.",
         "operationId": "listClasses",
         "responses": {
           "200": {
@@ -23369,6 +23704,7 @@
         }
       ],
       "post": {
+        "description": "Creates one concrete student roster under the Programme Level in the route and one eligible Academic Period in the body. Creation performs owner and period checks but does not enroll any student automatically.",
         "operationId": "createClass",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateClass"
@@ -23430,6 +23766,7 @@
     },
     "/api/v1/programmes/{programme_id}": {
       "delete": {
+        "description": "Archives one Programme only after proving it has no active Programme Levels. The operation retains history and never cascades into Level, Class, enrollment, or authorization changes.",
         "operationId": "archiveProgramme",
         "responses": {
           "204": {
@@ -23467,6 +23804,12 @@
         "tags": [
           "Academic structure"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/programmes/\u003cprogramme-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -23485,6 +23828,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one active Programme when its owning Academic Unit is visible to the current principal. The bounded projection does not expand Levels or Classes.",
         "operationId": "getProgramme",
         "responses": {
           "200": {
@@ -23538,6 +23882,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial canonical or presentation update while preserving the Programme's Academic Unit owner. Dependent Levels retain stable ownership and are not mutated by this command.",
         "operationId": "updateProgramme",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateProgramme"
@@ -23599,6 +23944,7 @@
     },
     "/api/v1/programmes/{programme_id}/levels": {
       "get": {
+        "description": "Lists active Levels directly owned by one authorized Programme with bounded stable search. The collection excludes Classes and does not imply roster or permission access.",
         "operationId": "listProgrammeLevels",
         "parameters": [
           {
@@ -23611,6 +23957,7 @@
             }
           },
           {
+            "description": "Maximum number of Programme Levels to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -23674,6 +24021,7 @@
         }
       ],
       "post": {
+        "description": "Creates one Level under the exact Programme in the route after rechecking management authority. It does not create Classes, Academic Periods, enrollments, or permission grants.",
         "operationId": "createProgrammeLevel",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateProgrammeLevel"
@@ -24227,6 +24575,7 @@
     },
     "/api/v1/student-progressions": {
       "post": {
+        "description": "Creates a durable Job that validates the exact source and destination Classes and Academic Periods without changing enrollment. Its immutable preview and digest expose bounded row outcomes for review before commit.",
         "operationId": "dryRunStudentProgression",
         "requestBody": {
           "$ref": "#/components/requestBodies/DryRunStudentProgression"
@@ -24295,6 +24644,7 @@
     },
     "/api/v1/student-progressions/{student_progression_id}": {
       "get": {
+        "description": "Returns the authorized immutable preview or terminal result for one progression Job. The projection is bounded and contains no credentials, student answers, or unsafe worker diagnostics.",
         "operationId": "getStudentProgression",
         "responses": {
           "200": {
@@ -24359,6 +24709,7 @@
         }
       ],
       "post": {
+        "description": "Requests cancellation of one authorized progression while its dry-run or commit work is still cancelable. Cancellation is cooperative, preserves the preview and Job history, and cannot roll back a completed enrollment transaction.",
         "operationId": "cancelStudentProgression",
         "responses": {
           "200": {
@@ -24399,6 +24750,12 @@
         "tags": [
           "Membership and progression"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/student-progressions/\u003cprogression-id\u003e/cancel' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -24429,6 +24786,7 @@
         }
       ],
       "post": {
+        "description": "Applies the exact authorized dry-run preview only when its revision and digest still match current source, destination, and student state. The named aggregate transition ends and creates enrollments atomically and preserves history for every affected student.",
         "operationId": "commitStudentProgression",
         "parameters": [
           {
@@ -24504,6 +24862,7 @@
     },
     "/api/v1/student-progressions/{student_progression_id}/report": {
       "get": {
+        "description": "Downloads the bounded report for one authorized progression preview or result with spreadsheet formulas neutralized as data. The response contains the reviewed row projection and no internal Job payload, credentials, or database selectors.",
         "operationId": "downloadStudentProgressionReport",
         "responses": {
           "200": {
@@ -26343,6 +26702,7 @@
     },
     "/api/v1/users/{user_id}/affiliations": {
       "get": {
+        "description": "Lists the authorized current and historical relationship kinds attached to one User. Affiliations are non-exclusive descriptive relationships and never substitute for Role Bindings in permission checks.",
         "operationId": "listAffiliations",
         "responses": {
           "200": {
@@ -26396,6 +26756,7 @@
         }
       ],
       "post": {
+        "description": "Adds one effective-dated student, teacher, staff, or external relationship to an existing User. Other Affiliation kinds may coexist, and the transition grants no permissions or credentials by itself.",
         "operationId": "createAffiliation",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateAffiliation"

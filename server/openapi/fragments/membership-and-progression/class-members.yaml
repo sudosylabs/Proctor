@@ -7,6 +7,15 @@ paths:
       summary: End an enrollment while retaining history
       tags:
         - Membership and progression
+      description: >-
+        Ends one exact Class enrollment while preserving its Academic Period history. The command does not delete the User, Class, past participation, or audit data and never enrolls the student elsewhere automatically.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/class-members/<class-member-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

@@ -5,6 +5,8 @@ paths:
     post:
       operationId: commitOnboardingImport
       summary: Commit one exact validated onboarding preview
+      description: >-
+        Starts application of the exact immutable preview only when its revision, digest, and selected commit policy still match. Per-row transactions preserve bounded outcomes, and the operation never accepts an unvalidated or silently changed upload.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -54,11 +56,16 @@ paths:
 components:
   requestBodies:
     CommitOnboardingImport:
+      description: Exact immutable preview revision and digest plus the explicit valid-row commit policy.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/OnboardingImportCommitRequest'
+          example:
+            expected_revision: 4
+            preview_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            policy: require_all_valid
   schemas:
     OnboardingImportCommitRequest:
       type: object

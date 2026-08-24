@@ -5,6 +5,8 @@ paths:
     get:
       operationId: downloadOnboardingImportReport
       summary: Download the authorized formula-safe onboarding report
+      description: >-
+        Downloads the bounded authorized preview or final row report with spreadsheet formulas neutralized as data. The report excludes credentials, one-time claims, mail payloads, and internal worker diagnostics.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required

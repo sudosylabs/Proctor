@@ -7,6 +7,8 @@ paths:
       summary: List effective-dated organizational members
       tags:
         - Membership and progression
+      description: >-
+        Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -30,6 +32,7 @@ paths:
             type: integer
             format: int64
             minimum: 1
+          description: Unix time in milliseconds at which membership must be effective; ignored when history is true.
         - name: history
           in: query
           required: false
@@ -55,6 +58,8 @@ paths:
       summary: Create organizational membership without granting permissions
       tags:
         - Membership and progression
+      description: >-
+        Creates one effective-dated relationship between an existing User and the Academic Unit in the route. The transaction rechecks Unit authority and overlap constraints but creates no Role or Role Binding.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -95,11 +100,15 @@ paths:
 components:
   requestBodies:
     CreateAcademicUnitMember:
+      description: Existing User and optional effective start for membership in the route Academic Unit.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateAcademicUnitMemberRequest'
+          example:
+            user_id: ybndrfg8ejkmcpqxot1uwisza3
+            start_at: 1785542400000
   responses:
     AcademicUnitMemberCreated:
       description: Academic Unit Member created

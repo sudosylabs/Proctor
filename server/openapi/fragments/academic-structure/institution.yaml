@@ -5,6 +5,8 @@ paths:
       summary: Get the installation Institution
       tags:
         - Academic structure
+      description: >-
+        Returns the single Institution represented by this Proctor installation to an authorized principal. One installation never routes among tenants, and the projection exposes no deployment secrets or infrastructure configuration.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -37,6 +39,8 @@ paths:
       summary: Update the installation Institution
       tags:
         - Academic structure
+      description: >-
+        Applies a partial update to the single Institution's canonical or human-facing presentation after Institution-wide authorization. It cannot change installation identity, create another tenant, or rewrite owned resource identifiers.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -77,11 +81,15 @@ paths:
 components:
   requestBodies:
     UpdateInstitution:
+      description: Partial canonical or human-facing update for the installation's single Institution.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateInstitutionRequest'
+          example:
+            display_name: Northbridge University
+            description: Teaching, learning, and examination services.
   responses:
     InstitutionOK:
       description: Installation Institution
@@ -91,6 +99,7 @@ components:
             $ref: '#/components/schemas/InstitutionResponse'
   schemas:
     UpdateInstitutionRequest:
+      description: Mutable Institution presentation fields; omitted or null values remain unchanged.
       type: object
       additionalProperties: false
       properties:

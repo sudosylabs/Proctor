@@ -5,6 +5,8 @@ paths:
     post:
       operationId: issueStudentClassInvitation
       summary: Invite a student into one exact Class
+      description: >-
+        Issues an immutable account and Class-enrollment package for the route Class after validating current roster authority and effective dates. The claim is delivered through durable mail and is never exposed in the administrator response.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -31,11 +33,18 @@ paths:
         - sessionCookie: []
           csrfToken: []
       requestBody:
+        description: Recipient, optional enrollment interval, and suggested account profile for the route Class.
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/IssueStudentClassInvitationRequest'
+            example:
+              email: student.one@example.edu
+              suggested_username: student-one
+              suggested_display_name: Student One
+              suggested_locale: en
+              suggested_timezone: Europe/Paris
       responses:
         "201":
           description: Invitation issued without claim or mailbox disclosure

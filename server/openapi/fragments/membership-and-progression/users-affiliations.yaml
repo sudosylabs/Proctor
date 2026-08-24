@@ -7,6 +7,8 @@ paths:
       summary: List a User's effective-dated Affiliations
       tags:
         - Membership and progression
+      description: >-
+        Lists the authorized current and historical relationship kinds attached to one User. Affiliations are non-exclusive descriptive relationships and never substitute for Role Bindings in permission checks.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -40,6 +42,8 @@ paths:
       summary: Create a non-exclusive effective-dated Affiliation
       tags:
         - Membership and progression
+      description: >-
+        Adds one effective-dated student, teacher, staff, or external relationship to an existing User. Other Affiliation kinds may coexist, and the transition grants no permissions or credentials by itself.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -80,11 +84,15 @@ paths:
 components:
   requestBodies:
     CreateAffiliation:
+      description: Relationship kind and optional effective interval for the route User.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateAffiliationRequest'
+          example:
+            kind: teacher
+            start_at: 1785542400000
   responses:
     AffiliationCreated:
       description: Affiliation created

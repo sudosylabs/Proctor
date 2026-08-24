@@ -3,6 +3,8 @@ paths:
     post:
       operationId: startBrowserInvitation
       summary: Exchange an Invitation claim for a purpose-bound browser acceptance transaction
+      description: >-
+        Consumes no Invitation yet; it exchanges the one-time claim for a short-lived, same-origin browser handle bound to that exact Invitation purpose. The response omits the original claim and prevents it from entering subsequent browser URLs or logs.
       tags:
         - Invitations and onboarding
       x-proctor-auth: public
@@ -29,6 +31,8 @@ paths:
     post:
       operationId: acceptBrowserInvitation
       summary: Accept an account-creating Invitation through its browser transaction
+      description: >-
+        Creates the invited account and applies the immutable Invitation package through one purpose-bound browser handle. Password and profile inputs are validated, the handle is consumed atomically, and claim or credential material is never returned.
       tags:
         - Invitations and onboarding
       x-proctor-auth: public
@@ -58,6 +62,8 @@ paths:
     post:
       operationId: acceptBrowserInvitationWithSession
       summary: Accept a scoped-role Invitation with the current browser Session
+      description: >-
+        Applies an eligible scoped Role Invitation to the exact already-authenticated User bound to the browser handle. It never relinks the package to another User and consumes the transaction atomically.
       tags:
         - Invitations and onboarding
       x-proctor-auth: session_required
@@ -93,23 +99,37 @@ paths:
 components:
   requestBodies:
     BrowserInvitationStart:
+      description: One-time Invitation claim to exchange for a short-lived purpose-bound browser handle.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/BrowserInvitationStartRequest'
+          example:
+            claim: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     BrowserInvitationAcceptance:
+      description: Browser handle plus account credentials and optional profile fields for account-creating acceptance.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/BrowserInvitationAcceptanceRequest'
+          example:
+            handle: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            password: Correct-Horse-Battery-Staple-2048!
+            username: student-one
+            display_name: Student One
+            locale: en
+            timezone: Europe/Paris
     BrowserInvitationSessionAcceptance:
+      description: Purpose-bound browser handle to accept for the exact current Session User.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/BrowserInvitationSessionAcceptanceRequest'
+          example:
+            handle: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
   responses:
     BrowserInvitationStarted:
       description: Short-lived browser Invitation transaction created; its second proof is set only as an HttpOnly cookie

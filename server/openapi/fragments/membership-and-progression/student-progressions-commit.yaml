@@ -5,6 +5,8 @@ paths:
     post:
       operationId: commitStudentProgression
       summary: Commit one exact student progression preview
+      description: >-
+        Applies the exact authorized dry-run preview only when its revision and digest still match current source, destination, and student state. The named aggregate transition ends and creates enrollments atomically and preserves history for every affected student.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       tags:
@@ -57,13 +59,18 @@ paths:
 components:
   requestBodies:
     CommitStudentProgression:
+      description: Exact immutable preview revision and digest to apply transactionally.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentProgressionCommitRequest'
+          example:
+            expected_revision: 3
+            preview_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   schemas:
     StudentProgressionCommitRequest:
+      description: Revision and SHA-256 digest fencing commit to the reviewed dry-run preview.
       type: object
       additionalProperties: false
       required:
@@ -77,3 +84,4 @@ components:
         preview_digest:
           type: string
           pattern: ^[0-9a-f]{64}$
+          description: SHA-256 digest of the exact immutable preview, encoded as lowercase hexadecimal.

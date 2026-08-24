@@ -3,6 +3,8 @@ paths:
     get:
       operationId: listInvitations
       summary: List Invitations within the caller's authorized scope
+      description: >-
+        Lists bounded safe Invitation metadata visible through the caller's current Institution, Academic Unit, or Class authority. Claims, delivery payloads, recipient secrets, provider state, and acceptance credentials are never returned.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -26,6 +28,7 @@ paths:
         - name: purpose
           in: query
           required: false
+          description: Restrict results to the immutable Invitation workflow that will be accepted.
           schema:
             type: string
             enum:
@@ -36,6 +39,7 @@ paths:
         - name: state
           in: query
           required: false
+          description: Restrict results to Invitations in this current lifecycle state.
           schema:
             type: string
             enum:
@@ -47,17 +51,20 @@ paths:
         - name: email
           in: query
           required: false
+          description: Match the normalized intended recipient email exactly.
           schema:
             type: string
             format: email
         - name: target_id
           in: query
           required: false
+          description: Match the exact Class, Academic Unit, or Institution targeted by the Invitation.
           schema:
             $ref: '#/components/schemas/ID'
         - name: created_after
           in: query
           required: false
+          description: Return Invitations created at or after this Unix timestamp in milliseconds.
           schema:
             type: integer
             format: int64
@@ -65,6 +72,7 @@ paths:
         - name: created_before
           in: query
           required: false
+          description: Return Invitations created before this Unix timestamp in milliseconds.
           schema:
             type: integer
             format: int64
@@ -72,12 +80,14 @@ paths:
         - name: cursor
           in: query
           required: false
+          description: Continue from the opaque cursor returned by the preceding page.
           schema:
             type: string
             maxLength: 512
         - name: limit
           in: query
           required: false
+          description: Maximum number of Invitations to return in this page.
           schema:
             type: integer
             minimum: 1
@@ -104,6 +114,8 @@ paths:
     get:
       operationId: getInvitation
       summary: Get one Invitation within the caller's authorized scope
+      description: >-
+        Returns one safe immutable Invitation package and lifecycle state when authorized for its exact scope. The projection omits its one-time claim and all mail payload or credential material.
       tags:
         - Invitations and onboarding
       x-proctor-auth: principal_required
@@ -141,6 +153,8 @@ paths:
     post:
       operationId: acceptStudentClassInvitation
       summary: Accept a student Class Invitation using its one-time claim
+      description: >-
+        Atomically creates or admits the student account and exact Class enrollment encoded by the claim. The transition rechecks Invitation state, policy, Class eligibility, and effective-period uniqueness before consuming the claim.
       tags:
         - Invitations and onboarding
       x-proctor-auth: public
@@ -157,10 +171,18 @@ paths:
       security: []
       requestBody:
         required: true
+        description: Supplies the one-time claim and profile credentials used to create or admit the student account.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AcceptStudentClassInvitationRequest'
+            example:
+              claim: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+              password: correct-horse-battery-staple-2026
+              username: student.one
+              display_name: Student One
+              locale: en
+              timezone: Europe/Paris
       responses:
         "200":
           description: Invitation accepted or replay resolved
@@ -178,6 +200,8 @@ paths:
     post:
       operationId: acceptTeacherAcademicUnitInvitation
       summary: Accept a teacher Academic Unit Invitation using its one-time claim
+      description: >-
+        Atomically applies the immutable teacher relationship and delegated Academic Unit Role package after rechecking current policy and scope validity. The one-time claim is consumed and never becomes a reusable credential.
       tags:
         - Invitations and onboarding
       x-proctor-auth: public
@@ -194,10 +218,18 @@ paths:
         - authentication.password.invalid
       requestBody:
         required: true
+        description: Supplies the one-time claim and profile credentials used to create or admit the teacher account.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AcceptTeacherAcademicUnitInvitationRequest'
+            example:
+              claim: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+              password: careful-teacher-passphrase-2026
+              username: teacher.one
+              display_name: Teacher One
+              locale: en
+              timezone: Europe/Paris
       responses:
         "200":
           description: Invitation accepted or replay resolved
@@ -215,6 +247,8 @@ paths:
     post:
       operationId: acceptAcademicUnitRoleInvitation
       summary: Accept an Academic Unit Role Invitation as the authenticated User
+      description: >-
+        Applies the exact Academic Unit Role package to the authenticated intended User after rechecking scope and policy. Acceptance cannot change the package or transfer it to another account.
       tags:
         - Invitations and onboarding
       x-proctor-auth: session_required
@@ -234,10 +268,13 @@ paths:
           csrfToken: []
       requestBody:
         required: true
+        description: Supplies the one-time claim whose immutable Academic Unit Role package will be applied to the current User.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AcceptScopedRoleInvitationRequest'
+            example:
+              claim: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
       responses:
         "200":
           description: Invitation accepted or exact outcome replayed
@@ -259,6 +296,8 @@ paths:
     post:
       operationId: acceptInstitutionRoleInvitation
       summary: Accept an Institution Role Invitation as the authenticated User
+      description: >-
+        Applies the exact Institution Role package to the authenticated intended User after strong current authorization invariants are rechecked. The immutable package cannot be repurposed for another Role or User.
       tags:
         - Invitations and onboarding
       x-proctor-auth: session_required
@@ -278,10 +317,13 @@ paths:
           csrfToken: []
       requestBody:
         required: true
+        description: Supplies the one-time claim whose immutable Institution Role package will be applied to the current User.
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AcceptScopedRoleInvitationRequest'
+            example:
+              claim: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
       responses:
         "200":
           description: Invitation accepted or exact outcome replayed

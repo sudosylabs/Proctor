@@ -7,6 +7,8 @@ paths:
       summary: List or search Programme Levels owned by a Programme
       tags:
         - Academic structure
+      description: >-
+        Lists active Levels directly owned by one authorized Programme with bounded stable search. The collection excludes Classes and does not imply roster or permission access.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -37,6 +39,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+          description: Maximum number of Programme Levels to return.
       responses:
         "200":
           $ref: '#/components/responses/ProgrammeLevelListOK'
@@ -55,6 +58,8 @@ paths:
       summary: Create a Programme Level owned by a Programme
       tags:
         - Academic structure
+      description: >-
+        Creates one Level under the exact Programme in the route after rechecking management authority. It does not create Classes, Academic Periods, enrollments, or permission grants.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -95,11 +100,16 @@ paths:
 components:
   requestBodies:
     CreateProgrammeLevel:
+      description: Canonical and human-facing presentation for a Level owned by the route Programme.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateProgrammeLevelRequest'
+          example:
+            name: level-100
+            display_name: Level 100
+            description: First year of the programme.
   responses:
     ProgrammeLevelCreated:
       description: Programme Level created
@@ -119,6 +129,7 @@ components:
       items:
         $ref: '#/components/schemas/ProgrammeLevelResponse'
     CreateProgrammeLevelRequest:
+      description: Canonical and human-facing fields for a new Programme Level.
       type: object
       additionalProperties: false
       required:

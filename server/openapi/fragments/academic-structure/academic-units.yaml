@@ -121,6 +121,8 @@ paths:
       summary: Get an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Returns one active Academic Unit only when it is visible through the principal's current scoped authority. The bounded projection identifies its Institution and parent but does not recursively include descendants or permission grants.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -153,6 +155,8 @@ paths:
       summary: Update or reparent an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Applies a partial presentation update and can move the Unit beneath another valid parent after authorizing both sides. The transition rejects cycles, cross-Institution ownership, stale dependencies, and invalid hierarchy changes atomically.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -195,6 +199,15 @@ paths:
       summary: Archive an Academic Unit
       tags:
         - Academic structure
+      description: >-
+        Archives one empty eligible Academic Unit while retaining hierarchy and audit history. Active descendants, Programmes, memberships, or authorization dependencies block the transition rather than being cascaded.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/academic-units/<academic-unit-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -232,11 +245,15 @@ paths:
 components:
   requestBodies:
     UpdateAcademicUnit:
+      description: Partial Academic Unit presentation or parent change; omitted or null fields remain unchanged.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateAcademicUnitRequest'
+          example:
+            display_name: School of Computer Science
+            description: Computing teaching and research.
   responses:
     AcademicUnitOK:
       description: Academic Unit
@@ -251,6 +268,7 @@ components:
           $ref: '#/components/headers/NoStore'
   schemas:
     UpdateAcademicUnitRequest:
+      description: Mutable Academic Unit fields, including an optional hierarchy move.
       type: object
       additionalProperties: false
       properties:
