@@ -22,7 +22,7 @@
 }
 
 .card::before {
-  background: var(--proctor-cobalt);
+  background: var(--proctor-primary);
   border-radius: 999px;
   content: "";
   height: 0.25rem;
@@ -33,31 +33,19 @@
   width: 2.75rem;
 }
 
-.card:nth-child(2)::before {
-  background: var(--proctor-aqua);
-}
-
-.card:nth-child(3)::before {
-  background: var(--proctor-danger);
-}
-
-.card:nth-child(4)::before {
-  background: var(--proctor-attention);
-}
-
 .card:hover,
 .card:focus-visible {
-  background: var(--proctor-cobalt-soft);
-  border-color: var(--proctor-cobalt);
+  background: var(--proctor-primary-soft);
+  border-color: var(--proctor-primary);
   color: var(--proctor-ink-soft);
   text-decoration: none;
   transform: translateY(-2px);
 }
 
 .label {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 0.67rem;
-  font-weight: 780;
+  font-weight: 700;
   letter-spacing: 0.08em;
   margin-bottom: 0.12rem;
   text-transform: uppercase;
@@ -86,9 +74,9 @@
 }
 
 .action {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 0.75rem;
-  font-weight: 740;
+  font-weight: 700;
   margin-top: 1.15rem;
 }
 

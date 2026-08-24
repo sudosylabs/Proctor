@@ -4,7 +4,7 @@
 }
 
 .plate {
-  background: #ffffff;
+  background: var(--proctor-plate);
   border: 1px solid var(--proctor-border-strong);
   border-radius: 0.75rem;
   overflow: hidden;
@@ -28,11 +28,11 @@
 }
 
 .kind {
-  color: var(--proctor-aqua);
+  color: var(--proctor-ink-muted);
   flex: none;
   font-family: var(--ifm-font-family-monospace);
   font-size: 0.68rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -67,12 +67,12 @@
   }
 
   .plate {
-    border-color: #6d788c;
+    border-color: var(--proctor-print-border);
   }
 
   .caption,
   .kind {
-    color: #172033;
+    color: var(--proctor-print-ink);
   }
 
   .fullSize {

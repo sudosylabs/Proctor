@@ -38,6 +38,8 @@ matches the work instead of loading every document.
   HA development topology, observability, packaging, and overrides
 - [Documentation system](./contributing/documentation.md) — authority,
   placement, links, decision rationale, and validation
+- [Documentation design system](./contributing/design-system.md) — brand,
+  semantic tokens, typography, geometry, icons, and illustration grammar
 - [Governed visual assets](./contributing/visual-assets.md) — registry,
   diagram, privacy, and deterministic screenshot workflow
 - [Root agent guide](../AGENTS.md) — always-loaded repository guardrails and

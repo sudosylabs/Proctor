@@ -13,7 +13,7 @@ button {
   touch-action: manipulation;
   -webkit-tap-highlight-color: color-mix(
     in srgb,
-    var(--proctor-cobalt) 18%,
+    var(--proctor-primary) 18%,
     transparent
   );
 }
@@ -22,7 +22,8 @@ a:focus-visible,
 button:focus-visible,
 input:focus-visible,
 summary:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--proctor-cobalt) 70%, white);
+  outline: 3px solid
+    color-mix(in srgb, var(--proctor-primary) 70%, var(--proctor-on-action));
   outline-offset: 3px;
 }
 
@@ -51,7 +52,7 @@ summary:focus-visible {
   align-items: center;
   display: inline-flex;
   font-size: 0.96rem;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
@@ -59,11 +60,11 @@ summary:focus-visible {
   align-items: center;
   background: var(--proctor-action);
   border-radius: 0.4rem;
-  color: #ffffff;
+  color: var(--proctor-on-action);
   content: "P";
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 700;
   height: 1.8rem;
   justify-content: center;
   margin-right: 0.7rem;
@@ -74,14 +75,14 @@ summary:focus-visible {
   border-radius: 0.38rem;
   color: var(--proctor-ink-soft);
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   padding: 0.45rem 0.65rem;
 }
 
 .navbar__link:hover,
 .navbar__link--active {
-  background: var(--proctor-cobalt-soft);
-  color: var(--proctor-cobalt-strong);
+  background: var(--proctor-primary-soft);
+  color: var(--proctor-primary-strong);
 }
 
 .dropdown__menu {
@@ -100,8 +101,8 @@ summary:focus-visible {
 
 .dropdown__link:hover,
 .dropdown__link--active {
-  background: var(--proctor-cobalt-soft);
-  color: var(--proctor-cobalt-strong);
+  background: var(--proctor-primary-soft);
+  color: var(--proctor-primary-strong);
 }
 
 .theme-layout-navbar-right {
@@ -141,7 +142,7 @@ summary:focus-visible {
 .menu__list-item-collapsible .menu__link--sublist {
   color: var(--proctor-ink-muted);
   font-size: 0.68rem;
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: 0.095em;
   text-transform: uppercase;
 }
@@ -175,10 +176,10 @@ summary:focus-visible {
 }
 
 .menu__link--active:not(.menu__link--sublist) {
-  background: var(--proctor-cobalt-soft);
-  box-shadow: inset 3px 0 0 var(--proctor-cobalt);
-  color: var(--proctor-cobalt-strong);
-  font-weight: 720;
+  background: var(--proctor-primary-soft);
+  box-shadow: inset 3px 0 0 var(--proctor-primary);
+  color: var(--proctor-primary-strong);
+  font-weight: 700;
 }
 
 .breadcrumbs {
@@ -245,10 +246,10 @@ summary:focus-visible {
 }
 
 .theme-doc-markdown a:not(.button) {
-  font-weight: 620;
+  font-weight: 600;
   text-decoration-color: color-mix(
     in srgb,
-    var(--proctor-cobalt) 38%,
+    var(--proctor-primary) 38%,
     transparent
   );
   text-decoration-thickness: 0.08em;
@@ -256,7 +257,7 @@ summary:focus-visible {
 }
 
 .theme-doc-markdown a:not(.button):hover {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   text-decoration-color: currentColor;
 }
 
@@ -287,7 +288,7 @@ summary:focus-visible {
 
 .theme-doc-markdown blockquote {
   background: var(--proctor-sidebar);
-  border-left-color: var(--proctor-cobalt);
+  border-left-color: var(--proctor-primary);
   color: var(--proctor-ink-soft);
   padding: 0.9rem 1rem;
 }
@@ -304,7 +305,7 @@ summary:focus-visible {
   content: "On this page";
   display: block;
   font-size: 0.7rem;
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: 0.075em;
   margin-bottom: 0.8rem;
   text-transform: uppercase;
@@ -316,32 +317,32 @@ summary:focus-visible {
 
 .table-of-contents__link:hover,
 .table-of-contents__link--active {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
 }
 
 .table-of-contents__link--active {
-  font-weight: 720;
+  font-weight: 700;
 }
 
 .button {
   border-radius: 0.45rem;
   font-size: 0.88rem;
-  font-weight: 720;
+  font-weight: 700;
   letter-spacing: -0.005em;
 }
 
 .button.button--primary {
-  --ifm-button-color: #ffffff;
+  --ifm-button-color: var(--proctor-on-action);
   background: var(--proctor-action);
   border-color: var(--proctor-action);
-  color: #ffffff;
+  color: var(--proctor-on-action);
 }
 
 .button.button--primary:hover,
 .button.button--primary:active {
   background: var(--proctor-action-hover);
   border-color: var(--proctor-action-hover);
-  color: #ffffff;
+  color: var(--proctor-on-action);
 }
 
 .button.button--secondary {
@@ -354,8 +355,8 @@ summary:focus-visible {
 .button.button--secondary:hover,
 .button.button--secondary:active {
   background: var(--proctor-sidebar);
-  border-color: var(--proctor-cobalt);
-  color: var(--proctor-cobalt-strong);
+  border-color: var(--proctor-primary);
+  color: var(--proctor-primary-strong);
 }
 
 code {
@@ -371,8 +372,8 @@ code {
 }
 
 .pagination-nav__link:hover {
-  background: var(--proctor-cobalt-soft);
-  border-color: var(--proctor-cobalt);
+  background: var(--proctor-primary-soft);
+  border-color: var(--proctor-primary);
 }
 
 .theme-edit-this-page {
@@ -381,15 +382,15 @@ code {
 }
 
 .footer {
-  background: #151b2b;
-  border-top: 1px solid #2c354a;
+  background: var(--proctor-footer);
+  border-top: 1px solid var(--proctor-footer-border);
   padding-bottom: calc(2.5rem + env(safe-area-inset-bottom));
 }
 
 .footer__title,
 .footer__link-item,
 .footer__copyright {
-  color: #dce2ee;
+  color: var(--proctor-footer-ink);
 }
 
 .footer__title {

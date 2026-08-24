@@ -3,6 +3,8 @@ import {lstat, readFile, readdir} from 'node:fs/promises';
 import {dirname, extname, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {illustrationPalette} from '../design-system/index.mjs';
+
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(scriptRoot, '../../..');
 const requiredEntryFields = [
@@ -31,28 +33,6 @@ const maximumBytesByExtension = new Map([
   ['.svg', 250_000],
 ]);
 const documentationExtensions = new Set(['.md', '.mdx']);
-const approvedSVGPalette = new Set([
-  '#0d806e',
-  '#172033',
-  '#2945b8',
-  '#3657d6',
-  '#4c586f',
-  '#5f6b80',
-  '#7f94e7',
-  '#91a5ff',
-  '#a65c16',
-  '#c53d4d',
-  '#c7ceda',
-  '#d9a66b',
-  '#dfe3eb',
-  '#e7f5f1',
-  '#eef1ff',
-  '#f7f8fb',
-  '#fff0f1',
-  '#fff3e5',
-  '#fff8ef',
-  '#ffffff',
-]);
 const requiredVisualChecks = new Set([
   'text_containment',
   'connector_continuity',
@@ -101,7 +81,7 @@ async function walk(directory, {extensions, skip = new Set()} = {}) {
   return files;
 }
 
-function parseSVGDimensions(source, name, failures) {
+function parseSVGDimensions(source, name, failures, approvedPalette) {
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) {
     failures.push(`${name}: SVG doctypes and entities are forbidden`);
   }
@@ -128,7 +108,7 @@ function parseSVGDimensions(source, name, failures) {
   }
   for (const match of source.matchAll(/\b(?:fill|stroke)\s*=\s*["']([^"']+)["']/gi)) {
     const color = match[1].toLowerCase();
-    if (color !== 'none' && !approvedSVGPalette.has(color)) {
+    if (color !== 'none' && !approvedPalette.has(color)) {
       failures.push(`${name}: SVG paint ${match[1]} is outside the approved palette`);
     }
   }
@@ -285,6 +265,9 @@ function validateEntryMetadata(entry, index, failures, today) {
   if (!allowedKinds.has(entry.kind)) {
     failures.push(`${label}: kind must be diagram, illustration, or screenshot`);
   }
+  if (entry.kind !== 'screenshot' && !nonemptyString(entry.visual_system)) {
+    failures.push(`${label}: diagrams and illustrations require visual_system`);
+  }
   for (const field of ['owner', 'provenance', 'alt', 'caption', 'theme']) {
     if (!nonemptyString(entry[field])) {
       failures.push(`${label}: ${field} must be a nonempty string`);
@@ -353,8 +336,8 @@ export async function auditAssetRegistry({
     };
   }
 
-  if (registry.schema_version !== 2) {
-    failures.push('docs/public/assets.json: schema_version must be 2');
+  if (registry.schema_version !== 3) {
+    failures.push('docs/public/assets.json: schema_version must be 3');
   }
   if (!Array.isArray(registry.assets)) {
     failures.push('docs/public/assets.json: assets must be an array');
@@ -430,9 +413,23 @@ export async function auditAssetRegistry({
         `${label}: file SHA-256 ${sourceSHA256} does not match its approved visual review`,
       );
     }
-    const dimensions = extension === '.svg'
-      ? parseSVGDimensions(data.toString('utf8'), label, failures)
-      : parsePNGDimensions(data, label, failures);
+    let dimensions;
+    if (extension === '.svg') {
+      let approvedPalette = new Set();
+      try {
+        approvedPalette = illustrationPalette(entry.visual_system, entry.id);
+      } catch (error) {
+        failures.push(`${label}: ${error.message}`);
+      }
+      dimensions = parseSVGDimensions(
+        data.toString('utf8'),
+        label,
+        failures,
+        approvedPalette,
+      );
+    } else {
+      dimensions = parsePNGDimensions(data, label, failures);
+    }
     if (
       dimensions &&
       (dimensions.width !== entry.width || dimensions.height !== entry.height)

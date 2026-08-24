@@ -17,6 +17,7 @@ Each kind of information has one owner:
 | Capability status and unresolved decisions | [`docs/project/status.md`](../project/status.md) |
 | Public task-oriented guidance | [`docs/public/`](../public/) and authored [`docs/api/`](../api/) overview |
 | Public site presentation and build | [`docs/site/`](../site/) |
+| Documentation visual language and tokens | [`docs/contributing/design-system.md`](./design-system.md) and [`docs/site/design-system/tokens.mjs`](../site/design-system/tokens.mjs) |
 | Public visual-asset metadata and files | [`docs/public/assets.json`](../public/assets.json) and [`docs/public/static/assets/`](../public/static/assets/) |
 | Module setup and commands | The module README and Makefile |
 | Cross-repository agent procedure | Root [`AGENTS.md`](../../AGENTS.md) |
@@ -104,6 +105,11 @@ boundary described in the [visual-asset workflow](./visual-assets.md). MDX pages
 reference a stable asset ID through `GovernedFigure`; they do not own file
 paths, alt descriptions, dimensions, or captions. Preserve the direct image and
 image-import prohibitions until the documented dependency constraint changes.
+
+The [documentation design system](./design-system.md) owns color semantics,
+typography, spacing, geometry, and illustration grammar. Authored stylesheets
+consume its generated semantic properties rather than introducing local color
+or font scales.
 
 ## Portable references
 

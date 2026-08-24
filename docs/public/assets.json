@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "assets": [
     {
       "id": "installation-authority-topology",
@@ -23,6 +23,7 @@
       "height": 720,
       "max_bytes": 100000,
       "theme": "light-high-contrast",
+      "visual_system": "legacy-cobalt-v0",
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",
@@ -76,6 +77,7 @@
       "height": 720,
       "max_bytes": 100000,
       "theme": "light-high-contrast",
+      "visual_system": "legacy-cobalt-v0",
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",
@@ -134,6 +136,7 @@
       "height": 720,
       "max_bytes": 100000,
       "theme": "light-high-contrast",
+      "visual_system": "legacy-cobalt-v0",
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",
@@ -189,6 +192,7 @@
       "height": 720,
       "max_bytes": 100000,
       "theme": "light-high-contrast",
+      "visual_system": "legacy-cobalt-v0",
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",

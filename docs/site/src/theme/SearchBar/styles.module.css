@@ -17,9 +17,9 @@
 }
 
 .trigger:hover {
-  background: var(--proctor-cobalt-soft);
-  border-color: var(--proctor-cobalt);
-  color: var(--proctor-cobalt-strong);
+  background: var(--proctor-primary-soft);
+  border-color: var(--proctor-primary);
+  color: var(--proctor-primary-strong);
 }
 
 .trigger svg,
@@ -66,7 +66,7 @@
 
 .dialog::backdrop {
   backdrop-filter: blur(3px);
-  background: rgb(12 17 29 / 58%);
+  background: var(--proctor-backdrop);
 }
 
 .header {
@@ -85,9 +85,9 @@
 }
 
 .eyebrow {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 0.66rem;
-  font-weight: 760;
+  font-weight: 700;
   letter-spacing: 0.09em;
   margin: 0 0 0.2rem;
   text-transform: uppercase;
@@ -123,8 +123,8 @@
 }
 
 .searchField:focus-within {
-  box-shadow: inset 3px 0 0 var(--proctor-cobalt);
-  color: var(--proctor-cobalt-strong);
+  box-shadow: inset 3px 0 0 var(--proctor-primary);
+  color: var(--proctor-primary-strong);
 }
 
 .searchField input {
@@ -168,16 +168,16 @@
 
 .result:hover,
 .result:focus-visible {
-  background: var(--proctor-cobalt-soft);
-  border-color: color-mix(in srgb, var(--proctor-cobalt) 35%, transparent);
+  background: var(--proctor-primary-soft);
+  border-color: color-mix(in srgb, var(--proctor-primary) 35%, transparent);
   color: var(--proctor-ink-soft);
   text-decoration: none;
 }
 
 .group {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 0.62rem;
-  font-weight: 760;
+  font-weight: 700;
   grid-column: 1;
   letter-spacing: 0.075em;
   text-transform: uppercase;
@@ -199,7 +199,7 @@
 
 .arrow {
   align-self: center;
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   grid-column: 2;
   grid-row: 1 / span 3;
   transition: transform 140ms ease;

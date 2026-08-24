@@ -44,7 +44,8 @@ Use lowercase kebab-case IDs and paths grouped by role, such as
 - the documentation owner, provenance, and licensing state;
 - a privacy decision with its evidence;
 - useful alt text and a concise visible caption;
-- the intended theme and review date; and
+- the intended theme and review date;
+- the visual-system version used by a diagram or illustration;
 - repository files whose changes require the asset to be reviewed; and
 - a visual acceptance record tied to the exact asset SHA-256.
 
@@ -66,12 +67,19 @@ The normal `npm run check` and root `make docs-check` workflows include both.
 
 ## Diagram standard
 
-Use the public site's established tokens: cobalt for the authoritative path,
-aqua for disposable or reconstructible effects, amber for human attention, and
-coral only for blocked or fail-closed outcomes. Labels, line styles, ordering,
-and shapes must communicate the same distinction without color. Keep diagrams
-on a white technical plate so light, dark, print, and high-contrast contexts
-retain the same evidence.
+The complete palette, typography, geometry, connector, density, and annotation
+rules live in the [documentation design system](./design-system.md). The asset
+registry records the exact visual-system version used by every diagram or
+illustration.
+
+New diagrams use Proctor purple for the authoritative path, teal for disposable
+or reconstructible effects, amber for human attention, and coral only for
+blocked or fail-closed outcomes. Labels, line styles, ordering, and shapes must
+communicate the same distinction without color. Keep diagrams on a white
+technical plate so light, dark, print, and high-contrast contexts retain the
+same evidence. The frozen `legacy-cobalt-v0` system exists only for the four
+tracked migration assets named by the design-system module; it cannot be used
+for new work.
 
 Normal text must retain at least 4.5:1 contrast against its actual plate. Use
 `#5f6b80` or darker for muted labels on white and near-white surfaces; the
@@ -79,8 +87,9 @@ older `#6d788c` token is too light for small diagram text. The SVG validator
 enforces the approved palette so one-off colors cannot silently fragment the
 visual system.
 
-Use system font fallbacks only. Preserve a numeric `width`, `height`, and
-matching `viewBox`; keep primary labels legible at the desktop content width.
+Use the documented IBM Plex stack and fallbacks. Preserve a numeric `width`,
+`height`, and matching `viewBox`; keep primary labels legible at the desktop
+content width.
 At mobile width, the complete structure must remain recognizable and the
 full-size inspection link must remain visible. If a procedure depends on
 reading every label without opening that view, author a narrower companion

@@ -1,6 +1,6 @@
 .notice {
-  background: var(--proctor-cobalt-soft);
-  border: 1px solid color-mix(in srgb, var(--proctor-cobalt) 28%, transparent);
+  background: var(--proctor-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--proctor-primary) 28%, transparent);
   border-radius: 0.55rem;
   display: grid;
   gap: 0.45rem;
@@ -14,14 +14,14 @@
   color: var(--proctor-ink);
   display: flex;
   font-size: 0.67rem;
-  font-weight: 780;
+  font-weight: 700;
   gap: 0.45rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .notice strong i {
-  background: var(--proctor-cobalt);
+  background: var(--proctor-primary);
   border-radius: 50%;
   height: 0.45rem;
   width: 0.45rem;
@@ -36,12 +36,12 @@
 }
 
 .available {
-  background: var(--proctor-aqua-soft);
-  border-color: color-mix(in srgb, var(--proctor-aqua) 28%, transparent);
+  background: var(--proctor-complete-soft);
+  border-color: color-mix(in srgb, var(--proctor-complete) 28%, transparent);
 }
 
 .available strong i {
-  background: var(--proctor-aqua);
+  background: var(--proctor-complete);
 }
 
 .planned {

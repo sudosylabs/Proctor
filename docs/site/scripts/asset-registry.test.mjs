@@ -17,6 +17,7 @@ async function fixture({
   includeUnregistered = false,
   includeUngovernedStatic = false,
   privacyStatus = 'approved',
+  visualSystem = 'proctor-assurance-v1',
   visualReviewHash,
   visualReviewChecks = [
     'text_containment',
@@ -43,7 +44,7 @@ async function fixture({
   await writeFile(
     resolve(root, 'docs/public/assets.json'),
     JSON.stringify({
-      schema_version: 2,
+      schema_version: 3,
       assets: [
         {
           id: 'test-diagram',
@@ -64,6 +65,7 @@ async function fixture({
           height: 50,
           max_bytes: 2000,
           theme: 'light-high-contrast',
+          visual_system: visualSystem,
           last_reviewed: '2026-08-24',
           review_triggers: ['docs/architecture/runtime.md'],
           visual_review: {
@@ -146,6 +148,24 @@ test('rejects SVG paint outside the approved visual system', async () => {
     today: '2026-08-24',
   });
   assert(result.failures.some((failure) => failure.includes('approved palette')));
+});
+
+test('rejects the retired cobalt paint from a current-system illustration', async () => {
+  const svg =
+    '<svg width="100" height="50" viewBox="0 0 100 50"><rect width="100" height="50" fill="#3657d6"/></svg>';
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({svg}),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('approved palette')));
+});
+
+test('rejects an unknown illustration system', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({visualSystem: 'invented-v1'}),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('unknown illustration system')));
 });
 
 test('rejects dimension drift', async () => {

@@ -2,13 +2,13 @@
   background:
     linear-gradient(
       118deg,
-      color-mix(in srgb, var(--proctor-cobalt-soft) 76%, transparent),
+      color-mix(in srgb, var(--proctor-primary-soft) 76%, transparent),
       transparent 58%
     ),
     var(--proctor-surface);
   border: 1px solid var(--proctor-border);
   border-radius: 0.8rem;
-  box-shadow: inset 5px 0 0 var(--proctor-cobalt);
+  box-shadow: inset 5px 0 0 var(--proctor-primary);
   margin-bottom: 3.75rem;
   padding: clamp(1.7rem, 5vw, 3.25rem);
 }
@@ -25,22 +25,22 @@
 .eyebrow,
 .sectionHeading > span,
 .cardLabel {
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 0.68rem;
-  font-weight: 780;
+  font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
 .preview {
   align-items: center;
-  background: var(--proctor-aqua-soft);
-  border: 1px solid color-mix(in srgb, var(--proctor-aqua) 25%, transparent);
+  background: var(--proctor-attention-soft);
+  border: 1px solid color-mix(in srgb, var(--proctor-attention) 25%, transparent);
   border-radius: 999px;
-  color: var(--proctor-aqua);
+  color: var(--proctor-attention);
   display: inline-flex;
   font-size: 0.68rem;
-  font-weight: 720;
+  font-weight: 700;
   gap: 0.4rem;
   padding: 0.25rem 0.55rem;
 }
@@ -121,8 +121,8 @@
 
 .referenceCard:hover,
 .referenceCard:focus-visible {
-  background: var(--proctor-cobalt-soft);
-  border-color: var(--proctor-cobalt);
+  background: var(--proctor-primary-soft);
+  border-color: var(--proctor-primary);
   color: var(--proctor-ink-soft);
   text-decoration: none;
   transform: translateY(-2px);
@@ -142,7 +142,7 @@
 
 .referenceCard b {
   align-self: center;
-  color: var(--proctor-cobalt-strong);
+  color: var(--proctor-primary-strong);
   font-size: 1.1rem;
   grid-column: 2;
   grid-row: 1 / span 3;
@@ -151,7 +151,7 @@
 @media (max-width: 700px) {
   .hero {
     border-radius: 0.65rem;
-    box-shadow: inset 4px 0 0 var(--proctor-cobalt);
+    box-shadow: inset 4px 0 0 var(--proctor-primary);
     margin-bottom: 3rem;
   }
 

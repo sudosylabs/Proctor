@@ -15,6 +15,23 @@ The guide finder intentionally searches the current top-level guide catalog.
 Replace that bounded catalog with a generated body-content index when the
 public guide set is large enough to justify the dedicated search slice.
 
+The tracked [documentation design system](../contributing/design-system.md)
+owns the brand palette, semantic colors, IBM Plex typography, spacing,
+geometry, and illustration grammar. Human changes begin in
+`design-system/tokens.mjs`; `src/css/tokens.css` is generated:
+
+```sh
+cd docs/site
+npm run generate:design-system
+npm run check:design-system
+npm run test:design-system
+```
+
+The check rejects stale generated CSS, literal colors outside the token module,
+retired color names, unsupported font weights, insufficient standard-token
+contrast, and illustration palettes that do not match their declared visual
+system.
+
 ## Commands
 
 From the repository root:
@@ -24,8 +41,8 @@ make docs-start
 make docs-check
 ```
 
-`docs-start` serves a local preview. `docs-check` validates frontmatter and the
-governed visual-asset registry, proves
+`docs-start` serves a local preview. `docs-check` validates the documentation
+design system, frontmatter, and governed visual-asset registry, proves
 the generated OpenAPI artifact matches its human-authored YAML modules, audits
 the reference data, tests the audit and renderer failure modes, regenerates and
 verifies endpoint pages, type-checks the site, synchronizes the artifact, and
