@@ -30,7 +30,7 @@
   width: 100%;
 }
 
-.filter input:focus {
+.filter input:focus-visible {
   border-color: var(--proctor-primary);
 }
 
@@ -59,6 +59,8 @@
 
 .entry {
   border-bottom: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  contain-intrinsic-size: auto 8rem;
+  content-visibility: auto;
   display: grid;
   gap: var(--proctor-space-4);
   grid-template-columns: minmax(10rem, 0.36fr) minmax(0, 1fr);

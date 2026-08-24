@@ -164,7 +164,7 @@ export default function SearchBar(): React.JSX.Element {
 
         <div className={styles.resultMeta}>
           <span>{query.trim() ? `${matches.length} best matches` : 'Recommended starting points'}</span>
-          <span aria-hidden="true">↑↓ navigate · esc close</span>
+          <span aria-hidden="true">↑↓ navigate · Esc close</span>
         </div>
 
         <div aria-live="polite" className={styles.results}>
@@ -199,7 +199,7 @@ export default function SearchBar(): React.JSX.Element {
                     ) : (
                       <span className={styles.description}>{entry.description}</span>
                     )}
-                    <span aria-hidden="true" className={styles.arrow}>→</span>
+                    <DocIcon className={styles.arrow} name="arrowRight" />
                   </Link>
                 </li>
               ))}

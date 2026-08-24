@@ -15,6 +15,7 @@ export default function Term({id, children}: {id: string; children: ReactNode}):
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
+  const wasFocusedOnPointerDownRef = useRef(false);
   const tooltipId = `term-${useId().replace(/:/g, '')}`;
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
@@ -89,9 +90,11 @@ export default function Term({id, children}: {id: string; children: ReactNode}):
   return (
     <span
       className={styles.wrapper}
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => {
-        if (document.activeElement !== triggerRef.current) {
+      onPointerEnter={(event) => {
+        if (event.pointerType === 'mouse') setOpen(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === 'mouse' && document.activeElement !== triggerRef.current) {
           setOpen(false);
         }
       }}>
@@ -99,8 +102,21 @@ export default function Term({id, children}: {id: string; children: ReactNode}):
         aria-describedby={open ? tooltipId : undefined}
         className={styles.trigger}
         onBlur={() => setOpen(false)}
-        onClick={() => setOpen(true)}
+        onClick={(event) => {
+          if (event.detail === 0 || wasFocusedOnPointerDownRef.current) {
+            setOpen((current) => !current);
+          } else {
+            setOpen(true);
+          }
+          wasFocusedOnPointerDownRef.current = false;
+        }}
         onFocus={() => setOpen(true)}
+        onPointerCancel={() => {
+          wasFocusedOnPointerDownRef.current = false;
+        }}
+        onPointerDown={() => {
+          wasFocusedOnPointerDownRef.current = document.activeElement === triggerRef.current;
+        }}
         ref={triggerRef}
         type="button">
         <dfn>{children}</dfn>

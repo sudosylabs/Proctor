@@ -12,8 +12,13 @@ function ThemeColor(): null {
   useEffect(() => {
     const rootStyle = window.getComputedStyle(document.documentElement);
     const canvas = rootStyle.getPropertyValue('--proctor-canvas').trim();
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (meta && canvas) meta.content = canvas;
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.append(meta);
+    }
+    if (canvas) meta.content = canvas;
   }, [colorMode]);
   return null;
 }

@@ -24,6 +24,7 @@ export default function GlossaryIndex(): React.JSX.Element {
         <span>Filter canonical terms</span>
         <input
           autoComplete="off"
+          name="glossary-query"
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Try “workspace”, “identity”, or “exam”…"
           spellCheck={false}

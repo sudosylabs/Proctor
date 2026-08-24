@@ -8,7 +8,7 @@
   display: flex;
   font: inherit;
   gap: var(--proctor-space-2);
-  height: 2.4rem;
+  height: 2.75rem;
   margin: 0 var(--proctor-space-2);
   min-width: 14rem;
   padding: 0 var(--proctor-space-2) 0 var(--proctor-space-3);
@@ -111,9 +111,9 @@
   cursor: pointer;
   display: inline-flex;
   flex: none;
-  height: 2.5rem;
+  height: 2.75rem;
   justify-content: center;
-  width: 2.5rem;
+  width: 2.75rem;
 }
 
 .close:hover {
@@ -313,12 +313,12 @@
 
 @media (max-width: 996px) {
   .trigger {
-    height: 2.35rem;
+    height: 2.75rem;
     justify-content: center;
     margin: 0 var(--proctor-space-1);
-    min-width: 2.35rem;
+    min-width: 2.75rem;
     padding: 0;
-    width: 2.35rem;
+    width: 2.75rem;
   }
 
   .triggerLabel {
