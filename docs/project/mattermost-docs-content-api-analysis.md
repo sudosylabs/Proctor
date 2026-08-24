@@ -66,7 +66,8 @@ The recommendation is therefore:
 - keep generated `server/openapi.json` tracked and reviewed as the exact
   consumer/runtime-agreement artifact;
 - generate browsable endpoint pages and their sidebar into ignored build input;
-- keep task-oriented API guides in `docs/public/api/` as authored content;
+- keep task-oriented API guides in `docs/api/` as authored content, separate
+  from the main docs plugin root so each MDX file has one renderer;
 - introduce images only after the current image-processing dependency gate is
   resolved, with a tracked asset registry and freshness/privacy checks; and
 - begin feedback with edit/issue links, adding a minimal privacy-preserving
@@ -636,10 +637,9 @@ MDX adapter. Do not distort the wire contract to fit a renderer.
 Recommended generated layout:
 
 ```text
-docs/public/api/index.mdx                 tracked authored landing
-docs/public/api/guides/*.mdx             tracked authored workflows
-docs/public/api/reference/               ignored generated endpoint/tag pages
-docs/site/sidebars/api.generated.*       ignored generated sidebar data
+docs/api/index.mdx                        tracked authored landing
+docs/api/guides/*.mdx                    tracked authored workflows
+docs/api/reference/                      ignored generated endpoint/tag pages and sidebar
 docs/site/static/openapi/openapi.json     ignored byte-for-byte publication copy
 ```
 
@@ -774,6 +774,17 @@ machine-readable coverage and tests the required regression failures.
 - `make -C server architecture` and existing OpenAPI agreement tests pass.
 
 ### Phase 1 — Generate the browsable API reference
+
+**Status (2026-08-24): complete.** The locked OpenAPI plugin and theme now
+generate one deep-linkable page for each of the 218 operations and one category
+page for each of the 16 product areas under a separate `/api` documentation
+root. A tracked sidebar wrapper joins the authored overview to the ignored,
+reproducible reference. Every endpoint exposes its Proctor authentication,
+idempotency, and stable error-code contract, while the underlying renderer owns
+security schemes, parameters, bodies, response schemas, examples, and focused
+curl, JavaScript Fetch, and Python Requests snippets. Generation and clean
+installation have regression tests, and the strict production build is part of
+`make docs-check`.
 
 **Work**
 

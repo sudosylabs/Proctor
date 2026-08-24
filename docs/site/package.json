@@ -7,23 +7,27 @@
   },
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
-    "prestart": "npm run generate:openapi",
-    "build": "docusaurus build",
-    "prebuild": "npm run generate:openapi",
+    "start": "npm run generate:openapi && docusaurus start",
+    "build": "npm run generate:openapi && docusaurus build",
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
-    "generate:openapi": "node scripts/sync-openapi.mjs",
+    "generate:openapi": "npm run generate:openapi:spec && npm run generate:openapi:reference",
+    "generate:openapi:spec": "node scripts/sync-openapi.mjs",
+    "generate:openapi:reference": "docusaurus clean-api-docs proctor && docusaurus gen-api-docs proctor && node scripts/finalize-openapi-reference.mjs && node scripts/verify-openapi-reference.mjs",
     "audit:openapi": "node scripts/audit-openapi.mjs",
     "test:openapi-audit": "node --test scripts/openapi-audit.test.mjs",
-    "validate": "node scripts/validate-content.mjs && npm run test:openapi-audit && npm run audit:openapi",
+    "test:openapi-reference": "node --test scripts/openapi-reference.test.mjs",
+    "test:codegen": "node --test scripts/codegen-smoke.test.mjs",
+    "validate": "node scripts/validate-content.mjs && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
     "typecheck": "tsc --noEmit",
-    "check": "npm run validate && npm run typecheck && npm run build"
+    "check": "npm run validate && npm run generate:openapi && npm run typecheck && docusaurus build"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
     "@docusaurus/preset-classic": "3.10.2",
     "@mdx-js/react": "3.1.1",
+    "docusaurus-plugin-openapi-docs": "5.0.2",
+    "docusaurus-theme-openapi-docs": "5.0.2",
     "prism-react-renderer": "2.4.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -36,8 +40,12 @@
     "typescript": "5.9.3"
   },
   "overrides": {
+    "openapi-to-postmanv2": {
+      "js-yaml": "4.3.1"
+    },
     "serialize-javascript": "7.1.0",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "yaml": "1.10.3"
   },
   "browserslist": {
     "production": [

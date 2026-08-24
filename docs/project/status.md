@@ -20,9 +20,12 @@ the code and component contracts for that detail.
   authentication/error/idempotency metadata on every operation, and a rich
   representative reference pilot spanning the important security and payload
   shapes. A versioned machine-readable audit reports coverage and rejects
-  taxonomy, summary, extension, and pilot-content regressions. Browsable API
-  page generation remains the next implementation slice, while licensing,
-  hostname, versioning, and hosting remain unsettled production decisions.
+  taxonomy, summary, extension, and pilot-content regressions. A locked,
+  reproducible renderer now produces one deep-linkable page for every operation
+  and product-area tag, presents the Proctor contract extensions, and disables
+  request sending. Reference-content enrichment is the next documentation
+  slice, while licensing, hostname, versioning, and hosting remain unsettled
+  production decisions.
 - The root product build now owns one configurable end-to-end development
   lifecycle, layered dependencies and observability, a real
   readiness-aware three-node HAProxy topology and node-loss certification,

@@ -15,7 +15,7 @@ Each kind of information has one owner:
 | Exact component behavior | Contract beside the component, linked from architecture docs |
 | Public HTTP shapes and API reference metadata | [`server/openapi/`](../../server/openapi/) sources, generated [`server/openapi.json`](../../server/openapi.json), and the [`httpapi` contract](../../server/httpapi/CONTRACT.md) |
 | Capability status and unresolved decisions | [`docs/project/status.md`](../project/status.md) |
-| Public task-oriented guidance | [`docs/public/`](../public/) |
+| Public task-oriented guidance | [`docs/public/`](../public/) and authored [`docs/api/`](../api/) overview |
 | Public site presentation and build | [`docs/site/`](../site/) |
 | Module setup and commands | The module README and Makefile |
 | Cross-repository agent procedure | Root [`AGENTS.md`](../../AGENTS.md) |
@@ -33,9 +33,10 @@ substantive content. Cross-component architecture belongs under
 `docs/architecture/`; a precise contract that changes with one component may
 remain beside its code when the architecture guide links to it.
 
-Public guides under `docs/public/` explain released outcomes for operators,
-institution administrators, security reviewers, developers, API consumers, and
-eventually examination participants. They link to or derive exact facts from
+Public guides under `docs/public/` and the authored API overview under
+`docs/api/` explain released outcomes for operators, institution
+administrators, security reviewers, developers, API consumers, and eventually
+examination participants. They link to or derive exact facts from
 the existing glossary, architecture, component contracts, configuration, and
 OpenAPI sources instead of becoming a second authority. The private
 `docs/site/` package owns rendering, navigation, metadata validation, and the
@@ -69,8 +70,9 @@ object-store, or local-machine data.
 
 Run `npm run audit:openapi` from `docs/site` to audit the generated artifact and
 obtain the machine-readable coverage report. The normal `make docs-check` gate
-runs that audit and its
-failure-mode tests before building the site. The server OpenAPI validation
+runs that audit and its failure-mode tests, regenerates the ignored endpoint
+pages under `docs/api/reference/`, and proves every operation and required
+Proctor extension survived rendering before building the site. The server OpenAPI validation
 independently enforces the universal operation metadata; its runtime agreement
 tests remain authoritative for route behavior.
 

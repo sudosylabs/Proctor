@@ -1,0 +1,122 @@
+.panel {
+  background: var(--proctor-sidebar);
+  border: 1px solid var(--proctor-border);
+  border-left: 4px solid var(--proctor-cobalt);
+  border-radius: 0.65rem;
+  color: var(--proctor-ink-soft);
+  margin: 0 0 2rem;
+  padding: 1rem 1.15rem;
+}
+
+.header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.eyebrow {
+  color: var(--proctor-cobalt-strong);
+  font-size: 0.66rem;
+  font-weight: 780;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.2rem;
+  text-transform: uppercase;
+}
+
+.title {
+  border: 0;
+  color: var(--proctor-ink);
+  font-size: 1rem;
+  letter-spacing: -0.015em;
+  margin: 0;
+  padding: 0;
+}
+
+.source {
+  border: 1px solid var(--proctor-border-strong);
+  border-radius: 999px;
+  color: var(--proctor-ink-muted);
+  flex: 0 0 auto;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.63rem;
+  padding: 0.18rem 0.45rem;
+}
+
+.requirements {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1rem 0 0;
+}
+
+.requirement {
+  min-width: 0;
+}
+
+.requirement dt {
+  color: var(--proctor-ink-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.055em;
+  margin-bottom: 0.18rem;
+  text-transform: uppercase;
+}
+
+.requirement dd {
+  color: var(--proctor-ink);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.errors {
+  border-top: 1px solid var(--proctor-border);
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+}
+
+.errors summary {
+  color: var(--proctor-cobalt-strong);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.errorList {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+}
+
+.errorList li {
+  min-width: 0;
+}
+
+.errorList code {
+  background: var(--proctor-code);
+  border: 1px solid var(--proctor-border);
+  color: var(--proctor-ink-soft);
+  display: block;
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+  padding: 0.3rem 0.4rem;
+}
+
+.empty {
+  color: var(--proctor-ink-muted);
+  font-size: 0.78rem;
+  margin: 0.7rem 0 0;
+}
+
+@media (max-width: 640px) {
+  .requirements,
+  .errorList {
+    grid-template-columns: 1fr;
+  }
+}

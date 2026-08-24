@@ -1,14 +1,15 @@
 # Proctor documentation site
 
 This private Docusaurus package renders the task-oriented content in
-[`../public/`](../public/). Existing architecture, component contracts, module
+[`../public/`](../public/) and the API reference rooted at
+[`../api/`](../api/). Existing architecture, component contracts, module
 READMEs, and project status remain authoritative in their current locations.
 
-The current local build is a development scaffold for task-oriented
-navigation, public content validation, and later generated API reference pages.
-Its visual presentation remains provisional. Publication, the production
-hostname, content licensing, versioning, analytics, and hosting remain explicit
-decisions to settle before deployment.
+The current local build provides task-oriented navigation, public content
+validation, and a deterministic generated API reference. Its visual
+presentation remains provisional. Publication, the production hostname,
+content licensing, versioning, analytics, and hosting remain explicit decisions
+to settle before deployment.
 
 The guide finder intentionally searches the current top-level guide catalog.
 Replace that bounded catalog with a generated body-content index when the
@@ -23,10 +24,11 @@ make docs-start
 make docs-check
 ```
 
-`docs-start` serves a local preview. `docs-check` validates frontmatter,
-proves the generated OpenAPI artifact matches its human-authored YAML modules,
-audits the reference data, tests the audit's failure modes, type-checks the
-site, synchronizes the artifact, and performs a strict production build.
+`docs-start` serves a local preview. `docs-check` validates frontmatter, proves
+the generated OpenAPI artifact matches its human-authored YAML modules, audits
+the reference data, tests the audit and renderer failure modes, regenerates and
+verifies endpoint pages, type-checks the site, synchronizes the artifact, and
+performs a strict production build.
 
 To inspect the OpenAPI data without building the site:
 
@@ -52,6 +54,15 @@ server openapi-build` after changing a route, description, example, or schema.
 the ignored `static/openapi/openapi.json` publication path. The generated copy
 is never edited or treated as an authority.
 
+`docusaurus-plugin-openapi-docs` renders that same contract into the ignored
+`docs/api/reference/` directory. `scripts/finalize-openapi-reference.mjs` adds
+the Proctor contract panel at the generator's documented MDX seam, and
+`scripts/verify-openapi-reference.mjs` proves that all operations, product-area
+tags, sidebar entries, and `x-proctor-*` declarations are present exactly once.
+The authored `docs/api/index.mdx` overview and generator template remain small;
+route descriptions and schemas stay with their human-owned OpenAPI YAML
+fragments.
+
 The OpenAPI source modules now own the complete product-area taxonomy and explicit
 authentication, error-code, and idempotency metadata for every operation. A
 representative pilot covers public and authenticated JSON, strong recent
@@ -60,9 +71,24 @@ upload, protected binary download, candidate multipart upload, submission, and
 WebSocket upgrade. These operations also include behavioral descriptions,
 parameter and body prose, synthetic request data, and redacted shell examples.
 
-Browsable endpoint and tag page generation is the next API slice. Until that
-renderer is integrated, the site publishes the unchanged downloadable contract
-but does not claim that the reference UI is complete.
+The reference UI deliberately disables request sending. It documents the
+contract and produces client-ready examples without turning a documentation
+deployment into a credential-bearing API console.
+
+The package-local `.npmrc` disables dependency lifecycle scripts. The OpenAPI
+theme's `postman-code-generators` dependency otherwise detects and launches
+foreign package managers inside `node_modules`, making a clean install depend
+on ambient developer tooling and network timing. Its published runtime already
+contains the generator registry and all required dependencies; the codegen
+smoke test exercises curl, JavaScript Fetch, and Python Requests output after a
+script-free install, and the production build is the final guard. Re-enable
+lifecycle scripts only after reviewing every dependency that would execute.
+
+The `package.json` overrides also keep the OpenAPI converter on patched
+`js-yaml` and `yaml` patch releases while its upstream dependency declarations
+lag behind. Keep those pins until `openapi-to-postmanv2` adopts the patched
+versions directly; the snippet smoke test and production build cover their
+runtime compatibility.
 
 ## Current dependency constraint
 

@@ -6,6 +6,13 @@ const config: Config = {
   title: 'Proctor Documentation',
   tagline: 'Run examinations with the rules in view',
 
+  // Keep authored and generated content on Docusaurus' forward-compatible MDX
+  // parser. The API plugin has its own content root so every file is compiled
+  // exactly once.
+  future: {
+    v4: true,
+  },
+
   // Publication is intentionally deferred. The placeholder prevents a local
   // build from inventing a production hostname before that decision is made.
   url: process.env.DOCS_SITE_URL ?? 'https://docs.proctor.invalid',
@@ -48,7 +55,55 @@ const config: Config = {
     ],
   ],
 
+  plugins: [
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'api',
+        path: '../api',
+        routeBasePath: '/api',
+        sidebarPath: './sidebars.api.ts',
+        docItemComponent: '@theme/ApiItem',
+        editUrl: ({docPath}: {docPath: string}) =>
+          `https://github.com/sudosylabs/Proctor/edit/main/docs/api/${docPath}`,
+        breadcrumbs: true,
+      },
+    ],
+    [
+      'docusaurus-plugin-openapi-docs',
+      {
+        id: 'api-generator',
+        docsPluginId: 'api',
+        config: {
+          proctor: {
+            specPath: '../../server/openapi.json',
+            outputDir: '../api/reference',
+            template: './templates/api.mdx.mustache',
+            downloadUrl: '/openapi/openapi.json',
+            hideSendButton: true,
+            showInfoPage: false,
+            showSchemas: false,
+            disableCompression: true,
+            externalJsonProps: true,
+            sidebarOptions: {
+              groupPathsBy: 'tag',
+              categoryLinkSource: 'tag',
+            },
+          },
+        },
+      },
+    ],
+  ],
+
+  themes: ['docusaurus-theme-openapi-docs'],
+
   themeConfig: {
+    // Keep the generated examples focused on the three client paths we test.
+    languageTabs: [
+      {language: 'curl', variant: 'cURL'},
+      {language: 'javascript', variant: 'Fetch'},
+      {language: 'python', variant: 'Requests'},
+    ],
     metadata: [
       {
         name: 'keywords',

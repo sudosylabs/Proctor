@@ -3,7 +3,7 @@ title: Proctor API
 description: Use Proctor's reviewed OpenAPI contract, explicit authentication metadata, and stable Problem Details errors.
 audience: api-consumer
 maturity: preview
-slug: /api/
+slug: /
 ---
 
 # Proctor API
@@ -14,9 +14,9 @@ tests; generated documentation is a view of that contract, never a second
 authority.
 
 <Maturity state="preview">
-  The canonical specification is available now. Browsable endpoint pages will
-  follow after operations have stable domain tags and the generator preserves
-  Proctor's authentication and assurance metadata.
+  The contract and generated endpoint reference are available. Operations that
+  describe planned server behavior remain preview until their implementation
+  status is recorded by the server project.
 </Maturity>
 
 ## Download the Current Contract
@@ -25,6 +25,10 @@ authority.
 
 The docs build copies this file directly from the tracked server contract. It
 does not infer endpoints from handlers or rewrite the canonical descriptions.
+
+Browse the endpoint groups in the sidebar. Every endpoint page is generated
+from the same contract and displays its authentication, idempotency, and stable
+error-code declarations before the request and response schemas.
 
 ## Read Every Operation Completely
 

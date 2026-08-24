@@ -29,7 +29,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         {type: 'doc', id: 'developers/index', label: 'Developer Guide'},
-        {type: 'doc', id: 'api/index', label: 'API Reference'},
+        {type: 'link', href: '/api/', label: 'API Reference'},
       ],
     },
   ],
