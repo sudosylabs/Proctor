@@ -19,8 +19,9 @@ Template properties (server/app/mail renderer):
     <mj-preview>{{.Copy.Preheader}}</mj-preview>
     <mj-include path="./partials/foundation-head.mjml" />
   </mj-head>
-  <mj-body background-color="#f4f5f7">
-    <mj-include path="./partials/foundation-message.mjml" />
-    <mj-section background-color="#ffffff" padding="0 24px 24px"><mj-column><mj-text><strong>{{.Copy.ClassTransition.PreviousClassLabel}}:</strong> {{.ClassTransition.PreviousClassDisplayName}}<br /><strong>{{.Copy.ClassTransition.NewClassLabel}}:</strong> {{.ClassTransition.ClassDisplayName}}<br /><strong>{{.Copy.ClassTransition.StartsAtLabel}}:</strong> {{.ClassTransition.StartsAt}}<br /><strong>{{.Copy.ClassTransition.EndsAtLabel}}:</strong> {{.ClassTransition.EndsAt}}<br /><strong>{{.Copy.ClassTransition.TimezoneLabel}}:</strong> {{.ClassTransition.Timezone}}</mj-text></mj-column></mj-section>
+  <mj-body background-color="#F4F4F6">
+    <mj-include path="./partials/foundation-intro.mjml" />
+    <mj-include path="./partials/facts-class-transferred.mjml" />
+    <mj-include path="./partials/foundation-footer.mjml" />
   </mj-body>
 </mjml>

@@ -1,0 +1,19 @@
+<mj-section background-color="#ffffff" padding="32px 24px 24px">
+  <mj-column>
+    <mj-image src="proctor-lockup.png" alt="Proctor" align="left" width="163px" height="32px" padding="0 0 28px" />
+    <mj-text font-size="22px" line-height="28px" font-weight="500" padding="0 0 16px">
+      {{.Copy.Heading}}
+    </mj-text>
+    <mj-text padding="0">
+      {{.Copy.Body}}
+    </mj-text>
+    <mj-raw>{{if .ActionURL}}</mj-raw>
+    <mj-button href="{{.ActionURL}}" align="left">
+      {{.Copy.ActionLabel}}
+    </mj-button>
+    <mj-text color="#5C5C5C" font-size="13px" line-height="20px" padding="12px 0 0">
+      <a href="{{.ActionURL}}">{{.ActionURL}}</a>
+    </mj-text>
+    <mj-raw>{{end}}</mj-raw>
+  </mj-column>
+</mj-section>

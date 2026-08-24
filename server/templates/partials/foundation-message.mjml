@@ -1,19 +1,2 @@
-<mj-section background-color="#ffffff" padding="32px 24px">
-  <mj-column>
-    <mj-text font-size="24px" line-height="32px" font-weight="700" padding="0 0 20px">
-      {{.Copy.Heading}}
-    </mj-text>
-    <mj-text padding="0">
-      {{.Copy.Body}}
-    </mj-text>
-    <mj-raw>{{if .ActionURL}}</mj-raw>
-    <mj-button href="{{.ActionURL}}" align="left">
-      {{.Copy.ActionLabel}}
-    </mj-button>
-    <mj-raw>{{end}}</mj-raw>
-    <mj-divider border-color="#dfe1e5" border-width="1px" padding="32px 0 20px" />
-    <mj-text color="#5f6368" font-size="13px" line-height="20px" padding="0">
-      {{.Copy.Footer}}
-    </mj-text>
-  </mj-column>
-</mj-section>
+<mj-include path="./foundation-intro.mjml" />
+<mj-include path="./foundation-footer.mjml" />

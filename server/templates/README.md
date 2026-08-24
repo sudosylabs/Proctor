@@ -8,10 +8,13 @@ authored here; the flat server-owned catalogs under
 [`../i18n`](../i18n) supply localized fields to
 both alternatives.
 
-The checked-in foundation is intentionally visually neutral. Maintainers may
-replace the MJML presentation without changing delivery logic, but must retain
-the semantic reading order, complete text equivalent, contextual escaping,
-accessibility, and privacy constraints in the
+The HTML presentation is a single light envelope: board `#F4F4F6`, white
+paper, ink `#161616`, violet `#5C00AA`, and the package-local lockup
+`proctor-lockup.png` (163×32, `alt="Proctor"`). It uses ordinary stacked
+sections so clients render the same structure. Human prose still comes only
+from `../i18n`. Maintainers may restyle the MJML without changing delivery
+logic, but must retain the semantic reading order, complete text equivalent,
+contextual escaping, accessibility, and privacy constraints in the
 [transactional-mail architecture](../../docs/architecture/mail.md).
 
 ## Typed properties

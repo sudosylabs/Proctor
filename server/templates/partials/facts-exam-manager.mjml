@@ -1,0 +1,18 @@
+<mj-section background-color="#ffffff" padding="0 24px 8px">
+  <mj-column>
+    <mj-table cellpadding="0" cellspacing="0" width="100%" padding="0">
+      <tr>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ExamManager.ExamLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;word-break:break-word">{{.ExamManager.Title}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ExamManager.RelationshipLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.ExamManager.Relationship}}</td>
+      </tr>
+      <tr>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ExamManager.ActionAtLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.ExamManager.ActionAt}}</td>
+      </tr>
+    </mj-table>
+  </mj-column>
+</mj-section>

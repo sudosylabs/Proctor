@@ -1,36 +1,28 @@
-<mj-section background-color="#ffffff" padding="32px 24px">
+<mj-include path="./foundation-intro.mjml" />
+<mj-section background-color="#ffffff" padding="0 24px 8px">
   <mj-column>
-    <mj-text font-size="24px" line-height="32px" font-weight="700" padding="0 0 20px">
-      {{.Copy.Heading}}
-    </mj-text>
-    <mj-text padding="0 0 20px">
-      {{.Copy.Body}}
-    </mj-text>
     <mj-table cellpadding="0" cellspacing="0" width="100%" padding="0">
       <tr>
-        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.DescriptionLabel}}</th>
-        <td style="padding:8px 0">{{.PersonalAccessToken.Description}}</td>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.DescriptionLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;word-break:break-word">{{.PersonalAccessToken.Description}}</td>
       </tr>
       <tr>
-        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ExpiresAtLabel}}</th>
-        <td style="padding:8px 0">{{.PersonalAccessToken.ExpiresAt}}</td>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ExpiresAtLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.PersonalAccessToken.ExpiresAt}}</td>
       </tr>
       <tr>
-        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ActionAtLabel}}</th>
-        <td style="padding:8px 0">{{.PersonalAccessToken.ActionAt}}</td>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ActionAtLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.PersonalAccessToken.ActionAt}}</td>
       </tr>
       <tr>
-        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ScopeLabel}}</th>
-        <td style="padding:8px 0">{{.PersonalAccessToken.Scope}}</td>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ScopeLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.PersonalAccessToken.Scope}}</td>
       </tr>
       <tr>
-        <th align="left" style="padding:8px 12px 8px 0">{{.Copy.PersonalAccessToken.ActionCountLabel}}</th>
-        <td style="padding:8px 0">{{.PersonalAccessToken.ActionCount}}</td>
+        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ActionCountLabel}}</th>
+        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.PersonalAccessToken.ActionCount}}</td>
       </tr>
     </mj-table>
-    <mj-divider border-color="#dfe1e5" border-width="1px" padding="32px 0 20px" />
-    <mj-text color="#5f6368" font-size="13px" line-height="20px" padding="0">
-      {{.Copy.Footer}}
-    </mj-text>
   </mj-column>
 </mj-section>
+<mj-include path="./foundation-footer.mjml" />

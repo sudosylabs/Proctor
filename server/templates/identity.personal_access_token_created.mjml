@@ -20,7 +20,7 @@ Template properties (server/app/mail renderer):
     <mj-preview>{{.Copy.Preheader}}</mj-preview>
     <mj-include path="./partials/foundation-head.mjml" />
   </mj-head>
-  <mj-body background-color="#f4f5f7">
+  <mj-body background-color="#F4F4F6">
     <mj-include path="./partials/personal-access-token-message.mjml" />
   </mj-body>
 </mjml>

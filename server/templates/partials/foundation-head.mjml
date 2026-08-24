@@ -1,8 +1,14 @@
 <mj-attributes>
-  <mj-all font-family="Arial, Helvetica, sans-serif" color="#202124" />
+  <mj-all font-family="IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif" color="#161616" />
   <mj-text font-size="16px" line-height="24px" padding="0" />
-  <mj-button background-color="#202124" color="#ffffff" border-radius="4px" font-size="16px" font-weight="600" padding="24px 0 0" inner-padding="12px 20px" />
+  <mj-button background-color="#5C00AA" color="#ffffff" border-radius="8px" font-size="16px" font-weight="500" padding="24px 0 0" inner-padding="12px 20px" />
+  <mj-image padding="0" />
+  <mj-divider border-color="#E4E4E7" border-width="1px" />
 </mj-attributes>
+<mj-raw>
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
+</mj-raw>
 <mj-style inline="inline">
-  a { color: #174ea6; }
+  a { color: #5C00AA; }
 </mj-style>

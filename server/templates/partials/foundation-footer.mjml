@@ -1,0 +1,8 @@
+<mj-section background-color="#ffffff" padding="0 24px 32px">
+  <mj-column>
+    <mj-divider border-color="#E4E4E7" border-width="1px" padding="8px 0 20px" />
+    <mj-text color="#5C5C5C" font-size="13px" line-height="20px" padding="0">
+      {{.Copy.Footer}}
+    </mj-text>
+  </mj-column>
+</mj-section>
