@@ -5,6 +5,8 @@ paths:
     post:
       operationId: createCandidateExamWorkspaceDirectory
       summary: Create one acknowledged empty Workspace directory
+      description: >-
+        Creates one empty directory at the canonical Workspace path for the active Participation generation. The mutation requires the Session-bound Attempt credential, open Connection, CSRF protection where applicable, and an Idempotency-Key for safe replay.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -59,10 +61,15 @@ components:
   requestBodies:
     CreateCandidateWorkspaceDirectory:
       required: true
+      description: Identifies the active Participation generation and the canonical Workspace path of the new empty directory.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateCandidateWorkspaceDirectoryRequest'
+          example:
+            participation_id: ybndrfg8ejkmcpqxot1uwisza3
+            generation: 2
+            path: answers/part-a
   schemas:
     CreateCandidateWorkspaceDirectoryRequest:
       type: object

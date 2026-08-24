@@ -699,11 +699,17 @@
       "CreateCandidateWorkspaceDirectory": {
         "content": {
           "application/json": {
+            "example": {
+              "generation": 2,
+              "participation_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "path": "answers/part-a"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateCandidateWorkspaceDirectoryRequest"
             }
           }
         },
+        "description": "Identifies the active Participation generation and the canonical Workspace path of the new empty directory.",
         "required": true
       },
       "CreateClass": {
@@ -840,11 +846,18 @@
       "DeleteCandidateWorkspaceEntry": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_content_version": "ybndrfg8ejkmcpqxot1uwisza4",
+              "expected_path": "answers/draft.txt",
+              "generation": 2,
+              "participation_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/DeleteCandidateWorkspaceEntryRequest"
             }
           }
         },
+        "description": "Supplies the active Participation generation and expected entry state that must still match before deletion.",
         "required": true
       },
       "DesktopAuthorizationExchange": {
@@ -1016,11 +1029,18 @@
       "MoveCandidateWorkspaceEntry": {
         "content": {
           "application/json": {
+            "example": {
+              "destination_path": "answers/final.txt",
+              "expected_path": "answers/draft.txt",
+              "generation": 2,
+              "participation_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/MoveCandidateWorkspaceEntryRequest"
             }
           }
         },
+        "description": "Supplies the active Participation generation, expected current path, and canonical destination path for the atomic move.",
         "required": true
       },
       "MoveExamStarterWorkspaceEntry": {
@@ -1118,11 +1138,17 @@
       "ReallowExamAttempt": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_attempt_revision": 4,
+              "reason": "Candidate identity was reverified by the invigilator.",
+              "suspension_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/ReallowExamAttemptRequest"
             }
           }
         },
+        "description": "Identifies the active suspension, expected Attempt revision, and private manager reason required for the audited re-allow transition.",
         "required": true
       },
       "RemoveExamManager": {
@@ -11490,28 +11516,35 @@
         "additionalProperties": false,
         "properties": {
           "expected_content_version": {
-            "$ref": "#/components/schemas/WorkspaceContentVersion"
+            "$ref": "#/components/schemas/WorkspaceContentVersion",
+            "description": "Last acknowledged file content version; a mismatch fails instead of overwriting concurrent work."
           },
           "expected_path": {
-            "$ref": "#/components/schemas/StarterWorkspacePath"
+            "$ref": "#/components/schemas/StarterWorkspacePath",
+            "description": "Canonical path the file must still occupy before its content can be replaced."
           },
           "generation": {
+            "description": "Active Participation generation, used to reject writes from superseded client generations.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           },
           "media_type": {
+            "description": "Declared media type of the replacement file content.",
             "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
           "participation_id": {
-            "$ref": "#/components/schemas/ID"
+            "$ref": "#/components/schemas/ID",
+            "description": "Active Participation identifier returned when the candidate connected to this Attempt."
           },
           "sha256": {
-            "$ref": "#/components/schemas/SHA256"
+            "$ref": "#/components/schemas/SHA256",
+            "description": "Lowercase SHA-256 digest of the replacement content used to verify the upload."
           },
           "size": {
+            "description": "Exact byte length of the replacement content, bounded by the admitted Revision and hard API limit.",
             "format": "int64",
             "maximum": 104857600,
             "minimum": 0,
@@ -11531,6 +11564,7 @@
       },
       "ReplaceCandidateWorkspaceFileMultipart": {
         "additionalProperties": false,
+        "description": "Exactly two ordered parts containing strict JSON replacement metadata followed by bounded binary content.",
         "properties": {
           "content": {
             "format": "binary",
@@ -16481,6 +16515,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/presentation": {
       "get": {
+        "description": "Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included.",
         "operationId": "getCandidateExamPresentation",
         "parameters": [
           {
@@ -16765,6 +16800,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/workspace": {
       "get": {
+        "description": "Lists a stable page of files and directories in the active candidate Workspace after validating the Session-bound Attempt credential and open Connection. Pagination is pinned to a Workspace cursor so clients can detect when a full manifest refresh is required.",
         "operationId": "listCandidateExamWorkspace",
         "parameters": [
           {
@@ -16774,6 +16810,7 @@
             "$ref": "#/components/parameters/CandidateAttemptConnectionID"
           },
           {
+            "description": "Maximum number of Workspace entries to return from the cursor-pinned manifest page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -16848,6 +16885,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/workspace/changes": {
       "get": {
+        "description": "Returns acknowledged Workspace mutations after the supplied journal cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.",
         "operationId": "listCandidateExamWorkspaceChanges",
         "parameters": [
           {
@@ -16857,6 +16895,7 @@
             "$ref": "#/components/parameters/CandidateAttemptConnectionID"
           },
           {
+            "description": "Return acknowledged changes strictly after this Workspace journal cursor; zero starts at the retained beginning.",
             "in": "query",
             "name": "after_cursor",
             "required": false,
@@ -16868,6 +16907,7 @@
             }
           },
           {
+            "description": "Maximum number of ordered Workspace journal entries to return in this page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -16938,6 +16978,7 @@
         }
       ],
       "post": {
+        "description": "Creates one empty directory at the canonical Workspace path for the active Participation generation. The mutation requires the Session-bound Attempt credential, open Connection, CSRF protection where applicable, and an Idempotency-Key for safe replay.",
         "operationId": "createCandidateExamWorkspaceDirectory",
         "parameters": [
           {
@@ -17017,6 +17058,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}": {
       "delete": {
+        "description": "Deletes the exact Workspace entry only when its expected path and, for files, optional content version still match. Non-empty directories and stale file states are rejected so concurrent edits cannot be silently discarded.",
         "operationId": "deleteCandidateExamWorkspaceEntry",
         "parameters": [
           {
@@ -17103,6 +17145,7 @@
         }
       ],
       "patch": {
+        "description": "Atomically renames or moves the exact file or directory from its expected canonical path to a new canonical path in the active Workspace. Stale paths, invalid descendants, and destination conflicts fail without partially changing the manifest.",
         "operationId": "moveCandidateExamWorkspaceEntry",
         "parameters": [
           {
@@ -17373,6 +17416,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the content of one Workspace file only when its expected path and content version still match the acknowledged state. The metadata-first multipart upload, digest, active Participation generation, open Connection, and Idempotency-Key are validated before the new content is acknowledged.",
         "operationId": "replaceCandidateExamWorkspaceFile",
         "parameters": [
           {
@@ -17401,6 +17445,7 @@
               }
             }
           },
+          "description": "Contains strict replacement metadata first and bounded file content second; both parts describe the same exact content state and are validated before acknowledgement.",
           "required": true
         },
         "responses": {
@@ -17438,6 +17483,13 @@
         "summary": "Replace one exact Workspace file content state",
         "tags": [
           "Attempts and workspaces"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Replace acknowledged Workspace content",
+            "lang": "Shell",
+            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"X-Proctor-Attempt-Credential: $ATTEMPT_CREDENTIAL\" \\\n  --header \"X-Proctor-Attempt-Connection-ID: $ATTEMPT_CONNECTION_ID\" \\\n  --header \"Idempotency-Key: workspace-replace-020\" \\\n  --form 'metadata={\"participation_id\":\"ybndrfg8ejkmcpqxot1uwisza3\",\"generation\":2,\"expected_path\":\"answers/main.go\",\"expected_content_version\":3,\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exam-attempts/ybndrfg8ejkmcpqxot1uwisza4/workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
+          }
         ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
@@ -20051,6 +20103,7 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts": {
       "get": {
+        "description": "Lists manager-safe Attempt projections for the exact Exam Sitting after rechecking current scope authority. Results may be filtered by lifecycle state and omit candidate credentials, answer content, private integrity evidence, and internal lease material.",
         "operationId": "listExamAttempts",
         "parameters": [
           {
@@ -20070,6 +20123,7 @@
             "style": "form"
           },
           {
+            "description": "Maximum number of manager-safe Exam Attempt projections to return in this page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -20149,6 +20203,7 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}": {
       "get": {
+        "description": "Returns one Attempt only after verifying its Exam and Sitting path ownership and the caller's current management authority. The projection exposes operational state but omits candidate credentials, answer content, and private evidence.",
         "operationId": "getExamAttempt",
         "responses": {
           "200": {

@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listCandidateExamWorkspace
       summary: List one protected candidate Workspace page
+      description: >-
+        Lists a stable page of files and directories in the active candidate Workspace after validating the Session-bound Attempt credential and open Connection. Pagination is pinned to a Workspace cursor so clients can detect when a full manifest refresh is required.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -28,6 +30,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of Workspace entries to return from the cursor-pinned manifest page.
           schema:
             type: integer
             minimum: 1

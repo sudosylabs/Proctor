@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listCandidateExamWorkspaceChanges
       summary: List ordered acknowledged Workspace changes
+      description: >-
+        Returns acknowledged Workspace mutations after the supplied journal cursor in strict order for the active candidate Attempt. If retained history can no longer bridge the cursor, the response explicitly instructs the client to reload the full manifest.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -28,6 +30,7 @@ paths:
         - name: after_cursor
           in: query
           required: false
+          description: Return acknowledged changes strictly after this Workspace journal cursor; zero starts at the retained beginning.
           schema:
             type: integer
             format: int64
@@ -36,6 +39,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of ordered Workspace journal entries to return in this page.
           schema:
             type: integer
             minimum: 1

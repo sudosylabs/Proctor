@@ -6,6 +6,8 @@ paths:
     patch:
       operationId: moveCandidateExamWorkspaceEntry
       summary: Rename or move one Workspace entry
+      description: >-
+        Atomically renames or moves the exact file or directory from its expected canonical path to a new canonical path in the active Workspace. Stale paths, invalid descendants, and destination conflicts fail without partially changing the manifest.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -58,6 +60,8 @@ paths:
     delete:
       operationId: deleteCandidateExamWorkspaceEntry
       summary: Delete one empty directory or one exact Workspace file state
+      description: >-
+        Deletes the exact Workspace entry only when its expected path and, for files, optional content version still match. Non-empty directories and stale file states are rejected so concurrent edits cannot be silently discarded.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -113,16 +117,28 @@ components:
   requestBodies:
     MoveCandidateWorkspaceEntry:
       required: true
+      description: Supplies the active Participation generation, expected current path, and canonical destination path for the atomic move.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MoveCandidateWorkspaceEntryRequest'
+          example:
+            participation_id: ybndrfg8ejkmcpqxot1uwisza3
+            generation: 2
+            expected_path: answers/draft.txt
+            destination_path: answers/final.txt
     DeleteCandidateWorkspaceEntry:
       required: true
+      description: Supplies the active Participation generation and expected entry state that must still match before deletion.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/DeleteCandidateWorkspaceEntryRequest'
+          example:
+            participation_id: ybndrfg8ejkmcpqxot1uwisza3
+            generation: 2
+            expected_path: answers/draft.txt
+            expected_content_version: ybndrfg8ejkmcpqxot1uwisza4
   schemas:
     MoveCandidateWorkspaceEntryRequest:
       type: object

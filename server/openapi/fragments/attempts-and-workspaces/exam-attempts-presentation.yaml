@@ -5,6 +5,8 @@ paths:
     get:
       operationId: getCandidateExamPresentation
       summary: Get the protected current presentation for one candidate Attempt
+      description: >-
+        Returns the Exam title, bounded Markdown instructions, admitted capacity policy, and ordered resource manifest visible to the active candidate Attempt. The request rechecks the Session-bound Attempt credential and open Connection; no answer or manager-only state is included.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required

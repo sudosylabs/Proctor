@@ -145,6 +145,20 @@ paths:
     put:
       operationId: replaceCandidateExamWorkspaceFile
       summary: Replace one exact Workspace file content state
+      description: >-
+        Replaces the content of one Workspace file only when its expected path and content version still match the acknowledged state. The metadata-first multipart upload, digest, active Participation generation, open Connection, and Idempotency-Key are validated before the new content is acknowledged.
+      x-codeSamples:
+        - lang: Shell
+          label: Replace acknowledged Workspace content
+          source: |-
+            curl --request PUT \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "X-Proctor-Attempt-Credential: $ATTEMPT_CREDENTIAL" \
+              --header "X-Proctor-Attempt-Connection-ID: $ATTEMPT_CONNECTION_ID" \
+              --header "Idempotency-Key: workspace-replace-020" \
+              --form 'metadata={"participation_id":"ybndrfg8ejkmcpqxot1uwisza3","generation":2,"expected_path":"answers/main.go","expected_content_version":3,"media_type":"text/plain","size":128,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./main.go;type=application/octet-stream' \
+              https://proctor.example.edu/api/v1/exam-attempts/ybndrfg8ejkmcpqxot1uwisza4/workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -182,6 +196,7 @@ paths:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
+        description: Contains strict replacement metadata first and bounded file content second; both parts describe the same exact content state and are validated before acknowledgement.
         content:
           multipart/form-data:
             schema:
@@ -272,31 +287,39 @@ components:
       properties:
         participation_id:
           $ref: '#/components/schemas/ID'
+          description: Active Participation identifier returned when the candidate connected to this Attempt.
         generation:
           type: integer
           format: int64
           minimum: 1
+          description: Active Participation generation, used to reject writes from superseded client generations.
         expected_path:
           $ref: '#/components/schemas/StarterWorkspacePath'
+          description: Canonical path the file must still occupy before its content can be replaced.
         expected_content_version:
           $ref: '#/components/schemas/WorkspaceContentVersion'
+          description: Last acknowledged file content version; a mismatch fails instead of overwriting concurrent work.
         media_type:
           type: string
           minLength: 1
           maxLength: 255
+          description: Declared media type of the replacement file content.
         size:
           type: integer
           format: int64
           minimum: 0
           maximum: 104857600
+          description: Exact byte length of the replacement content, bounded by the admitted Revision and hard API limit.
         sha256:
           $ref: '#/components/schemas/SHA256'
+          description: Lowercase SHA-256 digest of the replacement content used to verify the upload.
     ReplaceCandidateWorkspaceFileMultipart:
       type: object
       additionalProperties: false
       required:
         - metadata
         - content
+      description: Exactly two ordered parts containing strict JSON replacement metadata followed by bounded binary content.
       properties:
         metadata:
           $ref: '#/components/schemas/ReplaceCandidateWorkspaceFileMetadata'

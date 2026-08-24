@@ -6,6 +6,8 @@ paths:
     get:
       operationId: listExamAttempts
       summary: List bounded candidate Attempts for one Exam Sitting
+      description: >-
+        Lists manager-safe Attempt projections for the exact Exam Sitting after rechecking current scope authority. Results may be filtered by lifecycle state and omit candidate credentials, answer content, private integrity evidence, and internal lease material.
       tags:
         - Attempts and workspaces
       x-proctor-auth: principal_required
@@ -41,6 +43,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of manager-safe Exam Attempt projections to return in this page.
           schema:
             type: integer
             minimum: 1
@@ -73,6 +76,8 @@ paths:
     get:
       operationId: getExamAttempt
       summary: Get one manager-safe Exam Attempt projection
+      description: >-
+        Returns one Attempt only after verifying its Exam and Sitting path ownership and the caller's current management authority. The projection exposes operational state but omits candidate credentials, answer content, and private evidence.
       tags:
         - Attempts and workspaces
       x-proctor-auth: principal_required
@@ -169,10 +174,15 @@ components:
   requestBodies:
     ReallowExamAttempt:
       required: true
+      description: Identifies the active suspension, expected Attempt revision, and private manager reason required for the audited re-allow transition.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ReallowExamAttemptRequest'
+          example:
+            suspension_id: ybndrfg8ejkmcpqxot1uwisza3
+            expected_attempt_revision: 4
+            reason: Candidate identity was reverified by the invigilator.
   responses:
     ExamAttemptManagerOK:
       description: Bounded manager-safe Exam Attempt state
