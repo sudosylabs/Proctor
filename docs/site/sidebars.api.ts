@@ -16,6 +16,7 @@ const sidebars: SidebarsConfig = {
         'guides/idempotency',
         'guides/uploads-and-content',
         'guides/realtime',
+        'guides/durable-operations',
         'guides/limits-and-compatibility',
       ],
     },

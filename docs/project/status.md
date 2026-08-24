@@ -16,16 +16,20 @@ the code and component contracts for that detail.
   artifact. A human-first, resource-oriented YAML source tree co-locates routes,
   descriptions, examples, and exclusively owned definitions; a deep compiler
   recursively discovers and collision-safely merges modules, validates the full
-  OpenAPI 3.1 contract, and rejects artifact drift. The contract owns a stable product-area taxonomy, explicit
-  authentication/error/idempotency metadata on every operation, and a rich
-  representative reference pilot spanning the important security and payload
-  shapes. A versioned machine-readable audit reports coverage and rejects
-  taxonomy, summary, extension, and pilot-content regressions. A locked,
+  OpenAPI 3.1 contract, and rejects artifact drift. The contract owns a stable
+  product-area taxonomy plus complete behavior, parameter, request-body,
+  authentication, error, idempotency, and mutation-example metadata across all
+  218 operations. Representative schema-valid success responses and safe
+  Problem Details examples cover every applicable product area. A versioned
+  machine-readable audit reports the exact coverage and rejects taxonomy,
+  summary, description, input-purpose, example, and extension regressions. A locked,
   reproducible renderer now produces one deep-linkable page for every operation
   and product-area tag, presents the Proctor contract extensions, and disables
-  request sending. Reference-content enrichment is the next documentation
-  slice, while licensing, hostname, versioning, and hosting remain unsettled
-  production decisions.
+  request sending. Authored integration guidance and end-to-end recipes now
+  give every product area a human entry path, including durable Job and mail
+  operations. Governed visual assets and the provisional UI remain later
+  documentation slices, while licensing, hostname, versioning, and hosting
+  remain unsettled production decisions.
 - The root product build now owns one configurable end-to-end development
   lifecycle, layered dependencies and observability, a real
   readiness-aware three-node HAProxy topology and node-loss certification,

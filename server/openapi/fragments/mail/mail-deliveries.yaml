@@ -253,6 +253,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/MailDeliveryListResponse'
+          example:
+            items: []
   schemas:
     MailDeliveryListResponse:
       description: One bounded page of safe mail delivery projections.

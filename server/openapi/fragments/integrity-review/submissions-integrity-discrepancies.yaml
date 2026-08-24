@@ -66,6 +66,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamIntegrityDiscrepancyListResponse'
+          example:
+            items: []
   schemas:
     ExamIntegrityDiscrepancyResponse:
       description: Late integrity record retained separately after collection for the Submission ended.

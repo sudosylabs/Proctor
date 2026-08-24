@@ -79,6 +79,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/InstallationStatusResponse'
+          example:
+            initialized: false
     InstallationBootstrapCreated:
       description: Installation bootstrapped
       content:

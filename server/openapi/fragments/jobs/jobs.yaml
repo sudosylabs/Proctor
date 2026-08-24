@@ -105,6 +105,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/JobListResponse'
+          example:
+            items: []
   schemas:
     JobListResponse:
       description: One bounded page of safe durable Job projections.

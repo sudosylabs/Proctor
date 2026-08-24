@@ -284,6 +284,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamSittingListResponse'
+          example:
+            items: []
   schemas:
     ScheduleExamSittingRequest:
       description: Complete immutable Revision target, Class target, and initial delivery window.

@@ -202,6 +202,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamAttemptManagerListResponse'
+          example:
+            items: []
     ExamAttemptReallowed:
       description: Exam Attempt suspension re-allowed without exposing the private manager reason
       headers:

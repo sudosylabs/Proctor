@@ -187,6 +187,20 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AccessPolicyResponse'
+          example:
+            id: ybndrfg8ejkmcpqxot1uwisza3
+            revision: 4
+            created_at: 1798761600000
+            updated_at: 1798765200000
+            local_login_enabled: true
+            public_registration_enabled: false
+            invitation_admission_enabled: true
+            invitation_local_credential_enabled: true
+            desktop_authorization_enabled: true
+            provider_admissions: {}
+            history: []
+            available_providers: []
+            durable_mail: true
     AccessPolicyPreflightOK:
       description: Safe blockers for the proposed Access Policy replacement
       headers:

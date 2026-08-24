@@ -1692,6 +1692,7 @@
       "AcademicPeriodListOK": {
         "content": {
           "application/json": {
+            "example": [],
             "schema": {
               "$ref": "#/components/schemas/AcademicPeriodListResponse"
             }
@@ -1785,6 +1786,21 @@
       "AccessPolicyOK": {
         "content": {
           "application/json": {
+            "example": {
+              "available_providers": [],
+              "created_at": 1798761600000,
+              "desktop_authorization_enabled": true,
+              "durable_mail": true,
+              "history": [],
+              "id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "invitation_admission_enabled": true,
+              "invitation_local_credential_enabled": true,
+              "local_login_enabled": true,
+              "provider_admissions": {},
+              "public_registration_enabled": false,
+              "revision": 4,
+              "updated_at": 1798765200000
+            },
             "schema": {
               "$ref": "#/components/schemas/AccessPolicyResponse"
             }
@@ -1840,6 +1856,7 @@
       "AffiliationListOK": {
         "content": {
           "application/json": {
+            "example": [],
             "schema": {
               "$ref": "#/components/schemas/AffiliationListResponse"
             }
@@ -1850,6 +1867,9 @@
       "AuditListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "events": []
+            },
             "schema": {
               "$ref": "#/components/schemas/AuditListResponse"
             }
@@ -1905,6 +1925,17 @@
       "BadRequest": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "request.invalid",
+              "detail": "One or more request fields are invalid.",
+              "fields": {
+                "title": "must not be empty"
+              },
+              "request_id": "req_docs_bad_request",
+              "status": 400,
+              "title": "Invalid request",
+              "type": "/problems/request-invalid"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -2160,6 +2191,14 @@
       "Conflict": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "idempotency.conflict",
+              "detail": "The idempotency key was already used with different input.",
+              "request_id": "req_docs_conflict",
+              "status": 409,
+              "title": "Request conflict",
+              "type": "/problems/idempotency-conflict"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -2205,6 +2244,9 @@
       "ExamAttemptManagerListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamAttemptManagerListResponse"
             }
@@ -2275,6 +2317,9 @@
       "ExamIntegrityDiscrepancyListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamIntegrityDiscrepancyListResponse"
             }
@@ -2365,6 +2410,9 @@
       "ExamListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamListResponse"
             }
@@ -2615,6 +2663,9 @@
       "ExamSittingListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamSittingListResponse"
             }
@@ -2832,6 +2883,12 @@
       "ExamSubmissionManifestOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": [],
+              "manifest_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "submission_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "workspace_cursor": 12
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamSubmissionManifestResponse"
             }
@@ -2877,6 +2934,7 @@
       "ExternalAuthenticationProviderListOK": {
         "content": {
           "application/json": {
+            "example": [],
             "schema": {
               "$ref": "#/components/schemas/ExternalAuthenticationProviderListResponse"
             }
@@ -2902,6 +2960,14 @@
       "Forbidden": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "authorization.denied",
+              "detail": "The authenticated principal is not authorized for this action.",
+              "request_id": "req_docs_forbidden",
+              "status": 403,
+              "title": "Access denied",
+              "type": "/problems/authorization-denied"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -2937,6 +3003,9 @@
       "InstallationStatusOK": {
         "content": {
           "application/json": {
+            "example": {
+              "initialized": false
+            },
             "schema": {
               "$ref": "#/components/schemas/InstallationStatusResponse"
             }
@@ -2957,6 +3026,14 @@
       "InternalError": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "authentication.internal",
+              "detail": "The request could not be completed.",
+              "request_id": "req_docs_internal",
+              "status": 500,
+              "title": "Internal server error",
+              "type": "/problems/internal"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -2987,6 +3064,9 @@
       "InvitationAdministrationListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/InvitationAdministrationListResponse"
             }
@@ -3042,6 +3122,9 @@
       "JobListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/JobListResponse"
             }
@@ -3137,6 +3220,9 @@
       "MailDeliveryListOK": {
         "content": {
           "application/json": {
+            "example": {
+              "items": []
+            },
             "schema": {
               "$ref": "#/components/schemas/MailDeliveryListResponse"
             }
@@ -3227,6 +3313,14 @@
       "NotFound": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "resource.not_found",
+              "detail": "The requested resource is unavailable or not visible to this principal.",
+              "request_id": "req_docs_not_found",
+              "status": 404,
+              "title": "Resource not found",
+              "type": "/problems/resource-not-found"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -3559,6 +3653,14 @@
       "ServiceUnavailable": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "administration.unavailable",
+              "detail": "A required authoritative dependency is temporarily unavailable.",
+              "request_id": "req_docs_unavailable",
+              "status": 503,
+              "title": "Service unavailable",
+              "type": "/problems/administration-unavailable"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -3684,6 +3786,14 @@
       "TooManyRequests": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "authentication.rate_limited",
+              "detail": "Retry after the client backoff interval.",
+              "request_id": "req_docs_rate_limited",
+              "status": 429,
+              "title": "Too many requests",
+              "type": "/problems/rate-limited"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -3699,6 +3809,14 @@
       "Unauthorized": {
         "content": {
           "application/problem+json": {
+            "example": {
+              "code": "authentication.required",
+              "detail": "Supply a credential accepted by this operation.",
+              "request_id": "req_docs_unauthorized",
+              "status": 401,
+              "title": "Authentication required",
+              "type": "/problems/authentication-required"
+            },
             "schema": {
               "$ref": "#/components/schemas/ProblemDetails"
             }
@@ -3724,6 +3842,7 @@
       "UserProfileListOK": {
         "content": {
           "application/json": {
+            "example": [],
             "schema": {
               "$ref": "#/components/schemas/UserProfileListResponse"
             }

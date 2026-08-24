@@ -352,6 +352,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/InvitationAdministrationListResponse'
+          example:
+            items: []
   schemas:
     AcceptStudentClassInvitationRequest:
       type: object

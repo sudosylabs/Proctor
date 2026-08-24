@@ -9,25 +9,14 @@ const operationMethods = new Set([
   'trace',
 ]);
 
+const mutationMethods = new Set(['delete', 'patch', 'post', 'put']);
 const idempotencyRequirements = new Set(['none', 'optional', 'required']);
+const minimumBehaviorDescriptionLength = 80;
+const minimumTagDescriptionLength = 40;
 
-export const pilotOperationIds = Object.freeze([
-  'getPublicAccessDiscovery',
-  'login',
-  'regenerateMFARecoveryCodes',
-  'listAcademicUnits',
-  'createRootAcademicUnit',
-  'replaceAccessPolicy',
-  'uploadUserProfilePicture',
-  'getUserProfilePicture',
-  'listExams',
-  'createExam',
-  'publishExamRevision',
-  'createCandidateExamWorkspaceFile',
-  'getCandidateExamWorkspaceContent',
-  'submitExamAttempt',
-  'connectWebSocket',
-]);
+// Keep exceptions precise and reviewed. Phase 2 currently needs none.
+export const parameterDescriptionAllowlist = Object.freeze([]);
+const allowedMissingParameterDescriptions = new Set(parameterDescriptionAllowlist);
 
 function operationEntries(document) {
   const entries = [];
@@ -69,6 +58,27 @@ function isNonemptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function hasCodeSample(operation) {
+  return (
+    Array.isArray(operation?.['x-codeSamples']) &&
+    operation['x-codeSamples'].some(
+      (sample) => isNonemptyString(sample?.lang) && isNonemptyString(sample?.source),
+    )
+  );
+}
+
+function hasMediaExample(mediaType) {
+  return mediaType?.example !== undefined || Object.keys(mediaType?.examples ?? {}).length > 0;
+}
+
+function hasContentExample(content) {
+  return Object.values(content ?? {}).some(hasMediaExample);
+}
+
+function parameterPolicyKey(method, path, parameter) {
+  return `${method} ${path} ${parameter?.in ?? 'unknown'}:${parameter?.name ?? 'unknown'}`;
+}
+
 export function auditOpenAPI(document) {
   const errors = [];
   const operations = operationEntries(document);
@@ -83,9 +93,21 @@ export function auditOpenAPI(document) {
     if (declaredTags.has(tag.name)) {
       errors.push(`tags[${index}]: duplicate tag ${JSON.stringify(tag.name)}`);
     }
-    declaredTags.set(tag.name, {description: tag.description, operations: 0});
-    if (!isNonemptyString(tag.description)) {
-      errors.push(`tag ${JSON.stringify(tag.name)}: description is required`);
+    declaredTags.set(tag.name, {
+      description: tag.description,
+      hasProblemExample: false,
+      hasSuccessExample: false,
+      operations: 0,
+      requiresProblemExample: false,
+      requiresSuccessExample: false,
+    });
+    if (
+      !isNonemptyString(tag.description) ||
+      tag.description.trim().length < minimumTagDescriptionLength
+    ) {
+      errors.push(
+        `tag ${JSON.stringify(tag.name)}: description must contain at least ${minimumTagDescriptionLength} characters`,
+      );
     }
   }
   if (declaredTags.size === 0) {
@@ -99,9 +121,15 @@ export function auditOpenAPI(document) {
   let explicitAuth = 0;
   let explicitErrorCodes = 0;
   let explicitIdempotency = 0;
+  let parameters = 0;
+  let parameterDescriptions = 0;
+  let requestBodies = 0;
+  let requestBodyDescriptions = 0;
+  let mutations = 0;
+  let mutationExamples = 0;
 
   for (const entry of operations) {
-    const {method, operation, path} = entry;
+    const {method, operation, path, pathItem} = entry;
     const location = `${method} ${path}`;
     const operationId = operation?.operationId;
 
@@ -120,13 +148,21 @@ export function auditOpenAPI(document) {
     } else {
       errors.push(`${location}: summary is required`);
     }
-    if (isNonemptyString(operation?.description)) {
+    if (
+      isNonemptyString(operation?.description) &&
+      operation.description.trim().length >= minimumBehaviorDescriptionLength
+    ) {
       descriptions += 1;
+    } else {
+      errors.push(
+        `${location}: behavior description must contain at least ${minimumBehaviorDescriptionLength} characters`,
+      );
     }
 
+    let tag;
     if (Array.isArray(operation?.tags) && operation.tags.length === 1) {
       tagged += 1;
-      const tag = declaredTags.get(operation.tags[0]);
+      tag = declaredTags.get(operation.tags[0]);
       if (tag) {
         tag.operations += 1;
       } else {
@@ -151,73 +187,117 @@ export function auditOpenAPI(document) {
     } else {
       errors.push(`${location}: x-proctor-idempotency must be none, optional, or required`);
     }
-    if (
-      Array.isArray(operation?.['x-codeSamples']) &&
-      operation['x-codeSamples'].some(
-        (sample) => isNonemptyString(sample?.lang) && isNonemptyString(sample?.source),
-      )
-    ) {
+
+    const codeSample = hasCodeSample(operation);
+    if (codeSample) {
       codeSamples += 1;
+    }
+
+    for (const parameterReference of [
+      ...(pathItem.parameters ?? []),
+      ...(operation.parameters ?? []),
+    ]) {
+      parameters += 1;
+      const parameter = resolveReference(document, parameterReference);
+      const label = parameter?.name ?? parameterReference?.$ref ?? 'unknown parameter';
+      if (!parameter) {
+        errors.push(`${location}: ${label}: parameter reference cannot be resolved`);
+        continue;
+      }
+      const policyKey = parameterPolicyKey(method, path, parameter);
+      if (
+        isNonemptyString(parameter.description) ||
+        allowedMissingParameterDescriptions.has(policyKey)
+      ) {
+        parameterDescriptions += 1;
+      } else {
+        errors.push(`${location}: ${label}: parameter description is required`);
+      }
+    }
+
+    let requestBody;
+    if (operation.requestBody) {
+      requestBodies += 1;
+      requestBody = resolveReference(document, operation.requestBody);
+      if (!requestBody) {
+        errors.push(`${location}: request body reference cannot be resolved`);
+      } else if (isNonemptyString(requestBody.description)) {
+        requestBodyDescriptions += 1;
+      } else {
+        errors.push(`${location}: request body description is required`);
+      }
+    }
+
+    if (mutationMethods.has(method.toLowerCase())) {
+      mutations += 1;
+      if (codeSample || hasContentExample(requestBody?.content)) {
+        mutationExamples += 1;
+      } else {
+        errors.push(`${location}: mutation request example is required`);
+      }
+    }
+
+    for (const [status, responseReference] of Object.entries(operation.responses ?? {})) {
+      const response = resolveReference(document, responseReference);
+      if (!response || !tag) {
+        continue;
+      }
+      if (/^2\d\d$/.test(status) && Object.keys(response.content ?? {}).length > 0) {
+        tag.requiresSuccessExample = true;
+        if (hasContentExample(response.content)) {
+          tag.hasSuccessExample = true;
+        }
+      }
+      const problem = response.content?.['application/problem+json'];
+      if (problem) {
+        tag.requiresProblemExample = true;
+        if (hasMediaExample(problem)) {
+          tag.hasProblemExample = true;
+        }
+      }
     }
   }
 
-  let completePilotOperations = 0;
-  const pilot = [];
-  for (const operationId of pilotOperationIds) {
-    const entry = operationById.get(operationId);
-    const pilotErrors = [];
-    if (!entry) {
-      pilotErrors.push('operation is missing');
-    } else {
-      const {operation, pathItem} = entry;
-      if (!isNonemptyString(operation.description) || operation.description.trim().length < 80) {
-        pilotErrors.push('description must contain at least 80 characters');
-      }
-      if (
-        !Array.isArray(operation['x-codeSamples']) ||
-        !operation['x-codeSamples'].some(
-          (sample) => isNonemptyString(sample?.lang) && isNonemptyString(sample?.source),
-        )
-      ) {
-        pilotErrors.push('at least one x-codeSamples example is required');
-      }
-
-      const parameters = [...(pathItem.parameters ?? []), ...(operation.parameters ?? [])];
-      for (const parameterReference of parameters) {
-        const parameter = resolveReference(document, parameterReference);
-        const label = parameter?.name ?? parameterReference?.$ref ?? 'unknown parameter';
-        if (!parameter) {
-          pilotErrors.push(`${label}: parameter reference cannot be resolved`);
-        } else if (!isNonemptyString(parameter.description)) {
-          pilotErrors.push(`${label}: parameter description is required`);
-        }
-      }
-
-      if (operation.requestBody) {
-        const requestBody = resolveReference(document, operation.requestBody);
-        if (!requestBody) {
-          pilotErrors.push('request body reference cannot be resolved');
-        } else if (!isNonemptyString(requestBody.description)) {
-          pilotErrors.push('request body description is required');
-        }
+  let tagSuccessExamples = 0;
+  let tagsRequiringSuccessExamples = 0;
+  let tagProblemExamples = 0;
+  let tagsRequiringProblemExamples = 0;
+  for (const [name, tag] of declaredTags) {
+    if (tag.operations === 0) {
+      errors.push(`tag ${JSON.stringify(name)}: at least one operation is required`);
+    }
+    if (tag.requiresSuccessExample) {
+      tagsRequiringSuccessExamples += 1;
+      if (tag.hasSuccessExample) {
+        tagSuccessExamples += 1;
+      } else {
+        errors.push(
+          `tag ${JSON.stringify(name)}: at least one representative success response example is required`,
+        );
       }
     }
-
-    if (pilotErrors.length === 0) {
-      completePilotOperations += 1;
-    } else {
-      errors.push(...pilotErrors.map((error) => `${operationId}: ${error}`));
+    if (tag.requiresProblemExample) {
+      tagsRequiringProblemExamples += 1;
+      if (tag.hasProblemExample) {
+        tagProblemExamples += 1;
+      } else {
+        errors.push(
+          `tag ${JSON.stringify(name)}: at least one representative Problem Details example is required`,
+        );
+      }
     }
-    pilot.push({complete: pilotErrors.length === 0, errors: pilotErrors, operationId});
   }
 
   const total = operations.length;
   return {
     ok: errors.length === 0,
-    version: 1,
+    version: 2,
     totals: {
+      mutations,
       operations: total,
+      parameters,
       paths: Object.keys(document.paths ?? {}).length,
+      requestBodies,
       schemas: Object.keys(document.components?.schemas ?? {}).length,
       tags: declaredTags.size,
     },
@@ -227,19 +307,21 @@ export function auditOpenAPI(document) {
       explicitAuth: coverage(explicitAuth, total),
       explicitErrorCodes: coverage(explicitErrorCodes, total),
       explicitIdempotency: coverage(explicitIdempotency, total),
+      mutationExamples: coverage(mutationExamples, mutations),
+      parameterDescriptions: coverage(parameterDescriptions, parameters),
+      requestBodyDescriptions: coverage(requestBodyDescriptions, requestBodies),
       summaries: coverage(summaries, total),
       tagged: coverage(tagged, total),
+      tagProblemExamples: coverage(tagProblemExamples, tagsRequiringProblemExamples),
+      tagSuccessExamples: coverage(tagSuccessExamples, tagsRequiringSuccessExamples),
     },
     tags: [...declaredTags.entries()].map(([name, value]) => ({
       description: value.description,
+      hasProblemExample: value.hasProblemExample,
+      hasSuccessExample: value.hasSuccessExample,
       name,
       operations: value.operations,
     })),
-    pilot: {
-      complete: completePilotOperations,
-      expected: pilotOperationIds.length,
-      operations: pilot,
-    },
     errors,
   };
 }

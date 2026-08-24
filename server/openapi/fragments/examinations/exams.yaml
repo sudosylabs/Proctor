@@ -212,6 +212,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamListResponse'
+          example:
+            items: []
   schemas:
     CreateExamRequest:
       type: object

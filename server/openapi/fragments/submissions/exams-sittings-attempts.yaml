@@ -173,6 +173,11 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamSubmissionManifestResponse'
+          example:
+            submission_id: ybndrfg8ejkmcpqxot1uwisza3
+            workspace_cursor: 12
+            manifest_digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            items: []
     ExamSubmissionFileContent:
       description: Authorized inline immutable Submission file content; not a public URL or export response
       headers:

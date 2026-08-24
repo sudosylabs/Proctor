@@ -283,6 +283,7 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AcademicPeriodListResponse'
+          example: []
     AcademicPeriodArchived:
       description: Academic Period archived
       headers:

@@ -43,11 +43,14 @@ rg -n '/api/v1/exams|operationId: createExam' server/openapi/fragments
    module. Create another descriptive `.yaml` file when no existing module is
    a natural owner; there is no manifest to update.
 2. Add the complete OpenAPI path item. Every operation has exactly one tag from
-   `base.yaml`, a summary, explicit `security`, `x-proctor-auth`,
-   `x-proctor-error-codes`, and `x-proctor-idempotency`.
-3. Put behavioral guarantees in `description`, executable-style examples in
-   `x-codeSamples`, and input examples on their media types. Use synthetic data
-   and explicit credential placeholders.
+   `base.yaml`, a summary, a substantive behavioral `description`, explicit
+   `security`, `x-proctor-auth`, `x-proctor-error-codes`, and
+   `x-proctor-idempotency`.
+3. Describe every parameter and the purpose of every request body. Every
+   mutation needs a schema-valid synthetic media example or a reviewed
+   executable-style `x-codeSamples` example; bodyless and multipart mutations
+   use `x-codeSamples`. Never use real Institution, student, Exam, answer,
+   credential, object-key, email, or local-machine data.
 4. Co-locate definitions used only by that resource. Promote a definition to
    the area's `shared.yaml` or the root `shared.yaml` only when a second real
    consumer needs it.
@@ -64,6 +67,12 @@ normal partial OpenAPI document with only `paths` and/or `components` at its
 root. Duplicate paths and component names fail compilation, as do unresolved
 references, invalid OpenAPI, duplicate operation IDs, undeclared tags, and
 missing Proctor operation metadata.
+
+The documentation audit is the editorial complement to the compiler. From
+`docs/site`, run `npm run audit:openapi`; it enforces complete behavior,
+parameter, request-body, mutation-example, and representative response-example
+coverage across the compiled contract. Schema validation proves JSON media
+examples match their referenced request or response schemas.
 
 ## Build boundary
 

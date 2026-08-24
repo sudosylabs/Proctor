@@ -1,0 +1,72 @@
+---
+title: Durable Jobs and Mail
+description: Inspect and control Proctor's durable background work and mail delivery without exposing payloads or credentials.
+audience: api-consumer
+maturity: preview
+sidebar_position: 8
+---
+
+import Link from '@docusaurus/Link';
+
+# Durable Jobs and Mail
+
+Proctor commits authoritative application state before scheduling background
+effects. A successful command can therefore be complete even while its Job or
+mail delivery is still queued. Use these administration routes to observe and
+control durable work; do not infer application state from a worker process or
+SMTP connection.
+
+## Inspect Durable Jobs
+
+<Link to="/api/reference/list-jobs">List Jobs</Link> returns a bounded,
+cursor-paginated operational projection. Filter by documented type or state,
+then use <Link to="/api/reference/get-job">Get Job</Link> for the authoritative
+current record and <Link to="/api/reference/list-job-attempts">List Job Attempts</Link>
+for bounded execution history.
+
+The projections deliberately omit raw descriptors, credentials, student data,
+and unbounded worker errors. Store the stable Job ID and public failure code in
+client telemetry; do not copy internal worker state into another source of
+truth.
+
+## Cancel or Retry Intentionally
+
+<Link to="/api/reference/cancel-job">Cancel Job</Link> requests cooperative
+cancellation. A worker may already have committed an idempotent effect, so read
+the returned Job state instead of assuming that cancellation rolled back work.
+
+<Link to="/api/reference/retry-job">Retry Job</Link> is available only for Job
+types whose descriptor explicitly permits a safe retry. It creates bounded new
+execution history; it does not erase the prior failure or bypass current
+authorization.
+
+## Inspect Mail Delivery
+
+<Link to="/api/reference/list-mail-deliveries">List Mail Deliveries</Link> and
+<Link to="/api/reference/get-mail-delivery">Get Mail Delivery</Link> expose safe
+delivery metadata and lifecycle state. They never return the rendered message,
+recipient secrets, Invitation claims, provider credentials, or encryption key
+material.
+
+Use <Link to="/api/reference/cancel-mail-delivery">Cancel Mail Delivery</Link>
+only while a delivery remains cancellable. Use
+<Link to="/api/reference/retry-mail-delivery">Retry Mail Delivery</Link> for a
+failed delivery whose current state permits an audited retry. Neither operation
+changes the application command that originally queued the message.
+
+## Operate Mail Safely
+
+- <Link to="/api/reference/get-mail-metrics">Get mail metrics</Link> returns
+  bounded operational counts, not message contents.
+- <Link to="/api/reference/inspect-mail-key-state">Inspect mail key state</Link>
+  reports safe key-version status without revealing key bytes.
+- <Link to="/api/reference/start-mail-rekey">Start mail rekey</Link> creates
+  durable work; follow it through
+  <Link to="/api/reference/get-mail-rekey-status">Get mail rekey status</Link>.
+- <Link to="/api/reference/send-controlled-test-mail">Send controlled test mail</Link>
+  exercises the configured delivery path with a bounded server-owned template.
+  It is not a general-purpose arbitrary-message endpoint.
+
+Treat `503` as an authoritative dependency failure and use the operation's
+stable Problem Details code to decide whether to back off. Do not create a
+parallel retry loop when Proctor already owns durable delivery and retry state.

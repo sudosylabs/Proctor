@@ -106,6 +106,7 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AffiliationListResponse'
+          example: []
   schemas:
     AffiliationListResponse:
       type: array

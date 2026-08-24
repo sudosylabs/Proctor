@@ -38,10 +38,13 @@ npm run audit:openapi
 ```
 
 The command writes a versioned JSON report containing exact operation, schema,
-tag, description, code-sample, and Proctor-extension coverage. It fails on
-duplicate operation IDs, unknown or multiple tags, missing summaries or
-required extensions, and incomplete data in the representative reference
-pilot.
+tag, description, parameter, request-body, mutation-example, response-example,
+code-sample, and Proctor-extension coverage. It fails on duplicate operation
+IDs, unknown or multiple tags, short behavior or tag descriptions, missing
+parameter/body purpose prose, mutations without synthetic request examples,
+product areas without representative success or Problem Details examples, and
+missing required extensions. The parameter-description exception list is
+explicit and currently empty.
 
 ## Generated files
 
@@ -63,13 +66,14 @@ The authored `docs/api/index.mdx` overview and generator template remain small;
 route descriptions and schemas stay with their human-owned OpenAPI YAML
 fragments.
 
-The OpenAPI source modules now own the complete product-area taxonomy and explicit
-authentication, error-code, and idempotency metadata for every operation. A
-representative pilot covers public and authenticated JSON, strong recent
-assurance, optional and required idempotency, keyset pagination, raw image
-upload, protected binary download, candidate multipart upload, submission, and
-WebSocket upgrade. These operations also include behavioral descriptions,
-parameter and body prose, synthetic request data, and redacted shell examples.
+The OpenAPI source modules now own the complete product-area taxonomy and
+explicit authentication, error-code, idempotency, behavior, parameter, request
+body, and example metadata for every operation. The full-content gate covers
+public and authenticated JSON, strong recent assurance, optional and required
+idempotency, keyset pagination, raw image upload, protected binary download,
+candidate multipart upload, submission, and WebSocket upgrade. Representative
+success and redaction-safe Problem Details examples exist across every
+applicable product area.
 
 The reference UI deliberately disables request sending. It documents the
 contract and produces client-ready examples without turning a documentation

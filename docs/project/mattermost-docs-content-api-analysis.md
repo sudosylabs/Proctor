@@ -55,9 +55,11 @@ OpenAPI 3.1 and Proctor metadata, and emits the deterministic reviewed
 [`server/openapi.json`](../../server/openapi.json) artifact. The contract has
 172 paths, 218 operations, 268 schemas, explicit security and product-area tags
 on every operation, and complete `x-proctor-auth`, `x-proctor-error-codes`, and
-`x-proctor-idempotency` coverage. A local compatibility probe confirmed that
-Mattermost's OpenAPI renderer accepts the generated artifact unchanged and
-emits one page per operation.
+`x-proctor-idempotency` coverage. Phase 2 also completed behavioral descriptions,
+parameter and request-body purpose prose, and mutation request examples across
+the entire contract. A local compatibility probe confirmed that Mattermost's
+OpenAPI renderer accepts the generated artifact unchanged and emits one page
+per operation.
 
 The recommendation is therefore:
 
@@ -477,8 +479,11 @@ Tracked-source inventory:
 | Operations with `x-proctor-error-codes` | 218 / 218 |
 | Operations with `x-proctor-idempotency` | 218 / 218 |
 | Operations with one declared product-area tag | 218 / 218 |
-| Operations with descriptions | 27 / 218 |
-| Operations with `x-codeSamples` | 15 / 218 |
+| Operations with behavioral descriptions | 218 / 218 |
+| Operation parameter occurrences with descriptions | 357 / 357 |
+| Operation request-body occurrences with purpose descriptions | 101 / 101 |
+| Mutations with synthetic request examples | 136 / 136 |
+| Operations with `x-codeSamples` | 56 / 218 |
 | Shared response components with descriptions | 153 / 153 |
 
 This is more robust than many generated references because the security
@@ -490,44 +495,44 @@ from the other
 schema validator also requires the Proctor auth/error extensions
 ([schema validation](../../server/httpapi/openapi_schema_validation_test.go)).
 
-### 3.2 What still needs editorial depth
+### 3.2 Phase 2 editorial depth
 
 | Metadata/content | Current coverage | Result if rendered unchanged |
 | --- | ---: | --- |
 | Top-level tag catalog | 16 described tags | Stable generated grouping is ready |
 | Operation tags | 218 / 218 | Every operation has exactly one product-area owner |
-| Operation descriptions | 27 / 218 | Most pages still rely on a short summary |
-| Inline operation parameters with descriptions | 32 / 86 | Many route-specific inputs still need behavioral prose |
-| Shared parameters with descriptions | 31 / 35 | Most reusable inputs explain their contract |
-| Inline request bodies with descriptions | 2 / 17 | Most inline bodies still rely on schema shape |
-| Shared request bodies with descriptions | 6 / 79 | Reused body purpose remains sparse outside the pilot |
-| Schemas with descriptions | 11 / 268 | Models are mostly shape without purpose/lifecycle context |
-| Schema properties with descriptions | 140 / 1,275 | Most fields lack units, constraints, redaction, or lifecycle meaning |
-| Operations with checked code samples | 15 / 218 | The representative variants are proven; breadth remains limited |
+| Operation behavior descriptions | 218 / 218 | Every endpoint explains behavior beyond its summary |
+| Parameter occurrences with descriptions | 357 / 357 | Path, query, and header inputs explain their operational meaning |
+| Request-body occurrences with purpose descriptions | 101 / 101 | Every payload explains why and when it is supplied |
+| Mutations with request examples | 136 / 136 | JSON examples are schema checked; multipart and bodyless commands use reviewed shell samples |
+| Schemas with descriptions | 109 / 268 | Lifecycle- and security-sensitive models have targeted purpose prose |
+| Schema properties with descriptions | 306 / 1,275 | Units, redaction, concurrency, and identifier semantics are documented where they are not obvious |
+| Operations with checked code samples | 56 / 218 | Every mutation has a media example or executable-style sample without requiring redundant snippets on reads |
+| Product areas with Problem Details examples | 16 / 16 | Safe stable-code failures render throughout the reference |
+| Product areas with body-bearing success examples | 15 / 15 | Every applicable area has a schema-valid representative response; Realtime succeeds with a `101` handshake |
 | Deprecated operations | 0 | Fine if none are deprecated; no migration presentation is exercised |
-| Long-form `info.description` | one sentence | No integrated authentication, pagination, errors, idempotency, or versioning guide |
+| Authored API entry paths | 16 / 16 tags | Integration guides and recipes lead into the generated groups |
 
-The response count requires nuance: 1,398 of 1,408 operation response entries
-are `$ref`s, and all 153 shared response components have descriptions. Proctor
-is therefore not missing response labels; it is missing operation-specific
-context such as why an error occurs, which error codes correspond to it, and
-what a caller should do.
+The response count still requires nuance: most operation responses are shared
+`$ref`s, and all 153 shared response components have descriptions. The
+operation-owned `x-proctor-error-codes` provide the route-specific stable codes,
+while shared safe examples demonstrate the public RFC 9457 shape without
+duplicating it hundreds of times.
 
 ### 3.3 Sufficiency decision
 
 The current contract is:
 
 - **sufficient as a human-maintainable wire contract and downloadable generated specification;**
-- **observed to be sufficient as input to Mattermost's endpoint-page generator;
-  a full Proctor-site production integration remains to be completed;** and
-- **insufficient as the sole content source for a professional API learning
-  experience.**
+- **sufficient as input to the checked Proctor endpoint-page generator;** and
+- **sufficient as the reference foundation beneath authored integration guides
+  and end-to-end recipes, while broader product documentation remains ongoing.**
 
-Do not block renderer work until every description is complete. The completed
-15-operation pilot already defines the metadata standard across public,
+The original 15-operation pilot defined the metadata standard across public,
 principal-required, session-plus-CSRF, idempotent, multipart/upload,
-binary/inline content, pagination, submission, and WebSocket upgrade variants.
-Expand that standard in coherent product-area passes.
+binary/inline content, pagination, submission, and WebSocket variants. Phase 2
+has now applied that standard to all operations in coherent product-area passes
+and made the complete coverage a regression-tested build gate.
 
 ### 3.4 Local renderer compatibility probe
 
@@ -545,8 +550,8 @@ At the time of that probe the source had no tags, so the generated sidebar
 placed all 218 operations in one `UNTAGGED` category. Phase 0 has since added 16
 described tags and tagged every operation. The historical result remains useful
 evidence that JSON versus YAML and OpenAPI 3.1 parsing were never renderer
-blockers; the remaining work is renderer integration and broader editorial
-depth.
+blockers. Phase 1 subsequently completed renderer integration, and Phase 2
+completed the reference-content and task-guide foundation.
 
 The probe proves ingestion and deterministic page generation, not the final
 Proctor package integration. Installing the plugin and theme into Proctor,
@@ -820,6 +825,17 @@ installation have regression tests, and the strict production build is part of
   guides, lockfile, and sidebar wrapper.
 
 ### Phase 2 — Enrich reference content and task guides
+
+**Status (2026-08-24): complete.** All 218 operations have substantive behavior
+descriptions; all 357 parameter occurrences and 101 request-body occurrences
+have purpose prose; and all 136 mutations have a schema-valid media example or
+reviewed executable-style sample. The version 2 audit fails on any regression
+and also requires representative safe Problem Details examples for all 16
+product areas and success examples for all 15 areas with body-bearing success
+responses. Authored integration guides and recipes now give every generated
+tag group a human entry path. Targeted schema/property prose covers lifecycle,
+units, redaction, concurrency, and opaque identifiers without duplicating
+cheaply discoverable wire shape.
 
 **Work**
 

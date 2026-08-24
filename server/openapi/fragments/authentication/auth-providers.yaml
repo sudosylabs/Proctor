@@ -206,6 +206,7 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExternalAuthenticationProviderListResponse'
+          example: []
     ExternalAuthenticationRedirect:
       description: Browser redirect
       headers:

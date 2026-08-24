@@ -74,6 +74,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/AuditListResponse'
+          example:
+            events: []
   schemas:
     AuditEventResponse:
       description: Safe durable audit fact visible to the authorized caller.

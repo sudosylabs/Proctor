@@ -26,7 +26,13 @@ function expectError(mutator, expected) {
 test('the canonical OpenAPI documentation data passes the audit', () => {
   const report = auditOpenAPI(cloneCanonical());
   assert.equal(report.ok, true, report.errors.join('\n'));
-  assert.equal(report.pilot.complete, report.pilot.expected);
+  assert.equal(report.version, 2);
+  assert.equal(report.coverage.descriptions.percent, 100);
+  assert.equal(report.coverage.parameterDescriptions.percent, 100);
+  assert.equal(report.coverage.requestBodyDescriptions.percent, 100);
+  assert.equal(report.coverage.mutationExamples.percent, 100);
+  assert.equal(report.coverage.tagProblemExamples.percent, 100);
+  assert.equal(report.coverage.tagSuccessExamples.percent, 100);
   assert.equal(report.coverage.tagged.percent, 100);
   assert.equal(report.coverage.explicitIdempotency.percent, 100);
 });
@@ -59,17 +65,46 @@ test('missing summaries and Proctor extensions fail the audit', () => {
   }, 'x-proctor-idempotency must be none, optional, or required');
 });
 
-test('incomplete pilot descriptions, parameters, request bodies, and examples fail', () => {
+test('short behavior and tag descriptions fail the full-content gate', () => {
   expectError((document) => {
     document.paths['/api/v1/discovery'].get.description = 'Too short.';
-  }, 'description must contain at least 80 characters');
+  }, 'behavior description must contain at least 80 characters');
   expectError((document) => {
-    delete document.paths['/api/v1/discovery'].get['x-codeSamples'];
-  }, 'at least one x-codeSamples example is required');
+    document.tags.find((tag) => tag.name === 'System').description = 'Too short.';
+  }, 'description must contain at least 40 characters');
+});
+
+test('missing parameter and request-body descriptions fail across all operations', () => {
   expectError((document) => {
     delete document.paths['/api/v1/exams'].get.parameters[0].description;
   }, 'academic_unit_id: parameter description is required');
   expectError((document) => {
     delete document.components.requestBodies.Login.description;
   }, 'request body description is required');
+});
+
+test('mutations require a valid media example or executable-style code sample', () => {
+  expectError((document) => {
+    delete document.components.requestBodies.ConfigureExamDraftFocusLoss.content[
+      'application/json'
+    ].example;
+  }, 'mutation request example is required');
+  expectError((document) => {
+    delete document.paths['/api/v1/auth/logout'].post['x-codeSamples'];
+  }, 'mutation request example is required');
+});
+
+test('each product area requires representative success and Problem Details examples', () => {
+  expectError((document) => {
+    delete document.components.responses.InstallationStatusOK.content['application/json'].example;
+  }, 'tag "System": at least one representative success response example is required');
+  expectError((document) => {
+    for (const response of Object.values(document.components.responses)) {
+      const problem = response.content?.['application/problem+json'];
+      if (problem) {
+        delete problem.example;
+        delete problem.examples;
+      }
+    }
+  }, 'representative Problem Details example is required');
 });

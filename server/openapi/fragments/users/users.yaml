@@ -207,6 +207,7 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserProfileListResponse'
+          example: []
   schemas:
     UserProfileListResponse:
       description: Visible User profiles ordered by canonical username and identity.

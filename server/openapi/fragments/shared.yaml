@@ -127,6 +127,15 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/request-invalid
+            title: Invalid request
+            status: 400
+            detail: One or more request fields are invalid.
+            code: request.invalid
+            request_id: req_docs_bad_request
+            fields:
+              title: must not be empty
     Unauthorized:
       description: Authentication required
       headers:
@@ -136,6 +145,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/authentication-required
+            title: Authentication required
+            status: 401
+            detail: Supply a credential accepted by this operation.
+            code: authentication.required
+            request_id: req_docs_unauthorized
     Forbidden:
       description: Access denied
       headers:
@@ -145,6 +161,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/authorization-denied
+            title: Access denied
+            status: 403
+            detail: The authenticated principal is not authorized for this action.
+            code: authorization.denied
+            request_id: req_docs_forbidden
     NotFound:
       description: Resource not found
       headers:
@@ -154,6 +177,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/resource-not-found
+            title: Resource not found
+            status: 404
+            detail: The requested resource is unavailable or not visible to this principal.
+            code: resource.not_found
+            request_id: req_docs_not_found
     Conflict:
       description: Conflict
       headers:
@@ -163,6 +193,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/idempotency-conflict
+            title: Request conflict
+            status: 409
+            detail: The idempotency key was already used with different input.
+            code: idempotency.conflict
+            request_id: req_docs_conflict
     InternalError:
       description: Internal server error
       headers:
@@ -172,6 +209,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/internal
+            title: Internal server error
+            status: 500
+            detail: The request could not be completed.
+            code: authentication.internal
+            request_id: req_docs_internal
     TooManyRequests:
       description: Rate limited
       headers:
@@ -181,6 +225,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/rate-limited
+            title: Too many requests
+            status: 429
+            detail: Retry after the client backoff interval.
+            code: authentication.rate_limited
+            request_id: req_docs_rate_limited
     ServiceUnavailable:
       description: Service unavailable
       headers:
@@ -190,6 +241,13 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: /problems/administration-unavailable
+            title: Service unavailable
+            status: 503
+            detail: A required authoritative dependency is temporarily unavailable.
+            code: administration.unavailable
+            request_id: req_docs_unavailable
   headers:
     NoStore:
       description: Prevents storage of sensitive responses.
