@@ -874,9 +874,9 @@ static directory, authored MDX supplies only a registry ID, and Docusaurus'
 vulnerable authored-image parser never reads the content asset. The registry,
 validator, deterministic screenshot contract, hash-bound desktop/mobile visual
 acceptance record, installation-authority diagram, protected-request
-authentication/assurance diagram, and academic-structure ownership map are
-implemented. The remaining prioritized diagrams and UI-specific screenshot
-fixtures are later Phase 3 slices.
+authentication/assurance diagram, academic-structure ownership map, and
+exam-publication/delivery lifecycle are implemented. The remaining prioritized
+diagrams and UI-specific screenshot fixtures are later Phase 3 slices.
 
 **Work**
 

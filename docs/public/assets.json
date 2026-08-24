@@ -166,6 +166,62 @@
         "docs/architecture/authorization.md",
         "docs/api/recipes/academic-structure.mdx"
       ]
+    },
+    {
+      "id": "exam-publication-delivery-lifecycle",
+      "path": "static/assets/diagrams/exam-publication-delivery-lifecycle.svg",
+      "public_path": "/assets/diagrams/exam-publication-delivery-lifecycle.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's canonical Exam authoring, publication, Sitting, Attempt, and Submission contracts.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains canonical examination states and generic relationship descriptions only; no Exam, Class, User, Attempt, Submission, schedule, reason, answer, or operational data."
+      },
+      "alt": "An Exam has one mutable revision-fenced Draft. Publishing creates an immutable numbered Exam Revision, which an Exam Sitting selects with one eligible Class and an explicit time window. A Sitting moves from Scheduled to Open, may move between Open and Paused, then moves through Closing to Closed; Scheduled may instead become Canceled. The first eligible connection lazily creates exactly one Exam Attempt for the student and Sitting. The Attempt may be Active or Suspended before one terminal Submission, and Sitting closure automatically seals unfinished Attempts.",
+      "caption": "Publishing separates mutable authoring from immutable delivery. Sitting and Attempt transitions remain PostgreSQL-authoritative, and both voluntary submission and automatic Sitting closure converge on one terminal Submission with no reopen or resubmission.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "last_reviewed": "2026-08-24",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "83b4eefb6f09d51ccfdc8e99d9689b1166f69d2c07fab9c29fe29f43cd35f80f",
+        "reviewed": "2026-08-24",
+        "method": "Browser geometry inspection at full size and rendered documentation widths.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "CONTEXT.md",
+        "docs/architecture/examinations.md",
+        "docs/api/recipes/author-and-publish-exam.mdx",
+        "docs/api/recipes/manage-sitting.mdx",
+        "docs/api/recipes/candidate-attempt.mdx"
+      ]
     }
   ]
 }
