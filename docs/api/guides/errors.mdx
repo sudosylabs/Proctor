@@ -1,0 +1,65 @@
+---
+title: Errors and Problem Details
+description: Handle Proctor HTTP failures using RFC 9457 Problem Details and stable application error codes.
+audience: api-consumer
+maturity: preview
+sidebar_position: 3
+---
+
+# Errors and Problem Details
+
+Public HTTP failures use RFC 9457 Problem Details. Branch on the HTTP status
+and Proctor's stable `code`; treat human-readable `title` and `detail` as text
+for operators or users, not as a machine interface.
+
+```json
+{
+  "type": "https://docs.proctor.example/problems/validation-failed",
+  "title": "Request validation failed",
+  "status": 400,
+  "detail": "One or more request fields are invalid.",
+  "instance": "/api/v1/exams",
+  "code": "validation_failed",
+  "request_id": "req_01J7YN7BR7R2BW0VWP2JEN8M4M",
+  "fields": {
+    "title": "must not be empty"
+  }
+}
+```
+
+The exact `type` URI is documentation, while `code` is the bounded value an
+integration uses for program logic. Each endpoint page lists its possible
+codes in **Stable error codes**.
+
+## Handling Rules
+
+- Parse a non-success response as Problem Details when its content type is
+  `application/problem+json`.
+- Use `status` for the broad transport outcome and `code` for the Proctor
+  condition.
+- Show `detail` and `fields` only after applying the same output-escaping rules
+  as any other untrusted response data.
+- Record `request_id` in a support trace, but do not attach credentials,
+  answers, or raw request bodies.
+- Treat an undocumented code as an unknown recoverable failure. Preserve the
+  HTTP status behavior and do not crash or reinterpret it as success.
+
+## Validation Failures
+
+When `fields` is present, its keys identify invalid request fields and its
+values explain the constraint. The object is optional: a client must still be
+able to handle validation failure without field-level details.
+
+Unknown JSON fields, multiple JSON values, malformed input, and inputs that
+exceed the route's bounded body size are failures. Fix the request rather than
+retrying it unchanged.
+
+## Retries
+
+Retry only when both the operation semantics and failure permit it. For a
+mutation, use its documented idempotency behavior before retrying after a
+timeout or lost response. Authentication, authorization, validation, conflict,
+and assurance failures generally require a state or user-action change first.
+
+WebSocket protocol failures use typed protocol envelopes instead of HTTP
+Problem Details after the connection is established. See [Realtime and Replay](./realtime.mdx).

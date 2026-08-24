@@ -1,0 +1,58 @@
+---
+title: Idempotency and Retries
+description: Retry Proctor commands without duplicating durable mutations or external effects.
+audience: api-consumer
+maturity: preview
+sidebar_position: 5
+---
+
+# Idempotency and Retries
+
+Every operation explicitly declares `x-proctor-idempotency` as `none`,
+`optional`, or `required`. The generated endpoint page displays that value.
+
+| Value | Client behavior |
+| --- | --- |
+| `none` | Do not send `Idempotency-Key`; use the operation's natural read or replacement semantics |
+| `optional` | Send a key when a mutation may be retried after an uncertain outcome |
+| `required` | Every request must include a key |
+
+An idempotency key is 1–128 case-sensitive ASCII characters drawn from letters,
+digits, `-`, `.`, `_`, and `~`. Generate a new unpredictable key for one
+logical command and reuse that same key only when retrying the exact same
+request.
+
+```bash
+curl --request POST \
+  --url https://proctor.example.edu/api/v1/exams \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: exam-create-01J7YS5EP6P9M3JAXKQFRHD5TB' \
+  --data '{"title":"Calculus I final","owner_academic_unit_id":"01J7YQ4G6V2CKBYZG83K31T6QA"}'
+```
+
+## Replay Semantics
+
+For a valid replay, Proctor repeats authentication, authorization, and required
+audit evaluation but does not repeat the durable mutation or its external
+effects. Records are retained for at least 24 hours.
+
+The same key with different canonical input is a conflict. A concurrent retry
+can report that the original command is still in progress. Both conditions use
+stable endpoint error codes; handle them explicitly rather than generating a
+new key immediately, which could duplicate the logical command.
+
+## Safe Retry Procedure
+
+1. Build and retain the exact request payload and one idempotency key.
+2. Send the command once.
+3. On a connection failure, timeout, or documented transient server failure,
+   retry the identical request with the identical key.
+4. On a definitive client, authorization, or conflict failure, stop and resolve
+   the cause.
+5. Store the returned resource identifier; do not depend on the key as a
+   permanent lookup handle.
+
+Replacement operations may instead use natural idempotency and revision or
+precondition fields. Follow the endpoint's declared value and schema rather
+than adding a key universally.

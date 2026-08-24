@@ -1,0 +1,53 @@
+---
+title: Pagination
+description: Traverse Proctor collections safely with bounded opaque keyset cursors.
+audience: api-consumer
+maturity: preview
+sidebar_position: 4
+---
+
+# Pagination
+
+List operations return a response object with a non-null `items` array and,
+when more results are available, a `next_cursor` value.
+
+```json
+{
+  "items": [
+    {
+      "id": "01J7YQ4G6V2CKBYZG83K31T6QA",
+      "name": "Faculty of Science"
+    }
+  ],
+  "next_cursor": "djE6MDFKN1lRNEc2VjJDS0JZWkc4M0szMVQ2UUE"
+}
+```
+
+The cursor is opaque, versioned, and tied to a canonical query. Never decode,
+modify, synthesize, or persist assumptions about its contents.
+
+## Traverse a Collection
+
+1. Send the first request with the desired filters, ordering, and `limit`.
+2. Process every element of `items`. An empty collection is `"items": []`, not
+   `null` and not a missing field.
+3. If `next_cursor` is present, repeat the same query and add that exact value
+   as `cursor`.
+4. Stop when `next_cursor` is absent.
+
+```bash
+curl --get \
+  --url https://proctor.example.edu/api/v1/academic-units \
+  --header 'Authorization: Bearer <token>' \
+  --data-urlencode 'limit=50' \
+  --data-urlencode 'cursor=<next-cursor-from-previous-response>'
+```
+
+Changing a filter, order, or scope while reusing a cursor is invalid. Start a
+new traversal instead. Do not concatenate cursor values into a URL without URL
+encoding them.
+
+Keyset pagination is designed for collections that may change during
+traversal. It does not promise a transactionally frozen snapshot unless the
+individual endpoint explicitly says so. Consumers that reconcile durable
+state should make their processing idempotent.

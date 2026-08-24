@@ -1,0 +1,69 @@
+---
+title: Author and Publish an Exam
+description: Create a mutable Exam Draft, attach protected materials, and publish an immutable Revision safely.
+audience: api-consumer
+maturity: preview
+sidebar_position: 4
+---
+
+# Author and Publish an Exam
+
+An Exam owns one mutable Draft and a history of immutable Revisions. Sittings
+target a published Revision, never a moving Draft.
+
+## 1. Create the Exam
+
+Call [Create Exam](/api/reference/create-exam) with its owning Academic Unit.
+
+```json
+{
+  "academic_unit_id": "<academic-unit-id>",
+  "title": "Algorithms — final examination",
+  "instructions_markdown": "Read every question before you begin."
+}
+```
+
+Retain both the Exam ID and current Draft revision returned by the server.
+
+## 2. Edit with a Revision Fence
+
+[Edit Draft text](/api/reference/edit-exam-draft-text) requires the exact
+`expected_draft_revision`. Each successful edit returns the new state; use its
+revision for the next change.
+
+```json
+{
+  "expected_draft_revision": 3,
+  "title": "Algorithms — final examination",
+  "instructions_markdown": "Answer all questions. Save source files in answers/."
+}
+```
+
+Omitting or sending `null` for these PATCH fields leaves the value unchanged;
+an empty `instructions_markdown` clears it.
+
+## 3. Add Execution and Content
+
+Configure the execution profile and focus-loss policy with their replacement
+operations. Add ordered protected resources and Starter Workspace files with
+the strict multipart flow in [Uploads and Protected Content](../guides/uploads-and-content.mdx).
+
+Resource bytes and Starter Workspace paths are protected exam material. Keep
+them out of logs, public object URLs, and client-generated telemetry.
+
+## 4. Publish an Immutable Revision
+
+Publish only after fetching the current Exam authoring view and confirming the
+Draft revision.
+
+```bash
+curl --request POST \
+  --url https://proctor.example.edu/api/v1/exams/<exam-id>/revisions \
+  --header 'Authorization: Bearer <interactive-session-access-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"expected_draft_revision":12}'
+```
+
+[Publish Exam Revision](/api/reference/publish-exam-revision) validates and
+freezes the complete Draft. A stale revision fails rather than publishing
+unreviewed concurrent edits. Retain the returned Revision ID for scheduling.

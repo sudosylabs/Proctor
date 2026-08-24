@@ -1,0 +1,46 @@
+---
+title: Consume Audit History
+description: Page through authorized Proctor audit history without treating it as an unbounded event export.
+audience: api-consumer
+maturity: preview
+sidebar_position: 8
+---
+
+# Consume Audit History
+
+[List audit events](/api/reference/list-audit-events) returns only the history
+the current principal may view for the requested Institution or Academic Unit
+scope. Authentication never bypasses that resource authorization.
+
+## Page Incrementally
+
+Choose one authorized scope and stable filter set, request a bounded page, and
+follow `next_cursor` unchanged until it is absent. The audit response calls its
+array `events`; it is always present even when empty.
+
+```bash
+curl --get \
+  --url https://proctor.example.edu/api/v1/audits \
+  --header 'Authorization: Bearer <token>' \
+  --data-urlencode 'scope_type=academic_unit' \
+  --data-urlencode 'scope_id=<academic-unit-id>' \
+  --data-urlencode 'limit=100' \
+  --data-urlencode 'cursor=<next-cursor-if-present>'
+```
+
+Check the endpoint reference for the current filters and their combinations.
+Changing a scope or filter invalidates the traversal; begin again without the
+old cursor.
+
+## Interpret an Event
+
+Use `action`, `resource`, and `status` as the durable audit facts. `request_id`
+can correlate a permitted operational trace. Optional actor, session, client,
+network, node, and error fields may be absent based on the event and caller's
+authorized projection.
+
+Audit history is not a stream of secret request payloads. Do not expect or
+attempt to reconstruct credentials, exam answers, protected content, or unsafe
+free-form fields from it. Make downstream ingestion idempotent by audit event
+ID and preserve the server's event timestamps and stable status rather than
+substituting collection time.

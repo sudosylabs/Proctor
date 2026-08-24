@@ -1,0 +1,56 @@
+---
+title: Schedule and Manage a Sitting
+description: Deliver one immutable Exam Revision to one Class and control its lifecycle safely.
+audience: api-consumer
+maturity: preview
+sidebar_position: 5
+---
+
+# Schedule and Manage a Sitting
+
+A Sitting delivers one published Exam Revision to one Class during an explicit
+time window. Use RFC 3339 date-time strings with offsets or `Z`.
+
+## 1. Schedule
+
+```bash
+curl --request POST \
+  --url https://proctor.example.edu/api/v1/exams/<exam-id>/sittings \
+  --header 'Authorization: Bearer <interactive-session-access-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "exam_revision_id":"<published-revision-id>",
+    "class_id":"<class-id>",
+    "scheduled_start_at":"2026-12-14T09:00:00Z",
+    "scheduled_end_at":"2026-12-14T11:00:00Z"
+  }'
+```
+
+See [Schedule Exam Sitting](/api/reference/schedule-exam-sitting). Before the
+Sitting opens, [update the schedule](/api/reference/update-exam-sitting-schedule)
+to change its Revision, Class, or window under the documented state rules.
+
+## 2. Observe Current State
+
+Use [Get Exam Sitting](/api/reference/get-exam-sitting) as the authoritative
+snapshot. Realtime events can prompt a refresh, but an event is not a durable
+replacement for the HTTP state.
+
+## 3. Apply Lifecycle Controls
+
+- [Pause](/api/reference/pause-exam-sitting) blocks active delivery under the
+  lifecycle contract and records a private manager reason.
+- [Resume](/api/reference/resume-exam-sitting) reopens a paused Sitting.
+- [Extend](/api/reference/extend-exam-sitting) changes the active deadline.
+- [Close](/api/reference/close-exam-sitting) ends an open or paused Sitting
+  early; unfinished Attempts follow the server's sealing rules.
+- [Cancel](/api/reference/cancel-exam-sitting) is for a still-scheduled Sitting.
+
+Send a distinct idempotency key whenever the endpoint requires or permits one,
+and preserve revision or expected-state fields exactly. Lifecycle commands are
+audited; private reasons must be bounded and must not contain student answers
+or unrelated sensitive detail.
+
+For a live content correction, stage the replacement bytes first, then apply
+the correction that references that exact stage. The Sitting retargets an
+immutable correction Revision; active Attempts are not rewritten in place.

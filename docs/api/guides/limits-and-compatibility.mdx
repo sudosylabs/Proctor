@@ -1,0 +1,56 @@
+---
+title: Limits and Compatibility
+description: Design Proctor clients for bounded inputs, rate controls, additive API evolution, and safe observability.
+audience: api-consumer
+maturity: preview
+sidebar_position: 8
+---
+
+# Limits and Compatibility
+
+Proctor rejects input before unbounded parsing. Treat every request body,
+collection page, upload, log entry, and retry loop as bounded even when an
+installation has not published a narrower local policy.
+
+## Client Limits
+
+- Use the endpoint's documented `limit` range; never request or assume an
+  unbounded collection.
+- Stream file content where the client library permits it and enforce the
+  endpoint's maximum before upload.
+- Put only documented fields in request objects. Unknown JSON fields are
+  rejected.
+- Send exactly one JSON value and the declared media type.
+- Apply exponential backoff with jitter to documented transient failures and
+  realtime reconnects.
+- Respect an installation's response headers and stable error codes when it
+  applies rate or concurrency controls. Do not evade them with parallel
+  credentials.
+
+The public multipart hard boundary is 100 MiB plus 64 KiB of overhead, but a
+specific route or installation policy can be lower. No generic maximum should
+override the endpoint schema.
+
+## Compatibility Within `/api/v1`
+
+The v1 contract can add operations, optional request fields, response fields,
+enum values where openness is documented, and new stable error codes. A robust
+client therefore:
+
+- ignores unknown response object fields;
+- handles unknown error and realtime event types safely;
+- does not exhaustively switch over an open value without a fallback;
+- sends only fields supported by the contract version it targets; and
+- does not derive meaning from opaque identifiers, cursors, ETags, or tokens.
+
+Removing a field, making an input required, or changing established behavior
+requires a new API version. The checked-in OpenAPI contract is authoritative
+for a release; pin or archive the contract used to generate a client so a
+future additive update is a deliberate upgrade.
+
+## Observability Without Exposure
+
+Safe client telemetry includes the HTTP method, route template, status,
+duration, stable `code`, and `request_id`. Do not log bearer or refresh tokens,
+cookies, CSRF values, invitation secrets, attempt credentials, student
+answers, raw exam content, or unbounded user-controlled fields.

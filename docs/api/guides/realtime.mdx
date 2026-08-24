@@ -1,0 +1,47 @@
+---
+title: Realtime and Replay
+description: Connect to Proctor WebSocket events, authorize subscriptions, and recover from bounded replay gaps.
+audience: api-consumer
+maturity: preview
+sidebar_position: 7
+---
+
+# Realtime and Replay
+
+Proctor exposes one authenticated WebSocket endpoint at `/api/v1/websocket`.
+Realtime delivery accelerates an interface; durable HTTP resources remain the
+authority.
+
+Browser connections use the interactive Session cookie and must present the
+installation's exact allowed Origin. Native clients can use an allowed bearer
+credential and may omit Origin. The connection handshake does not grant every
+subscription: each subscription action and resource is authorized separately.
+
+See [Connect WebSocket](/api/reference/connect-web-socket) for the current
+handshake parameters and protocol schemas.
+
+## Resume After Disconnect
+
+Replay is bounded and node-local. Retain the most recent sequence or replay
+cursor exactly as the protocol specifies, then offer it when reconnecting to
+the appropriate node. A successful replay fills only the available bounded
+gap.
+
+If the server reports that replay is unavailable or incomplete:
+
+1. Stop applying incremental events for the affected scope.
+2. Refetch the authoritative resource or collection over HTTP.
+3. Replace local derived state with that snapshot.
+4. Establish a fresh realtime position and resume incremental processing.
+
+Never treat a missing event as evidence that durable state did not change.
+Cluster fan-out and WebSocket publication occur after the durable commit and
+are best-effort effects.
+
+## Protocol Errors
+
+After upgrade, protocol errors use stable typed WebSocket envelopes rather
+than RFC 9457 Problem Details. Handle an unknown event or error type
+defensively, preserve ordering within its documented scope, and reconnect with
+bounded backoff. Avoid tight reconnect loops after authentication or
+authorization rejection.

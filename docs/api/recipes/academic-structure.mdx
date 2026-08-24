@@ -1,0 +1,89 @@
+---
+title: Build the Academic Structure
+description: Create Academic Units, Programmes, Programme Levels, Academic Periods, and Classes in dependency order.
+audience: api-consumer
+maturity: preview
+sidebar_position: 2
+---
+
+# Build the Academic Structure
+
+Create academic resources in ownership order. A Class is the concrete student
+roster; it belongs to a Programme Level and one Academic Period.
+
+```text
+Institution
+├── Academic Unit
+│   └── Programme
+│       └── Programme Level
+│           └── Class ───── Academic Period
+```
+
+## 1. Create an Academic Unit
+
+Use [Create root Academic Unit](/api/reference/create-root-academic-unit), or
+create a child under an existing unit. Retain the returned `id`; route scope,
+not an ID repeated in the request body, establishes the parent.
+
+```json
+{
+  "name": "computer-science",
+  "display_name": "Computer Science",
+  "description": "Teaching and research in computing."
+}
+```
+
+## 2. Create a Programme and Level
+
+Call [Create Programme](/api/reference/create-programme) with the Academic Unit
+ID in the path, then [Create Programme Level](/api/reference/create-programme-level)
+with the Programme ID in the path.
+
+```json
+{
+  "name": "bsc-computer-science",
+  "display_name": "BSc Computer Science"
+}
+```
+
+```json
+{
+  "name": "level-100",
+  "display_name": "Level 100"
+}
+```
+
+## 3. Create an Academic Period
+
+[Create Academic Period](/api/reference/create-academic-period) can use either
+the Institution or an Academic Unit as its owner. `start_at` and `end_at` are
+positive Unix-millisecond timestamps.
+
+```json
+{
+  "owner_type": "institution",
+  "owner_id": "<institution-id>",
+  "name": "2026-2027",
+  "display_name": "2026–2027",
+  "start_at": 1785542400000,
+  "end_at": 1817078399000
+}
+```
+
+## 4. Create the Class
+
+Call [Create Class](/api/reference/create-class) under the Programme Level and
+refer to the Academic Period in the body.
+
+```json
+{
+  "academic_period_id": "<academic-period-id>",
+  "name": "cs-level-100-a",
+  "display_name": "Computer Science Level 100 — A"
+}
+```
+
+Do not use a Class as a permission grant. Enrollment records roster membership;
+Roles and scoped Role Bindings grant permissions. Archive operations also
+enforce current dependency constraints, so end or move active dependents before
+archiving a parent.

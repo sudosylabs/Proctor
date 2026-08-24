@@ -1,0 +1,63 @@
+---
+title: Review Integrity and Release a Result
+description: Inspect bounded evidence, record non-academic decisions, finalize review, and explicitly release the candidate projection.
+audience: api-consumer
+maturity: preview
+sidebar_position: 7
+---
+
+# Review Integrity and Release a Result
+
+Integrity review records evidence and a manager disposition; it is not a grade
+calculation and does not declare guilt. Private review data remains unavailable
+to the candidate unless the release projection explicitly includes approved
+remarks.
+
+## 1. Load the Review Snapshot
+
+Call [Get integrity review](/api/reference/get-exam-integrity-review), then page
+through [flags](/api/reference/list-exam-integrity-flags), purpose-specific
+[evidence](/api/reference/list-exam-integrity-evidence), and retained
+[discrepancies](/api/reference/list-exam-integrity-discrepancies) as needed.
+Do not export evidence to general analytics or logs.
+
+## 2. Record a Decision for Each Flag
+
+Use the review's current revision and the current decision revision. For a new
+decision, follow the endpoint schema's initial revision rule.
+
+```json
+{
+  "expected_review_revision": 4,
+  "expected_decision_revision": 1,
+  "outcome": "inconclusive",
+  "private_rationale": "The retained evidence does not establish a reliable conclusion."
+}
+```
+
+[Save integrity decision](/api/reference/save-exam-integrity-decision) accepts
+only `confirmed`, `dismissed`, or `inconclusive`. A concurrent review update
+changes the revision and must be reconciled rather than overwritten.
+
+## 3. Finalize the Complete Review
+
+Fetch a fresh review snapshot, verify its bounded evidence inventory and every
+required decision, then call [Finalize review](/api/reference/finalize-exam-integrity-review):
+
+```json
+{
+  "submission_review_id": "<review-id>",
+  "expected_review_revision": 7
+}
+```
+
+Finalization freezes the review. Treat a stale revision as a signal to reread,
+not as a reason to guess the next number.
+
+## 4. Release Explicitly
+
+[Release student result](/api/reference/release-student-exam-result) is a
+separate explicit transition using the finalized review ID and revision. Only
+after it succeeds can the candidate retrieve [their released result](/api/reference/get-student-exam-result).
+The candidate endpoint exposes the approved projection, not private evidence or
+manager rationale.

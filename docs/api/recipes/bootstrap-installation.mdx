@@ -1,0 +1,66 @@
+---
+title: Bootstrap an Installation
+description: Create the one Institution and first administrator for a new Proctor installation.
+audience: api-consumer
+maturity: preview
+sidebar_position: 1
+---
+
+# Bootstrap an Installation
+
+Bootstrap is a one-time installation transition. It creates the Institution,
+the first administrator account, and the authority needed for subsequent
+configuration.
+
+## 1. Check Bootstrap State
+
+Call [Get installation bootstrap status](/api/reference/get-installation-status)
+without credentials. Continue only when the response says the installation is
+not bootstrapped.
+
+## 2. Submit the Bootstrap Secret Once
+
+Obtain the bootstrap secret through the operator-controlled installation
+channel. Do not put it in a URL, shell history, source file, or support log.
+
+```bash
+curl --request POST \
+  --url https://proctor.example.edu/api/v1/bootstrap \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "institution": {
+      "name": "northbridge-university",
+      "display_name": "Northbridge University",
+      "description": "Examination services"
+    },
+    "administrator": {
+      "username": "initial-admin",
+      "email": "initial-admin@example.edu",
+      "display_name": "Initial Administrator",
+      "locale": "en",
+      "timezone": "Europe/Paris"
+    },
+    "password": "<strong-one-time-bootstrap-password>",
+    "bootstrap_secret": "<operator-provided-bootstrap-secret>"
+  }'
+```
+
+See [Bootstrap installation](/api/reference/bootstrap-installation) for the
+current password, locale, and field constraints. The example values are
+synthetic.
+
+## 3. Establish a Normal Session
+
+After a successful bootstrap, discard the bootstrap secret from client memory
+and use [Login](/api/reference/login) to establish the administrator's normal
+interactive Session. Bootstrap is not a reusable sign-in mechanism.
+
+## 4. Verify and Continue
+
+Read the bootstrap status again, then fetch [the Institution](/api/reference/get-institution)
+with the new Session. Continue with the [Academic Structure recipe](./academic-structure.mdx)
+and configure admission policy through a preflight before replacing it.
+
+If two bootstrap requests race, only the authoritative transition can succeed.
+Treat an already-bootstrapped response as a definitive state, not as a reason
+to retry with a different secret.

@@ -1,0 +1,55 @@
+---
+title: Uploads and Protected Content
+description: Build strict multipart uploads and handle protected Proctor content safely.
+audience: api-consumer
+maturity: preview
+sidebar_position: 6
+---
+
+# Uploads and Protected Content
+
+Upload endpoints use a deliberately narrow multipart contract. Send exactly
+two parts in this order:
+
+1. `metadata`: a non-file part containing strict JSON, no larger than 32 KiB.
+2. `content`: the file bytes.
+
+The metadata declares the byte size and SHA-256 digest expected for the content
+part. A mismatch fails the request; the server does not silently accept or
+rewrite it.
+
+```bash
+curl --request PUT \
+  --url https://proctor.example.edu/api/v1/users/me/profile-picture \
+  --header 'Authorization: Bearer <token>' \
+  --form 'metadata={"filename":"profile.png","size":18432,"sha256":"<64-lowercase-hex-characters>"};type=application/json' \
+  --form 'content=@./profile.png;type=image/png'
+```
+
+Do not add extra form fields, reverse the parts, or send metadata as a file.
+The public hard request boundary is 100 MiB plus 64 KiB of multipart overhead;
+individual routes and installation policy may impose a lower content limit.
+Inspect the endpoint schema before allocating or streaming a file.
+
+## Digest and Size
+
+Compute SHA-256 over the exact bytes sent in `content`, before multipart
+encoding. Declare the exact byte length, not a character count or encoded form
+length. If your client transparently transforms a file, compute metadata after
+that transformation.
+
+## Protected Downloads
+
+Protected content is returned inline with a strong `ETag` and
+`X-Content-Type-Options: nosniff`. Authorization is reevaluated for the current
+principal and resource; knowing a content URL is not permission to retrieve it.
+
+- Honor the response `Content-Type`; do not infer a type from a filename.
+- Keep protected bytes out of shared HTTP caches and analytics payloads.
+- Use `If-None-Match` with the strong ETag when the endpoint's cache policy
+  permits revalidation.
+- Do not rely on `Content-Disposition` to force a download; protected content
+  is served inline by contract.
+
+Candidate workspace and exam resource downloads also require the attempt
+credential headers described in [Authentication and Assurance](./authentication.mdx).

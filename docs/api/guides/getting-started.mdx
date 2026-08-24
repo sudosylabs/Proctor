@@ -1,0 +1,80 @@
+---
+title: Getting Started
+description: Make your first Proctor API request and learn how the versioned contract is organized.
+audience: api-consumer
+maturity: preview
+sidebar_position: 1
+---
+
+# Getting Started
+
+The Proctor API is served by each Proctor installation. Use the installation's
+origin followed by the versioned `/api/v1` path; there is no shared Proctor
+cloud API hostname.
+
+```text
+https://proctor.example.edu/api/v1
+```
+
+Start with [public access discovery](/api/reference/get-public-access-discovery)
+to learn which sign-in methods the installation exposes. Public discovery is
+safe to show before authentication and does not reveal private provider
+configuration.
+
+```bash
+curl --request GET \
+  --url https://proctor.example.edu/api/v1/access-policy/discovery \
+  --header 'Accept: application/json'
+```
+
+## Choose a Credential
+
+Browser clients normally establish an interactive Session through
+[login](/api/reference/login). Non-browser integrations use a Personal Access
+Token only on operations whose **Authentication** panel permits a principal
+credential. A token cannot stand in for a recent or strongly authenticated
+interactive Session.
+
+Read [Authentication and Assurance](./authentication.mdx) before making a
+protected request.
+
+## Read an Endpoint Page
+
+Every generated endpoint page contains four pieces of contract information:
+
+1. **Authentication** says what kind of principal and assurance the operation
+   requires.
+2. **Idempotency** says whether `Idempotency-Key` is forbidden, optional, or
+   required.
+3. **Stable error codes** lists the application codes a client may branch on.
+4. Request and response schemas define the closed wire objects and their
+   validation rules.
+
+The downloadable [OpenAPI 3.1 contract](/openapi/openapi.json) is the same
+artifact checked against server route declarations. Generated pages are a view
+of it, not a separate description of the API.
+
+## Send JSON Deliberately
+
+Proctor JSON objects are closed unless a schema explicitly declares an
+extension point. Send one JSON value, use the exact `snake_case` field names,
+and omit fields you do not intend to change. An omitted optional field and an
+explicit `null` can have different meanings where the schema permits both.
+
+```bash
+curl --request GET \
+  --url 'https://proctor.example.edu/api/v1/exams?limit=25' \
+  --header 'Accept: application/json' \
+  --header 'Authorization: Bearer ${PROCTOR_TOKEN}'
+```
+
+Never put access tokens, invitation secrets, attempt credentials, answers, or
+other sensitive material in a URL, example fixture, or application log.
+
+## Versioning and Compatibility
+
+`/api/v1` evolves additively. Clients should ignore response fields they do not
+recognize, while still sending only documented request fields. Removing a
+field, making an optional input required, or changing established semantics
+requires a new API version. See [Limits and Compatibility](./limits-and-compatibility.mdx)
+for the client rules that make additive evolution safe.

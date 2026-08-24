@@ -1,0 +1,89 @@
+---
+title: Authentication and Assurance
+description: Choose between browser sessions, bearer tokens, MFA, recent authentication, CSRF proof, and attempt credentials.
+audience: api-consumer
+maturity: preview
+sidebar_position: 2
+---
+
+# Authentication and Assurance
+
+Authentication proves a principal; authorization still checks that principal
+against the current resource and durable policy on every protected operation.
+Do not infer permission from authentication success, membership, or a previous
+response.
+
+## Credential Types
+
+| Credential | Transport | Intended use |
+| --- | --- | --- |
+| Browser Session | `PROCTOR_ACCESS` secure cookie | Interactive browser clients |
+| Session access token | `Authorization: Bearer …` | Native or trusted interactive clients |
+| Personal Access Token | `Authorization: Bearer …` | Automation on operations that permit a principal credential |
+| Refresh credential | Refresh cookie or bearer credential | Session refresh only |
+| Attempt credential | `X-Proctor-Attempt-Credential` plus connection ID | Candidate attempt and workspace operations |
+
+Credential values are secrets. Store them in an operating-system credential
+store or secret manager, redact them from diagnostics, and never place them in
+URLs.
+
+## Operation Assurance Levels
+
+The endpoint reference renders the operation's `x-proctor-auth` value as an
+Authentication panel.
+
+| Contract value | Requirement |
+| --- | --- |
+| `public` | No authenticated principal |
+| `principal_required` | An allowed bearer credential or interactive Session |
+| `session_required` | An interactive Session; a Personal Access Token is insufficient |
+| `recent_session_required` | An interactive Session with recent authentication |
+| `strong_recent_session_required` | A recently authenticated interactive Session with the required strong factor |
+| `refresh_credential_required` | A valid refresh credential, only for refreshing a Session |
+
+Treat these as minimum requirements, not an authorization promise. The server
+can still reject a valid credential when the principal lacks permission for
+the requested resource.
+
+## Browser CSRF Proof
+
+State-changing requests authenticated by the `PROCTOR_ACCESS` cookie also send
+the Session's CSRF value in `X-Proctor-CSRF-Token`. Reading a CSRF token from a
+cookie or inventing a fixed value is not sufficient; use the value issued for
+the active Session.
+
+```bash
+curl --request PATCH \
+  --url https://proctor.example.edu/api/v1/users/me/profile \
+  --cookie 'PROCTOR_ACCESS=<session-cookie>' \
+  --header 'X-Proctor-CSRF-Token: <session-csrf-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{"display_name":"Amina Diallo"}'
+```
+
+Cross-origin browser use is not a substitute for a same-origin application
+integration. Deploy the UI and API under the installation's intended origin
+and honor its cookie and Origin policy.
+
+## Recent and Strong Authentication
+
+Sensitive account and administration operations can require recent
+authentication, MFA-backed strong assurance, or both. When an operation
+returns an assurance-related stable error, direct the human through the
+interactive reauthentication flow and retry only after a new Session meets the
+declared level. Do not silently fall back to a Personal Access Token.
+
+## Candidate Attempt Requests
+
+Protected candidate delivery combines the authenticated Session with an
+attempt-scoped credential and connection identity:
+
+```text
+X-Proctor-Attempt-Credential: <43-character-raw-url-base64-value>
+X-Proctor-Attempt-Connection-ID: <active-connection-id>
+```
+
+Mutation bodies also carry the documented `participation_id` and `generation`
+so stale or crossed attempt state fails closed. The credential belongs in a
+header only. See the [Candidate Attempt recipe](../recipes/candidate-attempt.mdx)
+for the complete sequence.
