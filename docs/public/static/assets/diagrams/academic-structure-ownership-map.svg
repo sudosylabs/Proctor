@@ -1,94 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
-  <title id="title">Proctor academic structure ownership and period applicability</title>
-  <desc id="description">One Institution contains a hierarchy of Academic Units. An Academic Unit may contain child units and owns Programmes; each Programme owns Programme Levels; each Class belongs to one Programme Level. Academic Periods are owned by the Institution or one Academic Unit, and each Class names exactly one period applicable to its Programme's Academic Unit.</desc>
+  <title id="title">Academic structure ownership and Period reference</title>
+  <desc id="description">One Institution owns Academic Units. An Academic Unit owns Programmes, each Programme owns Programme Levels, and each Programme Level owns Classes. Academic Units may recursively own child Academic Units. Every Class explicitly names exactly one applicable Academic Period owned by the Institution or an Academic Unit.</desc>
   <defs>
-    <marker id="arrow-cobalt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3657d6"/>
-    </marker>
-    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a65c16"/>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
     </marker>
   </defs>
 
-  <rect width="1200" height="720" rx="18" fill="#ffffff"/>
-  <rect x="1" y="1" width="1198" height="718" rx="17" fill="none" stroke="#dfe3eb" stroke-width="2"/>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
 
-  <text x="48" y="52" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="750" letter-spacing="2.1">ACADEMIC STRUCTURE MAP</text>
-  <text x="48" y="84" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">Ownership flows downward. Period applicability crosses the tree only through explicit rules.</text>
+  <text x="56" y="96" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SINGULAR OWNERSHIP</text>
 
-  <rect x="48" y="120" width="720" height="548" rx="14" fill="#f7f8fb" stroke="#dfe3eb" stroke-width="2"/>
-  <text x="72" y="151" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">OWNERSHIP TREE</text>
-  <text x="72" y="170" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Every child has one owning parent; Academic Units alone may recurse.</text>
+  <rect x="56" y="144" width="184" height="112" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Institution</text>
+  <text x="80" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one per Installation</text>
 
-  <rect x="252" y="188" width="312" height="60" rx="12" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
-  <text x="408" y="214" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="800">Institution</text>
-  <text x="408" y="235" text-anchor="middle" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">exactly one per installation</text>
+  <path d="M 240 200 H 280" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <text x="260" y="180" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">OWNS</text>
 
-  <rect x="210" y="284" width="396" height="72" rx="12" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
-  <text x="234" y="313" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="800">Academic Unit</text>
-  <text x="234" y="336" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">generic hierarchy node · owns children and Programmes</text>
+  <rect x="280" y="144" width="200" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="304" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Academic Unit</text>
+  <text x="304" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">hierarchy node</text>
 
-  <rect x="80" y="406" width="260" height="72" rx="12" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="104" y="435" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Child Academic Unit</text>
-  <text x="104" y="457" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">the same hierarchy rules repeat</text>
+  <path d="M 480 200 H 520" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <text x="500" y="180" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">OWNS</text>
 
-  <rect x="430" y="406" width="260" height="72" rx="12" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="454" y="435" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Programme</text>
-  <text x="454" y="457" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">owned by one Academic Unit</text>
+  <rect x="520" y="144" width="184" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="544" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Programme</text>
+  <text x="544" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one owning Unit</text>
 
-  <rect x="430" y="518" width="260" height="64" rx="12" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="454" y="545" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Programme Level</text>
-  <text x="454" y="566" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">reusable curriculum stage</text>
+  <path d="M 704 200 H 744" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <text x="724" y="180" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">OWNS</text>
 
-  <rect x="430" y="610" width="260" height="42" rx="12" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="454" y="636" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="800">Class</text>
-  <text x="510" y="636" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">concrete student roster</text>
+  <rect x="744" y="144" width="184" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="768" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Programme Level</text>
+  <text x="768" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">curriculum stage</text>
 
-  <path d="M 408 248 V 284" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 408 356 V 382 M 210 382 H 560" fill="none" stroke="#3657d6" stroke-width="2.5"/>
-  <circle cx="408" cy="382" r="4" fill="#3657d6"/>
-  <path d="M 210 382 V 406" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 560 382 V 406" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 560 478 V 518" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 560 582 V 610" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 928 200 H 968" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <text x="948" y="180" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">OWNS</text>
 
-  <rect x="792" y="120" width="360" height="548" rx="14" fill="#fff8ef" stroke="#d9a66b" stroke-width="2"/>
-  <text x="818" y="151" fill="#a65c16" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">PERIOD APPLICABILITY</text>
-  <text x="818" y="170" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Ownership defines where an Academic Period may apply.</text>
+  <rect x="968" y="144" width="176" height="112" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="992" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Class</text>
+  <text x="992" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">concrete roster</text>
 
-  <rect x="818" y="188" width="308" height="72" rx="12" fill="#ffffff" stroke="#a65c16" stroke-width="2"/>
-  <text x="842" y="217" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="800">Academic Period</text>
-  <text x="842" y="240" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">durable enrollment window · dates may overlap</text>
+  <path d="M 380 256 V 344" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <text x="396" y="304" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">MAY OWN</text>
+  <rect x="280" y="344" width="200" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="304" y="384" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Child Academic</text>
+  <text x="304" y="408" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Unit</text>
+  <text x="304" y="440" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">the same rules recurse</text>
 
-  <rect x="818" y="302" width="146" height="76" rx="11" fill="#ffffff" stroke="#a65c16"/>
-  <text x="891" y="330" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="750">Institution-owned</text>
-  <text x="891" y="351" text-anchor="middle" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">applies to every unit</text>
+  <path d="M 1056 256 V 360" fill="none" stroke="#5c00aa" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+  <text x="1032" y="312" text-anchor="end" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NAMES EXACTLY ONE</text>
+  <rect x="848" y="360" width="296" height="152" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="872" y="404" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Academic Period</text>
+  <text x="872" y="436" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Institution- or Academic-Unit-owned</text>
+  <text x="872" y="464" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">applicable through owning scope</text>
+  <text x="872" y="492" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NEVER INFER A GLOBAL CURRENT PERIOD</text>
 
-  <rect x="980" y="302" width="146" height="76" rx="11" fill="#ffffff" stroke="#a65c16"/>
-  <text x="1053" y="330" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="750">Unit-owned</text>
-  <text x="1053" y="351" text-anchor="middle" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">owner + descendants</text>
-
-  <rect x="818" y="430" width="308" height="108" rx="12" fill="#ffffff" stroke="#a65c16" stroke-width="2"/>
-  <text x="842" y="459" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="800">Resolve applicability</text>
-  <text x="842" y="483" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">against the Programme's Academic Unit</text>
-  <rect x="842" y="500" width="260" height="24" rx="12" fill="#fff3e5"/>
-  <text x="972" y="516" text-anchor="middle" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="750">NO INFERRED GLOBAL CURRENT PERIOD</text>
-
-  <rect x="818" y="572" width="308" height="80" rx="12" fill="#fff3e5" stroke="#a65c16" stroke-width="2"/>
-  <text x="842" y="594" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">EXPLICIT CLASS LINK</text>
-  <text x="842" y="618" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Exactly one applicable</text>
-  <text x="842" y="640" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Academic Period, named explicitly</text>
-
-  <path d="M 972 260 V 278 M 891 278 H 1053" fill="none" stroke="#a65c16" stroke-width="2.5"/>
-  <circle cx="972" cy="278" r="4" fill="#a65c16"/>
-  <path d="M 891 278 V 302" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M 1053 278 V 302" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M 891 378 V 404 M 1053 378 V 404 M 891 404 H 1053 M 972 404 V 430" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <circle cx="972" cy="404" r="4" fill="#a65c16"/>
-  <path d="M 972 538 V 572" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M 690 631 H 818" fill="none" stroke="#a65c16" stroke-width="2.5" stroke-dasharray="7 6" marker-end="url(#arrow-amber)"/>
-
-  <path d="M 48 686 H 1152" stroke="#dfe3eb"/>
-  <circle cx="61" cy="703" r="5" fill="#a65c16"/>
-  <text x="76" y="707" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Periods organize enrollment. Membership records relationships. Roles and scoped bindings grant permission.</text>
+  <path d="M 56 584 V 600 H 1144 V 584" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="632" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Ownership has one parent. Period applicability is an explicit Class reference.</text>
 </svg>

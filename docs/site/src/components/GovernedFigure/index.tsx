@@ -1,6 +1,7 @@
 import React from 'react';
 
 import assetRegistry from '../../../../public/assets.json';
+import DocIcon from '@site/src/components/DocIcon';
 import styles from './styles.module.css';
 
 type AssetEntry = (typeof assetRegistry.assets)[number];
@@ -47,7 +48,7 @@ export default function GovernedFigure({
           href={entry.public_path}
           rel="noopener noreferrer"
           target="_blank">
-          Open full size <span aria-hidden="true">↗</span>
+          Open full size <DocIcon name="external" />
         </a>
       </figcaption>
     </figure>

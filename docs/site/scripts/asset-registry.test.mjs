@@ -150,6 +150,47 @@ test('rejects SVG paint outside the approved visual system', async () => {
   assert(result.failures.some((failure) => failure.includes('approved palette')));
 });
 
+test('accepts a declared local SVG paint server', async () => {
+  const svg =
+    '<svg width="100" height="50" viewBox="0 0 100 50"><defs><pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" stroke="#f4f1f6"/></pattern></defs><rect width="100" height="50" fill="url(#grid)"/></svg>';
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({svg}),
+    today: '2026-08-24',
+  });
+  assert.deepEqual(result.failures, []);
+});
+
+test('rejects illustration typography outside the owned scale', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({
+      svg: '<svg width="100" height="50" viewBox="0 0 100 50"><text x="8" y="24" font-family="Arial" font-size="11">Label</text></svg>',
+    }),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('font size 11')));
+  assert(result.failures.some((failure) => failure.includes('IBM Plex family')));
+});
+
+test('rejects illustration arrows outside the shared geometry', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({
+      svg: '<svg width="100" height="50" viewBox="0 0 100 50"><defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3"><path d="M0 0L6 3L0 6Z"/></marker></defs><path d="M8 25H92" marker-end="url(#arrow)"/></svg>',
+    }),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('arrow markers must be 12x12')));
+});
+
+test('rejects a missing local SVG paint server', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({
+      svg: '<svg width="100" height="50" viewBox="0 0 100 50"><rect width="100" height="50" fill="url(#missing)"/></svg>',
+    }),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('missing local id missing')));
+});
+
 test('rejects the retired cobalt paint from a current-system illustration', async () => {
   const svg =
     '<svg width="100" height="50" viewBox="0 0 100 50"><rect width="100" height="50" fill="#3657d6"/></svg>';

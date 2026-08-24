@@ -303,14 +303,11 @@ Authored stylesheets may use semantic custom properties and `color-mix()`, but
 they may not introduce literal colors, the retired `cobalt`/`aqua` token names,
 or unbundled font weights. The design-system audit rejects those forms.
 
-## Legacy illustration migration
+## Retired illustration systems
 
-The four diagrams created before this contract declare
-`legacy-cobalt-v0`. That palette is frozen to their exact registry IDs so no
-new asset can use it. Each diagram will be simplified or split, redrawn under
-`proctor-assurance-v1`, reviewed in its documentation page, and then removed
-from the legacy allowlist. The legacy declaration is a migration fact, not an
-alternative theme.
+The four original diagrams were simplified and redrawn under
+`proctor-assurance-v1`. The former `legacy-cobalt-v0` palette is not an
+alternative theme and is no longer accepted by the registry validator.
 
 ## Acceptance checklist
 

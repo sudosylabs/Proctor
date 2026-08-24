@@ -1,114 +1,80 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
-  <title id="title">Exam publication, Sitting delivery, and Attempt terminality</title>
-  <desc id="description">An Exam has one mutable revision-fenced Draft. Publishing creates an immutable numbered Exam Revision, which a Sitting selects together with one eligible Class and a bounded schedule. A Sitting moves from Scheduled to Open, may move between Open and Paused, then moves through Closing to Closed; a Scheduled Sitting may instead be Canceled. The first eligible connection lazily creates exactly one Attempt for that student and Sitting. An Attempt may move between Active and Suspended before exactly one terminal Submission, while Sitting closure automatically seals unfinished Attempts.</desc>
+  <title id="title">Exam publication and delivery boundary</title>
+  <desc id="description">An Exam owns one mutable Draft. Publishing freezes an immutable numbered Exam Revision before an Exam Sitting selects it for delivery. The first eligible connection creates one Exam Attempt, and submission or automatic sealing creates one terminal Submission.</desc>
   <defs>
-    <marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4c586f"/>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-neutral" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#655f69"/>
     </marker>
-    <marker id="arrow-cobalt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3657d6"/>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
     </marker>
-    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a65c16"/>
+    <marker id="arrow-complete" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#0b766e"/>
     </marker>
   </defs>
 
-  <rect width="1200" height="720" rx="18" fill="#ffffff"/>
-  <rect x="1" y="1" width="1198" height="718" rx="17" fill="none" stroke="#dfe3eb" stroke-width="2"/>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
 
-  <text x="48" y="52" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="750" letter-spacing="2.1">EXAM PUBLICATION &amp; DELIVERY</text>
-  <text x="48" y="84" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">Mutable work becomes immutable before delivery. Terminal states never reopen.</text>
+  <text x="56" y="112" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTHORING</text>
+  <path d="M 56 128 H 376" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="408" y="112" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">IMMUTABLE DELIVERY</text>
+  <path d="M 408 128 H 768" fill="none" stroke="#5c00aa" stroke-width="1"/>
+  <text x="800" y="112" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PARTICIPATION</text>
+  <path d="M 800 128 H 1144" fill="none" stroke="#c8c0ce" stroke-width="1"/>
 
-  <text x="48" y="118" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">AUTHOR → PUBLISH → DELIVER</text>
+  <rect x="56" y="176" width="128" height="144" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="220" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam</text>
+  <text x="80" y="252" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">stable identity</text>
+  <text x="80" y="288" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ONE DRAFT</text>
 
-  <rect x="48" y="136" width="210" height="116" rx="14" fill="#f7f8fb" stroke="#c7ceda" stroke-width="2"/>
-  <text x="72" y="168" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="800">Exam</text>
-  <text x="72" y="190" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">stable identity</text>
-  <text x="72" y="206" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">one Academic Unit</text>
-  <rect x="72" y="216" width="162" height="24" rx="12" fill="#eef1ff"/>
-  <text x="153" y="232" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="750">ONE MUTABLE DRAFT</text>
+  <path d="M 184 248 H 216" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
 
-  <rect x="308" y="136" width="260" height="116" rx="14" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
-  <text x="332" y="168" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="800">Exam Draft</text>
-  <text x="332" y="192" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">one mutable authoring state</text>
-  <text x="332" y="215" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="750">REVISION-FENCED EDITS</text>
-  <text x="332" y="236" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">publishing rebases; authoring continues</text>
+  <rect x="216" y="160" width="160" height="176" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="240" y="204" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Draft</text>
+  <text x="240" y="236" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">mutable authoring</text>
+  <text x="240" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">revision-fenced edits</text>
+  <text x="240" y="304" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">CHANGES HERE</text>
 
-  <rect x="618" y="136" width="250" height="116" rx="14" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
-  <text x="642" y="168" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="800">Exam Revision</text>
-  <text x="642" y="192" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">immutable numbered snapshot</text>
-  <text x="642" y="215" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="750">REVISION 1 … N</text>
-  <text x="642" y="236" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">frozen content, policy, and provenance</text>
+  <path d="M 376 248 H 408" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
 
-  <rect x="918" y="136" width="234" height="116" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="942" y="168" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="800">Exam Sitting</text>
-  <text x="942" y="192" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">one Revision + one eligible Class</text>
-  <text x="942" y="215" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="750">EXPLICIT TIME WINDOW</text>
-  <text x="942" y="236" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">delivery state belongs here</text>
+  <rect x="408" y="144" width="168" height="208" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <text x="432" y="188" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Revision</text>
+  <text x="432" y="220" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">immutable snapshot</text>
+  <text x="432" y="252" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">numbered 1 … n</text>
+  <path d="M 432 280 H 552" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <text x="432" y="312" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">FROZEN FOR DELIVERY</text>
 
-  <path d="M 258 194 H 308" fill="none" stroke="#4c586f" stroke-width="2.5" marker-end="url(#arrow-ink)"/>
-  <path d="M 568 194 H 618" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <text x="575" y="182" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="8" font-weight="800">PUBLISH</text>
-  <path d="M 868 194 H 918" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 576 248 H 608" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
 
-  <rect x="618" y="270" width="534" height="42" rx="10" fill="#fff3e5" stroke="#d9a66b"/>
-  <text x="638" y="288" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="800">LIVE CORRECTION</text>
-  <text x="638" y="303" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">Instructions/resources only; creates a Revision and retargets only the affected Open or Paused Sitting.</text>
+  <rect x="608" y="160" width="160" height="176" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="632" y="204" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Sitting</text>
+  <text x="632" y="236" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one Revision + Class</text>
+  <text x="632" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">explicit time window</text>
+  <text x="632" y="304" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SCHEDULE → CLOSED</text>
 
-  <rect x="48" y="328" width="1104" height="212" rx="14" fill="#f7f8fb" stroke="#dfe3eb" stroke-width="2"/>
-  <text x="72" y="357" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">SITTING STATE · POSTGRESQL AUTHORITATIVE</text>
-  <text x="72" y="377" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Scheduled work may cancel before opening; delivery otherwise converges through Closing.</text>
+  <path d="M 768 248 H 800" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
 
-  <rect x="72" y="394" width="146" height="54" rx="11" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="145" y="417" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Scheduled</text>
-  <text x="145" y="435" text-anchor="middle" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">future bounded window</text>
+  <rect x="800" y="160" width="144" height="176" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="824" y="204" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Attempt</text>
+  <text x="824" y="236" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one per student</text>
+  <text x="824" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">and Sitting</text>
+  <text x="824" y="304" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ACTIVE / SUSPENDED</text>
 
-  <rect x="268" y="394" width="120" height="54" rx="11" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
-  <text x="328" y="417" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Open</text>
-  <text x="328" y="435" text-anchor="middle" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">delivery active</text>
+  <path d="M 944 248 H 976" fill="none" stroke="#0b766e" stroke-width="3" marker-end="url(#arrow-complete)"/>
 
-  <rect x="438" y="394" width="128" height="54" rx="11" fill="#fff3e5" stroke="#a65c16" stroke-width="2"/>
-  <text x="502" y="417" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Paused</text>
-  <text x="502" y="435" text-anchor="middle" fill="#a65c16" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">writes blocked</text>
+  <rect x="976" y="144" width="168" height="208" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="1000" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Submission</text>
+  <text x="1000" y="220" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">answers + manifest</text>
+  <text x="1000" y="252" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">submitted</text>
+  <text x="1000" y="276" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">or auto-sealed</text>
+  <path d="M 1000 296 H 1120" fill="none" stroke="#0b766e" stroke-width="1"/>
+  <text x="1000" y="328" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">TERMINAL</text>
 
-  <rect x="72" y="466" width="146" height="52" rx="11" fill="#ffffff" stroke="#c7ceda" stroke-width="2"/>
-  <text x="145" y="488" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Canceled</text>
-  <text x="145" y="505" text-anchor="middle" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">terminal before open</text>
-
-  <rect x="688" y="466" width="130" height="52" rx="11" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
-  <text x="753" y="488" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Closing</text>
-  <text x="753" y="505" text-anchor="middle" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">seal unfinished</text>
-
-  <rect x="914" y="466" width="130" height="52" rx="11" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
-  <text x="979" y="488" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="800">Closed</text>
-  <text x="979" y="505" text-anchor="middle" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">all Attempts terminal</text>
-
-  <path d="M 218 421 H 268" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 145 448 V 466" fill="none" stroke="#4c586f" stroke-width="2.5" marker-end="url(#arrow-ink)"/>
-  <path d="M 388 409 H 438" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M 438 433 H 388" fill="none" stroke="#a65c16" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M 328 448 V 458 H 644 M 502 448 V 458 H 644" fill="none" stroke="#3657d6" stroke-width="2.5"/>
-  <circle cx="644" cy="458" r="4" fill="#3657d6"/>
-  <path d="M 644 458 V 492 H 688" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 818 492 H 914" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-
-  <rect x="48" y="566" width="1104" height="106" rx="14" fill="#ffffff" stroke="#dfe3eb" stroke-width="2"/>
-  <text x="72" y="591" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800" letter-spacing="1.4">ATTEMPT TERMINALITY</text>
-
-  <rect x="72" y="606" width="250" height="46" rx="10" fill="#f7f8fb" stroke="#c7ceda"/>
-  <text x="92" y="626" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="750">First eligible connection</text>
-  <text x="92" y="643" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">current exact-Class membership</text>
-
-  <rect x="418" y="606" width="300" height="46" rx="10" fill="#eef1ff" stroke="#3657d6"/>
-  <text x="438" y="626" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="750">One Exam Attempt</text>
-  <text x="438" y="643" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="750">ACTIVE ↔ SUSPENDED</text>
-
-  <rect x="814" y="606" width="314" height="46" rx="10" fill="#3657d6" stroke="#2945b8"/>
-  <text x="834" y="626" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="800">One Submission</text>
-  <text x="834" y="643" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">terminal · no reopen or resubmission</text>
-
-  <path d="M 322 629 H 418" fill="none" stroke="#4c586f" stroke-width="2.5" marker-end="url(#arrow-ink)"/>
-  <path d="M 718 629 H 814" fill="none" stroke="#3657d6" stroke-width="2.5" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 753 518 V 556 H 971 V 606" fill="none" stroke="#a65c16" stroke-width="2.5" stroke-dasharray="7 6" marker-end="url(#arrow-amber)"/>
-  <text x="778" y="550" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="800">SITTING CLOSE AUTO-SEALS</text>
+  <path d="M 56 472 V 488 H 1144 V 472" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="528" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Only the Draft changes. Publishing freezes a Revision before delivery begins.</text>
+  <text x="600" y="552" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Submission and automatic Sitting closure converge on one terminal result.</text>
 </svg>

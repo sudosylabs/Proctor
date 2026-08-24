@@ -77,13 +77,12 @@ or reconstructible effects, amber for human attention, and coral only for
 blocked or fail-closed outcomes. Labels, line styles, ordering, and shapes must
 communicate the same distinction without color. Keep diagrams on a white
 technical plate so light, dark, print, and high-contrast contexts retain the
-same evidence. The frozen `legacy-cobalt-v0` system exists only for the four
-tracked migration assets named by the design-system module; it cannot be used
-for new work.
+same evidence. The retired `legacy-cobalt-v0` system is no longer accepted by
+the registry or palette validator.
 
 Normal text must retain at least 4.5:1 contrast against its actual plate. Use
-`#5f6b80` or darker for muted labels on white and near-white surfaces; the
-older `#6d788c` token is too light for small diagram text. The SVG validator
+the current `#655f69` muted-ink token or darker for labels on white and
+near-white surfaces. The SVG validator
 enforces the approved palette so one-off colors cannot silently fragment the
 visual system.
 

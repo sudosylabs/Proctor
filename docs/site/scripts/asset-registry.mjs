@@ -3,7 +3,10 @@ import {lstat, readFile, readdir} from 'node:fs/promises';
 import {dirname, extname, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-import {illustrationPalette} from '../design-system/index.mjs';
+import {
+  CURRENT_ILLUSTRATION_SYSTEM,
+  illustrationPalette,
+} from '../design-system/index.mjs';
 
 const scriptRoot = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(scriptRoot, '../../..');
@@ -81,7 +84,41 @@ async function walk(directory, {extensions, skip = new Set()} = {}) {
   return files;
 }
 
-function parseSVGDimensions(source, name, failures, approvedPalette) {
+function validateCurrentIllustrationGrammar(source, name, failures) {
+  for (const match of source.matchAll(/\bfont-size\s*=\s*["']([^"']+)["']/gi)) {
+    if (![12, 14, 18].includes(Number(match[1]))) {
+      failures.push(`${name}: illustration font size ${match[1]} is outside 12, 14, or 18`);
+    }
+  }
+  for (const match of source.matchAll(/\bfont-family\s*=\s*["']([^"']+)["']/gi)) {
+    if (!match[1].startsWith('IBM Plex Sans') && !match[1].startsWith('IBM Plex Mono')) {
+      failures.push(`${name}: illustration text must begin with an IBM Plex family`);
+    }
+  }
+  for (const match of source.matchAll(/\bstroke-width\s*=\s*["']([^"']+)["']/gi)) {
+    if (![1, 2, 3].includes(Number(match[1]))) {
+      failures.push(`${name}: illustration stroke width ${match[1]} is outside 1, 2, or 3`);
+    }
+  }
+  for (const marker of source.matchAll(/<marker\b([^>]*)>/gi)) {
+    const attributes = marker[1];
+    const values = Object.fromEntries(
+      [...attributes.matchAll(/\b(markerWidth|markerHeight|refX|refY)\s*=\s*["']([^"']+)["']/gi)].map(
+        (match) => [match[1].toLowerCase(), Number(match[2])],
+      ),
+    );
+    if (
+      values.markerwidth !== 12 ||
+      values.markerheight !== 12 ||
+      values.refx !== 12 ||
+      values.refy !== 6
+    ) {
+      failures.push(`${name}: arrow markers must be 12x12 with refX 12 and refY 6`);
+    }
+  }
+}
+
+function parseSVGDimensions(source, name, failures, approvedPalette, visualSystem) {
   if (/<!DOCTYPE|<!ENTITY/i.test(source)) {
     failures.push(`${name}: SVG doctypes and entities are forbidden`);
   }
@@ -106,11 +143,26 @@ function parseSVGDimensions(source, name, failures, approvedPalette) {
       failures.push(`${name}: SVG references an external resource through ${match[1]}`);
     }
   }
+  const localIds = new Set(
+    [...source.matchAll(/\bid\s*=\s*["']([^"']+)["']/gi)].map((match) =>
+      match[1].toLowerCase(),
+    ),
+  );
   for (const match of source.matchAll(/\b(?:fill|stroke)\s*=\s*["']([^"']+)["']/gi)) {
     const color = match[1].toLowerCase();
+    const localPaint = color.match(/^url\(\s*#([^\s)]+)\s*\)$/);
+    if (localPaint) {
+      if (!localIds.has(localPaint[1])) {
+        failures.push(`${name}: SVG paint references missing local id ${localPaint[1]}`);
+      }
+      continue;
+    }
     if (color !== 'none' && !approvedPalette.has(color)) {
       failures.push(`${name}: SVG paint ${match[1]} is outside the approved palette`);
     }
+  }
+  if (visualSystem === CURRENT_ILLUSTRATION_SYSTEM) {
+    validateCurrentIllustrationGrammar(source, name, failures);
   }
 
   const root = source.match(/<svg\b([^>]*)>/i)?.[1] ?? '';
@@ -426,6 +478,7 @@ export async function auditAssetRegistry({
         label,
         failures,
         approvedPalette,
+        entry.visual_system,
       );
     } else {
       dimensions = parsePNGDimensions(data, label, failures);

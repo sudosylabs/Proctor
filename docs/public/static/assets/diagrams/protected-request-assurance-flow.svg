@@ -1,140 +1,86 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
-  <title id="title">Protected request authentication, assurance, and authorization flow</title>
-  <desc id="description">The transport validates one credential source, checks CSRF for unsafe cookie requests, and enforces the route assurance requirement to establish an immutable principal. The application then evaluates a stable action and exact resource against current PostgreSQL state and durably records allow or deny. Every failed or unavailable gate stops the request.</desc>
+  <title id="title">Protected request proof and permission</title>
+  <desc id="description">One presented credential passes through a transport proof gate to establish an immutable principal. That principal carries identity and assurance but no permission snapshot. The owning use case combines the principal with an action and exact resource, reads current PostgreSQL authority, and durably records an allow or deny decision.</desc>
   <defs>
-    <marker id="arrow-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4c586f"/>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-neutral" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#655f69"/>
     </marker>
-    <marker id="arrow-cobalt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3657d6"/>
-    </marker>
-    <marker id="arrow-coral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c53d4d"/>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
     </marker>
   </defs>
 
-  <rect width="1200" height="720" rx="18" fill="#ffffff"/>
-  <rect x="1" y="1" width="1198" height="718" rx="17" fill="none" stroke="#dfe3eb" stroke-width="2"/>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
 
-  <text x="48" y="52" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="750" letter-spacing="2.1">PROTECTED REQUEST CLEARANCE</text>
-  <text x="48" y="84" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">Authentication proves who is asking. Authorization decides this action on this resource now.</text>
+  <rect x="56" y="96" width="248" height="200" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="136" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Presented credential</text>
+  <text x="80" y="160" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXACTLY ONE SOURCE</text>
+  <path d="M 80 184 H 280" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="80" y="216" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser Session cookie</text>
+  <text x="80" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Session access bearer</text>
+  <text x="80" y="280" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Personal Access Token</text>
 
-  <text x="48" y="116" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">01 · PRESENTED REQUEST</text>
-  <rect x="48" y="130" width="270" height="230" rx="14" fill="#f7f8fb" stroke="#c7ceda" stroke-width="2"/>
-  <text x="70" y="160" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Exactly one credential source</text>
-  <text x="70" y="179" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Secrets stay in cookies or headers.</text>
-  <text x="70" y="194" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Never place them in URLs.</text>
+  <path d="M 304 196 H 352" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
 
-  <rect x="70" y="202" width="226" height="42" rx="8" fill="#ffffff" stroke="#c7ceda"/>
-  <rect x="82" y="214" width="18" height="18" rx="5" fill="#eef1ff" stroke="#3657d6"/>
-  <path d="M 87 223 H 95 M 91 219 V 227" stroke="#3657d6" stroke-width="1.5"/>
-  <text x="112" y="228" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="650">Browser Session cookie</text>
+  <rect x="352" y="72" width="328" height="248" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="376" y="112" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Transport proof</text>
+  <text x="376" y="136" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Match the route requirement</text>
 
-  <rect x="70" y="254" width="226" height="42" rx="8" fill="#ffffff" stroke="#c7ceda"/>
-  <rect x="82" y="266" width="18" height="18" rx="9" fill="#eef1ff" stroke="#3657d6"/>
-  <text x="91" y="279" text-anchor="middle" fill="#3657d6" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">S</text>
-  <text x="112" y="280" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="650">Session access bearer</text>
+  <circle cx="392" cy="176" r="16" fill="#5c00aa"/>
+  <text x="392" y="181" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">1</text>
+  <text x="424" y="181" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Validate source and credential</text>
 
-  <rect x="70" y="306" width="226" height="34" rx="8" fill="#ffffff" stroke="#c7ceda"/>
-  <rect x="82" y="314" width="18" height="18" rx="9" fill="#eef1ff" stroke="#3657d6"/>
-  <text x="91" y="327" text-anchor="middle" fill="#3657d6" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="800">PAT</text>
-  <text x="112" y="328" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="650">Personal Access Token</text>
+  <circle cx="392" cy="224" r="16" fill="#5c00aa"/>
+  <text x="392" y="229" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">2</text>
+  <text x="424" y="221" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Check CSRF for unsafe cookie use</text>
+  <text x="424" y="245" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">No source precedence fallback</text>
 
-  <path d="M 318 245 H 342" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
+  <circle cx="392" cy="280" r="16" fill="#5c00aa"/>
+  <text x="392" y="285" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">3</text>
+  <text x="424" y="285" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Enforce strength and recency</text>
 
-  <text x="342" y="116" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">02 · TRANSPORT PROOF GATE</text>
-  <rect x="342" y="130" width="380" height="230" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="366" y="160" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Match the route's declared requirement</text>
+  <path d="M 680 196 H 728" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
 
-  <circle cx="376" cy="196" r="10" fill="#3657d6"/>
-  <text x="376" y="200" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">1</text>
-  <text x="398" y="194" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Resolve and validate the credential</text>
-  <text x="398" y="212" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Mixed or duplicate sources have no precedence fallback.</text>
+  <rect x="728" y="96" width="416" height="200" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <text x="752" y="136" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Immutable principal</text>
+  <text x="752" y="168" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">IDENTITY</text>
+  <text x="904" y="168" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">who is asking</text>
+  <text x="752" y="200" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">CREDENTIAL</text>
+  <text x="904" y="200" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">how they proved it</text>
+  <text x="752" y="232" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ASSURANCE</text>
+  <text x="904" y="232" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">strength and auth time</text>
+  <path d="M 752 248 H 1120" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <text x="936" y="274" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO ROLE · PERMISSION · MEMBERSHIP SNAPSHOT</text>
 
-  <circle cx="376" cy="245" r="10" fill="#3657d6"/>
-  <text x="376" y="249" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">2</text>
-  <text x="398" y="243" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Unsafe cookie request → verify CSRF</text>
-  <text x="398" y="261" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">The rotating Session proof must match exactly.</text>
+  <path d="M 936 296 V 352" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <rect x="56" y="352" width="1088" height="64" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="600" y="392" text-anchor="middle" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Identity + assurance is not permission</text>
 
-  <circle cx="376" cy="294" r="10" fill="#3657d6"/>
-  <text x="376" y="298" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">3</text>
-  <text x="398" y="292" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Enforce credential, strength, and recency</text>
+  <path d="M 936 416 V 448 H 192 V 480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <rect x="56" y="480" width="272" height="136" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="520" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Owning use case</text>
+  <text x="80" y="552" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PRINCIPAL + ACTION</text>
+  <text x="80" y="580" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">+ EXACT RESOURCE</text>
 
-  <rect x="398" y="309" width="65" height="25" rx="12" fill="#eef1ff"/>
-  <text x="430" y="326" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="700">PRINCIPAL</text>
-  <rect x="470" y="309" width="58" height="25" rx="12" fill="#eef1ff"/>
-  <text x="499" y="326" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="700">SESSION</text>
-  <rect x="535" y="309" width="56" height="25" rx="12" fill="#eef1ff"/>
-  <text x="563" y="326" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="700">STRONG</text>
-  <rect x="598" y="309" width="56" height="25" rx="12" fill="#fff3e5"/>
-  <text x="626" y="326" text-anchor="middle" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="700">RECENT</text>
+  <path d="M 328 548 H 400" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <rect x="400" y="480" width="344" height="136" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="424" y="520" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Current PostgreSQL authority</text>
+  <text x="424" y="552" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Roles, bindings, scope, relationships</text>
+  <text x="424" y="580" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">READ AGAIN FOR THIS DECISION</text>
 
-  <path d="M 722 245 H 746" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 744 548 H 816" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <rect x="816" y="456" width="328" height="160" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="840" y="496" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Durable decision</text>
+  <text x="840" y="520" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Audit before returning</text>
+  <rect x="840" y="544" width="128" height="48" rx="6" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="904" y="574" text-anchor="middle" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ALLOW</text>
+  <rect x="984" y="544" width="136" height="48" rx="6" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="1052" y="574" text-anchor="middle" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DENY / STOP</text>
 
-  <text x="746" y="116" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">03 · TRANSPORT OUTPUT</text>
-  <rect x="746" y="130" width="406" height="230" rx="14" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
-  <text x="770" y="162" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18" font-weight="800">Immutable principal</text>
-  <rect x="1015" y="145" width="113" height="28" rx="14" fill="#ffffff"/>
-  <text x="1071" y="163" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">REQUEST-BOUND</text>
-
-  <path d="M 770 188 H 1128" stroke="#7f94e7"/>
-  <text x="770" y="214" fill="#eef1ff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11">USER IDENTITY</text>
-  <text x="934" y="214" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="650">who</text>
-  <text x="770" y="240" fill="#eef1ff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11">CREDENTIAL + CEILING</text>
-  <text x="934" y="240" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="650">how</text>
-  <text x="770" y="266" fill="#eef1ff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11">PROVIDER + CLIENT</text>
-  <text x="934" y="266" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="650">context</text>
-  <text x="770" y="292" fill="#eef1ff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11">STRENGTH + AUTH TIME</text>
-  <text x="934" y="292" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="650">assurance</text>
-
-  <rect x="770" y="310" width="358" height="30" rx="7" fill="#2945b8" stroke="#91a5ff"/>
-  <text x="949" y="330" text-anchor="middle" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="750">NO ROLE · PERMISSION · MEMBERSHIP SNAPSHOT</text>
-
-  <rect x="48" y="382" width="1104" height="58" rx="10" fill="#eef1ff" stroke="#c7ceda"/>
-  <text x="72" y="407" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="800">PROOF BOUNDARY</text>
-  <text x="72" y="426" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">The transport may reject early. Passing this rail does not authorize the requested resource.</text>
-  <rect x="898" y="397" width="230" height="28" rx="14" fill="#3657d6"/>
-  <text x="1013" y="416" text-anchor="middle" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">NOT A PERMISSION RECEIPT</text>
-  <path d="M 949 360 V 382" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 949 440 V 456 H 330 V 482" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
-
-  <text x="48" y="468" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">04 · APPLICATION AUTHORITY</text>
-  <rect x="48" y="482" width="302" height="150" rx="14" fill="#ffffff" stroke="#c7ceda" stroke-width="2"/>
-  <text x="70" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Owning use case</text>
-  <text x="70" y="537" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">PRINCIPAL</text>
-  <text x="70" y="561" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">+ STABLE ACTION</text>
-  <text x="70" y="585" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">+ EXACT RESOURCE</text>
-  <text x="70" y="613" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Sensitive use cases repeat their assurance guard.</text>
-
-  <path d="M 350 557 H 374" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
-
-  <rect x="374" y="482" width="378" height="150" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="398" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Read current PostgreSQL authority</text>
-  <circle cx="405" cy="536" r="4" fill="#3657d6"/>
-  <text x="418" y="540" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Active Roles and scoped Role Bindings</text>
-  <circle cx="405" cy="560" r="4" fill="#3657d6"/>
-  <text x="418" y="564" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Resource lineage and current relationships</text>
-  <circle cx="405" cy="584" r="4" fill="#3657d6"/>
-  <text x="418" y="588" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">PAT scope only narrows; it never grants</text>
-  <rect x="398" y="601" width="225" height="22" rx="11" fill="#eef1ff"/>
-  <text x="510" y="616" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="750">NO AUTHORIZATION-RESULT CACHE</text>
-
-  <path d="M 752 557 H 776" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
-
-  <rect x="776" y="482" width="376" height="150" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
-  <text x="800" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Durably record the decision</text>
-  <text x="800" y="536" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Authorize records allow or deny before returning.</text>
-  <rect x="800" y="554" width="146" height="42" rx="9" fill="#3657d6"/>
-  <text x="873" y="572" text-anchor="middle" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">ALLOW</text>
-  <text x="873" y="587" text-anchor="middle" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">use case proceeds</text>
-  <rect x="958" y="554" width="170" height="42" rx="9" fill="#fff0f1" stroke="#c53d4d"/>
-  <text x="1043" y="572" text-anchor="middle" fill="#c53d4d" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">DENY / UNAVAILABLE</text>
-  <text x="1043" y="587" text-anchor="middle" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">no mutation</text>
-  <text x="800" y="617" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Audit failure cannot become an undocumented allow.</text>
-
-  <path d="M 532 360 V 370 H 32 V 674 H 48" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
-  <path d="M 1128 575 H 1138 V 652" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
-  <rect x="48" y="652" width="1104" height="45" rx="9" fill="#c53d4d"/>
-  <text x="72" y="680" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="800">FAIL CLOSED</text>
-  <text x="172" y="680" fill="#fff0f1" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">ambiguous credential · invalid CSRF · insufficient assurance · denied or unavailable authority/audit</text>
+  <path d="M 56 624 V 640 H 1144 V 624" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="660" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Proof establishes a principal. Current authority decides permission.</text>
 </svg>

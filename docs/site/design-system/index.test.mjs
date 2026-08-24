@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import {
   CURRENT_ILLUSTRATION_SYSTEM,
-  LEGACY_ILLUSTRATION_SYSTEM,
   auditDesignSystem,
   illustrationPalette,
   renderDesignTokenCSS,
@@ -27,15 +26,9 @@ test('current illustrations use the purple semantic palette', () => {
   assert(!palette.has('#3657d6'));
 });
 
-test('the cobalt palette is frozen to the four migration assets', () => {
-  assert(
-    illustrationPalette(
-      LEGACY_ILLUSTRATION_SYSTEM,
-      'installation-authority-topology',
-    ).has('#3657d6'),
-  );
+test('retired illustration systems are no longer accepted', () => {
   assert.throws(
-    () => illustrationPalette(LEGACY_ILLUSTRATION_SYSTEM, 'new-diagram'),
-    /frozen/,
+    () => illustrationPalette('legacy-cobalt-v0', 'installation-authority-topology'),
+    /unknown illustration system/,
   );
 });

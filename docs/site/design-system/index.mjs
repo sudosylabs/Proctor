@@ -8,8 +8,6 @@ const moduleRoot = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(moduleRoot, '../../..');
 
 export const CURRENT_ILLUSTRATION_SYSTEM = designTokens.illustration.system;
-export const LEGACY_ILLUSTRATION_SYSTEM =
-  designTokens.legacyIllustrations.system;
 
 function cssVariables(values, prefix = '--proctor-') {
   return Object.entries(values)
@@ -243,14 +241,6 @@ export async function auditDesignSystem({repoRoot = defaultRepoRoot} = {}) {
 export function illustrationPalette(system, assetId) {
   if (system === designTokens.illustration.system) {
     return new Set(designTokens.illustration.palette);
-  }
-  if (system === designTokens.legacyIllustrations.system) {
-    if (!designTokens.legacyIllustrations.assetIds.includes(assetId)) {
-      throw new Error(
-        `${system} is frozen and cannot be assigned to asset ${assetId}`,
-      );
-    }
-    return new Set(designTokens.legacyIllustrations.palette);
   }
   throw new Error(`unknown illustration system ${system}`);
 }
