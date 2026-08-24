@@ -73,6 +73,12 @@ and shapes must communicate the same distinction without color. Keep diagrams
 on a white technical plate so light, dark, print, and high-contrast contexts
 retain the same evidence.
 
+Normal text must retain at least 4.5:1 contrast against its actual plate. Use
+`#5f6b80` or darker for muted labels on white and near-white surfaces; the
+older `#6d788c` token is too light for small diagram text. The SVG validator
+enforces the approved palette so one-off colors cannot silently fragment the
+visual system.
+
 Use system font fallbacks only. Preserve a numeric `width`, `height`, and
 matching `viewBox`; keep primary labels legible at the desktop content width.
 At mobile width, the complete structure must remain recognizable and the

@@ -19,11 +19,11 @@
   <text x="48" y="52" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="750" letter-spacing="2.1">PROTECTED REQUEST CLEARANCE</text>
   <text x="48" y="84" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">Authentication proves who is asking. Authorization decides this action on this resource now.</text>
 
-  <text x="48" y="116" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">01 · PRESENTED REQUEST</text>
+  <text x="48" y="116" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">01 · PRESENTED REQUEST</text>
   <rect x="48" y="130" width="270" height="230" rx="14" fill="#f7f8fb" stroke="#c7ceda" stroke-width="2"/>
   <text x="70" y="160" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Exactly one credential source</text>
-  <text x="70" y="179" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Secrets stay in cookies or headers.</text>
-  <text x="70" y="194" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Never place them in URLs.</text>
+  <text x="70" y="179" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Secrets stay in cookies or headers.</text>
+  <text x="70" y="194" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Never place them in URLs.</text>
 
   <rect x="70" y="202" width="226" height="42" rx="8" fill="#ffffff" stroke="#c7ceda"/>
   <rect x="82" y="214" width="18" height="18" rx="5" fill="#eef1ff" stroke="#3657d6"/>
@@ -42,19 +42,19 @@
 
   <path d="M 318 245 H 342" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
 
-  <text x="342" y="116" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">02 · TRANSPORT PROOF GATE</text>
+  <text x="342" y="116" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">02 · TRANSPORT PROOF GATE</text>
   <rect x="342" y="130" width="380" height="230" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
   <text x="366" y="160" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Match the route's declared requirement</text>
 
   <circle cx="376" cy="196" r="10" fill="#3657d6"/>
   <text x="376" y="200" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">1</text>
   <text x="398" y="194" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Resolve and validate the credential</text>
-  <text x="398" y="212" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Mixed or duplicate sources have no precedence fallback.</text>
+  <text x="398" y="212" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Mixed or duplicate sources have no precedence fallback.</text>
 
   <circle cx="376" cy="245" r="10" fill="#3657d6"/>
   <text x="376" y="249" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">2</text>
   <text x="398" y="243" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Unsafe cookie request → verify CSRF</text>
-  <text x="398" y="261" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">The rotating Session proof must match exactly.</text>
+  <text x="398" y="261" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">The rotating Session proof must match exactly.</text>
 
   <circle cx="376" cy="294" r="10" fill="#3657d6"/>
   <text x="376" y="298" text-anchor="middle" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" font-weight="800">3</text>
@@ -98,13 +98,13 @@
   <path d="M 949 360 V 382" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
   <path d="M 949 440 V 456 H 330 V 482" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
 
-  <text x="48" y="468" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">04 · APPLICATION AUTHORITY</text>
+  <text x="48" y="468" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">04 · APPLICATION AUTHORITY</text>
   <rect x="48" y="482" width="302" height="150" rx="14" fill="#ffffff" stroke="#c7ceda" stroke-width="2"/>
   <text x="70" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Owning use case</text>
   <text x="70" y="537" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">PRINCIPAL</text>
   <text x="70" y="561" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">+ STABLE ACTION</text>
   <text x="70" y="585" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">+ EXACT RESOURCE</text>
-  <text x="70" y="613" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Sensitive use cases repeat their assurance guard.</text>
+  <text x="70" y="613" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Sensitive use cases repeat their assurance guard.</text>
 
   <path d="M 350 557 H 374" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
 
@@ -130,7 +130,7 @@
   <rect x="958" y="554" width="170" height="42" rx="9" fill="#fff0f1" stroke="#c53d4d"/>
   <text x="1043" y="572" text-anchor="middle" fill="#c53d4d" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">DENY / UNAVAILABLE</text>
   <text x="1043" y="587" text-anchor="middle" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">no mutation</text>
-  <text x="800" y="617" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Audit failure cannot become an undocumented allow.</text>
+  <text x="800" y="617" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Audit failure cannot become an undocumented allow.</text>
 
   <path d="M 532 360 V 370 H 32 V 674 H 48" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
   <path d="M 1128 575 H 1138 V 652" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>

@@ -872,10 +872,11 @@ relevant advisories. The first slice therefore proves the alternative already
 required by section 1.3: reviewed SVG and PNG files are served from a constrained
 static directory, authored MDX supplies only a registry ID, and Docusaurus'
 vulnerable authored-image parser never reads the content asset. The registry,
-validator, deterministic screenshot contract, installation-authority diagram,
-and protected-request authentication/assurance diagram are implemented. The
-remaining prioritized diagrams and UI-specific screenshot fixtures are later
-Phase 3 slices.
+validator, deterministic screenshot contract, hash-bound desktop/mobile visual
+acceptance record, installation-authority diagram, protected-request
+authentication/assurance diagram, and academic-structure ownership map are
+implemented. The remaining prioritized diagrams and UI-specific screenshot
+fixtures are later Phase 3 slices.
 
 **Work**
 

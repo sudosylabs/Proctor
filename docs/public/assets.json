@@ -26,7 +26,7 @@
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",
-        "source_sha256": "853c110de1697342920571dfe9fb5ab5ac0e76ef7b10436755744cd4945f8fcd",
+        "source_sha256": "01c4098d8891c58f0a165fbf56b7f36e82d53f7cab6b14bf4d2c14e43f1045ab",
         "reviewed": "2026-08-24",
         "method": "Browser geometry inspection at full size and rendered documentation widths.",
         "checks": [
@@ -79,7 +79,7 @@
       "last_reviewed": "2026-08-24",
       "visual_review": {
         "status": "approved",
-        "source_sha256": "7ee113d7dc0e2d5a344cbb24701abfe15b459920b598a00e04b4ede9e8eeb3ff",
+        "source_sha256": "a11ca847c7452cdddab23f209f77c00dc538112b8c79a6db3cbdf6f7e4aa258f",
         "reviewed": "2026-08-24",
         "method": "Browser geometry inspection at full size and rendered documentation widths.",
         "checks": [
@@ -110,6 +110,61 @@
         "server/httpapi/handler.go",
         "server/app/session_assurance.go",
         "server/app/authorization.go"
+      ]
+    },
+    {
+      "id": "academic-structure-ownership-map",
+      "path": "static/assets/diagrams/academic-structure-ownership-map.svg",
+      "public_path": "/assets/diagrams/academic-structure-ownership-map.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's canonical academic-structure and authorization contracts.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains canonical domain labels and generic relationship descriptions only; no Institution, Academic Unit, Programme, Class, User, enrollment, or operational data."
+      },
+      "alt": "One Institution owns a hierarchy of Academic Units. Each Academic Unit may own child units and Programmes; each Programme owns Programme Levels; and each Class is one concrete roster under a Programme Level. Academic Periods may be Institution-owned and apply everywhere, or Academic-Unit-owned and apply to that unit and its descendants. Every Class explicitly names exactly one Academic Period applicable to its Programme's Academic Unit.",
+      "caption": "Academic Units may recurse, but Programme, Programme Level, and Class ownership is singular. A Class explicitly names one applicable Institution- or Academic-Unit-owned Period; Proctor never infers a global current Period.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "last_reviewed": "2026-08-24",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "a500d3d23cb283be06b1db7f113dc5240f680ae3a54fc577a32bc27afa0c3c4b",
+        "reviewed": "2026-08-24",
+        "method": "Browser geometry inspection at full size and rendered documentation widths.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "CONTEXT.md",
+        "docs/architecture/domain.md",
+        "docs/architecture/authorization.md",
+        "docs/api/recipes/academic-structure.mdx"
       ]
     }
   ]

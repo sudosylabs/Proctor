@@ -138,6 +138,16 @@ test('rejects external SVG resources', async () => {
   assert(result.failures.some((failure) => failure.includes('external resource')));
 });
 
+test('rejects SVG paint outside the approved visual system', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({
+      svg: '<svg width="100" height="50" viewBox="0 0 100 50"><rect width="100" height="50" fill="#123456"/></svg>',
+    }),
+    today: '2026-08-24',
+  });
+  assert(result.failures.some((failure) => failure.includes('approved palette')));
+});
+
 test('rejects dimension drift', async () => {
   const result = await auditAssetRegistry({
     repoRoot: await fixture({width: 99}),

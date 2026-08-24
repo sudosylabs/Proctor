@@ -31,6 +31,28 @@ const maximumBytesByExtension = new Map([
   ['.svg', 250_000],
 ]);
 const documentationExtensions = new Set(['.md', '.mdx']);
+const approvedSVGPalette = new Set([
+  '#0d806e',
+  '#172033',
+  '#2945b8',
+  '#3657d6',
+  '#4c586f',
+  '#5f6b80',
+  '#7f94e7',
+  '#91a5ff',
+  '#a65c16',
+  '#c53d4d',
+  '#c7ceda',
+  '#d9a66b',
+  '#dfe3eb',
+  '#e7f5f1',
+  '#eef1ff',
+  '#f7f8fb',
+  '#fff0f1',
+  '#fff3e5',
+  '#fff8ef',
+  '#ffffff',
+]);
 const requiredVisualChecks = new Set([
   'text_containment',
   'connector_continuity',
@@ -102,6 +124,12 @@ function parseSVGDimensions(source, name, failures) {
   for (const match of source.matchAll(/url\(\s*["']?([^)'"\s]+)["']?\s*\)/gi)) {
     if (!match[1].startsWith('#')) {
       failures.push(`${name}: SVG references an external resource through ${match[1]}`);
+    }
+  }
+  for (const match of source.matchAll(/\b(?:fill|stroke)\s*=\s*["']([^"']+)["']/gi)) {
+    const color = match[1].toLowerCase();
+    if (color !== 'none' && !approvedSVGPalette.has(color)) {
+      failures.push(`${name}: SVG paint ${match[1]} is outside the approved palette`);
     }
   }
 

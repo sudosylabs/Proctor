@@ -20,7 +20,7 @@
   <text x="48" y="86" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="18">One institution · one authority model · one node or many</text>
 
   <rect x="48" y="122" width="210" height="260" rx="14" fill="#f7f8fb" stroke="#dfe3eb" stroke-width="2"/>
-  <text x="70" y="151" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">CLIENT CONTEXTS</text>
+  <text x="70" y="151" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">CLIENT CONTEXTS</text>
 
   <rect x="70" y="174" width="166" height="52" rx="9" fill="#ffffff" stroke="#c7ceda"/>
   <circle cx="92" cy="200" r="7" fill="#3657d6"/>
@@ -35,7 +35,7 @@
   <text x="108" y="333" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="650">Candidate client</text>
 
   <path d="M 258 252 H 326" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
-  <text x="267" y="240" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10">HTTPS/WSS</text>
+  <text x="267" y="240" fill="#5f6b80" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10">HTTPS/WSS</text>
 
   <rect x="326" y="122" width="456" height="260" rx="14" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
   <text x="350" y="151" fill="#2945b8" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">PROCTOR INSTALLATION</text>
@@ -65,7 +65,7 @@
   <text x="689" y="438" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">COMMIT FIRST</text>
   <path d="M 225 463 V 518 M 605 463 V 518" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
 
-  <text x="48" y="498" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">AUTHORITATIVE STORES</text>
+  <text x="48" y="498" fill="#5f6b80" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">AUTHORITATIVE STORES</text>
 
   <rect x="48" y="518" width="354" height="128" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
   <rect x="68" y="540" width="54" height="54" rx="27" fill="#eef1ff"/>
