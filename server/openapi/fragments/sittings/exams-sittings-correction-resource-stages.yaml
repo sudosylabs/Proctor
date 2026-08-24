@@ -1,0 +1,149 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/correction-resource-stages:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+    post:
+      operationId: stageExamSittingCorrectionResourceContent
+      summary: Stage one purpose-bound Exam Resource upload for a live Sitting correction
+      tags:
+        - Sittings
+      description: >-
+        The multipart body contains metadata first and content second. A successful response exposes only authoritative ready-stage metadata; storage and lease identities remain private.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.sitting.correction.invalid
+        - exam.sitting.correction.conflict
+        - exam.sitting.correction.unavailable
+        - exam.archived
+        - exam.sitting.revision_conflict
+        - exam.sitting.state_conflict
+        - exam.sitting.deadline_reached
+        - exam.sitting.correction.invalid_content
+        - exam.sitting.correction.stage_invalid
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamSittingCorrectionResourceStageMultipart'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamSittingCorrectionResourceStageCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ExamSittingCorrectionResourceStageCreated:
+      description: Purpose-bound resource content staged and ready for one live Sitting correction
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSittingCorrectionResourceStageResponse'
+  schemas:
+    ExamSittingCorrectionResourceStageMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - base_revision_id
+        - target_kind
+        - media_type
+        - size
+        - sha256
+      description: >-
+        For addition, replaces_resource_id must be omitted. For replacement, it is required and identifies a resource in the exact base Revision.
+      properties:
+        base_revision_id:
+          $ref: '#/components/schemas/ID'
+        target_kind:
+          type: string
+          enum:
+            - addition
+            - replacement
+        replaces_resource_id:
+          $ref: '#/components/schemas/ID'
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ExamSittingCorrectionResourceStageMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: >-
+        Exactly two parts in order: metadata first as a non-file JSON part (maximum 32768 bytes), then content. The complete HTTP body is limited to 100 MiB plus 64 KiB multipart overhead.
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ExamSittingCorrectionResourceStageMetadata'
+        content:
+          type: string
+          format: binary
+    ExamSittingCorrectionResourceStageResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - stage_id
+        - resource_id
+        - media_type
+        - size
+        - sha256
+        - expires_at
+      properties:
+        stage_id:
+          $ref: '#/components/schemas/ID'
+        resource_id:
+          $ref: '#/components/schemas/ID'
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        expires_at:
+          type: string
+          format: date-time

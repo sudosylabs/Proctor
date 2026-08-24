@@ -1,0 +1,163 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/AttemptWorkspaceEntryID'
+    patch:
+      operationId: moveCandidateExamWorkspaceEntry
+      summary: Rename or move one Workspace entry
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.path_conflict
+        - exam.attempt.workspace.entry_conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/MoveCandidateWorkspaceEntry'
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateWorkspaceMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteCandidateExamWorkspaceEntry
+      summary: Delete one empty directory or one exact Workspace file state
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.path_conflict
+        - exam.attempt.workspace.entry_conflict
+        - exam.attempt.workspace.content_conflict
+        - exam.attempt.workspace.directory_not_empty
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/DeleteCandidateWorkspaceEntry'
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateWorkspaceMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    MoveCandidateWorkspaceEntry:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MoveCandidateWorkspaceEntryRequest'
+    DeleteCandidateWorkspaceEntry:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DeleteCandidateWorkspaceEntryRequest'
+  schemas:
+    MoveCandidateWorkspaceEntryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - expected_path
+        - destination_path
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        destination_path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+    DeleteCandidateWorkspaceEntryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - expected_path
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        expected_content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'

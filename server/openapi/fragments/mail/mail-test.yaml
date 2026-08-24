@@ -1,0 +1,55 @@
+paths:
+  /api/v1/mail/test:
+    post:
+      operationId: sendControlledTestMail
+      summary: Enqueue a controlled test message to the operator's verified address
+      tags:
+        - Mail
+      x-proctor-auth: recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.reauthentication_required
+        - request.invalid
+        - mail.recipient_unverified
+        - mail.recipient_ineligible
+        - mail.test.rate_limited
+        - mail.conflict
+        - mail.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "202":
+          $ref: '#/components/responses/MailDeliveryAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    MailDeliveryAccepted:
+      description: Controlled test mail durably queued
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailDeliveryResponse'

@@ -1,0 +1,348 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: getExamSubmission
+      summary: Get one protected immutable Submission header
+      tags:
+        - Submissions
+      description: >-
+        Authorizes the canonical Submission first, rechecks the current Exam Manager relationship and scope, then conceals any nested ownership mismatch.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSubmissionManagerOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/manifest:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: listExamSubmissionManifest
+      summary: List one protected immutable Submission manifest page
+      tags:
+        - Submissions
+      description: The opaque cursor contains only the last stable Entry identity and never a path or storage selector.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque versioned keyset cursor containing only the last stable Entry identity.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSubmissionManifestOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  ? /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content
+  : parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/SubmissionID'
+      - $ref: '#/components/parameters/AttemptWorkspaceEntryID'
+    get:
+      operationId: getExamSubmissionFileContent
+      summary: Render one protected immutable Submission file inline
+      tags:
+        - Submissions
+      description: >-
+        Streams the exact retained starter- or Attempt-origin bytes through the application. It is not a public URL or export and exposes no storage selector.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSubmissionFileContent'
+        "304":
+          $ref: '#/components/responses/ExamSubmissionFileNotModified'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ExamSubmissionManagerOK:
+      description: Protected immutable Submission header for an authorized current Exam Manager
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSubmissionManagerResponse'
+    ExamSubmissionManifestOK:
+      description: Protected immutable Submission manifest page
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSubmissionManifestResponse'
+    ExamSubmissionFileContent:
+      description: Authorized inline immutable Submission file content; not a public URL or export response
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+      content:
+        '*/*':
+          schema:
+            type: string
+            format: binary
+    ExamSubmissionFileNotModified:
+      description: Protected immutable Submission file content has not changed
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+  schemas:
+    ExamSubmissionManagerResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_id
+        - exam_id
+        - exam_sitting_id
+        - exam_attempt_id
+        - workspace_id
+        - manifest_schema_version
+        - workspace_cursor
+        - manifest_digest
+        - manifest_entry_count
+        - manifest_total_file_bytes
+        - final_focus_loss_sequence
+        - integrity_state
+        - unresolved_integrity_count
+        - submitted_at
+      properties:
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        workspace_id:
+          $ref: '#/components/schemas/ID'
+        manifest_schema_version:
+          type: integer
+          const: 1
+        workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+        manifest_digest:
+          $ref: '#/components/schemas/SHA256'
+        manifest_entry_count:
+          type: integer
+          minimum: 0
+          maximum: 5000
+        manifest_total_file_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1073741824
+        final_focus_loss_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        integrity_state:
+          type: string
+          enum:
+            - settled
+            - gapped
+        unresolved_integrity_count:
+          type: integer
+          format: int64
+          minimum: 0
+        submitted_at:
+          type: string
+          format: date-time
+    ExamSubmissionManifestItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - entry_id
+        - kind
+        - path
+      properties:
+        entry_id:
+          $ref: '#/components/schemas/ID'
+        kind:
+          type: string
+          enum:
+            - file
+            - directory
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+      oneOf:
+        - properties:
+            kind:
+              const: file
+          required:
+            - content_version
+            - media_type
+            - size
+            - sha256
+        - properties:
+            kind:
+              const: directory
+          not:
+            anyOf:
+              - required:
+                  - content_version
+              - required:
+                  - media_type
+              - required:
+                  - size
+              - required:
+                  - sha256
+    ExamSubmissionManifestResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_id
+        - workspace_cursor
+        - manifest_digest
+        - items
+      properties:
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+        manifest_digest:
+          $ref: '#/components/schemas/SHA256'
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamSubmissionManifestItemResponse'
+        next_cursor:
+          type: string
+          description: >-
+            Opaque versioned keyset cursor containing only the last stable Entry identity; no path or storage selector enters the URL.

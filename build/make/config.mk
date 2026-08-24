@@ -2,6 +2,7 @@
 # environment variables, or the ignored root config.override.mk.
 
 WEBAPP_DIR ?= $(ROOT_DIR)/webapp
+DOCS_SITE_DIR ?= $(ROOT_DIR)/docs/site
 SERVER_DIR ?= $(ROOT_DIR)/server
 BUILD_DIR ?= $(ROOT_DIR)/.build
 DEV_DIR ?= $(BUILD_DIR)/dev

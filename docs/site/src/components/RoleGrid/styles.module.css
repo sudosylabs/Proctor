@@ -1,0 +1,120 @@
+.grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.card {
+  background: var(--proctor-surface);
+  border: 1px solid var(--proctor-border);
+  border-radius: 0.6rem;
+  color: var(--proctor-ink-soft);
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  min-height: 13.5rem;
+  min-width: 0;
+  padding: 1.25rem;
+  position: relative;
+  text-decoration: none;
+  transition: background-color 140ms ease, border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.card::before {
+  background: var(--proctor-cobalt);
+  border-radius: 999px;
+  content: "";
+  height: 0.25rem;
+  left: 1.25rem;
+  position: absolute;
+  top: 0;
+  transform: translateY(-50%);
+  width: 2.75rem;
+}
+
+.card:nth-child(2)::before {
+  background: var(--proctor-aqua);
+}
+
+.card:nth-child(3)::before {
+  background: var(--proctor-danger);
+}
+
+.card:nth-child(4)::before {
+  background: var(--proctor-attention);
+}
+
+.card:hover,
+.card:focus-visible {
+  background: var(--proctor-cobalt-soft);
+  border-color: var(--proctor-cobalt);
+  color: var(--proctor-ink-soft);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.label {
+  color: var(--proctor-cobalt-strong);
+  font-size: 0.67rem;
+  font-weight: 780;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.12rem;
+  text-transform: uppercase;
+}
+
+.audience {
+  color: var(--proctor-ink-muted);
+  font-size: 0.72rem;
+  margin-bottom: 0.75rem;
+}
+
+.card strong {
+  color: var(--proctor-ink);
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.description {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  margin-top: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.action {
+  color: var(--proctor-cobalt-strong);
+  font-size: 0.75rem;
+  font-weight: 740;
+  margin-top: 1.15rem;
+}
+
+.action span {
+  display: inline-block;
+  transition: transform 140ms ease;
+}
+
+.card:hover .action span,
+.card:focus-visible .action span {
+  transform: translateX(0.2rem);
+}
+
+@media (max-width: 650px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    min-height: 11.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .action span {
+    transition: none;
+  }
+}

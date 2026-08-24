@@ -1,0 +1,128 @@
+paths:
+  /api/v1/invitations/{invitation_id}/replacement:
+    parameters:
+      - $ref: '#/components/parameters/InvitationID'
+    post:
+      operationId: replaceInvitation
+      summary: Supersede a pending Invitation with a changed immutable package
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - invitation.invalid
+        - invitation.role_not_delegable
+        - invitation.conflict
+        - invitation.mail_unavailable
+        - invitation.unavailable
+        - administration.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceInvitation'
+      responses:
+        "201":
+          $ref: '#/components/responses/InvitationAdministrationCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ReplaceInvitation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReplaceInvitationRequest'
+  responses:
+    InvitationAdministrationCreated:
+      description: Replacement Invitation created and prior Invitation superseded
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationAdministrationResponse'
+  schemas:
+    ReplaceInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - purpose
+        - email
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        purpose:
+          type: string
+          enum:
+            - student_class
+            - teacher_academic_unit
+            - academic_unit_role
+            - institution_role
+        email:
+          type: string
+          format: email
+        class_id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        institution_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+        suggested_username:
+          type: string
+          maxLength: 64
+        suggested_display_name:
+          type: string
+          maxLength: 512
+        suggested_first_name:
+          type: string
+          maxLength: 256
+        suggested_last_name:
+          type: string
+          maxLength: 256
+        suggested_locale:
+          type: string
+          maxLength: 35
+        suggested_timezone:
+          type: string
+          maxLength: 64

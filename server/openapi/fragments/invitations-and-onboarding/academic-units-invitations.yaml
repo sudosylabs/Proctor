@@ -1,0 +1,157 @@
+paths:
+  /api/v1/academic-units/{academic_unit_id}/invitations/teacher:
+    parameters:
+      - $ref: '#/components/parameters/AcademicUnitID'
+    post:
+      operationId: issueTeacherAcademicUnitInvitation
+      summary: Invite a teacher into one exact Academic Unit with one delegated Role package
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - invitation.invalid
+        - invitation.role_not_delegable
+        - invitation.conflict
+        - invitation.mail_unavailable
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueTeacherAcademicUnitInvitationRequest'
+      responses:
+        "201":
+          description: Invitation issued without claim or mailbox disclosure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/academic-units/{academic_unit_id}/invitations/role:
+    parameters:
+      - $ref: '#/components/parameters/AcademicUnitID'
+    post:
+      operationId: issueAcademicUnitRoleInvitation
+      summary: Invite an existing User to one exact Academic Unit Role package
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - invitation.invalid
+        - invitation.role_not_delegable
+        - invitation.conflict
+        - invitation.mail_unavailable
+        - invitation.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueScopedRoleInvitationRequest'
+      responses:
+        "201":
+          description: Invitation issued without claim or mailbox disclosure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  schemas:
+    IssueTeacherAcademicUnitInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - role_id
+      properties:
+        email:
+          type: string
+          format: email
+        role_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+        suggested_username:
+          type: string
+          maxLength: 64
+        suggested_display_name:
+          type: string
+          maxLength: 512
+        suggested_first_name:
+          type: string
+          maxLength: 256
+        suggested_last_name:
+          type: string
+          maxLength: 256
+        suggested_locale:
+          type: string
+          maxLength: 35
+        suggested_timezone:
+          type: string
+          maxLength: 64

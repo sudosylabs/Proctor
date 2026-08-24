@@ -1,0 +1,79 @@
+---
+title: Proctor documentation
+description: Role-based guidance for operating, administering, reviewing, and integrating Proctor.
+audience: everyone
+maturity: preview
+slug: /
+hide_title: true
+hide_table_of_contents: true
+pagination_next: null
+pagination_prev: null
+---
+
+import Link from '@docusaurus/Link';
+import LifecycleRibbon from '@site/src/components/LifecycleRibbon';
+import RoleGrid from '@site/src/components/RoleGrid';
+import styles from './index.module.css';
+
+<header className={styles.hero}>
+  <div className={styles.statusLine}>
+    <span className={styles.eyebrow}>Proctor documentation</span>
+    <span className={styles.preview}><i aria-hidden="true"></i> Preview</span>
+  </div>
+  <h1>Build, run, and govern a Proctor installation.</h1>
+  <div className={styles.lede}>
+    Practical guidance for the people who deploy Proctor, structure an
+    institution, review its security boundaries, and build against its API.
+  </div>
+  <div className={styles.actions}>
+    <Link className="button button--primary" to="/operator/">{'Read the Deployment Guide'}</Link>
+    <Link className="button button--secondary" to="/api/">{'Open the API Reference'}</Link>
+  </div>
+</header>
+
+<section className={styles.homeSection} aria-labelledby="browse-guides">
+  <div className={styles.sectionHeading}>
+    <span>Browse the documentation</span>
+    <h2 id="browse-guides">Start With Your Responsibility</h2>
+    <div className={styles.sectionCopy}>
+      One installation represents one institution. Choose the guide that matches
+      what you are responsible for inside it.
+    </div>
+  </div>
+  <RoleGrid />
+</section>
+
+<LifecycleRibbon />
+
+<section className={styles.referenceSection} aria-labelledby="reference-title">
+  <div className={styles.sectionHeading}>
+    <span>Reference & source</span>
+    <h2 id="reference-title">Go Straight to the Contract</h2>
+    <div className={styles.sectionCopy}>
+      Public guides explain tasks. The checked-in specifications and architecture
+      documents remain the authority for exact behavior.
+    </div>
+  </div>
+  <div className={styles.referenceGrid}>
+    <Link className={styles.referenceCard} to="/api/">
+      <span className={styles.cardLabel}>HTTP API</span>
+      <strong>OpenAPI Contract</strong>
+      <span>Authentication, errors, pagination, and the reviewed specification.</span>
+      <b aria-hidden="true">→</b>
+    </Link>
+    <a
+      className={styles.referenceCard}
+      href="https://github.com/sudosylabs/Proctor/tree/main/docs/architecture">
+      <span className={styles.cardLabel}>System design</span>
+      <strong>Architecture Guide</strong>
+      <span>Durable boundaries, rationale, and domain-specific guarantees.</span>
+      <b aria-hidden="true">↗</b>
+    </a>
+  </div>
+</section>
+
+<Maturity state="planned">
+  Candidate and Exam Manager guides will enter navigation when their visual
+  workflows are usable. Current documentation focuses on implemented server
+  contracts and does not present unfinished interfaces as released behavior.
+</Maturity>

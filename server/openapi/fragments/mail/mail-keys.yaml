@@ -1,0 +1,77 @@
+paths:
+  /api/v1/mail/keys:
+    get:
+      operationId: inspectMailKeyState
+      summary: Inspect safe mail payload-key identities and active reference counts
+      tags:
+        - Mail
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - mail.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailKeyStateOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    MailKeyStateOK:
+      description: Safe mail payload-key identities and active reference counts
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailKeyStateResponse'
+  schemas:
+    MailPayloadKeyUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - key_id
+        - active_references
+      properties:
+        key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        active_references:
+          type: integer
+          format: int64
+          minimum: 1
+    MailKeyStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - primary_key_id
+        - active
+      properties:
+        primary_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        required_primary_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        active:
+          type: array
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/MailPayloadKeyUsage'

@@ -1,0 +1,116 @@
+paths:
+  /api/v1/jobs/{job_id}/attempts:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    get:
+      operationId: listJobAttempts
+      summary: List ordered execution Attempts for one Job
+      tags:
+        - Jobs
+      x-proctor-auth: principal_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - job.query.invalid
+        - resource.not_found
+        - job.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/JobAttemptListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    JobAttemptListOK:
+      description: Safe Job Attempt collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobAttemptListResponse'
+  schemas:
+    JobAttemptStatus:
+      type: string
+      enum:
+        - running
+        - succeeded
+        - failed
+        - canceled
+        - lease_expired
+        - incompatible
+    JobAttemptResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - number
+        - status
+        - start_at
+        - heartbeat_at
+        - lease_expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        number:
+          type: integer
+          minimum: 1
+        status:
+          $ref: '#/components/schemas/JobAttemptStatus'
+        start_at:
+          type: integer
+          format: int64
+        heartbeat_at:
+          type: integer
+          format: int64
+        lease_expires_at:
+          type: integer
+          format: int64
+        complete_at:
+          type: integer
+          format: int64
+        public_error_code:
+          type: string
+    JobAttemptListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobAttemptResponse'
+        next_cursor:
+          type: string

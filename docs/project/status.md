@@ -8,6 +8,21 @@ the code and component contracts for that detail.
 
 - Four independent Go modules are connected by the root workspace: reusable
   cache, mail, and VFS modules plus the Proctor server.
+- A repository-owned Docusaurus development scaffold renders strict,
+  task-oriented operator, institution-administrator, security, developer, and
+  API guidance from `docs/public`; its visual system remains provisional. The
+  build validates required metadata, includes MDX in the repository portability
+  gate, and publishes the reviewed OpenAPI contract as an unchanged generated
+  artifact. A human-first, resource-oriented YAML source tree co-locates routes,
+  descriptions, examples, and exclusively owned definitions; a deep compiler
+  recursively discovers and collision-safely merges modules, validates the full
+  OpenAPI 3.1 contract, and rejects artifact drift. The contract owns a stable product-area taxonomy, explicit
+  authentication/error/idempotency metadata on every operation, and a rich
+  representative reference pilot spanning the important security and payload
+  shapes. A versioned machine-readable audit reports coverage and rejects
+  taxonomy, summary, extension, and pilot-content regressions. Browsable API
+  page generation remains the next implementation slice, while licensing,
+  hostname, versioning, and hosting remain unsettled production decisions.
 - The root product build now owns one configurable end-to-end development
   lifecycle, layered dependencies and observability, a real
   readiness-aware three-node HAProxy topology and node-loss certification,

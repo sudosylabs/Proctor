@@ -1,6 +1,8 @@
 # HTTP contract conventions
 
-[`../openapi.json`](../openapi.json) is the reviewed public HTTP contract.
+The human-authored [`../openapi/`](../openapi/) modules and generated,
+reviewed [`../openapi.json`](../openapi.json) artifact together form the public
+HTTP contract.
 Its coverage began with the migrated Academic Unit reference slice and now
 includes Institution, Programme, Programme Level, Academic Period, Class,
 Affiliation, Academic Unit Member, Class Member enrollment, Exam authoring,
@@ -22,6 +24,42 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   fields, success schemas, and public errors with OpenAPI;
 - preserve characterized v1 behavior. Contract changes are additive unless a
   new API version and migration path are introduced.
+
+## API reference data
+
+`server/openapi/` is the human authoring interface for wire shapes and API
+reference data. Its small resource-oriented YAML modules co-locate paths with
+definitions that have one owner; area and root shared modules contain only
+definitions with real shared consumers. `server/openapi.json` is the
+deterministic reviewed artifact for runtime agreement, API consumers, and
+documentation generation. It is never hand-edited. The compiler discovers and
+collision-safely merges normal partial OpenAPI documents, resolves references,
+enforces universal operation metadata, validates OpenAPI 3.1, and fails when
+the artifact is stale. See the
+[`OpenAPI authoring guide`](../openapi/README.md).
+
+Every operation has exactly one declared product-area tag, a non-empty summary,
+explicit `security`, and explicit `x-proctor-auth`,
+`x-proctor-error-codes`, and `x-proctor-idempotency` metadata. Idempotency is
+always one of `none`, `optional`, or `required`; absence does not mean `none`.
+Tags follow durable user and domain capabilities rather than Go packages,
+transport resources, or source-file layout. Top-level OpenAPI tag declarations
+own the taxonomy names and their descriptions.
+
+Public behavioral prose belongs in OpenAPI `description` fields. Checked shell
+examples use `x-codeSamples`; request examples belong on their OpenAPI media
+types. Examples use synthetic Institutions, Users, Exams, and identifiers, and
+replace every credential or secret with an explicit placeholder. General Go
+comments, test fixtures, and generated renderer output do not silently become
+public API guarantees.
+
+The documentation package's `npm run audit:openapi` command emits the current
+coverage and taxonomy as JSON. Both that audit and the server schema validation
+fail on duplicate operation IDs, missing summaries, undeclared or multiple
+tags, or missing Proctor contract extensions. The audit additionally enforces
+the rich-description, parameter, request-body, and redacted-example standard on
+the representative documentation pilot before that standard is expanded
+across the whole contract.
 
 The HTTP Routing Kernel is the construction and execution boundary for HTTP
 resources. Each resource declares only recognized path parameters, a narrow

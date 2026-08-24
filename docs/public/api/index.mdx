@@ -1,0 +1,52 @@
+---
+title: Proctor API
+description: Use Proctor's reviewed OpenAPI contract, explicit authentication metadata, and stable Problem Details errors.
+audience: api-consumer
+maturity: preview
+slug: /api/
+---
+
+# Proctor API
+
+Proctor exposes a versioned HTTP API described by a checked-in OpenAPI 3.1
+contract. The specification is reviewed alongside the routes and agreement
+tests; generated documentation is a view of that contract, never a second
+authority.
+
+<Maturity state="preview">
+  The canonical specification is available now. Browsable endpoint pages will
+  follow after operations have stable domain tags and the generator preserves
+  Proctor's authentication and assurance metadata.
+</Maturity>
+
+## Download the Current Contract
+
+<a className="button button--primary" href="/openapi/openapi.json" download>{'Download openapi.json'}</a>
+
+The docs build copies this file directly from the tracked server contract. It
+does not infer endpoints from handlers or rewrite the canonical descriptions.
+
+## Read Every Operation Completely
+
+Each route declares its credential requirement through `x-proctor-auth`.
+Security-sensitive operations may additionally require a strong, recently
+authenticated interactive Session and CSRF proof; a Personal Access Token is
+not interchangeable with that assurance.
+
+Public failures use RFC 9457 Problem Details and stable application codes.
+Operations declare their bounded codes in `x-proctor-error-codes`, and agreement
+tests require them to map to documented HTTP responses.
+
+## Contract Conventions
+
+- Request and response objects are closed unless a named extension point is
+  deliberately open.
+- Collection traversal uses bounded opaque keyset cursors.
+- Resource mutations authorize the current principal against current durable
+  state at the terminal use case.
+- Idempotent commands distinguish exact replay from reuse with different input.
+- Successful durable state commits before transient cache, cluster, or realtime
+  effects.
+
+Read the [HTTP contract conventions](https://github.com/sudosylabs/Proctor/blob/main/server/httpapi/CONTRACT.md)
+before generating a client or designing an integration.

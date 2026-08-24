@@ -1,0 +1,53 @@
+---
+title: Develop With Proctor
+description: Find Proctor's module boundaries, canonical contracts, and contribution checks.
+audience: developer
+maturity: preview
+slug: /developers/
+---
+
+# Develop With Proctor
+
+Proctor is a Go workspace with four independently versioned modules and one
+hosted React application. Repository development connects them; every Go module
+must still build and test without workspace assistance.
+
+<Maturity state="preview">
+  This is the first public developer entry point. Exact setup and command
+  authority remains in the module READMEs and root build guide while the public
+  contribution journey is expanded.
+</Maturity>
+
+## Choose the Owning Module
+
+| Module | Owns |
+| --- | --- |
+| `packages/cache` | Reusable cache contracts and adapters |
+| `packages/mail` | Reusable mail composition and delivery contracts |
+| `packages/vfs` | Reusable virtual-file-system contracts and adapters |
+| `server` | Proctor domain, application, transports, persistence, and composition |
+| `webapp` | The hosted browser application |
+
+Reusable packages never import server types. Business logic remains independent
+of HTTP, WebSocket, SQL, Redis, SMTP, VFS, Memberlist, and concrete adapters.
+The module-root `server.New` function is the only composition root that selects
+infrastructure.
+
+## Start With the Right Source
+
+- [Repository documentation hub](https://github.com/sudosylabs/Proctor/blob/main/docs/README.md)
+  routes architectural and product questions.
+- [Build guide](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
+  owns product-level commands and development infrastructure.
+- [Architecture guide](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/README.md)
+  owns durable boundaries and rationale.
+- [Server README](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
+  owns server-specific commands and configuration.
+- [API guide](../api/) explains the reviewed HTTP contract.
+
+## Contribution Rule
+
+Make the smallest coherent change, add tests proportional to risk, and update
+the authority that owns any changed domain language, architecture, public
+contract, capability status, or command. Generated documentation must name its
+tracked input and rebuild deterministically.

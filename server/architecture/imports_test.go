@@ -50,6 +50,8 @@ func TestDependencyPolicyRejectsForbiddenImports(t *testing.T) {
 		{name: "model build tools cannot import third-party code", from: serverModule + "/model/internal/idgen", imported: "golang.org/x/tools/go/packages"},
 		{name: "ACME adapter cannot import application", from: serverModule + "/internal/autocert", imported: serverModule + "/app"},
 		{name: "ACME adapter cannot import unrelated third-party code", from: serverModule + "/internal/autocert", imported: "github.com/gorilla/mux"},
+		{name: "OpenAPI compiler cannot use the process filesystem", from: serverModule + "/internal/openapidoc", imported: "os"},
+		{name: "OpenAPI compiler cannot import HTTP", from: serverModule + "/internal/openapidoc", imported: "net/http"},
 		{name: "store contracts cannot import SQL adapters", from: serverModule + "/store", imported: serverModule + "/store/sqlstore"},
 		{name: "application cannot import platform", from: serverModule + "/app", imported: serverModule + "/platform"},
 		{name: "Exam child cannot import parent application", from: serverModule + "/app/exam", imported: serverModule + "/app"},
@@ -182,6 +184,9 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 		{name: "model build tools may import standard library", from: serverModule + "/model/internal/idgen", imported: "go/format"},
 		{name: "ACME adapter may import ACME protocol", from: serverModule + "/internal/autocert", imported: "golang.org/x/crypto/acme"},
 		{name: "ACME adapter may canonicalize IDNs", from: serverModule + "/internal/autocert", imported: "golang.org/x/net/idna"},
+		{name: "OpenAPI compiler may accept a filesystem", from: serverModule + "/internal/openapidoc", imported: "io/fs"},
+		{name: "OpenAPI compiler may validate OpenAPI", from: serverModule + "/internal/openapidoc", imported: "github.com/getkin/kin-openapi/openapi3"},
+		{name: "ptool may import the OpenAPI compiler", from: serverModule + "/cmd/ptool/commands", imported: serverModule + "/internal/openapidoc"},
 	}
 
 	for _, tt := range tests {

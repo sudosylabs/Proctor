@@ -1,0 +1,57 @@
+paths:
+  /api/v1/onboarding-imports/{onboarding_import_id}/report:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingImportID'
+    get:
+      operationId: downloadOnboardingImportReport
+      summary: Download the authorized formula-safe onboarding report
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - onboarding_import.conflict
+        - onboarding_import.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/OnboardingImportReport'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    OnboardingImportReport:
+      description: Formula-safe CSV report without recipient or Invitation secret disclosure
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Content-Type-Options:
+          $ref: '#/components/headers/NoSniff'
+      content:
+        text/csv:
+          schema:
+            type: string
+            format: binary

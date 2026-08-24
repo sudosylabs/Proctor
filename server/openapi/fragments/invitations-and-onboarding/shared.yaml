@@ -1,0 +1,262 @@
+components:
+  parameters:
+    InvitationID:
+      name: invitation_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Invitation identifier.
+    OnboardingImportID:
+      name: onboarding_import_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The staged onboarding import identifier.
+  requestBodies:
+    MutateInvitation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationMutationRequest'
+  responses:
+    InvitationAdministrationOK:
+      description: Authorized safe Invitation administration view
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationAdministrationResponse'
+    OnboardingImportAccepted:
+      description: Onboarding import accepted for asynchronous work
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OnboardingImportResponse'
+    OnboardingImportOK:
+      description: Authorized safe onboarding preview or report projection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OnboardingImportResponse'
+  schemas:
+    IssueScopedRoleInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - role_id
+      properties:
+        email:
+          type: string
+          format: email
+        role_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+    InvitationMutationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    InvitationDeliveryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - template_key
+        - state
+        - masked_recipient
+        - created_at
+        - updated_at
+        - deadline
+      properties:
+        template_key:
+          type: string
+        state:
+          type: string
+          enum:
+            - queued
+            - sending
+            - accepted
+            - failed
+            - suppressed
+            - canceled
+        masked_recipient:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        deadline:
+          type: integer
+          format: int64
+        accepted_at:
+          type: integer
+          format: int64
+        public_failure_code:
+          type: string
+    InvitationAdministrationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - purpose
+        - state
+        - start_at
+        - expires_at
+        - email
+        - inviter_user_id
+        - created_at
+        - updated_at
+        - revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        purpose:
+          type: string
+          enum:
+            - student_class
+            - teacher_academic_unit
+            - academic_unit_role
+            - institution_role
+        state:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - revoked
+            - expired
+            - superseded
+        class_id:
+          $ref: '#/components/schemas/ID'
+        academic_period_id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        role_actions:
+          type: array
+          items:
+            type: string
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        inviter_user_id:
+          $ref: '#/components/schemas/ID'
+        accepted_user_id:
+          $ref: '#/components/schemas/ID'
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        delivery:
+          $ref: '#/components/schemas/InvitationDeliveryResponse'
+    InvitationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - purpose
+        - state
+        - start_at
+        - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        purpose:
+          type: string
+          enum:
+            - student_class
+            - teacher_academic_unit
+            - academic_unit_role
+            - institution_role
+        state:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - revoked
+            - expired
+            - superseded
+        class_id:
+          $ref: '#/components/schemas/ID'
+        academic_period_id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        role_actions:
+          type: array
+          items:
+            type: string
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+    InvitationAcceptanceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - invitation_id
+        - replayed
+      properties:
+        user_id:
+          $ref: '#/components/schemas/ID'
+        invitation_id:
+          $ref: '#/components/schemas/ID'
+        affiliation_id:
+          $ref: '#/components/schemas/ID'
+        class_member_id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_member_id:
+          $ref: '#/components/schemas/ID'
+        role_binding_id:
+          $ref: '#/components/schemas/ID'
+        replayed:
+          type: boolean

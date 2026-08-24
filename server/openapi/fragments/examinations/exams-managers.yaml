@@ -1,0 +1,221 @@
+paths:
+  /api/v1/exams/{exam_id}/managers:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: listExamManagers
+      summary: List bounded Exam Manager relationship provenance
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamManagerListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: addExamManager
+      summary: Grant an eligible User equal Exam management responsibility
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.revision_conflict
+        - exam.manager.exists
+        - exam.manager.ineligible
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/AddExamManager'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamManagerChanged'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/managers/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/UserID'
+    delete:
+      operationId: removeExamManager
+      summary: Revoke an Exam Manager relationship while preserving provenance
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.revision_conflict
+        - exam.manager.not_found
+        - exam.manager.owner_protected
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/RemoveExamManager'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamManagerChanged'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    AddExamManager:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AddExamManagerRequest'
+    RemoveExamManager:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveExamManagerRequest'
+  responses:
+    ExamManagerListOK:
+      description: Bounded Exam Manager relationship collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamManagerListResponse'
+  schemas:
+    AddExamManagerRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - expected_exam_revision
+      properties:
+        user_id:
+          $ref: '#/components/schemas/ID'
+        expected_exam_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    RemoveExamManagerRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_exam_revision
+      properties:
+        expected_exam_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamManagerListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamManagerResponse'
+        next_cursor:
+          type: string

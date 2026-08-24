@@ -48,7 +48,9 @@ module README:
   rationale;
 - [`docs/project/status.md`](../docs/project/status.md) records implemented
   capability areas and unresolved decisions;
-- [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md) defines the HTTP contract; and
+- [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md) defines the HTTP contract;
+- [`openapi/README.md`](openapi/README.md) defines the human-first OpenAPI
+  authoring and generation workflow; and
 - [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md) defines cluster delivery and
   recovery behavior.
 
@@ -658,6 +660,22 @@ operator CLI selects a locale
 from `PROCTOR_LOCALE`, then the standard `LC_ALL`, `LC_MESSAGES`, and `LANG`
 environment variables, while keeping command names, flags, and machine values
 stable.
+
+### OpenAPI authoring
+
+Edit routes, descriptions, examples, and schemas in the resource-oriented YAML
+modules under [`openapi/`](openapi/), then regenerate the reviewed JSON
+artifact. Never edit `openapi.json` directly.
+
+```sh
+make -C server openapi-build
+make -C server openapi-check
+make -C server openapi-agreement
+```
+
+The build and check commands use `ptool openapi`; the agreement target also
+compares the compiled contract with registered HTTP routes, DTOs,
+authentication requirements, and public errors.
 
 ### Production SMTP and deliverability
 

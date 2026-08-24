@@ -1,0 +1,244 @@
+components:
+  parameters:
+    OptionalIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[A-Za-z0-9._~-]+$
+    ProgrammeID:
+      name: programme_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Programme identifier.
+    ProgrammeLevelID:
+      name: programme_level_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Programme Level identifier.
+  requestBodies:
+    CreateAcademicUnit:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateAcademicUnitRequest'
+          example:
+            name: computer-science
+            display_name: Computer Science
+            description: Teaching and research in computing.
+      description: >-
+        The canonical name and human-facing presentation for a new root Academic Unit. Server-owned identity, timestamps, Institution, and parent fields are ignored when sent for v1 compatibility.
+  responses:
+    AcademicUnitCreated:
+      description: Academic Unit created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicUnitResponse'
+    AcademicUnitListOK:
+      description: Academic Unit collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicUnitListResponse'
+    ClassListOK:
+      description: Class collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassListResponse'
+  schemas:
+    AcademicUnitResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - institution_id
+        - name
+        - display_name
+        - description
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        institution_id:
+          $ref: '#/components/schemas/ID'
+        parent_id:
+          $ref: '#/components/schemas/ID'
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+    AcademicUnitListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/AcademicUnitResponse'
+    CreateAcademicUnitRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - display_name
+      properties:
+        id:
+          type: string
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        create_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        update_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        delete_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        institution_id:
+          type: string
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        parent_id:
+          type: string
+          deprecated: true
+          description: Accepted and ignored; route scope is authoritative.
+        name:
+          type: string
+          description: The owner-scoped canonical machine name.
+        display_name:
+          type: string
+          description: The human-facing Academic Unit name.
+        description:
+          type: string
+          description: An optional human-facing description.
+    ProgrammeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - academic_unit_id
+        - name
+        - display_name
+        - description
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+    ProgrammeLevelResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - programme_id
+        - name
+        - display_name
+        - description
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        programme_id:
+          $ref: '#/components/schemas/ID'
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+    ClassResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - programme_level_id
+        - academic_period_id
+        - name
+        - display_name
+        - description
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        programme_level_id:
+          $ref: '#/components/schemas/ID'
+        academic_period_id:
+          $ref: '#/components/schemas/ID'
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+    ClassListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/ClassResponse'

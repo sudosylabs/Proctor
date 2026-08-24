@@ -1,0 +1,369 @@
+paths:
+  /api/v1/invitations:
+    get:
+      operationId: listInvitations
+      summary: List Invitations within the caller's authorized scope
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - invitation.query.invalid
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: purpose
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - student_class
+              - teacher_academic_unit
+              - academic_unit_role
+              - institution_role
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - accepted
+              - revoked
+              - expired
+              - superseded
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+            format: email
+        - name: target_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ID'
+        - name: created_after
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: created_before
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 512
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          $ref: '#/components/responses/InvitationAdministrationListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/invitations/{invitation_id}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationID'
+    get:
+      operationId: getInvitation
+      summary: Get one Invitation within the caller's authorized scope
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/InvitationAdministrationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/invitations/student-class/accept:
+    post:
+      operationId: acceptStudentClassInvitation
+      summary: Accept a student Class Invitation using its one-time claim
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: public
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - invitation.invalid
+        - invitation.user_invalid
+        - invitation.mail_unavailable
+        - invitation.unavailable
+        - authentication.password.invalid
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptStudentClassInvitationRequest'
+      responses:
+        "200":
+          description: Invitation accepted or replay resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptanceResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/invitations/teacher-academic-unit/accept:
+    post:
+      operationId: acceptTeacherAcademicUnitInvitation
+      summary: Accept a teacher Academic Unit Invitation using its one-time claim
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: public
+      security: []
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - invitation.invalid
+        - invitation.user_invalid
+        - invitation.mail_unavailable
+        - invitation.unavailable
+        - authentication.password.invalid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptTeacherAcademicUnitInvitationRequest'
+      responses:
+        "200":
+          description: Invitation accepted or replay resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptanceResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/invitations/academic-unit-role/accept:
+    post:
+      operationId: acceptAcademicUnitRoleInvitation
+      summary: Accept an Academic Unit Role Invitation as the authenticated User
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - invitation.invalid
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptScopedRoleInvitationRequest'
+      responses:
+        "200":
+          description: Invitation accepted or exact outcome replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptanceResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/invitations/institution-role/accept:
+    post:
+      operationId: acceptInstitutionRoleInvitation
+      summary: Accept an Institution Role Invitation as the authenticated User
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - invitation.invalid
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptScopedRoleInvitationRequest'
+      responses:
+        "200":
+          description: Invitation accepted or exact outcome replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptanceResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    InvitationAdministrationListOK:
+      description: Bounded authorized Invitation administration page
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationAdministrationListResponse'
+  schemas:
+    AcceptStudentClassInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - claim
+        - password
+        - username
+      properties:
+        claim:
+          type: string
+          minLength: 43
+          maxLength: 43
+        password:
+          type: string
+        username:
+          type: string
+          maxLength: 64
+        display_name:
+          type: string
+          maxLength: 512
+        first_name:
+          type: string
+          maxLength: 256
+        last_name:
+          type: string
+          maxLength: 256
+        locale:
+          type: string
+          maxLength: 35
+        timezone:
+          type: string
+          maxLength: 64
+    AcceptTeacherAcademicUnitInvitationRequest:
+      $ref: '#/components/schemas/AcceptStudentClassInvitationRequest'
+    AcceptScopedRoleInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - claim
+      properties:
+        claim:
+          type: string
+          minLength: 43
+          maxLength: 128
+    InvitationAdministrationListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvitationAdministrationResponse'
+        next_cursor:
+          type: string

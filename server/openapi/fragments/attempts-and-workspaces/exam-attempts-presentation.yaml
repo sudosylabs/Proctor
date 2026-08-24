@@ -1,0 +1,125 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/presentation:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: getCandidateExamPresentation
+      summary: Get the protected current presentation for one candidate Attempt
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateExamPresentationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    CandidateExamPresentationOK:
+      description: Protected current Exam presentation for one active Attempt Connection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CandidateExamPresentationResponse'
+  schemas:
+    CandidateExamResourceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - display_name
+        - description_markdown
+        - position
+        - media_type
+        - size
+        - sha256
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description_markdown:
+          type: string
+          maxLength: 16384
+        position:
+          type: integer
+          minimum: 0
+          maximum: 99
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    CandidateExamPresentationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - attempt_id
+        - exam_sitting_id
+        - admission_revision_id
+        - current_revision_id
+        - title
+        - instructions_markdown
+        - focus_loss_collection_enabled
+        - capacity
+        - resources
+      properties:
+        attempt_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        admission_revision_id:
+          $ref: '#/components/schemas/ID'
+        current_revision_id:
+          $ref: '#/components/schemas/ID'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        instructions_markdown:
+          type: string
+          description: Current Sitting Revision instructions as bounded authored Markdown.
+        focus_loss_collection_enabled:
+          type: boolean
+          description: Whether the trusted client should collect and transmit bounded Focus Loss signals for this Sitting.
+        capacity:
+          $ref: '#/components/schemas/ExamCapacityPolicy'
+        resources:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/CandidateExamResourceResponse'

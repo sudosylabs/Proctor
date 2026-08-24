@@ -1,0 +1,82 @@
+paths:
+  /api/v1/onboarding-imports/{onboarding_import_id}/commit:
+    parameters:
+      - $ref: '#/components/parameters/OnboardingImportID'
+    post:
+      operationId: commitOnboardingImport
+      summary: Commit one exact validated onboarding preview
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - onboarding_import.conflict
+        - onboarding_import.invalid_file
+        - onboarding_import.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CommitOnboardingImport'
+      responses:
+        "202":
+          $ref: '#/components/responses/OnboardingImportAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    CommitOnboardingImport:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OnboardingImportCommitRequest'
+  schemas:
+    OnboardingImportCommitRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - preview_digest
+        - policy
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        preview_digest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        policy:
+          type: string
+          enum:
+            - require_all_valid
+            - valid_rows_only

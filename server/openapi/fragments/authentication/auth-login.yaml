@@ -1,0 +1,96 @@
+paths:
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Create an interactive session
+      tags:
+        - Authentication
+      description: >-
+        Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/auth/login' \
+              --header 'Content-Type: application/json' \
+              --data '{"login_id":"ada@example.edu","password":"<redacted>","client_type":"cli","device_name":"Exam workstation"}'
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.client_type.invalid
+        - authentication.password.invalid
+        - authentication.invalid_credentials
+        - authentication.mfa.required
+        - authentication.mfa.invalid_code
+        - authentication.mfa.unavailable
+        - authentication.sessions.maximum_reached
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.internal
+      x-proctor-idempotency: none
+      security: []
+      requestBody:
+        $ref: '#/components/requestBodies/Login'
+      responses:
+        "200":
+          $ref: '#/components/responses/AuthenticationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    Login:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginRequest'
+          example:
+            login_id: ada@example.edu
+            password: <redacted>
+            client_type: cli
+            device_id: docs-example
+            device_name: API documentation example
+      description: >-
+        The local login identifier, password, client type, optional device presentation, and optional MFA proof. Credentials are sensitive and must never be logged.
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login_id
+        - password
+        - client_type
+      properties:
+        login_id:
+          type: string
+          description: The normalized username or email address used for local authentication.
+        password:
+          type: string
+          description: The local password. Treat this value as a secret in clients, traces, and logs.
+        client_type:
+          type: string
+          enum:
+            - desktop
+            - cli
+            - web
+          description: The client family for the Session being created.
+        device_id:
+          type: string
+          description: An optional stable client-controlled device identifier.
+        device_name:
+          type: string
+          description: An optional human-facing device name shown in Session management.
+        mfa_code:
+          type: string
+          description: A current TOTP code or one unused recovery code when MFA is required.

@@ -1,0 +1,667 @@
+paths:
+  /api/v1/exams/{exam_id}/draft/resources:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: listExamDraftResources
+      summary: List the ordered protected resources in an Exam Draft
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.resource.invalid
+        - exam.resource.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamResourceListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createExamDraftResource
+      summary: Upload and append a protected resource to an Exam Draft
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.resource.invalid
+        - exam.resource.conflict
+        - exam.resource.unavailable
+        - exam.resource.invalid_content
+        - exam.resource.limit
+        - exam.resource.upload_invalid
+        - exam.resource.revision_conflict
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamResourceUploadMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamResourceCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/resources/order:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    put:
+      operationId: reorderExamDraftResources
+      summary: Replace the complete order of active Exam Draft resources
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.resource.invalid
+        - exam.resource.conflict
+        - exam.resource.unavailable
+        - exam.resource.no_changes
+        - exam.resource.order_invalid
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ReorderExamResources'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamResourceListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamResourceID'
+    patch:
+      operationId: editExamDraftResourceMetadata
+      summary: Edit one Exam Draft resource's authored metadata
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.resource.invalid
+        - exam.resource.conflict
+        - exam.resource.unavailable
+        - exam.resource.no_changes
+        - exam.resource.revision_conflict
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/EditExamResourceMetadata'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamResourceOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: removeExamDraftResource
+      summary: Remove one resource from the active Exam Draft
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.resource.invalid
+        - exam.resource.conflict
+        - exam.resource.unavailable
+        - exam.resource.revision_conflict
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/RemoveExamResource'
+      responses:
+        "204":
+          $ref: '#/components/responses/ExamResourceRemoved'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamResourceID'
+    get:
+      operationId: getExamDraftResourceContent
+      summary: Render protected Exam resource content inline
+      tags:
+        - Examinations
+      description: >-
+        Returns only an authorized in-application content stream. This route is not a public URL or download/export capability and never exposes an object key.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.resource.invalid
+        - exam.resource.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamResourceProtectedContent'
+        "304":
+          $ref: '#/components/responses/ExamProtectedContentNotModified'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceExamDraftResourceContent
+      summary: Replace an Exam Draft resource's protected content
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.resource.invalid
+        - exam.resource.conflict
+        - exam.resource.unavailable
+        - exam.resource.invalid_content
+        - exam.resource.upload_invalid
+        - exam.resource.revision_conflict
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamResourceContentReplacementMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamResourceOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    EditExamResourceMetadata:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EditExamResourceMetadataRequest'
+    ReorderExamResources:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReorderExamResourcesRequest'
+    RemoveExamResource:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveExamResourceRequest'
+  responses:
+    ExamResourceOK:
+      description: Exam Draft resource changed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamResourceResponse'
+    ExamResourceCreated:
+      description: Exam Draft resource created
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamResourceResponse'
+    ExamResourceRemoved:
+      description: Exam Draft resource removed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+    ExamResourceListOK:
+      description: Complete ordered Exam Draft resource catalog
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamResourceListResponse'
+    ExamResourceProtectedContent:
+      description: Authorized inline Exam Resource content; not a public URL or export response
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, max-age=300
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+      content:
+        '*/*':
+          schema:
+            type: string
+            format: binary
+    ExamProtectedContentNotModified:
+      description: Protected Exam content has not changed
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, max-age=300
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+  schemas:
+    ExamResourceUploadMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - display_name
+        - media_type
+        - size
+        - sha256
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Trimmed UTF-8 with at most 255 Unicode scalar values.
+        description_markdown:
+          type: string
+          maxLength: 16384
+          description: Authored Markdown encoded as UTF-8 and limited to 16384 bytes.
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ExamResourceContentReplacementMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - media_type
+        - size
+        - sha256
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ExamResourceUploadMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: 'Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.'
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ExamResourceUploadMetadata'
+        content:
+          type: string
+          format: binary
+    ExamResourceContentReplacementMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: 'Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.'
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ExamResourceContentReplacementMetadata'
+        content:
+          type: string
+          format: binary
+    EditExamResourceMetadataRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+      anyOf:
+        - required:
+            - display_name
+          properties:
+            display_name:
+              type: string
+        - required:
+            - description_markdown
+          properties:
+            description_markdown:
+              type: string
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        display_name:
+          type:
+            - string
+            - "null"
+          minLength: 1
+          maxLength: 255
+          description: >-
+            Omitted or null leaves the name unchanged; a present value is trimmed UTF-8 with at most 255 Unicode scalar values.
+        description_markdown:
+          type:
+            - string
+            - "null"
+          maxLength: 16384
+          description: Omitted or null leaves the Markdown unchanged; a present value is UTF-8 limited to 16384 bytes.
+    ReorderExamResourcesRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - resource_ids
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        resource_ids:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ID'
+    RemoveExamResourceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamResourceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - display_name
+        - description_markdown
+        - position
+        - content_revision_id
+        - media_type
+        - size
+        - sha256
+        - updated_at
+        - draft_revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description_markdown:
+          type: string
+          maxLength: 16384
+          description: Authored Markdown encoded as UTF-8 and limited to 16384 bytes.
+        position:
+          type: integer
+          minimum: 0
+          maximum: 99
+        content_revision_id:
+          $ref: '#/components/schemas/ID'
+        media_type:
+          $ref: '#/components/schemas/ExamResourceMediaType'
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        updated_at:
+          type: string
+          format: date-time
+        draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamResourceListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ExamResourceResponse'

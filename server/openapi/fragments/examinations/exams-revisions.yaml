@@ -1,0 +1,308 @@
+paths:
+  /api/v1/exams/{exam_id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: listExamRevisions
+      summary: List bounded immutable Exam Revision metadata
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamRevisionListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: publishExamRevision
+      summary: Publish the complete validated Draft as an immutable Exam Revision
+      tags:
+        - Examinations
+      description: >-
+        Validates the complete current Draft and publishes it as a new immutable Exam Revision. The expected Draft revision prevents publishing concurrent edits, and the Idempotency-Key makes an exact lost-response retry safe. Publication captures content, policy, capacity, resources, and starter Workspace facts as one revision.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/exams/<exam-id>/revisions' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-exam-publish-012' \
+              --data '{"expected_draft_revision":12}'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.conflict
+        - exam.draft.revision_conflict
+        - exam.revision.no_changes
+        - exam.revision.capacity_exceeded
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/PublishExamRevision'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamRevisionCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/revisions/{exam_revision_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamRevisionID'
+    get:
+      operationId: getExamRevision
+      summary: Get bounded immutable Exam Revision metadata
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamRevisionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    ExamRevisionID:
+      name: exam_revision_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The immutable Exam Revision identifier.
+  requestBodies:
+    PublishExamRevision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublishExamRevisionRequest'
+          example:
+            expected_draft_revision: 12
+      description: >-
+        The exact mutable Draft revision expected by the publisher. Publication fails on a stale revision rather than publishing unintended changes.
+  responses:
+    ExamRevisionOK:
+      description: Bounded immutable Exam Revision metadata
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamRevisionResponse'
+    ExamRevisionCreated:
+      description: Exam Draft published as an immutable Exam Revision
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamRevisionResponse'
+    ExamRevisionListOK:
+      description: Bounded immutable Exam Revision metadata collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamRevisionListResponse'
+  schemas:
+    PublishExamRevisionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The exact current Draft revision to validate and publish.
+    ExamRevisionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - exam_id
+        - number
+        - source_draft_revision
+        - title
+        - policy_schema_version
+        - policy_digest
+        - execution_profile_digest
+        - capacity
+        - starter_workspace_digest
+        - content_digest
+        - resource_count
+        - starter_workspace_entry_count
+        - starter_workspace_total_bytes
+        - published_by_user_id
+        - published_at
+        - publication_kind
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        number:
+          type: integer
+          format: int64
+          minimum: 1
+        source_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        policy_schema_version:
+          type: integer
+          const: 1
+        policy_digest:
+          $ref: '#/components/schemas/SHA256'
+        execution_profile_digest:
+          $ref: '#/components/schemas/SHA256'
+        capacity:
+          $ref: '#/components/schemas/ExamCapacityPolicy'
+        starter_workspace_digest:
+          $ref: '#/components/schemas/SHA256'
+        content_digest:
+          $ref: '#/components/schemas/SHA256'
+        resource_count:
+          type: integer
+          minimum: 0
+          maximum: 100
+        starter_workspace_entry_count:
+          type: integer
+          minimum: 0
+          maximum: 5000
+        starter_workspace_total_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 1073741824
+        published_by_user_id:
+          $ref: '#/components/schemas/ID'
+        published_at:
+          type: string
+          format: date-time
+        base_revision_id:
+          $ref: '#/components/schemas/ID'
+        publication_kind:
+          type: string
+          enum:
+            - standard
+            - live_correction
+    ExamRevisionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamRevisionResponse'
+        next_cursor:
+          type: string
+          description: Opaque versioned cursor over descending Revision number and identity; clients return it unchanged.

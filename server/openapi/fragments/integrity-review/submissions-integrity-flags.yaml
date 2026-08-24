@@ -1,0 +1,263 @@
+paths:
+  /api/v1/submissions/{submission_id}/integrity-flags:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: listExamIntegrityFlags
+      summary: List bounded integrity Flag summaries for one sealed Submission
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: Opaque versioned Flag identity cursor.
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityFlagListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/submissions/{submission_id}/integrity-flags/{integrity_flag_id}/evidence:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+      - $ref: '#/components/parameters/IntegrityFlagID'
+    get:
+      operationId: listExamIntegrityEvidence
+      summary: List bounded purpose-specific evidence for one Submission Flag
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: Opaque versioned Evidence identity cursor.
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityEvidenceListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ExamIntegrityFlagListOK:
+      description: Bounded manager-authorized integrity Flag summaries
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIntegrityFlagListResponse'
+    ExamIntegrityEvidenceListOK:
+      description: Bounded manager-authorized purpose-specific evidence
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIntegrityEvidenceListResponse'
+  schemas:
+    ExamIntegrityFlagResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - exam_attempt_id
+        - generation
+        - policy_kind
+        - state
+        - created_at
+        - evidence_count
+        - evidence_overflow_count
+        - unresolved_missing_count
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        policy_kind:
+          type: string
+          enum:
+            - connection_loss
+            - focus_loss
+        state:
+          type: string
+          enum:
+            - open
+            - closed
+        created_at:
+          type: string
+          format: date-time
+        evidence_count:
+          type: integer
+          minimum: 0
+          maximum: 100
+        evidence_overflow_count:
+          type: integer
+          format: int64
+          minimum: 0
+        unresolved_missing_count:
+          type: integer
+          format: int64
+          minimum: 0
+    ExamIntegrityFlagListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamIntegrityFlagResponse'
+        next_cursor:
+          type: string
+    ExamIntegrityEvidenceResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - exam_attempt_id
+        - participation_id
+        - integrity_flag_id
+        - generation
+        - policy_kind
+        - sequence
+        - duration_milliseconds
+        - missing_before
+        - observed_at
+        - recorded_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        integrity_flag_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        policy_kind:
+          type: string
+          enum:
+            - connection_loss
+            - focus_loss
+        signal_id:
+          $ref: '#/components/schemas/ID'
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+        duration_milliseconds:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 86400000
+        source:
+          type: string
+          enum:
+            - application_backgrounded
+            - document_hidden
+            - fullscreen_exited
+            - window_blur
+        missing_before:
+          type: integer
+          format: int64
+          minimum: 0
+        observed_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+    ExamIntegrityEvidenceListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamIntegrityEvidenceResponse'
+        next_cursor:
+          type: string

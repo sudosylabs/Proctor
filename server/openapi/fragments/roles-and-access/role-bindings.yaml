@@ -1,0 +1,185 @@
+paths:
+  /api/v1/role-bindings:
+    get:
+      operationId: listRoleBindings
+      summary: List Role Bindings by user or scope
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/RoleBindingListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createRoleBinding
+      summary: Create a Role Binding
+      tags:
+        - Roles and access
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - role_binding.invalid
+        - role_binding.conflict
+        - role_binding.system_admin_requires_institution_scope
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/CreateRoleBinding'
+      responses:
+        "201":
+          $ref: '#/components/responses/RoleBindingCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/role-bindings/{role_binding_id}:
+    parameters:
+      - $ref: '#/components/parameters/RoleBindingID'
+    delete:
+      operationId: endRoleBinding
+      summary: End a Role Binding
+      tags:
+        - Roles and access
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - role_binding.conflict
+        - role_binding.last_system_admin
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/RoleBindingEnded'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    RoleBindingID:
+      name: role_binding_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The scoped Role Binding identifier.
+  requestBodies:
+    CreateRoleBinding:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateRoleBindingRequest'
+  responses:
+    RoleBindingListOK:
+      description: Role Binding collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleBindingListResponse'
+    RoleBindingCreated:
+      description: Role Binding created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleBindingResponse'
+    RoleBindingEnded:
+      description: Role Binding ended
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleBindingResponse'
+  schemas:
+    RoleBindingListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/RoleBindingResponse'
+    CreateRoleBindingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - role_id
+        - scope_type
+        - scope_id
+      properties:
+        user_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        scope_type:
+          type: string
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64

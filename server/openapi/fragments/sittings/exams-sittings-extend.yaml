@@ -1,0 +1,91 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+    post:
+      operationId: extendExamSitting
+      summary: Extend the deadline of an open or paused Exam Sitting
+      tags:
+        - Sittings
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.sitting.invalid
+        - exam.sitting.conflict
+        - exam.sitting.unavailable
+        - exam.archived
+        - exam.sitting.revision_conflict
+        - exam.sitting.state_conflict
+        - exam.sitting.deadline_reached
+        - exam.sitting.extension_not_later
+        - exam.sitting.class_ineligible
+        - exam.sitting.schedule_outside_period
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ExtendExamSitting'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSittingOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    ExtendExamSitting:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExtendExamSittingRequest'
+  schemas:
+    ExtendExamSittingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - scheduled_end_at
+        - reason
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        scheduled_end_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >-
+            Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes.

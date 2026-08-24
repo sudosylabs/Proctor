@@ -13,7 +13,10 @@ Each kind of information has one owner:
 | Domain vocabulary | Root [`CONTEXT.md`](../../CONTEXT.md) |
 | Durable cross-component design and rationale | [`docs/architecture/`](../architecture/) |
 | Exact component behavior | Contract beside the component, linked from architecture docs |
+| Public HTTP shapes and API reference metadata | [`server/openapi/`](../../server/openapi/) sources, generated [`server/openapi.json`](../../server/openapi.json), and the [`httpapi` contract](../../server/httpapi/CONTRACT.md) |
 | Capability status and unresolved decisions | [`docs/project/status.md`](../project/status.md) |
+| Public task-oriented guidance | [`docs/public/`](../public/) |
+| Public site presentation and build | [`docs/site/`](../site/) |
 | Module setup and commands | The module README and Makefile |
 | Cross-repository agent procedure | Root [`AGENTS.md`](../../AGENTS.md) |
 | Subtree-only agent differences | The nearest concise `AGENTS.md` |
@@ -29,6 +32,47 @@ Use `docs/README.md` as the navigation hub. Create a category only when it has
 substantive content. Cross-component architecture belongs under
 `docs/architecture/`; a precise contract that changes with one component may
 remain beside its code when the architecture guide links to it.
+
+Public guides under `docs/public/` explain released outcomes for operators,
+institution administrators, security reviewers, developers, API consumers, and
+eventually examination participants. They link to or derive exact facts from
+the existing glossary, architecture, component contracts, configuration, and
+OpenAPI sources instead of becoming a second authority. The private
+`docs/site/` package owns rendering, navigation, metadata validation, and the
+static build, not product behavior.
+
+## OpenAPI reference data
+
+Edit the human-owned YAML modules under `server/openapi/`; never edit generated
+`server/openapi.json` directly. `base.yaml` owns document metadata and the tag
+taxonomy. Recursively discovered product-area/resource fragments own paths and
+co-located definitions; area and root `shared.yaml` files own definitions with
+real shared consumers. Stable tags, summaries, descriptions, security,
+idempotency, error codes, parameter and request-body prose, and examples travel
+with the operation or definition they explain.
+
+The OpenAPI compiler hides fragment discovery, collision-safe merging,
+reference resolution, universal metadata checks, schema validation, and
+deterministic JSON generation. There is no fragment manifest or
+indentation-sensitive concatenation contract. Run `make -C server
+openapi-build` after an intentional source change and `make -C server
+openapi-check` to prove the reviewed artifact is current. The complete author
+workflow and placement rules live in
+[`server/openapi/README.md`](../../server/openapi/README.md).
+
+Every operation declares exactly one top-level product-area tag and explicitly
+sets `x-proctor-auth`, `x-proctor-error-codes`, and
+`x-proctor-idempotency`. Use `x-codeSamples` for reviewed executable-style
+examples. Examples are synthetic, use obvious placeholders for credentials and
+secrets, and never contain real student, Institution, Exam, answer, mail,
+object-store, or local-machine data.
+
+Run `npm run audit:openapi` from `docs/site` to audit the generated artifact and
+obtain the machine-readable coverage report. The normal `make docs-check` gate
+runs that audit and its
+failure-mode tests before building the site. The server OpenAPI validation
+independently enforces the universal operation metadata; its runtime agreement
+tests remain authoritative for route behavior.
 
 Keep `CONTEXT.md` implementation-free. A `CONTEXT-MAP.md` and additional
 glossaries are justified only when bounded contexts give the same terms
@@ -78,6 +122,6 @@ For documentation or architecture changes, run:
 make -C server architecture
 ```
 
-The architecture gate checks every repository Markdown candidate for local
-link targets, heading fragments, ignored/untracked dependencies, and
+The architecture gate checks every repository Markdown and MDX candidate for
+local link targets, heading fragments, ignored/untracked dependencies, and
 machine-specific paths. It does not contact external sites.

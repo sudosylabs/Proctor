@@ -1,0 +1,104 @@
+components:
+  responses:
+    ExamSittingOK:
+      description: Bounded Exam Sitting state
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSittingResponse'
+  schemas:
+    ExamSittingManagerTransitionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - reason
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >-
+            Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes.
+    ExamSittingState:
+      type: string
+      enum:
+        - scheduled
+        - open
+        - paused
+        - closing
+        - closed
+        - canceled
+    ExamSittingReasonCode:
+      type: string
+      enum:
+        - manager_canceled
+        - schedule_elapsed
+        - academic_structure_invalid
+        - manager_closed
+        - scheduled_end_reached
+    ExamSittingResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - exam_id
+        - exam_revision_id
+        - class_id
+        - scheduled_start_at
+        - scheduled_end_at
+        - state
+        - created_at
+        - updated_at
+        - revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_revision_id:
+          $ref: '#/components/schemas/ID'
+        class_id:
+          $ref: '#/components/schemas/ID'
+        scheduled_start_at:
+          type: string
+          format: date-time
+        scheduled_end_at:
+          type: string
+          format: date-time
+        state:
+          $ref: '#/components/schemas/ExamSittingState'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        opened_at:
+          type: string
+          format: date-time
+        paused_at:
+          type: string
+          format: date-time
+        closing_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+        canceled_at:
+          type: string
+          format: date-time
+        reason_code:
+          $ref: '#/components/schemas/ExamSittingReasonCode'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1

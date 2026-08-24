@@ -1,0 +1,305 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/workspace/files:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: createCandidateExamWorkspaceFile
+      summary: Stage and acknowledge one Workspace file
+      tags:
+        - Attempts and workspaces
+      description: >-
+        Stages and acknowledges one file in the active candidate Attempt Workspace. The request is metadata-first multipart, bounded by both hard API limits and the admitted Revision, and requires the Session-bound Attempt credential, open Connection, active Participation generation, content digest, and an Idempotency-Key.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/workspace/files' \
+              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
+              --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
+              --header 'Idempotency-Key: docs-workspace-file-019' \
+              --form 'metadata={"participation_id":"<participation-id>","generation":2,"path":"answers/main.go","media_type":"text/plain","size":128,"sha256":"<sha256>"};type=application/json' \
+              --form 'content=@main.go;type=application/octet-stream'
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.path_conflict
+        - exam.attempt.workspace.entry_conflict
+        - exam.attempt.workspace.entry_limit
+        - exam.attempt.workspace.size_limit
+        - exam.attempt.workspace.object_conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CandidateWorkspaceFileUploadMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+        description: >-
+          Exactly two multipart parts in order: strict JSON metadata first, followed by bounded file content. The Attempt credential and Connection remain headers, never form fields.
+      responses:
+        "201":
+          $ref: '#/components/responses/CandidateWorkspaceMutationCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/AttemptWorkspaceEntryID'
+    get:
+      operationId: getCandidateExamWorkspaceContent
+      summary: Render a protected candidate Workspace file inline
+      tags:
+        - Attempts and workspaces
+      description: >-
+        Streams one protected active Workspace file only after rechecking the authenticated Session, Attempt credential, open Connection, current Participation, and readable Attempt state. It never exposes a VFS or object-store identity. Private no-store caching, nosniff, ETag, and conditional 304 behavior apply.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request GET \
+              --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/workspace/files/<workspace-entry-id>/content' \
+              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
+              --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
+              --output 'main.go'
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - name: If-None-Match
+          in: header
+          required: false
+          description: One or more entity tags from an earlier protected-content response. A match returns 304 without a body.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateExamProtectedContent'
+        "304":
+          $ref: '#/components/responses/CandidateExamContentNotModified'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceCandidateExamWorkspaceFile
+      summary: Replace one exact Workspace file content state
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.path_conflict
+        - exam.attempt.workspace.entry_conflict
+        - exam.attempt.workspace.content_conflict
+        - exam.attempt.workspace.size_limit
+        - exam.attempt.workspace.object_conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReplaceCandidateWorkspaceFileMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateWorkspaceMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  schemas:
+    CandidateWorkspaceFileUploadMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - path
+        - media_type
+        - size
+        - sha256
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+          description: The active Participation identifier returned by the successful Attempt connection.
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The active Participation connection generation.
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+          description: The canonical destination path within the Attempt Workspace.
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: The declared media type of the file content.
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+          description: The exact content byte length, bounded by the admission Revision and the hard API limit.
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+          description: The lowercase SHA-256 digest of the uploaded content.
+    CandidateWorkspaceFileUploadMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: >-
+        Exactly two parts in order: strict JSON metadata first, then bounded file content. The complete request is limited to 100 MiB plus 64 KiB.
+      properties:
+        metadata:
+          $ref: '#/components/schemas/CandidateWorkspaceFileUploadMetadata'
+        content:
+          type: string
+          format: binary
+    ReplaceCandidateWorkspaceFileMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - expected_path
+        - expected_content_version
+        - media_type
+        - size
+        - sha256
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        expected_content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ReplaceCandidateWorkspaceFileMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ReplaceCandidateWorkspaceFileMetadata'
+        content:
+          type: string
+          format: binary

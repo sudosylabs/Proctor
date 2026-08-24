@@ -1,0 +1,134 @@
+paths:
+  /api/v1/users/{user_id}/email:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    put:
+      operationId: changeUserEmail
+      summary: Explicitly change a User email address and require verification
+      tags:
+        - Users
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - user.invalid
+        - user.conflict
+        - authentication.account_recovery.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/ChangeUserEmail'
+      responses:
+        "200":
+          $ref: '#/components/responses/UserEmailStateOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/{user_id}/email/verify:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    post:
+      operationId: verifyUserEmailPrivileged
+      summary: Privileged verification of a User email address
+      tags:
+        - Users
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - user.conflict
+        - authentication.account_recovery.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/UserEmailStateOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ChangeUserEmail:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ChangeUserEmailRequest'
+  responses:
+    UserEmailStateOK:
+      description: Narrow result of an explicit email-security transition
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserEmailStateResponse'
+  schemas:
+    UserEmailStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email_verified
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        email_verified:
+          type: boolean
+    ChangeUserEmailRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email

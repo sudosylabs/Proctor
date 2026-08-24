@@ -14,7 +14,7 @@ GOPRIVATE ?= github.com/sudosylabs/proctor
 
 export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILPIT_SMTP_PORT PROCTOR_MAILPIT_HTTP_PORT GOPRIVATE
 
-.PHONY: check architecture i18n-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
+.PHONY: check architecture i18n-check openapi-build openapi-check openapi-validate openapi-agreement test test-race vet build package mail-templates-install mail-templates-generate mail-templates-check mail-templates-test mail-preview postgres-up postgres-down postgres-logs redis-up redis-logs minio-up minio-logs mailpit-up mailpit-down mailpit-logs integration-all integration-postgres integration-redis integration-s3 integration-providers integration-realtime independent-modules phase-file-jobs phase-access-onboarding phase-transactional-mail conformance-postgres conformance-realtime
 
 check: architecture i18n-check openapi-agreement test test-race vet
 
@@ -24,7 +24,14 @@ architecture:
 i18n-check:
 	go run ./cmd/ptool i18n check
 
-openapi-validate:
+openapi-build:
+	go run ./cmd/ptool openapi build
+
+openapi-check:
+	go run ./cmd/ptool openapi check
+
+openapi-validate: openapi-check
+	go test ./internal/openapidoc
 	go test ./httpapi -run 'OpenAPISchemaIsValid$$'
 
 openapi-agreement: openapi-validate

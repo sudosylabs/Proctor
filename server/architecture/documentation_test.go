@@ -37,7 +37,8 @@ func TestRepositoryDocumentationIsPortable(t *testing.T) {
 	candidates := documentationCandidates(t, repositoryRoot)
 	var markdownFiles []string
 	for name := range candidates {
-		if strings.EqualFold(filepath.Ext(name), ".md") {
+		extension := strings.ToLower(filepath.Ext(name))
+		if extension == ".md" || extension == ".mdx" {
 			markdownFiles = append(markdownFiles, name)
 		}
 	}
@@ -180,7 +181,8 @@ func validateMarkdownTarget(t *testing.T, root, source, rawTarget string, candid
 		}
 	}
 
-	if parsed.Fragment != "" && strings.EqualFold(filepath.Ext(linkedFile), ".md") {
+	linkedExtension := strings.ToLower(filepath.Ext(linkedFile))
+	if parsed.Fragment != "" && (linkedExtension == ".md" || linkedExtension == ".mdx") {
 		validateHeadingFragment(t, root, source, linkedFile, parsed.Fragment)
 	}
 }

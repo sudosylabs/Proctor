@@ -1,0 +1,40 @@
+paths:
+  /api/v1/system/version:
+    get:
+      operationId: getSystemVersion
+      summary: Get build and version information
+      tags:
+        - System
+      x-proctor-auth: public
+      x-proctor-error-codes: []
+      security: []
+      x-proctor-idempotency: none
+      responses:
+        "200":
+          $ref: '#/components/responses/BuildInfoOK'
+components:
+  responses:
+    BuildInfoOK:
+      description: Build information
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BuildInfoResponse'
+  schemas:
+    BuildInfoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - commit
+        - build_time
+        - go_version
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        build_time:
+          type: string
+        go_version:
+          type: string

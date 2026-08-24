@@ -1,0 +1,64 @@
+---
+title: Review Proctor Security
+description: Trace Proctor's trust boundaries across identity, authorization, audit, files, execution, and deployment.
+audience: security-reviewer
+maturity: preview
+slug: /security/
+---
+
+# Review Proctor Security
+
+Security review starts with the decisions Proctor owns and the controls the
+installation operator must supply. This guide maps the review surface without
+replacing the detailed architecture contracts.
+
+<Maturity state="preview">
+  These links describe implemented server boundaries and explicitly deferred
+  product behavior. Retention periods, dedicated proctor assignment, candidate
+  accommodations, and review appeals remain open product decisions.
+</Maturity>
+
+## Trust Boundaries
+
+### Identity Establishes an Immutable Principal
+
+Authentication proves the current principal and assurance level. It does not
+pre-authorize a later action. Application use cases re-read authoritative state
+and decide whether the principal may act on the exact resource.
+
+### Authorization Is Current and Scoped
+
+Roles and scoped bindings grant permissions. Academic relationships help define
+visibility and context, but membership alone grants no unrestricted access.
+Security-sensitive decisions are durably auditable and fail closed where the
+architecture requires it.
+
+### PostgreSQL Is the Recovery Authority
+
+Durable application state commits before disposable cache invalidation,
+cross-node fan-out, or realtime publication. A cache or cluster message may be
+discarded and reconstructed; it must never become the only record of a decision.
+
+### Workspaces Are Durable; Execution Hosts Are Projections
+
+Attempt Workspace state remains under Proctor's durable authority. An execution
+host receives a bounded, isolated projection and can be repaired or revoked from
+authoritative state.
+
+## Review by Concern
+
+| Concern | Governing document |
+| --- | --- |
+| Credentials, sessions, MFA, and external identity | [Identity architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/identity.md) |
+| Permissions, scope inheritance, and decision audit | [Authorization architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/authorization.md) |
+| Secrets, logs, headers, and transport behavior | [Security architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/security.md) |
+| Files, retention, legal holds, and purge boundaries | [File architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/files.md) |
+| Isolated execution and host trust | [Execution architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/execution.md) |
+| Exam integrity evidence and review | [Examination architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/examinations.md) |
+
+## Data-Handling Rule
+
+Credentials, secrets, student data, exam answers, and unbounded user-controlled
+content do not belong in ordinary logs or unsafe audit fields. Documentation,
+examples, screenshots, and support reports must use synthetic data and preserve
+that same boundary.

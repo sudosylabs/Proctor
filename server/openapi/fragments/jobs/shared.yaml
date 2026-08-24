@@ -1,0 +1,76 @@
+components:
+  responses:
+    JobOK:
+      description: Safe durable Job projection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobResponse'
+  schemas:
+    JobProgressResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - current
+        - total
+        - stage
+      properties:
+        current:
+          type: integer
+          format: int64
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 1
+        stage:
+          type: string
+    JobResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - status
+        - create_at
+        - update_at
+        - available_at
+        - attempt_count
+        - maximum_attempts
+        - revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        type:
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        available_at:
+          type: integer
+          format: int64
+        start_at:
+          type: integer
+          format: int64
+        complete_at:
+          type: integer
+          format: int64
+        public_error_code:
+          type: string
+        attempt_count:
+          type: integer
+          minimum: 0
+        maximum_attempts:
+          type: integer
+          minimum: 1
+        progress:
+          $ref: '#/components/schemas/JobProgressResponse'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1

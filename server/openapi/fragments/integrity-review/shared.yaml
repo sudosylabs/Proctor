@@ -1,0 +1,9 @@
+components:
+  parameters:
+    IntegrityFlagID:
+      name: integrity_flag_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Integrity Flag identifier.

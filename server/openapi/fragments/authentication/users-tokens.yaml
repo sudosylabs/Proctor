@@ -1,0 +1,303 @@
+paths:
+  /api/v1/users/me/tokens:
+    get:
+      operationId: listPersonalAccessTokens
+      summary: List current-user Personal Access Tokens
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - personal_access_token.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/PersonalAccessTokenListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createPersonalAccessToken
+      summary: Create a Personal Access Token
+      tags:
+        - Authentication
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - personal_access_token.invalid
+        - personal_access_token.maximum_reached
+        - personal_access_token.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/CreatePersonalAccessToken'
+      responses:
+        "201":
+          $ref: '#/components/responses/PersonalAccessTokenCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/tokens/{personal_access_token_id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/PersonalAccessTokenID'
+    post:
+      operationId: disablePersonalAccessToken
+      summary: Disable a Personal Access Token
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - request.invalid
+        - resource.not_found
+        - personal_access_token.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/PersonalAccessTokenOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/tokens/{personal_access_token_id}/enable:
+    parameters:
+      - $ref: '#/components/parameters/PersonalAccessTokenID'
+    post:
+      operationId: enablePersonalAccessToken
+      summary: Enable a Personal Access Token
+      tags:
+        - Authentication
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - personal_access_token.maximum_reached
+        - personal_access_token.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/PersonalAccessTokenOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/tokens/{personal_access_token_id}:
+    parameters:
+      - $ref: '#/components/parameters/PersonalAccessTokenID'
+    delete:
+      operationId: revokePersonalAccessToken
+      summary: Revoke a Personal Access Token
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - request.invalid
+        - resource.not_found
+        - personal_access_token.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    PersonalAccessTokenID:
+      name: personal_access_token_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Personal Access Token record identifier; this is not the token secret.
+  requestBodies:
+    CreatePersonalAccessToken:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreatePersonalAccessTokenRequest'
+  responses:
+    PersonalAccessTokenOK:
+      description: Personal Access Token
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PersonalAccessTokenResponse'
+    PersonalAccessTokenCreated:
+      description: Personal Access Token with one-time credential
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PersonalAccessTokenCreationResponse'
+    PersonalAccessTokenListOK:
+      description: Personal Access Token collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PersonalAccessTokenListResponse'
+  schemas:
+    CreatePersonalAccessTokenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - description
+        - scopes
+        - expires_at
+      properties:
+        description:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        expires_at:
+          type: integer
+          format: int64
+    PersonalAccessTokenResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - user_id
+        - description
+        - scopes
+        - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        user_id:
+          $ref: '#/components/schemas/ID'
+        description:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        expires_at:
+          type: integer
+          format: int64
+        last_used_at:
+          type: integer
+          format: int64
+        disabled_at:
+          type: integer
+          format: int64
+        revoked_at:
+          type: integer
+          format: int64
+    PersonalAccessTokenCreationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - credential
+      properties:
+        token:
+          $ref: '#/components/schemas/PersonalAccessTokenResponse'
+        credential:
+          type: string
+    PersonalAccessTokenListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/PersonalAccessTokenResponse'

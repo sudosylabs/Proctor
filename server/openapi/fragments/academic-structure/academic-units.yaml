@@ -1,0 +1,276 @@
+paths:
+  /api/v1/academic-units:
+    get:
+      operationId: listAcademicUnits
+      summary: List or search Academic Units
+      tags:
+        - Academic structure
+      description: >-
+        Lists the Academic Units visible to the current principal, optionally filtered by a literal case-insensitive name substring. Visibility is evaluated from current scoped authority and does not grant mutation permission. This bounded collection returns at most the requested limit.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body --get \
+              --url 'https://proctor.example.edu/api/v1/academic-units' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Accept: application/json' \
+              --data-urlencode 'q=computer' \
+              --data-urlencode 'limit=50'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Literal case-insensitive substring matched against name and display name.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+          description: Maximum number of Academic Units to return, from 1 through 200.
+      responses:
+        "200":
+          $ref: '#/components/responses/AcademicUnitListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createRootAcademicUnit
+      summary: Create a root Academic Unit
+      tags:
+        - Academic structure
+      description: >-
+        Creates a top-level Academic Unit in the installation Institution after authoritative authorization. Supplying an optional Idempotency-Key makes an exact retry return the committed outcome; reusing the key with different input is a conflict. Server-owned identity and scope fields in the compatibility body are ignored.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/academic-units' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-academic-unit-001' \
+              --data '{"name":"computer-science","display_name":"Computer Science","description":"Teaching and research in computing."}'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: optional
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - administration.unavailable
+        - academic_unit.invalid
+        - academic_unit.conflict
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/OptionalIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateAcademicUnit'
+      responses:
+        "201":
+          $ref: '#/components/responses/AcademicUnitCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/academic-units/{academic_unit_id}:
+    parameters:
+      - $ref: '#/components/parameters/AcademicUnitID'
+    get:
+      operationId: getAcademicUnit
+      summary: Get an Academic Unit
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AcademicUnitOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateAcademicUnit
+      summary: Update or reparent an Academic Unit
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - academic_unit.invalid
+        - academic_unit.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateAcademicUnit'
+      responses:
+        "200":
+          $ref: '#/components/responses/AcademicUnitOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: archiveAcademicUnit
+      summary: Archive an Academic Unit
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - academic_unit.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/AcademicUnitArchived'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateAcademicUnit:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateAcademicUnitRequest'
+  responses:
+    AcademicUnitOK:
+      description: Academic Unit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicUnitResponse'
+    AcademicUnitArchived:
+      description: Academic Unit archived
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+  schemas:
+    UpdateAcademicUnitRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        parent_id:
+          type:
+            - string
+            - "null"
+          pattern: ^$|^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+        name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.

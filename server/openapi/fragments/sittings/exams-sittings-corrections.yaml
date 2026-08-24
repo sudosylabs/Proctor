@@ -1,0 +1,173 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/corrections:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+    post:
+      operationId: applyExamSittingCorrection
+      summary: Create an immutable live correction and retarget one open or paused Sitting
+      tags:
+        - Sittings
+      description: >-
+        Resources is the complete desired ordered manifest. Omission removes an existing resource, array order becomes resource position, an item without stage_id retains its base content, and an item with stage_id selects that ready purpose-bound stage. Omitted instructions_markdown preserves the current instructions; a present empty string clears them. Policy, Starter Workspace, future default, and schedule cannot be changed here.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.sitting.correction.invalid
+        - exam.sitting.correction.conflict
+        - exam.sitting.correction.unavailable
+        - exam.archived
+        - exam.sitting.revision_conflict
+        - exam.sitting.state_conflict
+        - exam.sitting.deadline_reached
+        - exam.sitting.correction.no_changes
+        - exam.sitting.correction.manifest_invalid
+        - exam.sitting.correction.stage_invalid
+        - exam.resource.limit
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ApplyExamSittingCorrection'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamSittingCorrectionCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    ApplyExamSittingCorrection:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApplyExamSittingCorrectionRequest'
+  responses:
+    ExamSittingCorrectionCreated:
+      description: Immutable live correction created and the affected Sitting retargeted
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSittingCorrectionResponse'
+  schemas:
+    ExamSittingCorrectionResourceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_id
+        - display_name
+        - description_markdown
+      description: >-
+        An item without stage_id retains the exact base content. An item with stage_id selects the ready stage bound to this resource and correction target.
+      properties:
+        resource_id:
+          $ref: '#/components/schemas/ID'
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Trimmed UTF-8 with at most 255 Unicode scalar values.
+        description_markdown:
+          type: string
+          maxLength: 16384
+          description: Authored Markdown encoded as UTF-8 and limited to 16384 bytes.
+        stage_id:
+          $ref: '#/components/schemas/ID'
+    ApplyExamSittingCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_sitting_revision
+        - expected_current_revision_id
+        - reason
+        - resources
+      properties:
+        expected_sitting_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_current_revision_id:
+          $ref: '#/components/schemas/ID'
+        instructions_markdown:
+          type: string
+          maxLength: 65536
+          description: >-
+            Omitted preserves current instructions. A present empty string clears them; null is invalid. Authored Markdown is limited to 65536 UTF-8 bytes.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: >-
+            Required already-trimmed private manager rationale; valid UTF-8, at most 1000 Unicode scalar values and 4000 bytes.
+        resources:
+          type: array
+          maxItems: 100
+          description: >-
+            Required complete desired resource manifest. Omitted base resources are removed and array order becomes resource position. Resource and non-empty stage identities must each be unique.
+          items:
+            $ref: '#/components/schemas/ExamSittingCorrectionResourceRequest'
+    ExamSittingCorrectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam_id
+        - exam_sitting_id
+        - previous_revision_id
+        - revision_id
+        - revision_number
+        - sitting_revision
+        - sitting_state
+        - effective_at
+      properties:
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        previous_revision_id:
+          $ref: '#/components/schemas/ID'
+        revision_id:
+          $ref: '#/components/schemas/ID'
+        revision_number:
+          type: integer
+          format: int64
+          minimum: 1
+        sitting_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        sitting_state:
+          $ref: '#/components/schemas/ExamSittingState'
+        effective_at:
+          type: string
+          format: date-time

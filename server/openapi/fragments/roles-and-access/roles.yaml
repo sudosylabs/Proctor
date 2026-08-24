@@ -1,0 +1,278 @@
+paths:
+  /api/v1/roles:
+    get:
+      operationId: listRoles
+      summary: List Roles
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/RoleListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createRole
+      summary: Create a custom Role
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - role.invalid
+        - role.conflict
+        - role.permission.unknown
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/CreateRole'
+      responses:
+        "201":
+          $ref: '#/components/responses/RoleCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/roles/{role_id}:
+    parameters:
+      - $ref: '#/components/parameters/RoleID'
+    get:
+      operationId: getRole
+      summary: Get a Role
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/RoleOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateRole
+      summary: Update a custom Role
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - role.invalid
+        - role.conflict
+        - role.built_in.protected
+        - role.permission.unknown
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateRole'
+      responses:
+        "200":
+          $ref: '#/components/responses/RoleOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteRole
+      summary: Delete a custom Role
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - role.built_in.protected
+        - role.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/RoleDeleted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    RoleID:
+      name: role_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Role identifier.
+  requestBodies:
+    CreateRole:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateRoleRequest'
+    UpdateRole:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateRoleRequest'
+  responses:
+    RoleListOK:
+      description: Role collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleListResponse'
+    RoleOK:
+      description: Role
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleResponse'
+    RoleCreated:
+      description: Role created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleResponse'
+    RoleDeleted:
+      description: Role deleted
+  schemas:
+    RoleListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/RoleResponse'
+    CreateRoleRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - display_name
+        - permissions
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    UpdateRoleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        permissions:
+          type:
+            - array
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty array is present and subject to validation.
+          items:
+            type: string

@@ -1,0 +1,152 @@
+components:
+  parameters:
+    ProviderID:
+      name: provider_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[a-z0-9][a-z0-9._-]{0,63}$
+      description: The configured external authentication provider identifier.
+  responses:
+    AuthenticationOK:
+      description: Authenticated session
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthenticationResponse'
+    SensitiveAccepted:
+      description: Accepted
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+    SensitiveNoContent:
+      description: Completed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+    BadGateway:
+      description: Upstream authentication provider failed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  schemas:
+    AuthenticationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+      properties:
+        user:
+          $ref: '#/components/schemas/UserProfileResponse'
+        session:
+          $ref: '#/components/schemas/SessionResponse'
+        tokens:
+          $ref: '#/components/schemas/AuthenticationTokensResponse'
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - user_id
+        - client_type
+        - authentication_method
+        - authentication_strength
+        - authenticated_at
+        - last_activity_at
+        - idle_expires_at
+        - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        user_id:
+          $ref: '#/components/schemas/ID'
+        client_type:
+          type: string
+          enum:
+            - desktop
+            - cli
+            - web
+        device_id:
+          type: string
+        device_name:
+          type: string
+        authentication_method:
+          type: string
+        authentication_strength:
+          type: string
+        authenticated_at:
+          type: integer
+          format: int64
+        mfa_completed_at:
+          type: integer
+          format: int64
+        last_activity_at:
+          type: integer
+          format: int64
+        idle_expires_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+        revoked_at:
+          type: integer
+          format: int64
+        revocation_reason_code:
+          type: string
+          enum:
+            - account_disabled
+            - access_policy_changed
+            - administrator_all_sessions
+            - administrator_session
+            - authentication_audit_failed
+            - external_identity_unlinked
+            - inactive_user
+            - password_removed
+            - password_reset
+            - refresh_replay
+            - user_all_sessions
+            - user_logout
+            - user_session
+        revocation_reason:
+          type: string
+          description: Localized presentation of revocation_reason_code.
+    AuthenticationTokensResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - access_token
+        - refresh_token
+        - access_expires_at
+        - refresh_expires_at
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        access_expires_at:
+          type: integer
+          format: int64
+        refresh_expires_at:
+          type: integer
+          format: int64

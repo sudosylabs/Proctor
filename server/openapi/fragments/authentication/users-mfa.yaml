@@ -1,0 +1,388 @@
+paths:
+  /api/v1/users/me/mfa:
+    get:
+      operationId: getMFAStatus
+      summary: Get current-user MFA status
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.mfa.disabled
+        - authentication.mfa.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MFAStatusOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/mfa/setup:
+    post:
+      operationId: setupMFA
+      summary: Begin MFA setup
+      tags:
+        - Authentication
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "201":
+          $ref: '#/components/responses/MFASetupCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/mfa/activate:
+    post:
+      operationId: activateMFA
+      summary: Activate pending MFA setup
+      tags:
+        - Authentication
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.mfa.invalid_code
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/MFACode'
+      responses:
+        "200":
+          $ref: '#/components/responses/MFAActivationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/mfa/challenge:
+    post:
+      operationId: challengeMFA
+      summary: Upgrade the current session with MFA
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - request.invalid
+        - authentication.mfa.invalid_code
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/MFACode'
+      responses:
+        "200":
+          $ref: '#/components/responses/SessionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/mfa/recovery-codes/regenerate:
+    post:
+      operationId: regenerateMFARecoveryCodes
+      summary: Regenerate MFA recovery codes
+      tags:
+        - Authentication
+      description: >-
+        Invalidates the current recovery-code set and returns a new single-use set exactly once. It requires a strong, recently authenticated interactive Session; Personal Access Tokens cannot satisfy that assurance. Store the returned codes securely because Proctor does not expose them again.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/users/me/mfa/recovery-codes/regenerate' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'Accept: application/json'
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MFARecoveryCodesOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/mfa/disable:
+    post:
+      operationId: disableMFA
+      summary: Disable current-user MFA
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    MFACode:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MFACodeRequest'
+  responses:
+    SessionOK:
+      description: Session
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionResponse'
+    MFAStatusOK:
+      description: MFA status
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MFAStatusResponse'
+    MFASetupCreated:
+      description: Pending MFA setup
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MFASetupResponse'
+    MFAActivationOK:
+      description: MFA activated
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MFAActivationResponse'
+    MFARecoveryCodesOK:
+      description: New MFA recovery codes
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MFARecoveryCodesResponse'
+    NotImplemented:
+      description: Capability is not enabled
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  schemas:
+    MFACodeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        code:
+          type: string
+    MFARecoveryCodesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recovery_codes
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+    MFASetupResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - secret
+        - provisioning_uri
+        - expires_at
+      properties:
+        secret:
+          type: string
+        provisioning_uri:
+          type: string
+          format: uri
+        expires_at:
+          type: integer
+          format: int64
+    MFAActivationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - recovery_codes
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+    MFAStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - pending
+        - recovery_codes_remaining
+      properties:
+        enabled:
+          type: boolean
+        pending:
+          type: boolean
+        pending_expires_at:
+          type: integer
+          format: int64
+        recovery_codes_remaining:
+          type: integer
+          minimum: 0

@@ -1,0 +1,62 @@
+paths:
+  /api/v1/academic-unit-members/{academic_unit_member_id}:
+    parameters:
+      - $ref: '#/components/parameters/AcademicUnitMemberID'
+    delete:
+      operationId: endAcademicUnitMember
+      summary: End organizational membership while retaining history
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - academic_unit_member.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AcademicUnitMemberEnded'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    AcademicUnitMemberID:
+      name: academic_unit_member_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Academic Unit membership identifier.
+  responses:
+    AcademicUnitMemberEnded:
+      description: Academic Unit Member ended
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicUnitMemberResponse'

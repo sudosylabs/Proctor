@@ -1,0 +1,65 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/pause:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+    post:
+      operationId: pauseExamSitting
+      summary: Pause an open Exam Sitting with a private manager reason
+      tags:
+        - Sittings
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.sitting.invalid
+        - exam.sitting.conflict
+        - exam.sitting.unavailable
+        - exam.sitting.revision_conflict
+        - exam.sitting.state_conflict
+        - exam.sitting.deadline_reached
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/PauseExamSitting'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSittingOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    PauseExamSitting:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSittingManagerTransitionRequest'

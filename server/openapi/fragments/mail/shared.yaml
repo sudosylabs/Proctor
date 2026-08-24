@@ -1,0 +1,75 @@
+components:
+  schemas:
+    MailDeliveryState:
+      type: string
+      enum:
+        - queued
+        - sending
+        - accepted
+        - failed
+        - suppressed
+        - canceled
+    MailDeliveryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - occurrence_id
+        - target_user_id
+        - template_key
+        - template_digest
+        - masked_recipient
+        - state
+        - created_at
+        - updated_at
+        - message_date
+        - deadline
+        - message_id
+        - attempt_count
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        occurrence_id:
+          $ref: '#/components/schemas/ID'
+        target_user_id:
+          $ref: '#/components/schemas/ID'
+        template_key:
+          type: string
+          enum:
+            - system.mail_test
+        template_digest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        masked_recipient:
+          type: string
+          maxLength: 254
+        state:
+          $ref: '#/components/schemas/MailDeliveryState'
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        message_date:
+          type: integer
+          format: int64
+        deadline:
+          type: integer
+          format: int64
+        message_id:
+          type: string
+          maxLength: 900
+        attempt_count:
+          type: integer
+          minimum: 0
+          maximum: 8
+        accepted_at:
+          type: integer
+          format: int64
+        failed_at:
+          type: integer
+          format: int64
+        public_failure_code:
+          type: string
+          maxLength: 128

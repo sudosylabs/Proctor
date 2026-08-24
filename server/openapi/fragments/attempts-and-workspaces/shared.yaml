@@ -1,0 +1,130 @@
+components:
+  responses:
+    CandidateWorkspaceMutationCreated:
+      description: Candidate Workspace mutation acknowledged
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CandidateWorkspaceMutationResponse'
+    CandidateWorkspaceMutationOK:
+      description: Candidate Workspace mutation acknowledged
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CandidateWorkspaceMutationResponse'
+    CandidateExamProtectedContent:
+      description: Authorized inline candidate Exam content; not a public URL or export response
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+      content:
+        '*/*':
+          schema:
+            type: string
+            format: binary
+    CandidateExamContentNotModified:
+      description: Protected candidate Exam content has not changed
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+  schemas:
+    CandidateExamWorkspaceItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - path
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        kind:
+          type: string
+          enum:
+            - file
+            - directory
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+      oneOf:
+        - properties:
+            kind:
+              const: file
+          required:
+            - content_version
+            - media_type
+            - size
+            - sha256
+        - properties:
+            kind:
+              const: directory
+          not:
+            anyOf:
+              - required:
+                  - content_version
+              - required:
+                  - media_type
+              - required:
+                  - size
+              - required:
+                  - sha256
+    CandidateWorkspaceMutationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspace_id
+        - workspace_cursor
+        - operation
+      properties:
+        workspace_id:
+          $ref: '#/components/schemas/ID'
+        workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 1
+        operation:
+          type: string
+          enum:
+            - create_file
+            - create_directory
+            - replace_file
+            - move_entry
+            - delete_entry
+        entry:
+          $ref: '#/components/schemas/CandidateExamWorkspaceItemResponse'

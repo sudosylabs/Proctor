@@ -1,0 +1,739 @@
+paths:
+  /api/v1/exams/{exam_id}/draft/starter-workspace:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: listExamDraftStarterWorkspace
+      summary: List the complete Starter Workspace manifest for an Exam Draft
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamStarterWorkspaceListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/starter-workspace/directories:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    post:
+      operationId: createExamDraftStarterWorkspaceDirectory
+      summary: Create an empty directory in an Exam Draft Starter Workspace
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.conflict
+        - exam.starter_workspace.unavailable
+        - exam.starter_workspace.path_conflict
+        - exam.starter_workspace.parent_not_found
+        - exam.starter_workspace.entry_limit
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateExamStarterWorkspaceDirectory'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamStarterWorkspaceEntryCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/starter-workspace/files:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    post:
+      operationId: createExamDraftStarterWorkspaceFile
+      summary: Upload a file into an Exam Draft Starter Workspace
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.conflict
+        - exam.starter_workspace.unavailable
+        - exam.starter_workspace.path_conflict
+        - exam.starter_workspace.parent_not_found
+        - exam.starter_workspace.entry_limit
+        - exam.starter_workspace.total_size_limit
+        - exam.starter_workspace.upload_expired
+        - exam.starter_workspace.object_conflict
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamStarterWorkspaceFileUploadMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamStarterWorkspaceEntryCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/StarterWorkspaceEntryID'
+    patch:
+      operationId: moveExamDraftStarterWorkspaceEntry
+      summary: Rename or move one Starter Workspace entry by logical path
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.conflict
+        - exam.starter_workspace.unavailable
+        - exam.starter_workspace.path_conflict
+        - exam.starter_workspace.parent_not_found
+        - exam.starter_workspace.no_changes
+        - exam.starter_workspace.invalid_move
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/MoveExamStarterWorkspaceEntry'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamStarterWorkspaceEntryOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: removeExamDraftStarterWorkspaceEntry
+      summary: Remove one file or empty directory from a Starter Workspace
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.conflict
+        - exam.starter_workspace.unavailable
+        - exam.starter_workspace.directory_not_empty
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/RemoveExamStarterWorkspaceEntry'
+      responses:
+        "204":
+          $ref: '#/components/responses/ExamStarterWorkspaceEntryRemoved'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/StarterWorkspaceEntryID'
+    get:
+      operationId: getExamDraftStarterWorkspaceFileContent
+      summary: Render protected Starter Workspace file content inline
+      tags:
+        - Examinations
+      description: >-
+        Returns only an authorized in-application content stream. This route is not a public URL or download/export capability and never exposes an object key.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamStarterWorkspaceProtectedContent'
+        "304":
+          $ref: '#/components/responses/ExamStarterWorkspaceContentNotModified'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceExamDraftStarterWorkspaceFileContent
+      summary: Replace one Starter Workspace file's content
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.starter_workspace.invalid
+        - exam.starter_workspace.conflict
+        - exam.starter_workspace.unavailable
+        - exam.starter_workspace.total_size_limit
+        - exam.starter_workspace.upload_expired
+        - exam.starter_workspace.object_conflict
+        - exam.starter_workspace.content_conflict
+        - exam.starter_workspace.entry_kind
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExamStarterWorkspaceFileReplacementMultipart'
+            encoding:
+              metadata:
+                contentType: application/json
+              content:
+                contentType: application/octet-stream
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamStarterWorkspaceEntryOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    StarterWorkspaceEntryID:
+      name: starter_workspace_entry_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Exam Draft starter Workspace entry identifier.
+  requestBodies:
+    CreateExamStarterWorkspaceDirectory:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateExamStarterWorkspaceDirectoryRequest'
+    MoveExamStarterWorkspaceEntry:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MoveExamStarterWorkspaceEntryRequest'
+    RemoveExamStarterWorkspaceEntry:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveExamStarterWorkspaceEntryRequest'
+  responses:
+    ExamStarterWorkspaceEntryOK:
+      description: Exam Draft Starter Workspace entry changed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamStarterWorkspaceEntryResponse'
+    ExamStarterWorkspaceEntryCreated:
+      description: Exam Draft Starter Workspace entry created
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamStarterWorkspaceEntryResponse'
+    ExamStarterWorkspaceEntryRemoved:
+      description: Exam Draft Starter Workspace entry removed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+    ExamStarterWorkspaceListOK:
+      description: Complete Exam Draft Starter Workspace manifest
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamStarterWorkspaceListResponse'
+    ExamStarterWorkspaceProtectedContent:
+      description: Authorized inline Starter Workspace file content; not a public URL or export response
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+      content:
+        '*/*':
+          schema:
+            type: string
+            format: binary
+    ExamStarterWorkspaceContentNotModified:
+      description: Protected Starter Workspace content has not changed
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+            const: private, no-store
+        X-Content-Type-Options:
+          schema:
+            type: string
+            const: nosniff
+  schemas:
+    CreateExamStarterWorkspaceDirectoryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - path
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+    ExamStarterWorkspaceFileUploadMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - path
+        - media_type
+        - size
+        - sha256
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: -1
+          maximum: 104857600
+          description: A value of -1 means the client did not declare a size; the streamed body remains bounded to 100 MiB.
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ExamStarterWorkspaceFileReplacementMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - expected_content_version
+        - media_type
+        - size
+        - sha256
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: -1
+          maximum: 104857600
+          description: A value of -1 means the client did not declare a size; the streamed body remains bounded to 100 MiB.
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+    ExamStarterWorkspaceFileUploadMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: 'Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.'
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ExamStarterWorkspaceFileUploadMetadata'
+        content:
+          type: string
+          format: binary
+    ExamStarterWorkspaceFileReplacementMultipart:
+      type: object
+      additionalProperties: false
+      required:
+        - metadata
+        - content
+      description: 'Exactly two parts in order: metadata first as application/json (maximum 32768 bytes), then content.'
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ExamStarterWorkspaceFileReplacementMetadata'
+        content:
+          type: string
+          format: binary
+    MoveExamStarterWorkspaceEntryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - path
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+    RemoveExamStarterWorkspaceEntryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamStarterWorkspaceEntryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - path
+        - created_at
+        - updated_at
+        - draft_revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        kind:
+          type: string
+          enum:
+            - file
+            - directory
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+      oneOf:
+        - properties:
+            kind:
+              const: file
+          required:
+            - content_version
+            - media_type
+            - size
+            - sha256
+        - properties:
+            kind:
+              const: directory
+          not:
+            anyOf:
+              - required:
+                  - content_version
+              - required:
+                  - media_type
+              - required:
+                  - size
+              - required:
+                  - sha256
+    ExamStarterWorkspaceListItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - path
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        kind:
+          type: string
+          enum:
+            - file
+            - directory
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'
+        content_version:
+          $ref: '#/components/schemas/WorkspaceContentVersion'
+        media_type:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 104857600
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      oneOf:
+        - properties:
+            kind:
+              const: file
+          required:
+            - content_version
+            - media_type
+            - size
+            - sha256
+        - properties:
+            kind:
+              const: directory
+          not:
+            anyOf:
+              - required:
+                  - content_version
+              - required:
+                  - media_type
+              - required:
+                  - size
+              - required:
+                  - sha256
+    ExamStarterWorkspaceListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/ExamStarterWorkspaceListItemResponse'

@@ -28,6 +28,7 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newI18nCommand())
+	root.AddCommand(newOpenAPICommand())
 	root.AddCommand(newReleaseCommand())
 	return root
 }

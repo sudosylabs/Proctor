@@ -1,0 +1,235 @@
+paths:
+  /api/v1/mail/rekey:
+    post:
+      operationId: startMailRekey
+      summary: Start a durable fenced mail payload-key rotation
+      tags:
+        - Mail
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - mail.rekey.invalid
+        - mail.rekey.conflict
+        - mail.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/StartMailRekey'
+      responses:
+        "202":
+          $ref: '#/components/responses/MailRekeyAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/mail/rekey/{job_id}:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    get:
+      operationId: getMailRekeyStatus
+      summary: Inspect safe progress and final retirement proof for one mail rekey Job
+      tags:
+        - Mail
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - mail.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailRekeyStatusOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    StartMailRekey:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailRekeyRequest'
+  responses:
+    MailRekeyAccepted:
+      description: Durable fenced mail payload-key rotation accepted
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailRekeyResponse'
+    MailRekeyStatusOK:
+      description: Safe typed mail rekey progress and final retirement proof
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailRekeyStatusResponse'
+  schemas:
+    MailRekeyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - retiring_key_id
+      properties:
+        retiring_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+    MailRekeyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - primary_key_id
+        - retiring_key_id
+        - created_at
+      properties:
+        job_id:
+          $ref: '#/components/schemas/ID'
+        primary_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        retiring_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        created_at:
+          type: integer
+          format: int64
+    MailRekeyProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - current
+        - total
+        - stage
+      properties:
+        current:
+          type: integer
+          format: int64
+          minimum: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 1
+        stage:
+          type: string
+          enum:
+            - reencrypting
+    MailRekeyProof:
+      type: object
+      additionalProperties: false
+      required:
+        - non_primary_references
+        - retiring_references
+        - retirement_safe
+      properties:
+        non_primary_references:
+          type: integer
+          format: int64
+          minimum: 0
+        retiring_references:
+          type: integer
+          format: int64
+          minimum: 0
+        retirement_safe:
+          type: boolean
+    MailRekeyStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - status
+        - primary_key_id
+        - retiring_key_id
+        - created_at
+        - updated_at
+        - attempt_count
+        - maximum_attempts
+        - processed
+        - reencrypted
+      properties:
+        job_id:
+          $ref: '#/components/schemas/ID'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        primary_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        retiring_key_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        completed_at:
+          type: integer
+          format: int64
+        public_error_code:
+          type: string
+          maxLength: 128
+        attempt_count:
+          type: integer
+          minimum: 0
+        maximum_attempts:
+          type: integer
+          minimum: 1
+        processed:
+          type: integer
+          format: int64
+          minimum: 0
+        reencrypted:
+          type: integer
+          format: int64
+          minimum: 0
+        progress:
+          $ref: '#/components/schemas/MailRekeyProgress'
+        proof:
+          $ref: '#/components/schemas/MailRekeyProof'

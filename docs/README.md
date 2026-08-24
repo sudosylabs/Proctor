@@ -9,6 +9,8 @@ matches the work instead of loading every document.
   engineering decisions
 - [Domain language](../CONTEXT.md) — implementation-free canonical glossary
 - [HTTP API contract](../server/httpapi/CONTRACT.md) — exact public API rules
+- [OpenAPI authoring](../server/openapi/) — human-first route, description,
+  example, and schema workflow
 - [Cluster guarantees](../server/cluster/GUARANTEES.md) — delivery and recovery
   contract
 
@@ -16,7 +18,19 @@ matches the work instead of loading every document.
 
 - [Implementation status](./project/status.md) — capability-level status,
   active work, and open decisions
+- [Mattermost documentation site analysis](./project/mattermost-docs-site-analysis.md)
+  — research input for Proctor's public documentation site
+- [Mattermost content and API pipeline analysis](./project/mattermost-docs-content-api-analysis.md)
+  — source architecture, generated-reference proof, content gaps, assets, and
+  staged acceptance criteria
 - [Licensing](../LICENSING.md) — repository licensing split
+
+## Public documentation
+
+- [Public guide sources](./public/) — task-oriented operator, administrator,
+  security, developer, and API guidance
+- [Documentation site](./site/) — local preview, validation, static build, and
+  generated-reference workflow
 
 ## Contributing
 

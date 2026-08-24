@@ -1,0 +1,138 @@
+components:
+  parameters:
+    StudentProgressionID:
+      name: student_progression_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The staged student progression identifier.
+  responses:
+    StudentProgressionAccepted:
+      description: Student progression accepted for asynchronous dry-run or execution
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OnboardingImportResponse'
+    StudentProgressionOK:
+      description: Authorized safe student progression preview or result
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OnboardingImportResponse'
+  schemas:
+    AffiliationKind:
+      type: string
+      enum:
+        - student
+        - teacher
+        - staff
+        - external
+    AffiliationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - user_id
+        - kind
+        - start_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        user_id:
+          $ref: '#/components/schemas/ID'
+        kind:
+          $ref: '#/components/schemas/AffiliationKind'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+    AcademicUnitMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - academic_unit_id
+        - user_id
+        - start_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        user_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+    ClassMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - class_id
+        - academic_period_id
+        - user_id
+        - start_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        class_id:
+          $ref: '#/components/schemas/ID'
+        academic_period_id:
+          $ref: '#/components/schemas/ID'
+        user_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64

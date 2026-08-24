@@ -1,0 +1,77 @@
+paths:
+  /api/v1/auth/email-verification/request:
+    post:
+      operationId: requestEmailVerification
+      summary: Request an email-verification message
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.account_recovery.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "202":
+          $ref: '#/components/responses/SensitiveAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/auth/email-verification/complete:
+    post:
+      operationId: completeEmailVerification
+      summary: Consume an email-verification credential
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.account_token.invalid
+        - authentication.account_recovery.unavailable
+      x-proctor-idempotency: none
+      security: []
+      requestBody:
+        $ref: '#/components/requestBodies/CompleteEmailVerification'
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    CompleteEmailVerification:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EmailVerificationCompletionRequest'
+  schemas:
+    EmailVerificationCompletionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string

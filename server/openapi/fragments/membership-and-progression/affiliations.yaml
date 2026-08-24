@@ -1,0 +1,63 @@
+paths:
+  /api/v1/affiliations/{affiliation_id}:
+    parameters:
+      - $ref: '#/components/parameters/AffiliationID'
+    delete:
+      operationId: endAffiliation
+      summary: End an Affiliation while retaining history
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - affiliation.student_has_active_enrollment
+        - affiliation.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AffiliationEnded'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    AffiliationID:
+      name: affiliation_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Affiliation identifier.
+  responses:
+    AffiliationEnded:
+      description: Affiliation ended
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AffiliationResponse'

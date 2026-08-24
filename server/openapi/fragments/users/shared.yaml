@@ -1,0 +1,8 @@
+components:
+  responses:
+    UserProfileOK:
+      description: User profile
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserProfileResponse'

@@ -1,0 +1,82 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/workspace/directories:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: createCandidateExamWorkspaceDirectory
+      summary: Create one acknowledged empty Workspace directory
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.path_conflict
+        - exam.attempt.workspace.entry_conflict
+        - exam.attempt.workspace.entry_limit
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateCandidateWorkspaceDirectory'
+      responses:
+        "201":
+          $ref: '#/components/responses/CandidateWorkspaceMutationCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    CreateCandidateWorkspaceDirectory:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateCandidateWorkspaceDirectoryRequest'
+  schemas:
+    CreateCandidateWorkspaceDirectoryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - path
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        path:
+          $ref: '#/components/schemas/StarterWorkspacePath'

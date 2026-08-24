@@ -1,0 +1,221 @@
+components:
+  responses:
+    ExamOK:
+      description: Bounded Exam authoring view
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamResponse'
+    ExamManagerChanged:
+      description: Exam management relationship or ownership changed
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamManagerChangeResponse'
+  schemas:
+    ExamManagerResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - granted_by_user_id
+        - granted_at
+        - is_creator
+        - is_owner
+      properties:
+        user_id:
+          $ref: '#/components/schemas/ID'
+        granted_by_user_id:
+          $ref: '#/components/schemas/ID'
+        granted_at:
+          type: string
+          format: date-time
+        is_creator:
+          type: boolean
+        is_owner:
+          type: boolean
+    ExamManagerChangeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam
+        - manager
+      properties:
+        exam:
+          $ref: '#/components/schemas/ExamIdentityResponse'
+        manager:
+          $ref: '#/components/schemas/ExamManagerResponse'
+    ExamResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam
+        - draft
+        - owner_user_id
+        - manager_count
+      properties:
+        exam:
+          $ref: '#/components/schemas/ExamIdentityResponse'
+        draft:
+          $ref: '#/components/schemas/ExamDraftResponse'
+        owner_user_id:
+          $ref: '#/components/schemas/ID'
+        manager_count:
+          type: integer
+          minimum: 1
+    ExamIdentityResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - academic_unit_id
+        - creator_user_id
+        - owner_user_id
+        - created_at
+        - updated_at
+        - archived_at
+        - revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        creator_user_id:
+          $ref: '#/components/schemas/ID'
+        owner_user_id:
+          $ref: '#/components/schemas/ID'
+        default_revision_id:
+          $ref: '#/components/schemas/ID'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamDraftResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam_id
+        - title
+        - instructions_markdown
+        - policy
+        - execution_profile
+        - capacity
+        - updated_at
+        - revision
+        - resource_count
+        - has_starter_workspace
+      properties:
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        title:
+          type: string
+        instructions_markdown:
+          type: string
+          description: Authored Markdown encoded as UTF-8 and limited to 65536 bytes.
+        policy:
+          $ref: '#/components/schemas/ExamPolicySet'
+        execution_profile:
+          $ref: '#/components/schemas/ExecutionProfile'
+        capacity:
+          $ref: '#/components/schemas/ExamCapacityPolicy'
+        base_revision_id:
+          $ref: '#/components/schemas/ID'
+        updated_at:
+          type: string
+          format: date-time
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        resource_count:
+          type: integer
+          minimum: 0
+        has_starter_workspace:
+          type: boolean
+    ExecutionProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - image
+        - network
+      properties:
+        enabled:
+          type: boolean
+        image:
+          type: string
+        network:
+          type: string
+          enum:
+            - none
+            - allowlist
+    ExamPolicySet:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - connection_loss
+        - focus_loss
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        connection_loss:
+          $ref: '#/components/schemas/ConnectionLossPolicy'
+        focus_loss:
+          $ref: '#/components/schemas/FocusLossPolicy'
+    ConnectionLossPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - outcome
+      properties:
+        outcome:
+          type: string
+          const: flag_and_suspend
+    FocusLossPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - minimum_duration_milliseconds
+        - incident_count
+        - window_milliseconds
+        - outcome
+      properties:
+        enabled:
+          type: boolean
+        minimum_duration_milliseconds:
+          type: integer
+          format: int64
+          minimum: 500
+          maximum: 300000
+        incident_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+        window_milliseconds:
+          type: integer
+          format: int64
+          minimum: 10000
+          maximum: 14400000
+        outcome:
+          type: string
+          enum:
+            - flag
+            - flag_and_warn
+            - flag_and_suspend

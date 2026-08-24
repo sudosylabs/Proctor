@@ -1,0 +1,205 @@
+paths:
+  /api/v1/users/{user_id}/profile-picture:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      operationId: getUserProfilePicture
+      summary: Get an authorized normalized profile-picture rendition
+      tags:
+        - Users
+      description: >-
+        Returns an authorized private WebP rendition rather than a public or signed storage URL. The response carries an ETag and private cache policy; clients may send If-None-Match to receive 304 when their selected rendition is unchanged. Scoped visibility and disabled-User concealment are rechecked.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request GET \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture?size=256' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Accept: image/webp' \
+              --output 'profile.webp'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - profile_picture.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum:
+              - 128
+              - 256
+              - 512
+            default: 256
+          description: Square rendition width in pixels. The server returns normalized WebP at 128, 256, or 512 pixels.
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: One or more entity tags from an earlier rendition response. A match returns 304 without a body.
+      responses:
+        "200":
+          $ref: '#/components/responses/ProfilePictureOK'
+        "304":
+          description: Rendition has not changed
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: uploadUserProfilePicture
+      summary: Upload and normalize a custom profile picture
+      tags:
+        - Users
+      description: >-
+        Streams one supported source image for an authorized User. Proctor validates and normalizes the image before committing a private revision with 128, 256, and 512 pixel WebP renditions. Use If-Match when replacing an existing custom picture so a stale editor cannot overwrite a newer revision.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request PUT \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Content-Type: image/png' \
+              --header 'If-Match: "<current-sha256>"' \
+              --data-binary '@profile.png'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - profile_picture.invalid
+        - profile_picture.unavailable
+        - user.conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: If-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Strong ETag of the current custom picture when replacing it. Omit this header for the first custom upload.
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+        description: >-
+          Raw PNG, JPEG, or WebP bytes. The server validates, normalizes, and privately stores the 128, 256, and 512 pixel WebP renditions.
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: removeUserProfilePicture
+      summary: Remove the custom profile picture and return to the retained default
+      tags:
+        - Users
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - profile_picture.unavailable
+        - user.conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ProfilePictureOK:
+      description: Normalized private profile-picture rendition
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+      content:
+        image/webp:
+          schema:
+            type: string
+            format: binary

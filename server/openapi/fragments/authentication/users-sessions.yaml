@@ -1,0 +1,344 @@
+paths:
+  /api/v1/users/{user_id}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      operationId: listUserSessions
+      summary: List a User's Sessions for administrative review
+      tags:
+        - Authentication
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - session.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: include_revoked
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          $ref: '#/components/responses/SessionAdministrationListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/{user_id}/sessions/revoke-all:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    post:
+      operationId: revokeUserSessions
+      summary: Revoke every active Session for a User
+      tags:
+        - Authentication
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - session.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SessionAdministrationRevoked'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/{user_id}/sessions/{session_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+      - $ref: '#/components/parameters/SessionID'
+    delete:
+      operationId: revokeUserSession
+      summary: Revoke one Session belonging to a User
+      tags:
+        - Authentication
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - session.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SessionAdministrationRevoked'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/sessions:
+    get:
+      operationId: listCurrentUserSessions
+      summary: List the current user's sessions
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.internal
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/SessionListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/sessions/revoke:
+    post:
+      operationId: revokeCurrentUserSession
+      summary: Revoke one current-user session
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - request.invalid
+        - session.id.invalid
+        - session.not_found
+        - authentication.internal
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/RevokeSession'
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me/sessions/revoke-all:
+    post:
+      operationId: revokeAllCurrentUserSessions
+      summary: Revoke all current-user sessions
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.internal
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    SessionID:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The interactive Session identifier.
+  requestBodies:
+    RevokeSession:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RevokeSessionRequest'
+  responses:
+    SessionAdministrationListOK:
+      description: Administrative session list
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionAdministrationListResponse'
+    SessionAdministrationRevoked:
+      description: Session(s) revoked
+    SessionListOK:
+      description: Current-user session collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionListResponse'
+  schemas:
+    SessionAdministrationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - user_id
+        - client_type
+        - authentication_method
+        - authentication_strength
+        - authenticated_at
+        - last_activity_at
+        - idle_expires_at
+        - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        user_id:
+          $ref: '#/components/schemas/ID'
+        client_type:
+          type: string
+        device_id:
+          type: string
+        device_name:
+          type: string
+        authentication_method:
+          type: string
+        authentication_strength:
+          type: string
+        authenticated_at:
+          type: integer
+          format: int64
+        mfa_completed_at:
+          type: integer
+          format: int64
+        last_activity_at:
+          type: integer
+          format: int64
+        idle_expires_at:
+          type: integer
+          format: int64
+        expires_at:
+          type: integer
+          format: int64
+        revoked_at:
+          type: integer
+          format: int64
+        revocation_reason_code:
+          type: string
+          enum:
+            - account_disabled
+            - access_policy_changed
+            - administrator_all_sessions
+            - administrator_session
+            - authentication_audit_failed
+            - external_identity_unlinked
+            - inactive_user
+            - password_removed
+            - password_reset
+            - refresh_replay
+            - user_all_sessions
+            - user_logout
+            - user_session
+        revocation_reason:
+          type: string
+          description: Localized presentation of revocation_reason_code.
+    SessionAdministrationListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/SessionAdministrationResponse'
+    SessionListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/SessionResponse'
+    RevokeSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+      properties:
+        session_id:
+          $ref: '#/components/schemas/ID'

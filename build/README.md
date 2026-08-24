@@ -24,6 +24,11 @@ Run `make help` for the current command surface. The main lifecycles are:
 - `make check`, `make integration`, and `make independent-modules` separate the
   hermetic, dependency-backed, and workspace-independence gates. `make ci`
   combines them with package verification.
+- `make docs-start` serves the public documentation locally, while
+  `make docs-check` validates its metadata, type-checks the site, synchronizes
+  the generated OpenAPI artifact after proving it matches the human-authored
+  YAML modules, and performs a strict static build. The root
+  `make check` includes the docs gate.
 - `make package`, `make dist`, and `make container` produce respectively a
   current-platform directory, deterministic Linux archives/checksums, and the
   minimal non-root runtime image.

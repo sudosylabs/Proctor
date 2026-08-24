@@ -1,0 +1,77 @@
+paths:
+  /api/v1/exams/{exam_id}/draft/execution-images:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: listExamExecutionImages
+      summary: List safe execution image choices available for Exam authoring
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExecutionImageListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ExecutionImageListOK:
+      description: Safe execution image authoring catalog
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExecutionImageListResponse'
+  schemas:
+    ExecutionImageListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionImage'
+    ExecutionImage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - networks
+      properties:
+        id:
+          type: string
+        networks:
+          type: array
+          items:
+            type: string
+            enum:
+              - none
+              - allowlist
+          uniqueItems: true

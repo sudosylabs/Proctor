@@ -1,0 +1,144 @@
+paths:
+  /api/v1/mail/metrics:
+    get:
+      operationId: getMailMetrics
+      summary: Inspect bounded mail delivery metrics
+      tags:
+        - Mail
+      x-proctor-auth: principal_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - mail.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailMetricsOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    MailMetricsOK:
+      description: Bounded safe mail delivery metrics
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailMetricsResponse'
+  schemas:
+    MailDeliveryMetricResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - template_key
+        - state
+        - outcome_code
+        - count
+        - attempt_count
+        - processing_latency_millis
+        - maximum_processing_latency_millis
+      properties:
+        template_key:
+          type: string
+          enum:
+            - system.mail_test
+        state:
+          $ref: '#/components/schemas/MailDeliveryState'
+        outcome_code:
+          type: string
+          maxLength: 128
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+        attempt_count:
+          type: integer
+          format: int64
+          minimum: 0
+        processing_latency_millis:
+          type: integer
+          format: int64
+          minimum: 0
+        maximum_processing_latency_millis:
+          type: integer
+          format: int64
+          minimum: 0
+    MailQueueMetricResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - template_key
+        - state
+        - outcome_code
+        - count
+        - oldest_age_millis
+        - health_code
+        - truncated
+      properties:
+        template_key:
+          type: string
+          enum:
+            - system.mail_test
+        state:
+          $ref: '#/components/schemas/MailDeliveryState'
+        outcome_code:
+          type: string
+          maxLength: 128
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+        oldest_age_millis:
+          type: integer
+          format: int64
+          minimum: 0
+        health_code:
+          type: string
+          enum:
+            - mail.disabled
+            - mail.healthy
+            - mail.smtp_outage
+            - mail.queue_delayed
+        truncated:
+          type: boolean
+    MailMetricsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - deliveries
+        - queues
+        - health_code
+      properties:
+        deliveries:
+          type: array
+          maxItems: 512
+          items:
+            $ref: '#/components/schemas/MailDeliveryMetricResponse'
+        queues:
+          type: array
+          maxItems: 512
+          items:
+            $ref: '#/components/schemas/MailQueueMetricResponse'
+        health_code:
+          type: string
+          enum:
+            - ""
+            - mail.disabled
+            - mail.healthy
+            - mail.smtp_outage
+            - mail.queue_delayed

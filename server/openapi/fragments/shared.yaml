@@ -1,0 +1,688 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        A Proctor session access credential or Personal Access Token, subject to the route's x-proctor-auth requirement.
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: PROCTOR_ACCESS
+      description: The host-only HttpOnly browser session access cookie.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-Proctor-CSRF-Token
+      description: Required with the session cookie for state-changing requests.
+    refreshBearerAuth:
+      type: http
+      scheme: bearer
+      description: A refresh credential accepted only by the refresh operation.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: PROCTOR_REFRESH
+      description: The host-only HttpOnly browser refresh cookie.
+  parameters:
+    RequiredIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[A-Za-z0-9._~-]+$
+    AcademicUnitID:
+      name: academic_unit_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Academic Unit identifier.
+    ExamID:
+      name: exam_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Exam identifier.
+    ExamSittingID:
+      name: exam_sitting_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Exam Sitting identifier.
+    ExamAttemptID:
+      name: exam_attempt_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Exam Attempt identifier.
+    SubmissionID:
+      name: submission_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The sealed Submission identifier.
+    AttemptWorkspaceEntryID:
+      name: attempt_workspace_entry_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The active Attempt Workspace entry identifier.
+    CandidateAttemptCredential:
+      name: X-Proctor-Attempt-Credential
+      in: header
+      required: true
+      description: >-
+        Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL.
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 43
+        pattern: ^[A-Za-z0-9_-]{43}$
+    CandidateAttemptConnectionID:
+      name: X-Proctor-Attempt-Connection-ID
+      in: header
+      required: true
+      description: The durable open Attempt Connection bound to the current authenticated Session.
+      schema:
+        $ref: '#/components/schemas/ID'
+    ExamResourceID:
+      name: exam_resource_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Exam resource identifier.
+    ClassID:
+      name: class_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Class identifier.
+    UserID:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The User identifier.
+  responses:
+    BadRequest:
+      description: Invalid request
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Authentication required
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Forbidden:
+      description: Access denied
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Resource not found
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Conflict
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    InternalError:
+      description: Internal server error
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    TooManyRequests:
+      description: Rate limited
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    ServiceUnavailable:
+      description: Service unavailable
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  headers:
+    NoStore:
+      description: Prevents storage of sensitive responses.
+      schema:
+        type: string
+        const: no-store
+    PrivateNoStore:
+      description: Marks a private response and prevents all storage.
+      schema:
+        type: string
+        const: private, no-store
+    NoSniff:
+      description: Prevents content-type sniffing.
+      schema:
+        type: string
+        const: nosniff
+  schemas:
+    ID:
+      type: string
+      pattern: ^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$
+    CandidateWorkspaceMutationAccess:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamResourceMediaType:
+      type: string
+      enum:
+        - application/pdf
+        - image/png
+        - image/jpeg
+        - image/webp
+        - text/plain
+        - text/markdown
+        - text/csv
+        - application/json
+    StarterWorkspacePath:
+      type: string
+      minLength: 1
+      maxLength: 1024
+      description: >-
+        An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control characters, and the reserved .proctor root are rejected.
+    WorkspaceContentVersion:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{26}$
+      description: >-
+        Opaque comparison token for one acknowledged Workspace file content state. It is not an entity identifier and must be returned unchanged.
+    SHA256:
+      type: string
+      pattern: ^[0-9a-f]{64}$
+    InstitutionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - name
+        - display_name
+        - description
+        - exam_capacity
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        exam_capacity:
+          $ref: '#/components/schemas/ExamCapacityPolicy'
+    ExamCapacityPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - resource_maximum_count
+        - resource_maximum_bytes
+        - workspace_maximum_entries
+        - workspace_maximum_file_bytes
+        - workspace_maximum_total_bytes
+      properties:
+        resource_maximum_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+        resource_maximum_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 104857600
+        workspace_maximum_entries:
+          type: integer
+          minimum: 1
+          maximum: 5000
+        workspace_maximum_file_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 104857600
+        workspace_maximum_total_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 1073741824
+    UserProfileResponse:
+      type: object
+      additionalProperties: false
+      description: >-
+        User directory projection. Email, verification, locale, timezone, activity, and disabled state are present only for self or institution-wide user.view authority.
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - username
+        - display_name
+        - first_name
+        - last_name
+        - profile_picture_url
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        email_verified:
+          type: boolean
+        display_name:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+        last_login_at:
+          type: integer
+          format: int64
+        last_activity_at:
+          type: integer
+          format: int64
+        disabled_at:
+          type: integer
+          format: int64
+        profile_picture_url:
+          type: string
+        profile_picture_changed_at:
+          type: integer
+          format: int64
+    RoleResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - name
+        - display_name
+        - description
+        - permissions
+        - built_in
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        built_in:
+          type: boolean
+    RoleBindingResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - delete_at
+        - user_id
+        - role_id
+        - scope_type
+        - scope_id
+        - start_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        delete_at:
+          type: integer
+          format: int64
+        user_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        scope_type:
+          type: string
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+    JobStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - cancel_requested
+        - succeeded
+        - failed
+        - canceled
+    OnboardingImportRowResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - row
+        - reference
+        - operation
+        - status
+      properties:
+        row:
+          type: integer
+          minimum: 1
+          maximum: 50000
+        reference:
+          type: string
+          maxLength: 128
+        operation:
+          type: string
+          enum:
+            - student_class.create
+            - teacher_academic_unit.create
+            - academic_unit_role.create
+            - institution_role.create
+            - affiliation.add
+            - affiliation.end
+            - academic_unit_member.add
+            - academic_unit_member.end
+            - class.enroll
+            - class.end
+            - class.transfer
+            - role_binding.create
+            - role_binding.end
+            - user.enable
+            - user.disable
+            - user_sessions.revoke
+        status:
+          type: string
+          enum:
+            - valid
+            - invalid
+            - duplicate
+            - pending
+            - succeeded
+            - no_op
+            - failed
+            - skipped
+            - canceled
+        preview_code:
+          type: string
+        public_code:
+          type: string
+        invitation_id:
+          $ref: '#/components/schemas/ID'
+        resource_id:
+          $ref: '#/components/schemas/ID'
+    OnboardingImportResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - mode
+        - state
+        - scope_type
+        - scope_id
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - succeeded_rows
+        - no_op_rows
+        - failed_rows
+        - skipped_rows
+        - parse_job_id
+        - created_at
+        - updated_at
+        - expires_at
+        - revision
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        mode:
+          type: string
+          enum:
+            - student_class
+            - teacher_academic_unit
+            - institution
+            - academic_administration
+            - student_progression
+        state:
+          type: string
+          enum:
+            - uploading
+            - parsing
+            - preview_ready
+            - executing
+            - completed
+            - completed_with_errors
+            - canceled
+            - failed
+        scope_type:
+          type: string
+          enum:
+            - class
+            - academic_unit
+            - institution
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        source_period_id:
+          $ref: '#/components/schemas/ID'
+        source_class_id:
+          $ref: '#/components/schemas/ID'
+        destination_period_id:
+          $ref: '#/components/schemas/ID'
+        destination_class_id:
+          $ref: '#/components/schemas/ID'
+        effective_at:
+          type: string
+          format: date-time
+        preview_digest:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+        ignored_headers:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            maxLength: 128
+        rows:
+          type: array
+          maxItems: 50000
+          items:
+            $ref: '#/components/schemas/OnboardingImportRowResponse'
+        total_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        valid_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        invalid_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        succeeded_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        no_op_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        failed_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        skipped_rows:
+          type: integer
+          minimum: 0
+          maximum: 50000
+        commit_policy:
+          type: string
+          enum:
+            - require_all_valid
+            - valid_rows_only
+        parse_job_id:
+          $ref: '#/components/schemas/ID'
+        execution_job_id:
+          $ref: '#/components/schemas/ID'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        failure_code:
+          type: string
+    ExternalAuthenticationProviderResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - display_name
+        - type
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        type:
+          type: string
+    ProblemDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        code:
+          type: string
+        request_id:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string

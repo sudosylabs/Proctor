@@ -1,0 +1,231 @@
+paths:
+  /api/v1/academic-administration-batches:
+    post:
+      operationId: runAcademicAdministrationBatch
+      summary: Run one bounded typed existing-User academic administration batch
+      tags:
+        - Membership and progression
+      description: >-
+        Executes one to 200 independent existing-User administration rows. Each row retains the ordinary named aggregate, authorization, audit, mail, and idempotency semantics.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/RunAcademicAdministrationBatch'
+      responses:
+        "200":
+          $ref: '#/components/responses/AcademicAdministrationBatchOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    RunAcademicAdministrationBatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicAdministrationBatchRequest'
+  responses:
+    AcademicAdministrationBatchOK:
+      description: Ordered bounded per-item existing-User academic administration outcomes
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcademicAdministrationBatchResponse'
+  schemas:
+    AcademicAdministrationBatchItemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          pattern: ^[A-Za-z0-9._~-]{1,128}$
+        user_id:
+          $ref: '#/components/schemas/ID'
+        relationship_id:
+          $ref: '#/components/schemas/ID'
+        role_id:
+          $ref: '#/components/schemas/ID'
+        affiliation_kind:
+          type: string
+          enum:
+            - student
+            - teacher
+            - staff
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+    AcademicAdministrationBatchRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+        - scope_type
+        - scope_id
+        - items
+      properties:
+        operation:
+          type: string
+          enum:
+            - affiliation.add
+            - affiliation.end
+            - academic_unit_member.add
+            - academic_unit_member.end
+            - class.enroll
+            - class.end
+            - class.transfer
+            - role_binding.create
+            - role_binding.end
+            - user.enable
+            - user.disable
+            - user_sessions.revoke
+        scope_type:
+          type: string
+          enum:
+            - institution
+            - academic_unit
+            - class
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/AcademicAdministrationBatchItemRequest'
+    AcademicAdministrationBatchItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - index
+        - status
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          maximum: 199
+        status:
+          type: string
+          enum:
+            - succeeded
+            - no_op
+            - failed
+        resource_id:
+          $ref: '#/components/schemas/ID'
+        error_code:
+          type: string
+          enum:
+            - request.invalid
+            - resource.not_found
+            - authorization.denied
+            - authorization.request.invalid
+            - authorization.unavailable
+            - audit.unavailable
+            - administration.unavailable
+            - mail.unavailable
+            - authentication.invalid_token
+            - authentication.strong_required
+            - authentication.reauthentication_required
+            - affiliation.invalid
+            - affiliation.conflict
+            - affiliation.student_has_active_enrollment
+            - academic_unit_member.invalid
+            - academic_unit_member.conflict
+            - class_member.invalid
+            - class_member.student_affiliation_required
+            - class.enrollment_conflict
+            - role_binding.invalid
+            - role_binding.conflict
+            - role_binding.last_system_admin
+            - role_binding.system_admin_requires_institution_scope
+            - user.invalid
+            - user.conflict
+            - user.last_system_admin
+            - session.not_found
+            - idempotency.conflict
+            - idempotency.in_progress
+            - onboarding_batch.duplicate
+    AcademicAdministrationBatchResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+        - items
+        - succeeded
+        - no_op
+        - failed
+      properties:
+        operation:
+          type: string
+          enum:
+            - affiliation.add
+            - affiliation.end
+            - academic_unit_member.add
+            - academic_unit_member.end
+            - class.enroll
+            - class.end
+            - class.transfer
+            - role_binding.create
+            - role_binding.end
+            - user.enable
+            - user.disable
+            - user_sessions.revoke
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/AcademicAdministrationBatchItemResponse'
+        succeeded:
+          type: integer
+          minimum: 0
+          maximum: 200
+        no_op:
+          type: integer
+          minimum: 0
+          maximum: 200
+        failed:
+          type: integer
+          minimum: 0
+          maximum: 200

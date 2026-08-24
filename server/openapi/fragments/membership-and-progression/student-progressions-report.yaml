@@ -1,0 +1,57 @@
+paths:
+  /api/v1/student-progressions/{student_progression_id}/report:
+    parameters:
+      - $ref: '#/components/parameters/StudentProgressionID'
+    get:
+      operationId: downloadStudentProgressionReport
+      summary: Download the authorized formula-safe student progression report
+      x-proctor-auth: principal_required
+      tags:
+        - Membership and progression
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - student_progression.unavailable
+        - student_progression.conflict
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/StudentProgressionReport'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    StudentProgressionReport:
+      description: Formula-safe student progression CSV report without recipient disclosure
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        X-Content-Type-Options:
+          $ref: '#/components/headers/NoSniff'
+      content:
+        text/csv:
+          schema:
+            type: string
+            format: binary

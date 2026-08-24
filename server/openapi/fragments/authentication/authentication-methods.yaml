@@ -1,0 +1,216 @@
+paths:
+  /api/v1/authentication-methods:
+    get:
+      operationId: listAuthenticationMethods
+      summary: List the current User's authentication methods without credential material
+      tags:
+        - Authentication
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.method.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AuthenticationMethodListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/authentication-methods/password:
+    put:
+      operationId: enrollPassword
+      summary: Enroll a policy-permitted local password after strong recent authentication
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.password.invalid
+        - authentication.method.disabled
+        - authentication.method.conflict
+        - authentication.method.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/EnrollPassword'
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      operationId: removePassword
+      summary: Remove the current User's local password while preserving another usable method
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.method.last_usable
+        - authentication.method.not_found
+        - authentication.method.conflict
+        - authentication.method.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/authentication-methods/providers/{external_identity_id}:
+    parameters:
+      - name: external_identity_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    delete:
+      operationId: unlinkExternalIdentity
+      summary: Unlink one exact provider identity while preserving another usable method
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.method.last_usable
+        - authentication.method.not_found
+        - authentication.method.conflict
+        - authentication.method.unavailable
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    EnrollPassword:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrollPasswordRequest'
+  responses:
+    AuthenticationMethodListOK:
+      description: Current User authentication methods without subjects or credential material
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthenticationMethodResponse'
+  schemas:
+    EnrollPasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - password
+      properties:
+        password:
+          type: string
+    AuthenticationProviderMethodResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - provider_id
+        - display_name
+        - type
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        provider_id:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9._-]{0,63}$
+        display_name:
+          type: string
+        type:
+          type: string
+    AuthenticationMethodResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - password
+        - providers
+      properties:
+        password:
+          type: boolean
+        providers:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/AuthenticationProviderMethodResponse'

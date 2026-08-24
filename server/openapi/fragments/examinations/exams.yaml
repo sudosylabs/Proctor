@@ -1,0 +1,284 @@
+paths:
+  /api/v1/exams:
+    get:
+      operationId: listExams
+      summary: List Exams visible to the current principal
+      tags:
+        - Examinations
+      description: >-
+        Returns only Exams visible to the current principal, ordered by update time and identity for stable keyset pagination. Filters may narrow by owning Academic Unit, current Draft title, and archive state. Follow next_cursor exactly as returned; it is opaque and does not authorize access.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body --get \
+              --url 'https://proctor.example.edu/api/v1/exams' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Accept: application/json' \
+              --data-urlencode 'archive_state=active' \
+              --data-urlencode 'limit=50' \
+              --data-urlencode 'cursor=<next-cursor>'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - exam.invalid
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: academic_unit_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: Return only Exams owned by this Academic Unit, subject to the caller’s current visibility.
+        - name: q
+          in: query
+          required: false
+          description: Literal case-insensitive substring matched against the current Exam Draft title.
+          schema:
+            type: string
+        - name: archive_state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - active
+              - archived
+              - all
+            default: active
+          description: Select active Exams, archived Exams, or both.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Maximum page size from 1 through 200.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque next_cursor from the previous page. Do not parse, modify, or persist it as a resource identifier.
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createExam
+      summary: Create an Exam and its initial Draft
+      tags:
+        - Examinations
+      description: >-
+        Creates one Exam owned by the selected Academic Unit together with its initial mutable Draft and creator ownership. The operation requires current Exam-authoring authority and an Idempotency-Key; exact replay returns the retained result while changed reuse conflicts.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/exams' \
+              --header 'Authorization: Bearer <access-token>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-exam-001' \
+              --data '{"academic_unit_id":"<academic-unit-id>","title":"Algorithms — final examination","instructions_markdown":"Read every question before you begin."}'
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.conflict
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CreateExam'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/exams/{exam_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      operationId: getExam
+      summary: Get one bounded Exam authoring view
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    CreateExam:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateExamRequest'
+          example:
+            academic_unit_id: ybndrfg8ejkmcpqxot1uwisza3
+            title: Algorithms — final examination
+            instructions_markdown: Read every question before you begin.
+      description: The owning Academic Unit, initial Draft title, and optional Markdown instructions for a new Exam.
+  responses:
+    ExamCreated:
+      description: Exam and initial Draft created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamResponse'
+    ExamListOK:
+      description: Visible Exam collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamListResponse'
+  schemas:
+    CreateExamRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - academic_unit_id
+        - title
+      properties:
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+          description: The Academic Unit that owns the Exam.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The initial human-facing Draft title.
+        instructions_markdown:
+          type: string
+          description: Optional authored Markdown encoded as UTF-8 and limited to 65536 bytes; empty means absent.
+    ExamListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamSummaryResponse'
+        next_cursor:
+          type: string
+    ExamSummaryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - academic_unit_id
+        - creator_user_id
+        - owner_user_id
+        - title
+        - updated_at
+        - archived_at
+        - revision
+        - manager_count
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        academic_unit_id:
+          $ref: '#/components/schemas/ID'
+        creator_user_id:
+          $ref: '#/components/schemas/ID'
+        owner_user_id:
+          $ref: '#/components/schemas/ID'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        manager_count:
+          type: integer
+          minimum: 1

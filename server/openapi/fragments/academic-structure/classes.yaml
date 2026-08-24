@@ -1,0 +1,168 @@
+paths:
+  /api/v1/classes/{class_id}:
+    parameters:
+      - $ref: '#/components/parameters/ClassID'
+    get:
+      operationId: getClass
+      summary: Get a Class using exact Class scope authorization
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ClassOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateClass
+      summary: Update a Class and optionally move its parent references
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - class.invalid
+        - class.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateClass'
+      responses:
+        "200":
+          $ref: '#/components/responses/ClassOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: archiveClass
+      summary: Archive a Class with no active members or role bindings
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - class.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/ClassArchived'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateClass:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateClassRequest'
+  responses:
+    ClassOK:
+      description: Class
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassResponse'
+    ClassArchived:
+      description: Class archived
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+  schemas:
+    UpdateClassRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        programme_level_id:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the Programme Level unchanged.
+        academic_period_id:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the Academic Period unchanged.
+        name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged.
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged.

@@ -1,0 +1,119 @@
+paths:
+  /api/v1/student-progressions:
+    post:
+      operationId: dryRunStudentProgression
+      summary: Create an asynchronous dry-run for one exact student progression
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - student_progression.target_conflict
+        - student_progression.lineage_conflict
+        - student_progression.effective_date_conflict
+        - student_progression.roster_too_large
+        - student_progression.conflict
+        - student_progression.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/DryRunStudentProgression'
+      responses:
+        "202":
+          $ref: '#/components/responses/StudentProgressionAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/student-progressions/{student_progression_id}:
+    parameters:
+      - $ref: '#/components/parameters/StudentProgressionID'
+    get:
+      operationId: getStudentProgression
+      summary: Get one authorized student progression preview or result
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - student_progression.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/StudentProgressionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    DryRunStudentProgression:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentProgressionDryRunRequest'
+  schemas:
+    StudentProgressionDryRunRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - source_period_id
+        - source_class_id
+        - destination_period_id
+        - destination_class_id
+        - effective_at
+      properties:
+        source_period_id:
+          $ref: '#/components/schemas/ID'
+        source_class_id:
+          $ref: '#/components/schemas/ID'
+        destination_period_id:
+          $ref: '#/components/schemas/ID'
+        destination_class_id:
+          $ref: '#/components/schemas/ID'
+        effective_at:
+          type: string
+          format: date-time

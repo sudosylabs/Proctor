@@ -1,0 +1,50 @@
+paths:
+  /api/v1/student-progressions/{student_progression_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/StudentProgressionID'
+    post:
+      operationId: cancelStudentProgression
+      summary: Cooperatively cancel a student progression
+      x-proctor-auth: principal_required
+      tags:
+        - Membership and progression
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - student_progression.target_conflict
+        - student_progression.lineage_conflict
+        - student_progression.effective_date_conflict
+        - student_progression.roster_too_large
+        - student_progression.conflict
+        - student_progression.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/StudentProgressionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'

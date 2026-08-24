@@ -1,0 +1,79 @@
+paths:
+  /api/v1/student-progressions/{student_progression_id}/commit:
+    parameters:
+      - $ref: '#/components/parameters/StudentProgressionID'
+    post:
+      operationId: commitStudentProgression
+      summary: Commit one exact student progression preview
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      tags:
+        - Membership and progression
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - student_progression.target_conflict
+        - student_progression.lineage_conflict
+        - student_progression.effective_date_conflict
+        - student_progression.roster_too_large
+        - student_progression.conflict
+        - student_progression.unavailable
+        - administration.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/CommitStudentProgression'
+      responses:
+        "202":
+          $ref: '#/components/responses/StudentProgressionAccepted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    CommitStudentProgression:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentProgressionCommitRequest'
+  schemas:
+    StudentProgressionCommitRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - preview_digest
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        preview_digest:
+          type: string
+          pattern: ^[0-9a-f]{64}$

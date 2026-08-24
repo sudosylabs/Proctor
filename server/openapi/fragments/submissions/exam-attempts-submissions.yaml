@@ -1,0 +1,151 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/submissions:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: submitExamAttempt
+      summary: Seal one active Exam Attempt and return a candidate-safe receipt
+      tags:
+        - Submissions
+      description: >-
+        Atomically seals one active Exam Attempt by pinning its acknowledged Workspace manifest and terminal integrity position. The Session-bound continuity selectors and current Class membership are rechecked in the transaction. An exact Idempotency-Key replay returns the retained 201 receipt without duplicate realtime or unbind effects.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/submissions' \
+              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
+              --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
+              --header 'Idempotency-Key: docs-submit-001' \
+              --header 'Content-Type: application/json' \
+              --data '{"participation_id":"<participation-id>","generation":2,"expected_workspace_cursor":18,"final_focus_loss_sequence":3}'
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.connection_closed
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - exam.attempt.workspace.cursor_conflict
+        - exam.attempt.focus_loss_conflict
+        - exam.attempt.connection_lost
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/SubmitExamAttempt'
+      responses:
+        "201":
+          $ref: '#/components/responses/ExamSubmissionReceiptCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    SubmitExamAttempt:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SubmitExamAttemptRequest'
+          example:
+            participation_id: ybndrfg8ejkmcpqxot1uwisza4
+            generation: 2
+            expected_workspace_cursor: 18
+            final_focus_loss_sequence: 3
+      description: >-
+        The active Participation generation and final acknowledged client positions required to atomically seal the Attempt Workspace as a Submission.
+  responses:
+    ExamSubmissionReceiptCreated:
+      description: Candidate-safe retained receipt for a committed Submission or its exact replay
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSubmissionReceiptResponse'
+  schemas:
+    SubmitExamAttemptRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - participation_id
+        - generation
+        - expected_workspace_cursor
+        - final_focus_loss_sequence
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+          description: The active Participation identifier returned by the successful Attempt connection.
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The active Participation connection generation.
+        expected_workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The last Workspace mutation cursor acknowledged by the client.
+        final_focus_loss_sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The final focus-loss sequence observed by the client; zero is valid.
+    ExamSubmissionReceiptResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_id
+        - exam_attempt_id
+        - state
+        - workspace_cursor
+        - manifest_digest
+        - submitted_at
+      properties:
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        state:
+          type: string
+          const: submitted
+        workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+        manifest_digest:
+          $ref: '#/components/schemas/SHA256'
+        submitted_at:
+          type: string
+          format: date-time

@@ -1,0 +1,360 @@
+paths:
+  /api/v1/access-policy:
+    get:
+      operationId: getAccessPolicy
+      summary: Get the revisioned Access Policy and bounded transition history
+      tags:
+        - Access policy
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - access_policy.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AccessPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      operationId: replaceAccessPolicy
+      summary: Revision-fenced replacement of the installation Access Policy
+      tags:
+        - Access policy
+      description: >-
+        Replaces the complete installation Access Policy under an optimistic revision fence. Proctor repeats deployment-capability and last-administrator-path checks in the authoritative transaction, can revoke Sessions affected by newly disabled methods, and requires both a strong recent interactive Session and an Idempotency-Key.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request PUT \
+              --url 'https://proctor.example.edu/api/v1/access-policy' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-access-policy-008' \
+              --data '{"expected_revision":7,"revoke_existing_sessions":true,"local_login_enabled":true,"public_registration_enabled":false,"invitation_admission_enabled":true,"invitation_local_credential_enabled":true,"desktop_authorization_enabled":true,"provider_admissions":{"university_oidc":"invitation_required"}}'
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - request.invalid
+        - access_policy.invalid
+        - access_policy.revision_conflict
+        - access_policy.blocked
+        - access_policy.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceAccessPolicy'
+      responses:
+        "200":
+          $ref: '#/components/responses/AccessPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/access-policy/preflight:
+    post:
+      operationId: preflightAccessPolicy
+      summary: Evaluate an Access Policy replacement without mutating it
+      tags:
+        - Access policy
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - access_policy.invalid
+        - access_policy.revision_conflict
+        - access_policy.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/PreflightAccessPolicy'
+      responses:
+        "200":
+          $ref: '#/components/responses/AccessPolicyPreflightOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    PreflightAccessPolicy:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccessPolicySettingsRequest'
+    ReplaceAccessPolicy:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccessPolicySettingsRequest'
+          example:
+            expected_revision: 7
+            revoke_existing_sessions: true
+            local_login_enabled: true
+            public_registration_enabled: false
+            invitation_admission_enabled: true
+            invitation_local_credential_enabled: true
+            desktop_authorization_enabled: true
+            provider_admissions:
+              university_oidc: invitation_required
+      description: >-
+        A complete revision-fenced replacement of the installation Access Policy. Every setting is required so omitted values cannot silently inherit an unsafe prior state.
+  responses:
+    AccessPolicyOK:
+      description: Revisioned Access Policy, bounded transition history, and safe deployment capabilities
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccessPolicyResponse'
+    AccessPolicyPreflightOK:
+      description: Safe blockers for the proposed Access Policy replacement
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AccessPolicyPreflightResponse'
+  schemas:
+    ProviderAdmissionMode:
+      type: string
+      enum:
+        - linked_only
+        - invitation_required
+        - auto_provision
+    AccessPolicySettingsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - revoke_existing_sessions
+        - local_login_enabled
+        - public_registration_enabled
+        - invitation_admission_enabled
+        - invitation_local_credential_enabled
+        - desktop_authorization_enabled
+        - provider_admissions
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The current policy revision used as an optimistic concurrency fence.
+        revoke_existing_sessions:
+          type: boolean
+          description: One-shot choice to revoke active Sessions authenticated by methods newly disabled by this transition.
+        local_login_enabled:
+          type: boolean
+          description: Whether configured local-password login may be used.
+        public_registration_enabled:
+          type: boolean
+          description: Whether public local self-registration is admitted.
+        invitation_admission_enabled:
+          type: boolean
+          description: Whether outstanding Invitations may admit recipients.
+        invitation_local_credential_enabled:
+          type: boolean
+          description: Whether Invitation acceptance may enroll a local password.
+        desktop_authorization_enabled:
+          type: boolean
+          description: Whether the native-client browser authorization protocol is admitted.
+        provider_admissions:
+          type: object
+          maxProperties: 64
+          propertyNames:
+            pattern: ^[a-z0-9][a-z0-9._-]{0,63}$
+          additionalProperties:
+            $ref: '#/components/schemas/ProviderAdmissionMode'
+          description: Admission mode for each configured external authentication provider, keyed by provider ID.
+    AccessPolicyTransitionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - from_revision
+        - to_revision
+        - actor_user_id
+        - changed_fields
+        - changed_at
+        - outcome
+      properties:
+        from_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        to_revision:
+          type: integer
+          format: int64
+          minimum: 2
+        actor_user_id:
+          $ref: '#/components/schemas/ID'
+        changed_fields:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - local_login_enabled
+              - public_registration_enabled
+              - invitation_admission_enabled
+              - invitation_local_credential_enabled
+              - desktop_authorization_enabled
+              - provider_admissions
+              - revoke_existing_sessions
+        changed_at:
+          type: integer
+          format: int64
+        outcome:
+          type: string
+          const: applied
+    AccessPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - created_at
+        - updated_at
+        - local_login_enabled
+        - public_registration_enabled
+        - invitation_admission_enabled
+        - invitation_local_credential_enabled
+        - desktop_authorization_enabled
+        - provider_admissions
+        - history
+        - available_providers
+        - durable_mail
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        local_login_enabled:
+          type: boolean
+        public_registration_enabled:
+          type: boolean
+        invitation_admission_enabled:
+          type: boolean
+        invitation_local_credential_enabled:
+          type: boolean
+        desktop_authorization_enabled:
+          type: boolean
+        provider_admissions:
+          type: object
+          maxProperties: 64
+          propertyNames:
+            pattern: ^[a-z0-9][a-z0-9._-]{0,63}$
+          additionalProperties:
+            $ref: '#/components/schemas/ProviderAdmissionMode'
+        history:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AccessPolicyTransitionResponse'
+        available_providers:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/ExternalAuthenticationProviderResponse'
+        durable_mail:
+          type: boolean
+    AccessPolicyBlockerResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          enum:
+            - provider_unavailable
+            - provider_admission_unsupported
+            - invitation_delivery_unavailable
+            - last_system_administrator_path
+        provider_id:
+          type: string
+    AccessPolicyPreflightResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - blockers
+      properties:
+        blockers:
+          type: array
+          maxItems: 66
+          items:
+            $ref: '#/components/schemas/AccessPolicyBlockerResponse'

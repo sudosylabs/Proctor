@@ -39,7 +39,9 @@ jobs:
         with:
           node-version-file: webapp/.nvmrc
           cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          cache-dependency-path: |
+            webapp/package-lock.json
+            docs/site/package-lock.json
       - name: Run product gate
         run: make check
       - name: Verify independent modules

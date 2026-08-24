@@ -1,0 +1,70 @@
+paths:
+  /api/v1/institutions/{institution_id}/invitations/role:
+    parameters:
+      - $ref: '#/components/parameters/InstitutionID'
+    post:
+      operationId: issueInstitutionRoleInvitation
+      summary: Invite an existing User to one exact Institution Role package
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - invitation.invalid
+        - invitation.role_not_delegable
+        - invitation.conflict
+        - invitation.mail_unavailable
+        - invitation.unavailable
+        - administration.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueScopedRoleInvitationRequest'
+      responses:
+        "201":
+          description: Invitation issued without claim or mailbox disclosure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    InstitutionID:
+      name: institution_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ID'
+      description: The Institution identifier for this installation.

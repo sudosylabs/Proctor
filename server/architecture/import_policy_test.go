@@ -177,6 +177,15 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
+		name:           "OpenAPI compiler",
+		sources:        []pathPattern{exact(serverModule + "/internal/openapidoc")},
+		deniedStandard: standardInfrastructureExceptFS,
+		thirdParty: only(
+			exact("github.com/getkin/kin-openapi/openapi3"),
+			exact("gopkg.in/yaml.v3"),
+		),
+	},
+	{
 		name:           "domain model",
 		sources:        []pathPattern{exact(serverModule + "/model")},
 		deniedStandard: standardInfrastructure,
@@ -466,6 +475,7 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/app/mail"),
 			exact(serverModule+"/cmd/proctor/commands"),
 			exact(serverModule+"/httpapi"),
+			exact(serverModule+"/internal/openapidoc"),
 			exact(serverModule+"/localization"),
 			exact(serverModule+"/websocket"),
 		),
@@ -547,6 +557,7 @@ func TestDependencyRulePrecedence(t *testing.T) {
 		{packagePath: serverModule + "/app/exam/safemarkdown", wantRule: "exam application"},
 		{packagePath: serverModule + "/store/sqlstore", wantRule: "SQL store adapter"},
 		{packagePath: serverModule + "/platform/externalauth/oidc", wantRule: "external-auth adapters"},
+		{packagePath: serverModule + "/internal/openapidoc", wantRule: "OpenAPI compiler"},
 		{packagePath: serverModule + "/cmd/proctor-healthcheck", wantRule: "healthcheck executable"},
 		{packagePath: serverModule + "/cmd/ptool/commands", wantRule: "ptool commands"},
 	}

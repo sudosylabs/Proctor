@@ -1,0 +1,539 @@
+paths:
+  /api/v1/submissions/{submission_id}/review:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: getExamIntegrityReview
+      summary: Get the authorized manager Review snapshot
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityReviewOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: updateExamIntegrityReview
+      summary: Create or revise private notes and approved student remarks
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.revision_conflict
+        - exam.integrity_review.state_conflict
+        - exam.integrity_review.incomplete
+        - exam.integrity_review.too_large
+        - exam.integrity_review.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateExamIntegrityReview'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/submissions/{submission_id}/review/decisions/{integrity_flag_id}:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+      - $ref: '#/components/parameters/IntegrityFlagID'
+    put:
+      operationId: saveExamIntegrityDecision
+      summary: Create or revise the one current decision for a Flag
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.revision_conflict
+        - exam.integrity_review.state_conflict
+        - exam.integrity_review.incomplete
+        - exam.integrity_review.too_large
+        - exam.integrity_review.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/SaveExamIntegrityDecision'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/submissions/{submission_id}/review/finalize:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    post:
+      operationId: finalizeExamIntegrityReview
+      summary: Freeze the complete Review and bounded evidence inventory
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.revision_conflict
+        - exam.integrity_review.state_conflict
+        - exam.integrity_review.incomplete
+        - exam.integrity_review.too_large
+        - exam.integrity_review.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/TerminalExamIntegrityReview'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/submissions/{submission_id}/review/release:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    post:
+      operationId: releaseStudentExamResult
+      summary: Explicitly release the approved candidate result projection
+      tags:
+        - Integrity review
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.revision_conflict
+        - exam.integrity_review.state_conflict
+        - exam.integrity_review.incomplete
+        - exam.integrity_review.too_large
+        - exam.integrity_review.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/TerminalExamIntegrityReview'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityReviewMutationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    SaveExamIntegrityDecision:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SaveExamIntegrityDecisionRequest'
+    UpdateExamIntegrityReview:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateExamIntegrityReviewRequest'
+    TerminalExamIntegrityReview:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TerminalExamIntegrityReviewRequest'
+  responses:
+    ExamIntegrityReviewOK:
+      description: Manager-authorized Review snapshot including private Review fields
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIntegrityReviewResponse'
+    ExamIntegrityReviewMutationOK:
+      description: Committed Integrity Review mutation or its exact replay
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIntegrityReviewMutationResponse'
+  schemas:
+    SaveExamIntegrityDecisionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_review_revision
+        - expected_decision_revision
+        - outcome
+        - private_rationale
+      properties:
+        submission_review_id:
+          $ref: '#/components/schemas/ID'
+          description: Required when revising an existing Review; omitted only when creating its first decision.
+        expected_review_revision:
+          type: integer
+          format: int64
+          minimum: 0
+        expected_decision_revision:
+          type: integer
+          format: int64
+          minimum: 0
+        outcome:
+          type: string
+          enum:
+            - confirmed
+            - dismissed
+            - inconclusive
+          description: A non-academic integrity disposition, never a grade or guilt verdict.
+        private_rationale:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Required already-trimmed manager-only UTF-8 rationale, at most 1000 Unicode scalar values and 4000 bytes.
+    UpdateExamIntegrityReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_review_revision
+        - manager_notes
+        - student_remarks_markdown
+      properties:
+        submission_review_id:
+          $ref: '#/components/schemas/ID'
+          description: Required when revising an existing Review; omitted only when creating it.
+        expected_review_revision:
+          type: integer
+          format: int64
+          minimum: 0
+        manager_notes:
+          type: string
+          maxLength: 3000
+          description: Already-trimmed private manager UTF-8 notes, at most 3000 Unicode scalar values and 12000 bytes.
+        student_remarks_markdown:
+          type: string
+          maxLength: 8192
+          description: >-
+            Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8 bytes; sanitized again on candidate projection.
+    TerminalExamIntegrityReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_review_id
+        - expected_review_revision
+      properties:
+        submission_review_id:
+          $ref: '#/components/schemas/ID'
+        expected_review_revision:
+          type: integer
+          format: int64
+          minimum: 1
+    ExamIntegrityReviewDecisionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - integrity_flag_id
+        - outcome
+        - revision
+        - actor_user_id
+        - private_rationale
+        - decided_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        integrity_flag_id:
+          $ref: '#/components/schemas/ID'
+        outcome:
+          type: string
+          enum:
+            - confirmed
+            - dismissed
+            - inconclusive
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        actor_user_id:
+          $ref: '#/components/schemas/ID'
+        private_rationale:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Manager-only private rationale.
+        decided_at:
+          type: string
+          format: date-time
+    ExamSubmissionReviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - submission_id
+        - state
+        - release_state
+        - revision
+        - created_by_user_id
+        - manager_notes
+        - student_remarks_markdown
+        - flag_count
+        - evidence_count
+        - discrepancy_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        state:
+          type: string
+          enum:
+            - draft
+            - finalized
+        release_state:
+          type: string
+          enum:
+            - withheld
+            - released
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        created_by_user_id:
+          $ref: '#/components/schemas/ID'
+        manager_notes:
+          type: string
+          maxLength: 3000
+          description: Manager-only private notes.
+        student_remarks_markdown:
+          type: string
+          maxLength: 8192
+        flag_count:
+          type: integer
+          minimum: 0
+          maximum: 200
+        evidence_count:
+          type: integer
+          minimum: 0
+          maximum: 20000
+        discrepancy_count:
+          type: integer
+          minimum: 0
+          maximum: 200
+        evidence_inventory_digest:
+          $ref: '#/components/schemas/SHA256'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        finalized_at:
+          type: string
+          format: date-time
+        finalized_by_user_id:
+          $ref: '#/components/schemas/ID'
+        released_at:
+          type: string
+          format: date-time
+        released_by_user_id:
+          $ref: '#/components/schemas/ID'
+    ExamIntegrityReviewResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_id
+        - exam_id
+        - exam_sitting_id
+        - exam_attempt_id
+        - candidate_user_id
+        - integrity_state
+        - unresolved_integrity_count
+        - decisions
+      properties:
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        candidate_user_id:
+          $ref: '#/components/schemas/ID'
+        integrity_state:
+          type: string
+          enum:
+            - settled
+            - gapped
+        unresolved_integrity_count:
+          type: integer
+          format: int64
+          minimum: 0
+        review:
+          $ref: '#/components/schemas/ExamSubmissionReviewResponse'
+        decisions:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamIntegrityReviewDecisionResponse'
+    ExamIntegrityReviewMutationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_id
+        - exam_attempt_id
+        - candidate_user_id
+        - review
+      properties:
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        candidate_user_id:
+          $ref: '#/components/schemas/ID'
+        review:
+          $ref: '#/components/schemas/ExamSubmissionReviewResponse'
+        decision:
+          $ref: '#/components/schemas/ExamIntegrityReviewDecisionResponse'

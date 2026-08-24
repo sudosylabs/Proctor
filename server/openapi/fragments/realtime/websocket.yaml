@@ -1,0 +1,54 @@
+paths:
+  /api/v1/websocket:
+    get:
+      operationId: connectWebSocket
+      summary: Upgrade to the WebSocket protocol
+      tags:
+        - Realtime
+      description: >-
+        Upgrades an authenticated interactive Session to the versioned Proctor WebSocket protocol. A new connection receives its durable connection ID and monotonic sequence in the hello envelope. Reconnectors may supply the prior connection_id and last processed sequence_number for bounded node-local replay; otherwise the server signals resynchronization.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            websocat \
+              --header='Authorization: Bearer <interactive-session-access-token>' \
+              'wss://proctor.example.edu/api/v1/websocket?connection_id=<connection-id>&sequence_number=42'
+      x-proctor-auth: session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - websocket.origin.invalid
+        - websocket.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: connection_id
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: A prior connection ID to resume local bounded replay. Supply it together with sequence_number.
+        - name: sequence_number
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+          description: >-
+            The last sequence processed for the requested connection. Zero is valid and connection_id is required when present.
+      responses:
+        "101":
+          description: Switching Protocols
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'

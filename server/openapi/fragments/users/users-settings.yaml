@@ -1,0 +1,155 @@
+paths:
+  /api/v1/users/me/settings:
+    get:
+      operationId: getCurrentUserSettings
+      summary: Get the signed-in User's exact settings.json source
+      tags:
+        - Users
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - user_settings.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/UserSettingsOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceCurrentUserSettings
+      summary: Conditionally replace the signed-in User's exact settings.json source
+      tags:
+        - Users
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - request.invalid
+        - user_settings.invalid
+        - user_settings.format_unsupported
+        - user_settings.revision_conflict
+        - user_settings.unavailable
+        - audit.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceUserSettings'
+      responses:
+        "200":
+          $ref: '#/components/responses/UserSettingsReplaced'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    ReplaceUserSettings:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserSettingsReplaceRequest'
+  responses:
+    UserSettingsOK:
+      description: Exact current User Settings Document
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserSettingsResponse'
+    UserSettingsReplaced:
+      description: User Settings Document replacement outcome
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserSettingsReplacementResponse'
+  schemas:
+    UserSettingsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - source
+        - format_version
+        - revision
+        - writable
+        - updated_at
+      properties:
+        source:
+          type: string
+          maxLength: 262144
+        format_version:
+          type: integer
+          minimum: 1
+        revision:
+          $ref: '#/components/schemas/ID'
+        writable:
+          type: boolean
+        updated_at:
+          type: integer
+          format: int64
+    UserSettingsReplaceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - source
+        - format_version
+        - expected_revision
+      properties:
+        source:
+          type: string
+          maxLength: 262144
+        format_version:
+          type: integer
+          minimum: 1
+        expected_revision:
+          $ref: '#/components/schemas/ID'
+    UserSettingsReplacementResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - format_version
+        - updated_at
+        - changed
+      properties:
+        revision:
+          $ref: '#/components/schemas/ID'
+        format_version:
+          type: integer
+          minimum: 1
+        updated_at:
+          type: integer
+          format: int64
+        changed:
+          type: boolean

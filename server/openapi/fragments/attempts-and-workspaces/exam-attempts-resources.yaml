@@ -1,0 +1,50 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/resources/{exam_resource_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/ExamResourceID'
+    get:
+      operationId: getCandidateExamResourceContent
+      summary: Render a current protected Exam resource inline
+      tags:
+        - Attempts and workspaces
+      description: Requires the active session-bound Attempt credential and Connection. It is not a public or export URL.
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.state_conflict
+        - exam.attempt.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - name: If-None-Match
+          in: header
+          required: false
+          description: One or more entity tags from an earlier protected-content response. A match returns 304 without a body.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateExamProtectedContent'
+        "304":
+          $ref: '#/components/responses/CandidateExamContentNotModified'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'

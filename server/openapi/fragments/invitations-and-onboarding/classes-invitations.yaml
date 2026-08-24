@@ -1,0 +1,96 @@
+paths:
+  /api/v1/classes/{class_id}/invitations/student:
+    parameters:
+      - $ref: '#/components/parameters/ClassID'
+    post:
+      operationId: issueStudentClassInvitation
+      summary: Invite a student into one exact Class
+      tags:
+        - Invitations and onboarding
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+        - invitation.invalid
+        - invitation.class_period_invalid
+        - invitation.conflict
+        - invitation.mail_unavailable
+        - invitation.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueStudentClassInvitationRequest'
+      responses:
+        "201":
+          description: Invitation issued without claim or mailbox disclosure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  schemas:
+    IssueStudentClassInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+        suggested_username:
+          type: string
+          maxLength: 64
+        suggested_display_name:
+          type: string
+          maxLength: 512
+        suggested_first_name:
+          type: string
+          maxLength: 256
+        suggested_last_name:
+          type: string
+          maxLength: 256
+        suggested_locale:
+          type: string
+          maxLength: 35
+        suggested_timezone:
+          type: string
+          maxLength: 64

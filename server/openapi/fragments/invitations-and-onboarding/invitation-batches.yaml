@@ -1,0 +1,226 @@
+paths:
+  /api/v1/invitation-batches:
+    post:
+      operationId: runInvitationBatch
+      summary: Run one bounded typed Invitation batch
+      tags:
+        - Invitations and onboarding
+      description: >-
+        Executes one to 200 independent Invitation rows in order. Each row retains ordinary authorization, audit, mail atomicity, and idempotency semantics.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - invitation.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/RunInvitationBatch'
+      responses:
+        "200":
+          $ref: '#/components/responses/InvitationBatchOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    RunInvitationBatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationBatchRequest'
+  responses:
+    InvitationBatchOK:
+      description: Ordered bounded per-item Invitation outcomes
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InvitationBatchResponse'
+  schemas:
+    InvitationBatchItemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          pattern: ^[A-Za-z0-9._~-]{1,128}$
+        invitation_id:
+          $ref: '#/components/schemas/ID'
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        email:
+          type: string
+          format: email
+        role_id:
+          $ref: '#/components/schemas/ID'
+        start_at:
+          type: integer
+          format: int64
+          minimum: 1
+        end_at:
+          type: integer
+          format: int64
+          minimum: 1
+        suggested_username:
+          type: string
+          maxLength: 64
+        suggested_display_name:
+          type: string
+          maxLength: 512
+        suggested_first_name:
+          type: string
+          maxLength: 256
+        suggested_last_name:
+          type: string
+          maxLength: 256
+        suggested_locale:
+          type: string
+          maxLength: 35
+        suggested_timezone:
+          type: string
+          maxLength: 64
+    InvitationBatchRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+        - scope_type
+        - scope_id
+        - items
+      properties:
+        operation:
+          type: string
+          enum:
+            - student_class.create
+            - teacher_academic_unit.create
+            - academic_unit_role.create
+            - institution_role.create
+            - resend
+            - revoke
+        scope_type:
+          type: string
+          enum:
+            - institution
+            - academic_unit
+            - class
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/InvitationBatchItemRequest'
+    InvitationBatchItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - index
+        - status
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          maximum: 199
+        status:
+          type: string
+          enum:
+            - succeeded
+            - no_op
+            - failed
+        invitation_id:
+          $ref: '#/components/schemas/ID'
+        error_code:
+          type: string
+          enum:
+            - request.invalid
+            - resource.not_found
+            - authorization.denied
+            - authorization.request.invalid
+            - authorization.unavailable
+            - audit.unavailable
+            - administration.unavailable
+            - authentication.invalid_token
+            - authentication.strong_required
+            - authentication.reauthentication_required
+            - invitation.invalid
+            - invitation.class_period_invalid
+            - invitation.conflict
+            - invitation.role_not_delegable
+            - invitation.mail_unavailable
+            - invitation.unavailable
+            - idempotency.conflict
+            - idempotency.in_progress
+            - onboarding_batch.duplicate
+    InvitationBatchResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+        - items
+        - succeeded
+        - no_op
+        - failed
+      properties:
+        operation:
+          type: string
+          enum:
+            - student_class.create
+            - teacher_academic_unit.create
+            - academic_unit_role.create
+            - institution_role.create
+            - resend
+            - revoke
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/InvitationBatchItemResponse'
+        succeeded:
+          type: integer
+          minimum: 0
+          maximum: 200
+        no_op:
+          type: integer
+          minimum: 0
+          maximum: 200
+        failed:
+          type: integer
+          minimum: 0
+          maximum: 200

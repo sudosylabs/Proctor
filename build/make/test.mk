@@ -1,6 +1,6 @@
-.PHONY: check build-scripts-check webapp-install webapp-check server-check integration independent-modules ci
+.PHONY: check build-scripts-check webapp-install webapp-check docs-install docs-start docs-check server-check integration independent-modules ci
 
-check: build-scripts-check webapp-check server-check ## Run the hermetic product gate.
+check: build-scripts-check webapp-check docs-check server-check ## Run the hermetic product gate.
 
 build-scripts-check:
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
@@ -11,6 +11,16 @@ webapp-install:
 
 webapp-check: webapp-install
 	cd "$(WEBAPP_DIR)" && $(NPM) run check
+
+docs-install:
+	cd "$(DOCS_SITE_DIR)" && $(NPM) ci
+
+docs-start: docs-install ## Preview the public documentation site.
+	cd "$(DOCS_SITE_DIR)" && $(NPM) start
+
+docs-check: docs-install ## Validate and build the public documentation site.
+	$(MAKE) -C "$(SERVER_DIR)" openapi-check
+	cd "$(DOCS_SITE_DIR)" && $(NPM) run check
 
 server-check:
 	$(MAKE) -C "$(SERVER_DIR)" check

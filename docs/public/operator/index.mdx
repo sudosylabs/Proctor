@@ -1,0 +1,68 @@
+---
+title: Operate Proctor
+description: Plan and run a self-hosted Proctor installation from its authoritative infrastructure contracts.
+audience: operator
+maturity: preview
+slug: /operator/
+---
+
+# Operate Proctor
+
+Proctor is one self-hosted installation for one educational institution. A
+single node and an active-active cluster use the same architecture; scaling does
+not unlock a different product edition.
+
+<Maturity state="preview">
+  The runtime, packaging, dependency, health, and clustering foundations are
+  implemented. This page is an operator map while release-grade installation,
+  backup, and upgrade runbooks are being written.
+</Maturity>
+
+## Know Each Dependency's Authority
+
+| Dependency | Responsibility |
+| --- | --- |
+| PostgreSQL | Authoritative durable application state |
+| Redis | Disposable shared cache, counters, and coordination acceleration |
+| VFS or object storage | Managed file content behind Proctor's file contracts |
+| SMTP service | Delivery for durably committed transactional mail |
+| Execution hosts | Ephemeral isolated projections of Attempt Workspaces |
+
+PostgreSQL commits before cache invalidation, cluster fan-out, WebSocket
+publication, or other best-effort effects. Back up and restore the authoritative
+stores; do not treat Redis as a recovery source.
+
+## Choose a Deployment Shape
+
+### Single Node
+
+Use the ordinary server composition with production PostgreSQL and the required
+configured dependencies. A single node is the smallest form of the clustered
+architecture, not a special development mode.
+
+### Active-Active
+
+Place several identical application nodes behind a redundant external load
+balancer. All nodes share authoritative PostgreSQL state and the infrastructure
+required by the selected cluster mode. Readiness, not process existence, decides
+whether a node receives traffic.
+
+## Start From Tracked Operational Sources
+
+- [Build and development environment](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
+  explains the supported product commands, release archives, containers, and
+  certified development topology.
+- [Server operations](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
+  owns server configuration and verification commands.
+- [Runtime architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/runtime.md)
+  owns lifecycle, readiness, observability, and shutdown guarantees.
+- [Configuration architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/configuration.md)
+  explains deployment-owned settings and secret boundaries.
+
+## Before Production Use
+
+Confirm TLS termination, database recovery, object-storage durability, mail
+delivery, log retention, metrics access, time synchronization, and dependency
+failure behavior in the environment that will host the institution. Production
+examples must use redundant infrastructure before they are described as highly
+available.

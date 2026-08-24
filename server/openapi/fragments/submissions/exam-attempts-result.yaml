@@ -1,0 +1,69 @@
+paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/result:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: getStudentExamResult
+      summary: Get only the explicitly released candidate result projection
+      tags:
+        - Submissions
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/StudentExamResultOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    StudentExamResultOK:
+      description: Narrow explicitly released candidate result without evidence or private manager content
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentExamResultResponse'
+  schemas:
+    StudentExamResultResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - submission_review_id
+        - submission_id
+        - exam_attempt_id
+        - student_remarks_markdown
+        - released_at
+      properties:
+        submission_review_id:
+          $ref: '#/components/schemas/ID'
+        submission_id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        student_remarks_markdown:
+          type: string
+          maxLength: 8192
+        released_at:
+          type: string
+          format: date-time

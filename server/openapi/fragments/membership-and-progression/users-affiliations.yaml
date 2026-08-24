@@ -1,0 +1,142 @@
+paths:
+  /api/v1/users/{user_id}/affiliations:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      operationId: listAffiliations
+      summary: List a User's effective-dated Affiliations
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AffiliationListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createAffiliation
+      summary: Create a non-exclusive effective-dated Affiliation
+      tags:
+        - Membership and progression
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - affiliation.invalid
+        - affiliation.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/CreateAffiliation'
+      responses:
+        "201":
+          $ref: '#/components/responses/AffiliationCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    CreateAffiliation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateAffiliationRequest'
+  responses:
+    AffiliationCreated:
+      description: Affiliation created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AffiliationResponse'
+    AffiliationListOK:
+      description: Affiliation collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AffiliationListResponse'
+  schemas:
+    AffiliationListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/AffiliationResponse'
+    CreateAffiliationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+      properties:
+        id:
+          type: string
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        create_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        update_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        delete_at:
+          type: integer
+          format: int64
+          deprecated: true
+          description: Accepted and ignored for v1 compatibility.
+        user_id:
+          type: string
+          deprecated: true
+          description: Accepted and ignored; route scope is authoritative.
+        kind:
+          $ref: '#/components/schemas/AffiliationKind'
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64

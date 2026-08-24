@@ -1,0 +1,158 @@
+paths:
+  /api/v1/programme-levels/{programme_level_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProgrammeLevelID'
+    get:
+      operationId: getProgrammeLevel
+      summary: Get a Programme Level
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ProgrammeLevelOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateProgrammeLevel
+      summary: Update a Programme Level without changing its Programme owner
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - programme_level.invalid
+        - programme_level.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProgrammeLevel'
+      responses:
+        "200":
+          $ref: '#/components/responses/ProgrammeLevelOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: archiveProgrammeLevel
+      summary: Archive a Programme Level that has no active Classes
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - programme_level.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/ProgrammeLevelArchived'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateProgrammeLevel:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProgrammeLevelRequest'
+  responses:
+    ProgrammeLevelOK:
+      description: Programme Level
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeLevelResponse'
+    ProgrammeLevelArchived:
+      description: Programme Level archived
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+  schemas:
+    UpdateProgrammeLevelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.

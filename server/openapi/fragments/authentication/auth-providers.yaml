@@ -1,0 +1,221 @@
+paths:
+  /api/v1/auth/providers:
+    get:
+      operationId: listAuthenticationProviders
+      summary: List external authentication providers selected by current Access Policy
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - authentication.internal
+      security: []
+      x-proctor-idempotency: none
+      responses:
+        "200":
+          $ref: '#/components/responses/ExternalAuthenticationProviderListOK'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/providers/{provider_id}/login:
+    parameters:
+      - $ref: '#/components/parameters/ProviderID'
+    get:
+      operationId: beginExternalAuthentication
+      summary: Begin external authentication
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.external.request.invalid
+        - authentication.external.provider_not_found
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.external.rejected
+        - authentication.external.unavailable
+        - authentication.internal
+      x-proctor-idempotency: none
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ReturnTo'
+        - $ref: '#/components/parameters/ClientType'
+        - $ref: '#/components/parameters/DeviceID'
+        - $ref: '#/components/parameters/DeviceName'
+      responses:
+        "303":
+          $ref: '#/components/responses/ExternalAuthenticationRedirect'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      operationId: beginInvitationExternalAuthentication
+      summary: Begin invitation-bound external authentication
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.external.request.invalid
+        - authentication.external.provider_not_found
+        - authentication.external.account_not_linked
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.external.rejected
+        - authentication.external.unavailable
+        - authentication.internal
+      x-proctor-idempotency: none
+      security: []
+      requestBody:
+        $ref: '#/components/requestBodies/BeginInvitationExternalAuthentication'
+      responses:
+        "303":
+          $ref: '#/components/responses/ExternalAuthenticationRedirect'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/auth/providers/{provider_id}/callback:
+    parameters:
+      - $ref: '#/components/parameters/ProviderID'
+    get:
+      operationId: completeExternalAuthentication
+      summary: Complete external authentication
+      tags:
+        - Authentication
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+        - authentication.external.invalid
+        - authentication.external.provider_not_found
+        - authentication.external.rejected
+        - authentication.external.unavailable
+        - authentication.external.account_conflict
+        - authentication.external.account_not_linked
+        - authentication.method.disabled
+        - authentication.method.last_usable
+        - authentication.method.not_found
+        - authentication.method.provider_conflict
+        - authentication.method.conflict
+        - authentication.method.unavailable
+        - authentication.sessions.maximum_reached
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security: []
+      responses:
+        "303":
+          $ref: '#/components/responses/ExternalAuthenticationRedirect'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    ReturnTo:
+      name: return_to
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 2048
+    ClientType:
+      name: client_type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - desktop
+          - web
+        default: desktop
+    DeviceID:
+      name: device_id
+      in: query
+      required: false
+      schema:
+        type: string
+    DeviceName:
+      name: device_name
+      in: query
+      required: false
+      schema:
+        type: string
+  requestBodies:
+    BeginInvitationExternalAuthentication:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalAuthenticationStartRequest'
+  responses:
+    ExternalAuthenticationProviderListOK:
+      description: External authentication provider collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExternalAuthenticationProviderListResponse'
+    ExternalAuthenticationRedirect:
+      description: Browser redirect
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+        Location:
+          description: Validated redirect URI
+          schema:
+            type: string
+            format: uri-reference
+  schemas:
+    ExternalAuthenticationProviderListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/ExternalAuthenticationProviderResponse'
+    ExternalAuthenticationStartRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - invitation_claim
+      properties:
+        invitation_claim:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{43}$
+        return_to:
+          type: string
+          maxLength: 2048
+        device_id:
+          type: string
+        device_name:
+          type: string

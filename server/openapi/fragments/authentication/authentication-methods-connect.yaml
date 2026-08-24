@@ -1,0 +1,89 @@
+paths:
+  /api/v1/authentication-methods/providers/{provider_id}/connect:
+    parameters:
+      - $ref: '#/components/parameters/ProviderID'
+    post:
+      operationId: beginProviderConnection
+      summary: Begin a proof-bound provider connection for the exact current User
+      tags:
+        - Authentication
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - request.invalid
+        - authentication.external.provider_not_found
+        - authentication.external.unavailable
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/BeginProviderConnection'
+      responses:
+        "201":
+          $ref: '#/components/responses/ProviderConnectionCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    BeginProviderConnection:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BeginProviderConnectionRequest'
+  responses:
+    ProviderConnectionCreated:
+      description: Provider connection redirect prepared
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProviderConnectionResponse'
+  schemas:
+    BeginProviderConnectionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        return_to:
+          type: string
+          maxLength: 2048
+    ProviderConnectionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - redirect_url
+        - expires_at
+      properties:
+        redirect_url:
+          type: string
+          format: uri
+        expires_at:
+          type: integer
+          format: int64

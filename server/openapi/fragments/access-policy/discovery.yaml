@@ -1,0 +1,122 @@
+paths:
+  /api/v1/discovery:
+    get:
+      operationId: getPublicAccessDiscovery
+      summary: Get safe same-origin access and desktop compatibility discovery
+      tags:
+        - Access policy
+      description: >-
+        Returns the same-origin, unauthenticated capability document a client uses before choosing a registration or authentication flow. The response contains only safe presentation and compatibility data, is never a substitute for authorization, and is returned with Cache-Control: no-store.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request GET \
+              --url 'https://proctor.example.edu/api/v1/discovery' \
+              --header 'Accept: application/json'
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - access_policy.unavailable
+      security: []
+      x-proctor-idempotency: none
+      responses:
+        "200":
+          $ref: '#/components/responses/PublicAccessDiscoveryOK'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    PublicAccessDiscoveryOK:
+      description: Versioned same-origin safe access discovery
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PublicAccessDiscoveryResponse'
+  schemas:
+    PublicInstitutionPresentationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - display_name
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        name:
+          type: string
+        display_name:
+          type: string
+    PublicAccessCapabilitiesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - local_login
+        - public_registration
+        - invitation_admission
+        - desktop_authorization
+      properties:
+        local_login:
+          type: boolean
+        public_registration:
+          type: boolean
+        invitation_admission:
+          type: boolean
+        desktop_authorization:
+          type: boolean
+    DesktopAuthorizationCompatibilityResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - protocol
+        - minimum_version
+        - maximum_version
+      properties:
+        protocol:
+          type: string
+          const: proctor-desktop-authorization
+        minimum_version:
+          type: integer
+          minimum: 1
+        maximum_version:
+          type: integer
+          minimum: 1
+    PublicAccessDiscoveryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - discovery_version
+        - canonical_origin
+        - initialized
+        - capabilities
+        - providers
+        - desktop_authorization
+      properties:
+        discovery_version:
+          type: integer
+          const: 1
+        canonical_origin:
+          type: string
+          format: uri
+        installation_id:
+          $ref: '#/components/schemas/ID'
+        initialized:
+          type: boolean
+        institution:
+          $ref: '#/components/schemas/PublicInstitutionPresentationResponse'
+        policy_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        capabilities:
+          $ref: '#/components/schemas/PublicAccessCapabilitiesResponse'
+        providers:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/ExternalAuthenticationProviderResponse'
+        desktop_authorization:
+          $ref: '#/components/schemas/DesktopAuthorizationCompatibilityResponse'

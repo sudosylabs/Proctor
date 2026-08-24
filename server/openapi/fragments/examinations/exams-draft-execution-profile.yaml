@@ -1,0 +1,87 @@
+paths:
+  /api/v1/exams/{exam_id}/draft/execution-profile:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    put:
+      operationId: configureExamDraftExecutionProfile
+      summary: Replace the execution profile on the active Exam Draft
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.draft.no_changes
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ConfigureExamDraftExecutionProfile'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    ConfigureExamDraftExecutionProfile:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigureExamDraftExecutionProfileRequest'
+  schemas:
+    ConfigureExamDraftExecutionProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - enabled
+        - image
+        - network
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        enabled:
+          type: boolean
+        image:
+          type: string
+          maxLength: 255
+        network:
+          type: string
+          enum:
+            - none
+            - allowlist

@@ -1,0 +1,237 @@
+paths:
+  /api/v1/mail/deliveries:
+    get:
+      operationId: listMailDeliveries
+      summary: List safe mail delivery metadata
+      tags:
+        - Mail
+      x-proctor-auth: principal_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - mail.query.invalid
+        - mail.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/MailDeliveryState'
+        - name: template_key
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - system.mail_test
+        - name: created_after
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: created_before
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          $ref: '#/components/responses/MailDeliveryListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/mail/deliveries/{mail_delivery_id}:
+    parameters:
+      - name: mail_delivery_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    get:
+      operationId: getMailDelivery
+      summary: Get one safe mail delivery status
+      tags:
+        - Mail
+      x-proctor-auth: principal_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - mail.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailDeliveryOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/mail/deliveries/{mail_delivery_id}/cancel:
+    parameters:
+      - name: mail_delivery_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    post:
+      operationId: cancelMailDelivery
+      summary: Cancel queued mail delivery work
+      tags:
+        - Mail
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - mail.conflict
+        - mail.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailDeliveryOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/mail/deliveries/{mail_delivery_id}/retry:
+    parameters:
+      - name: mail_delivery_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/ID'
+    post:
+      operationId: retryMailDelivery
+      summary: Retry a still-relevant failed mail delivery
+      tags:
+        - Mail
+      x-proctor-auth: recent_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.reauthentication_required
+        - request.invalid
+        - resource.not_found
+        - mail.conflict
+        - mail.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "200":
+          $ref: '#/components/responses/MailDeliveryOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    MailDeliveryOK:
+      description: Safe durable mail delivery status
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailDeliveryResponse'
+    MailDeliveryListOK:
+      description: Bounded safe mail delivery collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MailDeliveryListResponse'
+  schemas:
+    MailDeliveryListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MailDeliveryResponse'
+        next_cursor:
+          type: string

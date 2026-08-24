@@ -1,0 +1,52 @@
+paths:
+  /health/live:
+    get:
+      operationId: getLiveness
+      summary: Check process liveness
+      tags:
+        - System
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - not_live
+      security: []
+      x-proctor-idempotency: none
+      responses:
+        "200":
+          $ref: '#/components/responses/HealthOK'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Check service readiness
+      tags:
+        - System
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - not_ready
+      security: []
+      x-proctor-idempotency: none
+      responses:
+        "200":
+          $ref: '#/components/responses/HealthOK'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    HealthOK:
+      description: Health status
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HealthResponse'
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok

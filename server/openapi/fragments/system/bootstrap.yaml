@@ -1,0 +1,189 @@
+paths:
+  /api/v1/bootstrap:
+    get:
+      operationId: getInstallationStatus
+      summary: Get installation bootstrap status
+      tags:
+        - System
+      x-proctor-auth: public
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - installation.unavailable
+      security: []
+      responses:
+        "200":
+          $ref: '#/components/responses/InstallationStatusOK'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: bootstrapInstallation
+      summary: Bootstrap the installation
+      tags:
+        - System
+      x-proctor-auth: public
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - request.invalid
+        - installation.already_initialized
+        - installation.bootstrap_denied
+        - installation.unavailable
+        - authentication.password.invalid
+        - authentication.rate_limited
+      security: []
+      requestBody:
+        $ref: '#/components/requestBodies/BootstrapInstallation'
+      responses:
+        "201":
+          $ref: '#/components/responses/InstallationBootstrapCreated'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    BootstrapInstallation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BootstrapInstallationRequest'
+  responses:
+    InstallationStatusOK:
+      description: Installation status
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InstallationStatusResponse'
+    InstallationBootstrapCreated:
+      description: Installation bootstrapped
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InstallationBootstrapResult'
+  schemas:
+    InstallationStatusResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - initialized
+      properties:
+        initialized:
+          type: boolean
+    BootstrapInstitutionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - display_name
+      properties:
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+    BootstrapAdministratorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - email
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        display_name:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        locale:
+          type: string
+        timezone:
+          type: string
+    BootstrapInstallationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - institution
+        - administrator
+        - password
+        - bootstrap_secret
+      properties:
+        institution:
+          $ref: '#/components/schemas/BootstrapInstitutionRequest'
+        administrator:
+          $ref: '#/components/schemas/BootstrapAdministratorRequest'
+        password:
+          type: string
+        bootstrap_secret:
+          type: string
+          minLength: 1
+          maxLength: 512
+          writeOnly: true
+    InstallationStateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - initialized_at
+        - institution_id
+        - administrator_user_id
+      properties:
+        initialized_at:
+          type: integer
+          format: int64
+        institution_id:
+          $ref: '#/components/schemas/ID'
+        administrator_user_id:
+          $ref: '#/components/schemas/ID'
+    InstallationBootstrapResult:
+      type: object
+      additionalProperties: false
+      properties:
+        state:
+          $ref: '#/components/schemas/InstallationStateResponse'
+        institution:
+          $ref: '#/components/schemas/InstitutionResponse'
+        administrator:
+          $ref: '#/components/schemas/UserProfileResponse'
+        role:
+          $ref: '#/components/schemas/RoleResponse'
+        role_binding:
+          $ref: '#/components/schemas/RoleBindingResponse'
+        access_policy:
+          $ref: '#/components/schemas/InitialAccessPolicyResponse'
+    InitialAccessPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - local_login_enabled
+        - public_registration_enabled
+        - invitation_admission_enabled
+        - invitation_local_credential_enabled
+        - desktop_authorization_enabled
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        revision:
+          type: integer
+          format: int64
+        local_login_enabled:
+          type: boolean
+        public_registration_enabled:
+          type: boolean
+        invitation_admission_enabled:
+          type: boolean
+        invitation_local_credential_enabled:
+          type: boolean
+        desktop_authorization_enabled:
+          type: boolean

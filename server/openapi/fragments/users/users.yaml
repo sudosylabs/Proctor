@@ -1,0 +1,224 @@
+paths:
+  /api/v1/users:
+    get:
+      operationId: searchUsers
+      summary: Search the authorized User directory
+      tags:
+        - Users
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - user.invalid
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Literal case-insensitive substring matched against visible User directory fields.
+          schema:
+            type: string
+        - name: after_username
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: after_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: include_disabled
+          in: query
+          required: false
+          description: Honored only for institution-wide user.view; scoped visibility always excludes disabled Users.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/me:
+    get:
+      operationId: getCurrentUserProfile
+      summary: Get the authenticated User profile
+      tags:
+        - Users
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+  /api/v1/users/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      operationId: getUserProfile
+      summary: Get a contextually visible User profile
+      tags:
+        - Users
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateUserProfile
+      summary: Administratively update a User profile
+      tags:
+        - Users
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - user.invalid
+        - user.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateUserProfile'
+      responses:
+        "200":
+          $ref: '#/components/responses/UserProfileOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateUserProfile:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateUserProfileRequest'
+  responses:
+    UserProfileListOK:
+      description: User profile collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserProfileListResponse'
+  schemas:
+    UserProfileListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/UserProfileResponse'
+    UpdateUserProfileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        username:
+          type:
+            - string
+            - "null"
+        display_name:
+          type:
+            - string
+            - "null"
+        first_name:
+          type:
+            - string
+            - "null"
+        last_name:
+          type:
+            - string
+            - "null"
+        locale:
+          type:
+            - string
+            - "null"
+        timezone:
+          type:
+            - string
+            - "null"

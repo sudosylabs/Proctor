@@ -1,0 +1,109 @@
+paths:
+  /api/v1/audits:
+    get:
+      operationId: listAuditEvents
+      summary: List authorized institution or Academic Unit audit history
+      tags:
+        - Roles and access
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.query.invalid
+        - audit.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/AuditListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    AuditListOK:
+      description: Audit Event collection
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuditListResponse'
+  schemas:
+    AuditEventResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - create_at
+        - update_at
+        - action
+        - resource
+        - status
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        create_at:
+          type: integer
+          format: int64
+        update_at:
+          type: integer
+          format: int64
+        actor_id:
+          type: string
+        session_id:
+          type: string
+        action:
+          type: string
+        resource:
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - id
+          properties:
+            type:
+              type: string
+            id:
+              $ref: '#/components/schemas/ID'
+        scope_type:
+          type: string
+        scope_id:
+          type: string
+        status:
+          type: string
+        request_id:
+          type: string
+        node_id:
+          type: string
+        client_type:
+          type: string
+        authentication_method:
+          type: string
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        error_code:
+          type: string
+    AuditListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventResponse'
+        next_cursor:
+          type: string

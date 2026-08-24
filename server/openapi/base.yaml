@@ -1,0 +1,41 @@
+openapi: 3.1.0
+info:
+  title: Proctor Server API
+  version: 1.0.0
+  description: >-
+    The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures.
+servers:
+  - url: /
+tags:
+  - name: System
+    description: Installation discovery, bootstrap state, version information, and service health.
+  - name: Authentication
+    description: Interactive authentication, sessions, MFA, personal access tokens, and linked authentication methods.
+  - name: Users
+    description: User directory profiles, settings, account administration, and profile pictures.
+  - name: Academic structure
+    description: The Institution, Academic Units, Programmes, Programme Levels, Academic Periods, and Classes.
+  - name: Membership and progression
+    description: Affiliations, organizational membership, Class enrollment, batch administration, and student progression.
+  - name: Invitations and onboarding
+    description: Invitation issuance and acceptance, invitation batches, and validated onboarding imports.
+  - name: Roles and access
+    description: Roles, scoped Role Bindings, and authorized audit history.
+  - name: Access policy
+    description: Installation-wide admission and authentication policy, preflight checks, and safe public discovery.
+  - name: Examinations
+    description: Exam ownership, mutable Draft authoring, immutable Revisions, resources, and starter Workspaces.
+  - name: Sittings
+    description: Scheduled Exam delivery, lifecycle controls, live corrections, and no-show visibility.
+  - name: Attempts and workspaces
+    description: Candidate participation, Exam Attempts, protected presentation, and active Attempt Workspace operations.
+  - name: Submissions
+    description: Attempt submission, sealed manifests and content, and released candidate results.
+  - name: Integrity review
+    description: Integrity flags and evidence, discrepancies, review decisions, finalization, and result release.
+  - name: Jobs
+    description: Durable background Job status, Attempt history, cancellation, and retry.
+  - name: Mail
+    description: Durable mail operations, delivery inspection, key rotation, testing, and bounded metrics.
+  - name: Realtime
+    description: Authenticated WebSocket connection establishment and bounded replay resumption.

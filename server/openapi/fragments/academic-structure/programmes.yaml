@@ -1,0 +1,158 @@
+paths:
+  /api/v1/programmes/{programme_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProgrammeID'
+    get:
+      operationId: getProgramme
+      summary: Get a Programme
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/ProgrammeOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateProgramme
+      summary: Update a Programme without changing its Academic Unit owner
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - programme.invalid
+        - programme.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProgramme'
+      responses:
+        "200":
+          $ref: '#/components/responses/ProgrammeOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: archiveProgramme
+      summary: Archive a Programme that has no active Programme Levels
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - programme.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204":
+          $ref: '#/components/responses/ProgrammeArchived'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateProgramme:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProgrammeRequest'
+  responses:
+    ProgrammeOK:
+      description: Programme
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProgrammeResponse'
+    ProgrammeArchived:
+      description: Programme archived
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+  schemas:
+    UpdateProgrammeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.

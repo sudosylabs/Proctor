@@ -1,0 +1,148 @@
+paths:
+  /api/v1/institution:
+    get:
+      operationId: getInstitution
+      summary: Get the installation Institution
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - resource.not_found
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/InstitutionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateInstitution
+      summary: Update the installation Institution
+      tags:
+        - Academic structure
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - institution.invalid
+        - institution.conflict
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateInstitution'
+      responses:
+        "200":
+          $ref: '#/components/responses/InstitutionOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    UpdateInstitution:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateInstitutionRequest'
+  responses:
+    InstitutionOK:
+      description: Installation Institution
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InstitutionResponse'
+  schemas:
+    UpdateInstitutionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        display_name:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        description:
+          type:
+            - string
+            - "null"
+          description: Omitted or null leaves the value unchanged. An empty string is present and subject to validation.
+        exam_capacity:
+          type:
+            - object
+            - "null"
+          additionalProperties: false
+          description: >-
+            Omitted or null leaves the policy unchanged. A present object replaces the complete institution Exam capacity policy.
+          required:
+            - resource_maximum_count
+            - resource_maximum_bytes
+            - workspace_maximum_entries
+            - workspace_maximum_file_bytes
+            - workspace_maximum_total_bytes
+          properties:
+            resource_maximum_count:
+              type: integer
+              minimum: 1
+              maximum: 100
+            resource_maximum_bytes:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 104857600
+            workspace_maximum_entries:
+              type: integer
+              minimum: 1
+              maximum: 5000
+            workspace_maximum_file_bytes:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 104857600
+            workspace_maximum_total_bytes:
+              type: integer
+              format: int64
+              minimum: 1
+              maximum: 1073741824

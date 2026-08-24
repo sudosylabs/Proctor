@@ -1,0 +1,137 @@
+paths:
+  /api/v1/submissions/{submission_id}/integrity-discrepancies:
+    parameters:
+      - $ref: '#/components/parameters/SubmissionID'
+    get:
+      operationId: listExamIntegrityDiscrepancies
+      summary: List bounded late records retained after integrity collection ended
+      tags:
+        - Integrity review
+      description: Late records are explicit discrepancies and never alter a finalized or released Review inventory.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.integrity_review.invalid
+        - exam.integrity_review.unavailable
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: Opaque versioned Discrepancy identity cursor.
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIntegrityDiscrepancyListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  responses:
+    ExamIntegrityDiscrepancyListOK:
+      description: Bounded manager-authorized post-collection discrepancies
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            const: no-store
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIntegrityDiscrepancyListResponse'
+  schemas:
+    ExamIntegrityDiscrepancyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - exam_attempt_id
+        - participation_id
+        - generation
+        - kind
+        - schema_version
+        - focus_loss_signal_id
+        - sequence
+        - duration_milliseconds
+        - missing_before
+        - received_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          type: string
+          const: late_focus_loss
+        schema_version:
+          type: integer
+          const: 1
+        focus_loss_signal_id:
+          $ref: '#/components/schemas/ID'
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        duration_milliseconds:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 86400000
+        source:
+          type: string
+          enum:
+            - application_backgrounded
+            - document_hidden
+            - fullscreen_exited
+            - window_blur
+        missing_before:
+          type: integer
+          format: int64
+          minimum: 0
+        received_at:
+          type: string
+          format: date-time
+    ExamIntegrityDiscrepancyListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/ExamIntegrityDiscrepancyResponse'
+        next_cursor:
+          type: string

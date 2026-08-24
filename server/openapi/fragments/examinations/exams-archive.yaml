@@ -1,0 +1,83 @@
+paths:
+  /api/v1/exams/{exam_id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    post:
+      operationId: archiveExam
+      summary: Archive an active Exam
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.revision_conflict
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ArchiveExam'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamIdentityOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+components:
+  requestBodies:
+    ArchiveExam:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ArchiveExamRequest'
+  responses:
+    ExamIdentityOK:
+      description: Exam identity
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamIdentityResponse'
+  schemas:
+    ArchiveExamRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_exam_revision
+      properties:
+        expected_exam_revision:
+          type: integer
+          format: int64
+          minimum: 1
