@@ -179,13 +179,29 @@ nouns. Icons inherit the mark's square construction, visible openings, and
 - The standard icon stroke is `2px`, with round caps and round joins unless a
   fenced edge requires a square end.
 - Keep at least `2px` clear space at the 24px size.
-- Do not mix emoji, a general-purpose icon library, and one-off SVG symbols.
+- Use the owned `DocIcon` component; do not mix emoji, a general-purpose icon
+  library, and one-off SVG symbols.
 - Do not add an icon for a concept used only once; use a label instead.
 - Product or vendor marks remain their own artwork and never inherit the
   Proctor icon geometry.
 
-The bounded icon set will be implemented in its own slice. Until then, do not
-invent additional documentation icons.
+The bounded vocabulary is deliberate:
+
+| Name | Meaning |
+| --- | --- |
+| `deployment` | Runtime nodes and operational deployment work |
+| `institution` | The one educational Institution governed by an Installation |
+| `assurance` | Reviewed security or authorization guarantees |
+| `integration` | Developer work across a typed or protocol boundary |
+| `api` | The public HTTP contract and endpoint reference |
+| `glossary` | Canonical Proctor vocabulary |
+| `architecture` | System ownership and dependency topology |
+| `search`, `close`, `arrowRight`, `external`, `check` | Repeated interface actions and state confirmation |
+
+Icons next to an existing text label are decorative and hidden from assistive
+technology. A standalone icon supplies a short accessible title. Adding a name
+requires a recurring use, an entry in this table, a geometry review at all
+three sizes, and an update to the icon contract test.
 
 ## Illustration grammar
 

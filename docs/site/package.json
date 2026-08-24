@@ -14,6 +14,7 @@
     "generate:design-system": "node scripts/generate-design-system.mjs",
     "check:design-system": "node scripts/check-design-system.mjs",
     "test:design-system": "node --test design-system/index.test.mjs",
+    "test:icons": "node --test icons/index.test.mjs",
     "generate:glossary": "node scripts/generate-glossary.mjs",
     "check:glossary": "node scripts/check-glossary.mjs",
     "test:glossary": "node --test glossary/index.test.mjs",
@@ -29,7 +30,7 @@
     "test:openapi-audit": "node --test scripts/openapi-audit.test.mjs",
     "test:openapi-reference": "node --test scripts/openapi-reference.test.mjs",
     "test:codegen": "node --test scripts/codegen-smoke.test.mjs",
-    "validate": "npm run check:design-system && npm run test:design-system && npm run check:glossary && npm run test:glossary && npm run check:search && npm run test:search && node scripts/validate-content.mjs && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
+    "validate": "npm run check:design-system && npm run test:design-system && npm run test:icons && npm run check:glossary && npm run test:glossary && npm run check:search && npm run test:search && node scripts/validate-content.mjs && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
     "typecheck": "tsc --noEmit",
     "check": "npm run validate && npm run generate:openapi && npm run typecheck && docusaurus build"
   },

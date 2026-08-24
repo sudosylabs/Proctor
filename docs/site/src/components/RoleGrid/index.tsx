@@ -1,8 +1,17 @@
 import Link from '@docusaurus/Link';
+import DocIcon, {type DocIconName} from '@site/src/components/DocIcon';
 import styles from './styles.module.css';
 
-const roles = [
+const roles: Array<{
+  label: string;
+  audience: string;
+  title: string;
+  description: string;
+  to: string;
+  icon: DocIconName;
+}> = [
   {
+    icon: 'deployment',
     label: 'Operate',
     audience: 'Operator',
     title: 'Run a deployment',
@@ -10,6 +19,7 @@ const roles = [
     to: '/operator/',
   },
   {
+    icon: 'institution',
     label: 'Administer',
     audience: 'Institution administrator',
     title: 'Shape the institution',
@@ -17,6 +27,7 @@ const roles = [
     to: '/institution-admin/',
   },
   {
+    icon: 'assurance',
     label: 'Review & secure',
     audience: 'Security reviewer',
     title: 'Trace the guarantees',
@@ -24,6 +35,7 @@ const roles = [
     to: '/security/',
   },
   {
+    icon: 'integration',
     label: 'Build & integrate',
     audience: 'Developer',
     title: 'Contribute or integrate',
@@ -37,12 +49,15 @@ export default function RoleGrid(): React.JSX.Element {
     <div className={styles.grid}>
       {roles.map((role) => (
         <Link className={styles.card} to={role.to} key={role.label}>
-          <span className={styles.label}>{role.label}</span>
+          <span className={styles.label}>
+            <DocIcon name={role.icon} size={32} />
+            <span>{role.label}</span>
+          </span>
           <span className={styles.audience}>{role.audience}</span>
           <strong>{role.title}</strong>
           <span className={styles.description}>{role.description}</span>
           <span className={styles.action} aria-hidden="true">
-            Open guide <span>→</span>
+            Open guide <DocIcon name="arrowRight" />
           </span>
         </Link>
       ))}

@@ -11,6 +11,7 @@ pagination_prev: null
 ---
 
 import Link from '@docusaurus/Link';
+import DocIcon from '@site/src/components/DocIcon';
 import LifecycleRibbon from '@site/src/components/LifecycleRibbon';
 import RoleGrid from '@site/src/components/RoleGrid';
 import styles from './index.module.css';
@@ -58,7 +59,7 @@ import styles from './index.module.css';
         <dd>Every operation declares explicit assurance</dd>
       </div>
     </dl>
-    <div className={styles.assuranceFooter}><span aria-hidden="true">✓</span> Each statement links to a reviewed source.</div>
+    <div className={styles.assuranceFooter}><DocIcon name="check" /> Each statement links to a reviewed source.</div>
   </aside>
 </header>
 
@@ -88,23 +89,26 @@ import styles from './index.module.css';
   <div className={styles.referenceGrid}>
     <Link className={styles.referenceCard} to="/api/">
       <span className={styles.cardLabel}>HTTP API</span>
+      <DocIcon className={styles.referenceIcon} name="api" size={32} />
       <strong>OpenAPI reference</strong>
-      <span>Authentication, idempotency, errors, examples, and all endpoint schemas.</span>
-      <b aria-hidden="true">→</b>
+      <span className={styles.cardDescription}>Authentication, idempotency, errors, examples, and all endpoint schemas.</span>
+      <DocIcon className={styles.referenceArrow} name="arrowRight" />
     </Link>
     <Link className={styles.referenceCard} to="/glossary/">
       <span className={styles.cardLabel}>Canonical language</span>
+      <DocIcon className={styles.referenceIcon} name="glossary" size={32} />
       <strong>Proctor glossary</strong>
-      <span>Generated definitions with nearby vocabulary to avoid.</span>
-      <b aria-hidden="true">→</b>
+      <span className={styles.cardDescription}>Generated definitions with nearby vocabulary to avoid.</span>
+      <DocIcon className={styles.referenceArrow} name="arrowRight" />
     </Link>
     <a
       className={styles.referenceCard}
       href="https://github.com/sudosylabs/Proctor/tree/main/docs/architecture">
       <span className={styles.cardLabel}>System design</span>
+      <DocIcon className={styles.referenceIcon} name="architecture" size={32} />
       <strong>Architecture guide</strong>
-      <span>Durable boundaries, rationale, and examination guarantees.</span>
-      <b aria-hidden="true">↗</b>
+      <span className={styles.cardDescription}>Durable boundaries, rationale, and examination guarantees.</span>
+      <DocIcon className={styles.referenceArrow} name="external" />
     </a>
   </div>
 </section>

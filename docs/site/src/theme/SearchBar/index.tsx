@@ -1,6 +1,7 @@
 import Link from '@docusaurus/Link';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
+import DocIcon from '@site/src/components/DocIcon';
 import {searchEntries, type SearchEntry} from '@site/src/generated/search-index';
 import styles from './styles.module.css';
 
@@ -13,23 +14,6 @@ const recommendedRoutes = new Set([
   '/glossary/',
 ]);
 const endpointCount = searchEntries.filter((entry) => entry.kind === 'endpoint').length;
-
-function SearchIcon(): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20">
-      <circle cx="8.5" cy="8.5" r="5.75" />
-      <path d="m13 13 4 4" />
-    </svg>
-  );
-}
-
-function CloseIcon(): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20">
-      <path d="m4 4 12 12M16 4 4 16" />
-    </svg>
-  );
-}
 
 function score(entry: SearchEntry, normalizedQuery: string): number {
   if (!normalizedQuery) {
@@ -122,7 +106,7 @@ export default function SearchBar(): React.JSX.Element {
         className={styles.trigger}
         onClick={openSearch}
         type="button">
-        <SearchIcon />
+        <DocIcon name="search" />
         <span className={styles.triggerLabel}>Search docs</span>
         <kbd>⌘&nbsp;K</kbd>
       </button>
@@ -153,13 +137,13 @@ export default function SearchBar(): React.JSX.Element {
             className={styles.close}
             onClick={closeSearch}
             type="button">
-            <CloseIcon />
+            <DocIcon name="close" />
           </button>
         </div>
 
         <label className={styles.searchField}>
           <span className={styles.visuallyHidden}>Search documentation</span>
-          <SearchIcon />
+          <DocIcon name="search" />
           <input
             autoComplete="off"
             name="docs-query"

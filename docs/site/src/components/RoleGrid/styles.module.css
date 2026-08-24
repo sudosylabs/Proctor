@@ -40,13 +40,20 @@
 }
 
 .label {
+  align-items: center;
   color: var(--proctor-primary-strong);
+  display: flex;
   font-family: var(--ifm-font-family-monospace);
   font-size: var(--proctor-type-caption-size);
   font-weight: 600;
+  gap: var(--proctor-space-3);
   letter-spacing: 0.05em;
-  margin-bottom: var(--proctor-space-1);
+  margin-bottom: var(--proctor-space-3);
   text-transform: uppercase;
+}
+
+.label svg {
+  color: var(--proctor-primary);
 }
 
 .audience {
@@ -72,19 +79,23 @@
 }
 
 .action {
+  align-items: center;
   color: var(--proctor-primary-strong);
+  display: inline-flex;
   font-size: var(--proctor-type-body-small-size);
   font-weight: 600;
+  gap: var(--proctor-space-2);
   margin-top: var(--proctor-space-5);
+  width: fit-content;
 }
 
-.action span {
+.action svg {
   display: inline-block;
   transition: transform 140ms ease;
 }
 
-.card:hover .action span,
-.card:focus-visible .action span {
+.card:hover .action svg,
+.card:focus-visible .action svg {
   transform: translateX(var(--proctor-space-1));
 }
 
@@ -119,7 +130,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .action span {
+  .action svg {
     transition: none;
   }
 }

@@ -232,23 +232,30 @@
   line-height: 1.25;
 }
 
-.referenceCard > span:not(.cardLabel) {
+.cardDescription {
   font-size: var(--proctor-type-body-small-size);
   grid-column: 1;
   line-height: 1.55;
 }
 
-.referenceCard b {
-  align-self: center;
-  color: var(--proctor-primary-strong);
-  font-size: var(--proctor-type-heading-small-size);
+.referenceIcon {
+  color: var(--proctor-primary);
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
+  justify-self: end;
+}
+
+.referenceArrow {
+  align-self: end;
+  color: var(--proctor-primary-strong);
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
   transition: transform 140ms ease;
 }
 
-.referenceCard:hover b,
-.referenceCard:focus-visible b {
+.referenceCard:hover .referenceArrow,
+.referenceCard:focus-visible .referenceArrow {
   transform: translateX(var(--proctor-space-1));
 }
 
@@ -307,7 +314,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .referenceCard,
-  .referenceCard b {
+  .referenceArrow {
     transition: none;
   }
 }

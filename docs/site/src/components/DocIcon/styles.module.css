@@ -1,0 +1,9 @@
+.root {
+  display: block;
+  flex: none;
+  shape-rendering: geometricPrecision;
+}
+
+.root * {
+  vector-effect: non-scaling-stroke;
+}

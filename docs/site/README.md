@@ -25,6 +25,7 @@ cd docs/site
 npm run generate:design-system
 npm run check:design-system
 npm run test:design-system
+npm run test:icons
 npm run generate:glossary
 npm run check:glossary
 npm run test:glossary
@@ -37,6 +38,12 @@ The check rejects stale generated CSS, literal colors outside the token module,
 retired color names, unsupported font weights, insufficient standard-token
 contrast, and illustration palettes that do not match their declared visual
 system.
+
+`src/components/DocIcon` owns the bounded documentation icon vocabulary. Its
+typed names, three optical sizes, shared two-pixel geometry, and accessibility
+contract keep domain and utility symbols consistent without an external icon
+library. Add a name only when the concept recurs and update the icon contract
+and its test in the same change.
 
 `CONTEXT.md` is the single glossary authority. `generate:glossary` produces the
 public glossary page and the typed runtime lookup used by explicit `<Term>`
