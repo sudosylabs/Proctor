@@ -8,6 +8,7 @@ components:
             $ref: '#/components/schemas/JobResponse'
   schemas:
     JobProgressResponse:
+      description: Bounded coarse progress reported by a Job implementation.
       type: object
       additionalProperties: false
       required:
@@ -19,13 +20,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Completed work units in the current stage.
         total:
           type: integer
           format: int64
           minimum: 1
+          description: Total work units expected in the current stage.
         stage:
           type: string
+          description: Stable safe name of the current processing stage.
     JobResponse:
+      description: Safe durable state of an allowlisted background Job.
       type: object
       additionalProperties: false
       required:
@@ -43,34 +48,44 @@ components:
           $ref: '#/components/schemas/ID'
         type:
           type: string
+          description: Stable allowlisted Job type.
         status:
           $ref: '#/components/schemas/JobStatus'
         create_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the Job was created.
         update_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the latest durable Job change.
         available_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds at or after which queued work may be claimed.
         start_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the current or latest Attempt started.
         complete_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the Job reached a terminal state.
         public_error_code:
           type: string
+          description: Stable safe failure category; private worker and infrastructure errors are never exposed.
         attempt_count:
           type: integer
           minimum: 0
+          description: Number of durable execution Attempts created so far.
         maximum_attempts:
           type: integer
           minimum: 1
+          description: Maximum execution Attempts allowed by this Job's retry policy.
         progress:
           $ref: '#/components/schemas/JobProgressResponse'
         revision:
           type: integer
           format: int64
           minimum: 1
+          description: Monotonic durable Job revision for concurrency-aware consumers.

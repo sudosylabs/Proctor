@@ -7,6 +7,15 @@ paths:
       summary: Disable a User account and revoke its active sessions
       tags:
         - Users
+      description: >-
+        Disables the target User and atomically revokes active Sessions after checking current authority and last-system-administrator safety. Historical affiliations, memberships, Role Bindings, attempts, submissions, and audit records are retained.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/disable' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

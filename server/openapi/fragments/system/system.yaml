@@ -5,6 +5,8 @@ paths:
       summary: Get build and version information
       tags:
         - System
+      description: >-
+        Returns the release version and immutable build provenance for the currently serving node. The response contains no runtime configuration, credentials, dependency addresses, or installation identity.
       x-proctor-auth: public
       x-proctor-error-codes: []
       security: []
@@ -22,6 +24,7 @@ components:
             $ref: '#/components/schemas/BuildInfoResponse'
   schemas:
     BuildInfoResponse:
+      description: Public build provenance for the serving Proctor binary.
       type: object
       additionalProperties: false
       required:
@@ -32,9 +35,13 @@ components:
       properties:
         version:
           type: string
+          description: Proctor release or development version string.
         commit:
           type: string
+          description: Source revision embedded at build time.
         build_time:
           type: string
+          description: Build timestamp embedded in the binary.
         go_version:
           type: string
+          description: Go toolchain version used to build the binary.

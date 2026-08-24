@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 5
 ---
 
+import Link from '@docusaurus/Link';
+
 # Schedule and Manage a Sitting
 
 A Sitting delivers one published Exam Revision to one Class during an explicit
@@ -26,25 +28,25 @@ curl --request POST \
   }'
 ```
 
-See [Schedule Exam Sitting](/api/reference/schedule-exam-sitting). Before the
-Sitting opens, [update the schedule](/api/reference/update-exam-sitting-schedule)
+See <Link to="/api/reference/schedule-exam-sitting">Schedule Exam Sitting</Link>. Before the
+Sitting opens, <Link to="/api/reference/update-exam-sitting-schedule">update the schedule</Link>
 to change its Revision, Class, or window under the documented state rules.
 
 ## 2. Observe Current State
 
-Use [Get Exam Sitting](/api/reference/get-exam-sitting) as the authoritative
+Use <Link to="/api/reference/get-exam-sitting">Get Exam Sitting</Link> as the authoritative
 snapshot. Realtime events can prompt a refresh, but an event is not a durable
 replacement for the HTTP state.
 
 ## 3. Apply Lifecycle Controls
 
-- [Pause](/api/reference/pause-exam-sitting) blocks active delivery under the
+- <Link to="/api/reference/pause-exam-sitting">Pause</Link> blocks active delivery under the
   lifecycle contract and records a private manager reason.
-- [Resume](/api/reference/resume-exam-sitting) reopens a paused Sitting.
-- [Extend](/api/reference/extend-exam-sitting) changes the active deadline.
-- [Close](/api/reference/close-exam-sitting) ends an open or paused Sitting
+- <Link to="/api/reference/resume-exam-sitting">Resume</Link> reopens a paused Sitting.
+- <Link to="/api/reference/extend-exam-sitting">Extend</Link> changes the active deadline.
+- <Link to="/api/reference/close-exam-sitting">Close</Link> ends an open or paused Sitting
   early; unfinished Attempts follow the server's sealing rules.
-- [Cancel](/api/reference/cancel-exam-sitting) is for a still-scheduled Sitting.
+- <Link to="/api/reference/cancel-exam-sitting">Cancel</Link> is for a still-scheduled Sitting.
 
 Send a distinct idempotency key whenever the endpoint requires or permits one,
 and preserve revision or expected-state fields exactly. Lifecycle commands are

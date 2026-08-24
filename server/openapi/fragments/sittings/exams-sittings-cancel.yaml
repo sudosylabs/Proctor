@@ -8,6 +8,8 @@ paths:
       summary: Cancel a Scheduled Exam Sitting with a private manager reason
       tags:
         - Sittings
+      description: >-
+        Cancels one still-scheduled Sitting under an exact revision fence and retains a bounded private manager rationale in durable audit state. Cancellation never fabricates Attempts or Submissions and cannot rewrite a Sitting that has opened.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -58,13 +60,18 @@ paths:
 components:
   requestBodies:
     CancelExamSitting:
+      description: Exact current Sitting revision and private rationale for pre-open cancellation.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CancelExamSittingRequest'
+          example:
+            expected_revision: 2
+            reason: The examination timetable was withdrawn.
   schemas:
     CancelExamSittingRequest:
+      description: Revision-fenced pre-open cancellation command.
       type: object
       additionalProperties: false
       required:
@@ -75,6 +82,7 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Exact current Sitting revision used as an optimistic concurrency fence.
         reason:
           type: string
           minLength: 1

@@ -5,6 +5,8 @@ paths:
       summary: List safe mail delivery metadata
       tags:
         - Mail
+      description: >-
+        Lists authorized durable delivery metadata for the allowlisted template and filters. Recipient addresses remain masked and the response never exposes encrypted payloads, rendered message bodies, SMTP credentials, or provider diagnostics.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -27,16 +29,19 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of delivery projections to return.
         - name: cursor
           in: query
           schema:
             type: string
+          description: Opaque continuation emitted by the preceding page for the same filters.
         - name: state
           in: query
           schema:
             type: array
             items:
               $ref: '#/components/schemas/MailDeliveryState'
+          description: Optional set of durable delivery states to include.
         - name: template_key
           in: query
           schema:
@@ -45,18 +50,21 @@ paths:
               type: string
               enum:
                 - system.mail_test
+          description: Optional set of public allowlisted template keys to include.
         - name: created_after
           in: query
           schema:
             type: integer
             format: int64
             minimum: 1
+          description: Include deliveries created at or after this Unix-millisecond timestamp.
         - name: created_before
           in: query
           schema:
             type: integer
             format: int64
             minimum: 1
+          description: Include deliveries created before this Unix-millisecond timestamp.
       responses:
         "200":
           $ref: '#/components/responses/MailDeliveryListOK'
@@ -75,11 +83,14 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The durable mail delivery to retrieve.
     get:
       operationId: getMailDelivery
       summary: Get one safe mail delivery status
       tags:
         - Mail
+      description: >-
+        Returns safe lifecycle metadata for one authorized durable delivery. The projection keeps the recipient masked and omits payload ciphertext, plaintext message content, SMTP response detail, and encryption-key material.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -115,11 +126,21 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The queued mail delivery to cancel.
     post:
       operationId: cancelMailDelivery
       summary: Cancel queued mail delivery work
       tags:
         - Mail
+      description: >-
+        Cancels one exact authorized delivery only while it is still queued and prevents a worker from beginning that occurrence. The transition retains delivery history and audit provenance and never deletes the encrypted payload record as a side effect.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/mail/deliveries/<mail-delivery-id>/cancel' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: recent_session_required
       x-proctor-error-codes:
         - authentication.required
@@ -162,11 +183,21 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The failed durable mail delivery to retry.
     post:
       operationId: retryMailDelivery
       summary: Retry a still-relevant failed mail delivery
       tags:
         - Mail
+      description: >-
+        Requeues an authorized failed delivery only when its message is still relevant and its bounded retry policy permits another Attempt. Prior Attempt and failure metadata remain durable, and a terminally stale or ineligible delivery fails without sending.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/mail/deliveries/<mail-delivery-id>/retry' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: recent_session_required
       x-proctor-error-codes:
         - authentication.required
@@ -224,6 +255,7 @@ components:
             $ref: '#/components/schemas/MailDeliveryListResponse'
   schemas:
     MailDeliveryListResponse:
+      description: One bounded page of safe mail delivery projections.
       type: object
       additionalProperties: false
       required:
@@ -235,3 +267,4 @@ components:
             $ref: '#/components/schemas/MailDeliveryResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

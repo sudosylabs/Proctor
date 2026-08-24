@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 3
 ---
 
+import Link from '@docusaurus/Link';
+
 # Invite and Link Users
 
 Choose an invitation type from the relationship being created. The immutable
@@ -14,7 +16,7 @@ email ownership alone does not expand it.
 
 ## Invite a Student to a Class
 
-Call [Issue student Class invitation](/api/reference/issue-student-class-invitation)
+Call <Link to="/api/reference/issue-student-class-invitation">Issue student Class invitation</Link>
 with the Class ID in the path.
 
 ```json
@@ -32,28 +34,28 @@ expose that one-time claim in an administrator UI log or analytics event.
 
 ## Invite Staff to a Scope
 
-- Use [Teacher Academic Unit invitation](/api/reference/issue-teacher-academic-unit-invitation)
+- Use <Link to="/api/reference/issue-teacher-academic-unit-invitation">Teacher Academic Unit invitation</Link>
   for the defined teacher relationship and delegated role package.
-- Use [Academic Unit Role invitation](/api/reference/issue-academic-unit-role-invitation)
+- Use <Link to="/api/reference/issue-academic-unit-role-invitation">Academic Unit Role invitation</Link>
   for another role package scoped to one unit.
-- Use [Institution Role invitation](/api/reference/issue-institution-role-invitation)
+- Use <Link to="/api/reference/issue-institution-role-invitation">Institution Role invitation</Link>
   for an Institution-wide package.
 
 Membership and affiliation describe relationships. They do not grant
-unrestricted access. Use [Role Bindings](/api/reference/create-role-binding)
+unrestricted access. Use <Link to="/api/reference/create-role-binding">Role Bindings</Link>
 when an already-linked User needs an explicit permission grant.
 
 ## Accept or Maintain an Invitation
 
 Account-creating links enter through the browser invitation transaction:
 
-1. [Start browser invitation](/api/reference/start-browser-invitation) exchanges
+1. <Link to="/api/reference/start-browser-invitation">Start browser invitation</Link> exchanges
    the claim for a purpose-bound browser transaction.
-2. Use [accept with account creation](/api/reference/accept-browser-invitation)
-   or [accept with the current Session](/api/reference/accept-browser-invitation-with-session),
+2. Use <Link to="/api/reference/accept-browser-invitation">accept with account creation</Link>
+   or <Link to="/api/reference/accept-browser-invitation-with-session">accept with the current Session</Link>,
    as appropriate.
 
 For an existing authenticated account, use the matching typed acceptance
 operation. Resending rotates the claim without changing the package. To change
-scope or roles, [replace the invitation](/api/reference/replace-invitation);
+scope or roles, <Link to="/api/reference/replace-invitation">replace the invitation</Link>;
 do not mutate the meaning of a previously issued claim.

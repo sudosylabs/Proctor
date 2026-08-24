@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 4
 ---
 
+import Link from '@docusaurus/Link';
+
 # Author and Publish an Exam
 
 An Exam owns one mutable Draft and a history of immutable Revisions. Sittings
@@ -13,7 +15,7 @@ target a published Revision, never a moving Draft.
 
 ## 1. Create the Exam
 
-Call [Create Exam](/api/reference/create-exam) with its owning Academic Unit.
+Call <Link to="/api/reference/create-exam">Create Exam</Link> with its owning Academic Unit.
 
 ```json
 {
@@ -27,7 +29,7 @@ Retain both the Exam ID and current Draft revision returned by the server.
 
 ## 2. Edit with a Revision Fence
 
-[Edit Draft text](/api/reference/edit-exam-draft-text) requires the exact
+<Link to="/api/reference/edit-exam-draft-text">Edit Draft text</Link> requires the exact
 `expected_draft_revision`. Each successful edit returns the new state; use its
 revision for the next change.
 
@@ -64,6 +66,6 @@ curl --request POST \
   --data '{"expected_draft_revision":12}'
 ```
 
-[Publish Exam Revision](/api/reference/publish-exam-revision) validates and
+<Link to="/api/reference/publish-exam-revision">Publish Exam Revision</Link> validates and
 freezes the complete Draft. A stale revision fails rather than publishing
 unreviewed concurrent edits. Retain the returned Revision ID for scheduling.

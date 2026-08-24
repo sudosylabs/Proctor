@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 7
 ---
 
+import Link from '@docusaurus/Link';
+
 # Realtime and Replay
 
 Proctor exposes one authenticated WebSocket endpoint at `/api/v1/websocket`.
@@ -17,7 +19,7 @@ installation's exact allowed Origin. Native clients can use an allowed bearer
 credential and may omit Origin. The connection handshake does not grant every
 subscription: each subscription action and resource is authorized separately.
 
-See [Connect WebSocket](/api/reference/connect-web-socket) for the current
+See <Link to="/api/reference/connect-web-socket">Connect WebSocket</Link> for the current
 handshake parameters and protocol schemas.
 
 ## Resume After Disconnect

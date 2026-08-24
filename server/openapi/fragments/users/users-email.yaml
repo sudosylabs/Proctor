@@ -7,6 +7,8 @@ paths:
       summary: Explicitly change a User email address and require verification
       tags:
         - Users
+      description: >-
+        Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path. It never treats possession of administrator authority as proof that the new address is owned.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -57,6 +59,15 @@ paths:
       summary: Privileged verification of a User email address
       tags:
         - Users
+      description: >-
+        Marks the target User's current email as verified through a distinct strongly authenticated administrative transition. It does not change the address, revive a disabled account, restore Sessions, or bypass current authorization.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/email/verify' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -99,11 +110,14 @@ paths:
 components:
   requestBodies:
     ChangeUserEmail:
+      description: The complete replacement email address; successful change always requires later verification.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ChangeUserEmailRequest'
+          example:
+            email: amina.diallo@example.edu
   responses:
     UserEmailStateOK:
       description: Narrow result of an explicit email-security transition
@@ -113,6 +127,7 @@ components:
             $ref: '#/components/schemas/UserEmailStateResponse'
   schemas:
     UserEmailStateResponse:
+      description: Narrow identity and verification state after an email-security transition.
       type: object
       additionalProperties: false
       required:
@@ -123,7 +138,9 @@ components:
           $ref: '#/components/schemas/ID'
         email_verified:
           type: boolean
+          description: Whether the target User's current email has completed verification.
     ChangeUserEmailRequest:
+      description: New email address to store in an unverified state.
       type: object
       additionalProperties: false
       required:
@@ -132,3 +149,4 @@ components:
         email:
           type: string
           format: email
+          description: Complete replacement address; it must satisfy canonical email validation and uniqueness.

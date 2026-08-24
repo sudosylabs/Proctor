@@ -372,6 +372,7 @@ components:
           type: integer
           format: int64
     RoleResponse:
+      description: Reusable Role definition; effective access still requires a scoped Role Binding.
       type: object
       additionalProperties: false
       required:
@@ -390,25 +391,34 @@ components:
         create_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the Role was created.
         update_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the latest Role change.
         delete_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when deleted, or zero while active.
         name:
           type: string
+          description: Immutable canonical machine name for the Role.
         display_name:
           type: string
+          description: Human-facing Role name.
         description:
           type: string
+          description: Human-facing explanation of the Role's intended responsibility.
         permissions:
           type: array
+          description: Duplicate-free set of stable permission actions granted by the Role.
           items:
             type: string
         built_in:
           type: boolean
+          description: True when installation invariants protect the Role from ordinary update or deletion.
     RoleBindingResponse:
+      description: Effective-dated grant of one Role to one User in one exact scope.
       type: object
       additionalProperties: false
       required:
@@ -439,14 +449,17 @@ components:
           $ref: '#/components/schemas/ID'
         scope_type:
           type: string
+          description: Stable authorization scope kind for the grant.
         scope_id:
           $ref: '#/components/schemas/ID'
         start_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the grant becomes effective.
         end_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the grant stops being effective, when bounded.
     JobStatus:
       type: string
       enum:

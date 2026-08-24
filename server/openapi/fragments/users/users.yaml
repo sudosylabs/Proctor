@@ -5,6 +5,8 @@ paths:
       summary: Search the authorized User directory
       tags:
         - Users
+      description: >-
+        Searches only User profiles visible through the caller's current Institution or scoped relationships, ordered by canonical username and identity. Disabled Users remain concealed unless an Institution-wide user viewer explicitly requests them.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -32,11 +34,13 @@ paths:
           required: false
           schema:
             type: string
+          description: Canonical username from the preceding page; supply together with after_id.
         - name: after_id
           in: query
           required: false
           schema:
             type: string
+          description: Stable User identity from the preceding page; supply together with after_username.
         - name: limit
           in: query
           required: false
@@ -45,6 +49,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+          description: Maximum number of visible User profiles to return.
         - name: include_disabled
           in: query
           required: false
@@ -69,6 +74,8 @@ paths:
       summary: Get the authenticated User profile
       tags:
         - Users
+      description: >-
+        Returns the current principal's own safe User profile from durable state. The projection contains no password data, authentication-provider claims, Session credentials, Personal Access Token material, or private authorization bindings.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -104,6 +111,8 @@ paths:
       summary: Get a contextually visible User profile
       tags:
         - Users
+      description: >-
+        Returns one safe User profile only when the caller has current contextual visibility through the Institution or a supported scoped relationship. Disabled or unrelated Users are concealed according to the documented authorization behavior.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -137,6 +146,8 @@ paths:
       summary: Administratively update a User profile
       tags:
         - Users
+      description: >-
+        Applies a partial administrative profile update after terminal authorization against the target User. It changes presentation fields only; email, credential methods, account state, memberships, and Role Bindings use explicit separate transitions.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -177,11 +188,18 @@ paths:
 components:
   requestBodies:
     UpdateUserProfile:
+      description: Mutable presentation fields for one User; omitted or null fields remain unchanged.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateUserProfileRequest'
+          example:
+            display_name: Amina Diallo
+            first_name: Amina
+            last_name: Diallo
+            locale: en
+            timezone: Europe/Paris
   responses:
     UserProfileListOK:
       description: User profile collection
@@ -191,10 +209,12 @@ components:
             $ref: '#/components/schemas/UserProfileListResponse'
   schemas:
     UserProfileListResponse:
+      description: Visible User profiles ordered by canonical username and identity.
       type: array
       items:
         $ref: '#/components/schemas/UserProfileResponse'
     UpdateUserProfileRequest:
+      description: Partial User presentation update; omitted and explicit null values leave a field unchanged.
       type: object
       additionalProperties: false
       properties:
@@ -202,23 +222,29 @@ components:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the canonical username unchanged.
         display_name:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the human-facing display name unchanged.
         first_name:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the first name unchanged.
         last_name:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the last name unchanged.
         locale:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the locale unchanged.
         timezone:
           type:
             - string
             - "null"
+          description: Omitted or null leaves the IANA time-zone name unchanged.

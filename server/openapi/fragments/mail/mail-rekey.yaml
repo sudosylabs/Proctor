@@ -5,6 +5,8 @@ paths:
       summary: Start a durable fenced mail payload-key rotation
       tags:
         - Mail
+      description: >-
+        Starts one durable Job that re-encrypts active mail payloads from an explicitly retiring key to the configured primary key. Strong recent authentication and durable fencing prevent overlapping rotations or retirement without final zero-reference proof.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -48,11 +50,14 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The durable mail rekey Job whose safe progress is requested.
     get:
       operationId: getMailRekeyStatus
       summary: Inspect safe progress and final retirement proof for one mail rekey Job
       tags:
         - Mail
+      description: >-
+        Returns bounded progress for one authorized mail rekey Job and, after completion, the counts required to prove whether the retiring key is safe to remove. No payload content, key bytes, recipients, or worker diagnostics are returned.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -86,11 +91,14 @@ paths:
 components:
   requestBodies:
     StartMailRekey:
+      description: Identifies the currently active non-primary key that this rotation must retire.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MailRekeyRequest'
+          example:
+            retiring_key_id: "0123456789abcdef0123456789abcdef"
   responses:
     MailRekeyAccepted:
       description: Durable fenced mail payload-key rotation accepted
@@ -112,6 +120,7 @@ components:
             $ref: '#/components/schemas/MailRekeyStatusResponse'
   schemas:
     MailRekeyRequest:
+      description: Exact retiring-key selection for a new fenced rotation Job.
       type: object
       additionalProperties: false
       required:
@@ -120,7 +129,9 @@ components:
         retiring_key_id:
           type: string
           pattern: ^[0-9a-f]{32}$
+          description: Non-secret identifier of the configured key to retire; it must not be the primary key.
     MailRekeyResponse:
+      description: Durable identities created when the rotation Job is accepted.
       type: object
       additionalProperties: false
       required:
@@ -140,7 +151,9 @@ components:
         created_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the rekey Job was created.
     MailRekeyProgress:
+      description: Coarse bounded progress while active payloads are being re-encrypted.
       type: object
       additionalProperties: false
       required:
@@ -152,15 +165,18 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Active payloads processed so far.
         total:
           type: integer
           format: int64
           minimum: 1
+          description: Active payloads in the fenced processing set.
         stage:
           type: string
           enum:
             - reencrypting
     MailRekeyProof:
+      description: Final reference counts used to decide whether the retiring key may be removed.
       type: object
       additionalProperties: false
       required:
@@ -172,13 +188,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Active payload references to every non-primary key after processing.
         retiring_references:
           type: integer
           format: int64
           minimum: 0
+          description: Active payload references still using the exact retiring key.
         retirement_safe:
           type: boolean
+          description: True only when the final durable reference counts prove the retiring key can be removed.
     MailRekeyStatusResponse:
+      description: Safe Job status, progress, and optional final key-retirement proof.
       type: object
       additionalProperties: false
       required:

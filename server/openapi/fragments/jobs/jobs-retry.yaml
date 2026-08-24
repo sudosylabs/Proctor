@@ -6,11 +6,21 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The supported terminal Job to enqueue for another execution Attempt.
     post:
       operationId: retryJob
       summary: Explicitly retry a supported terminal Job
       tags:
         - Jobs
+      description: >-
+        Transitions an authorized, retryable terminal Job back to queued execution while preserving its prior Attempt history. The command never mutates the original Attempt or retries unsupported, active, exhausted, or incompatible work.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/jobs/<job-id>/retry' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required

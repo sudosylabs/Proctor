@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 1
 ---
 
+import Link from '@docusaurus/Link';
+
 # Bootstrap an Installation
 
 Bootstrap is a one-time installation transition. It creates the Institution,
@@ -14,7 +16,7 @@ configuration.
 
 ## 1. Check Bootstrap State
 
-Call [Get installation bootstrap status](/api/reference/get-installation-status)
+Call <Link to="/api/reference/get-installation-status">Get installation bootstrap status</Link>
 without credentials. Continue only when the response says the installation is
 not bootstrapped.
 
@@ -45,19 +47,19 @@ curl --request POST \
   }'
 ```
 
-See [Bootstrap installation](/api/reference/bootstrap-installation) for the
+See <Link to="/api/reference/bootstrap-installation">Bootstrap installation</Link> for the
 current password, locale, and field constraints. The example values are
 synthetic.
 
 ## 3. Establish a Normal Session
 
 After a successful bootstrap, discard the bootstrap secret from client memory
-and use [Login](/api/reference/login) to establish the administrator's normal
+and use <Link to="/api/reference/login">Login</Link> to establish the administrator's normal
 interactive Session. Bootstrap is not a reusable sign-in mechanism.
 
 ## 4. Verify and Continue
 
-Read the bootstrap status again, then fetch [the Institution](/api/reference/get-institution)
+Read the bootstrap status again, then fetch <Link to="/api/reference/get-institution">the Institution</Link>
 with the new Session. Continue with the [Academic Structure recipe](./academic-structure.mdx)
 and configure admission policy through a preflight before replacing it.
 

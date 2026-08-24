@@ -5,6 +5,8 @@ paths:
       summary: List authorized institution or Academic Unit audit history
       tags:
         - Roles and access
+      description: >-
+        Lists bounded durable audit facts visible through the caller's Institution or Academic Unit authority. The projection omits raw parameters, prior state, result payloads, credentials, protected content, and unsafe internal failures.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -19,6 +21,40 @@ paths:
       security:
         - bearerAuth: []
         - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: Maximum number of audit Events to return.
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque continuation emitted by the preceding page for the same filters.
+        - name: actor_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: Return only Events attributed to this actor User.
+        - name: action
+          in: query
+          schema:
+            type: string
+          description: Return only Events with this exact stable action.
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+          description: Exact resource type to filter; resource_id is required when present.
+        - name: resource_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: Exact resource identity to filter; resource_type is required when present.
       responses:
         "200":
           $ref: '#/components/responses/AuditListOK'
@@ -40,6 +76,7 @@ components:
             $ref: '#/components/schemas/AuditListResponse'
   schemas:
     AuditEventResponse:
+      description: Safe durable audit fact visible to the authorized caller.
       type: object
       additionalProperties: false
       required:
@@ -55,15 +92,20 @@ components:
         create_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the audit Attempt was created.
         update_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the latest durable audit status change.
         actor_id:
           type: string
+          description: User that initiated the action, omitted for actor-less system transitions.
         session_id:
           type: string
+          description: Safe Session identity associated with the action when retained; never a credential.
         action:
           type: string
+          description: Stable permission-style name of the attempted action.
         resource:
           type: object
           additionalProperties: false
@@ -73,16 +115,21 @@ components:
           properties:
             type:
               type: string
+              description: Stable resource type acted upon.
             id:
               $ref: '#/components/schemas/ID'
         scope_type:
           type: string
+          description: Authorization scope type under which the action was evaluated.
         scope_id:
           type: string
+          description: Authorization scope identity, when the action has a scoped owner.
         status:
           type: string
+          description: Durable outcome state of the audited Attempt.
         request_id:
           type: string
+          description: Safe request correlation value when the action originated over a request transport.
         node_id:
           type: string
         client_type:
@@ -95,7 +142,9 @@ components:
           type: string
         error_code:
           type: string
+          description: Stable safe failure category for an unsuccessful action; internal detail is omitted.
     AuditListResponse:
+      description: One bounded page of authorized audit Events.
       type: object
       additionalProperties: false
       required:
@@ -107,3 +156,4 @@ components:
             $ref: '#/components/schemas/AuditEventResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

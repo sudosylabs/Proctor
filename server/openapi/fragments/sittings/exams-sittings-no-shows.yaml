@@ -8,6 +8,8 @@ paths:
       summary: List candidates who were Class members at actual start but never created an Attempt
       tags:
         - Sittings
+      description: >-
+        Derives candidates from Class membership effective at the Sitting's actual opening time and excludes everyone with an Attempt. It never fabricates an Attempt or Submission for absence and is available only after lifecycle state makes the no-show set meaningful.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -34,6 +36,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of no-show candidate identities to return.
         - name: cursor
           in: query
           schema:
@@ -67,6 +70,7 @@ components:
             $ref: '#/components/schemas/ExamSittingNoShowListResponse'
   schemas:
     ExamSittingNoShowResponse:
+      description: Candidate who belonged to the target Class at actual opening and has no Attempt.
       type: object
       additionalProperties: false
       required:
@@ -75,6 +79,7 @@ components:
         candidate_user_id:
           $ref: '#/components/schemas/ID'
     ExamSittingNoShowListResponse:
+      description: One bounded page of derived no-show candidate identities.
       type: object
       additionalProperties: false
       required:

@@ -5,6 +5,8 @@ paths:
       summary: Inspect safe mail payload-key identities and active reference counts
       tags:
         - Mail
+      description: >-
+        Returns non-secret key identifiers and active encrypted-payload reference counts needed to plan or verify key rotation. Strong recent authentication is required, and no key bytes, wrapping material, ciphertext, recipients, or message content are exposed.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -44,6 +46,7 @@ components:
             $ref: '#/components/schemas/MailKeyStateResponse'
   schemas:
     MailPayloadKeyUsage:
+      description: Safe usage count for one configured mail payload-encryption key.
       type: object
       additionalProperties: false
       required:
@@ -53,11 +56,14 @@ components:
         key_id:
           type: string
           pattern: ^[0-9a-f]{32}$
+          description: Non-secret 128-bit key identifier encoded as lowercase hexadecimal.
         active_references:
           type: integer
           format: int64
           minimum: 1
+          description: Number of active encrypted mail payloads that still reference this key.
     MailKeyStateResponse:
+      description: Safe key identities and references used to govern mail payload rotation.
       type: object
       additionalProperties: false
       required:
@@ -67,11 +73,14 @@ components:
         primary_key_id:
           type: string
           pattern: ^[0-9a-f]{32}$
+          description: Identifier of the key currently used for new encrypted payloads.
         required_primary_key_id:
           type: string
           pattern: ^[0-9a-f]{32}$
+          description: Configuration-required primary identifier when a mismatch must be resolved.
         active:
           type: array
           maxItems: 9
           items:
             $ref: '#/components/schemas/MailPayloadKeyUsage'
+          description: Bounded keys with at least one active encrypted-payload reference.

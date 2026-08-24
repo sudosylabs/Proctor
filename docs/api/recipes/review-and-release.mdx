@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 7
 ---
 
+import Link from '@docusaurus/Link';
+
 # Review Integrity and Release a Result
 
 Integrity review records evidence and a manager disposition; it is not a grade
@@ -15,10 +17,10 @@ remarks.
 
 ## 1. Load the Review Snapshot
 
-Call [Get integrity review](/api/reference/get-exam-integrity-review), then page
-through [flags](/api/reference/list-exam-integrity-flags), purpose-specific
-[evidence](/api/reference/list-exam-integrity-evidence), and retained
-[discrepancies](/api/reference/list-exam-integrity-discrepancies) as needed.
+Call <Link to="/api/reference/get-exam-integrity-review">Get integrity review</Link>, then page
+through <Link to="/api/reference/list-exam-integrity-flags">flags</Link>, purpose-specific
+<Link to="/api/reference/list-exam-integrity-evidence">evidence</Link>, and retained
+<Link to="/api/reference/list-exam-integrity-discrepancies">discrepancies</Link> as needed.
 Do not export evidence to general analytics or logs.
 
 ## 2. Record a Decision for Each Flag
@@ -35,14 +37,14 @@ decision, follow the endpoint schema's initial revision rule.
 }
 ```
 
-[Save integrity decision](/api/reference/save-exam-integrity-decision) accepts
+<Link to="/api/reference/save-exam-integrity-decision">Save integrity decision</Link> accepts
 only `confirmed`, `dismissed`, or `inconclusive`. A concurrent review update
 changes the revision and must be reconciled rather than overwritten.
 
 ## 3. Finalize the Complete Review
 
 Fetch a fresh review snapshot, verify its bounded evidence inventory and every
-required decision, then call [Finalize review](/api/reference/finalize-exam-integrity-review):
+required decision, then call <Link to="/api/reference/finalize-exam-integrity-review">Finalize review</Link>:
 
 ```json
 {
@@ -56,8 +58,8 @@ not as a reason to guess the next number.
 
 ## 4. Release Explicitly
 
-[Release student result](/api/reference/release-student-exam-result) is a
+<Link to="/api/reference/release-student-exam-result">Release student result</Link> is a
 separate explicit transition using the finalized review ID and revision. Only
-after it succeeds can the candidate retrieve [their released result](/api/reference/get-student-exam-result).
+after it succeeds can the candidate retrieve <Link to="/api/reference/get-student-exam-result">their released result</Link>.
 The candidate endpoint exposes the approved projection, not private evidence or
 manager rationale.

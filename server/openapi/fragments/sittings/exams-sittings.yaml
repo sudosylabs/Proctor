@@ -7,6 +7,8 @@ paths:
       summary: List bounded Exam Sittings ordered by scheduled start and identity descending
       tags:
         - Sittings
+      description: >-
+        Lists Sittings for one authorized Exam in stable descending schedule order, with optional Class, state, and overlap filters. The response is manager-safe and contains no candidate credentials, private reasons, answer content, or integrity evidence.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -30,6 +32,7 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/ID'
+          description: Return only Sittings targeting this exact Class.
         - name: state
           in: query
           required: false
@@ -63,6 +66,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of Sittings to return.
         - name: cursor
           in: query
           required: false
@@ -87,6 +91,8 @@ paths:
       summary: Schedule one immutable Exam Revision for one Class
       tags:
         - Sittings
+      description: >-
+        Schedules one published immutable Exam Revision for one eligible Class inside its Academic Period. The authoritative transaction rechecks Exam ownership, Revision provenance, Class eligibility, future time bounds, and overlap constraints before committing.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -144,6 +150,8 @@ paths:
       summary: Get one bounded Exam Sitting
       tags:
         - Sittings
+      description: >-
+        Returns the current bounded manager projection of one authorized Sitting after validating its nested Exam ownership. Lifecycle timestamps and revision are durable; private manager reasons and candidate-sensitive state are not returned here.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -179,6 +187,8 @@ paths:
       summary: Change the pre-open Exam Revision, Class, or schedule
       tags:
         - Sittings
+      description: >-
+        Conditionally changes one still-scheduled Sitting under its exact revision fence. Once opening begins, delivery inputs are immutable except through explicit live-correction and lifecycle operations.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -233,17 +243,28 @@ paths:
 components:
   requestBodies:
     ScheduleExamSitting:
+      description: Published Exam Revision, eligible Class, and future delivery window for a new Sitting.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ScheduleExamSittingRequest'
+          example:
+            exam_revision_id: ybndrfg8ejkmcpqxot1uwisza3
+            class_id: ybndrfg8ejkmcpqxot1uwisza4
+            scheduled_start_at: "2026-12-14T09:00:00Z"
+            scheduled_end_at: "2026-12-14T11:00:00Z"
     UpdateExamSittingSchedule:
+      description: Exact Sitting revision plus at least one pre-open delivery input to change.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateExamSittingScheduleRequest'
+          example:
+            expected_revision: 3
+            scheduled_start_at: "2026-12-14T09:30:00Z"
+            scheduled_end_at: "2026-12-14T11:30:00Z"
   responses:
     ExamSittingCreated:
       description: Exam Sitting scheduled
@@ -265,6 +286,7 @@ components:
             $ref: '#/components/schemas/ExamSittingListResponse'
   schemas:
     ScheduleExamSittingRequest:
+      description: Complete immutable Revision target, Class target, and initial delivery window.
       type: object
       additionalProperties: false
       required:
@@ -284,6 +306,7 @@ components:
           type: string
           format: date-time
     UpdateExamSittingScheduleRequest:
+      description: Revision-fenced partial update admitted only before the Sitting opens.
       type: object
       additionalProperties: false
       required:
@@ -302,6 +325,7 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Exact current Sitting revision used as an optimistic concurrency fence.
         exam_revision_id:
           $ref: '#/components/schemas/ID'
         class_id:
@@ -313,6 +337,7 @@ components:
           type: string
           format: date-time
     ExamSittingListResponse:
+      description: One bounded page of authorized Exam Sittings.
       type: object
       additionalProperties: false
       required:

@@ -147,6 +147,16 @@ paths:
       summary: Remove the custom profile picture and return to the retained default
       tags:
         - Users
+      description: >-
+        Removes the target User's current custom picture only when If-Match names its exact strong revision, then returns the retained default profile projection. A stale editor cannot remove a newer upload, and storage cleanup occurs after the durable state change.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>' \
+              --header 'If-Match: "<current-sha256>"'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -172,6 +182,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Required strong ETag of the exact custom picture revision to remove.
       responses:
         "200":
           $ref: '#/components/responses/UserProfileOK'

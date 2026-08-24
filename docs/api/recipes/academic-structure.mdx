@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 2
 ---
 
+import Link from '@docusaurus/Link';
+
 # Build the Academic Structure
 
 Create academic resources in ownership order. A Class is the concrete student
@@ -21,7 +23,7 @@ Institution
 
 ## 1. Create an Academic Unit
 
-Use [Create root Academic Unit](/api/reference/create-root-academic-unit), or
+Use <Link to="/api/reference/create-root-academic-unit">Create root Academic Unit</Link>, or
 create a child under an existing unit. Retain the returned `id`; route scope,
 not an ID repeated in the request body, establishes the parent.
 
@@ -35,8 +37,8 @@ not an ID repeated in the request body, establishes the parent.
 
 ## 2. Create a Programme and Level
 
-Call [Create Programme](/api/reference/create-programme) with the Academic Unit
-ID in the path, then [Create Programme Level](/api/reference/create-programme-level)
+Call <Link to="/api/reference/create-programme">Create Programme</Link> with the Academic Unit
+ID in the path, then <Link to="/api/reference/create-programme-level">Create Programme Level</Link>
 with the Programme ID in the path.
 
 ```json
@@ -55,7 +57,7 @@ with the Programme ID in the path.
 
 ## 3. Create an Academic Period
 
-[Create Academic Period](/api/reference/create-academic-period) can use either
+<Link to="/api/reference/create-academic-period">Create Academic Period</Link> can use either
 the Institution or an Academic Unit as its owner. `start_at` and `end_at` are
 positive Unix-millisecond timestamps.
 
@@ -72,7 +74,7 @@ positive Unix-millisecond timestamps.
 
 ## 4. Create the Class
 
-Call [Create Class](/api/reference/create-class) under the Programme Level and
+Call <Link to="/api/reference/create-class">Create Class</Link> under the Programme Level and
 refer to the Academic Period in the body.
 
 ```json

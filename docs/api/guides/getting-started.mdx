@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 1
 ---
 
+import Link from '@docusaurus/Link';
+
 # Getting Started
 
 The Proctor API is served by each Proctor installation. Use the installation's
@@ -16,7 +18,7 @@ cloud API hostname.
 https://proctor.example.edu/api/v1
 ```
 
-Start with [public access discovery](/api/reference/get-public-access-discovery)
+Start with <Link to="/api/reference/get-public-access-discovery">public access discovery</Link>
 to learn which sign-in methods the installation exposes. Public discovery is
 safe to show before authentication and does not reveal private provider
 configuration.
@@ -30,7 +32,7 @@ curl --request GET \
 ## Choose a Credential
 
 Browser clients normally establish an interactive Session through
-[login](/api/reference/login). Non-browser integrations use a Personal Access
+<Link to="/api/reference/login">login</Link>. Non-browser integrations use a Personal Access
 Token only on operations whose **Authentication** panel permits a principal
 credential. A token cannot stand in for a recent or strongly authenticated
 interactive Session.
@@ -50,7 +52,7 @@ Every generated endpoint page contains four pieces of contract information:
 4. Request and response schemas define the closed wire objects and their
    validation rules.
 
-The downloadable [OpenAPI 3.1 contract](/openapi/openapi.json) is the same
+The downloadable <Link to="/openapi/openapi.json">OpenAPI 3.1 contract</Link> is the same
 artifact checked against server route declarations. Generated pages are a view
 of it, not a separate description of the API.
 

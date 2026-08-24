@@ -5,6 +5,8 @@ paths:
       summary: List Role Bindings by user or scope
       tags:
         - Roles and access
+      description: >-
+        Lists current and historical Role Bindings authorized for the caller, optionally narrowed to one User or exact scope. A Binding is an effective-dated permission grant; membership or affiliation alone is not returned as authority.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -19,6 +21,22 @@ paths:
       security:
         - bearerAuth: []
         - sessionCookie: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: Return only Bindings for this User.
+        - name: scope_type
+          in: query
+          schema:
+            type: string
+          description: Return only Bindings for this exact authorization scope type.
+        - name: scope_id
+          in: query
+          schema:
+            $ref: '#/components/schemas/ID'
+          description: Return only Bindings for this exact scope identity.
       responses:
         "200":
           $ref: '#/components/responses/RoleBindingListOK'
@@ -35,6 +53,8 @@ paths:
       summary: Create a Role Binding
       tags:
         - Roles and access
+      description: >-
+        Grants one existing Role to one existing User in an exact effective-dated scope after strong recent authentication. The terminal use case rechecks the caller's current authority and role eligibility; Institution system-administrator authority cannot be placed in a narrower scope.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -83,6 +103,15 @@ paths:
       summary: End a Role Binding
       tags:
         - Roles and access
+      description: >-
+        Ends the exact Role Binding while retaining its grant history and durable audit provenance. The server prevents removal of the final effective system administrator and does not alter the underlying User, Role, membership, or affiliation.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/role-bindings/<role-binding-id>' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -131,11 +160,18 @@ components:
       description: The scoped Role Binding identifier.
   requestBodies:
     CreateRoleBinding:
+      description: The User, Role, exact authorization scope, and effective interval for the grant.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateRoleBindingRequest'
+          example:
+            user_id: ybndrfg8ejkmcpqxot1uwisza3
+            role_id: ybndrfg8ejkmcpqxot1uwisza4
+            scope_type: academic_unit
+            scope_id: ybndrfg8ejkmcpqxot1uwisza5
+            start_at: 1785542400000
   responses:
     RoleBindingListOK:
       description: Role Binding collection
@@ -157,10 +193,12 @@ components:
             $ref: '#/components/schemas/RoleBindingResponse'
   schemas:
     RoleBindingListResponse:
+      description: Authorized current and historical Role Bindings.
       type: array
       items:
         $ref: '#/components/schemas/RoleBindingResponse'
     CreateRoleBindingRequest:
+      description: Exact effective-dated permission grant to create.
       type: object
       additionalProperties: false
       required:
@@ -175,11 +213,14 @@ components:
           $ref: '#/components/schemas/ID'
         scope_type:
           type: string
+          description: Stable scope kind supported by the selected Role permissions.
         scope_id:
           $ref: '#/components/schemas/ID'
         start_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the grant becomes effective.
         end_at:
           type: integer
           format: int64
+          description: Optional Unix time in milliseconds when the grant stops being effective.

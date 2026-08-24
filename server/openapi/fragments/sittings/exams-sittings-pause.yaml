@@ -8,6 +8,8 @@ paths:
       summary: Pause an open Exam Sitting with a private manager reason
       tags:
         - Sittings
+      description: >-
+        Pauses one open Sitting under its exact revision fence and records the private manager rationale. The durable state change precedes best-effort realtime notification, so clients must confirm current state over HTTP after disruption.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -58,8 +60,12 @@ paths:
 components:
   requestBodies:
     PauseExamSitting:
+      description: Exact current Sitting revision and private rationale for pausing delivery.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamSittingManagerTransitionRequest'
+          example:
+            expected_revision: 4
+            reason: Invigilators are resolving a room-wide network interruption.

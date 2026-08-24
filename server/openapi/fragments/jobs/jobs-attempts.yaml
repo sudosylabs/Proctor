@@ -6,11 +6,14 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The durable Job whose execution history is requested.
     get:
       operationId: listJobAttempts
       summary: List ordered execution Attempts for one Job
       tags:
         - Jobs
+      description: >-
+        Returns the bounded execution history for an authorized, allowlisted Job in attempt-number order. The projection exposes safe status and public failure information, never worker leases, private payloads, stack traces, or infrastructure diagnostics.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -35,10 +38,12 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of execution Attempts to return.
         - name: cursor
           in: query
           schema:
             type: string
+          description: Opaque continuation emitted by the preceding page for this exact Job and query.
       responses:
         "200":
           $ref: '#/components/responses/JobAttemptListOK'
@@ -62,6 +67,7 @@ components:
             $ref: '#/components/schemas/JobAttemptListResponse'
   schemas:
     JobAttemptStatus:
+      description: Durable lifecycle state of one execution Attempt.
       type: string
       enum:
         - running
@@ -71,6 +77,7 @@ components:
         - lease_expired
         - incompatible
     JobAttemptResponse:
+      description: Safe execution history for one Job Attempt.
       type: object
       additionalProperties: false
       required:
@@ -86,23 +93,30 @@ components:
         number:
           type: integer
           minimum: 1
+          description: Monotonic attempt number within the parent Job.
         status:
           $ref: '#/components/schemas/JobAttemptStatus'
         start_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when execution started.
         heartbeat_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the last retained worker heartbeat.
         lease_expires_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds at which this execution lease expires.
         complete_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the Attempt reached a terminal state, when complete.
         public_error_code:
           type: string
+          description: Stable safe failure category for a failed terminal Attempt; internal error detail is never returned.
     JobAttemptListResponse:
+      description: One bounded page of Job execution Attempts.
       type: object
       additionalProperties: false
       required:
@@ -114,3 +128,4 @@ components:
             $ref: '#/components/schemas/JobAttemptResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

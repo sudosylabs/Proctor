@@ -11,6 +11,7 @@ components:
             $ref: '#/components/schemas/ExamSittingResponse'
   schemas:
     ExamSittingManagerTransitionRequest:
+      description: Revision fence and private manager rationale for a Sitting lifecycle transition.
       type: object
       additionalProperties: false
       required:
@@ -21,6 +22,7 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Exact current Sitting revision used as an optimistic concurrency fence.
         reason:
           type: string
           minLength: 1
@@ -28,6 +30,7 @@ components:
           description: >-
             Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes.
     ExamSittingState:
+      description: Durable lifecycle state of one Exam Sitting.
       type: string
       enum:
         - scheduled
@@ -37,6 +40,7 @@ components:
         - closed
         - canceled
     ExamSittingReasonCode:
+      description: Stable safe classification for why a Sitting reached its current terminal state.
       type: string
       enum:
         - manager_canceled
@@ -45,6 +49,7 @@ components:
         - manager_closed
         - scheduled_end_reached
     ExamSittingResponse:
+      description: Bounded current manager projection of one Exam Sitting.
       type: object
       additionalProperties: false
       required:
@@ -70,9 +75,11 @@ components:
         scheduled_start_at:
           type: string
           format: date-time
+          description: RFC 3339 scheduled opening time.
         scheduled_end_at:
           type: string
           format: date-time
+          description: RFC 3339 scheduled deadline before explicit extensions.
         state:
           $ref: '#/components/schemas/ExamSittingState'
         created_at:
@@ -102,3 +109,4 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Monotonic durable revision used by conditional Sitting commands.

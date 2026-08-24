@@ -5,6 +5,8 @@ paths:
       summary: Get the signed-in User's exact settings.json source
       tags:
         - Users
+      description: >-
+        Returns the signed-in User's exact bounded settings JSON source, format version, revision, and write capability. The server does not reinterpret the source into undocumented fields, and the private response is never shared-cacheable.
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -29,6 +31,8 @@ paths:
       summary: Conditionally replace the signed-in User's exact settings.json source
       tags:
         - Users
+      description: >-
+        Validates and replaces the signed-in User's complete settings source under an exact revision fence. An Idempotency-Key replay returns the retained outcome, while stale revisions fail rather than overwriting a concurrent client update.
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -70,11 +74,16 @@ paths:
 components:
   requestBodies:
     ReplaceUserSettings:
+      description: Complete settings JSON source, its supported format version, and the exact current revision to replace.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UserSettingsReplaceRequest'
+          example:
+            source: '{"appearance":{"theme":"system"}}'
+            format_version: 1
+            expected_revision: ybndrfg8ejkmcpqxot1uwisza3
   responses:
     UserSettingsOK:
       description: Exact current User Settings Document
@@ -96,6 +105,7 @@ components:
             $ref: '#/components/schemas/UserSettingsReplacementResponse'
   schemas:
     UserSettingsResponse:
+      description: Exact private User Settings Document with concurrency metadata.
       type: object
       additionalProperties: false
       required:
@@ -108,17 +118,23 @@ components:
         source:
           type: string
           maxLength: 262144
+          description: Exact validated JSON source, bounded to 256 KiB.
         format_version:
           type: integer
           minimum: 1
+          description: Version of the settings document format understood by the server.
         revision:
           $ref: '#/components/schemas/ID'
+          description: Opaque current document revision required for conditional replacement.
         writable:
           type: boolean
+          description: Whether this Session may currently replace the settings source.
         updated_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the latest durable replacement.
     UserSettingsReplaceRequest:
+      description: Complete conditional replacement for the current User Settings Document.
       type: object
       additionalProperties: false
       required:
@@ -135,6 +151,7 @@ components:
         expected_revision:
           $ref: '#/components/schemas/ID'
     UserSettingsReplacementResponse:
+      description: Result metadata for a committed replacement or exact idempotent replay.
       type: object
       additionalProperties: false
       required:
@@ -153,3 +170,4 @@ components:
           format: int64
         changed:
           type: boolean
+          description: False when the accepted source already matched the retained document.

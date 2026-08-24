@@ -6,6 +6,8 @@ maturity: preview
 sidebar_position: 6
 ---
 
+import Link from '@docusaurus/Link';
+
 # Start, Continue, and Submit an Attempt
 
 Candidate delivery is a coordinated Session and WebSocket workflow. A generic
@@ -15,7 +17,7 @@ privileged candidate coordinator receives them through authenticated
 
 ## 1. Establish the Candidate Session and Socket
 
-Sign in with an interactive Session, then [connect the WebSocket](/api/reference/connect-web-socket).
+Sign in with an interactive Session, then <Link to="/api/reference/connect-web-socket">connect the WebSocket</Link>.
 The first eligible `exam_attempt.connect` lazily creates the candidate's single
 Attempt for the Sitting, its copy-on-write Workspace, a Participation
 generation, and one current Connection. Retain the returned values only in the
@@ -44,7 +46,7 @@ curl --request GET \
   --header 'X-Proctor-Attempt-Connection-ID: <connection-id>'
 ```
 
-[Get candidate presentation](/api/reference/get-candidate-exam-presentation)
+<Link to="/api/reference/get-candidate-exam-presentation">Get candidate presentation</Link>
 resolves the Sitting's current immutable Revision. Retrieve protected resources
 through their attempt-scoped content routes.
 
@@ -63,7 +65,7 @@ it.
 }
 ```
 
-Use [Workspace changes](/api/reference/list-candidate-exam-workspace-changes) to
+Use <Link to="/api/reference/list-candidate-exam-workspace-changes">Workspace changes</Link> to
 reconcile acknowledged mutations after a recoverable client interruption.
 
 ## 4. Renew or Reconnect
@@ -88,7 +90,7 @@ Workspace mutation and focus-loss signal.
 }
 ```
 
-[Submit Exam Attempt](/api/reference/submit-exam-attempt) atomically seals the
+<Link to="/api/reference/submit-exam-attempt">Submit Exam Attempt</Link> atomically seals the
 Workspace and returns a candidate-safe receipt. Retry an uncertain result only
 with the exact request and idempotency key. Submission unbinds the Attempt
 runtime but leaves the ordinary authenticated socket available.

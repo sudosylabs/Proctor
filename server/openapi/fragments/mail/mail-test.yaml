@@ -5,6 +5,15 @@ paths:
       summary: Enqueue a controlled test message to the operator's verified address
       tags:
         - Mail
+      description: >-
+        Durably queues the fixed test template to the current operator's verified eligible address. The server chooses the recipient and content, applies a dedicated rate limit, and returns only safe delivery metadata.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/mail/test' \
+              --header 'Authorization: Bearer <interactive-session-access-token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

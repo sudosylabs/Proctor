@@ -33,11 +33,13 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of retained Discrepancies to return.
         - name: cursor
           in: query
           schema:
             type: string
             description: Opaque versioned Discrepancy identity cursor.
+          description: Opaque continuation emitted by the preceding Discrepancy page.
       responses:
         "200":
           $ref: '#/components/responses/ExamIntegrityDiscrepancyListOK'
@@ -66,6 +68,7 @@ components:
             $ref: '#/components/schemas/ExamIntegrityDiscrepancyListResponse'
   schemas:
     ExamIntegrityDiscrepancyResponse:
+      description: Late integrity record retained separately after collection for the Submission ended.
       type: object
       additionalProperties: false
       required:
@@ -108,6 +111,7 @@ components:
           format: int64
           minimum: 1
           maximum: 86400000
+          description: Reported focus-loss duration in milliseconds.
         source:
           type: string
           enum:
@@ -119,10 +123,12 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Number of missing monotonic signals observed before this late record.
         received_at:
           type: string
           format: date-time
     ExamIntegrityDiscrepancyListResponse:
+      description: One bounded page of post-collection integrity Discrepancies.
       type: object
       additionalProperties: false
       required:
@@ -135,3 +141,4 @@ components:
             $ref: '#/components/schemas/ExamIntegrityDiscrepancyResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

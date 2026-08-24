@@ -65,11 +65,22 @@ paths:
 components:
   requestBodies:
     ApplyExamSittingCorrection:
+      description: Complete desired ordered resource manifest, optional instructions replacement, and exact Sitting and base Revision fences.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApplyExamSittingCorrectionRequest'
+          example:
+            expected_sitting_revision: 8
+            expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza3
+            instructions_markdown: Read the corrected resource before continuing.
+            reason: Question 3 contained an incorrect constant.
+            resources:
+              - resource_id: ybndrfg8ejkmcpqxot1uwisza4
+                display_name: Corrected formula sheet
+                description_markdown: Use this corrected sheet for Question 3.
+                stage_id: ybndrfg8ejkmcpqxot1uwisza5
   responses:
     ExamSittingCorrectionCreated:
       description: Immutable live correction created and the affected Sitting retargeted
@@ -105,6 +116,7 @@ components:
         stage_id:
           $ref: '#/components/schemas/ID'
     ApplyExamSittingCorrectionRequest:
+      description: Revision-fenced complete content correction for one open or paused Sitting.
       type: object
       additionalProperties: false
       required:
@@ -138,6 +150,7 @@ components:
           items:
             $ref: '#/components/schemas/ExamSittingCorrectionResourceRequest'
     ExamSittingCorrectionResponse:
+      description: Immutable correction Revision and updated Sitting state committed by the transition.
       type: object
       additionalProperties: false
       required:

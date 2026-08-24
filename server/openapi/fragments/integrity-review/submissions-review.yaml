@@ -7,6 +7,8 @@ paths:
       summary: Get the authorized manager Review snapshot
       tags:
         - Integrity review
+      description: >-
+        Returns the current manager-authorized Review, decision set, bounded counts, and integrity state for one Submission. The response includes private review fields and is never the candidate-facing released result projection.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -42,6 +44,8 @@ paths:
       summary: Create or revise private notes and approved student remarks
       tags:
         - Integrity review
+      description: >-
+        Creates the Review or conditionally replaces its private manager notes and approved student remarks under an exact review revision. Finalized Reviews are immutable, and an idempotent replay does not repeat audit or publication effects.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -98,6 +102,8 @@ paths:
       summary: Create or revise the one current decision for a Flag
       tags:
         - Integrity review
+      description: >-
+        Creates or revision-fences the single current manager decision for one exact Flag. The outcome is a non-academic integrity disposition, never a grade or guilt verdict, and its rationale remains private.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -153,6 +159,8 @@ paths:
       summary: Freeze the complete Review and bounded evidence inventory
       tags:
         - Integrity review
+      description: >-
+        Finalizes one exact Review revision only after required decisions and integrity completeness checks succeed, freezing its private content and bounded evidence inventory digest. Late records remain explicit Discrepancies and cannot rewrite the finalized inventory.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -208,6 +216,8 @@ paths:
       summary: Explicitly release the approved candidate result projection
       tags:
         - Integrity review
+      description: >-
+        Releases the narrow approved candidate result from one finalized Review revision. The transition does not expose manager notes, rationales, Flags, evidence, Discrepancies, or other private review state.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -258,23 +268,38 @@ paths:
 components:
   requestBodies:
     SaveExamIntegrityDecision:
+      description: Revision-fenced non-academic outcome and private rationale for one exact integrity Flag.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/SaveExamIntegrityDecisionRequest'
+          example:
+            expected_review_revision: 0
+            expected_decision_revision: 0
+            outcome: inconclusive
+            private_rationale: The retained evidence does not establish a reliable conclusion.
     UpdateExamIntegrityReview:
+      description: Complete mutable private notes and approved candidate remarks under the current review revision.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateExamIntegrityReviewRequest'
+          example:
+            expected_review_revision: 0
+            manager_notes: Review opened; evidence assessment is pending.
+            student_remarks_markdown: ""
     TerminalExamIntegrityReview:
+      description: Exact existing Review identity and revision to finalize or release.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/TerminalExamIntegrityReviewRequest'
+          example:
+            submission_review_id: ybndrfg8ejkmcpqxot1uwisza3
+            expected_review_revision: 7
   responses:
     ExamIntegrityReviewOK:
       description: Manager-authorized Review snapshot including private Review fields
@@ -300,6 +325,7 @@ components:
             $ref: '#/components/schemas/ExamIntegrityReviewMutationResponse'
   schemas:
     SaveExamIntegrityDecisionRequest:
+      description: Conditional create or replacement of the current decision for one integrity Flag.
       type: object
       additionalProperties: false
       required:
@@ -315,10 +341,12 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Zero when creating the first Review through this command; otherwise the exact current Review revision.
         expected_decision_revision:
           type: integer
           format: int64
           minimum: 0
+          description: Zero for the first decision on this Flag; otherwise the exact current decision revision.
         outcome:
           type: string
           enum:
@@ -332,6 +360,7 @@ components:
           maxLength: 1000
           description: Required already-trimmed manager-only UTF-8 rationale, at most 1000 Unicode scalar values and 4000 bytes.
     UpdateExamIntegrityReviewRequest:
+      description: Conditional complete replacement of the Review's mutable text fields.
       type: object
       additionalProperties: false
       required:
@@ -356,6 +385,7 @@ components:
           description: >-
             Optional approved student-facing Markdown, at most 8192 Unicode scalar values and 32768 UTF-8 bytes; sanitized again on candidate projection.
     TerminalExamIntegrityReviewRequest:
+      description: Existing Review identity and exact revision for a terminal transition.
       type: object
       additionalProperties: false
       required:
@@ -369,6 +399,7 @@ components:
           format: int64
           minimum: 1
     ExamIntegrityReviewDecisionResponse:
+      description: Current private manager disposition for one integrity Flag.
       type: object
       additionalProperties: false
       required:
@@ -405,6 +436,7 @@ components:
           type: string
           format: date-time
     ExamSubmissionReviewResponse:
+      description: Private manager Review state and bounded immutable inventory metadata.
       type: object
       additionalProperties: false
       required:
@@ -436,6 +468,7 @@ components:
           enum:
             - withheld
             - released
+          description: Whether the narrow candidate result remains withheld or has been explicitly released.
         revision:
           type: integer
           format: int64
@@ -463,6 +496,7 @@ components:
           maximum: 200
         evidence_inventory_digest:
           $ref: '#/components/schemas/SHA256'
+          description: Digest freezing the bounded evidence inventory at finalization.
         created_at:
           type: string
           format: date-time
@@ -480,6 +514,7 @@ components:
         released_by_user_id:
           $ref: '#/components/schemas/ID'
     ExamIntegrityReviewResponse:
+      description: Manager-authorized Submission integrity snapshot and current decision set.
       type: object
       additionalProperties: false
       required:
@@ -511,6 +546,7 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Number of unresolved integrity items that can block finalization.
         review:
           $ref: '#/components/schemas/ExamSubmissionReviewResponse'
         decisions:
@@ -519,6 +555,7 @@ components:
           items:
             $ref: '#/components/schemas/ExamIntegrityReviewDecisionResponse'
     ExamIntegrityReviewMutationResponse:
+      description: Committed Review state and optional decision returned by a mutation or exact replay.
       type: object
       additionalProperties: false
       required:

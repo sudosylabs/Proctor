@@ -7,6 +7,15 @@ paths:
       summary: Enable a User account without restoring revoked sessions
       tags:
         - Users
+      description: >-
+        Enables a previously disabled User after terminal authorization. The transition preserves history but does not restore revoked Sessions, verify email, add authentication methods, reactivate ended relationships, or recreate Role Bindings.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/users/<user-id>/enable' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:

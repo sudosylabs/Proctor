@@ -37,6 +37,7 @@ components:
             $ref: '#/components/schemas/PublicAccessDiscoveryResponse'
   schemas:
     PublicInstitutionPresentationResponse:
+      description: Safe Institution identity suitable for unauthenticated sign-in presentation.
       type: object
       additionalProperties: false
       required:
@@ -51,6 +52,7 @@ components:
         display_name:
           type: string
     PublicAccessCapabilitiesResponse:
+      description: Safe switches a client uses to choose an admitted account or authentication flow.
       type: object
       additionalProperties: false
       required:
@@ -68,6 +70,7 @@ components:
         desktop_authorization:
           type: boolean
     DesktopAuthorizationCompatibilityResponse:
+      description: Version range supported by this installation's native-client browser authorization protocol.
       type: object
       additionalProperties: false
       required:
@@ -85,6 +88,7 @@ components:
           type: integer
           minimum: 1
     PublicAccessDiscoveryResponse:
+      description: Versioned same-origin capabilities for choosing an unauthenticated entry path.
       type: object
       additionalProperties: false
       required:
@@ -101,16 +105,19 @@ components:
         canonical_origin:
           type: string
           format: uri
+          description: Exact public origin clients must use for same-origin browser and redirect validation.
         installation_id:
           $ref: '#/components/schemas/ID'
         initialized:
           type: boolean
+          description: True after the one-time installation bootstrap transaction has committed.
         institution:
           $ref: '#/components/schemas/PublicInstitutionPresentationResponse'
         policy_revision:
           type: integer
           format: int64
           minimum: 1
+          description: Current Access Policy revision when the installation is initialized.
         capabilities:
           $ref: '#/components/schemas/PublicAccessCapabilitiesResponse'
         providers:

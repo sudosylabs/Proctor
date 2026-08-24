@@ -366,11 +366,26 @@
       "ApplyExamSittingCorrection": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "expected_sitting_revision": 8,
+              "instructions_markdown": "Read the corrected resource before continuing.",
+              "reason": "Question 3 contained an incorrect constant.",
+              "resources": [
+                {
+                  "description_markdown": "Use this corrected sheet for Question 3.",
+                  "display_name": "Corrected formula sheet",
+                  "resource_id": "ybndrfg8ejkmcpqxot1uwisza4",
+                  "stage_id": "ybndrfg8ejkmcpqxot1uwisza5"
+                }
+              ]
+            },
             "schema": {
               "$ref": "#/components/schemas/ApplyExamSittingCorrectionRequest"
             }
           }
         },
+        "description": "Complete desired ordered resource manifest, optional instructions replacement, and exact Sitting and base Revision fences.",
         "required": true
       },
       "ArchiveExam": {
@@ -406,11 +421,28 @@
       "BootstrapInstallation": {
         "content": {
           "application/json": {
+            "example": {
+              "administrator": {
+                "display_name": "Initial Administrator",
+                "email": "initial-admin@example.edu",
+                "locale": "en",
+                "timezone": "Europe/Paris",
+                "username": "initial-admin"
+              },
+              "bootstrap_secret": "\u003coperator-provided-bootstrap-secret\u003e",
+              "institution": {
+                "description": "Examination services",
+                "display_name": "Northbridge University",
+                "name": "northbridge-university"
+              },
+              "password": "\u003cstrong-bootstrap-password\u003e"
+            },
             "schema": {
               "$ref": "#/components/schemas/BootstrapInstallationRequest"
             }
           }
         },
+        "description": "The initial Institution and administrator identity plus the operator-controlled one-time bootstrap secret and administrator password.",
         "required": true
       },
       "BrowserInvitationAcceptance": {
@@ -446,31 +478,45 @@
       "CancelExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 2,
+              "reason": "The examination timetable was withdrawn."
+            },
             "schema": {
               "$ref": "#/components/schemas/CancelExamSittingRequest"
             }
           }
         },
+        "description": "Exact current Sitting revision and private rationale for pre-open cancellation.",
         "required": true
       },
       "ChangeUserEmail": {
         "content": {
           "application/json": {
+            "example": {
+              "email": "amina.diallo@example.edu"
+            },
             "schema": {
               "$ref": "#/components/schemas/ChangeUserEmailRequest"
             }
           }
         },
+        "description": "The complete replacement email address; successful change always requires later verification.",
         "required": true
       },
       "CloseExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 8,
+              "reason": "The examination room was evacuated."
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"
             }
           }
         },
+        "description": "Exact current Sitting revision and private rationale for manager-initiated early closure.",
         "required": true
       },
       "CommitOnboardingImport": {
@@ -658,21 +704,38 @@
       "CreateRole": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Reviews examination integrity records.",
+              "display_name": "Assessment Reviewer",
+              "name": "assessment-reviewer",
+              "permissions": [
+                "class.view"
+              ]
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateRoleRequest"
             }
           }
         },
+        "description": "Canonical custom Role presentation and complete initial permission set.",
         "required": true
       },
       "CreateRoleBinding": {
         "content": {
           "application/json": {
+            "example": {
+              "role_id": "ybndrfg8ejkmcpqxot1uwisza4",
+              "scope_id": "ybndrfg8ejkmcpqxot1uwisza5",
+              "scope_type": "academic_unit",
+              "start_at": 1785542400000,
+              "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateRoleBindingRequest"
             }
           }
         },
+        "description": "The User, Role, exact authorization scope, and effective interval for the grant.",
         "required": true
       },
       "DeleteCandidateWorkspaceEntry": {
@@ -768,11 +831,17 @@
       "ExtendExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 6,
+              "reason": "Thirty minutes were granted after a verified interruption.",
+              "scheduled_end_at": "2026-12-14T11:30:00Z"
+            },
             "schema": {
               "$ref": "#/components/schemas/ExtendExamSittingRequest"
             }
           }
         },
+        "description": "Exact Sitting revision, strictly later deadline, and private manager rationale.",
         "required": true
       },
       "Login": {
@@ -836,21 +905,39 @@
       "PauseExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 4,
+              "reason": "Invigilators are resolving a room-wide network interruption."
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"
             }
           }
         },
+        "description": "Exact current Sitting revision and private rationale for pausing delivery.",
         "required": true
       },
       "PreflightAccessPolicy": {
         "content": {
           "application/json": {
+            "example": {
+              "desktop_authorization_enabled": true,
+              "expected_revision": 7,
+              "invitation_admission_enabled": true,
+              "invitation_local_credential_enabled": true,
+              "local_login_enabled": true,
+              "provider_admissions": {
+                "university_oidc": "invitation_required"
+              },
+              "public_registration_enabled": false,
+              "revoke_existing_sessions": true
+            },
             "schema": {
               "$ref": "#/components/schemas/AccessPolicySettingsRequest"
             }
           }
         },
+        "description": "The complete revision-fenced policy proposal to evaluate without mutation.",
         "required": true
       },
       "PublicRegistration": {
@@ -963,11 +1050,17 @@
       "ReplaceUserSettings": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": "ybndrfg8ejkmcpqxot1uwisza3",
+              "format_version": 1,
+              "source": "{\"appearance\":{\"theme\":\"system\"}}"
+            },
             "schema": {
               "$ref": "#/components/schemas/UserSettingsReplaceRequest"
             }
           }
         },
+        "description": "Complete settings JSON source, its supported format version, and the exact current revision to replace.",
         "required": true
       },
       "RequestPasswordReset": {
@@ -983,11 +1076,16 @@
       "ResumeExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 5,
+              "reason": "The network interruption has been resolved."
+            },
             "schema": {
               "$ref": "#/components/schemas/ExamSittingManagerTransitionRequest"
             }
           }
         },
+        "description": "Exact current Sitting revision and private rationale for resuming delivery.",
         "required": true
       },
       "RevokeSession": {
@@ -1023,31 +1121,49 @@
       "SaveExamIntegrityDecision": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_decision_revision": 0,
+              "expected_review_revision": 0,
+              "outcome": "inconclusive",
+              "private_rationale": "The retained evidence does not establish a reliable conclusion."
+            },
             "schema": {
               "$ref": "#/components/schemas/SaveExamIntegrityDecisionRequest"
             }
           }
         },
+        "description": "Revision-fenced non-academic outcome and private rationale for one exact integrity Flag.",
         "required": true
       },
       "ScheduleExamSitting": {
         "content": {
           "application/json": {
+            "example": {
+              "class_id": "ybndrfg8ejkmcpqxot1uwisza4",
+              "exam_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "scheduled_end_at": "2026-12-14T11:00:00Z",
+              "scheduled_start_at": "2026-12-14T09:00:00Z"
+            },
             "schema": {
               "$ref": "#/components/schemas/ScheduleExamSittingRequest"
             }
           }
         },
+        "description": "Published Exam Revision, eligible Class, and future delivery window for a new Sitting.",
         "required": true
       },
       "StartMailRekey": {
         "content": {
           "application/json": {
+            "example": {
+              "retiring_key_id": "0123456789abcdef0123456789abcdef"
+            },
             "schema": {
               "$ref": "#/components/schemas/MailRekeyRequest"
             }
           }
         },
+        "description": "Identifies the currently active non-primary key that this rotation must retire.",
         "required": true
       },
       "SubmitExamAttempt": {
@@ -1070,11 +1186,16 @@
       "TerminalExamIntegrityReview": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_review_revision": 7,
+              "submission_review_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/TerminalExamIntegrityReviewRequest"
             }
           }
         },
+        "description": "Exact existing Review identity and revision to finalize or release.",
         "required": true
       },
       "TransferExamOwnership": {
@@ -1120,21 +1241,33 @@
       "UpdateExamIntegrityReview": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_review_revision": 0,
+              "manager_notes": "Review opened; evidence assessment is pending.",
+              "student_remarks_markdown": ""
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateExamIntegrityReviewRequest"
             }
           }
         },
+        "description": "Complete mutable private notes and approved candidate remarks under the current review revision.",
         "required": true
       },
       "UpdateExamSittingSchedule": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_revision": 3,
+              "scheduled_end_at": "2026-12-14T11:30:00Z",
+              "scheduled_start_at": "2026-12-14T09:30:00Z"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateExamSittingScheduleRequest"
             }
           }
         },
+        "description": "Exact Sitting revision plus at least one pre-open delivery input to change.",
         "required": true
       },
       "UpdateInstitution": {
@@ -1170,21 +1303,37 @@
       "UpdateRole": {
         "content": {
           "application/json": {
+            "example": {
+              "description": "Reviews examination and integrity records.",
+              "display_name": "Senior Assessment Reviewer",
+              "permissions": [
+                "class.view"
+              ]
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateRoleRequest"
             }
           }
         },
+        "description": "Partial custom Role replacement; omitted or null fields remain unchanged.",
         "required": true
       },
       "UpdateUserProfile": {
         "content": {
           "application/json": {
+            "example": {
+              "display_name": "Amina Diallo",
+              "first_name": "Amina",
+              "last_name": "Diallo",
+              "locale": "en",
+              "timezone": "Europe/Paris"
+            },
             "schema": {
               "$ref": "#/components/schemas/UpdateUserProfileRequest"
             }
           }
         },
+        "description": "Mutable presentation fields for one User; omitted or null fields remain unchanged.",
         "required": true
       }
     },
@@ -3743,6 +3892,7 @@
       },
       "AccessPolicyBlockerResponse": {
         "additionalProperties": false,
+        "description": "Safe reason the proposed policy cannot currently be applied.",
         "properties": {
           "code": {
             "enum": [
@@ -3754,6 +3904,7 @@
             "type": "string"
           },
           "provider_id": {
+            "description": "Configured provider associated with the blocker, when provider-specific.",
             "type": "string"
           }
         },
@@ -3764,8 +3915,10 @@
       },
       "AccessPolicyPreflightResponse": {
         "additionalProperties": false,
+        "description": "Current safe blockers for a proposed Access Policy replacement.",
         "properties": {
           "blockers": {
+            "description": "Empty when no blocker is currently observed; replacement still repeats all checks.",
             "items": {
               "$ref": "#/components/schemas/AccessPolicyBlockerResponse"
             },
@@ -3780,6 +3933,7 @@
       },
       "AccessPolicyResponse": {
         "additionalProperties": false,
+        "description": "Current revisioned Access Policy plus bounded safe capabilities and transition history.",
         "properties": {
           "available_providers": {
             "items": {
@@ -3796,9 +3950,11 @@
             "type": "boolean"
           },
           "durable_mail": {
+            "description": "Whether the deployment can durably deliver invitation and account-security mail.",
             "type": "boolean"
           },
           "history": {
+            "description": "Newest bounded applied transitions retained for administrative context.",
             "items": {
               "$ref": "#/components/schemas/AccessPolicyTransitionResponse"
             },
@@ -3831,6 +3987,7 @@
             "type": "boolean"
           },
           "revision": {
+            "description": "Monotonic policy revision used for optimistic concurrency.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -3916,11 +4073,13 @@
       },
       "AccessPolicyTransitionResponse": {
         "additionalProperties": false,
+        "description": "Safe immutable summary of one applied Access Policy replacement.",
         "properties": {
           "actor_user_id": {
             "$ref": "#/components/schemas/ID"
           },
           "changed_at": {
+            "description": "Unix time in milliseconds when the replacement committed.",
             "format": "int64",
             "type": "integer"
           },
@@ -4045,6 +4204,7 @@
       },
       "ApplyExamSittingCorrectionRequest": {
         "additionalProperties": false,
+        "description": "Revision-fenced complete content correction for one open or paused Sitting.",
         "properties": {
           "expected_current_revision_id": {
             "$ref": "#/components/schemas/ID"
@@ -4133,11 +4293,14 @@
       },
       "AuditEventResponse": {
         "additionalProperties": false,
+        "description": "Safe durable audit fact visible to the authorized caller.",
         "properties": {
           "action": {
+            "description": "Stable permission-style name of the attempted action.",
             "type": "string"
           },
           "actor_id": {
+            "description": "User that initiated the action, omitted for actor-less system transitions.",
             "type": "string"
           },
           "authentication_method": {
@@ -4147,10 +4310,12 @@
             "type": "string"
           },
           "create_at": {
+            "description": "Unix time in milliseconds when the audit Attempt was created.",
             "format": "int64",
             "type": "integer"
           },
           "error_code": {
+            "description": "Stable safe failure category for an unsuccessful action; internal detail is omitted.",
             "type": "string"
           },
           "id": {
@@ -4163,6 +4328,7 @@
             "type": "string"
           },
           "request_id": {
+            "description": "Safe request correlation value when the action originated over a request transport.",
             "type": "string"
           },
           "resource": {
@@ -4172,6 +4338,7 @@
                 "$ref": "#/components/schemas/ID"
               },
               "type": {
+                "description": "Stable resource type acted upon.",
                 "type": "string"
               }
             },
@@ -4182,18 +4349,23 @@
             "type": "object"
           },
           "scope_id": {
+            "description": "Authorization scope identity, when the action has a scoped owner.",
             "type": "string"
           },
           "scope_type": {
+            "description": "Authorization scope type under which the action was evaluated.",
             "type": "string"
           },
           "session_id": {
+            "description": "Safe Session identity associated with the action when retained; never a credential.",
             "type": "string"
           },
           "status": {
+            "description": "Durable outcome state of the audited Attempt.",
             "type": "string"
           },
           "update_at": {
+            "description": "Unix time in milliseconds of the latest durable audit status change.",
             "format": "int64",
             "type": "integer"
           },
@@ -4213,6 +4385,7 @@
       },
       "AuditListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of authorized audit Events.",
         "properties": {
           "events": {
             "items": {
@@ -4221,6 +4394,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -4330,11 +4504,15 @@
       },
       "BootstrapAdministratorRequest": {
         "additionalProperties": false,
+        "description": "Profile fields for the first Institution administrator account.",
         "properties": {
           "display_name": {
+            "description": "Optional human-facing administrator name.",
             "type": "string"
           },
           "email": {
+            "description": "Email address owned by the first administrator.",
+            "format": "email",
             "type": "string"
           },
           "first_name": {
@@ -4344,12 +4522,15 @@
             "type": "string"
           },
           "locale": {
+            "description": "Optional locale used for localized presentation.",
             "type": "string"
           },
           "timezone": {
+            "description": "Optional IANA time-zone name for the administrator.",
             "type": "string"
           },
           "username": {
+            "description": "Canonical sign-in and mention name for the first administrator.",
             "type": "string"
           }
         },
@@ -4361,11 +4542,13 @@
       },
       "BootstrapInstallationRequest": {
         "additionalProperties": false,
+        "description": "Complete input to the one-time installation bootstrap transaction.",
         "properties": {
           "administrator": {
             "$ref": "#/components/schemas/BootstrapAdministratorRequest"
           },
           "bootstrap_secret": {
+            "description": "Operator-controlled one-time secret proving authority to initialize this deployment.",
             "maxLength": 512,
             "minLength": 1,
             "type": "string",
@@ -4375,7 +4558,9 @@
             "$ref": "#/components/schemas/BootstrapInstitutionRequest"
           },
           "password": {
-            "type": "string"
+            "description": "Initial administrator password; accepted only by bootstrap and never returned.",
+            "type": "string",
+            "writeOnly": true
           }
         },
         "required": [
@@ -4388,14 +4573,18 @@
       },
       "BootstrapInstitutionRequest": {
         "additionalProperties": false,
+        "description": "Human and canonical identity for the installation's single Institution.",
         "properties": {
           "description": {
+            "description": "Optional human-facing description of the Institution.",
             "type": "string"
           },
           "display_name": {
+            "description": "Human-facing Institution name.",
             "type": "string"
           },
           "name": {
+            "description": "Canonical machine name for the Institution.",
             "type": "string"
           }
         },
@@ -4505,17 +4694,22 @@
       },
       "BuildInfoResponse": {
         "additionalProperties": false,
+        "description": "Public build provenance for the serving Proctor binary.",
         "properties": {
           "build_time": {
+            "description": "Build timestamp embedded in the binary.",
             "type": "string"
           },
           "commit": {
+            "description": "Source revision embedded at build time.",
             "type": "string"
           },
           "go_version": {
+            "description": "Go toolchain version used to build the binary.",
             "type": "string"
           },
           "version": {
+            "description": "Proctor release or development version string.",
             "type": "string"
           }
         },
@@ -4529,8 +4723,10 @@
       },
       "CancelExamSittingRequest": {
         "additionalProperties": false,
+        "description": "Revision-fenced pre-open cancellation command.",
         "properties": {
           "expected_revision": {
+            "description": "Exact current Sitting revision used as an optimistic concurrency fence.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -4966,8 +5162,10 @@
       },
       "ChangeUserEmailRequest": {
         "additionalProperties": false,
+        "description": "New email address to store in an unverified state.",
         "properties": {
           "email": {
+            "description": "Complete replacement address; it must satisfy canonical email validation and uniqueness.",
             "format": "email",
             "type": "string"
           }
@@ -5648,8 +5846,10 @@
       },
       "CreateRoleBindingRequest": {
         "additionalProperties": false,
+        "description": "Exact effective-dated permission grant to create.",
         "properties": {
           "end_at": {
+            "description": "Optional Unix time in milliseconds when the grant stops being effective.",
             "format": "int64",
             "type": "integer"
           },
@@ -5660,9 +5860,11 @@
             "$ref": "#/components/schemas/ID"
           },
           "scope_type": {
+            "description": "Stable scope kind supported by the selected Role permissions.",
             "type": "string"
           },
           "start_at": {
+            "description": "Unix time in milliseconds when the grant becomes effective.",
             "format": "int64",
             "type": "integer"
           },
@@ -5680,17 +5882,22 @@
       },
       "CreateRoleRequest": {
         "additionalProperties": false,
+        "description": "Canonical identity, presentation, and complete permission set for a new custom Role.",
         "properties": {
           "description": {
+            "description": "Human-facing explanation of the Role's intended responsibility.",
             "type": "string"
           },
           "display_name": {
+            "description": "Human-facing Role name.",
             "type": "string"
           },
           "name": {
+            "description": "Immutable canonical machine name for the Role.",
             "type": "string"
           },
           "permissions": {
+            "description": "Duplicate-free complete set of known permission actions granted by the Role.",
             "items": {
               "type": "string"
             },
@@ -5749,6 +5956,7 @@
       },
       "DesktopAuthorizationCompatibilityResponse": {
         "additionalProperties": false,
+        "description": "Version range supported by this installation's native-client browser authorization protocol.",
         "properties": {
           "maximum_version": {
             "minimum": 1,
@@ -6510,6 +6718,7 @@
       },
       "ExamIntegrityDiscrepancyListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of post-collection integrity Discrepancies.",
         "properties": {
           "items": {
             "items": {
@@ -6519,6 +6728,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -6529,8 +6739,10 @@
       },
       "ExamIntegrityDiscrepancyResponse": {
         "additionalProperties": false,
+        "description": "Late integrity record retained separately after collection for the Submission ended.",
         "properties": {
           "duration_milliseconds": {
+            "description": "Reported focus-loss duration in milliseconds.",
             "format": "int64",
             "maximum": 86400000,
             "minimum": 1,
@@ -6555,6 +6767,7 @@
             "type": "string"
           },
           "missing_before": {
+            "description": "Number of missing monotonic signals observed before this late record.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -6602,6 +6815,7 @@
       },
       "ExamIntegrityEvidenceListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of purpose-specific integrity evidence.",
         "properties": {
           "items": {
             "items": {
@@ -6611,6 +6825,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -6621,8 +6836,10 @@
       },
       "ExamIntegrityEvidenceResponse": {
         "additionalProperties": false,
+        "description": "Purpose-specific retained signal evidence for one integrity Flag.",
         "properties": {
           "duration_milliseconds": {
+            "description": "Observed policy-signal duration in milliseconds.",
             "format": "int64",
             "maximum": 86400000,
             "minimum": 0,
@@ -6643,6 +6860,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "missing_before": {
+            "description": "Missing monotonic signal count observed before this evidence record.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -6700,6 +6918,7 @@
       },
       "ExamIntegrityFlagListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of manager-authorized integrity Flag summaries.",
         "properties": {
           "items": {
             "items": {
@@ -6709,6 +6928,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -6719,6 +6939,7 @@
       },
       "ExamIntegrityFlagResponse": {
         "additionalProperties": false,
+        "description": "Manager-safe lifecycle and bounded evidence counts for one integrity Flag.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -6730,6 +6951,7 @@
             "type": "integer"
           },
           "evidence_overflow_count": {
+            "description": "Evidence records observed beyond the bounded retained inventory.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -6760,6 +6982,7 @@
             "type": "string"
           },
           "unresolved_missing_count": {
+            "description": "Missing monotonic signals not reconciled before collection ended.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -6780,6 +7003,7 @@
       },
       "ExamIntegrityReviewDecisionResponse": {
         "additionalProperties": false,
+        "description": "Current private manager disposition for one integrity Flag.",
         "properties": {
           "actor_user_id": {
             "$ref": "#/components/schemas/ID"
@@ -6827,6 +7051,7 @@
       },
       "ExamIntegrityReviewMutationResponse": {
         "additionalProperties": false,
+        "description": "Committed Review state and optional decision returned by a mutation or exact replay.",
         "properties": {
           "candidate_user_id": {
             "$ref": "#/components/schemas/ID"
@@ -6854,6 +7079,7 @@
       },
       "ExamIntegrityReviewResponse": {
         "additionalProperties": false,
+        "description": "Manager-authorized Submission integrity snapshot and current decision set.",
         "properties": {
           "candidate_user_id": {
             "$ref": "#/components/schemas/ID"
@@ -6888,6 +7114,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "unresolved_integrity_count": {
+            "description": "Number of unresolved integrity items that can block finalization.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -7433,8 +7660,10 @@
       },
       "ExamSittingCorrectionResourceStageResponse": {
         "additionalProperties": false,
+        "description": "Safe ready-stage identity and content metadata for one purpose-bound correction upload.",
         "properties": {
           "expires_at": {
+            "description": "RFC 3339 expiry after which this unconsumed stage cannot be applied.",
             "format": "date-time",
             "type": "string"
           },
@@ -7469,6 +7698,7 @@
       },
       "ExamSittingCorrectionResponse": {
         "additionalProperties": false,
+        "description": "Immutable correction Revision and updated Sitting state committed by the transition.",
         "properties": {
           "effective_at": {
             "format": "date-time",
@@ -7514,6 +7744,7 @@
       },
       "ExamSittingListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of authorized Exam Sittings.",
         "properties": {
           "items": {
             "items": {
@@ -7534,8 +7765,10 @@
       },
       "ExamSittingManagerTransitionRequest": {
         "additionalProperties": false,
+        "description": "Revision fence and private manager rationale for a Sitting lifecycle transition.",
         "properties": {
           "expected_revision": {
+            "description": "Exact current Sitting revision used as an optimistic concurrency fence.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -7555,6 +7788,7 @@
       },
       "ExamSittingNoShowListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of derived no-show candidate identities.",
         "properties": {
           "items": {
             "items": {
@@ -7575,6 +7809,7 @@
       },
       "ExamSittingNoShowResponse": {
         "additionalProperties": false,
+        "description": "Candidate who belonged to the target Class at actual opening and has no Attempt.",
         "properties": {
           "candidate_user_id": {
             "$ref": "#/components/schemas/ID"
@@ -7586,6 +7821,7 @@
         "type": "object"
       },
       "ExamSittingReasonCode": {
+        "description": "Stable safe classification for why a Sitting reached its current terminal state.",
         "enum": [
           "manager_canceled",
           "schedule_elapsed",
@@ -7597,6 +7833,7 @@
       },
       "ExamSittingResponse": {
         "additionalProperties": false,
+        "description": "Bounded current manager projection of one Exam Sitting.",
         "properties": {
           "canceled_at": {
             "format": "date-time",
@@ -7638,15 +7875,18 @@
             "$ref": "#/components/schemas/ExamSittingReasonCode"
           },
           "revision": {
+            "description": "Monotonic durable revision used by conditional Sitting commands.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           },
           "scheduled_end_at": {
+            "description": "RFC 3339 scheduled deadline before explicit extensions.",
             "format": "date-time",
             "type": "string"
           },
           "scheduled_start_at": {
+            "description": "RFC 3339 scheduled opening time.",
             "format": "date-time",
             "type": "string"
           },
@@ -7673,6 +7913,7 @@
         "type": "object"
       },
       "ExamSittingState": {
+        "description": "Durable lifecycle state of one Exam Sitting.",
         "enum": [
           "scheduled",
           "open",
@@ -8009,6 +8250,7 @@
       },
       "ExamSubmissionManagerResponse": {
         "additionalProperties": false,
+        "description": "Manager-safe immutable Submission header without Workspace bytes or integrity evidence.",
         "properties": {
           "exam_attempt_id": {
             "$ref": "#/components/schemas/ID"
@@ -8020,11 +8262,13 @@
             "$ref": "#/components/schemas/ID"
           },
           "final_focus_loss_sequence": {
+            "description": "Final focus-loss signal sequence acknowledged at submission.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "integrity_state": {
+            "description": "Whether the retained integrity sequence is complete or contains a known gap.",
             "enum": [
               "settled",
               "gapped"
@@ -8035,15 +8279,18 @@
             "$ref": "#/components/schemas/SHA256"
           },
           "manifest_entry_count": {
+            "description": "Total number of file and directory entries in the sealed manifest.",
             "maximum": 5000,
             "minimum": 0,
             "type": "integer"
           },
           "manifest_schema_version": {
             "const": 1,
+            "description": "Version of the sealed manifest representation.",
             "type": "integer"
           },
           "manifest_total_file_bytes": {
+            "description": "Sum of sealed file sizes in bytes.",
             "format": "int64",
             "maximum": 1073741824,
             "minimum": 0,
@@ -8057,6 +8304,7 @@
             "type": "string"
           },
           "unresolved_integrity_count": {
+            "description": "Count of integrity items still unresolved for review.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8090,6 +8338,7 @@
       },
       "ExamSubmissionManifestItemResponse": {
         "additionalProperties": false,
+        "description": "One immutable file or directory entry in a sealed Submission manifest.",
         "oneOf": [
           {
             "properties": {
@@ -8162,6 +8411,7 @@
             "$ref": "#/components/schemas/SHA256"
           },
           "size": {
+            "description": "Exact file size in bytes; present only for file entries.",
             "format": "int64",
             "maximum": 104857600,
             "minimum": 0,
@@ -8177,6 +8427,7 @@
       },
       "ExamSubmissionManifestResponse": {
         "additionalProperties": false,
+        "description": "One bounded page from an immutable sealed Submission manifest.",
         "properties": {
           "items": {
             "items": {
@@ -8211,12 +8462,14 @@
       },
       "ExamSubmissionReceiptResponse": {
         "additionalProperties": false,
+        "description": "Candidate-safe retained receipt for an atomically sealed Submission.",
         "properties": {
           "exam_attempt_id": {
             "$ref": "#/components/schemas/ID"
           },
           "manifest_digest": {
-            "$ref": "#/components/schemas/SHA256"
+            "$ref": "#/components/schemas/SHA256",
+            "description": "SHA-256 digest of the immutable sealed Workspace manifest."
           },
           "state": {
             "const": "submitted",
@@ -8226,10 +8479,12 @@
             "$ref": "#/components/schemas/ID"
           },
           "submitted_at": {
+            "description": "RFC 3339 time at which the Submission committed.",
             "format": "date-time",
             "type": "string"
           },
           "workspace_cursor": {
+            "description": "Final acknowledged Workspace mutation cursor sealed into the Submission.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8247,6 +8502,7 @@
       },
       "ExamSubmissionReviewResponse": {
         "additionalProperties": false,
+        "description": "Private manager Review state and bounded immutable inventory metadata.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -8266,7 +8522,8 @@
             "type": "integer"
           },
           "evidence_inventory_digest": {
-            "$ref": "#/components/schemas/SHA256"
+            "$ref": "#/components/schemas/SHA256",
+            "description": "Digest freezing the bounded evidence inventory at finalization."
           },
           "finalized_at": {
             "format": "date-time",
@@ -8289,6 +8546,7 @@
             "type": "string"
           },
           "release_state": {
+            "description": "Whether the narrow candidate result remains withheld or has been explicitly released.",
             "enum": [
               "withheld",
               "released"
@@ -8462,6 +8720,7 @@
       },
       "ExtendExamSittingRequest": {
         "additionalProperties": false,
+        "description": "Revision-fenced deadline extension for an open or paused Sitting.",
         "properties": {
           "expected_revision": {
             "format": "int64",
@@ -8475,6 +8734,7 @@
             "type": "string"
           },
           "scheduled_end_at": {
+            "description": "New RFC 3339 deadline, which must be strictly later than the current deadline.",
             "format": "date-time",
             "type": "string"
           }
@@ -8578,8 +8838,10 @@
       },
       "HealthResponse": {
         "additionalProperties": false,
+        "description": "Minimal successful health-check projection.",
         "properties": {
           "status": {
+            "description": "The literal successful health state.",
             "enum": [
               "ok"
             ],
@@ -8597,6 +8859,7 @@
       },
       "InitialAccessPolicyResponse": {
         "additionalProperties": false,
+        "description": "Initial admission and sign-in policy created during bootstrap.",
         "properties": {
           "desktop_authorization_enabled": {
             "type": "boolean"
@@ -8634,6 +8897,7 @@
       },
       "InstallationBootstrapResult": {
         "additionalProperties": false,
+        "description": "Resources atomically created by the successful bootstrap transition.",
         "properties": {
           "access_policy": {
             "$ref": "#/components/schemas/InitialAccessPolicyResponse"
@@ -8658,11 +8922,13 @@
       },
       "InstallationStateResponse": {
         "additionalProperties": false,
+        "description": "Durable identities and commit time established by bootstrap.",
         "properties": {
           "administrator_user_id": {
             "$ref": "#/components/schemas/ID"
           },
           "initialized_at": {
+            "description": "Unix time in milliseconds at which bootstrap committed.",
             "format": "int64",
             "type": "integer"
           },
@@ -8679,8 +8945,10 @@
       },
       "InstallationStatusResponse": {
         "additionalProperties": false,
+        "description": "Safe public bootstrap state for one installation.",
         "properties": {
           "initialized": {
+            "description": "True after the one-time installation bootstrap transaction has committed.",
             "type": "boolean"
           }
         },
@@ -9335,6 +9603,7 @@
       },
       "JobAttemptListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of Job execution Attempts.",
         "properties": {
           "items": {
             "items": {
@@ -9343,6 +9612,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -9353,12 +9623,15 @@
       },
       "JobAttemptResponse": {
         "additionalProperties": false,
+        "description": "Safe execution history for one Job Attempt.",
         "properties": {
           "complete_at": {
+            "description": "Unix time in milliseconds when the Attempt reached a terminal state, when complete.",
             "format": "int64",
             "type": "integer"
           },
           "heartbeat_at": {
+            "description": "Unix time in milliseconds of the last retained worker heartbeat.",
             "format": "int64",
             "type": "integer"
           },
@@ -9366,17 +9639,21 @@
             "$ref": "#/components/schemas/ID"
           },
           "lease_expires_at": {
+            "description": "Unix time in milliseconds at which this execution lease expires.",
             "format": "int64",
             "type": "integer"
           },
           "number": {
+            "description": "Monotonic attempt number within the parent Job.",
             "minimum": 1,
             "type": "integer"
           },
           "public_error_code": {
+            "description": "Stable safe failure category for a failed terminal Attempt; internal error detail is never returned.",
             "type": "string"
           },
           "start_at": {
+            "description": "Unix time in milliseconds when execution started.",
             "format": "int64",
             "type": "integer"
           },
@@ -9395,6 +9672,7 @@
         "type": "object"
       },
       "JobAttemptStatus": {
+        "description": "Durable lifecycle state of one execution Attempt.",
         "enum": [
           "running",
           "succeeded",
@@ -9407,6 +9685,7 @@
       },
       "JobListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of safe durable Job projections.",
         "properties": {
           "items": {
             "items": {
@@ -9415,6 +9694,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -9425,16 +9705,20 @@
       },
       "JobProgressResponse": {
         "additionalProperties": false,
+        "description": "Bounded coarse progress reported by a Job implementation.",
         "properties": {
           "current": {
+            "description": "Completed work units in the current stage.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "stage": {
+            "description": "Stable safe name of the current processing stage.",
             "type": "string"
           },
           "total": {
+            "description": "Total work units expected in the current stage.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -9449,20 +9733,25 @@
       },
       "JobResponse": {
         "additionalProperties": false,
+        "description": "Safe durable state of an allowlisted background Job.",
         "properties": {
           "attempt_count": {
+            "description": "Number of durable execution Attempts created so far.",
             "minimum": 0,
             "type": "integer"
           },
           "available_at": {
+            "description": "Unix time in milliseconds at or after which queued work may be claimed.",
             "format": "int64",
             "type": "integer"
           },
           "complete_at": {
+            "description": "Unix time in milliseconds when the Job reached a terminal state.",
             "format": "int64",
             "type": "integer"
           },
           "create_at": {
+            "description": "Unix time in milliseconds when the Job was created.",
             "format": "int64",
             "type": "integer"
           },
@@ -9470,6 +9759,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "maximum_attempts": {
+            "description": "Maximum execution Attempts allowed by this Job's retry policy.",
             "minimum": 1,
             "type": "integer"
           },
@@ -9477,14 +9767,17 @@
             "$ref": "#/components/schemas/JobProgressResponse"
           },
           "public_error_code": {
+            "description": "Stable safe failure category; private worker and infrastructure errors are never exposed.",
             "type": "string"
           },
           "revision": {
+            "description": "Monotonic durable Job revision for concurrency-aware consumers.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           },
           "start_at": {
+            "description": "Unix time in milliseconds when the current or latest Attempt started.",
             "format": "int64",
             "type": "integer"
           },
@@ -9492,9 +9785,11 @@
             "$ref": "#/components/schemas/JobStatus"
           },
           "type": {
+            "description": "Stable allowlisted Job type.",
             "type": "string"
           },
           "update_at": {
+            "description": "Unix time in milliseconds of the latest durable Job change.",
             "format": "int64",
             "type": "integer"
           }
@@ -9654,6 +9949,7 @@
       },
       "MailDeliveryListResponse": {
         "additionalProperties": false,
+        "description": "One bounded page of safe mail delivery projections.",
         "properties": {
           "items": {
             "items": {
@@ -9662,6 +9958,7 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "Opaque continuation for the next page, omitted after the final page.",
             "type": "string"
           }
         },
@@ -9672,27 +9969,33 @@
       },
       "MailDeliveryMetricResponse": {
         "additionalProperties": false,
+        "description": "Aggregate delivery outcome and processing latency for one bounded metric bucket.",
         "properties": {
           "attempt_count": {
+            "description": "Total delivery Attempts represented by the bucket.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "count": {
+            "description": "Number of durable deliveries in the bucket.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "maximum_processing_latency_millis": {
+            "description": "Highest single processing latency in milliseconds within the bucket.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "outcome_code": {
+            "description": "Stable safe outcome category for this metric bucket.",
             "maxLength": 128,
             "type": "string"
           },
           "processing_latency_millis": {
+            "description": "Aggregate processing latency in milliseconds.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -9720,8 +10023,10 @@
       },
       "MailDeliveryResponse": {
         "additionalProperties": false,
+        "description": "Safe durable mail delivery metadata with the recipient masked and content omitted.",
         "properties": {
           "accepted_at": {
+            "description": "Unix time in milliseconds when SMTP accepted the message.",
             "format": "int64",
             "type": "integer"
           },
@@ -9731,14 +10036,17 @@
             "type": "integer"
           },
           "created_at": {
+            "description": "Unix time in milliseconds when the delivery was created.",
             "format": "int64",
             "type": "integer"
           },
           "deadline": {
+            "description": "Unix time in milliseconds after which the message is no longer relevant for delivery.",
             "format": "int64",
             "type": "integer"
           },
           "failed_at": {
+            "description": "Unix time in milliseconds when the delivery became terminally failed.",
             "format": "int64",
             "type": "integer"
           },
@@ -9746,14 +10054,17 @@
             "$ref": "#/components/schemas/ID"
           },
           "masked_recipient": {
+            "description": "Redacted recipient address suitable for bounded administrative display.",
             "maxLength": 254,
             "type": "string"
           },
           "message_date": {
+            "description": "Unix time in milliseconds represented by the message Date header.",
             "format": "int64",
             "type": "integer"
           },
           "message_id": {
+            "description": "Safe retained Message-ID for delivery correlation, not a credential.",
             "maxLength": 900,
             "type": "string"
           },
@@ -9761,6 +10072,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "public_failure_code": {
+            "description": "Stable safe failure category; raw SMTP or infrastructure errors are never exposed.",
             "maxLength": 128,
             "type": "string"
           },
@@ -9771,6 +10083,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "template_digest": {
+            "description": "SHA-256 digest of the exact rendered template revision, encoded as lowercase hexadecimal.",
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           },
@@ -9781,6 +10094,7 @@
             "type": "string"
           },
           "updated_at": {
+            "description": "Unix time in milliseconds of the latest durable state change.",
             "format": "int64",
             "type": "integer"
           }
@@ -9803,6 +10117,7 @@
         "type": "object"
       },
       "MailDeliveryState": {
+        "description": "Durable lifecycle state of one mail delivery occurrence.",
         "enum": [
           "queued",
           "sending",
@@ -9815,8 +10130,10 @@
       },
       "MailKeyStateResponse": {
         "additionalProperties": false,
+        "description": "Safe key identities and references used to govern mail payload rotation.",
         "properties": {
           "active": {
+            "description": "Bounded keys with at least one active encrypted-payload reference.",
             "items": {
               "$ref": "#/components/schemas/MailPayloadKeyUsage"
             },
@@ -9824,10 +10141,12 @@
             "type": "array"
           },
           "primary_key_id": {
+            "description": "Identifier of the key currently used for new encrypted payloads.",
             "pattern": "^[0-9a-f]{32}$",
             "type": "string"
           },
           "required_primary_key_id": {
+            "description": "Configuration-required primary identifier when a mismatch must be resolved.",
             "pattern": "^[0-9a-f]{32}$",
             "type": "string"
           }
@@ -9840,6 +10159,7 @@
       },
       "MailMetricsResponse": {
         "additionalProperties": false,
+        "description": "Bounded safe mail delivery and queue metrics.",
         "properties": {
           "deliveries": {
             "items": {
@@ -9849,6 +10169,7 @@
             "type": "array"
           },
           "health_code": {
+            "description": "Overall safe mail subsystem health classification.",
             "enum": [
               "",
               "mail.disabled",
@@ -9875,13 +10196,16 @@
       },
       "MailPayloadKeyUsage": {
         "additionalProperties": false,
+        "description": "Safe usage count for one configured mail payload-encryption key.",
         "properties": {
           "active_references": {
+            "description": "Number of active encrypted mail payloads that still reference this key.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
           },
           "key_id": {
+            "description": "Non-secret 128-bit key identifier encoded as lowercase hexadecimal.",
             "pattern": "^[0-9a-f]{32}$",
             "type": "string"
           }
@@ -9894,6 +10218,7 @@
       },
       "MailQueueMetricResponse": {
         "additionalProperties": false,
+        "description": "Aggregate queue age and health for one bounded metric bucket.",
         "properties": {
           "count": {
             "format": "int64",
@@ -9901,6 +10226,7 @@
             "type": "integer"
           },
           "health_code": {
+            "description": "Stable safe operational classification for this queue bucket.",
             "enum": [
               "mail.disabled",
               "mail.healthy",
@@ -9910,6 +10236,7 @@
             "type": "string"
           },
           "oldest_age_millis": {
+            "description": "Age in milliseconds of the oldest matching queued delivery.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -9928,6 +10255,7 @@
             "type": "string"
           },
           "truncated": {
+            "description": "True when the bounded scan did not include every matching delivery.",
             "type": "boolean"
           }
         },
@@ -9944,8 +10272,10 @@
       },
       "MailRekeyProgress": {
         "additionalProperties": false,
+        "description": "Coarse bounded progress while active payloads are being re-encrypted.",
         "properties": {
           "current": {
+            "description": "Active payloads processed so far.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -9957,6 +10287,7 @@
             "type": "string"
           },
           "total": {
+            "description": "Active payloads in the fenced processing set.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -9971,16 +10302,20 @@
       },
       "MailRekeyProof": {
         "additionalProperties": false,
+        "description": "Final reference counts used to decide whether the retiring key may be removed.",
         "properties": {
           "non_primary_references": {
+            "description": "Active payload references to every non-primary key after processing.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "retirement_safe": {
+            "description": "True only when the final durable reference counts prove the retiring key can be removed.",
             "type": "boolean"
           },
           "retiring_references": {
+            "description": "Active payload references still using the exact retiring key.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -9995,8 +10330,10 @@
       },
       "MailRekeyRequest": {
         "additionalProperties": false,
+        "description": "Exact retiring-key selection for a new fenced rotation Job.",
         "properties": {
           "retiring_key_id": {
+            "description": "Non-secret identifier of the configured key to retire; it must not be the primary key.",
             "pattern": "^[0-9a-f]{32}$",
             "type": "string"
           }
@@ -10008,8 +10345,10 @@
       },
       "MailRekeyResponse": {
         "additionalProperties": false,
+        "description": "Durable identities created when the rotation Job is accepted.",
         "properties": {
           "created_at": {
+            "description": "Unix time in milliseconds when the rekey Job was created.",
             "format": "int64",
             "type": "integer"
           },
@@ -10035,6 +10374,7 @@
       },
       "MailRekeyStatusResponse": {
         "additionalProperties": false,
+        "description": "Safe Job status, progress, and optional final key-retirement proof.",
         "properties": {
           "attempt_count": {
             "minimum": 0,
@@ -10667,6 +11007,7 @@
         "type": "object"
       },
       "ProviderAdmissionMode": {
+        "description": "Admission rule applied after a configured provider proves an external identity.",
         "enum": [
           "linked_only",
           "invitation_required",
@@ -10694,6 +11035,7 @@
       },
       "PublicAccessCapabilitiesResponse": {
         "additionalProperties": false,
+        "description": "Safe switches a client uses to choose an admitted account or authentication flow.",
         "properties": {
           "desktop_authorization": {
             "type": "boolean"
@@ -10718,8 +11060,10 @@
       },
       "PublicAccessDiscoveryResponse": {
         "additionalProperties": false,
+        "description": "Versioned same-origin capabilities for choosing an unauthenticated entry path.",
         "properties": {
           "canonical_origin": {
+            "description": "Exact public origin clients must use for same-origin browser and redirect validation.",
             "format": "uri",
             "type": "string"
           },
@@ -10734,6 +11078,7 @@
             "type": "integer"
           },
           "initialized": {
+            "description": "True after the one-time installation bootstrap transaction has committed.",
             "type": "boolean"
           },
           "installation_id": {
@@ -10743,6 +11088,7 @@
             "$ref": "#/components/schemas/PublicInstitutionPresentationResponse"
           },
           "policy_revision": {
+            "description": "Current Access Policy revision when the installation is initialized.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -10767,6 +11113,7 @@
       },
       "PublicInstitutionPresentationResponse": {
         "additionalProperties": false,
+        "description": "Safe Institution identity suitable for unauthenticated sign-in presentation.",
         "properties": {
           "display_name": {
             "type": "string"
@@ -11062,6 +11409,7 @@
         "type": "object"
       },
       "RoleBindingListResponse": {
+        "description": "Authorized current and historical Role Bindings.",
         "items": {
           "$ref": "#/components/schemas/RoleBindingResponse"
         },
@@ -11069,6 +11417,7 @@
       },
       "RoleBindingResponse": {
         "additionalProperties": false,
+        "description": "Effective-dated grant of one Role to one User in one exact scope.",
         "properties": {
           "create_at": {
             "format": "int64",
@@ -11079,6 +11428,7 @@
             "type": "integer"
           },
           "end_at": {
+            "description": "Unix time in milliseconds when the grant stops being effective, when bounded.",
             "format": "int64",
             "type": "integer"
           },
@@ -11092,9 +11442,11 @@
             "$ref": "#/components/schemas/ID"
           },
           "scope_type": {
+            "description": "Stable authorization scope kind for the grant.",
             "type": "string"
           },
           "start_at": {
+            "description": "Unix time in milliseconds when the grant becomes effective.",
             "format": "int64",
             "type": "integer"
           },
@@ -11120,6 +11472,7 @@
         "type": "object"
       },
       "RoleListResponse": {
+        "description": "Roles visible to the authorized caller.",
         "items": {
           "$ref": "#/components/schemas/RoleResponse"
         },
@@ -11127,37 +11480,46 @@
       },
       "RoleResponse": {
         "additionalProperties": false,
+        "description": "Reusable Role definition; effective access still requires a scoped Role Binding.",
         "properties": {
           "built_in": {
+            "description": "True when installation invariants protect the Role from ordinary update or deletion.",
             "type": "boolean"
           },
           "create_at": {
+            "description": "Unix time in milliseconds when the Role was created.",
             "format": "int64",
             "type": "integer"
           },
           "delete_at": {
+            "description": "Unix time in milliseconds when deleted, or zero while active.",
             "format": "int64",
             "type": "integer"
           },
           "description": {
+            "description": "Human-facing explanation of the Role's intended responsibility.",
             "type": "string"
           },
           "display_name": {
+            "description": "Human-facing Role name.",
             "type": "string"
           },
           "id": {
             "$ref": "#/components/schemas/ID"
           },
           "name": {
+            "description": "Immutable canonical machine name for the Role.",
             "type": "string"
           },
           "permissions": {
+            "description": "Duplicate-free set of stable permission actions granted by the Role.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "update_at": {
+            "description": "Unix time in milliseconds of the latest Role change.",
             "format": "int64",
             "type": "integer"
           }
@@ -11181,13 +11543,16 @@
       },
       "SaveExamIntegrityDecisionRequest": {
         "additionalProperties": false,
+        "description": "Conditional create or replacement of the current decision for one integrity Flag.",
         "properties": {
           "expected_decision_revision": {
+            "description": "Zero for the first decision on this Flag; otherwise the exact current decision revision.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "expected_review_revision": {
+            "description": "Zero when creating the first Review through this command; otherwise the exact current Review revision.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -11222,6 +11587,7 @@
       },
       "ScheduleExamSittingRequest": {
         "additionalProperties": false,
+        "description": "Complete immutable Revision target, Class target, and initial delivery window.",
         "properties": {
           "class_id": {
             "$ref": "#/components/schemas/ID"
@@ -11469,15 +11835,18 @@
       },
       "StudentExamResultResponse": {
         "additionalProperties": false,
+        "description": "Explicitly released candidate result with private review content omitted.",
         "properties": {
           "exam_attempt_id": {
             "$ref": "#/components/schemas/ID"
           },
           "released_at": {
+            "description": "RFC 3339 timestamp at which the result projection was explicitly released.",
             "format": "date-time",
             "type": "string"
           },
           "student_remarks_markdown": {
+            "description": "Approved candidate-facing Markdown remarks frozen at release.",
             "maxLength": 8192,
             "type": "string"
           },
@@ -11581,6 +11950,7 @@
       },
       "TerminalExamIntegrityReviewRequest": {
         "additionalProperties": false,
+        "description": "Existing Review identity and exact revision for a terminal transition.",
         "properties": {
           "expected_review_revision": {
             "format": "int64",
@@ -11735,6 +12105,7 @@
       },
       "UpdateExamIntegrityReviewRequest": {
         "additionalProperties": false,
+        "description": "Conditional complete replacement of the Review's mutable text fields.",
         "properties": {
           "expected_review_revision": {
             "format": "int64",
@@ -11787,6 +12158,7 @@
             ]
           }
         ],
+        "description": "Revision-fenced partial update admitted only before the Sitting opens.",
         "properties": {
           "class_id": {
             "$ref": "#/components/schemas/ID"
@@ -11795,6 +12167,7 @@
             "$ref": "#/components/schemas/ID"
           },
           "expected_revision": {
+            "description": "Exact current Sitting revision used as an optimistic concurrency fence.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -11941,6 +12314,7 @@
       },
       "UpdateRoleRequest": {
         "additionalProperties": false,
+        "description": "Mutable custom Role fields; the canonical name never changes.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -11971,38 +12345,45 @@
       },
       "UpdateUserProfileRequest": {
         "additionalProperties": false,
+        "description": "Partial User presentation update; omitted and explicit null values leave a field unchanged.",
         "properties": {
           "display_name": {
+            "description": "Omitted or null leaves the human-facing display name unchanged.",
             "type": [
               "string",
               "null"
             ]
           },
           "first_name": {
+            "description": "Omitted or null leaves the first name unchanged.",
             "type": [
               "string",
               "null"
             ]
           },
           "last_name": {
+            "description": "Omitted or null leaves the last name unchanged.",
             "type": [
               "string",
               "null"
             ]
           },
           "locale": {
+            "description": "Omitted or null leaves the locale unchanged.",
             "type": [
               "string",
               "null"
             ]
           },
           "timezone": {
+            "description": "Omitted or null leaves the IANA time-zone name unchanged.",
             "type": [
               "string",
               "null"
             ]
           },
           "username": {
+            "description": "Omitted or null leaves the canonical username unchanged.",
             "type": [
               "string",
               "null"
@@ -12013,8 +12394,10 @@
       },
       "UserEmailStateResponse": {
         "additionalProperties": false,
+        "description": "Narrow identity and verification state after an email-security transition.",
         "properties": {
           "email_verified": {
+            "description": "Whether the target User's current email has completed verification.",
             "type": "boolean"
           },
           "id": {
@@ -12028,6 +12411,7 @@
         "type": "object"
       },
       "UserProfileListResponse": {
+        "description": "Visible User profiles ordered by canonical username and identity.",
         "items": {
           "$ref": "#/components/schemas/UserProfileResponse"
         },
@@ -12112,6 +12496,7 @@
       },
       "UserSettingsReplaceRequest": {
         "additionalProperties": false,
+        "description": "Complete conditional replacement for the current User Settings Document.",
         "properties": {
           "expected_revision": {
             "$ref": "#/components/schemas/ID"
@@ -12134,8 +12519,10 @@
       },
       "UserSettingsReplacementResponse": {
         "additionalProperties": false,
+        "description": "Result metadata for a committed replacement or exact idempotent replay.",
         "properties": {
           "changed": {
+            "description": "False when the accepted source already matched the retained document.",
             "type": "boolean"
           },
           "format_version": {
@@ -12160,23 +12547,29 @@
       },
       "UserSettingsResponse": {
         "additionalProperties": false,
+        "description": "Exact private User Settings Document with concurrency metadata.",
         "properties": {
           "format_version": {
+            "description": "Version of the settings document format understood by the server.",
             "minimum": 1,
             "type": "integer"
           },
           "revision": {
-            "$ref": "#/components/schemas/ID"
+            "$ref": "#/components/schemas/ID",
+            "description": "Opaque current document revision required for conditional replacement."
           },
           "source": {
+            "description": "Exact validated JSON source, bounded to 256 KiB.",
             "maxLength": 262144,
             "type": "string"
           },
           "updated_at": {
+            "description": "Unix time in milliseconds of the latest durable replacement.",
             "format": "int64",
             "type": "integer"
           },
           "writable": {
+            "description": "Whether this Session may currently replace the settings source.",
             "type": "boolean"
           }
         },
@@ -13622,6 +14015,7 @@
     },
     "/api/v1/access-policy": {
       "get": {
+        "description": "Returns the complete current installation admission policy, safe deployment capabilities, and bounded applied transition history to an authorized principal. Provider secrets and mail configuration are never exposed.",
         "operationId": "getAccessPolicy",
         "responses": {
           "200": {
@@ -13747,6 +14141,7 @@
     },
     "/api/v1/access-policy/preflight": {
       "post": {
+        "description": "Evaluates the complete proposed replacement against the current revision, configured provider capabilities, invitation delivery, and last-administrator access paths. Preflight makes no durable change and does not reserve the revision, so replacement repeats every check in its authoritative transaction.",
         "operationId": "preflightAccessPolicy",
         "requestBody": {
           "$ref": "#/components/requestBodies/PreflightAccessPolicy"
@@ -13871,7 +14266,61 @@
     },
     "/api/v1/audits": {
       "get": {
+        "description": "Lists bounded durable audit facts visible through the caller's Institution or Academic Unit authority. The projection omits raw parameters, prior state, result payloads, credentials, protected content, and unsafe internal failures.",
         "operationId": "listAuditEvents",
+        "parameters": [
+          {
+            "description": "Maximum number of audit Events to return.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque continuation emitted by the preceding page for the same filters.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only Events attributed to this actor User.",
+            "in": "query",
+            "name": "actor_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "Return only Events with this exact stable action.",
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource type to filter; resource_id is required when present.",
+            "in": "query",
+            "name": "resource_type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact resource identity to filter; resource_type is required when present.",
+            "in": "query",
+            "name": "resource_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/AuditListOK"
@@ -15098,6 +15547,7 @@
     },
     "/api/v1/bootstrap": {
       "get": {
+        "description": "Reports whether this installation has completed its one-time bootstrap transition. The public projection exposes only the initialized flag, so callers can choose the bootstrap or ordinary sign-in entry path without learning Institution or administrator details.",
         "operationId": "getInstallationStatus",
         "responses": {
           "200": {
@@ -15119,6 +15569,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
+        "description": "Atomically creates the installation's single Institution, first administrator, initial built-in role and binding, and initial Access Policy. The operator-provided bootstrap secret is accepted only before initialization; concurrent or repeated attempts cannot replace the established installation.",
         "operationId": "bootstrapInstallation",
         "requestBody": {
           "$ref": "#/components/requestBodies/BootstrapInstallation"
@@ -15790,6 +16241,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/result": {
       "get": {
+        "description": "Returns the narrow candidate-facing result only after an authorized manager has finalized review and explicitly released it. Private notes, manager rationale, integrity evidence, decisions, and unreleased grading data remain concealed.",
         "operationId": "getStudentExamResult",
         "responses": {
           "200": {
@@ -18880,9 +19332,11 @@
     },
     "/api/v1/exams/{exam_id}/sittings": {
       "get": {
+        "description": "Lists Sittings for one authorized Exam in stable descending schedule order, with optional Class, state, and overlap filters. The response is manager-safe and contains no candidate credentials, private reasons, answer content, or integrity evidence.",
         "operationId": "listExamSittings",
         "parameters": [
           {
+            "description": "Return only Sittings targeting this exact Class.",
             "in": "query",
             "name": "class_id",
             "required": false,
@@ -18926,6 +19380,7 @@
             }
           },
           {
+            "description": "Maximum number of Sittings to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -19000,6 +19455,7 @@
         }
       ],
       "post": {
+        "description": "Schedules one published immutable Exam Revision for one eligible Class inside its Academic Period. The authoritative transaction rechecks Exam ownership, Revision provenance, Class eligibility, future time bounds, and overlap constraints before committing.",
         "operationId": "scheduleExamSitting",
         "parameters": [
           {
@@ -19075,6 +19531,7 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}": {
       "get": {
+        "description": "Returns the current bounded manager projection of one authorized Sitting after validating its nested Exam ownership. Lifecycle timestamps and revision are durable; private manager reasons and candidate-sensitive state are not returned here.",
         "operationId": "getExamSitting",
         "responses": {
           "200": {
@@ -19133,6 +19590,7 @@
         }
       ],
       "patch": {
+        "description": "Conditionally changes one still-scheduled Sitting under its exact revision fence. Once opening begins, delivery inputs are immutable except through explicit live-correction and lifecycle operations.",
         "operationId": "updateExamSittingSchedule",
         "parameters": [
           {
@@ -19530,6 +19988,7 @@
         "operationId": "getExamSubmissionFileContent",
         "parameters": [
           {
+            "description": "Strong ETag from an earlier authorized response; a match returns 304 without content.",
             "in": "header",
             "name": "If-None-Match",
             "required": false,
@@ -19613,6 +20072,7 @@
         "operationId": "listExamSubmissionManifest",
         "parameters": [
           {
+            "description": "Maximum number of immutable manifest entries to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -19706,6 +20166,7 @@
         }
       ],
       "post": {
+        "description": "Cancels one still-scheduled Sitting under an exact revision fence and retains a bounded private manager rationale in durable audit state. Cancellation never fabricates Attempts or Submissions and cannot rewrite a Sitting that has opened.",
         "operationId": "cancelExamSitting",
         "parameters": [
           {
@@ -19788,6 +20249,7 @@
         }
       ],
       "post": {
+        "description": "Starts or completes early closure for an open or paused Sitting under the exact revision fence. New participation and Workspace mutation stop immediately; unfinished Attempts follow the durable bounded sealing process rather than being discarded.",
         "operationId": "closeExamSitting",
         "parameters": [
           {
@@ -19885,6 +20347,7 @@
               }
             }
           },
+          "description": "Exactly two ordered multipart parts containing strict stage metadata followed by the bounded resource bytes.",
           "required": true
         },
         "responses": {
@@ -19922,6 +20385,12 @@
         "summary": "Stage one purpose-bound Exam Resource upload for a live Sitting correction",
         "tags": [
           "Sittings"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exams/\u003cexam-id\u003e/sittings/\u003csitting-id\u003e/correction-resource-stages' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'Idempotency-Key: correction-stage-01J7YS5EP6P9M3JAXKQFRHD5TB' \\\n  --form 'metadata={\"base_revision_id\":\"ybndrfg8ejkmcpqxot1uwisza3\",\"target_kind\":\"addition\",\"media_type\":\"application/pdf\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./correction.pdf;type=application/pdf'"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
@@ -20051,6 +20520,7 @@
         }
       ],
       "post": {
+        "description": "Moves an open or paused Sitting deadline to a strictly later instant under its exact revision fence. Class and Academic Period eligibility are rechecked, and the operation cannot shorten the window or revive a closed Sitting.",
         "operationId": "extendExamSitting",
         "parameters": [
           {
@@ -20129,9 +20599,11 @@
     },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/no-shows": {
       "get": {
+        "description": "Derives candidates from Class membership effective at the Sitting's actual opening time and excludes everyone with an Attempt. It never fabricates an Attempt or Submission for absence and is available only after lifecycle state makes the no-show set meaningful.",
         "operationId": "listExamSittingNoShows",
         "parameters": [
           {
+            "description": "Maximum number of no-show candidate identities to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -20221,6 +20693,7 @@
         }
       ],
       "post": {
+        "description": "Pauses one open Sitting under its exact revision fence and records the private manager rationale. The durable state change precedes best-effort realtime notification, so clients must confirm current state over HTTP after disruption.",
         "operationId": "pauseExamSitting",
         "parameters": [
           {
@@ -20303,6 +20776,7 @@
         }
       ],
       "post": {
+        "description": "Resumes one paused Sitting under its exact revision fence after rechecking the Exam and delivery window. It does not renew expired candidate Participation credentials; affected candidates must complete the ordinary reconnect or re-allow flow.",
         "operationId": "resumeExamSitting",
         "parameters": [
           {
@@ -21300,9 +21774,11 @@
     },
     "/api/v1/jobs": {
       "get": {
+        "description": "Lists only Job types deliberately exposed through the public administration contract and authorized for the current principal. Private payloads, claims, worker identities, and infrastructure errors are omitted from every projection.",
         "operationId": "listJobs",
         "parameters": [
           {
+            "description": "Maximum number of Jobs to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -21313,6 +21789,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding page for the same filters.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -21320,6 +21797,7 @@
             }
           },
           {
+            "description": "Optional set of durable lifecycle states to include.",
             "in": "query",
             "name": "status",
             "schema": {
@@ -21376,6 +21854,7 @@
     },
     "/api/v1/jobs/{job_id}": {
       "get": {
+        "description": "Returns the safe current projection of one authorized, allowlisted durable Job. A Job outside the caller's permitted scope or public type allowlist is concealed through the documented not-found or authorization behavior.",
         "operationId": "getJob",
         "responses": {
           "200": {
@@ -21425,6 +21904,7 @@
       },
       "parameters": [
         {
+          "description": "The allowlisted durable Job to retrieve.",
           "in": "path",
           "name": "job_id",
           "required": true,
@@ -21436,9 +21916,11 @@
     },
     "/api/v1/jobs/{job_id}/attempts": {
       "get": {
+        "description": "Returns the bounded execution history for an authorized, allowlisted Job in attempt-number order. The projection exposes safe status and public failure information, never worker leases, private payloads, stack traces, or infrastructure diagnostics.",
         "operationId": "listJobAttempts",
         "parameters": [
           {
+            "description": "Maximum number of execution Attempts to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -21449,6 +21931,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding page for this exact Job and query.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -21505,6 +21988,7 @@
       },
       "parameters": [
         {
+          "description": "The durable Job whose execution history is requested.",
           "in": "path",
           "name": "job_id",
           "required": true,
@@ -21517,6 +22001,7 @@
     "/api/v1/jobs/{job_id}/cancel": {
       "parameters": [
         {
+          "description": "The supported durable Job for which cancellation is requested.",
           "in": "path",
           "name": "job_id",
           "required": true,
@@ -21526,6 +22011,7 @@
         }
       ],
       "post": {
+        "description": "Records a cooperative cancellation request for an authorized Job type that supports cancellation. Success reports the current durable Job projection; it does not claim that in-flight work stopped before the response, and a terminal or unsupported Job fails without rewriting history.",
         "operationId": "cancelJob",
         "responses": {
           "200": {
@@ -21563,6 +22049,12 @@
         "tags": [
           "Jobs"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/jobs/\u003cjob-id\u003e/cancel' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -21584,6 +22076,7 @@
     "/api/v1/jobs/{job_id}/retry": {
       "parameters": [
         {
+          "description": "The supported terminal Job to enqueue for another execution Attempt.",
           "in": "path",
           "name": "job_id",
           "required": true,
@@ -21593,6 +22086,7 @@
         }
       ],
       "post": {
+        "description": "Transitions an authorized, retryable terminal Job back to queued execution while preserving its prior Attempt history. The command never mutates the original Attempt or retries unsupported, active, exhausted, or incompatible work.",
         "operationId": "retryJob",
         "responses": {
           "200": {
@@ -21630,6 +22124,12 @@
         "tags": [
           "Jobs"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/jobs/\u003cjob-id\u003e/retry' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -21650,9 +22150,11 @@
     },
     "/api/v1/mail/deliveries": {
       "get": {
+        "description": "Lists authorized durable delivery metadata for the allowlisted template and filters. Recipient addresses remain masked and the response never exposes encrypted payloads, rendered message bodies, SMTP credentials, or provider diagnostics.",
         "operationId": "listMailDeliveries",
         "parameters": [
           {
+            "description": "Maximum number of delivery projections to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -21663,6 +22165,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding page for the same filters.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -21670,6 +22173,7 @@
             }
           },
           {
+            "description": "Optional set of durable delivery states to include.",
             "in": "query",
             "name": "state",
             "schema": {
@@ -21680,6 +22184,7 @@
             }
           },
           {
+            "description": "Optional set of public allowlisted template keys to include.",
             "in": "query",
             "name": "template_key",
             "schema": {
@@ -21693,6 +22198,7 @@
             }
           },
           {
+            "description": "Include deliveries created at or after this Unix-millisecond timestamp.",
             "in": "query",
             "name": "created_after",
             "schema": {
@@ -21702,6 +22208,7 @@
             }
           },
           {
+            "description": "Include deliveries created before this Unix-millisecond timestamp.",
             "in": "query",
             "name": "created_before",
             "schema": {
@@ -21756,6 +22263,7 @@
     },
     "/api/v1/mail/deliveries/{mail_delivery_id}": {
       "get": {
+        "description": "Returns safe lifecycle metadata for one authorized durable delivery. The projection keeps the recipient masked and omits payload ciphertext, plaintext message content, SMTP response detail, and encryption-key material.",
         "operationId": "getMailDelivery",
         "responses": {
           "200": {
@@ -21805,6 +22313,7 @@
       },
       "parameters": [
         {
+          "description": "The durable mail delivery to retrieve.",
           "in": "path",
           "name": "mail_delivery_id",
           "required": true,
@@ -21817,6 +22326,7 @@
     "/api/v1/mail/deliveries/{mail_delivery_id}/cancel": {
       "parameters": [
         {
+          "description": "The queued mail delivery to cancel.",
           "in": "path",
           "name": "mail_delivery_id",
           "required": true,
@@ -21826,6 +22336,7 @@
         }
       ],
       "post": {
+        "description": "Cancels one exact authorized delivery only while it is still queued and prevents a worker from beginning that occurrence. The transition retains delivery history and audit provenance and never deletes the encrypted payload record as a side effect.",
         "operationId": "cancelMailDelivery",
         "responses": {
           "200": {
@@ -21863,6 +22374,12 @@
         "tags": [
           "Mail"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/mail/deliveries/\u003cmail-delivery-id\u003e/cancel' \\\n  --header 'Authorization: Bearer \u003cinteractive-session-access-token\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -21885,6 +22402,7 @@
     "/api/v1/mail/deliveries/{mail_delivery_id}/retry": {
       "parameters": [
         {
+          "description": "The failed durable mail delivery to retry.",
           "in": "path",
           "name": "mail_delivery_id",
           "required": true,
@@ -21894,6 +22412,7 @@
         }
       ],
       "post": {
+        "description": "Requeues an authorized failed delivery only when its message is still relevant and its bounded retry policy permits another Attempt. Prior Attempt and failure metadata remain durable, and a terminally stale or ineligible delivery fails without sending.",
         "operationId": "retryMailDelivery",
         "responses": {
           "200": {
@@ -21931,6 +22450,12 @@
         "tags": [
           "Mail"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/mail/deliveries/\u003cmail-delivery-id\u003e/retry' \\\n  --header 'Authorization: Bearer \u003cinteractive-session-access-token\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -21952,6 +22477,7 @@
     },
     "/api/v1/mail/keys": {
       "get": {
+        "description": "Returns non-secret key identifiers and active encrypted-payload reference counts needed to plan or verify key rotation. Strong recent authentication is required, and no key bytes, wrapping material, ciphertext, recipients, or message content are exposed.",
         "operationId": "inspectMailKeyState",
         "responses": {
           "200": {
@@ -21999,6 +22525,7 @@
     },
     "/api/v1/mail/metrics": {
       "get": {
+        "description": "Returns bounded aggregate delivery and queue health metrics for public allowlisted template categories. Metrics contain no recipient identity, message content, payload identifiers, credentials, or raw provider errors.",
         "operationId": "getMailMetrics",
         "responses": {
           "200": {
@@ -22044,6 +22571,7 @@
     },
     "/api/v1/mail/rekey": {
       "post": {
+        "description": "Starts one durable Job that re-encrypts active mail payloads from an explicitly retiring key to the configured primary key. Strong recent authentication and durable fencing prevent overlapping rotations or retirement without final zero-reference proof.",
         "operationId": "startMailRekey",
         "requestBody": {
           "$ref": "#/components/requestBodies/StartMailRekey"
@@ -22103,6 +22631,7 @@
     },
     "/api/v1/mail/rekey/{job_id}": {
       "get": {
+        "description": "Returns bounded progress for one authorized mail rekey Job and, after completion, the counts required to prove whether the retiring key is safe to remove. No payload content, key bytes, recipients, or worker diagnostics are returned.",
         "operationId": "getMailRekeyStatus",
         "responses": {
           "200": {
@@ -22154,6 +22683,7 @@
       },
       "parameters": [
         {
+          "description": "The durable mail rekey Job whose safe progress is requested.",
           "in": "path",
           "name": "job_id",
           "required": true,
@@ -22165,6 +22695,7 @@
     },
     "/api/v1/mail/test": {
       "post": {
+        "description": "Durably queues the fixed test template to the current operator's verified eligible address. The server chooses the recipient and content, applies a dedicated rate limit, and returns only safe delivery metadata.",
         "operationId": "sendControlledTestMail",
         "responses": {
           "202": {
@@ -22201,6 +22732,12 @@
         "summary": "Enqueue a controlled test message to the operator's verified address",
         "tags": [
           "Mail"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/mail/test' \\\n  --header 'Authorization: Bearer \u003cinteractive-session-access-token\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
         ],
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
@@ -23198,7 +23735,34 @@
     },
     "/api/v1/role-bindings": {
       "get": {
+        "description": "Lists current and historical Role Bindings authorized for the caller, optionally narrowed to one User or exact scope. A Binding is an effective-dated permission grant; membership or affiliation alone is not returned as authority.",
         "operationId": "listRoleBindings",
+        "parameters": [
+          {
+            "description": "Return only Bindings for this User.",
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "Return only Bindings for this exact authorization scope type.",
+            "in": "query",
+            "name": "scope_type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only Bindings for this exact scope identity.",
+            "in": "query",
+            "name": "scope_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/RoleBindingListOK"
@@ -23242,6 +23806,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
+        "description": "Grants one existing Role to one existing User in an exact effective-dated scope after strong recent authentication. The terminal use case rechecks the caller's current authority and role eligibility; Institution system-administrator authority cannot be placed in a narrower scope.",
         "operationId": "createRoleBinding",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateRoleBinding"
@@ -23306,6 +23871,7 @@
     },
     "/api/v1/role-bindings/{role_binding_id}": {
       "delete": {
+        "description": "Ends the exact Role Binding while retaining its grant history and durable audit provenance. The server prevents removal of the final effective system administrator and does not alter the underlying User, Role, membership, or affiliation.",
         "operationId": "endRoleBinding",
         "responses": {
           "200": {
@@ -23343,6 +23909,12 @@
         "tags": [
           "Roles and access"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/role-bindings/\u003crole-binding-id\u003e' \\\n  --header 'Authorization: Bearer \u003cinteractive-session-access-token\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -23371,6 +23943,7 @@
     },
     "/api/v1/roles": {
       "get": {
+        "description": "Lists built-in and custom Roles visible to the authorized caller. Role definitions name permissions only; effective access also requires a current scoped Role Binding and terminal authorization against current durable state.",
         "operationId": "listRoles",
         "responses": {
           "200": {
@@ -23414,6 +23987,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
+        "description": "Creates a reusable custom Role from a canonical name and an allowlisted set of known permissions. Creation grants the Role to nobody; a separate scoped Role Binding is required before it affects authorization.",
         "operationId": "createRole",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreateRole"
@@ -23472,6 +24046,7 @@
     },
     "/api/v1/roles/{role_id}": {
       "delete": {
+        "description": "Deletes an unprotected custom Role only when no retained Binding dependency prevents removal. Built-in Roles and Roles whose deletion would invalidate active authorization history remain protected.",
         "operationId": "deleteRole",
         "responses": {
           "204": {
@@ -23509,6 +24084,12 @@
         "tags": [
           "Roles and access"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/roles/\u003crole-id\u003e' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -23528,6 +24109,7 @@
         "x-proctor-idempotency": "none"
       },
       "get": {
+        "description": "Returns one built-in or custom Role visible to the caller, including its current permission set and built-in protection flag. The response does not imply that any User currently holds the Role.",
         "operationId": "getRole",
         "responses": {
           "200": {
@@ -23581,6 +24163,7 @@
         }
       ],
       "patch": {
+        "description": "Changes the presentation or complete permission set of one custom Role after rechecking current authority. Built-in Roles are protected, and a permission change can fail when active historical guarantees make the proposed replacement unsafe.",
         "operationId": "updateRole",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateRole"
@@ -23988,6 +24571,7 @@
         "operationId": "listExamIntegrityDiscrepancies",
         "parameters": [
           {
+            "description": "Maximum number of retained Discrepancies to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -23998,6 +24582,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding Discrepancy page.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -24062,9 +24647,11 @@
     },
     "/api/v1/submissions/{submission_id}/integrity-flags": {
       "get": {
+        "description": "Lists bounded manager-authorized Flag summaries created by retained integrity policy processing for one sealed Submission. Summaries report lifecycle and counts without returning evidence payloads, private decisions, candidate-facing accusations, or grades.",
         "operationId": "listExamIntegrityFlags",
         "parameters": [
           {
+            "description": "Maximum number of integrity Flags to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -24075,6 +24662,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding Flag page.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -24139,9 +24727,11 @@
     },
     "/api/v1/submissions/{submission_id}/integrity-flags/{integrity_flag_id}/evidence": {
       "get": {
+        "description": "Lists only the bounded evidence retained for the exact authorized Flag and Submission. Evidence records are non-academic integrity signals, not guilt findings, and remain private to authorized review workflows.",
         "operationId": "listExamIntegrityEvidence",
         "parameters": [
           {
+            "description": "Maximum number of evidence records to return.",
             "in": "query",
             "name": "limit",
             "schema": {
@@ -24152,6 +24742,7 @@
             }
           },
           {
+            "description": "Opaque continuation emitted by the preceding Evidence page.",
             "in": "query",
             "name": "cursor",
             "schema": {
@@ -24219,6 +24810,7 @@
     },
     "/api/v1/submissions/{submission_id}/review": {
       "get": {
+        "description": "Returns the current manager-authorized Review, decision set, bounded counts, and integrity state for one Submission. The response includes private review fields and is never the candidate-facing released result projection.",
         "operationId": "getExamIntegrityReview",
         "responses": {
           "200": {
@@ -24274,6 +24866,7 @@
         }
       ],
       "put": {
+        "description": "Creates the Review or conditionally replaces its private manager notes and approved student remarks under an exact review revision. Finalized Reviews are immutable, and an idempotent replay does not repeat audit or publication effects.",
         "operationId": "updateExamIntegrityReview",
         "parameters": [
           {
@@ -24356,6 +24949,7 @@
         }
       ],
       "put": {
+        "description": "Creates or revision-fences the single current manager decision for one exact Flag. The outcome is a non-academic integrity disposition, never a grade or guilt verdict, and its rationale remains private.",
         "operationId": "saveExamIntegrityDecision",
         "parameters": [
           {
@@ -24435,6 +25029,7 @@
         }
       ],
       "post": {
+        "description": "Finalizes one exact Review revision only after required decisions and integrity completeness checks succeed, freezing its private content and bounded evidence inventory digest. Late records remain explicit Discrepancies and cannot rewrite the finalized inventory.",
         "operationId": "finalizeExamIntegrityReview",
         "parameters": [
           {
@@ -24514,6 +25109,7 @@
         }
       ],
       "post": {
+        "description": "Releases the narrow approved candidate result from one finalized Review revision. The transition does not expose manager notes, rationales, Flags, evidence, Discrepancies, or other private review state.",
         "operationId": "releaseStudentExamResult",
         "parameters": [
           {
@@ -24588,6 +25184,7 @@
     },
     "/api/v1/system/version": {
       "get": {
+        "description": "Returns the release version and immutable build provenance for the currently serving node. The response contains no runtime configuration, credentials, dependency addresses, or installation identity.",
         "operationId": "getSystemVersion",
         "responses": {
           "200": {
@@ -24606,6 +25203,7 @@
     },
     "/api/v1/users": {
       "get": {
+        "description": "Searches only User profiles visible through the caller's current Institution or scoped relationships, ordered by canonical username and identity. Disabled Users remain concealed unless an Institution-wide user viewer explicitly requests them.",
         "operationId": "searchUsers",
         "parameters": [
           {
@@ -24618,6 +25216,7 @@
             }
           },
           {
+            "description": "Canonical username from the preceding page; supply together with after_id.",
             "in": "query",
             "name": "after_username",
             "required": false,
@@ -24626,6 +25225,7 @@
             }
           },
           {
+            "description": "Stable User identity from the preceding page; supply together with after_username.",
             "in": "query",
             "name": "after_id",
             "required": false,
@@ -24634,6 +25234,7 @@
             }
           },
           {
+            "description": "Maximum number of visible User profiles to return.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -24701,6 +25302,7 @@
     },
     "/api/v1/users/me": {
       "get": {
+        "description": "Returns the current principal's own safe User profile from durable state. The projection contains no password data, authentication-provider claims, Session credentials, Personal Access Token material, or private authorization bindings.",
         "operationId": "getCurrentUserProfile",
         "responses": {
           "200": {
@@ -25256,6 +25858,7 @@
     },
     "/api/v1/users/me/settings": {
       "get": {
+        "description": "Returns the signed-in User's exact bounded settings JSON source, format version, revision, and write capability. The server does not reinterpret the source into undocumented fields, and the private response is never shared-cacheable.",
         "operationId": "getCurrentUserSettings",
         "responses": {
           "200": {
@@ -25293,6 +25896,7 @@
         "x-proctor-idempotency": "none"
       },
       "put": {
+        "description": "Validates and replaces the signed-in User's complete settings source under an exact revision fence. An Idempotency-Key replay returns the retained outcome, while stale revisions fail rather than overwriting a concurrent client update.",
         "operationId": "replaceCurrentUserSettings",
         "parameters": [
           {
@@ -25623,6 +26227,7 @@
     },
     "/api/v1/users/{user_id}": {
       "get": {
+        "description": "Returns one safe User profile only when the caller has current contextual visibility through the Institution or a supported scoped relationship. Disabled or unrelated Users are concealed according to the documented authorization behavior.",
         "operationId": "getUserProfile",
         "responses": {
           "200": {
@@ -25676,6 +26281,7 @@
         }
       ],
       "patch": {
+        "description": "Applies a partial administrative profile update after terminal authorization against the target User. It changes presentation fields only; email, credential methods, account state, memberships, and Role Bindings use explicit separate transitions.",
         "operationId": "updateUserProfile",
         "requestBody": {
           "$ref": "#/components/requestBodies/UpdateUserProfile"
@@ -25856,6 +26462,7 @@
         }
       ],
       "post": {
+        "description": "Disables the target User and atomically revokes active Sessions after checking current authority and last-system-administrator safety. Historical affiliations, memberships, Role Bindings, attempts, submissions, and audit records are retained.",
         "operationId": "disableUser",
         "responses": {
           "200": {
@@ -25893,6 +26500,12 @@
         "tags": [
           "Users"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/users/\u003cuser-id\u003e/disable' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -25920,6 +26533,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the target User's email only after strong recent authentication, marks the new address unverified, and starts the bounded account-recovery notification path. It never treats possession of administrator authority as proof that the new address is owned.",
         "operationId": "changeUserEmail",
         "requestBody": {
           "$ref": "#/components/requestBodies/ChangeUserEmail"
@@ -25992,6 +26606,7 @@
         }
       ],
       "post": {
+        "description": "Marks the target User's current email as verified through a distinct strongly authenticated administrative transition. It does not change the address, revive a disabled account, restore Sessions, or bypass current authorization.",
         "operationId": "verifyUserEmailPrivileged",
         "responses": {
           "200": {
@@ -26032,6 +26647,12 @@
         "tags": [
           "Users"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/users/\u003cuser-id\u003e/email/verify' \\\n  --header 'Authorization: Bearer \u003cinteractive-session-access-token\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -26060,6 +26681,7 @@
         }
       ],
       "post": {
+        "description": "Enables a previously disabled User after terminal authorization. The transition preserves history but does not restore revoked Sessions, verify email, add authentication methods, reactivate ended relationships, or recreate Role Bindings.",
         "operationId": "enableUser",
         "responses": {
           "200": {
@@ -26097,6 +26719,12 @@
         "tags": [
           "Users"
         ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --url 'https://proctor.example.edu/api/v1/users/\u003cuser-id\u003e/enable' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e'"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -26119,9 +26747,11 @@
     },
     "/api/v1/users/{user_id}/profile-picture": {
       "delete": {
+        "description": "Removes the target User's current custom picture only when If-Match names its exact strong revision, then returns the retained default profile projection. A stale editor cannot remove a newer upload, and storage cleanup occurs after the durable state change.",
         "operationId": "removeUserProfilePicture",
         "parameters": [
           {
+            "description": "Required strong ETag of the exact custom picture revision to remove.",
             "in": "header",
             "name": "If-Match",
             "required": true,
@@ -26165,6 +26795,12 @@
         "summary": "Remove the custom profile picture and return to the retained default",
         "tags": [
           "Users"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --url 'https://proctor.example.edu/api/v1/users/\u003cuser-id\u003e/profile-picture' \\\n  --header 'Authorization: Bearer \u003ctoken\u003e' \\\n  --header 'X-Proctor-CSRF-Token: \u003csession-csrf-token\u003e' \\\n  --header 'If-Match: \"\u003ccurrent-sha256\u003e\"'"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
@@ -26634,6 +27270,7 @@
     },
     "/health/live": {
       "get": {
+        "description": "Reports whether this process is alive and able to serve the health handler. It does not prove that dependencies are ready or that the node should receive application traffic.",
         "operationId": "getLiveness",
         "responses": {
           "200": {
@@ -26657,6 +27294,7 @@
     },
     "/health/ready": {
       "get": {
+        "description": "Reports whether this node and its required dependencies are ready to serve application traffic. Orchestrators should remove a failing node from service while continuing to use liveness to decide whether the process needs replacement.",
         "operationId": "getReadiness",
         "responses": {
           "200": {

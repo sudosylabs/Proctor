@@ -80,6 +80,7 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of immutable manifest entries to return.
         - name: cursor
           in: query
           required: false
@@ -136,6 +137,7 @@ paths:
           required: false
           schema:
             type: string
+          description: Strong ETag from an earlier authorized response; a match returns 304 without content.
       responses:
         "200":
           $ref: '#/components/responses/ExamSubmissionFileContent'
@@ -206,6 +208,7 @@ components:
             const: nosniff
   schemas:
     ExamSubmissionManagerResponse:
+      description: Manager-safe immutable Submission header without Workspace bytes or integrity evidence.
       type: object
       additionalProperties: false
       required:
@@ -237,6 +240,7 @@ components:
         manifest_schema_version:
           type: integer
           const: 1
+          description: Version of the sealed manifest representation.
         workspace_cursor:
           type: integer
           format: int64
@@ -247,28 +251,34 @@ components:
           type: integer
           minimum: 0
           maximum: 5000
+          description: Total number of file and directory entries in the sealed manifest.
         manifest_total_file_bytes:
           type: integer
           format: int64
           minimum: 0
           maximum: 1073741824
+          description: Sum of sealed file sizes in bytes.
         final_focus_loss_sequence:
           type: integer
           format: int64
           minimum: 0
+          description: Final focus-loss signal sequence acknowledged at submission.
         integrity_state:
           type: string
           enum:
             - settled
             - gapped
+          description: Whether the retained integrity sequence is complete or contains a known gap.
         unresolved_integrity_count:
           type: integer
           format: int64
           minimum: 0
+          description: Count of integrity items still unresolved for review.
         submitted_at:
           type: string
           format: date-time
     ExamSubmissionManifestItemResponse:
+      description: One immutable file or directory entry in a sealed Submission manifest.
       type: object
       additionalProperties: false
       required:
@@ -296,6 +306,7 @@ components:
           format: int64
           minimum: 0
           maximum: 104857600
+          description: Exact file size in bytes; present only for file entries.
         sha256:
           $ref: '#/components/schemas/SHA256'
       oneOf:
@@ -321,6 +332,7 @@ components:
               - required:
                   - sha256
     ExamSubmissionManifestResponse:
+      description: One bounded page from an immutable sealed Submission manifest.
       type: object
       additionalProperties: false
       required:

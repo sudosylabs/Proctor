@@ -7,6 +7,8 @@ paths:
       summary: List bounded integrity Flag summaries for one sealed Submission
       tags:
         - Integrity review
+      description: >-
+        Lists bounded manager-authorized Flag summaries created by retained integrity policy processing for one sealed Submission. Summaries report lifecycle and counts without returning evidence payloads, private decisions, candidate-facing accusations, or grades.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -32,11 +34,13 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of integrity Flags to return.
         - name: cursor
           in: query
           schema:
             type: string
             description: Opaque versioned Flag identity cursor.
+          description: Opaque continuation emitted by the preceding Flag page.
       responses:
         "200":
           $ref: '#/components/responses/ExamIntegrityFlagListOK'
@@ -59,6 +63,8 @@ paths:
       summary: List bounded purpose-specific evidence for one Submission Flag
       tags:
         - Integrity review
+      description: >-
+        Lists only the bounded evidence retained for the exact authorized Flag and Submission. Evidence records are non-academic integrity signals, not guilt findings, and remain private to authorized review workflows.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -84,11 +90,13 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of evidence records to return.
         - name: cursor
           in: query
           schema:
             type: string
             description: Opaque versioned Evidence identity cursor.
+          description: Opaque continuation emitted by the preceding Evidence page.
       responses:
         "200":
           $ref: '#/components/responses/ExamIntegrityEvidenceListOK'
@@ -128,6 +136,7 @@ components:
             $ref: '#/components/schemas/ExamIntegrityEvidenceListResponse'
   schemas:
     ExamIntegrityFlagResponse:
+      description: Manager-safe lifecycle and bounded evidence counts for one integrity Flag.
       type: object
       additionalProperties: false
       required:
@@ -170,11 +179,14 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Evidence records observed beyond the bounded retained inventory.
         unresolved_missing_count:
           type: integer
           format: int64
           minimum: 0
+          description: Missing monotonic signals not reconciled before collection ended.
     ExamIntegrityFlagListResponse:
+      description: One bounded page of manager-authorized integrity Flag summaries.
       type: object
       additionalProperties: false
       required:
@@ -187,7 +199,9 @@ components:
             $ref: '#/components/schemas/ExamIntegrityFlagResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.
     ExamIntegrityEvidenceResponse:
+      description: Purpose-specific retained signal evidence for one integrity Flag.
       type: object
       additionalProperties: false
       required:
@@ -231,6 +245,7 @@ components:
           format: int64
           minimum: 0
           maximum: 86400000
+          description: Observed policy-signal duration in milliseconds.
         source:
           type: string
           enum:
@@ -242,6 +257,7 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Missing monotonic signal count observed before this evidence record.
         observed_at:
           type: string
           format: date-time
@@ -249,6 +265,7 @@ components:
           type: string
           format: date-time
     ExamIntegrityEvidenceListResponse:
+      description: One bounded page of purpose-specific integrity evidence.
       type: object
       additionalProperties: false
       required:
@@ -261,3 +278,4 @@ components:
             $ref: '#/components/schemas/ExamIntegrityEvidenceResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

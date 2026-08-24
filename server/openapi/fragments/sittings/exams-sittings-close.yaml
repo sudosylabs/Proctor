@@ -8,6 +8,8 @@ paths:
       summary: Close an open or paused Exam Sitting early with a private manager reason
       tags:
         - Sittings
+      description: >-
+        Starts or completes early closure for an open or paused Sitting under the exact revision fence. New participation and Workspace mutation stop immediately; unfinished Attempts follow the durable bounded sealing process rather than being discarded.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -58,8 +60,12 @@ paths:
 components:
   requestBodies:
     CloseExamSitting:
+      description: Exact current Sitting revision and private rationale for manager-initiated early closure.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamSittingManagerTransitionRequest'
+          example:
+            expected_revision: 8
+            reason: The examination room was evacuated.

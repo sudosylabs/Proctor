@@ -5,6 +5,8 @@ paths:
       summary: Get the revisioned Access Policy and bounded transition history
       tags:
         - Access policy
+      description: >-
+        Returns the complete current installation admission policy, safe deployment capabilities, and bounded applied transition history to an authorized principal. Provider secrets and mail configuration are never exposed.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -99,6 +101,8 @@ paths:
       summary: Evaluate an Access Policy replacement without mutating it
       tags:
         - Access policy
+      description: >-
+        Evaluates the complete proposed replacement against the current revision, configured provider capabilities, invitation delivery, and last-administrator access paths. Preflight makes no durable change and does not reserve the revision, so replacement repeats every check in its authoritative transaction.
       x-proctor-auth: strong_recent_session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -139,11 +143,22 @@ paths:
 components:
   requestBodies:
     PreflightAccessPolicy:
+      description: The complete revision-fenced policy proposal to evaluate without mutation.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AccessPolicySettingsRequest'
+          example:
+            expected_revision: 7
+            revoke_existing_sessions: true
+            local_login_enabled: true
+            public_registration_enabled: false
+            invitation_admission_enabled: true
+            invitation_local_credential_enabled: true
+            desktop_authorization_enabled: true
+            provider_admissions:
+              university_oidc: invitation_required
     ReplaceAccessPolicy:
       required: true
       content:
@@ -183,6 +198,7 @@ components:
             $ref: '#/components/schemas/AccessPolicyPreflightResponse'
   schemas:
     ProviderAdmissionMode:
+      description: Admission rule applied after a configured provider proves an external identity.
       type: string
       enum:
         - linked_only
@@ -233,6 +249,7 @@ components:
             $ref: '#/components/schemas/ProviderAdmissionMode'
           description: Admission mode for each configured external authentication provider, keyed by provider ID.
     AccessPolicyTransitionResponse:
+      description: Safe immutable summary of one applied Access Policy replacement.
       type: object
       additionalProperties: false
       required:
@@ -270,10 +287,12 @@ components:
         changed_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the replacement committed.
         outcome:
           type: string
           const: applied
     AccessPolicyResponse:
+      description: Current revisioned Access Policy plus bounded safe capabilities and transition history.
       type: object
       additionalProperties: false
       required:
@@ -297,6 +316,7 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Monotonic policy revision used for optimistic concurrency.
         created_at:
           type: integer
           format: int64
@@ -325,6 +345,7 @@ components:
           maxItems: 100
           items:
             $ref: '#/components/schemas/AccessPolicyTransitionResponse'
+          description: Newest bounded applied transitions retained for administrative context.
         available_providers:
           type: array
           maxItems: 64
@@ -332,7 +353,9 @@ components:
             $ref: '#/components/schemas/ExternalAuthenticationProviderResponse'
         durable_mail:
           type: boolean
+          description: Whether the deployment can durably deliver invitation and account-security mail.
     AccessPolicyBlockerResponse:
+      description: Safe reason the proposed policy cannot currently be applied.
       type: object
       additionalProperties: false
       required:
@@ -347,7 +370,9 @@ components:
             - last_system_administrator_path
         provider_id:
           type: string
+          description: Configured provider associated with the blocker, when provider-specific.
     AccessPolicyPreflightResponse:
+      description: Current safe blockers for a proposed Access Policy replacement.
       type: object
       additionalProperties: false
       required:
@@ -358,3 +383,4 @@ components:
           maxItems: 66
           items:
             $ref: '#/components/schemas/AccessPolicyBlockerResponse'
+          description: Empty when no blocker is currently observed; replacement still repeats all checks.

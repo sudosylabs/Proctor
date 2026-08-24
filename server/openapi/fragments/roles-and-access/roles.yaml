@@ -5,6 +5,8 @@ paths:
       summary: List Roles
       tags:
         - Roles and access
+      description: >-
+        Lists built-in and custom Roles visible to the authorized caller. Role definitions name permissions only; effective access also requires a current scoped Role Binding and terminal authorization against current durable state.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -34,6 +36,8 @@ paths:
       summary: Create a custom Role
       tags:
         - Roles and access
+      description: >-
+        Creates a reusable custom Role from a canonical name and an allowlisted set of known permissions. Creation grants the Role to nobody; a separate scoped Role Binding is required before it affects authorization.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -77,6 +81,8 @@ paths:
       summary: Get a Role
       tags:
         - Roles and access
+      description: >-
+        Returns one built-in or custom Role visible to the caller, including its current permission set and built-in protection flag. The response does not imply that any User currently holds the Role.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -110,6 +116,8 @@ paths:
       summary: Update a custom Role
       tags:
         - Roles and access
+      description: >-
+        Changes the presentation or complete permission set of one custom Role after rechecking current authority. Built-in Roles are protected, and a permission change can fail when active historical guarantees make the proposed replacement unsafe.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -154,6 +162,15 @@ paths:
       summary: Delete a custom Role
       tags:
         - Roles and access
+      description: >-
+        Deletes an unprotected custom Role only when no retained Binding dependency prevents removal. Built-in Roles and Roles whose deletion would invalidate active authorization history remain protected.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/roles/<role-id>' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -200,17 +217,30 @@ components:
       description: The Role identifier.
   requestBodies:
     CreateRole:
+      description: Canonical custom Role presentation and complete initial permission set.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateRoleRequest'
+          example:
+            name: assessment-reviewer
+            display_name: Assessment Reviewer
+            description: Reviews examination integrity records.
+            permissions:
+              - class.view
     UpdateRole:
+      description: Partial custom Role replacement; omitted or null fields remain unchanged.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/UpdateRoleRequest'
+          example:
+            display_name: Senior Assessment Reviewer
+            description: Reviews examination and integrity records.
+            permissions:
+              - class.view
   responses:
     RoleListOK:
       description: Role collection
@@ -234,10 +264,12 @@ components:
       description: Role deleted
   schemas:
     RoleListResponse:
+      description: Roles visible to the authorized caller.
       type: array
       items:
         $ref: '#/components/schemas/RoleResponse'
     CreateRoleRequest:
+      description: Canonical identity, presentation, and complete permission set for a new custom Role.
       type: object
       additionalProperties: false
       required:
@@ -247,15 +279,20 @@ components:
       properties:
         name:
           type: string
+          description: Immutable canonical machine name for the Role.
         display_name:
           type: string
+          description: Human-facing Role name.
         description:
           type: string
+          description: Human-facing explanation of the Role's intended responsibility.
         permissions:
           type: array
+          description: Duplicate-free complete set of known permission actions granted by the Role.
           items:
             type: string
     UpdateRoleRequest:
+      description: Mutable custom Role fields; the canonical name never changes.
       type: object
       additionalProperties: false
       properties:

@@ -6,15 +6,17 @@ maturity: preview
 sidebar_position: 8
 ---
 
+import Link from '@docusaurus/Link';
+
 # Consume Audit History
 
-[List audit events](/api/reference/list-audit-events) returns only the history
+<Link to="/api/reference/list-audit-events">List audit events</Link> returns only the history
 the current principal may view for the requested Institution or Academic Unit
 scope. Authentication never bypasses that resource authorization.
 
 ## Page Incrementally
 
-Choose one authorized scope and stable filter set, request a bounded page, and
+Choose a stable authorized filter set, request a bounded page, and
 follow `next_cursor` unchanged until it is absent. The audit response calls its
 array `events`; it is always present even when empty.
 
@@ -22,8 +24,8 @@ array `events`; it is always present even when empty.
 curl --get \
   --url https://proctor.example.edu/api/v1/audits \
   --header 'Authorization: Bearer <token>' \
-  --data-urlencode 'scope_type=academic_unit' \
-  --data-urlencode 'scope_id=<academic-unit-id>' \
+  --data-urlencode 'resource_type=exam' \
+  --data-urlencode 'resource_id=<exam-id>' \
   --data-urlencode 'limit=100' \
   --data-urlencode 'cursor=<next-cursor-if-present>'
 ```

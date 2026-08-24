@@ -1,6 +1,7 @@
 components:
   schemas:
     MailDeliveryState:
+      description: Durable lifecycle state of one mail delivery occurrence.
       type: string
       enum:
         - queued
@@ -10,6 +11,7 @@ components:
         - suppressed
         - canceled
     MailDeliveryResponse:
+      description: Safe durable mail delivery metadata with the recipient masked and content omitted.
       type: object
       additionalProperties: false
       required:
@@ -40,26 +42,33 @@ components:
         template_digest:
           type: string
           pattern: ^[0-9a-f]{64}$
+          description: SHA-256 digest of the exact rendered template revision, encoded as lowercase hexadecimal.
         masked_recipient:
           type: string
           maxLength: 254
+          description: Redacted recipient address suitable for bounded administrative display.
         state:
           $ref: '#/components/schemas/MailDeliveryState'
         created_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the delivery was created.
         updated_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds of the latest durable state change.
         message_date:
           type: integer
           format: int64
+          description: Unix time in milliseconds represented by the message Date header.
         deadline:
           type: integer
           format: int64
+          description: Unix time in milliseconds after which the message is no longer relevant for delivery.
         message_id:
           type: string
           maxLength: 900
+          description: Safe retained Message-ID for delivery correlation, not a credential.
         attempt_count:
           type: integer
           minimum: 0
@@ -67,9 +76,12 @@ components:
         accepted_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when SMTP accepted the message.
         failed_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds when the delivery became terminally failed.
         public_failure_code:
           type: string
           maxLength: 128
+          description: Stable safe failure category; raw SMTP or infrastructure errors are never exposed.

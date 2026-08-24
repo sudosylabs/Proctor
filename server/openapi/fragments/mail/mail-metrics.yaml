@@ -5,6 +5,8 @@ paths:
       summary: Inspect bounded mail delivery metrics
       tags:
         - Mail
+      description: >-
+        Returns bounded aggregate delivery and queue health metrics for public allowlisted template categories. Metrics contain no recipient identity, message content, payload identifiers, credentials, or raw provider errors.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -42,6 +44,7 @@ components:
             $ref: '#/components/schemas/MailMetricsResponse'
   schemas:
     MailDeliveryMetricResponse:
+      description: Aggregate delivery outcome and processing latency for one bounded metric bucket.
       type: object
       additionalProperties: false
       required:
@@ -62,23 +65,29 @@ components:
         outcome_code:
           type: string
           maxLength: 128
+          description: Stable safe outcome category for this metric bucket.
         count:
           type: integer
           format: int64
           minimum: 0
+          description: Number of durable deliveries in the bucket.
         attempt_count:
           type: integer
           format: int64
           minimum: 0
+          description: Total delivery Attempts represented by the bucket.
         processing_latency_millis:
           type: integer
           format: int64
           minimum: 0
+          description: Aggregate processing latency in milliseconds.
         maximum_processing_latency_millis:
           type: integer
           format: int64
           minimum: 0
+          description: Highest single processing latency in milliseconds within the bucket.
     MailQueueMetricResponse:
+      description: Aggregate queue age and health for one bounded metric bucket.
       type: object
       additionalProperties: false
       required:
@@ -107,6 +116,7 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Age in milliseconds of the oldest matching queued delivery.
         health_code:
           type: string
           enum:
@@ -114,9 +124,12 @@ components:
             - mail.healthy
             - mail.smtp_outage
             - mail.queue_delayed
+          description: Stable safe operational classification for this queue bucket.
         truncated:
           type: boolean
+          description: True when the bounded scan did not include every matching delivery.
     MailMetricsResponse:
+      description: Bounded safe mail delivery and queue metrics.
       type: object
       additionalProperties: false
       required:
@@ -142,3 +155,4 @@ components:
             - mail.healthy
             - mail.smtp_outage
             - mail.queue_delayed
+          description: Overall safe mail subsystem health classification.

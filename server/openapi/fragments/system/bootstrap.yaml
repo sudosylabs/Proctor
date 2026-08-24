@@ -5,6 +5,8 @@ paths:
       summary: Get installation bootstrap status
       tags:
         - System
+      description: >-
+        Reports whether this installation has completed its one-time bootstrap transition. The public projection exposes only the initialized flag, so callers can choose the bootstrap or ordinary sign-in entry path without learning Institution or administrator details.
       x-proctor-auth: public
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -20,6 +22,8 @@ paths:
       summary: Bootstrap the installation
       tags:
         - System
+      description: >-
+        Atomically creates the installation's single Institution, first administrator, initial built-in role and binding, and initial Access Policy. The operator-provided bootstrap secret is accepted only before initialization; concurrent or repeated attempts cannot replace the established installation.
       x-proctor-auth: public
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -48,11 +52,26 @@ paths:
 components:
   requestBodies:
     BootstrapInstallation:
+      description: >-
+        The initial Institution and administrator identity plus the operator-controlled one-time bootstrap secret and administrator password.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/BootstrapInstallationRequest'
+          example:
+            institution:
+              name: northbridge-university
+              display_name: Northbridge University
+              description: Examination services
+            administrator:
+              username: initial-admin
+              email: initial-admin@example.edu
+              display_name: Initial Administrator
+              locale: en
+              timezone: Europe/Paris
+            password: <strong-bootstrap-password>
+            bootstrap_secret: <operator-provided-bootstrap-secret>
   responses:
     InstallationStatusOK:
       description: Installation status
@@ -68,6 +87,7 @@ components:
             $ref: '#/components/schemas/InstallationBootstrapResult'
   schemas:
     InstallationStatusResponse:
+      description: Safe public bootstrap state for one installation.
       type: object
       additionalProperties: false
       required:
@@ -75,7 +95,9 @@ components:
       properties:
         initialized:
           type: boolean
+          description: True after the one-time installation bootstrap transaction has committed.
     BootstrapInstitutionRequest:
+      description: Human and canonical identity for the installation's single Institution.
       type: object
       additionalProperties: false
       required:
@@ -84,11 +106,15 @@ components:
       properties:
         name:
           type: string
+          description: Canonical machine name for the Institution.
         display_name:
           type: string
+          description: Human-facing Institution name.
         description:
           type: string
+          description: Optional human-facing description of the Institution.
     BootstrapAdministratorRequest:
+      description: Profile fields for the first Institution administrator account.
       type: object
       additionalProperties: false
       required:
@@ -97,19 +123,26 @@ components:
       properties:
         username:
           type: string
+          description: Canonical sign-in and mention name for the first administrator.
         email:
           type: string
+          format: email
+          description: Email address owned by the first administrator.
         display_name:
           type: string
+          description: Optional human-facing administrator name.
         first_name:
           type: string
         last_name:
           type: string
         locale:
           type: string
+          description: Optional locale used for localized presentation.
         timezone:
           type: string
+          description: Optional IANA time-zone name for the administrator.
     BootstrapInstallationRequest:
+      description: Complete input to the one-time installation bootstrap transaction.
       type: object
       additionalProperties: false
       required:
@@ -124,12 +157,16 @@ components:
           $ref: '#/components/schemas/BootstrapAdministratorRequest'
         password:
           type: string
+          description: Initial administrator password; accepted only by bootstrap and never returned.
+          writeOnly: true
         bootstrap_secret:
           type: string
           minLength: 1
           maxLength: 512
           writeOnly: true
+          description: Operator-controlled one-time secret proving authority to initialize this deployment.
     InstallationStateResponse:
+      description: Durable identities and commit time established by bootstrap.
       type: object
       additionalProperties: false
       required:
@@ -140,11 +177,13 @@ components:
         initialized_at:
           type: integer
           format: int64
+          description: Unix time in milliseconds at which bootstrap committed.
         institution_id:
           $ref: '#/components/schemas/ID'
         administrator_user_id:
           $ref: '#/components/schemas/ID'
     InstallationBootstrapResult:
+      description: Resources atomically created by the successful bootstrap transition.
       type: object
       additionalProperties: false
       properties:
@@ -161,6 +200,7 @@ components:
         access_policy:
           $ref: '#/components/schemas/InitialAccessPolicyResponse'
     InitialAccessPolicyResponse:
+      description: Initial admission and sign-in policy created during bootstrap.
       type: object
       additionalProperties: false
       required:

@@ -7,6 +7,8 @@ paths:
       summary: Get only the explicitly released candidate result projection
       tags:
         - Submissions
+      description: >-
+        Returns the narrow candidate-facing result only after an authorized manager has finalized review and explicitly released it. Private notes, manager rationale, integrity evidence, decisions, and unreleased grading data remain concealed.
       x-proctor-auth: session_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -46,6 +48,7 @@ components:
             $ref: '#/components/schemas/StudentExamResultResponse'
   schemas:
     StudentExamResultResponse:
+      description: Explicitly released candidate result with private review content omitted.
       type: object
       additionalProperties: false
       required:
@@ -64,6 +67,8 @@ components:
         student_remarks_markdown:
           type: string
           maxLength: 8192
+          description: Approved candidate-facing Markdown remarks frozen at release.
         released_at:
           type: string
           format: date-time
+          description: RFC 3339 timestamp at which the result projection was explicitly released.

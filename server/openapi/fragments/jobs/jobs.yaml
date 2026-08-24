@@ -5,6 +5,8 @@ paths:
       summary: List allowlisted durable Jobs
       tags:
         - Jobs
+      description: >-
+        Lists only Job types deliberately exposed through the public administration contract and authorized for the current principal. Private payloads, claims, worker identities, and infrastructure errors are omitted from every projection.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -28,16 +30,19 @@ paths:
             minimum: 1
             maximum: 200
             default: 50
+          description: Maximum number of Jobs to return.
         - name: cursor
           in: query
           schema:
             type: string
+          description: Opaque continuation emitted by the preceding page for the same filters.
         - name: status
           in: query
           schema:
             type: array
             items:
               $ref: '#/components/schemas/JobStatus'
+          description: Optional set of durable lifecycle states to include.
       responses:
         "200":
           $ref: '#/components/responses/JobListOK'
@@ -56,11 +61,14 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The allowlisted durable Job to retrieve.
     get:
       operationId: getJob
       summary: Get one allowlisted durable Job
       tags:
         - Jobs
+      description: >-
+        Returns the safe current projection of one authorized, allowlisted durable Job. A Job outside the caller's permitted scope or public type allowlist is concealed through the documented not-found or authorization behavior.
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required
@@ -99,6 +107,7 @@ components:
             $ref: '#/components/schemas/JobListResponse'
   schemas:
     JobListResponse:
+      description: One bounded page of safe durable Job projections.
       type: object
       additionalProperties: false
       required:
@@ -110,3 +119,4 @@ components:
             $ref: '#/components/schemas/JobResponse'
         next_cursor:
           type: string
+          description: Opaque continuation for the next page, omitted after the final page.

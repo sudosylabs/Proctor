@@ -8,6 +8,8 @@ paths:
       summary: Extend the deadline of an open or paused Exam Sitting
       tags:
         - Sittings
+      description: >-
+        Moves an open or paused Sitting deadline to a strictly later instant under its exact revision fence. Class and Academic Period eligibility are rechecked, and the operation cannot shorten the window or revive a closed Sitting.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -62,13 +64,19 @@ paths:
 components:
   requestBodies:
     ExtendExamSitting:
+      description: Exact Sitting revision, strictly later deadline, and private manager rationale.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ExtendExamSittingRequest'
+          example:
+            expected_revision: 6
+            scheduled_end_at: "2026-12-14T11:30:00Z"
+            reason: Thirty minutes were granted after a verified interruption.
   schemas:
     ExtendExamSittingRequest:
+      description: Revision-fenced deadline extension for an open or paused Sitting.
       type: object
       additionalProperties: false
       required:
@@ -83,6 +91,7 @@ components:
         scheduled_end_at:
           type: string
           format: date-time
+          description: New RFC 3339 deadline, which must be strictly later than the current deadline.
         reason:
           type: string
           minLength: 1

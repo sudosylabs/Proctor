@@ -8,6 +8,8 @@ paths:
       summary: Resume a paused Exam Sitting with a private manager reason
       tags:
         - Sittings
+      description: >-
+        Resumes one paused Sitting under its exact revision fence after rechecking the Exam and delivery window. It does not renew expired candidate Participation credentials; affected candidates must complete the ordinary reconnect or re-allow flow.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -59,8 +61,12 @@ paths:
 components:
   requestBodies:
     ResumeExamSitting:
+      description: Exact current Sitting revision and private rationale for resuming delivery.
       required: true
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamSittingManagerTransitionRequest'
+          example:
+            expected_revision: 5
+            reason: The network interruption has been resolved.

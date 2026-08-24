@@ -6,11 +6,21 @@ paths:
         required: true
         schema:
           $ref: '#/components/schemas/ID'
+        description: The supported durable Job for which cancellation is requested.
     post:
       operationId: cancelJob
       summary: Request cancellation of a supported Job
       tags:
         - Jobs
+      description: >-
+        Records a cooperative cancellation request for an authorized Job type that supports cancellation. Success reports the current durable Job projection; it does not claim that in-flight work stopped before the response, and a terminal or unsupported Job fails without rewriting history.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/jobs/<job-id>/cancel' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'X-Proctor-CSRF-Token: <session-csrf-token>'
       x-proctor-auth: principal_required
       x-proctor-error-codes:
         - authentication.required

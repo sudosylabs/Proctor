@@ -123,6 +123,7 @@ components:
           minimum: 0
           description: The final focus-loss sequence observed by the client; zero is valid.
     ExamSubmissionReceiptResponse:
+      description: Candidate-safe retained receipt for an atomically sealed Submission.
       type: object
       additionalProperties: false
       required:
@@ -144,8 +145,11 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Final acknowledged Workspace mutation cursor sealed into the Submission.
         manifest_digest:
           $ref: '#/components/schemas/SHA256'
+          description: SHA-256 digest of the immutable sealed Workspace manifest.
         submitted_at:
           type: string
           format: date-time
+          description: RFC 3339 time at which the Submission committed.

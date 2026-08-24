@@ -10,6 +10,15 @@ paths:
         - Sittings
       description: >-
         The multipart body contains metadata first and content second. A successful response exposes only authoritative ready-stage metadata; storage and lease identities remain private.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --request POST \
+              --url 'https://proctor.example.edu/api/v1/exams/<exam-id>/sittings/<sitting-id>/correction-resource-stages' \
+              --header 'Authorization: Bearer <token>' \
+              --header 'Idempotency-Key: correction-stage-01J7YS5EP6P9M3JAXKQFRHD5TB' \
+              --form 'metadata={"base_revision_id":"ybndrfg8ejkmcpqxot1uwisza3","target_kind":"addition","media_type":"application/pdf","size":128,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./correction.pdf;type=application/pdf'
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -44,6 +53,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
+        description: Exactly two ordered multipart parts containing strict stage metadata followed by the bounded resource bytes.
         required: true
         content:
           multipart/form-data:
@@ -121,6 +131,7 @@ components:
           type: string
           format: binary
     ExamSittingCorrectionResourceStageResponse:
+      description: Safe ready-stage identity and content metadata for one purpose-bound correction upload.
       type: object
       additionalProperties: false
       required:
@@ -147,3 +158,4 @@ components:
         expires_at:
           type: string
           format: date-time
+          description: RFC 3339 expiry after which this unconsumed stage cannot be applied.
