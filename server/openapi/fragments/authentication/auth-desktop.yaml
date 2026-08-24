@@ -3,6 +3,8 @@ paths:
     post:
       operationId: startDesktopAuthorization
       summary: Create a purpose-bound Desktop browser authorization transaction
+      description: >-
+        Starts a short-lived browser handoff for a Desktop client, binding the callback, opaque state, selected authentication method, device presentation, and S256 PKCE challenge. No Session is created until the browser approves the transaction and the Desktop client exchanges the one-use code.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -39,6 +41,8 @@ paths:
     post:
       operationId: approveDesktopAuthorization
       summary: Approve a Desktop transaction with the current browser Session
+      description: >-
+        Uses the current interactive browser Session to approve the exact pending Desktop transaction identified by its handle, browser proof, and state. Approval issues a short-lived one-use code without exposing browser credentials to the Desktop client.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -78,6 +82,8 @@ paths:
     post:
       operationId: cancelDesktopAuthorization
       summary: Cancel one pending Desktop browser authorization transaction
+      description: >-
+        Cancels the exact pending Desktop transaction after validating its handle, browser proof, and state. Cancellation is terminal and prevents a later approval or token exchange for that transaction.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -109,6 +115,8 @@ paths:
     post:
       operationId: exchangeDesktopAuthorizationCode
       summary: Atomically exchange one Desktop code and S256 verifier for an ordinary Desktop Session
+      description: >-
+        Consumes the one-use Desktop authorization code only when the opaque state and PKCE verifier match the original transaction. A successful exchange creates an ordinary bounded Desktop Session; replay or mismatched proof is rejected.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -146,22 +154,40 @@ components:
   requestBodies:
     DesktopAuthorizationStart:
       required: true
+      description: Declares the trusted loopback callback, anti-forgery state, S256 PKCE challenge, authentication method, and optional device presentation for the Desktop handoff.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/DesktopAuthorizationStartRequest'
+          example:
+            callback_url: http://127.0.0.1:49152/callback
+            state: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            code_challenge: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            authentication_method: password
+            device_id: exam-laptop-01
+            device_name: Exam laptop
     DesktopAuthorizationProof:
       required: true
+      description: Proves possession of the browser-facing transaction values before approving or cancelling the exact pending Desktop handoff.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/DesktopAuthorizationProofRequest'
+          example:
+            handle: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            browser_proof: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            state: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
     DesktopAuthorizationExchange:
       required: true
+      description: Supplies the one-use authorization code, original state, and PKCE verifier required to create the Desktop Session.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/DesktopAuthorizationExchangeRequest'
+          example:
+            code: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            state: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+            code_verifier: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
   responses:
     DesktopAuthorizationStarted:
       description: Desktop browser authorization transaction created

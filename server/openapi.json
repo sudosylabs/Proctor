@@ -109,6 +109,7 @@
         }
       },
       "ClientType": {
+        "description": "Client family that will receive the authenticated result and determines the permitted handoff behavior.",
         "in": "query",
         "name": "client_type",
         "required": false,
@@ -122,6 +123,7 @@
         }
       },
       "DeviceID": {
+        "description": "Optional stable client-controlled device identifier recorded on the resulting Session.",
         "in": "query",
         "name": "device_id",
         "required": false,
@@ -130,6 +132,7 @@
         }
       },
       "DeviceName": {
+        "description": "Optional human-facing device label shown in Session management views.",
         "in": "query",
         "name": "device_name",
         "required": false,
@@ -280,6 +283,7 @@
         }
       },
       "ReturnTo": {
+        "description": "Validated relative client destination to restore after the provider callback; unsafe or external targets are rejected.",
         "in": "query",
         "name": "return_to",
         "required": false,
@@ -401,21 +405,32 @@
       "BeginInvitationExternalAuthentication": {
         "content": {
           "application/json": {
+            "example": {
+              "device_id": "exam-laptop-01",
+              "device_name": "Exam laptop",
+              "invitation_claim": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "return_to": "/invitations/complete"
+            },
             "schema": {
               "$ref": "#/components/schemas/ExternalAuthenticationStartRequest"
             }
           }
         },
+        "description": "Supplies the one-time Invitation claim plus the validated post-authentication destination and optional device presentation.",
         "required": true
       },
       "BeginProviderConnection": {
         "content": {
           "application/json": {
+            "example": {
+              "return_to": "/settings/authentication"
+            },
             "schema": {
               "$ref": "#/components/schemas/BeginProviderConnectionRequest"
             }
           }
         },
+        "description": "Supplies the validated relative destination to restore after the external provider connection completes.",
         "required": true
       },
       "BootstrapInstallation": {
@@ -570,21 +585,30 @@
       "CompleteEmailVerification": {
         "content": {
           "application/json": {
+            "example": {
+              "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
             "schema": {
               "$ref": "#/components/schemas/EmailVerificationCompletionRequest"
             }
           }
         },
+        "description": "Supplies the one-time email-verification token delivered through the configured mail channel.",
         "required": true
       },
       "CompletePasswordReset": {
         "content": {
           "application/json": {
+            "example": {
+              "password": "correct-horse-battery-staple-2026",
+              "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
             "schema": {
               "$ref": "#/components/schemas/PasswordResetCompletionRequest"
             }
           }
         },
+        "description": "Supplies the one-time reset token and the replacement password, both of which must be treated as secrets by clients and logs.",
         "required": true
       },
       "ConfigureExamDraftExecutionProfile": {
@@ -728,11 +752,20 @@
       "CreatePersonalAccessToken": {
         "content": {
           "application/json": {
+            "example": {
+              "academic_unit_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "description": "Read examination schedules from the registrar tool",
+              "expires_at": 1798761600000,
+              "scopes": [
+                "examinations:read"
+              ]
+            },
             "schema": {
               "$ref": "#/components/schemas/CreatePersonalAccessTokenRequest"
             }
           }
         },
+        "description": "Declares the human-facing purpose, bounded scopes, optional Academic Unit boundary, and absolute expiry for the new token.",
         "required": true
       },
       "CreateProgramme": {
@@ -817,31 +850,52 @@
       "DesktopAuthorizationExchange": {
         "content": {
           "application/json": {
+            "example": {
+              "code": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "code_verifier": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+              "state": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+            },
             "schema": {
               "$ref": "#/components/schemas/DesktopAuthorizationExchangeRequest"
             }
           }
         },
+        "description": "Supplies the one-use authorization code, original state, and PKCE verifier required to create the Desktop Session.",
         "required": true
       },
       "DesktopAuthorizationProof": {
         "content": {
           "application/json": {
+            "example": {
+              "browser_proof": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+              "handle": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "state": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+            },
             "schema": {
               "$ref": "#/components/schemas/DesktopAuthorizationProofRequest"
             }
           }
         },
+        "description": "Proves possession of the browser-facing transaction values before approving or cancelling the exact pending Desktop handoff.",
         "required": true
       },
       "DesktopAuthorizationStart": {
         "content": {
           "application/json": {
+            "example": {
+              "authentication_method": "password",
+              "callback_url": "http://127.0.0.1:49152/callback",
+              "code_challenge": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+              "device_id": "exam-laptop-01",
+              "device_name": "Exam laptop",
+              "state": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
             "schema": {
               "$ref": "#/components/schemas/DesktopAuthorizationStartRequest"
             }
           }
         },
+        "description": "Declares the trusted loopback callback, anti-forgery state, S256 PKCE challenge, authentication method, and optional device presentation for the Desktop handoff.",
         "required": true
       },
       "DryRunStudentProgression": {
@@ -900,11 +954,15 @@
       "EnrollPassword": {
         "content": {
           "application/json": {
+            "example": {
+              "password": "correct-horse-battery-staple-2026"
+            },
             "schema": {
               "$ref": "#/components/schemas/EnrollPasswordRequest"
             }
           }
         },
+        "description": "Supplies the policy-compliant local password to enroll; clients must prevent it from entering logs, traces, or analytics.",
         "required": true
       },
       "ExtendExamSitting": {
@@ -944,11 +1002,15 @@
       "MFACode": {
         "content": {
           "application/json": {
+            "example": {
+              "code": "123456"
+            },
             "schema": {
               "$ref": "#/components/schemas/MFACodeRequest"
             }
           }
         },
+        "description": "Supplies a current TOTP code or, where permitted, one unused recovery code; clients must treat the value as sensitive.",
         "required": true
       },
       "MoveCandidateWorkspaceEntry": {
@@ -1026,11 +1088,17 @@
       "PublicRegistration": {
         "content": {
           "application/json": {
+            "example": {
+              "email": "student.one@example.edu",
+              "password": "correct-horse-battery-staple-2026",
+              "username": "student.one"
+            },
             "schema": {
               "$ref": "#/components/schemas/PublicRegistrationRequest"
             }
           }
         },
+        "description": "Supplies the new account's unique username, normalized email address, and policy-compliant local password.",
         "required": true
       },
       "PublishExamRevision": {
@@ -1157,11 +1225,15 @@
       "RequestPasswordReset": {
         "content": {
           "application/json": {
+            "example": {
+              "email": "student.one@example.edu"
+            },
             "schema": {
               "$ref": "#/components/schemas/PasswordResetRequest"
             }
           }
         },
+        "description": "Supplies the account email address to which an eligible password-reset message should be sent.",
         "required": true
       },
       "ResumeExamSitting": {
@@ -1182,11 +1254,15 @@
       "RevokeSession": {
         "content": {
           "application/json": {
+            "example": {
+              "session_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/RevokeSessionRequest"
             }
           }
         },
+        "description": "Identifies the exact Session belonging to the current User that should be revoked.",
         "required": true
       },
       "RunAcademicAdministrationBatch": {
@@ -14716,6 +14792,7 @@
     },
     "/api/v1/auth/desktop/authorizations": {
       "post": {
+        "description": "Starts a short-lived browser handoff for a Desktop client, binding the callback, opaque state, selected authentication method, device presentation, and S256 PKCE challenge. No Session is created until the browser approves the transaction and the Desktop client exchanges the one-use code.",
         "operationId": "startDesktopAuthorization",
         "requestBody": {
           "$ref": "#/components/requestBodies/DesktopAuthorizationStart"
@@ -14766,6 +14843,7 @@
     },
     "/api/v1/auth/desktop/authorizations/approve": {
       "post": {
+        "description": "Uses the current interactive browser Session to approve the exact pending Desktop transaction identified by its handle, browser proof, and state. Approval issues a short-lived one-use code without exposing browser credentials to the Desktop client.",
         "operationId": "approveDesktopAuthorization",
         "requestBody": {
           "$ref": "#/components/requestBodies/DesktopAuthorizationProof"
@@ -14823,6 +14901,7 @@
     },
     "/api/v1/auth/desktop/authorizations/cancel": {
       "post": {
+        "description": "Cancels the exact pending Desktop transaction after validating its handle, browser proof, and state. Cancellation is terminal and prevents a later approval or token exchange for that transaction.",
         "operationId": "cancelDesktopAuthorization",
         "requestBody": {
           "$ref": "#/components/requestBodies/DesktopAuthorizationProof"
@@ -14867,6 +14946,7 @@
     },
     "/api/v1/auth/desktop/token": {
       "post": {
+        "description": "Consumes the one-use Desktop authorization code only when the opaque state and PKCE verifier match the original transaction. A successful exchange creates an ordinary bounded Desktop Session; replay or mismatched proof is rejected.",
         "operationId": "exchangeDesktopAuthorizationCode",
         "requestBody": {
           "$ref": "#/components/requestBodies/DesktopAuthorizationExchange"
@@ -14918,6 +14998,7 @@
     },
     "/api/v1/auth/email-verification/complete": {
       "post": {
+        "description": "Consumes one valid short-lived verification token and marks its bound email address verified. The token is single use, cannot verify another address, and an invalid or expired token reveals no account details.",
         "operationId": "completeEmailVerification",
         "requestBody": {
           "$ref": "#/components/requestBodies/CompleteEmailVerification"
@@ -14954,6 +15035,7 @@
     },
     "/api/v1/auth/email-verification/request": {
       "post": {
+        "description": "Requests a new short-lived verification message for the authenticated User's current unverified email address. The response is deliberately non-enumerating, and any prior usable verification credential may be superseded.",
         "operationId": "requestEmailVerification",
         "responses": {
           "202": {
@@ -14987,6 +15069,13 @@
         "summary": "Request an email-verification message",
         "tags": [
           "Authentication"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Request verification mail",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/auth/email-verification/request"
+          }
         ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
@@ -15061,6 +15150,7 @@
     },
     "/api/v1/auth/logout": {
       "post": {
+        "description": "Revokes the exact interactive Session represented by the current access credential and clears browser authentication cookies when present. Other Sessions for the User remain active.",
         "operationId": "logout",
         "responses": {
           "204": {
@@ -15092,6 +15182,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Revoke the current Session",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/auth/logout"
+          }
+        ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15105,6 +15202,7 @@
     },
     "/api/v1/auth/password-reset/complete": {
       "post": {
+        "description": "Consumes one valid short-lived reset token, applies the new policy-compliant password, and revokes affected Sessions according to the authentication contract. Expired, replayed, or superseded credentials are rejected without exposing account state.",
         "operationId": "completePasswordReset",
         "requestBody": {
           "$ref": "#/components/requestBodies/CompletePasswordReset"
@@ -15142,6 +15240,7 @@
     },
     "/api/v1/auth/password-reset/request": {
       "post": {
+        "description": "Requests a short-lived password-reset message for the supplied email address when an eligible local account exists. The accepted response is intentionally identical for known and unknown addresses to prevent account discovery.",
         "operationId": "requestPasswordReset",
         "requestBody": {
           "$ref": "#/components/requestBodies/RequestPasswordReset"
@@ -15177,6 +15276,7 @@
     },
     "/api/v1/auth/providers": {
       "get": {
+        "description": "Returns the public presentation of external providers currently permitted by Access Policy. Provider secrets, discovery internals, and disabled providers are omitted; clients should treat this list as dynamic.",
         "operationId": "listAuthenticationProviders",
         "responses": {
           "200": {
@@ -15200,6 +15300,7 @@
     },
     "/api/v1/auth/providers/{provider_id}/callback": {
       "get": {
+        "description": "Validates the provider callback, consumes the short-lived state transaction, and creates or updates only the account relationship authorized by that transaction. It then redirects to the validated client destination without exposing provider credentials.",
         "operationId": "completeExternalAuthentication",
         "responses": {
           "303": {
@@ -15264,6 +15365,7 @@
     },
     "/api/v1/auth/providers/{provider_id}/login": {
       "get": {
+        "description": "Creates a short-lived, state-bound external authentication transaction and redirects the browser to the selected provider. The requested return target and device presentation are validated before any redirect is issued.",
         "operationId": "beginExternalAuthentication",
         "parameters": [
           {
@@ -15329,6 +15431,7 @@
         }
       ],
       "post": {
+        "description": "Starts external authentication bound to one Invitation claim so the eventual provider identity can accept only that immutable Invitation package. The claim is not exposed in the provider redirect or returned to another account.",
         "operationId": "beginInvitationExternalAuthentication",
         "requestBody": {
           "$ref": "#/components/requestBodies/BeginInvitationExternalAuthentication"
@@ -15384,6 +15487,7 @@
     },
     "/api/v1/auth/refresh": {
       "post": {
+        "description": "Atomically rotates the current Session's refresh credential and returns a fresh access/refresh pair or browser cookies. Reuse of a consumed refresh credential is treated as replay and invalidates the affected Session family.",
         "operationId": "refreshSession",
         "responses": {
           "200": {
@@ -15415,6 +15519,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Rotate a native-client refresh token",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_REFRESH_TOKEN\" \\\n  https://proctor.example.edu/api/v1/auth/refresh"
+          }
+        ],
         "x-proctor-auth": "refresh_credential_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15429,6 +15540,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
+        "description": "Creates one unverified local account only when the current Access Policy permits public registration. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.",
         "operationId": "registerLocalUser",
         "requestBody": {
           "$ref": "#/components/requestBodies/PublicRegistration"
@@ -15470,6 +15582,7 @@
     },
     "/api/v1/authentication-methods": {
       "get": {
+        "description": "Returns whether the current User has a local password and the safe presentation of linked external identities. Password hashes, provider subjects, tokens, and other credential material are never returned.",
         "operationId": "listAuthenticationMethods",
         "responses": {
           "200": {
@@ -15509,6 +15622,7 @@
     },
     "/api/v1/authentication-methods/password": {
       "delete": {
+        "description": "Removes the current User's local password after strong recent authentication, but fails closed if doing so would leave no usable authentication method. Existing Sessions are reconciled according to the authentication contract.",
         "operationId": "removePassword",
         "responses": {
           "204": {
@@ -15549,6 +15663,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Remove the local password",
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/authentication-methods/password"
+          }
+        ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15567,6 +15688,7 @@
         "x-proctor-idempotency": "none"
       },
       "put": {
+        "description": "Adds a local password to the current User only when Access Policy permits it and the interactive Session has strong recent assurance. The password is stored through the credential contract and never returned.",
         "operationId": "enrollPassword",
         "requestBody": {
           "$ref": "#/components/requestBodies/EnrollPassword"
@@ -15627,6 +15749,7 @@
     },
     "/api/v1/authentication-methods/providers/{external_identity_id}": {
       "delete": {
+        "description": "Unlinks the selected external identity after strong recent authentication, while failing closed if it is the User's last usable authentication method. Sessions established through the removed identity are revoked as required.",
         "operationId": "unlinkExternalIdentity",
         "responses": {
           "204": {
@@ -15667,6 +15790,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Unlink an external identity",
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/authentication-methods/providers/ybndrfg8ejkmcpqxot1uwisza3"
+          }
+        ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -15686,6 +15816,7 @@
       },
       "parameters": [
         {
+          "description": "Identifier of the exact linked external identity record to remove; this is not a provider subject or credential.",
           "in": "path",
           "name": "external_identity_id",
           "required": true,
@@ -15702,6 +15833,7 @@
         }
       ],
       "post": {
+        "description": "Creates a short-lived provider connection transaction bound to the current strongly authenticated User and returns its redirect URL. Completing the provider flow cannot attach the identity to a different User.",
         "operationId": "beginProviderConnection",
         "requestBody": {
           "$ref": "#/components/requestBodies/BeginProviderConnection"
@@ -25711,6 +25843,7 @@
     },
     "/api/v1/users/me/mfa": {
       "get": {
+        "description": "Returns whether MFA is active, whether a setup is pending, and the count of unused recovery codes for the current User. TOTP secrets and recovery-code values are never returned by this status view.",
         "operationId": "getMFAStatus",
         "responses": {
           "200": {
@@ -25754,6 +25887,7 @@
     },
     "/api/v1/users/me/mfa/activate": {
       "post": {
+        "description": "Verifies a current TOTP code against the pending setup, activates MFA, and returns a new recovery-code set exactly once. An expired or superseded setup cannot be activated.",
         "operationId": "activateMFA",
         "requestBody": {
           "$ref": "#/components/requestBodies/MFACode"
@@ -25821,6 +25955,7 @@
     },
     "/api/v1/users/me/mfa/challenge": {
       "post": {
+        "description": "Verifies a current TOTP code or one unused recovery code and upgrades the exact current interactive Session to MFA assurance. A recovery code is consumed atomically and cannot be replayed.",
         "operationId": "challengeMFA",
         "requestBody": {
           "$ref": "#/components/requestBodies/MFACode"
@@ -25887,6 +26022,7 @@
     },
     "/api/v1/users/me/mfa/disable": {
       "post": {
+        "description": "Disables MFA for the current User after strong recent authentication and invalidates pending setup material and recovery codes. The transition is audited and may be blocked by current policy.",
         "operationId": "disableMFA",
         "responses": {
           "204": {
@@ -25929,6 +26065,13 @@
         "summary": "Disable current-user MFA",
         "tags": [
           "Authentication"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Disable MFA",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/mfa/disable"
+          }
         ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
@@ -26019,6 +26162,7 @@
     },
     "/api/v1/users/me/mfa/setup": {
       "post": {
+        "description": "Creates or replaces a short-lived pending TOTP setup and returns its secret and provisioning URI exactly for enrollment. MFA is not active until a valid code is submitted to the activation operation.",
         "operationId": "setupMFA",
         "responses": {
           "201": {
@@ -26062,6 +26206,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Begin TOTP enrollment",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/mfa/setup"
+          }
+        ],
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -26081,6 +26232,7 @@
     },
     "/api/v1/users/me/sessions": {
       "get": {
+        "description": "Returns safe device, authentication, activity, and expiry metadata for the current User's active Sessions. Access tokens, refresh tokens, provider subjects, and other credential material are omitted.",
         "operationId": "listCurrentUserSessions",
         "responses": {
           "200": {
@@ -26120,6 +26272,7 @@
     },
     "/api/v1/users/me/sessions/revoke": {
       "post": {
+        "description": "Revokes the selected Session only when it belongs to the current User. The target may be another device Session; revoking the Session used for this request immediately ends its future use.",
         "operationId": "revokeCurrentUserSession",
         "requestBody": {
           "$ref": "#/components/requestBodies/RevokeSession"
@@ -26173,6 +26326,7 @@
     },
     "/api/v1/users/me/sessions/revoke-all": {
       "post": {
+        "description": "Revokes every active Session belonging to the current User, including the Session making the request. Clients must discard cached credentials and require a new authentication flow afterward.",
         "operationId": "revokeAllCurrentUserSessions",
         "responses": {
           "204": {
@@ -26203,6 +26357,13 @@
         "summary": "Revoke all current-user sessions",
         "tags": [
           "Authentication"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Revoke all current-user Sessions",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/sessions/revoke-all"
+          }
         ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
@@ -26320,6 +26481,7 @@
     },
     "/api/v1/users/me/tokens": {
       "get": {
+        "description": "Returns safe metadata for the current User's Personal Access Tokens, including scope, expiry, and lifecycle state. The token credential is returned only once at creation and never appears in this list.",
         "operationId": "listPersonalAccessTokens",
         "responses": {
           "200": {
@@ -26357,6 +26519,7 @@
         "x-proctor-idempotency": "none"
       },
       "post": {
+        "description": "Creates a bounded Personal Access Token after recent interactive authentication and returns its credential exactly once. Requested scopes and any Academic Unit boundary are validated against current authority and policy.",
         "operationId": "createPersonalAccessToken",
         "requestBody": {
           "$ref": "#/components/requestBodies/CreatePersonalAccessToken"
@@ -26416,6 +26579,7 @@
     },
     "/api/v1/users/me/tokens/{personal_access_token_id}": {
       "delete": {
+        "description": "Permanently revokes the exact Personal Access Token belonging to the current User. Revocation is durable and audited; the credential cannot be restored or exchanged for a replacement.",
         "operationId": "revokePersonalAccessToken",
         "responses": {
           "204": {
@@ -26450,6 +26614,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Revoke a Personal Access Token",
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3"
+          }
+        ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -26476,6 +26647,7 @@
         }
       ],
       "post": {
+        "description": "Temporarily disables the exact current-User Personal Access Token so its credential can no longer authenticate. The token record and audit history remain available for later review or re-enablement.",
         "operationId": "disablePersonalAccessToken",
         "responses": {
           "200": {
@@ -26510,6 +26682,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Disable a Personal Access Token",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3/disable"
+          }
+        ],
         "x-proctor-auth": "session_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -26531,6 +26710,7 @@
         }
       ],
       "post": {
+        "description": "Re-enables a disabled, unexpired Personal Access Token after recent interactive authentication and a fresh scope-authority check. Revoked tokens cannot be enabled.",
         "operationId": "enablePersonalAccessToken",
         "responses": {
           "200": {
@@ -26567,6 +26747,13 @@
         "summary": "Enable a Personal Access Token",
         "tags": [
           "Authentication"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Enable a Personal Access Token",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3/enable"
+          }
         ],
         "x-proctor-auth": "recent_session_required",
         "x-proctor-error-codes": [
@@ -27370,9 +27557,11 @@
     },
     "/api/v1/users/{user_id}/sessions": {
       "get": {
+        "description": "Returns safe Session metadata for the exact User when the caller has current administrative authority. Revoked Sessions are excluded unless requested; access and refresh credentials are never exposed.",
         "operationId": "listUserSessions",
         "parameters": [
           {
+            "description": "Include previously revoked Sessions and their safe revocation reason metadata in the result.",
             "in": "query",
             "name": "include_revoked",
             "required": false,
@@ -27442,6 +27631,7 @@
         }
       ],
       "post": {
+        "description": "Administratively revokes every active Session belonging to the exact User after an authoritative authorization check. The action is durable and audited before revocation effects are reported complete.",
         "operationId": "revokeUserSessions",
         "responses": {
           "204": {
@@ -27476,6 +27666,13 @@
         "tags": [
           "Authentication"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Revoke all Sessions for a User",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/ybndrfg8ejkmcpqxot1uwisza3/sessions/revoke-all"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -27496,6 +27693,7 @@
     },
     "/api/v1/users/{user_id}/sessions/{session_id}": {
       "delete": {
+        "description": "Administratively revokes one exact Session only after verifying that it belongs to the path User and that the caller remains authorized. The operation never accepts or returns Session credentials.",
         "operationId": "revokeUserSession",
         "responses": {
           "204": {
@@ -27529,6 +27727,13 @@
         "summary": "Revoke one Session belonging to a User",
         "tags": [
           "Authentication"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Revoke one User Session",
+            "lang": "Shell",
+            "source": "curl --request DELETE \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/ybndrfg8ejkmcpqxot1uwisza3/sessions/ybndrfg8ejkmcpqxot1uwisza4"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [

@@ -3,6 +3,8 @@ paths:
     get:
       operationId: listAuthenticationProviders
       summary: List external authentication providers selected by current Access Policy
+      description: >-
+        Returns the public presentation of external providers currently permitted by Access Policy. Provider secrets, discovery internals, and disabled providers are omitted; clients should treat this list as dynamic.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -21,6 +23,8 @@ paths:
     get:
       operationId: beginExternalAuthentication
       summary: Begin external authentication
+      description: >-
+        Creates a short-lived, state-bound external authentication transaction and redirects the browser to the selected provider. The requested return target and device presentation are validated before any redirect is issued.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -60,6 +64,8 @@ paths:
     post:
       operationId: beginInvitationExternalAuthentication
       summary: Begin invitation-bound external authentication
+      description: >-
+        Starts external authentication bound to one Invitation claim so the eventual provider identity can accept only that immutable Invitation package. The claim is not exposed in the provider redirect or returned to another account.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -102,6 +108,8 @@ paths:
     get:
       operationId: completeExternalAuthentication
       summary: Complete external authentication
+      description: >-
+        Validates the provider callback, consumes the short-lived state transaction, and creates or updates only the account relationship authorized by that transaction. It then redirects to the validated client destination without exposing provider credentials.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -149,6 +157,7 @@ components:
       name: return_to
       in: query
       required: false
+      description: Validated relative client destination to restore after the provider callback; unsafe or external targets are rejected.
       schema:
         type: string
         maxLength: 2048
@@ -156,6 +165,7 @@ components:
       name: client_type
       in: query
       required: false
+      description: Client family that will receive the authenticated result and determines the permitted handoff behavior.
       schema:
         type: string
         enum:
@@ -166,21 +176,29 @@ components:
       name: device_id
       in: query
       required: false
+      description: Optional stable client-controlled device identifier recorded on the resulting Session.
       schema:
         type: string
     DeviceName:
       name: device_name
       in: query
       required: false
+      description: Optional human-facing device label shown in Session management views.
       schema:
         type: string
   requestBodies:
     BeginInvitationExternalAuthentication:
       required: true
+      description: Supplies the one-time Invitation claim plus the validated post-authentication destination and optional device presentation.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ExternalAuthenticationStartRequest'
+          example:
+            invitation_claim: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            return_to: /invitations/complete
+            device_id: exam-laptop-01
+            device_name: Exam laptop
   responses:
     ExternalAuthenticationProviderListOK:
       description: External authentication provider collection

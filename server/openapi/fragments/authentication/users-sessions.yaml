@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listUserSessions
       summary: List a User's Sessions for administrative review
+      description: >-
+        Returns safe Session metadata for the exact User when the caller has current administrative authority. Revoked Sessions are excluded unless requested; access and refresh credentials are never exposed.
       tags:
         - Authentication
       x-proctor-auth: principal_required
@@ -27,6 +29,7 @@ paths:
         - name: include_revoked
           in: query
           required: false
+          description: Include previously revoked Sessions and their safe revocation reason metadata in the result.
           schema:
             type: boolean
             default: false
@@ -49,6 +52,15 @@ paths:
     post:
       operationId: revokeUserSessions
       summary: Revoke every active Session for a User
+      description: >-
+        Administratively revokes every active Session belonging to the exact User after an authoritative authorization check. The action is durable and audited before revocation effects are reported complete.
+      x-codeSamples:
+        - lang: Shell
+          label: Revoke all Sessions for a User
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/ybndrfg8ejkmcpqxot1uwisza3/sessions/revoke-all
       tags:
         - Authentication
       x-proctor-auth: principal_required
@@ -90,6 +102,15 @@ paths:
     delete:
       operationId: revokeUserSession
       summary: Revoke one Session belonging to a User
+      description: >-
+        Administratively revokes one exact Session only after verifying that it belongs to the path User and that the caller remains authorized. The operation never accepts or returns Session credentials.
+      x-codeSamples:
+        - lang: Shell
+          label: Revoke one User Session
+          source: |-
+            curl --request DELETE \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/ybndrfg8ejkmcpqxot1uwisza3/sessions/ybndrfg8ejkmcpqxot1uwisza4
       tags:
         - Authentication
       x-proctor-auth: principal_required
@@ -128,6 +149,8 @@ paths:
     get:
       operationId: listCurrentUserSessions
       summary: List the current user's sessions
+      description: >-
+        Returns safe device, authentication, activity, and expiry metadata for the current User's active Sessions. Access tokens, refresh tokens, provider subjects, and other credential material are omitted.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -153,6 +176,8 @@ paths:
     post:
       operationId: revokeCurrentUserSession
       summary: Revoke one current-user session
+      description: >-
+        Revokes the selected Session only when it belongs to the current User. The target may be another device Session; revoking the Session used for this request immediately ends its future use.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -189,6 +214,15 @@ paths:
     post:
       operationId: revokeAllCurrentUserSessions
       summary: Revoke all current-user sessions
+      description: >-
+        Revokes every active Session belonging to the current User, including the Session making the request. Clients must discard cached credentials and require a new authentication flow afterward.
+      x-codeSamples:
+        - lang: Shell
+          label: Revoke all current-user Sessions
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/sessions/revoke-all
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -226,10 +260,13 @@ components:
   requestBodies:
     RevokeSession:
       required: true
+      description: Identifies the exact Session belonging to the current User that should be revoked.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RevokeSessionRequest'
+          example:
+            session_id: ybndrfg8ejkmcpqxot1uwisza3
   responses:
     SessionAdministrationListOK:
       description: Administrative session list

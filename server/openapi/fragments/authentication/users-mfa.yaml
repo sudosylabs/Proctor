@@ -3,6 +3,8 @@ paths:
     get:
       operationId: getMFAStatus
       summary: Get current-user MFA status
+      description: >-
+        Returns whether MFA is active, whether a setup is pending, and the count of unused recovery codes for the current User. TOTP secrets and recovery-code values are never returned by this status view.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -31,6 +33,15 @@ paths:
     post:
       operationId: setupMFA
       summary: Begin MFA setup
+      description: >-
+        Creates or replaces a short-lived pending TOTP setup and returns its secret and provisioning URI exactly for enrollment. MFA is not active until a valid code is submitted to the activation operation.
+      x-codeSamples:
+        - lang: Shell
+          label: Begin TOTP enrollment
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/mfa/setup
       tags:
         - Authentication
       x-proctor-auth: recent_session_required
@@ -74,6 +85,8 @@ paths:
     post:
       operationId: activateMFA
       summary: Activate pending MFA setup
+      description: >-
+        Verifies a current TOTP code against the pending setup, activates MFA, and returns a new recovery-code set exactly once. An expired or superseded setup cannot be activated.
       tags:
         - Authentication
       x-proctor-auth: recent_session_required
@@ -121,6 +134,8 @@ paths:
     post:
       operationId: challengeMFA
       summary: Upgrade the current session with MFA
+      description: >-
+        Verifies a current TOTP code or one unused recovery code and upgrades the exact current interactive Session to MFA assurance. A recovery code is consumed atomically and cannot be replayed.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -221,6 +236,15 @@ paths:
     post:
       operationId: disableMFA
       summary: Disable current-user MFA
+      description: >-
+        Disables MFA for the current User after strong recent authentication and invalidates pending setup material and recovery codes. The transition is audited and may be blocked by current policy.
+      x-codeSamples:
+        - lang: Shell
+          label: Disable MFA
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/mfa/disable
       tags:
         - Authentication
       x-proctor-auth: strong_recent_session_required
@@ -264,10 +288,13 @@ components:
   requestBodies:
     MFACode:
       required: true
+      description: Supplies a current TOTP code or, where permitted, one unused recovery code; clients must treat the value as sensitive.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MFACodeRequest'
+          example:
+            code: "123456"
   responses:
     SessionOK:
       description: Session

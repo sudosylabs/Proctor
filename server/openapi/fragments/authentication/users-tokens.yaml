@@ -3,6 +3,8 @@ paths:
     get:
       operationId: listPersonalAccessTokens
       summary: List current-user Personal Access Tokens
+      description: >-
+        Returns safe metadata for the current User's Personal Access Tokens, including scope, expiry, and lifecycle state. The token credential is returned only once at creation and never appears in this list.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -27,6 +29,8 @@ paths:
     post:
       operationId: createPersonalAccessToken
       summary: Create a Personal Access Token
+      description: >-
+        Creates a bounded Personal Access Token after recent interactive authentication and returns its credential exactly once. Requested scopes and any Academic Unit boundary are validated against current authority and policy.
       tags:
         - Authentication
       x-proctor-auth: recent_session_required
@@ -70,6 +74,15 @@ paths:
     post:
       operationId: disablePersonalAccessToken
       summary: Disable a Personal Access Token
+      description: >-
+        Temporarily disables the exact current-User Personal Access Token so its credential can no longer authenticate. The token record and audit history remain available for later review or re-enablement.
+      x-codeSamples:
+        - lang: Shell
+          label: Disable a Personal Access Token
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3/disable
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -106,6 +119,15 @@ paths:
     post:
       operationId: enablePersonalAccessToken
       summary: Enable a Personal Access Token
+      description: >-
+        Re-enables a disabled, unexpired Personal Access Token after recent interactive authentication and a fresh scope-authority check. Revoked tokens cannot be enabled.
+      x-codeSamples:
+        - lang: Shell
+          label: Enable a Personal Access Token
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3/enable
       tags:
         - Authentication
       x-proctor-auth: recent_session_required
@@ -146,6 +168,15 @@ paths:
     delete:
       operationId: revokePersonalAccessToken
       summary: Revoke a Personal Access Token
+      description: >-
+        Permanently revokes the exact Personal Access Token belonging to the current User. Revocation is durable and audited; the credential cannot be restored or exchanged for a replacement.
+      x-codeSamples:
+        - lang: Shell
+          label: Revoke a Personal Access Token
+          source: |-
+            curl --request DELETE \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/users/me/tokens/ybndrfg8ejkmcpqxot1uwisza3
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -188,10 +219,17 @@ components:
   requestBodies:
     CreatePersonalAccessToken:
       required: true
+      description: Declares the human-facing purpose, bounded scopes, optional Academic Unit boundary, and absolute expiry for the new token.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreatePersonalAccessTokenRequest'
+          example:
+            description: Read examination schedules from the registrar tool
+            scopes:
+              - examinations:read
+            academic_unit_id: ybndrfg8ejkmcpqxot1uwisza3
+            expires_at: 1798761600000
   responses:
     PersonalAccessTokenOK:
       description: Personal Access Token

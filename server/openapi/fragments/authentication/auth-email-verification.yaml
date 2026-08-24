@@ -3,6 +3,15 @@ paths:
     post:
       operationId: requestEmailVerification
       summary: Request an email-verification message
+      description: >-
+        Requests a new short-lived verification message for the authenticated User's current unverified email address. The response is deliberately non-enumerating, and any prior usable verification credential may be superseded.
+      x-codeSamples:
+        - lang: Shell
+          label: Request verification mail
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/auth/email-verification/request
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -36,6 +45,8 @@ paths:
     post:
       operationId: completeEmailVerification
       summary: Consume an email-verification credential
+      description: >-
+        Consumes one valid short-lived verification token and marks its bound email address verified. The token is single use, cannot verify another address, and an invalid or expired token reveals no account details.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -62,10 +73,13 @@ components:
   requestBodies:
     CompleteEmailVerification:
       required: true
+      description: Supplies the one-time email-verification token delivered through the configured mail channel.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EmailVerificationCompletionRequest'
+          example:
+            token: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
   schemas:
     EmailVerificationCompletionRequest:
       type: object

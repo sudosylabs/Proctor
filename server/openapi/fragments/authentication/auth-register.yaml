@@ -3,6 +3,8 @@ paths:
     post:
       operationId: registerLocalUser
       summary: Register one unverified local account when current policy permits
+      description: >-
+        Creates one unverified local account only when the current Access Policy permits public registration. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -33,10 +35,15 @@ components:
   requestBodies:
     PublicRegistration:
       required: true
+      description: Supplies the new account's unique username, normalized email address, and policy-compliant local password.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/PublicRegistrationRequest'
+          example:
+            username: student.one
+            email: student.one@example.edu
+            password: correct-horse-battery-staple-2026
   schemas:
     PublicRegistrationRequest:
       type: object

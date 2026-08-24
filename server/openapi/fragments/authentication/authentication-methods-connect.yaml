@@ -5,6 +5,8 @@ paths:
     post:
       operationId: beginProviderConnection
       summary: Begin a proof-bound provider connection for the exact current User
+      description: >-
+        Creates a short-lived provider connection transaction bound to the current strongly authenticated User and returns its redirect URL. Completing the provider flow cannot attach the identity to a different User.
       tags:
         - Authentication
       x-proctor-auth: strong_recent_session_required
@@ -52,10 +54,13 @@ components:
   requestBodies:
     BeginProviderConnection:
       required: true
+      description: Supplies the validated relative destination to restore after the external provider connection completes.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/BeginProviderConnectionRequest'
+          example:
+            return_to: /settings/authentication
   responses:
     ProviderConnectionCreated:
       description: Provider connection redirect prepared

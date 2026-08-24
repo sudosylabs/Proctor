@@ -3,6 +3,8 @@ paths:
     get:
       operationId: listAuthenticationMethods
       summary: List the current User's authentication methods without credential material
+      description: >-
+        Returns whether the current User has a local password and the safe presentation of linked external identities. Password hashes, provider subjects, tokens, and other credential material are never returned.
       tags:
         - Authentication
       x-proctor-auth: session_required
@@ -28,6 +30,8 @@ paths:
     put:
       operationId: enrollPassword
       summary: Enroll a policy-permitted local password after strong recent authentication
+      description: >-
+        Adds a local password to the current User only when Access Policy permits it and the interactive Session has strong recent assurance. The password is stored through the credential contract and never returned.
       tags:
         - Authentication
       x-proctor-auth: strong_recent_session_required
@@ -69,6 +73,15 @@ paths:
     delete:
       operationId: removePassword
       summary: Remove the current User's local password while preserving another usable method
+      description: >-
+        Removes the current User's local password after strong recent authentication, but fails closed if doing so would leave no usable authentication method. Existing Sessions are reconciled according to the authentication contract.
+      x-codeSamples:
+        - lang: Shell
+          label: Remove the local password
+          source: |-
+            curl --request DELETE \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/authentication-methods/password
       tags:
         - Authentication
       x-proctor-auth: strong_recent_session_required
@@ -112,11 +125,21 @@ paths:
       - name: external_identity_id
         in: path
         required: true
+        description: Identifier of the exact linked external identity record to remove; this is not a provider subject or credential.
         schema:
           $ref: '#/components/schemas/ID'
     delete:
       operationId: unlinkExternalIdentity
       summary: Unlink one exact provider identity while preserving another usable method
+      description: >-
+        Unlinks the selected external identity after strong recent authentication, while failing closed if it is the User's last usable authentication method. Sessions established through the removed identity are revoked as required.
+      x-codeSamples:
+        - lang: Shell
+          label: Unlink an external identity
+          source: |-
+            curl --request DELETE \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              https://proctor.example.edu/api/v1/authentication-methods/providers/ybndrfg8ejkmcpqxot1uwisza3
       tags:
         - Authentication
       x-proctor-auth: strong_recent_session_required
@@ -159,10 +182,13 @@ components:
   requestBodies:
     EnrollPassword:
       required: true
+      description: Supplies the policy-compliant local password to enroll; clients must prevent it from entering logs, traces, or analytics.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EnrollPasswordRequest'
+          example:
+            password: correct-horse-battery-staple-2026
   responses:
     AuthenticationMethodListOK:
       description: Current User authentication methods without subjects or credential material
