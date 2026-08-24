@@ -14,6 +14,9 @@
     "generate:design-system": "node scripts/generate-design-system.mjs",
     "check:design-system": "node scripts/check-design-system.mjs",
     "test:design-system": "node --test design-system/index.test.mjs",
+    "generate:glossary": "node scripts/generate-glossary.mjs",
+    "check:glossary": "node scripts/check-glossary.mjs",
+    "test:glossary": "node --test glossary/index.test.mjs",
     "generate:openapi": "npm run generate:openapi:spec && npm run generate:openapi:reference",
     "generate:openapi:spec": "node scripts/sync-openapi.mjs",
     "generate:openapi:reference": "docusaurus clean-api-docs proctor && docusaurus gen-api-docs proctor && node scripts/finalize-openapi-reference.mjs && node scripts/verify-openapi-reference.mjs",
@@ -23,7 +26,7 @@
     "test:openapi-audit": "node --test scripts/openapi-audit.test.mjs",
     "test:openapi-reference": "node --test scripts/openapi-reference.test.mjs",
     "test:codegen": "node --test scripts/codegen-smoke.test.mjs",
-    "validate": "npm run check:design-system && npm run test:design-system && node scripts/validate-content.mjs && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
+    "validate": "npm run check:design-system && npm run test:design-system && npm run check:glossary && npm run test:glossary && node scripts/validate-content.mjs && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
     "typecheck": "tsc --noEmit",
     "check": "npm run validate && npm run generate:openapi && npm run typecheck && docusaurus build"
   },
@@ -44,6 +47,7 @@
     "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
     "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
     "typescript": "5.9.3"
   },
   "overrides": {

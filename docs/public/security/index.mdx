@@ -22,14 +22,16 @@ replacing the detailed architecture contracts.
 
 ### Identity Establishes an Immutable Principal
 
-Authentication proves the current principal and assurance level. It does not
-pre-authorize a later action. Application use cases re-read authoritative state
-and decide whether the principal may act on the exact resource.
+Authentication proves the current <Term id="principal">principal</Term> and
+assurance level. It does not pre-authorize a later action. Application use cases
+re-read authoritative state and decide whether the principal may act on the
+exact resource.
 
 ### Authorization Is Current and Scoped
 
-Roles and scoped bindings grant permissions. Academic relationships help define
-visibility and context, but membership alone grants no unrestricted access.
+<Term id="role">Roles</Term> and scoped <Term id="role-binding">Role Bindings</Term>
+grant permissions. Academic relationships help define visibility and context,
+but membership alone grants no unrestricted access.
 Security-sensitive decisions are durably auditable and fail closed where the
 architecture requires it.
 
@@ -43,9 +45,9 @@ discarded and reconstructed; it must never become the only record of a decision.
 
 ### Workspaces Are Durable; Execution Hosts Are Projections
 
-Attempt Workspace state remains under Proctor's durable authority. An execution
-host receives a bounded, isolated projection and can be repaired or revoked from
-authoritative state.
+<Term id="attempt-workspace">Attempt Workspace</Term> state remains under
+Proctor's durable authority. An execution host receives a bounded, isolated
+projection and can be repaired or revoked from authoritative state.
 
 ## Review by Concern
 

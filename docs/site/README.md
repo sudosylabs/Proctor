@@ -25,12 +25,20 @@ cd docs/site
 npm run generate:design-system
 npm run check:design-system
 npm run test:design-system
+npm run generate:glossary
+npm run check:glossary
+npm run test:glossary
 ```
 
 The check rejects stale generated CSS, literal colors outside the token module,
 retired color names, unsupported font weights, insufficient standard-token
 contrast, and illustration palettes that do not match their declared visual
 system.
+
+`CONTEXT.md` is the single glossary authority. `generate:glossary` produces the
+public glossary page and the typed runtime lookup used by explicit `<Term>`
+tooltips. The check rejects stale generated views, unknown identifiers, repeated
+annotations, and tooltip markup inside headings or code.
 
 ## Commands
 

@@ -69,8 +69,9 @@ the surrounding workflow before you use its exact endpoint pages.
 
 Each route declares its credential requirement through `x-proctor-auth`.
 Security-sensitive operations may additionally require a strong, recently
-authenticated interactive Session and CSRF proof; a Personal Access Token is
-not interchangeable with that assurance.
+authenticated interactive <Term id="session">Session</Term> and CSRF proof; a
+<Term id="personal-access-token">Personal Access Token</Term> is not
+interchangeable with that assurance.
 
 Public failures use RFC 9457 Problem Details and stable application codes.
 Operations declare their bounded codes in `x-proctor-error-codes`, and agreement
@@ -81,8 +82,8 @@ tests require them to map to documented HTTP responses.
 - Request and response objects are closed unless a named extension point is
   deliberately open.
 - Collection traversal uses bounded opaque keyset cursors.
-- Resource mutations authorize the current principal against current durable
-  state at the terminal use case.
+- Resource mutations authorize the current <Term id="principal">principal</Term>
+  against current durable state at the terminal use case.
 - Idempotent commands distinguish exact replay from reuse with different input.
 - Successful durable state commits before transient cache, cluster, or realtime
   effects.

@@ -3,6 +3,7 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   guidesSidebar: [
     {type: 'doc', id: 'index', label: 'Documentation Home'},
+    {type: 'doc', id: 'reference/glossary', label: 'Glossary'},
     {
       type: 'category',
       label: 'Operate',

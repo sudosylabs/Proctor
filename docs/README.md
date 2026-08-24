@@ -29,6 +29,8 @@ matches the work instead of loading every document.
 
 - [Public guide sources](./public/) — task-oriented operator, administrator,
   security, developer, and API guidance
+- [Public glossary](./public/reference/glossary.mdx) — generated presentation of
+  the canonical terms in `CONTEXT.md`
 - [Documentation site](./site/) — local preview, validation, static build, and
   generated-reference workflow
 

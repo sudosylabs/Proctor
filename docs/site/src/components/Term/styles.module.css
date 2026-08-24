@@ -1,0 +1,62 @@
+.wrapper {
+  display: inline;
+}
+
+.trigger {
+  background: linear-gradient(
+    to top,
+    var(--proctor-primary-soft) 0.32em,
+    transparent 0.32em
+  );
+  border: 0;
+  border-bottom: var(--proctor-stroke-hairline) dotted var(--proctor-primary);
+  border-radius: 0;
+  color: inherit;
+  cursor: help;
+  font: inherit;
+  margin: 0;
+  padding: 0 0.08em;
+  text-align: inherit;
+}
+
+.trigger dfn {
+  font-style: normal;
+}
+
+.trigger:hover,
+.trigger:focus-visible {
+  background: var(--proctor-primary-soft);
+  color: var(--proctor-primary-strong);
+}
+
+.tooltip {
+  background: var(--proctor-footer);
+  border: var(--proctor-stroke-hairline) solid var(--proctor-footer-border);
+  border-radius: var(--proctor-radius-card);
+  box-shadow: var(--proctor-shadow);
+  color: var(--proctor-footer-ink);
+  display: grid;
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--proctor-type-body-small-size);
+  gap: var(--proctor-space-2);
+  line-height: 1.5;
+  padding: var(--proctor-space-4);
+  pointer-events: none;
+  position: fixed;
+  z-index: 1000;
+}
+
+.tooltipTerm {
+  color: var(--proctor-primary);
+  font-weight: 700;
+}
+
+[data-theme="dark"] .tooltipTerm {
+  color: var(--proctor-primary-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    scroll-behavior: auto;
+  }
+}

@@ -8,9 +8,9 @@ slug: /institution-admin/
 
 # Set Up an Institution
 
-Every Proctor installation contains one Institution. Its academic hierarchy,
-identity policy, and scoped authority provide the context in which examinations
-are created and delivered.
+Every Proctor installation contains one <Term id="institution">Institution</Term>.
+Its academic hierarchy, identity policy, and scoped authority provide the
+context in which examinations are created and delivered.
 
 <Maturity state="preview">
   The administrative server contracts are implemented, but the complete visual
@@ -22,12 +22,14 @@ are created and delivered.
 
 1. **Bootstrap the Installation and Institution.** The first protected setup
    establishes the installation identity and initial administrative authority.
-2. **Create Academic Units.** Model faculties, schools, departments, or other
-   hierarchical organizational units.
-3. **Define Programmes and Programme Levels.** Programmes belong to their
-   academic context; levels describe progression within them.
-4. **Open Academic Periods and Classes.** A Class is the concrete student roster
-   for a Programme level in an applicable Academic Period.
+2. **Create <Term id="academic-unit">Academic Units</Term>.** Model faculties,
+   schools, departments, or other hierarchical organizational units.
+3. **Define <Term id="programme">Programmes</Term> and <Term id="programme-level">Programme Levels</Term>.**
+   Programmes belong to their academic context; levels describe progression
+   within them.
+4. **Open <Term id="academic-period">Academic Periods</Term> and <Term id="class">Classes</Term>.**
+   A Class is the concrete student roster for a Programme level in an applicable
+   Academic Period.
 5. **Configure identity and onboarding.** Choose allowed login paths, admission
    rules, and invitation behavior before bringing people into the institution.
 6. **Grant roles through scoped bindings.** Affiliations and memberships record
@@ -39,9 +41,9 @@ are created and delivered.
 
 | Concept | What it expresses | What it does not imply |
 | --- | --- | --- |
-| Affiliation | A person's relationship with the Institution | Permission to administer every resource |
+| <Term id="affiliation">Affiliation</Term> | A person's relationship with the Institution | Permission to administer every resource |
 | Membership | Placement in an Academic Unit or Class | An unrestricted role |
-| Role Binding | Permission at Institution, Academic Unit, or Class scope | Ownership outside that scope |
+| <Term id="role-binding">Role Binding</Term> | Permission at Institution, Academic Unit, or Class scope | Ownership outside that scope |
 
 ## Read the Governing Model
 
@@ -56,6 +58,7 @@ are created and delivered.
 
 ## Important Vocabulary
 
-Use **Class**, not Group, for the concrete roster. Use **Exam Manager** for an
-Exam's creator or another teacher with equal management authority. “Proctor” is
-the product name and does not silently grant a person a special role.
+Use **Class**, not Group, for the concrete roster. Use <Term id="exam-manager">Exam
+Manager</Term> for an Exam's creator or another teacher with equal management
+authority. “Proctor” is the product name and does not silently grant a person a
+special role.
