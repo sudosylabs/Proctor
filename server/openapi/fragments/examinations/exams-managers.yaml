@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listExamManagers
       summary: List bounded Exam Manager relationship provenance
+      description: >-
+        Lists the Users who currently share management responsibility for the Exam, including who granted each relationship and whether a Manager is the creator or current owner. Results contain no general User profile or credential data.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -28,6 +30,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of current Exam Manager relationship records to return in this page.
           schema:
             type: integer
             minimum: 1
@@ -36,6 +39,7 @@ paths:
         - name: cursor
           in: query
           required: false
+          description: Continue from the opaque cursor returned by the preceding manager relationship page.
           schema:
             type: string
       responses:
@@ -54,6 +58,8 @@ paths:
     post:
       operationId: addExamManager
       summary: Grant an eligible User equal Exam management responsibility
+      description: >-
+        Adds one eligible User as an equal Exam Manager when the expected Exam revision still matches. The durable relationship records its grantor and timestamp; it does not silently transfer ownership or infer authority from affiliation alone.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -110,6 +116,8 @@ paths:
     delete:
       operationId: removeExamManager
       summary: Revoke an Exam Manager relationship while preserving provenance
+      description: >-
+        Revokes one current Manager relationship at the expected Exam revision while preserving its provenance and audit history. The current owner cannot be removed until ownership is explicitly transferred.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -163,16 +171,23 @@ components:
   requestBodies:
     AddExamManager:
       required: true
+      description: Identifies the eligible User to add and the last observed Exam aggregate revision for concurrency control.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AddExamManagerRequest'
+          example:
+            user_id: ybndrfg8ejkmcpqxot1uwisza3
+            expected_exam_revision: 3
     RemoveExamManager:
       required: true
+      description: Supplies the last observed Exam aggregate revision required to revoke the path User's manager relationship.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RemoveExamManagerRequest'
+          example:
+            expected_exam_revision: 4
   responses:
     ExamManagerListOK:
       description: Bounded Exam Manager relationship collection

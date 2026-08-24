@@ -5,6 +5,8 @@ paths:
     post:
       operationId: archiveExam
       summary: Archive an active Exam
+      description: >-
+        Archives the active Exam only when its expected aggregate revision still matches, preventing a stale manager from hiding newer work. Archiving preserves Drafts, immutable Revisions, management provenance, Sittings, Attempts, and audit history.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -56,10 +58,13 @@ components:
   requestBodies:
     ArchiveExam:
       required: true
+      description: Supplies the last observed Exam aggregate revision required for the concurrency-safe archive transition.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ArchiveExamRequest'
+          example:
+            expected_exam_revision: 3
   responses:
     ExamIdentityOK:
       description: Exam identity

@@ -5,6 +5,8 @@ paths:
     put:
       operationId: configureExamDraftExecutionProfile
       summary: Replace the execution profile on the active Exam Draft
+      description: >-
+        Replaces the Draft's complete execution profile at the expected Draft revision. The selected image and network mode must be present in the current safe catalog; disabling execution still records an explicit, validated profile.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -57,10 +59,16 @@ components:
   requestBodies:
     ConfigureExamDraftExecutionProfile:
       required: true
+      description: Supplies the expected Draft revision and the complete enabled, image, and network selection that should replace the current profile.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ConfigureExamDraftExecutionProfileRequest'
+          example:
+            expected_draft_revision: 3
+            enabled: true
+            image: go-1.25
+            network: none
   schemas:
     ConfigureExamDraftExecutionProfileRequest:
       type: object

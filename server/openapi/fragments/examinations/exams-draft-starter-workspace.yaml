@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listExamDraftStarterWorkspace
       summary: List the complete Starter Workspace manifest for an Exam Draft
+      description: >-
+        Returns the complete canonical manifest of files and directories that will seed each candidate Workspace from a published Revision. File metadata includes content versions and digests, while protected bytes remain behind the inline content route.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -43,6 +45,8 @@ paths:
     post:
       operationId: createExamDraftStarterWorkspaceDirectory
       summary: Create an empty directory in an Exam Draft Starter Workspace
+      description: >-
+        Creates one empty directory at a canonical logical path when the expected Draft revision still matches. Parent existence, path conflicts, entry limits, and the Idempotency-Key are validated before the manifest changes.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -100,6 +104,18 @@ paths:
     post:
       operationId: createExamDraftStarterWorkspaceFile
       summary: Upload a file into an Exam Draft Starter Workspace
+      description: >-
+        Adds one protected file at a canonical logical path using a metadata-first multipart upload. The expected Draft revision, parent path, declared digest and optional size, total Workspace limits, and Idempotency-Key are checked before acknowledgement.
+      x-codeSamples:
+        - lang: Shell
+          label: Add a Starter Workspace file
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Idempotency-Key: starter-file-create-001" \
+              --form 'metadata={"expected_draft_revision":3,"path":"starter/main.go","media_type":"text/plain","size":128,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./main.go;type=application/octet-stream' \
+              https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -139,6 +155,7 @@ paths:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
+        description: Contains strict file metadata first and bounded protected content second; the path, size, and SHA-256 digest are validated before the file is acknowledged.
         content:
           multipart/form-data:
             schema:
@@ -170,6 +187,8 @@ paths:
     patch:
       operationId: moveExamDraftStarterWorkspaceEntry
       summary: Rename or move one Starter Workspace entry by logical path
+      description: >-
+        Atomically renames or moves the exact file or directory to a new canonical path at the expected Draft revision. Missing parents, path collisions, invalid descendant moves, and no-op changes are rejected without partial mutation.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -225,6 +244,8 @@ paths:
     delete:
       operationId: removeExamDraftStarterWorkspaceEntry
       summary: Remove one file or empty directory from a Starter Workspace
+      description: >-
+        Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories are rejected, and published Revisions retain the immutable Workspace snapshot they already captured.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -306,6 +327,7 @@ paths:
         - name: If-None-Match
           in: header
           required: false
+          description: One or more entity tags from an earlier protected-content response; a match returns 304 without a body.
           schema:
             type: string
       responses:
@@ -326,6 +348,18 @@ paths:
     put:
       operationId: replaceExamDraftStarterWorkspaceFileContent
       summary: Replace one Starter Workspace file's content
+      description: >-
+        Replaces the exact file content only when both the expected Draft revision and acknowledged content version still match. The metadata-first multipart upload, digest, size limits, entry kind, and Idempotency-Key are validated before committing a new content version.
+      x-codeSamples:
+        - lang: Shell
+          label: Replace a Starter Workspace file
+          source: |-
+            curl --request PUT \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Idempotency-Key: starter-file-replace-002" \
+              --form 'metadata={"expected_draft_revision":4,"expected_content_version":"ybndrfg8ejkmcpqxot1uwisza4","media_type":"text/plain","size":192,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./main.go;type=application/octet-stream' \
+              https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -364,6 +398,7 @@ paths:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
+        description: Contains strict replacement metadata first and bounded protected content second; the expected content version prevents overwriting concurrent authoring work.
         content:
           multipart/form-data:
             schema:
@@ -400,22 +435,33 @@ components:
   requestBodies:
     CreateExamStarterWorkspaceDirectory:
       required: true
+      description: Supplies the expected Draft revision and canonical path for the new empty directory.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/CreateExamStarterWorkspaceDirectoryRequest'
+          example:
+            expected_draft_revision: 2
+            path: starter/tests
     MoveExamStarterWorkspaceEntry:
       required: true
+      description: Supplies the expected Draft revision and new canonical path for the exact entry identified in the route.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MoveExamStarterWorkspaceEntryRequest'
+          example:
+            expected_draft_revision: 5
+            path: starter/src/main.go
     RemoveExamStarterWorkspaceEntry:
       required: true
+      description: Supplies the last observed Draft revision required to remove the exact path entry safely.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RemoveExamStarterWorkspaceEntryRequest'
+          example:
+            expected_draft_revision: 6
   responses:
     ExamStarterWorkspaceEntryOK:
       description: Exam Draft Starter Workspace entry changed
@@ -538,8 +584,10 @@ components:
           type: integer
           format: int64
           minimum: 1
+          description: Last observed mutable Draft revision, used to reject replacement against newer authoring state.
         expected_content_version:
           $ref: '#/components/schemas/WorkspaceContentVersion'
+          description: Last acknowledged file content version, used to prevent lost updates to the same path entry.
         media_type:
           type: string
           minLength: 1

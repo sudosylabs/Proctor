@@ -5,6 +5,8 @@ paths:
     put:
       operationId: configureExamDraftFocusLoss
       summary: Replace the Focus Loss policy on the active Exam Draft
+      description: >-
+        Replaces the complete Focus Loss rule on the mutable Draft at the expected revision. Duration, incident window, threshold, and outcome are validated together so published Revisions carry one coherent policy snapshot.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -57,10 +59,18 @@ components:
   requestBodies:
     ConfigureExamDraftFocusLoss:
       required: true
+      description: Supplies the expected Draft revision and the complete replacement Focus Loss collection and outcome policy.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ConfigureExamDraftFocusLossRequest'
+          example:
+            expected_draft_revision: 4
+            enabled: true
+            minimum_duration_milliseconds: 1500
+            incident_count: 3
+            window_milliseconds: 300000
+            outcome: flag_and_warn
   schemas:
     ConfigureExamDraftFocusLossRequest:
       type: object

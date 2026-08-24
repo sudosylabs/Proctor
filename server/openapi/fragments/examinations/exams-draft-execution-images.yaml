@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listExamExecutionImages
       summary: List safe execution image choices available for Exam authoring
+      description: >-
+        Returns the stable identifiers and permitted network modes of execution images available for the current Exam Draft. Registry coordinates, credentials, internal runtime metadata, and unavailable images are not exposed.
       tags:
         - Examinations
       x-proctor-auth: principal_required

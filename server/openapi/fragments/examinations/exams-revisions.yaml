@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listExamRevisions
       summary: List bounded immutable Exam Revision metadata
+      description: >-
+        Lists immutable publication snapshots for the Exam in stable order, including policy and content digests, capacity, resource counts, and publication provenance. It does not return protected resource bytes or mutable Draft state.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -28,6 +30,7 @@ paths:
         - name: limit
           in: query
           required: false
+          description: Maximum number of immutable Exam Revision metadata records to return in this page.
           schema:
             type: integer
             minimum: 1
@@ -124,6 +127,8 @@ paths:
     get:
       operationId: getExamRevision
       summary: Get bounded immutable Exam Revision metadata
+      description: >-
+        Returns one immutable Revision only after verifying its Exam ownership path and the caller's current management authority. The response exposes publication metadata and digests, not mutable Draft state or protected content bytes.
       tags:
         - Examinations
       x-proctor-auth: principal_required

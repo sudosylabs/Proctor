@@ -360,11 +360,16 @@
       "AddExamManager": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_exam_revision": 3,
+              "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/AddExamManagerRequest"
             }
           }
         },
+        "description": "Identifies the eligible User to add and the last observed Exam aggregate revision for concurrency control.",
         "required": true
       },
       "ApplyExamSittingCorrection": {
@@ -395,11 +400,15 @@
       "ArchiveExam": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_exam_revision": 3
+            },
             "schema": {
               "$ref": "#/components/schemas/ArchiveExamRequest"
             }
           }
         },
+        "description": "Supplies the last observed Exam aggregate revision required for the concurrency-safe archive transition.",
         "required": true
       },
       "BeginInvitationExternalAuthentication": {
@@ -614,21 +623,37 @@
       "ConfigureExamDraftExecutionProfile": {
         "content": {
           "application/json": {
+            "example": {
+              "enabled": true,
+              "expected_draft_revision": 3,
+              "image": "go-1.25",
+              "network": "none"
+            },
             "schema": {
               "$ref": "#/components/schemas/ConfigureExamDraftExecutionProfileRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and the complete enabled, image, and network selection that should replace the current profile.",
         "required": true
       },
       "ConfigureExamDraftFocusLoss": {
         "content": {
           "application/json": {
+            "example": {
+              "enabled": true,
+              "expected_draft_revision": 4,
+              "incident_count": 3,
+              "minimum_duration_milliseconds": 1500,
+              "outcome": "flag_and_warn",
+              "window_milliseconds": 300000
+            },
             "schema": {
               "$ref": "#/components/schemas/ConfigureExamDraftFocusLossRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and the complete replacement Focus Loss collection and outcome policy.",
         "required": true
       },
       "CreateAcademicPeriod": {
@@ -748,11 +773,16 @@
       "CreateExamStarterWorkspaceDirectory": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 2,
+              "path": "starter/tests"
+            },
             "schema": {
               "$ref": "#/components/schemas/CreateExamStarterWorkspaceDirectoryRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and canonical path for the new empty directory.",
         "required": true
       },
       "CreatePersonalAccessToken": {
@@ -932,21 +962,32 @@
       "EditExamDraftText": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 2,
+              "instructions_markdown": "Read every question carefully. Save your work before submitting.",
+              "title": "Distributed Systems Final"
+            },
             "schema": {
               "$ref": "#/components/schemas/EditExamDraftTextRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and at least one authored title or Markdown instructions change.",
         "required": true
       },
       "EditExamResourceMetadata": {
         "content": {
           "application/json": {
+            "example": {
+              "display_name": "Formula sheet, revision 2",
+              "expected_draft_revision": 4
+            },
             "schema": {
               "$ref": "#/components/schemas/EditExamResourceMetadataRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and at least one authored display-name or Markdown-description change.",
         "required": true
       },
       "EnrollClassMember": {
@@ -1046,11 +1087,16 @@
       "MoveExamStarterWorkspaceEntry": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 5,
+              "path": "starter/src/main.go"
+            },
             "schema": {
               "$ref": "#/components/schemas/MoveExamStarterWorkspaceEntryRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and new canonical path for the exact entry identified in the route.",
         "required": true
       },
       "MutateInvitation": {
@@ -1154,41 +1200,61 @@
       "RemoveExamManager": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_exam_revision": 4
+            },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamManagerRequest"
             }
           }
         },
+        "description": "Supplies the last observed Exam aggregate revision required to revoke the path User's manager relationship.",
         "required": true
       },
       "RemoveExamResource": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 6
+            },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamResourceRequest"
             }
           }
         },
+        "description": "Supplies the last observed Draft revision required to remove the path resource without overwriting newer authoring work.",
         "required": true
       },
       "RemoveExamStarterWorkspaceEntry": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 6
+            },
             "schema": {
               "$ref": "#/components/schemas/RemoveExamStarterWorkspaceEntryRequest"
             }
           }
         },
+        "description": "Supplies the last observed Draft revision required to remove the exact path entry safely.",
         "required": true
       },
       "ReorderExamResources": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_draft_revision": 5,
+              "resource_ids": [
+                "ybndrfg8ejkmcpqxot1uwisza3",
+                "ybndrfg8ejkmcpqxot1uwisza4"
+              ]
+            },
             "schema": {
               "$ref": "#/components/schemas/ReorderExamResourcesRequest"
             }
           }
         },
+        "description": "Supplies the expected Draft revision and the complete ordered set of active resource identifiers.",
         "required": true
       },
       "ReplaceAccessPolicy": {
@@ -1418,11 +1484,16 @@
       "TransferExamOwnership": {
         "content": {
           "application/json": {
+            "example": {
+              "expected_exam_revision": 5,
+              "user_id": "ybndrfg8ejkmcpqxot1uwisza3"
+            },
             "schema": {
               "$ref": "#/components/schemas/TransferExamOwnershipRequest"
             }
           }
         },
+        "description": "Identifies the eligible current Manager who will become owner and the last observed Exam aggregate revision.",
         "required": true
       },
       "UpdateAcademicPeriod": {
@@ -8282,9 +8353,11 @@
         "additionalProperties": false,
         "properties": {
           "expected_content_version": {
-            "$ref": "#/components/schemas/WorkspaceContentVersion"
+            "$ref": "#/components/schemas/WorkspaceContentVersion",
+            "description": "Last acknowledged file content version, used to prevent lost updates to the same path entry."
           },
           "expected_draft_revision": {
+            "description": "Last observed mutable Draft revision, used to reject replacement against newer authoring state.",
             "format": "int64",
             "minimum": 1,
             "type": "integer"
@@ -17708,6 +17781,7 @@
     },
     "/api/v1/exams/{exam_id}": {
       "get": {
+        "description": "Returns the Exam identity, current mutable Draft, ownership, and manager count after checking current management authority. Published Revision content remains immutable and is retrieved through the Revision operations.",
         "operationId": "getExam",
         "responses": {
           "200": {
@@ -17769,6 +17843,7 @@
         }
       ],
       "post": {
+        "description": "Archives the active Exam only when its expected aggregate revision still matches, preventing a stale manager from hiding newer work. Archiving preserves Drafts, immutable Revisions, management provenance, Sittings, Attempts, and audit history.",
         "operationId": "archiveExam",
         "parameters": [
           {
@@ -17846,6 +17921,7 @@
         }
       ],
       "patch": {
+        "description": "Changes one or both authored text fields on the mutable Draft only when the expected Draft revision still matches. Null leaves a field unchanged, while bounded Markdown is stored as authored content and rendered through the documentation-safe presentation contract.",
         "operationId": "editExamDraftText",
         "parameters": [
           {
@@ -17919,6 +17995,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/execution-images": {
       "get": {
+        "description": "Returns the stable identifiers and permitted network modes of execution images available for the current Exam Draft. Registry coordinates, credentials, internal runtime metadata, and unavailable images are not exposed.",
         "operationId": "listExamExecutionImages",
         "responses": {
           "200": {
@@ -17980,6 +18057,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the Draft's complete execution profile at the expected Draft revision. The selected image and network mode must be present in the current safe catalog; disabling execution still records an explicit, validated profile.",
         "operationId": "configureExamDraftExecutionProfile",
         "parameters": [
           {
@@ -18058,6 +18136,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the complete Focus Loss rule on the mutable Draft at the expected revision. Duration, incident window, threshold, and outcome are validated together so published Revisions carry one coherent policy snapshot.",
         "operationId": "configureExamDraftFocusLoss",
         "parameters": [
           {
@@ -18131,6 +18210,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/resources": {
       "get": {
+        "description": "Returns the complete ordered resource manifest for the mutable Draft, including authored presentation metadata, content revision, media type, size, and digest. Protected bytes remain available only through the separately authorized inline content route.",
         "operationId": "listExamDraftResources",
         "responses": {
           "200": {
@@ -18186,6 +18266,7 @@
         }
       ],
       "post": {
+        "description": "Appends one protected resource to the Draft after validating the expected Draft revision, authored metadata, declared content size and digest, media policy, resource limits, and Idempotency-Key. The metadata-first multipart upload is committed atomically with its protected content reference.",
         "operationId": "createExamDraftResource",
         "parameters": [
           {
@@ -18208,6 +18289,7 @@
               }
             }
           },
+          "description": "Contains strict resource metadata first and bounded protected content second; the declared byte length and SHA-256 digest must match the uploaded bytes.",
           "required": true
         },
         "responses": {
@@ -18246,6 +18328,13 @@
         "tags": [
           "Examinations"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Append a protected PDF resource",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-create-001\" \\\n  --form 'metadata={\"expected_draft_revision\":3,\"display_name\":\"Formula sheet\",\"description_markdown\":\"Reference formulas for this examination.\",\"media_type\":\"application/pdf\",\"size\":2048,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -18283,6 +18372,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the full active resource order at the expected Draft revision. Every current resource identifier must appear exactly once, so stale or partial lists fail without changing any positions.",
         "operationId": "reorderExamDraftResources",
         "parameters": [
           {
@@ -18358,6 +18448,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/resources/{exam_resource_id}": {
       "delete": {
+        "description": "Removes the resource from the active Draft only when the expected Draft revision still matches, then closes the ordering gap atomically. Historical immutable Revisions retain their published resource snapshot.",
         "operationId": "removeExamDraftResource",
         "parameters": [
           {
@@ -18438,6 +18529,7 @@
         }
       ],
       "patch": {
+        "description": "Changes the display name and/or bounded Markdown description of one Draft resource at the expected Draft revision. Content bytes, digest, and order remain unchanged; omitted fields are preserved.",
         "operationId": "editExamDraftResourceMetadata",
         "parameters": [
           {
@@ -18517,6 +18609,7 @@
         "operationId": "getExamDraftResourceContent",
         "parameters": [
           {
+            "description": "One or more entity tags from an earlier protected-content response; a match returns 304 without a body.",
             "in": "header",
             "name": "If-None-Match",
             "required": false,
@@ -18585,6 +18678,7 @@
         }
       ],
       "put": {
+        "description": "Replaces one resource's protected bytes at the expected Draft revision after validating media type, length, digest, upload shape, and Idempotency-Key. Authored display metadata and resource order remain unchanged while a new content revision is recorded.",
         "operationId": "replaceExamDraftResourceContent",
         "parameters": [
           {
@@ -18607,6 +18701,7 @@
               }
             }
           },
+          "description": "Contains strict replacement metadata first and bounded protected content second; declared media type, size, and digest must match the uploaded bytes.",
           "required": true
         },
         "responses": {
@@ -18645,6 +18740,13 @@
         "tags": [
           "Examinations"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Replace protected resource content",
+            "lang": "Shell",
+            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: exam-resource-replace-002\" \\\n  --form 'metadata={\"expected_draft_revision\":4,\"media_type\":\"application/pdf\",\"size\":3072,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./formula-sheet-v2.pdf;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources/ybndrfg8ejkmcpqxot1uwisza4/content"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -18676,6 +18778,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/starter-workspace": {
       "get": {
+        "description": "Returns the complete canonical manifest of files and directories that will seed each candidate Workspace from a published Revision. File metadata includes content versions and digests, while protected bytes remain behind the inline content route.",
         "operationId": "listExamDraftStarterWorkspace",
         "responses": {
           "200": {
@@ -18738,6 +18841,7 @@
         }
       ],
       "post": {
+        "description": "Creates one empty directory at a canonical logical path when the expected Draft revision still matches. Parent existence, path conflicts, entry limits, and the Idempotency-Key are validated before the manifest changes.",
         "operationId": "createExamDraftStarterWorkspaceDirectory",
         "parameters": [
           {
@@ -18814,6 +18918,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}": {
       "delete": {
+        "description": "Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories are rejected, and published Revisions retain the immutable Workspace snapshot they already captured.",
         "operationId": "removeExamDraftStarterWorkspaceEntry",
         "parameters": [
           {
@@ -18894,6 +18999,7 @@
         }
       ],
       "patch": {
+        "description": "Atomically renames or moves the exact file or directory to a new canonical path at the expected Draft revision. Missing parents, path collisions, invalid descendant moves, and no-op changes are rejected without partial mutation.",
         "operationId": "moveExamDraftStarterWorkspaceEntry",
         "parameters": [
           {
@@ -18976,6 +19082,7 @@
         }
       ],
       "post": {
+        "description": "Adds one protected file at a canonical logical path using a metadata-first multipart upload. The expected Draft revision, parent path, declared digest and optional size, total Workspace limits, and Idempotency-Key are checked before acknowledgement.",
         "operationId": "createExamDraftStarterWorkspaceFile",
         "parameters": [
           {
@@ -18998,6 +19105,7 @@
               }
             }
           },
+          "description": "Contains strict file metadata first and bounded protected content second; the path, size, and SHA-256 digest are validated before the file is acknowledged.",
           "required": true
         },
         "responses": {
@@ -19035,6 +19143,13 @@
         "summary": "Upload a file into an Exam Draft Starter Workspace",
         "tags": [
           "Examinations"
+        ],
+        "x-codeSamples": [
+          {
+            "label": "Add a Starter Workspace file",
+            "lang": "Shell",
+            "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-create-001\" \\\n  --form 'metadata={\"expected_draft_revision\":3,\"path\":\"starter/main.go\",\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files"
+          }
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
@@ -19074,6 +19189,7 @@
         "operationId": "getExamDraftStarterWorkspaceFileContent",
         "parameters": [
           {
+            "description": "One or more entity tags from an earlier protected-content response; a match returns 304 without a body.",
             "in": "header",
             "name": "If-None-Match",
             "required": false,
@@ -19142,6 +19258,7 @@
         }
       ],
       "put": {
+        "description": "Replaces the exact file content only when both the expected Draft revision and acknowledged content version still match. The metadata-first multipart upload, digest, size limits, entry kind, and Idempotency-Key are validated before committing a new content version.",
         "operationId": "replaceExamDraftStarterWorkspaceFileContent",
         "parameters": [
           {
@@ -19164,6 +19281,7 @@
               }
             }
           },
+          "description": "Contains strict replacement metadata first and bounded protected content second; the expected content version prevents overwriting concurrent authoring work.",
           "required": true
         },
         "responses": {
@@ -19202,6 +19320,13 @@
         "tags": [
           "Examinations"
         ],
+        "x-codeSamples": [
+          {
+            "label": "Replace a Starter Workspace file",
+            "lang": "Shell",
+            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"Idempotency-Key: starter-file-replace-002\" \\\n  --form 'metadata={\"expected_draft_revision\":4,\"expected_content_version\":\"ybndrfg8ejkmcpqxot1uwisza4\",\"media_type\":\"text/plain\",\"size\":192,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/starter-workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
+          }
+        ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
           "authentication.required",
@@ -19235,9 +19360,11 @@
     },
     "/api/v1/exams/{exam_id}/managers": {
       "get": {
+        "description": "Lists the Users who currently share management responsibility for the Exam, including who granted each relationship and whether a Manager is the creator or current owner. Results contain no general User profile or credential data.",
         "operationId": "listExamManagers",
         "parameters": [
           {
+            "description": "Maximum number of current Exam Manager relationship records to return in this page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -19249,6 +19376,7 @@
             }
           },
           {
+            "description": "Continue from the opaque cursor returned by the preceding manager relationship page.",
             "in": "query",
             "name": "cursor",
             "required": false,
@@ -19311,6 +19439,7 @@
         }
       ],
       "post": {
+        "description": "Adds one eligible User as an equal Exam Manager when the expected Exam revision still matches. The durable relationship records its grantor and timestamp; it does not silently transfer ownership or infer authority from affiliation alone.",
         "operationId": "addExamManager",
         "parameters": [
           {
@@ -19385,6 +19514,7 @@
     },
     "/api/v1/exams/{exam_id}/managers/{user_id}": {
       "delete": {
+        "description": "Revokes one current Manager relationship at the expected Exam revision while preserving its provenance and audit history. The current owner cannot be removed until ownership is explicitly transferred.",
         "operationId": "removeExamManager",
         "parameters": [
           {
@@ -19472,6 +19602,7 @@
         }
       ],
       "put": {
+        "description": "Transfers ownership to an eligible existing Manager only when the expected Exam revision still matches. The previous owner remains a Manager, creator provenance is unchanged, and the explicit audited transition never follows from membership alone.",
         "operationId": "transferExamOwnership",
         "parameters": [
           {
@@ -19547,9 +19678,11 @@
     },
     "/api/v1/exams/{exam_id}/revisions": {
       "get": {
+        "description": "Lists immutable publication snapshots for the Exam in stable order, including policy and content digests, capacity, resource counts, and publication provenance. It does not return protected resource bytes or mutable Draft state.",
         "operationId": "listExamRevisions",
         "parameters": [
           {
+            "description": "Maximum number of immutable Exam Revision metadata records to return in this page.",
             "in": "query",
             "name": "limit",
             "required": false,
@@ -19706,6 +19839,7 @@
     },
     "/api/v1/exams/{exam_id}/revisions/{exam_revision_id}": {
       "get": {
+        "description": "Returns one immutable Revision only after verifying its Exam ownership path and the caller's current management authority. The response exposes publication metadata and digests, not mutable Draft state or protected content bytes.",
         "operationId": "getExamRevision",
         "responses": {
           "200": {

@@ -5,6 +5,8 @@ paths:
     patch:
       operationId: editExamDraftText
       summary: Edit authored title or Markdown instructions on the active Exam Draft
+      description: >-
+        Changes one or both authored text fields on the mutable Draft only when the expected Draft revision still matches. Null leaves a field unchanged, while bounded Markdown is stored as authored content and rendered through the documentation-safe presentation contract.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -57,10 +59,15 @@ components:
   requestBodies:
     EditExamDraftText:
       required: true
+      description: Supplies the expected Draft revision and at least one authored title or Markdown instructions change.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EditExamDraftTextRequest'
+          example:
+            expected_draft_revision: 2
+            title: Distributed Systems Final
+            instructions_markdown: "Read every question carefully. Save your work before submitting."
   schemas:
     EditExamDraftTextRequest:
       type: object

@@ -5,6 +5,8 @@ paths:
     get:
       operationId: listExamDraftResources
       summary: List the ordered protected resources in an Exam Draft
+      description: >-
+        Returns the complete ordered resource manifest for the mutable Draft, including authored presentation metadata, content revision, media type, size, and digest. Protected bytes remain available only through the separately authorized inline content route.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -40,6 +42,18 @@ paths:
     post:
       operationId: createExamDraftResource
       summary: Upload and append a protected resource to an Exam Draft
+      description: >-
+        Appends one protected resource to the Draft after validating the expected Draft revision, authored metadata, declared content size and digest, media policy, resource limits, and Idempotency-Key. The metadata-first multipart upload is committed atomically with its protected content reference.
+      x-codeSamples:
+        - lang: Shell
+          label: Append a protected PDF resource
+          source: |-
+            curl --request POST \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Idempotency-Key: exam-resource-create-001" \
+              --form 'metadata={"expected_draft_revision":3,"display_name":"Formula sheet","description_markdown":"Reference formulas for this examination.","media_type":"application/pdf","size":2048,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./formula-sheet.pdf;type=application/octet-stream' \
+              https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -77,6 +91,7 @@ paths:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
+        description: Contains strict resource metadata first and bounded protected content second; the declared byte length and SHA-256 digest must match the uploaded bytes.
         content:
           multipart/form-data:
             schema:
@@ -107,6 +122,8 @@ paths:
     put:
       operationId: reorderExamDraftResources
       summary: Replace the complete order of active Exam Draft resources
+      description: >-
+        Replaces the full active resource order at the expected Draft revision. Every current resource identifier must appear exactly once, so stale or partial lists fail without changing any positions.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -164,6 +181,8 @@ paths:
     patch:
       operationId: editExamDraftResourceMetadata
       summary: Edit one Exam Draft resource's authored metadata
+      description: >-
+        Changes the display name and/or bounded Markdown description of one Draft resource at the expected Draft revision. Content bytes, digest, and order remain unchanged; omitted fields are preserved.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -217,6 +236,8 @@ paths:
     delete:
       operationId: removeExamDraftResource
       summary: Remove one resource from the active Exam Draft
+      description: >-
+        Removes the resource from the active Draft only when the expected Draft revision still matches, then closes the ordering gap atomically. Historical immutable Revisions retain their published resource snapshot.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -298,6 +319,7 @@ paths:
         - name: If-None-Match
           in: header
           required: false
+          description: One or more entity tags from an earlier protected-content response; a match returns 304 without a body.
           schema:
             type: string
       responses:
@@ -318,6 +340,18 @@ paths:
     put:
       operationId: replaceExamDraftResourceContent
       summary: Replace an Exam Draft resource's protected content
+      description: >-
+        Replaces one resource's protected bytes at the expected Draft revision after validating media type, length, digest, upload shape, and Idempotency-Key. Authored display metadata and resource order remain unchanged while a new content revision is recorded.
+      x-codeSamples:
+        - lang: Shell
+          label: Replace protected resource content
+          source: |-
+            curl --request PUT \
+              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Idempotency-Key: exam-resource-replace-002" \
+              --form 'metadata={"expected_draft_revision":4,"media_type":"application/pdf","size":3072,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};type=application/json' \
+              --form 'content=@./formula-sheet-v2.pdf;type=application/octet-stream' \
+              https://proctor.example.edu/api/v1/exams/ybndrfg8ejkmcpqxot1uwisza3/draft/resources/ybndrfg8ejkmcpqxot1uwisza4/content
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -354,6 +388,7 @@ paths:
         - $ref: '#/components/parameters/RequiredIdempotencyKey'
       requestBody:
         required: true
+        description: Contains strict replacement metadata first and bounded protected content second; declared media type, size, and digest must match the uploaded bytes.
         content:
           multipart/form-data:
             schema:
@@ -382,22 +417,35 @@ components:
   requestBodies:
     EditExamResourceMetadata:
       required: true
+      description: Supplies the expected Draft revision and at least one authored display-name or Markdown-description change.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/EditExamResourceMetadataRequest'
+          example:
+            expected_draft_revision: 4
+            display_name: Formula sheet, revision 2
     ReorderExamResources:
       required: true
+      description: Supplies the expected Draft revision and the complete ordered set of active resource identifiers.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ReorderExamResourcesRequest'
+          example:
+            expected_draft_revision: 5
+            resource_ids:
+              - ybndrfg8ejkmcpqxot1uwisza3
+              - ybndrfg8ejkmcpqxot1uwisza4
     RemoveExamResource:
       required: true
+      description: Supplies the last observed Draft revision required to remove the path resource without overwriting newer authoring work.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/RemoveExamResourceRequest'
+          example:
+            expected_draft_revision: 6
   responses:
     ExamResourceOK:
       description: Exam Draft resource changed

@@ -150,6 +150,8 @@ paths:
     get:
       operationId: getExam
       summary: Get one bounded Exam authoring view
+      description: >-
+        Returns the Exam identity, current mutable Draft, ownership, and manager count after checking current management authority. Published Revision content remains immutable and is retrieved through the Revision operations.
       tags:
         - Examinations
       x-proctor-auth: principal_required
