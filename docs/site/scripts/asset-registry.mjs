@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {lstat, readFile, readdir} from 'node:fs/promises';
 import {dirname, extname, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -21,6 +22,7 @@ const requiredEntryFields = [
   'theme',
   'last_reviewed',
   'review_triggers',
+  'visual_review',
 ];
 const allowedExtensions = new Set(['.png', '.svg']);
 const allowedKinds = new Set(['diagram', 'illustration', 'screenshot']);
@@ -29,6 +31,17 @@ const maximumBytesByExtension = new Map([
   ['.svg', 250_000],
 ]);
 const documentationExtensions = new Set(['.md', '.mdx']);
+const requiredVisualChecks = new Set([
+  'text_containment',
+  'connector_continuity',
+  'rendered_legibility',
+  'narrow_viewport',
+  'print_contrast',
+]);
+const requiredVisualViewports = new Map([
+  ['desktop', {width: 1440, height: 1024}],
+  ['mobile', {width: 390, height: 844}],
+]);
 
 function isInside(parent, child) {
   const path = relative(parent, child);
@@ -149,6 +162,82 @@ function isCalendarDate(value) {
   );
 }
 
+function validateVisualReview(review, label, failures, today) {
+  if (!review || typeof review !== 'object' || Array.isArray(review)) {
+    failures.push(`${label}: visual_review must be an object`);
+    return;
+  }
+  if (review.status !== 'approved') {
+    failures.push(`${label}: visual review status must be approved`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(review.source_sha256 ?? '')) {
+    failures.push(`${label}: visual review source_sha256 must be a lowercase SHA-256`);
+  }
+  if (!isCalendarDate(review.reviewed)) {
+    failures.push(`${label}: visual review date must be a real date using YYYY-MM-DD`);
+  } else if (review.reviewed > today) {
+    failures.push(`${label}: visual review date cannot be in the future`);
+  }
+  if (!nonemptyString(review.method)) {
+    failures.push(`${label}: visual review method must be a nonempty string`);
+  }
+  if (!Array.isArray(review.checks)) {
+    failures.push(`${label}: visual review checks must be an array`);
+  } else {
+    const checks = new Set(review.checks);
+    for (const check of requiredVisualChecks) {
+      if (!checks.has(check)) {
+        failures.push(`${label}: visual review is missing required check ${check}`);
+      }
+    }
+    if (review.checks.some((check) => !nonemptyString(check))) {
+      failures.push(`${label}: visual review checks must be nonempty strings`);
+    }
+    if (checks.size !== review.checks.length) {
+      failures.push(`${label}: visual review checks must not contain duplicates`);
+    }
+  }
+
+  if (!Array.isArray(review.viewports)) {
+    failures.push(`${label}: visual review viewports must be an array`);
+    return;
+  }
+  const viewportsByName = new Map();
+  for (const viewport of review.viewports) {
+    if (
+      !viewport ||
+      typeof viewport !== 'object' ||
+      Array.isArray(viewport) ||
+      !nonemptyString(viewport.name) ||
+      !Number.isSafeInteger(viewport.width) ||
+      viewport.width <= 0 ||
+      !Number.isSafeInteger(viewport.height) ||
+      viewport.height <= 0
+    ) {
+      failures.push(
+        `${label}: each visual review viewport requires a name and positive integer dimensions`,
+      );
+      continue;
+    }
+    if (viewportsByName.has(viewport.name)) {
+      failures.push(`${label}: visual review viewport ${viewport.name} is duplicated`);
+    }
+    viewportsByName.set(viewport.name, viewport);
+  }
+  for (const [name, expected] of requiredVisualViewports) {
+    const actual = viewportsByName.get(name);
+    if (
+      !actual ||
+      actual.width !== expected.width ||
+      actual.height !== expected.height
+    ) {
+      failures.push(
+        `${label}: visual review requires ${name} viewport ${expected.width}x${expected.height}`,
+      );
+    }
+  }
+}
+
 function validateEntryMetadata(entry, index, failures, today) {
   const label = nonemptyString(entry?.id)
     ? `asset ${entry.id}`
@@ -211,6 +300,7 @@ function validateEntryMetadata(entry, index, failures, today) {
       `${label}: review_triggers must contain at least one repository-relative path`,
     );
   }
+  validateVisualReview(entry.visual_review, label, failures, today);
 }
 
 export async function auditAssetRegistry({
@@ -235,8 +325,8 @@ export async function auditAssetRegistry({
     };
   }
 
-  if (registry.schema_version !== 1) {
-    failures.push('docs/public/assets.json: schema_version must be 1');
+  if (registry.schema_version !== 2) {
+    failures.push('docs/public/assets.json: schema_version must be 2');
   }
   if (!Array.isArray(registry.assets)) {
     failures.push('docs/public/assets.json: assets must be an array');
@@ -305,6 +395,12 @@ export async function auditAssetRegistry({
     }
     if (data.byteLength > entry.max_bytes) {
       failures.push(`${label}: ${data.byteLength} bytes exceeds max_bytes ${entry.max_bytes}`);
+    }
+    const sourceSHA256 = createHash('sha256').update(data).digest('hex');
+    if (entry.visual_review?.source_sha256 !== sourceSHA256) {
+      failures.push(
+        `${label}: file SHA-256 ${sourceSHA256} does not match its approved visual review`,
+      );
     }
     const dimensions = extension === '.svg'
       ? parseSVGDimensions(data.toString('utf8'), label, failures)

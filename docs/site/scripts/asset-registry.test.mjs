@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdtemp, mkdir, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
@@ -16,6 +17,14 @@ async function fixture({
   includeUnregistered = false,
   includeUngovernedStatic = false,
   privacyStatus = 'approved',
+  visualReviewHash,
+  visualReviewChecks = [
+    'text_containment',
+    'connector_continuity',
+    'rendered_legibility',
+    'narrow_viewport',
+    'print_contrast',
+  ],
 } = {}) {
   const root = await mkdtemp(resolve(tmpdir(), 'proctor-assets-'));
   await mkdir(resolve(root, 'docs/public/static/assets/diagrams'), {recursive: true});
@@ -34,7 +43,7 @@ async function fixture({
   await writeFile(
     resolve(root, 'docs/public/assets.json'),
     JSON.stringify({
-      schema_version: 1,
+      schema_version: 2,
       assets: [
         {
           id: 'test-diagram',
@@ -57,6 +66,18 @@ async function fixture({
           theme: 'light-high-contrast',
           last_reviewed: '2026-08-24',
           review_triggers: ['docs/architecture/runtime.md'],
+          visual_review: {
+            status: 'approved',
+            source_sha256:
+              visualReviewHash ?? createHash('sha256').update(svg).digest('hex'),
+            reviewed: '2026-08-24',
+            method: 'Rendered browser fixture review.',
+            checks: visualReviewChecks,
+            viewports: [
+              {name: 'desktop', width: 1440, height: 1024},
+              {name: 'mobile', width: 390, height: 844},
+            ],
+          },
         },
       ],
     }),
@@ -123,6 +144,37 @@ test('rejects dimension drift', async () => {
     today: '2026-08-24',
   });
   assert(result.failures.some((failure) => failure.includes('dimensions do not match')));
+});
+
+test('rejects asset bytes that drift from the approved visual review', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({visualReviewHash: '0'.repeat(64)}),
+    today: '2026-08-24',
+  });
+  assert(
+    result.failures.some((failure) =>
+      failure.includes('does not match its approved visual review'),
+    ),
+  );
+});
+
+test('requires the complete visual acceptance checklist', async () => {
+  const result = await auditAssetRegistry({
+    repoRoot: await fixture({
+      visualReviewChecks: [
+        'text_containment',
+        'rendered_legibility',
+        'narrow_viewport',
+        'print_contrast',
+      ],
+    }),
+    today: '2026-08-24',
+  });
+  assert(
+    result.failures.some((failure) =>
+      failure.includes('missing required check connector_continuity'),
+    ),
+  );
 });
 
 test('requires an approved privacy review', async () => {

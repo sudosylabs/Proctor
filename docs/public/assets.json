@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "assets": [
     {
       "id": "installation-authority-topology",
@@ -24,6 +24,31 @@
       "max_bytes": 100000,
       "theme": "light-high-contrast",
       "last_reviewed": "2026-08-24",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "853c110de1697342920571dfe9fb5ab5ac0e76ef7b10436755744cd4945f8fcd",
+        "reviewed": "2026-08-24",
+        "method": "Browser geometry inspection at full size and rendered documentation widths.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
       "review_triggers": [
         "docs/architecture/dependencies.md",
         "docs/architecture/runtime.md"
@@ -52,6 +77,31 @@
       "max_bytes": 100000,
       "theme": "light-high-contrast",
       "last_reviewed": "2026-08-24",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "7ee113d7dc0e2d5a344cbb24701abfe15b459920b598a00e04b4ede9e8eeb3ff",
+        "reviewed": "2026-08-24",
+        "method": "Browser geometry inspection at full size and rendered documentation widths.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
       "review_triggers": [
         "docs/architecture/identity.md",
         "docs/architecture/authorization.md",

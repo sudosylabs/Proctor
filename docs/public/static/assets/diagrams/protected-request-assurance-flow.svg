@@ -22,7 +22,8 @@
   <text x="48" y="116" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">01 · PRESENTED REQUEST</text>
   <rect x="48" y="130" width="270" height="230" rx="14" fill="#f7f8fb" stroke="#c7ceda" stroke-width="2"/>
   <text x="70" y="160" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Exactly one credential source</text>
-  <text x="70" y="181" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">Secrets stay in cookies or headers—never URLs.</text>
+  <text x="70" y="179" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Secrets stay in cookies or headers.</text>
+  <text x="70" y="194" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Never place them in URLs.</text>
 
   <rect x="70" y="202" width="226" height="42" rx="8" fill="#ffffff" stroke="#c7ceda"/>
   <rect x="82" y="214" width="18" height="18" rx="5" fill="#eef1ff" stroke="#3657d6"/>
@@ -39,7 +40,7 @@
   <text x="91" y="327" text-anchor="middle" fill="#3657d6" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="800">PAT</text>
   <text x="112" y="328" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="650">Personal Access Token</text>
 
-  <path d="M 318 245 H 338" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
+  <path d="M 318 245 H 342" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
 
   <text x="342" y="116" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">02 · TRANSPORT PROOF GATE</text>
   <rect x="342" y="130" width="380" height="230" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
@@ -68,7 +69,7 @@
   <rect x="598" y="309" width="56" height="25" rx="12" fill="#fff3e5"/>
   <text x="626" y="326" text-anchor="middle" fill="#a65c16" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="700">RECENT</text>
 
-  <path d="M 722 245 H 742" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 722 245 H 746" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
 
   <text x="746" y="116" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">03 · TRANSPORT OUTPUT</text>
   <rect x="746" y="130" width="406" height="230" rx="14" fill="#3657d6" stroke="#2945b8" stroke-width="2"/>
@@ -94,8 +95,8 @@
   <text x="72" y="426" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">The transport may reject early. Passing this rail does not authorize the requested resource.</text>
   <rect x="898" y="397" width="230" height="28" rx="14" fill="#3657d6"/>
   <text x="1013" y="416" text-anchor="middle" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10" font-weight="800">NOT A PERMISSION RECEIPT</text>
-  <path d="M 949 360 V 379" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
-  <path d="M 949 440 V 466" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 949 360 V 382" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 949 440 V 456 H 330 V 482" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
 
   <text x="48" y="468" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">04 · APPLICATION AUTHORITY</text>
   <rect x="48" y="482" width="302" height="150" rx="14" fill="#ffffff" stroke="#c7ceda" stroke-width="2"/>
@@ -105,7 +106,7 @@
   <text x="70" y="585" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">+ EXACT RESOURCE</text>
   <text x="70" y="613" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Sensitive use cases repeat their assurance guard.</text>
 
-  <path d="M 350 557 H 370" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
+  <path d="M 350 557 H 374" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
 
   <rect x="374" y="482" width="378" height="150" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
   <text x="398" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Read current PostgreSQL authority</text>
@@ -118,7 +119,7 @@
   <rect x="398" y="601" width="225" height="22" rx="11" fill="#eef1ff"/>
   <text x="510" y="616" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="9" font-weight="750">NO AUTHORIZATION-RESULT CACHE</text>
 
-  <path d="M 752 557 H 772" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 752 557 H 776" fill="none" stroke="#3657d6" stroke-width="2" marker-end="url(#arrow-cobalt)"/>
 
   <rect x="776" y="482" width="376" height="150" rx="14" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
   <text x="800" y="511" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Durably record the decision</text>
@@ -131,7 +132,8 @@
   <text x="1043" y="587" text-anchor="middle" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="10">no mutation</text>
   <text x="800" y="617" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Audit failure cannot become an undocumented allow.</text>
 
-  <path d="M 532 360 V 370 H 32 V 650 M 1128 575 H 1138 V 650" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
+  <path d="M 532 360 V 370 H 32 V 674 H 48" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
+  <path d="M 1128 575 H 1138 V 652" fill="none" stroke="#c53d4d" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-coral)"/>
   <rect x="48" y="652" width="1104" height="45" rx="9" fill="#c53d4d"/>
   <text x="72" y="680" fill="#ffffff" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="800">FAIL CLOSED</text>
   <text x="172" y="680" fill="#fff0f1" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">ambiguous credential · invalid CSRF · insufficient assurance · denied or unavailable authority/audit</text>

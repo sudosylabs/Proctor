@@ -34,7 +34,7 @@
   <circle cx="92" cy="328" r="7" fill="#3657d6"/>
   <text x="108" y="333" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="650">Candidate client</text>
 
-  <path d="M 258 252 H 322" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
+  <path d="M 258 252 H 326" fill="none" stroke="#4c586f" stroke-width="2" marker-end="url(#arrow-ink)"/>
   <text x="267" y="240" fill="#6d788c" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="10">HTTPS/WSS</text>
 
   <rect x="326" y="122" width="456" height="260" rx="14" fill="#eef1ff" stroke="#3657d6" stroke-width="2"/>
@@ -43,7 +43,7 @@
   <rect x="447" y="172" width="214" height="50" rx="25" fill="#ffffff" stroke="#3657d6" stroke-width="2"/>
   <text x="554" y="202" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700">External load balancer</text>
 
-  <path d="M 554 222 V 252 M 405 252 H 703 M 405 252 V 269 M 554 252 V 269 M 703 252 V 269" fill="none" stroke="#3657d6" stroke-width="2"/>
+  <path d="M 554 222 V 252 M 405 252 H 703 M 405 252 V 270 M 554 252 V 270 M 703 252 V 270" fill="none" stroke="#3657d6" stroke-width="2"/>
 
   <rect x="350" y="270" width="110" height="78" rx="10" fill="#ffffff" stroke="#3657d6"/>
   <text x="405" y="300" text-anchor="middle" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Proctor</text>
@@ -60,10 +60,10 @@
   <rect x="48" y="405" width="734" height="58" rx="9" fill="#3657d6"/>
   <text x="72" y="430" fill="#ffffff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.5">DURABLE COMMIT BOUNDARY</text>
   <text x="72" y="449" fill="#eef1ff" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Authority crosses this rail before any best-effort publication</text>
-  <path d="M 405 348 V 402 M 554 348 V 402 M 703 348 V 402" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 405 348 V 405 M 554 348 V 405 M 703 348 V 405" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
   <rect x="621" y="420" width="137" height="28" rx="14" fill="#ffffff"/>
   <text x="689" y="438" text-anchor="middle" fill="#2945b8" font-family="SFMono-Regular, Consolas, Liberation Mono, monospace" font-size="11" font-weight="700">COMMIT FIRST</text>
-  <path d="M 225 463 V 515 M 605 463 V 515" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
+  <path d="M 225 463 V 518 M 605 463 V 518" fill="none" stroke="#3657d6" stroke-width="3" marker-end="url(#arrow-cobalt)"/>
 
   <text x="48" y="498" fill="#6d788c" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="750" letter-spacing="1.4">AUTHORITATIVE STORES</text>
 
@@ -87,7 +87,9 @@
   <text x="842" y="151" fill="#0d806e" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.4">DISPOSABLE / RECONSTRUCTIBLE</text>
   <text x="842" y="174" fill="#4c586f" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="13">Effects follow a successful durable commit.</text>
 
-  <path d="M 782 327 H 826 M 826 237 V 507 M 826 237 H 839 M 826 327 H 839 M 826 417 H 839 M 826 507 H 839" fill="none" stroke="#0d806e" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-aqua)"/>
+  <path d="M 782 434 H 826 M 826 237 V 507" fill="none" stroke="#0d806e" stroke-width="2" stroke-dasharray="7 6"/>
+  <circle cx="826" cy="434" r="4" fill="#0d806e"/>
+  <path d="M 826 237 H 842 M 826 327 H 842 M 826 417 H 842 M 826 507 H 842" fill="none" stroke="#0d806e" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-aqua)"/>
 
   <rect x="842" y="200" width="286" height="74" rx="10" fill="#ffffff" stroke="#0d806e"/>
   <text x="864" y="229" fill="#172033" font-family="Avenir Next, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="750">Redis</text>

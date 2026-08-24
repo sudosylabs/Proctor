@@ -108,5 +108,7 @@ MDX supplies only a registry ID to `GovernedFigure`, so Docusaurus' authored
 image parser never reads those files. The asset gate independently permits only
 the two reviewed formats and checks inventory, ownership, provenance, license
 state, privacy review, dimensions, size, safe SVG structure, references, and
-review triggers. Revisit the parser prohibition when a fixed dependency is
-available; do not remove the governed asset boundary.
+review triggers. Each visual approval is bound to the asset's SHA-256 and a
+desktop/mobile acceptance checklist, so an edited illustration cannot inherit
+an earlier review silently. Revisit the parser prohibition when a fixed
+dependency is available; do not remove the governed asset boundary.

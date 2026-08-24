@@ -24,9 +24,10 @@ presentation details while the validator enforces the asset contract.
 Only deterministic SVG diagrams and PNG screenshots or illustrations are
 allowed. The validator rejects unregistered and orphaned files, duplicate IDs,
 missing ownership or provenance, unapproved privacy reviews, unsafe SVG
-features, dimension and size drift, unknown references, and missing review
-triggers. SVG files may not contain active content, linked or embedded images,
-external references, event handlers, doctypes, or entities.
+features, dimension and size drift, visual-review hash drift, unknown
+references, and missing review triggers. SVG files may not contain active
+content, linked or embedded images, external references, event handlers,
+doctypes, or entities.
 
 The constrained static path deliberately bypasses Docusaurus' authored-image
 parser while its transitive `image-size` dependency has unresolved security
@@ -44,7 +45,8 @@ Use lowercase kebab-case IDs and paths grouped by role, such as
 - a privacy decision with its evidence;
 - useful alt text and a concise visible caption;
 - the intended theme and review date; and
-- repository files whose changes require the asset to be reviewed.
+- repository files whose changes require the asset to be reviewed; and
+- a visual acceptance record tied to the exact asset SHA-256.
 
 An original asset may record `license.status` as `pending` only while Proctor's
 documentation-license production decision remains open. The note must explain
@@ -72,9 +74,38 @@ on a white technical plate so light, dark, print, and high-contrast contexts
 retain the same evidence.
 
 Use system font fallbacks only. Preserve a numeric `width`, `height`, and
-matching `viewBox`; keep text legible when the figure fills a narrow content
-column. The SVG title and description are useful source metadata, while the
-registry alt text remains the rendered accessibility authority.
+matching `viewBox`; keep primary labels legible at the desktop content width.
+At mobile width, the complete structure must remain recognizable and the
+full-size inspection link must remain visible. If a procedure depends on
+reading every label without opening that view, author a narrower companion
+figure instead of compressing the desktop diagram. The SVG title and
+description are useful source metadata, while the registry alt text remains the
+rendered accessibility authority.
+
+## Visual acceptance review
+
+An asset is not approved merely because its SVG or PNG parses. Review the exact
+bytes recorded by `visual_review.source_sha256` in a browser, both at full size
+and inside the documentation page that uses it. The registry requires the
+standard 1440 × 1024 desktop and 390 × 844 mobile viewports.
+
+1. Confirm every visible word remains inside its intended card, label, or plate.
+2. Trace every connector from source boundary to target boundary. Branches must
+   actually join their spine, and arrowheads must terminate at a meaningful
+   target rather than in whitespace.
+3. Read the figure at the rendered desktop documentation width. Split or
+   simplify a dense figure instead of relying on browser zoom; the full-size
+   link is a secondary inspection aid.
+4. Confirm the narrow page has no unintended horizontal overflow and that its
+   overall structure, caption, and full-size link remain usable.
+5. Inspect print or print emulation so meaning survives without color, shadow,
+   animation, or a dark-theme background.
+
+Record all five checklist identifiers and the review method in the registry,
+then compute the SHA-256 from the final asset. `npm run validate:assets` rejects
+any later byte change until a maintainer repeats the review and updates the
+approval record. The hash proves which exact artifact was inspected; it does
+not replace the browser review.
 
 ## Screenshot fixtures
 
