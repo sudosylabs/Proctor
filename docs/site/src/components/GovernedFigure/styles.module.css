@@ -37,6 +37,13 @@
   text-transform: uppercase;
 }
 
+.fullSize {
+  flex: none;
+  font-size: 0.76rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 600px) {
   .figure {
     margin: 1.75rem 0;
@@ -46,6 +53,11 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 0.2rem;
+  }
+
+  .fullSize {
+    margin-left: 0;
+    margin-top: 0.2rem;
   }
 }
 
@@ -61,5 +73,9 @@
   .caption,
   .kind {
     color: #172033;
+  }
+
+  .fullSize {
+    display: none;
   }
 }

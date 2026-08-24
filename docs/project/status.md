@@ -29,9 +29,10 @@ the code and component contracts for that detail.
   give every product area a human entry path, including durable Job and mail
   operations. A governed static visual-asset boundary now bypasses the
   vulnerable authored-image parser, validates ownership, provenance, license
-  state, privacy, safe formats, dimensions, references, and freshness triggers,
-  and introduces the first high-contrast installation-authority diagram. The
-  broader visual corpus and provisional UI remain later documentation slices,
+  state, privacy, safe formats, dimensions, references, and freshness triggers.
+  Its first high-contrast diagrams distinguish installation authority and the
+  protected-request authentication, assurance, and current authorization
+  boundary. The broader visual corpus and provisional UI remain later slices,
   while licensing, hostname, versioning, and hosting remain unsettled
   production decisions.
 - The root product build now owns one configurable end-to-end development

@@ -41,6 +41,14 @@ export default function GovernedFigure({
       <figcaption className={styles.caption}>
         <span className={styles.kind}>{entry.kind}</span>
         <span>{entry.caption}</span>
+        <a
+          aria-label={`Open ${entry.kind} at full size in a new tab`}
+          className={styles.fullSize}
+          href={entry.public_path}
+          rel="noopener noreferrer"
+          target="_blank">
+          Open full size <span aria-hidden="true">↗</span>
+        </a>
       </figcaption>
     </figure>
   );

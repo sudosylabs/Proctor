@@ -28,6 +28,39 @@
         "docs/architecture/dependencies.md",
         "docs/architecture/runtime.md"
       ]
+    },
+    {
+      "id": "protected-request-assurance-flow",
+      "path": "static/assets/diagrams/protected-request-assurance-flow.svg",
+      "public_path": "/assets/diagrams/protected-request-assurance-flow.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's identity, transport, application, and authorization contracts.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains security contract labels and credential-type names only; no User, Session, credential, Institution, request, or operational data."
+      },
+      "alt": "A protected request first supplies exactly one cookie or bearer credential. The transport validates its source, applies CSRF protection to unsafe cookie requests, and checks the route's declared session, strength, and recency requirements before establishing an immutable principal. The application then combines that principal with a stable action and exact resource, re-reads current PostgreSQL roles, bindings, scope, and relationships, and durably audits allow or deny. Invalid proof, insufficient assurance, unavailable authority, denied permission, or unavailable audit fails closed.",
+      "caption": "Transport proof establishes an immutable principal, not permission. The owning use case separately evaluates current action-and-resource authority and can proceed only after its allow decision is durably recorded.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "last_reviewed": "2026-08-24",
+      "review_triggers": [
+        "docs/architecture/identity.md",
+        "docs/architecture/authorization.md",
+        "docs/architecture/application.md",
+        "docs/architecture/transport.md",
+        "server/httpapi/handler.go",
+        "server/app/session_assurance.go",
+        "server/app/authorization.go"
+      ]
     }
   ]
 }
