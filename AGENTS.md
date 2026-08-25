@@ -2,7 +2,7 @@
 
 This guide applies to the entire repository. A more specific `AGENTS.md` may
 add rules for its subtree; it must contain local differences rather than copy
-this file or the architecture guide.
+this file or task skills.
 
 ## Mission
 
@@ -23,24 +23,23 @@ also build and test independently.
 
 ## Sources of truth
 
-Start at [`docs/README.md`](docs/README.md). Load only the material relevant to
-the task:
+Load only the material relevant to the task:
 
-- Read [`CONTEXT.md`](CONTEXT.md) when domain terminology or invariants are in
-  scope. It is the single implementation-free glossary.
-- Read [`docs/architecture/`](docs/architecture/) when changing boundaries,
-  dependencies, security behavior, persistence, transports, or runtime design.
-- Read [`docs/project/status.md`](docs/project/status.md) when selecting work,
-  checking implemented capabilities, or resolving an open decision.
-- Read [`docs/contributing/documentation.md`](docs/contributing/documentation.md)
-  before creating or reorganizing documentation or agent instructions.
+- Invoke [`$glossary`](.agents/skills/glossary/SKILL.md) before work that
+  creates, changes, persists, transports, authorizes, documents, or publicly
+  presents Proctor domain concepts. Honor skill prerequisites in order;
+  unrelated tooling work does not load the glossary.
+- Load a task-specific skill from `.agents/skills/` when its description
+  matches the work; skills contain branch-specific workflow and reference.
+- Invoke
+  [`$documentation-design`](.agents/skills/documentation-design/SKILL.md)
+  before creating or reorganizing documentation, skills, or agent instructions.
 - Read the affected module README and the nearest component contract before
   changing a public or behavioral contract.
 
 The code and tests are the source of truth for discoverable implementation
-detail. Documentation records domain language, durable rules, rationale,
-contracts, status, and non-obvious workflow—not inventories that can be
-recovered cheaply from the tree.
+detail. Skills and component contracts record domain language, durable rules,
+rationale, and non-obvious workflow—not inventories recoverable from the tree.
 
 ## Architectural guardrails
 
@@ -74,24 +73,14 @@ recovered cheaply from the tree.
 15. One installation contains one institution. Do not add tenant columns or
     tenant routing without a new, explicit architecture decision.
 
-The detailed dependency graph and rationale live in
-[`docs/architecture/dependencies.md`](docs/architecture/dependencies.md).
+The exact dependency graph and rationale live in the
+[`server-boundaries` dependency reference](.agents/skills/server-boundaries/references/dependencies.md).
 
 ## Domain and product guardrails
 
-- Use `Institution`, hierarchical `Academic Unit`, `Programme`, `Programme
-  Level`, `Academic Period`, and `Class` as defined in the glossary.
-- `Class`, not `Group`, is the concrete student roster.
-- A student has at most one active class membership in an academic period;
-  progression and transfers retain history.
-- Affiliations describe relationships. Roles and scoped bindings grant
-  permissions. Membership alone grants no unrestricted access.
-- Read [`CONTEXT.md`](CONTEXT.md) and
-  [`docs/architecture/examinations.md`](docs/architecture/examinations.md)
-  before changing Exam ownership, targeting, lifecycle, participation,
-  integrity, or review behavior. Those documents own the settled model and
-  identify any decisions that remain open; implement neither stale summaries
-  nor unspecified behavior.
+Invoke `$glossary` before every domain-sensitive skill and honor each skill's
+ordered prerequisites. Implement neither stale summaries nor unspecified
+behavior.
 
 ## Licensing and provenance
 
@@ -128,8 +117,8 @@ While working:
 - Keep dependency direction intact and complete one vertical slice at a time.
 - Add tests proportional to risk and use existing conformance suites.
 - Record copied or substantially adapted upstream source immediately.
-- Update the glossary, architecture topic, status, or component contract in
-  the same change when its authority has changed.
+- Update the owning skill, component contract, or public documentation in the
+  same change when its authority has changed.
 
 Before handing off:
 

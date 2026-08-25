@@ -31,7 +31,9 @@ async function fixture({
   await mkdir(resolve(root, 'docs/public/static/assets/diagrams'), {recursive: true});
   await mkdir(resolve(root, 'docs/public/operator'), {recursive: true});
   await mkdir(resolve(root, 'docs/api'), {recursive: true});
-  await mkdir(resolve(root, 'docs/architecture'), {recursive: true});
+  await mkdir(resolve(root, '.agents/skills/runtime-operations/references'), {
+    recursive: true,
+  });
   await writeFile(resolve(root, 'docs/public/static/assets/diagrams/test.svg'), svg);
   if (includeUnregistered) {
     await writeFile(resolve(root, 'docs/public/static/assets/diagrams/orphan.svg'), safeSVG);
@@ -40,7 +42,10 @@ async function fixture({
     await writeFile(resolve(root, 'docs/public/static/bypass.svg'), safeSVG);
   }
   await writeFile(resolve(root, 'docs/public/operator/index.mdx'), source);
-  await writeFile(resolve(root, 'docs/architecture/runtime.md'), '# Runtime\n');
+  await writeFile(
+    resolve(root, '.agents/skills/runtime-operations/references/runtime.md'),
+    '# Runtime\n',
+  );
   await writeFile(
     resolve(root, 'docs/public/assets.json'),
     JSON.stringify({
@@ -67,7 +72,9 @@ async function fixture({
           theme: 'light-high-contrast',
           visual_system: visualSystem,
           last_reviewed: '2026-08-24',
-          review_triggers: ['docs/architecture/runtime.md'],
+          review_triggers: [
+            '.agents/skills/runtime-operations/references/runtime.md',
+          ],
           visual_review: {
             status: 'approved',
             source_sha256:

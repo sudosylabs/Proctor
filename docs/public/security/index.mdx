@@ -6,6 +6,8 @@ maturity: preview
 slug: /security/
 ---
 
+import Link from '@docusaurus/Link';
+
 # Review Proctor Security
 
 Security review starts with the decisions Proctor owns and the controls the
@@ -53,12 +55,12 @@ projection and can be repaired or revoked from authoritative state.
 
 | Concern | Governing document |
 | --- | --- |
-| Credentials, sessions, MFA, and external identity | [Identity architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/identity.md) |
-| Permissions, scope inheritance, and decision audit | [Authorization architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/authorization.md) |
-| Secrets, logs, headers, and transport behavior | [Security architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/security.md) |
-| Files, retention, legal holds, and purge boundaries | [File architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/files.md) |
-| Isolated execution and host trust | [Execution architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/execution.md) |
-| Exam integrity evidence and review | [Examination architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/examinations.md) |
+| Credentials, sessions, MFA, and external identity | <Link to="/api/guides/authentication">Authentication guide</Link> |
+| Permissions, scope inheritance, and decision audit | <Link to="/api/recipes/consume-audit">Consume the audit trail</Link> |
+| Secrets, logs, headers, and transport behavior | <Link to="/api/guides/errors">Errors and safe disclosure</Link> |
+| Files, retention, legal holds, and purge boundaries | <Link to="/api/guides/uploads-and-content">Uploads and protected content</Link> |
+| Isolated execution and host trust | <Link to="/api/recipes/candidate-attempt">Candidate Attempt workflow</Link> |
+| Exam integrity evidence and review | <Link to="/api/recipes/review-and-release">Review and release</Link> |
 
 ## Data-Handling Rule
 

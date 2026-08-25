@@ -6,6 +6,8 @@ maturity: preview
 slug: /institution-admin/
 ---
 
+import Link from '@docusaurus/Link';
+
 # Set Up an Institution
 
 Every Proctor installation contains one <Term id="institution">Institution</Term>.
@@ -47,14 +49,14 @@ context in which examinations are created and delivered.
 
 ## Read the Governing Model
 
-- [Domain language](https://github.com/sudosylabs/Proctor/blob/main/CONTEXT.md)
-  defines Institution, Academic Unit, Programme, Academic Period, and Class.
-- [Access and onboarding](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/access-and-onboarding.md)
-  owns bootstrap, invitations, academic administration, and progression.
-- [Identity](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/identity.md)
-  owns authentication methods and account lifecycle.
-- [Authorization](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/authorization.md)
-  owns roles, scoped bindings, and authoritative checks.
+- [Proctor glossary](../reference/glossary.mdx) defines Institution, Academic
+  Unit, Programme, Academic Period, and Class.
+- <Link to="/api/recipes/bootstrap-installation">Bootstrap an installation</Link>
+  to establish the Institution and first administrative authority.
+- <Link to="/api/recipes/academic-structure">Build the academic structure</Link>
+  with explicit hierarchy, period, and roster ownership.
+- <Link to="/api/recipes/invite-and-link-users">Invite and link users</Link>
+  through the supported onboarding contracts.
 
 ## Important Vocabulary
 

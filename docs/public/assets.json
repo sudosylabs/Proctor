@@ -51,8 +51,8 @@
         ]
       },
       "review_triggers": [
-        "docs/architecture/dependencies.md",
-        "docs/architecture/runtime.md"
+        ".agents/skills/server-boundaries/references/dependencies.md",
+        ".agents/skills/runtime-operations/references/runtime.md"
       ]
     },
     {
@@ -105,10 +105,10 @@
         ]
       },
       "review_triggers": [
-        "docs/architecture/identity.md",
-        "docs/architecture/authorization.md",
-        "docs/architecture/application.md",
-        "docs/architecture/transport.md",
+        ".agents/skills/identity-and-access/references/identity.md",
+        ".agents/skills/authorization-audit/references/authorization.md",
+        ".agents/skills/server-boundaries/references/application.md",
+        ".agents/skills/http-api/references/transport.md",
         "server/httpapi/handler.go",
         "server/app/session_assurance.go",
         "server/app/authorization.go"
@@ -164,9 +164,9 @@
         ]
       },
       "review_triggers": [
-        "CONTEXT.md",
-        "docs/architecture/domain.md",
-        "docs/architecture/authorization.md",
+        ".agents/skills/glossary/SKILL.md",
+        ".agents/skills/academic-structure/SKILL.md",
+        ".agents/skills/authorization-audit/references/authorization.md",
         "docs/api/recipes/academic-structure.mdx"
       ]
     },
@@ -220,8 +220,8 @@
         ]
       },
       "review_triggers": [
-        "CONTEXT.md",
-        "docs/architecture/examinations.md",
+        ".agents/skills/glossary/SKILL.md",
+        ".agents/skills/exam-lifecycle/references/examinations.md",
         "docs/api/recipes/author-and-publish-exam.mdx",
         "docs/api/recipes/manage-sitting.mdx",
         "docs/api/recipes/candidate-attempt.mdx"

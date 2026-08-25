@@ -13,9 +13,12 @@ test('the tracked glossary is current and valid', async () => {
   assert.deepEqual(await auditGlossary(), []);
 });
 
-test('CONTEXT.md produces the complete canonical vocabulary', async () => {
+test('the glossary skill produces the complete canonical vocabulary', async () => {
   const terms = parseGlossary(
-    await readFile(new URL('../../../CONTEXT.md', import.meta.url), 'utf8'),
+    await readFile(
+      new URL('../../../.agents/skills/glossary/SKILL.md', import.meta.url),
+      'utf8',
+    ),
   );
   assert.equal(terms.length, 61);
   assert.deepEqual(terms[0], {
@@ -34,7 +37,10 @@ test('renderers name the authority and remain deterministic', () => {
   const terms = parseGlossary(
     '## Identity\n\n**Principal**:\nThe identity acting now.\n_Avoid_: User\n',
   );
-  assert.match(renderGlossaryData(terms), /Generated from CONTEXT\.md/);
+  assert.match(
+    renderGlossaryData(terms),
+    /Generated from \.agents\/skills\/glossary\/SKILL\.md/,
+  );
   assert.match(renderGlossaryPage(1), /These 1 definitions/);
 });
 

@@ -1,10 +1,11 @@
 # Architecture-test agent guide
 
 This directory enforces repository architecture and documentation invariants.
-Read [`docs/architecture/dependencies.md`](../../docs/architecture/dependencies.md)
-before changing import policy and
-[`docs/contributing/documentation.md`](../../docs/contributing/documentation.md)
-before changing the Markdown validator.
+Invoke
+[`$server-boundaries`](../../.agents/skills/server-boundaries/SKILL.md)
+before changing import policy and invoke
+[`$documentation-design`](../../.agents/skills/documentation-design/SKILL.md)
+before changing documentation or skill validation.
 
 - Tests remain hermetic and network-free.
 - Production package boundaries are declared as ordered rules in

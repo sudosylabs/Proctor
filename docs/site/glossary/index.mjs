@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 
 const moduleRoot = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(moduleRoot, '../../..');
+const glossarySkill = '.agents/skills/glossary/SKILL.md';
 
 function slugify(term) {
   return term
@@ -82,17 +83,17 @@ export function parseGlossary(source) {
   }
 
   if (terms.length === 0) {
-    throw new Error('CONTEXT.md contains no glossary terms');
+    throw new Error('glossary skill contains no glossary terms');
   }
   return terms;
 }
 
 export function renderGlossaryData(terms) {
-  return `// Generated from CONTEXT.md. Do not edit by hand.\n\nexport type GlossaryTerm = {\n  id: string;\n  term: string;\n  section: string;\n  definition: string;\n  avoid: string;\n};\n\nexport const glossaryTerms = ${JSON.stringify(terms, null, 2)} satisfies readonly GlossaryTerm[];\n\nexport const glossaryById = Object.fromEntries(\n  glossaryTerms.map((term) => [term.id, term]),\n) as Readonly<Record<string, GlossaryTerm>>;\n`;
+  return `// Generated from ${glossarySkill}. Do not edit by hand.\n\nexport type GlossaryTerm = {\n  id: string;\n  term: string;\n  section: string;\n  definition: string;\n  avoid: string;\n};\n\nexport const glossaryTerms = ${JSON.stringify(terms, null, 2)} satisfies readonly GlossaryTerm[];\n\nexport const glossaryById = Object.fromEntries(\n  glossaryTerms.map((term) => [term.id, term]),\n) as Readonly<Record<string, GlossaryTerm>>;\n`;
 }
 
 export function renderGlossaryPage(termCount) {
-  return `---\ntitle: Proctor glossary\ndescription: Canonical public definitions for Proctor domain terminology.\naudience: everyone\nmaturity: available\nslug: /glossary/\nsidebar_position: 1\npagination_next: null\npagination_prev: null\n---\n\n# Proctor Glossary\n\nThese ${termCount} definitions are generated from Proctor's canonical domain language.\nThey explain what each term means and the nearby vocabulary it must not be confused\nwith. Maintainers change [CONTEXT.md](https://github.com/sudosylabs/Proctor/blob/main/CONTEXT.md),\nthen regenerate this page.\n\n<GlossaryIndex />\n`;
+  return `---\ntitle: Proctor glossary\ndescription: Canonical public definitions for Proctor domain terminology.\naudience: everyone\nmaturity: available\nslug: /glossary/\nsidebar_position: 1\npagination_next: null\npagination_prev: null\n---\n\n# Proctor Glossary\n\nThese ${termCount} definitions are generated from Proctor's canonical domain language.\nThey explain what each term means and the nearby vocabulary it must not be confused\nwith.\n\n<GlossaryIndex />\n`;
 }
 
 async function documentationFiles(directory, skip) {
@@ -153,12 +154,12 @@ function auditTermMarkup(source, name, knownIds) {
 
 export async function auditGlossary({repoRoot = defaultRepoRoot} = {}) {
   const failures = [];
-  const contextPath = resolve(repoRoot, 'CONTEXT.md');
+  const contextPath = resolve(repoRoot, glossarySkill);
   let terms = [];
   try {
     terms = parseGlossary(await readFile(contextPath, 'utf8'));
   } catch (error) {
-    return [`CONTEXT.md: ${error.message}`];
+    return [`${glossarySkill}: ${error.message}`];
   }
 
   const expected = new Map([

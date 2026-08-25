@@ -6,6 +6,8 @@ maturity: preview
 slug: /developers/
 ---
 
+import Link from '@docusaurus/Link';
+
 # Develop With Proctor
 
 Proctor is a Go workspace with four independently versioned modules and one
@@ -39,15 +41,13 @@ infrastructure.
   routes architectural and product questions.
 - [Build guide](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
   owns product-level commands and development infrastructure.
-- [Architecture guide](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/README.md)
-  owns durable boundaries and rationale.
 - [Server README](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
   owns server-specific commands and configuration.
-- [API guide](../../api/) explains the reviewed HTTP contract.
+- <Link to="/api/">API guide</Link> explains the reviewed HTTP contract.
 
 ## Contribution Rule
 
 Make the smallest coherent change, add tests proportional to risk, and update
-the authority that owns any changed domain language, architecture, public
-contract, capability status, or command. Generated documentation must name its
-tracked input and rebuild deterministically.
+the authority that owns any changed domain language, behavior, public contract,
+or command. Generated documentation must name its tracked input and rebuild
+deterministically.

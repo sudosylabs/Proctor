@@ -10,19 +10,17 @@ authorization, identity, transports, persistence, clustering, configuration,
 and runtime composition. Reusable cache, mail, and VFS behavior belongs in the
 independent modules under `packages/`.
 
-Before changing the server, load the relevant architecture topic from
-[`docs/architecture/`](../docs/architecture/) and any exact component contract:
+Before changing the server, load the matching repository skill and any exact
+component contract:
 
 - HTTP routes, DTOs, errors, or OpenAPI:
   [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md)
 - cluster delivery or recovery: [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md)
-- current capabilities and open decisions:
-  [`docs/project/status.md`](../docs/project/status.md)
 
 ## Local rules
 
-- Preserve the inward production graph documented in
-  [`docs/architecture/dependencies.md`](../docs/architecture/dependencies.md),
+- Preserve the inward production graph documented by the
+  [`server-boundaries` skill](../.agents/skills/server-boundaries/SKILL.md),
   including the selective `app/job` and `app/realtime` child modules. Child
   modules never import their parent package or concrete transports.
 - Keep concrete adapter selection in module-root package `server`.

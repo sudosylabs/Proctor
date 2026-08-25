@@ -15,7 +15,7 @@ sections so clients render the same structure. Human prose still comes only
 from `../i18n`. Maintainers may restyle the MJML without changing delivery
 logic, but must retain the semantic reading order, complete text equivalent,
 contextual escaping, accessibility, and privacy constraints in the
-[transactional-mail architecture](../../docs/architecture/mail.md).
+repository [`transactional-mail` skill](../../.agents/skills/transactional-mail/SKILL.md).
 
 ## Typed properties
 

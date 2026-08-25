@@ -2,8 +2,8 @@
 
 This private Docusaurus package renders the task-oriented content in
 [`../public/`](../public/) and the API reference rooted at
-[`../api/`](../api/). Existing architecture, component contracts, module
-READMEs, and project status remain authoritative in their current locations.
+[`../api/`](../api/). Repository skills, component contracts, code, and tests
+remain authoritative for internal behavior.
 
 The current local build provides task-oriented navigation, public content
 validation, a deliberate operator-first reading shell, and a deterministic
@@ -15,7 +15,7 @@ The search dialog uses a generated local index covering authored public and API
 guides, canonical glossary terms, OpenAPI product areas, and every operation.
 It performs no remote request and sends no query off the page.
 
-The tracked [documentation design system](../contributing/design-system.md)
+The tracked [documentation visual-system reference](../../.agents/skills/docs-site/references/design-system.md)
 owns the brand palette, semantic colors, IBM Plex typography, spacing,
 geometry, and illustration grammar. Human changes begin in
 `design-system/tokens.mjs`; `src/css/tokens.css` is generated:
@@ -45,9 +45,10 @@ contract keep domain and utility symbols consistent without an external icon
 library. Add a name only when the concept recurs and update the icon contract
 and its test in the same change.
 
-`CONTEXT.md` is the single glossary authority. `generate:glossary` produces the
-public glossary page and the typed runtime lookup used by explicit `<Term>`
-tooltips. The check rejects stale generated views, unknown identifiers, repeated
+The repository [`glossary` skill](../../.agents/skills/glossary/SKILL.md) is the
+single domain-language authority. `generate:glossary` produces the public
+glossary page and the typed runtime lookup used by explicit `<Term>` tooltips.
+The check rejects stale generated views, unknown identifiers, repeated
 annotations, and tooltip markup inside headings or code.
 
 The search module reads human-authored MDX plus `server/openapi.json` and hides
@@ -147,7 +148,8 @@ fixed release. Public pages therefore cannot add Markdown images, raw `img`
 elements, or image imports; `npm run validate` enforces that boundary.
 
 Reviewed SVG and PNG content assets instead use the constrained static route
-documented in [`../contributing/visual-assets.md`](../contributing/visual-assets.md).
+governed by the repository
+[`visual-assets` skill](../../.agents/skills/visual-assets/SKILL.md).
 MDX supplies only a registry ID to `GovernedFigure`, so Docusaurus' authored
 image parser never reads those files. The asset gate independently permits only
 the two reviewed formats and checks inventory, ownership, provenance, license

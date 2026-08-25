@@ -41,21 +41,17 @@ keeps concrete infrastructure construction in this module-root facade.
 through concrete typed overrides and receives only Server, the application
 facade and an HTTP handler; it retains its supplied adapters for assertions.
 
-Durable architecture and capability inventories are maintained outside this
-module README:
+Repository skills route durable architecture and workflow. Exact component
+behavior remains beside the component:
 
-- [`docs/architecture/`](../docs/architecture/) defines boundaries and their
-  rationale;
-- [`docs/project/status.md`](../docs/project/status.md) records implemented
-  capability areas and unresolved decisions;
 - [`httpapi/CONTRACT.md`](httpapi/CONTRACT.md) defines the HTTP contract;
 - [`openapi/README.md`](openapi/README.md) defines the human-first OpenAPI
   authoring and generation workflow; and
 - [`cluster/GUARANTEES.md`](cluster/GUARANTEES.md) defines cluster delivery and
   recovery behavior.
 
-This README focuses on running, configuring, and verifying the server so those
-authorities do not drift through duplicated implementation inventories.
+This README focuses on running, configuring, and verifying the server without
+duplicating implementation inventories.
 
 ## Run locally
 

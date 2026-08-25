@@ -6,6 +6,8 @@ maturity: preview
 slug: /operator/
 ---
 
+import Link from '@docusaurus/Link';
+
 # Operate Proctor
 
 Proctor is one self-hosted <Term id="installation">installation</Term> for one
@@ -57,10 +59,8 @@ whether a node receives traffic.
   certified development topology.
 - [Server operations](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
   owns server configuration and verification commands.
-- [Runtime architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/runtime.md)
-  owns lifecycle, readiness, observability, and shutdown guarantees.
-- [Configuration architecture](https://github.com/sudosylabs/Proctor/blob/main/docs/architecture/configuration.md)
-  explains deployment-owned settings and secret boundaries.
+- <Link to="/api/">API guide</Link> leads to the generated System reference for
+  public liveness, readiness, discovery, and version contracts.
 
 ## Before Production Use
 
