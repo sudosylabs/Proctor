@@ -34,6 +34,12 @@ Load only the material relevant to the task:
 - Invoke
   [`$documentation-design`](.agents/skills/documentation-design/SKILL.md)
   before creating or reorganizing documentation, skills, or agent instructions.
+- Invoke
+  [`$webapp-design-system`](.agents/skills/webapp-design-system/SKILL.md)
+  before changing product presentation under `webapp/`. Docusaurus presentation
+  uses [`$docs-site`](.agents/skills/docs-site/SKILL.md); its governed figures
+  and screenshots use
+  [`$docs-site-visual-assets`](.agents/skills/docs-site-visual-assets/SKILL.md).
 - Read the affected module README and the nearest component contract before
   changing a public or behavioral contract.
 

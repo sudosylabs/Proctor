@@ -26,6 +26,7 @@ This foundation owns:
 - reference, system, and semantic token layers;
 - light and dark theme contracts;
 - typography, spacing, geometry, elevation, motion, and responsive rules;
+- the governed Proctor favicon and lockup asset boundary;
 - accessibility, localization, content, and state requirements;
 - CSS ownership and the path for adding themes, components, and pages; and
 - automated token generation, contrast checks, and authored-style guards.
@@ -267,6 +268,9 @@ Do not mix emoji, ad hoc SVGs, and several icon libraries. Select or create an
 icon source only when the first visible slice establishes a recurring product
 vocabulary, then wrap it behind one owned primitive. Product and provider
 marks remain original artwork and do not inherit the interface icon grammar.
+Webapp-owned copies and their provenance are governed beside the assets in
+[`src/assets/brand`](./src/assets/brand/README.md); product code never imports
+the repository masters directly.
 
 Meaningful images have intrinsic dimensions, alternative text, and a governed
 same-origin source. Decorative imagery is exceptional in the operational
@@ -396,6 +400,216 @@ need the same semantics and behavior. Its contract then documents:
 Components accept domain-neutral presentation inputs. Pages and feature
 modules retain Exam, Sitting, Attempt, authorization, and API orchestration.
 The design system does not become a product-state service locator.
+
+## Document foundation
+
+The document foundation is the last shared layer before product pages. It owns
+browser normalization, element defaults, document metadata, root focus and
+motion behavior, and the minimum runtime frame. It does not own a page layout,
+form appearance, navigation model, or component API. Its implementation is
+verified with a test-only document fixture rather than a hosted product route.
+
+### Browser and enhancement baseline
+
+The production build explicitly declares Vite's
+`baseline-widely-available` target rather than silently inheriting its default.
+The pinned Vite version resolves that symbolic target, so a Vite upgrade also
+reviews the resulting browser floor. The target is the JavaScript syntax and
+bundling floor, not permission to assume every CSS feature or browser behavior
+is identical.
+
+Required tasks must work in the Playwright versions of Chromium, Firefox, and
+WebKit pinned by the package lock. A change that depends on Safari- or
+platform-specific behavior also receives review in that actual browser or
+platform; WebKit automation alone is not presented as Safari coverage. The
+application uses capability detection and progressive enhancement rather than
+user-agent branching.
+
+CSS Grid, Flexbox, custom properties, logical properties, and ordinary dynamic
+viewport units are foundation capabilities. Container queries, balanced text,
+popover behavior, view transitions, and other newer presentation features are
+enhancements until the affected slice proves its fallback. Missing an
+enhancement may reduce polish but must not conceal information, prevent an
+action, move focus unpredictably, or create two-dimensional page scrolling.
+Polyfills are introduced only for a required product capability with an owned
+test and removal condition.
+
+### Global styles and reset
+
+The browser entry imports authored global styles in this source order:
+
+~~~text
+reset.css
+tokens.css
+base.css
+~~~
+
+Each authored file places all rules in its matching cascade layer. The layer
+order remains `reset, tokens, base, components, utilities, overrides` even
+when a layer has no rules. `reset.css` and `base.css` use low-specificity
+selectors so a locally scoped component can override a default without a
+specificity contest.
+
+The reset establishes only interoperable document mechanics:
+
+- use border-box sizing for elements and generated pseudo-elements;
+- remove the document margin and the default block margins that would compete
+  with token-owned layout, while preserving list markers and semantic display;
+- inherit typography and text color into buttons, inputs, selects, and
+  textareas without replacing their native appearance;
+- make images, SVG, video, and canvas block-level and constrain their inline
+  size while preserving intrinsic aspect ratio;
+- collapse table borders without assigning a visual table treatment; and
+- preserve native focus indicators, text selection, zoom, touch feedback,
+  scrolling, resize behavior, and control affordances until an owned rule
+  replaces them.
+
+The reset does not assign control padding, borders, backgrounds, radii,
+disabled opacity, pointer cursors, list indentation, dialog layout, scrollbar
+styling, or a universal transition. Those decisions belong to document flow or
+to the component that can account for all of its states. The document never
+sets global smooth scrolling.
+
+### Document typography
+
+The root font size remains the user-agent `100%`. The body uses the text-family,
+body-size, body-line-height, regular-weight, and body-letter-spacing tokens.
+Form controls inherit that document typography. Pages do not change the root
+font size to make `rem` values smaller.
+
+Semantic heading level and visual emphasis remain separate. The base layer
+provides quiet fallbacks in the text family and semibold weight: `h1` uses the
+large-heading role, `h2` the medium-heading role, `h3` and `h4` the
+small-heading role, and `h5` and `h6` the body size. An explicit page landmark
+may use the display family and display scale locally. Paragraphs and headings
+receive no global block margins; their owning flow establishes spacing with
+`gap` or a scoped sibling rule.
+
+Links use the semantic link color, remain underlined in prose, and receive a
+readable underline offset and thickness. `strong` uses the bold token. `small`
+uses the small-body role rather than falling below the tracked readable scale.
+`code`, `kbd`, `samp`, and `pre` use the mono family; a `pre` region owns
+horizontal overflow rather than forcing the page to overflow. Long URLs,
+identifiers, and unbroken user-controlled text can wrap without changing their
+content.
+
+Font loading remains local and uses `font-display: swap`. The foundation does
+not preload a font: a visible route may preload only the exact face and weight
+shown to improve its measured first paint. Layout must tolerate the tracked
+fallback stack without clipping or hiding an action.
+
+### Focus and forced colors
+
+The base focus treatment is a three-pixel solid outline using the semantic
+focus color with a two-pixel offset. It applies through `:focus-visible` to
+natively interactive elements and explicit programmatic focus targets. No
+global or component rule removes an outline merely because `:focus` also
+matches. A component may place an equivalent ring inside a clipped boundary,
+but it preserves thickness, contrast, and a visible separation from the
+component edge.
+
+In forced-colors mode, focus uses the system `Highlight` color and component
+borders remain available to the operating system. Essential state icons and
+boundaries use system colors or allow automatic color adjustment; decorative
+color and shadow may disappear. Every state remains named in text or exposed
+semantically.
+
+The first focusable element in the document is a skip link to the current
+page's single main landmark. It remains visually hidden off-canvas until
+focused, never `display: none` or `visibility: hidden`, and stays visible while
+focus is inside it. Sticky content cannot cover either the link or its target.
+
+Programmatic focus moves only for a user-initiated context change: entering a
+client-side route, opening or closing an owned modal surface, or directing the
+user to the first invalid field after submission. Background refresh,
+validation completion, and status announcements do not steal focus. When a
+temporary surface closes, focus returns to its still-available invoker or the
+nearest safe task landmark.
+
+### Motion preferences
+
+There is no ambient document animation or page transition. Optional animation
+is authored inside `prefers-reduced-motion: no-preference` or has an explicit
+reduced variant. Every transition names its properties and consumes the
+duration and easing tokens; `transition: all` remains invalid.
+
+The generated reduced-motion mode collapses duration tokens to `0.01ms`.
+Components also stop non-essential repetition, reveal final content without a
+staged sequence, and keep orientation through structure and copy. Reduced
+motion uses automatic rather than smooth scrolling. A pending operation has a
+text or semantic status, so a spinner or animated skeleton is never its only
+signal. The foundation does not globally apply `animation: none !important`:
+each owner accounts for cancellation, final state, and any genuinely essential
+orientation cue.
+
+### Document initialization
+
+`index.html` supplies `lang="en"` and left-to-right direction as safe no-script
+fallbacks. The document foundation introduces one controller for the resolved
+`lang`, `dir`, page title, explicit `data-theme`, and effective `theme-color`
+metadata. Pages request those values through that boundary and do not mutate
+document metadata independently. Titles contain a stable page purpose and the
+Proctor name, never credentials, personal data, answer content, or unbounded
+user-controlled text.
+
+Unauthenticated pages initially follow the system color preference. The
+tracked media-specific theme-color metadata, native `color-scheme`, and canvas
+background apply before React renders. The foundation adds no inline pre-paint
+script, preserving the current Content Security Policy. A future persisted
+theme must introduce one reviewed external bootstrap rather than allowing
+components to repair a flash after mount.
+
+`html`, `body`, and `#root` establish a full minimum block size with a dynamic
+viewport enhancement and a stable fallback. The document owns vertical
+scrolling; the application root is not a nested page scroller. The canvas and
+default foreground cover both the document and root so an empty, loading, or
+failed render cannot expose an unthemed flash. Safe-area insets are consumed by
+a full-bleed shell that needs them, not added as unconditional body padding.
+
+### Root runtime boundary
+
+The root runtime owns strict-mode mounting, sanitized bootstrap input, exact
+hosted-route dispatch, document synchronization, and the fatal render boundary.
+It remains independent of page-specific API calls and is not a service locator.
+The server route catalog remains the authority for paths; unknown paths do not
+become a client-side fallback.
+
+A hosted page supplies one main landmark with the stable skip-link target and
+one page heading. Route loading, empty, recoverable failure, and success states
+remain feature-owned. The fatal boundary is only for bootstrap or render
+failures that prevent the feature from owning recovery; its copy is bounded,
+non-sensitive, and offers a safe reload or return path without exposing an
+exception.
+
+The foundation creates neither an authentication shell nor shared field and
+button components. The first real route owns its composition. A shell or
+primitive moves into the shared system only after another route proves the
+same semantics and interaction contract.
+
+### Pre-page acceptance
+
+Before product page composition begins, a test-only document fixture exercises
+the reset and base layers without being registered as a hosted route. The
+foundation is complete only when:
+
+- the production build pins the browser target and emits the three global
+  layers in their declared order;
+- the empty root and fixture use the correct canvas, foreground, native color
+  scheme, language, direction, and full-height behavior;
+- headings, prose, links, long identifiers, media, tables, and native form
+  controls remain legible in both themes and at `200%` zoom;
+- keyboard traversal exposes the skip link and every focus ring without
+  clipping, overlap, or unexpected focus movement;
+- reduced motion removes smooth scrolling and non-essential repetition without
+  hiding status or final content;
+- forced colors preserves focus, boundaries, state names, and available
+  actions; and
+- the pinned Chromium, Firefox, and WebKit runs pass at the compact, tablet,
+  and desktop acceptance viewports.
+
+Automated accessibility checks supplement semantic and keyboard review; they
+do not replace it. The fixture is removed when the first visible route covers
+every foundation case with equal or stronger evidence.
 
 ## Growth workflow
 

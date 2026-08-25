@@ -149,7 +149,7 @@ elements, or image imports; `npm run validate` enforces that boundary.
 
 Reviewed SVG and PNG content assets instead use the constrained static route
 governed by the repository
-[`visual-assets` skill](../../.agents/skills/visual-assets/SKILL.md).
+[`docs-site-visual-assets` skill](../../.agents/skills/docs-site-visual-assets/SKILL.md).
 MDX supplies only a registry ID to `GovernedFigure`, so Docusaurus' authored
 image parser never reads those files. The asset gate independently permits only
 the two reviewed formats and checks inventory, ownership, provenance, license

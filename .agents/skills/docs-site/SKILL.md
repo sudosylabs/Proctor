@@ -13,8 +13,11 @@ description: Author, restructure, validate, or build Proctor's Docusaurus public
    `docs/site/`.
 2. Invoke [`$glossary`](../glossary/SKILL.md) before changing public domain
    terminology. For visual-system work, also read
-   [the visual-system reference](references/design-system.md). Completion: the
-   change uses canonical terms and current semantic tokens.
+   [the visual-system reference](references/design-system.md). For a governed
+   diagram, illustration, or screenshot, invoke
+   [`$docs-site-visual-assets`](../docs-site-visual-assets/SKILL.md). Completion:
+   the change uses canonical terms, current semantic tokens, and the governed
+   asset registry when it contains a visual.
 3. Preserve the authority boundary: public guides explain released outcomes;
    OpenAPI owns public HTTP shapes; component contracts own exact behavior;
    Docusaurus code owns presentation only. Completion: no public page links to

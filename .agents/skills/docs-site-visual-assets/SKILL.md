@@ -1,9 +1,9 @@
 ---
-name: visual-assets
-description: Add or revise governed diagrams, illustrations, and screenshots in Proctor's public documentation. Use for registry metadata, privacy review, deterministic capture, or visual acceptance.
+name: docs-site-visual-assets
+description: Add or revise governed diagrams, illustrations, and screenshots for Proctor's Docusaurus documentation. Use for docs/public/assets.json, privacy review, deterministic capture, or visual acceptance; not for webapp brand or UI assets.
 ---
 
-# Governed visual assets
+# Govern documentation visuals
 
 ## Workflow
 
