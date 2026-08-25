@@ -465,10 +465,14 @@ URL scheme while the client navigation contract remains undefined.
 
 The access and onboarding server phase is implemented and certified. A root
 Vite module now provides the Node-pinned, generated-API, localization,
-fragment-credential, CSRF, route, build-manifest, and packaging foundation for
-the declared hosted pages. The Go server validates and serves the matching
-immutable distribution with strict browser headers while preserving API and
-health route ownership. Visual pages remain deliberately empty. Existing
+fragment-credential, CSRF, route, build-manifest, packaging, and product
+design-system foundation for the declared hosted pages. Human-owned reference
+and system tokens generate a complete semantic light/dark theme adapter with
+locally bundled typography, contrast and contract tests, authored-style
+guards, accessibility rules, and an extension workflow. The Go server
+validates and serves the matching immutable distribution with strict browser
+headers while preserving API and health route ownership. Visual pages and
+components remain deliberately empty. Existing
 installations reconcile the protected `system_admin` Role with every current
 grantable action before serving traffic, preserving unknown downgrade actions
 and all custom Roles and bindings. The real-graph phase gate covers bootstrap,
@@ -741,8 +745,8 @@ to hosts. The complete contract is in
 ## Planned product work
 
 - Implement the visual account, Invitation, and Desktop authorization flows in
-  the established server-hosted runtime with the design system, plus the
-  Desktop LaunchWindow.
+  the established server-hosted runtime on its design-system foundation, plus
+  the Desktop LaunchWindow.
 - Exam Resource metadata or content search remains deferred until a concrete
   server-owned use case requires an authorized index.
 

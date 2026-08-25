@@ -18,6 +18,7 @@ Each kind of information has one owner:
 | Public task-oriented guidance | [`docs/public/`](../public/) and authored [`docs/api/`](../api/) overview |
 | Public site presentation and build | [`docs/site/`](../site/) |
 | Documentation visual language and tokens | [`docs/contributing/design-system.md`](./design-system.md) and [`docs/site/design-system/tokens.mjs`](../site/design-system/tokens.mjs) |
+| Hosted browser product visual and interaction system | [`webapp/DESIGN_SYSTEM.md`](../../webapp/DESIGN_SYSTEM.md) and [`webapp/design-system/tokens.mjs`](../../webapp/design-system/tokens.mjs) |
 | Public visual-asset metadata and files | [`docs/public/assets.json`](../public/assets.json) and [`docs/public/static/assets/`](../public/static/assets/) |
 | Module setup and commands | The module README and Makefile |
 | Cross-repository agent procedure | Root [`AGENTS.md`](../../AGENTS.md) |
@@ -110,6 +111,11 @@ The [documentation design system](./design-system.md) owns color semantics,
 typography, spacing, geometry, and illustration grammar. Authored stylesheets
 consume its generated semantic properties rather than introducing local color
 or font scales.
+
+The separately shipped product browser runtime follows the
+[webapp design-system contract](../../webapp/DESIGN_SYSTEM.md). Its semantic
+themes and interaction rules may share Proctor brand primitives with the
+documentation site, but neither package imports the other's generated adapter.
 
 ## Public terminology
 

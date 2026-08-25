@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
 import { bootstrapHostedPage } from "./app/bootstrap";
+import "./styles/tokens.css";
 
 const root = document.getElementById("root");
 if (root === null) {

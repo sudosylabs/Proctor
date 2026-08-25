@@ -1,0 +1,323 @@
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("@fontsource/ibm-plex-sans-condensed/files/ibm-plex-sans-condensed-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("@fontsource/ibm-plex-sans-condensed/files/ibm-plex-sans-condensed-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-700-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+}
+
+/* Copyright 2026 SudoSylabs. SPDX-License-Identifier: AGPL-3.0-only. */
+/* Generated from design-system/tokens.mjs. Do not edit by hand. */
+@layer reset, tokens, base, components, utilities, overrides;
+
+@layer tokens {
+  :root {
+    --proctor-font-family-display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+    --proctor-font-family-text: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+    --proctor-font-family-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    --proctor-space-0: 0;
+    --proctor-space-1: 0.25rem;
+    --proctor-space-2: 0.5rem;
+    --proctor-space-3: 0.75rem;
+    --proctor-space-4: 1rem;
+    --proctor-space-5: 1.5rem;
+    --proctor-space-6: 2rem;
+    --proctor-space-7: 3rem;
+    --proctor-space-8: 4rem;
+    --proctor-space-9: 6rem;
+    --proctor-font-size-caption: 0.75rem;
+    --proctor-font-size-label: 0.8125rem;
+    --proctor-font-size-body-small: 0.875rem;
+    --proctor-font-size-body: 1rem;
+    --proctor-font-size-body-large: 1.125rem;
+    --proctor-font-size-heading-small: 1.25rem;
+    --proctor-font-size-heading-medium: 1.5rem;
+    --proctor-font-size-heading-large: 2rem;
+    --proctor-font-size-display: clamp(2.25rem, 1.8rem + 1.5vw, 3.5rem);
+    --proctor-line-height-caption: 1.4;
+    --proctor-line-height-label: 1.35;
+    --proctor-line-height-body-small: 1.55;
+    --proctor-line-height-body: 1.6;
+    --proctor-line-height-body-large: 1.55;
+    --proctor-line-height-heading-small: 1.35;
+    --proctor-line-height-heading-medium: 1.25;
+    --proctor-line-height-heading-large: 1.15;
+    --proctor-line-height-display: 1.02;
+    --proctor-font-weight-regular: 400;
+    --proctor-font-weight-medium: 500;
+    --proctor-font-weight-semibold: 600;
+    --proctor-font-weight-bold: 700;
+    --proctor-letter-spacing-display: -0.018em;
+    --proctor-letter-spacing-heading: -0.012em;
+    --proctor-letter-spacing-body: 0;
+    --proctor-letter-spacing-label: 0.01em;
+    --proctor-radius-none: 0;
+    --proctor-radius-control: 0.375rem;
+    --proctor-radius-card: 0.75rem;
+    --proctor-radius-panel: 1rem;
+    --proctor-radius-round: 999px;
+    --proctor-border-width-hairline: 1px;
+    --proctor-border-width-strong: 2px;
+    --proctor-border-width-focus: 3px;
+    --proctor-control-size-compact: 2.5rem;
+    --proctor-control-size-default: 2.75rem;
+    --proctor-control-size-comfortable: 3rem;
+    --proctor-icon-size-small: 1rem;
+    --proctor-icon-size-default: 1.25rem;
+    --proctor-icon-size-large: 1.5rem;
+    --proctor-measure-prose: 74ch;
+    --proctor-measure-form: 36rem;
+    --proctor-measure-content: 72rem;
+    --proctor-measure-application: 90rem;
+    --proctor-measure-sidebar: 18rem;
+    --proctor-duration-immediate: 80ms;
+    --proctor-duration-fast: 140ms;
+    --proctor-duration-moderate: 200ms;
+    --proctor-duration-slow: 320ms;
+    --proctor-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --proctor-easing-enter: cubic-bezier(0, 0, 0, 1);
+    --proctor-easing-exit: cubic-bezier(0.3, 0, 1, 1);
+    --proctor-layer-base: 0;
+    --proctor-layer-sticky: 10;
+    --proctor-layer-popover: 20;
+    --proctor-layer-overlay: 30;
+    --proctor-layer-dialog: 40;
+    --proctor-layer-notification: 50;
+    color-scheme: light;
+    --proctor-color-background-canvas: #ffffff;
+    --proctor-color-background-subtle: #f7f5f9;
+    --proctor-color-background-surface: #ffffff;
+    --proctor-color-background-raised: #ffffff;
+    --proctor-color-background-inverse: #17121a;
+    --proctor-color-foreground-default: #161616;
+    --proctor-color-foreground-subtle: #49434f;
+    --proctor-color-foreground-muted: #655f69;
+    --proctor-color-foreground-disabled: #8a838f;
+    --proctor-color-foreground-inverse: #f8f6fa;
+    --proctor-color-foreground-link: #5c00aa;
+    --proctor-color-border-default: #e1dce5;
+    --proctor-color-border-strong: #c8c0ce;
+    --proctor-color-border-interactive: #8e64ad;
+    --proctor-color-focus-ring: #5c00aa;
+    --proctor-color-action-primary: #5c00aa;
+    --proctor-color-action-primary-hover: #470082;
+    --proctor-color-action-primary-active: #370065;
+    --proctor-color-action-primary-disabled: #e1dce5;
+    --proctor-color-action-on-primary: #ffffff;
+    --proctor-color-action-secondary: #ffffff;
+    --proctor-color-action-secondary-hover: #f3eafb;
+    --proctor-color-action-secondary-active: #e8d7f4;
+    --proctor-color-action-on-secondary: #5c00aa;
+    --proctor-color-state-info: #5c00aa;
+    --proctor-color-state-info-surface: #f3eafb;
+    --proctor-color-state-success: #0b766e;
+    --proctor-color-state-success-surface: #e7f5f1;
+    --proctor-color-state-warning: #95520d;
+    --proctor-color-state-warning-surface: #fff3e5;
+    --proctor-color-state-danger: #b4233c;
+    --proctor-color-state-danger-surface: #fff0f1;
+    --proctor-color-selection-background: #5c00aa;
+    --proctor-color-selection-foreground: #ffffff;
+    --proctor-color-scrim: rgb(20 12 26 / 58%);
+    --proctor-color-skeleton: #ebe7ee;
+    --proctor-shadow-raised: 0 1px 2px rgb(45 20 62 / 8%), 0 4px 12px rgb(45 20 62 / 6%);
+    --proctor-shadow-overlay: 0 12px 32px rgb(45 20 62 / 16%);
+    --proctor-shadow-dialog: 0 20px 60px rgb(45 20 62 / 22%);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+    color-scheme: dark;
+    --proctor-color-background-canvas: #141016;
+    --proctor-color-background-subtle: #1b151e;
+    --proctor-color-background-surface: #211a25;
+    --proctor-color-background-raised: #2a2130;
+    --proctor-color-background-inverse: #f8f6fa;
+    --proctor-color-foreground-default: #f8f6fa;
+    --proctor-color-foreground-subtle: #d4ced8;
+    --proctor-color-foreground-muted: #aea4b3;
+    --proctor-color-foreground-disabled: #7e7483;
+    --proctor-color-foreground-inverse: #161616;
+    --proctor-color-foreground-link: #c38bf5;
+    --proctor-color-border-default: #3b3142;
+    --proctor-color-border-strong: #584a60;
+    --proctor-color-border-interactive: #9471ae;
+    --proctor-color-focus-ring: #c38bf5;
+    --proctor-color-action-primary: #6d1da8;
+    --proctor-color-action-primary-hover: #7e2bbe;
+    --proctor-color-action-primary-active: #5b168e;
+    --proctor-color-action-primary-disabled: #3b3142;
+    --proctor-color-action-on-primary: #ffffff;
+    --proctor-color-action-secondary: #211a25;
+    --proctor-color-action-secondary-hover: #30203c;
+    --proctor-color-action-secondary-active: #3c2850;
+    --proctor-color-action-on-secondary: #d7b0fa;
+    --proctor-color-state-info: #c38bf5;
+    --proctor-color-state-info-surface: #30203c;
+    --proctor-color-state-success: #70d1c4;
+    --proctor-color-state-success-surface: #153b36;
+    --proctor-color-state-warning: #f2b870;
+    --proctor-color-state-warning-surface: #422f1c;
+    --proctor-color-state-danger: #ff8a9a;
+    --proctor-color-state-danger-surface: #4b1e27;
+    --proctor-color-selection-background: #c38bf5;
+    --proctor-color-selection-foreground: #141016;
+    --proctor-color-scrim: rgb(10 6 13 / 68%);
+    --proctor-color-skeleton: #332a38;
+    --proctor-shadow-raised: 0 1px 2px rgb(0 0 0 / 24%), 0 4px 14px rgb(0 0 0 / 20%);
+    --proctor-shadow-overlay: 0 12px 36px rgb(0 0 0 / 36%);
+    --proctor-shadow-dialog: 0 20px 64px rgb(0 0 0 / 48%);
+    }
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --proctor-color-background-canvas: #ffffff;
+    --proctor-color-background-subtle: #f7f5f9;
+    --proctor-color-background-surface: #ffffff;
+    --proctor-color-background-raised: #ffffff;
+    --proctor-color-background-inverse: #17121a;
+    --proctor-color-foreground-default: #161616;
+    --proctor-color-foreground-subtle: #49434f;
+    --proctor-color-foreground-muted: #655f69;
+    --proctor-color-foreground-disabled: #8a838f;
+    --proctor-color-foreground-inverse: #f8f6fa;
+    --proctor-color-foreground-link: #5c00aa;
+    --proctor-color-border-default: #e1dce5;
+    --proctor-color-border-strong: #c8c0ce;
+    --proctor-color-border-interactive: #8e64ad;
+    --proctor-color-focus-ring: #5c00aa;
+    --proctor-color-action-primary: #5c00aa;
+    --proctor-color-action-primary-hover: #470082;
+    --proctor-color-action-primary-active: #370065;
+    --proctor-color-action-primary-disabled: #e1dce5;
+    --proctor-color-action-on-primary: #ffffff;
+    --proctor-color-action-secondary: #ffffff;
+    --proctor-color-action-secondary-hover: #f3eafb;
+    --proctor-color-action-secondary-active: #e8d7f4;
+    --proctor-color-action-on-secondary: #5c00aa;
+    --proctor-color-state-info: #5c00aa;
+    --proctor-color-state-info-surface: #f3eafb;
+    --proctor-color-state-success: #0b766e;
+    --proctor-color-state-success-surface: #e7f5f1;
+    --proctor-color-state-warning: #95520d;
+    --proctor-color-state-warning-surface: #fff3e5;
+    --proctor-color-state-danger: #b4233c;
+    --proctor-color-state-danger-surface: #fff0f1;
+    --proctor-color-selection-background: #5c00aa;
+    --proctor-color-selection-foreground: #ffffff;
+    --proctor-color-scrim: rgb(20 12 26 / 58%);
+    --proctor-color-skeleton: #ebe7ee;
+    --proctor-shadow-raised: 0 1px 2px rgb(45 20 62 / 8%), 0 4px 12px rgb(45 20 62 / 6%);
+    --proctor-shadow-overlay: 0 12px 32px rgb(45 20 62 / 16%);
+    --proctor-shadow-dialog: 0 20px 60px rgb(45 20 62 / 22%);
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --proctor-color-background-canvas: #141016;
+    --proctor-color-background-subtle: #1b151e;
+    --proctor-color-background-surface: #211a25;
+    --proctor-color-background-raised: #2a2130;
+    --proctor-color-background-inverse: #f8f6fa;
+    --proctor-color-foreground-default: #f8f6fa;
+    --proctor-color-foreground-subtle: #d4ced8;
+    --proctor-color-foreground-muted: #aea4b3;
+    --proctor-color-foreground-disabled: #7e7483;
+    --proctor-color-foreground-inverse: #161616;
+    --proctor-color-foreground-link: #c38bf5;
+    --proctor-color-border-default: #3b3142;
+    --proctor-color-border-strong: #584a60;
+    --proctor-color-border-interactive: #9471ae;
+    --proctor-color-focus-ring: #c38bf5;
+    --proctor-color-action-primary: #6d1da8;
+    --proctor-color-action-primary-hover: #7e2bbe;
+    --proctor-color-action-primary-active: #5b168e;
+    --proctor-color-action-primary-disabled: #3b3142;
+    --proctor-color-action-on-primary: #ffffff;
+    --proctor-color-action-secondary: #211a25;
+    --proctor-color-action-secondary-hover: #30203c;
+    --proctor-color-action-secondary-active: #3c2850;
+    --proctor-color-action-on-secondary: #d7b0fa;
+    --proctor-color-state-info: #c38bf5;
+    --proctor-color-state-info-surface: #30203c;
+    --proctor-color-state-success: #70d1c4;
+    --proctor-color-state-success-surface: #153b36;
+    --proctor-color-state-warning: #f2b870;
+    --proctor-color-state-warning-surface: #422f1c;
+    --proctor-color-state-danger: #ff8a9a;
+    --proctor-color-state-danger-surface: #4b1e27;
+    --proctor-color-selection-background: #c38bf5;
+    --proctor-color-selection-foreground: #141016;
+    --proctor-color-scrim: rgb(10 6 13 / 68%);
+    --proctor-color-skeleton: #332a38;
+    --proctor-shadow-raised: 0 1px 2px rgb(0 0 0 / 24%), 0 4px 14px rgb(0 0 0 / 20%);
+    --proctor-shadow-overlay: 0 12px 36px rgb(0 0 0 / 36%);
+    --proctor-shadow-dialog: 0 20px 64px rgb(0 0 0 / 48%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --proctor-duration-immediate: 0.01ms;
+      --proctor-duration-fast: 0.01ms;
+      --proctor-duration-moderate: 0.01ms;
+      --proctor-duration-slow: 0.01ms;
+    }
+  }
+}

@@ -260,11 +260,13 @@ explicit Continue action before redirect, avoiding silent loops. Password
 recovery is hidden when local login is unavailable while its API retains a
 generic response.
 
-Visual implementation is deliberately deferred to the server-hosted design
-system. Route, localization, state, and security contracts are accepted now;
-the project must not claim an end-to-end hosted journey until those pages
-exist. Human prose lives under `server/i18n`; presentation and email templates
-live under `server/templates`.
+Visual page and component implementation remains deliberately deferred. The
+server-hosted [webapp design system](../../webapp/DESIGN_SYSTEM.md) now owns the
+theme, token, typography, spacing, accessibility, CSS, and extension contract
+that those pages must use. Route, localization, state, and security contracts
+are accepted now; the project must not claim an end-to-end hosted journey
+until those pages exist. Human prose lives under `server/i18n`; presentation
+and email templates live under `server/templates`.
 
 The server-owned browser runtime is now established as a root Vite module. A
 release build generates its API types from the authoritative OpenAPI document,
@@ -273,8 +275,10 @@ commit in that distribution, and packages it beside the Go executable. Server
 startup rejects a missing or mixed-version distribution. The root HTTP module
 serves only the declared hosted routes and existing fingerprinted assets;
 API, health, the undeclared origin root, non-fingerprinted assets, and unknown
-server paths retain their existing transport behavior. This is the delivery
-foundation, not the deferred visual page implementation.
+server paths retain their existing transport behavior. The browser package
+also owns a generated, contrast-audited light/dark semantic-token adapter and
+locally bundled typography. These are delivery and presentation foundations,
+not the deferred visual page implementation.
 
 Credential-bearing pages use no-store responses, strict Content Security
 Policy, `Referrer-Policy: no-referrer`, frame denial, MIME-sniffing protection,
@@ -671,7 +675,8 @@ no automatic reminder.
 The accepted access design does not depend on mail implementation, but
 invitation-required admission cannot become operational until durable mail
 intent can commit atomically with Invitation creation. Hosted-page visual work
-remains separately dependent on the server design system.
+now depends on the established webapp design-system contract and still
+requires page and component implementation.
 
 ## Operations, retention, and verification
 
@@ -725,7 +730,8 @@ Implementation proceeds as independently reviewable vertical slices:
 6. transactional-mail integration and terminal external-identity Invitation
    reconciliation;
 7. typed administrative batches, CSV onboarding, and progression;
-8. server-hosted page implementation with the design system.
+8. server-hosted page and component implementation on the established design
+   system.
 
 Mattermost was inspected as behavioral evidence at revision
 `8ce3c54a5ed76b2aa39a46cf8a1b517ea53ec0cc`, principally its user, team

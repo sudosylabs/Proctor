@@ -42,6 +42,8 @@ matches the work instead of loading every document.
   placement, links, decision rationale, and validation
 - [Documentation design system](./contributing/design-system.md) — brand,
   semantic tokens, typography, geometry, icons, and illustration grammar
+- [Hosted product design system](../webapp/DESIGN_SYSTEM.md) — browser themes,
+  interface tokens, accessibility floor, CSS ownership, and extension workflow
 - [Governed visual assets](./contributing/visual-assets.md) — registry,
   diagram, privacy, and deterministic screenshot workflow
 - [Root agent guide](../AGENTS.md) — always-loaded repository guardrails and
