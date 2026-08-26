@@ -1,9 +1,10 @@
 # Access page shell contract
 
 `AccessPageShell` is the shared structural frame proven by the `/setup`,
-`/login`, `/register`, and `/authorization/complete` routes. It owns their
-Proctor identity, skip link, single main landmark, bounded application frame,
-and responsive split or status composition.
+`/login`, `/register`, `/account/verify-email`, and
+`/authorization/complete` routes. It owns their Proctor identity, skip link,
+single main landmark, bounded application frame, and responsive split or
+status composition.
 
 It does not own authentication state, API orchestration, form controls,
 buttons, notices, headings, Institution content, navigation decisions, or

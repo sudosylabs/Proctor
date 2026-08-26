@@ -34,9 +34,9 @@ This foundation owns:
 Page composition and component APIs remain feature-owned or governed beside a
 component proven by real consumers. The first such component is the narrow
 [`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md) shared by
-`/setup`, `/login`, `/register`, and `/authorization/complete`; it does not
-establish a general authenticated application shell. The initial product icon
-vocabulary is governed by the narrow
+`/setup`, `/login`, `/register`, `/account/verify-email`, and
+`/authorization/complete`; it does not establish a general authenticated
+application shell. The initial product icon vocabulary is governed by the narrow
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
 Repeated form behavior is governed by
 [`InputField`](./src/components/InputField/CONTRACT.md) and
@@ -323,11 +323,11 @@ black mark is not a product-webapp asset.
 On wide viewports, `/login` and `/register` separate safe Institution context
 from a focused form; `/setup` gives its one-time atomic form the wider content
 measure. The regions return to one-dimensional document flow when that
-separation no longer fits. `/authorization/complete` reduces the same frame to
-a bounded state rail: neutral while the Session is unconfirmed and teal only
-after the server confirms a valid Session. That local rail is state evidence,
-not global decoration, and does not require unrelated hosted routes to reuse
-the pattern.
+separation no longer fits. `/account/verify-email` and
+`/authorization/complete` reduce the same frame to bounded status tasks.
+Session confirmation uses a local state rail, while email verification uses a
+compact purpose and outcome marker; neither is global decoration or a demand
+that unrelated hosted routes reuse the pattern.
 
 Layer tokens progress from base (`0`) through sticky (`10`), popover (`20`),
 overlay (`30`), dialog (`40`), and notification (`50`). Components do not

@@ -22,7 +22,9 @@ establishment and public local account admission live in the
 [`register`](./src/features/register/CONTRACT.md) contracts. Terminal
 Session-confirmation behavior lives in the companion
 [`authorization-complete` contract](./src/features/authorization-complete/CONTRACT.md).
-Those routes form the initial visible access-page family. Their shared
+Purpose-specific email-token consumption lives in the
+[`verify-email` contract](./src/features/verify-email/CONTRACT.md). Those routes
+form the initial visible access-page family. Their shared
 structural frame is governed beside
 [`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md); feature
 modules retain their own state, transport, content, and recovery behavior.

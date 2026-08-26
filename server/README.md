@@ -163,7 +163,8 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `POST /api/v1/auth/email-verification/request` (session required)
-- `POST /api/v1/auth/email-verification/complete` (public token consumption)
+- `POST /api/v1/auth/email-verification/complete` (public token consumption
+  used by the hosted `/account/verify-email` page)
 - `POST /api/v1/auth/password-reset/request` (generic public acceptance)
 - `POST /api/v1/auth/password-reset/complete` (public token consumption)
 - `POST /api/v1/auth/browser/invitations` (exchange a fragment Invitation

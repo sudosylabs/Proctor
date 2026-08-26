@@ -246,10 +246,10 @@ provider-authentication form. Proctor Server hosts:
 - `/account/connect-provider`;
 - `/authorization/complete`.
 
-The packaged browser currently implements `/setup`, `/login`, `/register`, and
-`/authorization/complete`. The remaining declared routes retain their server
-transport and nonvisual bootstrap contracts until their feature pages are
-implemented one vertical slice at a time.
+The packaged browser currently implements `/setup`, `/login`, `/register`,
+`/account/verify-email`, and `/authorization/complete`. The remaining declared
+routes retain their server transport and nonvisual bootstrap contracts until
+their feature pages are implemented one vertical slice at a time.
 
 When public local registration is enabled, `/register` creates a User with a
 local credential and begins ordinary mailbox verification but grants no
@@ -295,6 +295,12 @@ Policy, `Referrer-Policy: no-referrer`, frame denial, MIME-sniffing protection,
 host-only secure cookies, CSRF protection, and no third-party script, font,
 analytics, or image. Fragment credentials are captured and removed from
 history immediately.
+
+The hosted email-verification page never consumes its single-use fragment
+credential on load. It requires an explicit person-initiated confirmation so a
+mail scanner, link preview, or browser preload cannot spend the token. The
+page sends no email or User input and presents expired, superseded, consumed,
+malformed, and concurrent-loser tokens as one bounded unusable-link state.
 
 Purpose-specific `BrowserAuthenticationTransaction` records own the hosted
 handoffs that exchange a browser credential or issue a later client code:
@@ -764,8 +770,9 @@ Implementation proceeds as independently reviewable vertical slices:
    reconciliation;
 7. typed administrative batches, CSV onboarding, and progression;
 8. incremental server-hosted page and component implementation on the
-   established design system, beginning with setup, login, registration, and
-   Session confirmation and continuing through the remaining declared routes.
+   established design system, beginning with setup, login, registration,
+   email verification, and Session confirmation and continuing through the
+   remaining declared routes.
 
 Mattermost was inspected as behavioral evidence at revision
 `8ce3c54a5ed76b2aa39a46cf8a1b517ea53ec0cc`, principally its user, team

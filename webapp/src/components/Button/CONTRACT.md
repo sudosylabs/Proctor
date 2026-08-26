@@ -1,10 +1,10 @@
 # Button contract
 
 `Button` is the domain-neutral action control proven by the hosted login,
-setup, registration, and Session-confirmation pages. `ButtonLink` applies the
-same deliberate visual hierarchy to navigation while preserving native anchor
-behavior. Neither component decides an action name, destination, permission,
-confirmation rule, or API operation.
+setup, registration, email-verification, and Session-confirmation pages.
+`ButtonLink` applies the same deliberate visual hierarchy to navigation while
+preserving native anchor behavior. Neither component decides an action name,
+destination, permission, confirmation rule, or API operation.
 
 `primary`, `secondary`, and `text` are hierarchy variants rather than business
 states. A page still exposes one visually dominant action. `Button` defaults
