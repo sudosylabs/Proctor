@@ -15,7 +15,10 @@ production files receive immutable fingerprints.
 Human-owned tokens live in [`design-system/tokens.mjs`](./design-system/tokens.mjs)
 and generate [`src/styles/tokens.css`](./src/styles/tokens.css) plus the typed
 [`src/generated/design-system/themes.ts`](./src/generated/design-system/themes.ts)
-runtime catalog. No visual page or shared component is implemented yet.
+runtime catalog. The first visible slice is the server-hosted `/login` route;
+its exact preimplementation behavior lives in the feature-local
+[`login` contract](./src/features/login/CONTRACT.md). No visual page or shared
+component is implemented yet.
 
 The browser entry loads `reset.css`, the generated `tokens.css`, and `base.css`
 in declared cascade-layer order. The root also owns document metadata and
