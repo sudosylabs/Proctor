@@ -1,0 +1,370 @@
+@layer components {
+  .page,
+  .headingGroup,
+  .form,
+  .section,
+  .field,
+  .routeState,
+  .routeStateCopy,
+  .context,
+  .stepCopy {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page,
+  .routeState {
+    gap: var(--proctor-space-6);
+    max-inline-size: var(--proctor-measure-content);
+  }
+
+  .headingGroup,
+  .routeStateCopy {
+    gap: var(--proctor-space-3);
+  }
+
+  .headingGroup h1,
+  .routeState h1 {
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .headingGroup p,
+  .routeStateCopy p,
+  .routeState > p {
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+
+  .context {
+    gap: var(--proctor-space-3);
+    max-inline-size: 28rem;
+  }
+
+  .eyebrow {
+    color: var(--proctor-color-foreground-link);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .contextHeading {
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .contextBody,
+  .stepCopy span,
+  .sectionHelp,
+  .fieldHelp {
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .proofRail {
+    display: flex;
+    flex-direction: column;
+    padding: var(--proctor-space-0);
+    margin-block: var(--proctor-space-5) var(--proctor-space-4);
+    list-style: none;
+  }
+
+  .proofRail li {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--proctor-space-7) minmax(0, 1fr);
+    gap: var(--proctor-space-3);
+    min-block-size: 6.75rem;
+  }
+
+  .proofRail li::before {
+    position: absolute;
+    inset-block-start: var(--proctor-space-2);
+    inset-inline-start: calc(var(--proctor-space-2) - var(--proctor-space-1));
+    inline-size: var(--proctor-space-3);
+    block-size: var(--proctor-space-3);
+    border: var(--proctor-border-width-strong) solid
+      var(--proctor-color-border-interactive);
+    border-radius: var(--proctor-radius-round);
+    background: var(--proctor-color-background-canvas);
+    content: "";
+  }
+
+  .proofRail li:first-child::before {
+    border-color: var(--proctor-color-action-primary);
+    background: var(--proctor-color-action-primary);
+  }
+
+  .proofRail li:not(:last-child)::after {
+    position: absolute;
+    inset-block-start: calc(var(--proctor-space-2) + var(--proctor-space-3));
+    inset-block-end: calc(var(--proctor-space-2) * -1);
+    inset-inline-start: var(--proctor-space-2);
+    inline-size: var(--proctor-border-width-strong);
+    background: var(--proctor-color-border-default);
+    content: "";
+  }
+
+  .proofRail li:first-child::after {
+    background: var(--proctor-color-action-primary);
+  }
+
+  .stepNumber {
+    padding-inline-start: var(--proctor-space-5);
+    color: var(--proctor-color-foreground-muted);
+    font-family: var(--proctor-font-family-mono);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-heading-small);
+  }
+
+  .proofRail li:first-child .stepNumber {
+    color: var(--proctor-color-foreground-link);
+  }
+
+  .stepCopy {
+    gap: var(--proctor-space-1);
+  }
+
+  .stepCopy strong {
+    font-size: var(--proctor-font-size-body);
+    font-weight: var(--proctor-font-weight-semibold);
+  }
+
+  .stepCopy span {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .contextNote,
+  .caution {
+    display: grid;
+    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
+    gap: var(--proctor-space-3);
+    align-items: start;
+    padding: var(--proctor-space-4);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-default);
+    border-radius: var(--proctor-radius-card);
+  }
+
+  .noteIcon {
+    color: var(--proctor-color-state-info);
+  }
+
+  .form {
+    gap: var(--proctor-space-6);
+  }
+
+  .section {
+    gap: var(--proctor-space-4);
+    min-inline-size: 0;
+    padding: var(--proctor-space-0);
+    padding-block-start: var(--proctor-space-6);
+    border: 0;
+    border-block-start: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-default);
+  }
+
+  .section:first-of-type {
+    padding-block-start: var(--proctor-space-0);
+    border-block-start: 0;
+  }
+
+  .section legend {
+    padding: var(--proctor-space-0);
+    font-size: var(--proctor-font-size-heading-small);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-heading-small);
+  }
+
+  .sectionHelp {
+    margin-block-start: calc(var(--proctor-space-2) * -1);
+  }
+
+  .fieldGrid {
+    display: grid;
+    gap: var(--proctor-space-4);
+  }
+
+  .field {
+    gap: var(--proctor-space-2);
+    min-inline-size: 0;
+  }
+
+  .field label {
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+  }
+
+  .field input {
+    inline-size: 100%;
+    min-block-size: var(--proctor-control-size-comfortable);
+    padding-inline: var(--proctor-space-4);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-strong);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-background-surface);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  .field input:hover:not(:disabled) {
+    border-color: var(--proctor-color-border-interactive);
+  }
+
+  .field input[aria-invalid="true"] {
+    border-color: var(--proctor-color-state-danger);
+  }
+
+  .passwordControl {
+    position: relative;
+  }
+
+  .passwordControl input {
+    padding-inline-end: 8rem;
+  }
+
+  .passwordToggle {
+    position: absolute;
+    display: inline-flex;
+    inset-block: var(--proctor-space-1);
+    inset-inline-end: var(--proctor-space-1);
+    min-block-size: var(--proctor-control-size-default);
+    gap: var(--proctor-space-2);
+    align-items: center;
+    justify-content: center;
+    padding-inline: var(--proctor-space-3);
+    border: 0;
+    border-radius: var(--proctor-radius-control);
+    background: transparent;
+    color: var(--proctor-color-foreground-link);
+    font-size: var(--proctor-font-size-body-small);
+    font-weight: var(--proctor-font-weight-semibold);
+  }
+
+  .passwordToggle:hover:not(:disabled) {
+    background: var(--proctor-color-action-secondary-hover);
+  }
+
+  .passwordToggle:disabled {
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .fieldHelp,
+  .fieldError {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .fieldError {
+    color: var(--proctor-color-state-danger);
+  }
+
+  .formError {
+    padding: var(--proctor-space-4);
+    border-inline-start: var(--proctor-border-width-focus) solid
+      var(--proctor-color-state-danger);
+    background: var(--proctor-color-state-danger-surface);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  .caution {
+    border-color: var(--proctor-color-state-warning);
+    background: var(--proctor-color-state-warning-surface);
+  }
+
+  .cautionIcon {
+    color: var(--proctor-color-state-warning);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-4) var(--proctor-space-5);
+    align-items: center;
+  }
+
+  .primaryButton,
+  .primaryLink {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-comfortable);
+    align-items: center;
+    justify-content: center;
+    padding: var(--proctor-space-3) var(--proctor-space-5);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-action-primary);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-action-primary);
+    color: var(--proctor-color-action-on-primary);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    text-align: center;
+    text-decoration: none;
+    transition-duration: var(--proctor-duration-fast);
+    transition-property: background-color, border-color, color;
+    transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .primaryButton:hover:not(:disabled),
+  .primaryLink:hover {
+    border-color: var(--proctor-color-action-primary-hover);
+    background: var(--proctor-color-action-primary-hover);
+  }
+
+  .primaryButton:active:not(:disabled),
+  .primaryLink:active {
+    border-color: var(--proctor-color-action-primary-active);
+    background: var(--proctor-color-action-primary-active);
+  }
+
+  .primaryButton:disabled {
+    border-color: var(--proctor-color-action-primary-disabled);
+    background: var(--proctor-color-action-primary-disabled);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .visuallyHidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    margin: -1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 48rem) {
+    .fieldGrid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (forced-colors: active) {
+    .proofRail li::before,
+    .contextNote,
+    .caution,
+    .field input,
+    .primaryButton,
+    .primaryLink,
+    .formError {
+      border-color: ButtonText;
+    }
+
+    .proofRail li::after {
+      background: CanvasText;
+    }
+  }
+}

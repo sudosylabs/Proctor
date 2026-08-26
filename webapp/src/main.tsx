@@ -1,3 +1,7 @@
+import "./styles/reset.css";
+import "./styles/tokens.css";
+import "./styles/base.css";
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -9,9 +13,6 @@ import {
 } from "./app/document";
 import { FatalErrorBoundary } from "./app/FatalErrorBoundary";
 import { redactedRootErrorOptions } from "./app/rootErrors";
-import "./styles/reset.css";
-import "./styles/tokens.css";
-import "./styles/base.css";
 
 const root = document.getElementById("root");
 if (root === null) {

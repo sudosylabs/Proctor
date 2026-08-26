@@ -1,13 +1,53 @@
+import { useEffect } from "react";
+
+import { AuthorizationCompletePage } from "../features/authorization-complete/AuthorizationCompletePage";
+import { LoginPage } from "../features/login/LoginPage";
+import { RegisterPage } from "../features/register/RegisterPage";
+import { SetupPage } from "../features/setup/SetupPage";
+import { message } from "../i18n/messages";
 import type { HostedPageBootstrap } from "./bootstrap";
+import {
+  defaultDocumentDescriptor,
+  synchronizeDocument,
+} from "./document";
 
 export interface AppProps {
   bootstrap: HostedPageBootstrap;
 }
 
-// The visual hosted-page implementation is deliberately deferred. The root
-// still receives sanitized, purpose-specific bootstrap state so future pages
-// never need to recover credentials from browser history.
 export function App({ bootstrap }: AppProps) {
-  void bootstrap;
-  return null;
+  const title =
+    bootstrap.route === "/setup"
+      ? message("webapp.setup.document_title")
+      : bootstrap.route === "/login"
+        ? message("webapp.login.document_title")
+        : bootstrap.route === "/register"
+          ? message("webapp.register.document_title")
+          : bootstrap.route === "/authorization/complete"
+            ? message("webapp.authorization_complete.document_title")
+            : defaultDocumentDescriptor.title;
+
+  useEffect(() => {
+    synchronizeDocument(document, {
+      ...defaultDocumentDescriptor,
+      title,
+    });
+  }, [title]);
+
+  switch (bootstrap.route) {
+    case "/setup":
+      return <SetupPage />;
+    case "/login":
+      return (
+        <LoginPage
+          externalLoginFailed={bootstrap.notice === "external_login_failed"}
+        />
+      );
+    case "/register":
+      return <RegisterPage />;
+    case "/authorization/complete":
+      return <AuthorizationCompletePage />;
+    default:
+      return null;
+  }
 }

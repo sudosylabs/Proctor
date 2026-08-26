@@ -1,0 +1,336 @@
+@layer components {
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--proctor-space-6);
+    max-inline-size: var(--proctor-measure-form);
+  }
+
+  .headingGroup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--proctor-space-3);
+  }
+
+  .headingGroup h1 {
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .headingGroup p {
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+
+  .context {
+    display: flex;
+    flex-direction: column;
+    gap: var(--proctor-space-2);
+    max-inline-size: 27rem;
+    padding-block-end: var(--proctor-space-5);
+    border-block-end: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-default);
+  }
+
+  .contextLabel {
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .contextName {
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-heading-large);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-heading-large);
+    text-wrap: balance;
+  }
+
+  .contextRule {
+    display: none;
+    inline-size: var(--proctor-space-7);
+    block-size: var(--proctor-border-width-focus);
+    margin-block: var(--proctor-space-2);
+    background: var(--proctor-color-action-primary);
+  }
+
+  .contextBody {
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .notice {
+    display: grid;
+    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
+    gap: var(--proctor-space-3);
+    align-items: start;
+    padding: var(--proctor-space-4);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-default);
+    border-inline-start: var(--proctor-border-width-focus) solid
+      var(--proctor-color-state-info);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-state-info-surface);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  .noticeIcon {
+    color: var(--proctor-color-state-info);
+  }
+
+  .loading {
+    padding-block: var(--proctor-space-4);
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .methods,
+  .form,
+  .providerGroup,
+  .routeState,
+  .routeStateCopy,
+  .mfaGroup,
+  .mfaHeading {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .methods,
+  .form,
+  .routeState {
+    gap: var(--proctor-space-5);
+  }
+
+  .providerGroup,
+  .mfaGroup {
+    gap: var(--proctor-space-3);
+  }
+
+  .routeStateCopy,
+  .mfaHeading {
+    gap: var(--proctor-space-2);
+  }
+
+  .routeStateCopy p,
+  .mfaHeading p {
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--proctor-space-2);
+  }
+
+  .field label,
+  .providerGroup legend {
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+  }
+
+  .labelRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-2) var(--proctor-space-4);
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .labelRow a,
+  .registration,
+  .textButton {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .field input {
+    inline-size: 100%;
+    min-block-size: var(--proctor-control-size-comfortable);
+    padding-inline: var(--proctor-space-4);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-strong);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-background-surface);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  .field input:hover:not(:disabled) {
+    border-color: var(--proctor-color-border-interactive);
+  }
+
+  .field input[aria-invalid="true"] {
+    border-color: var(--proctor-color-state-danger);
+  }
+
+  .fieldError {
+    color: var(--proctor-color-state-danger);
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .formError {
+    padding: var(--proctor-space-4);
+    border-inline-start: var(--proctor-border-width-focus) solid
+      var(--proctor-color-state-danger);
+    background: var(--proctor-color-state-danger-surface);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  .primaryButton,
+  .providerButton,
+  .primaryLink {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-comfortable);
+    align-items: center;
+    justify-content: center;
+    padding: var(--proctor-space-3) var(--proctor-space-5);
+    border-radius: var(--proctor-radius-control);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    text-align: center;
+    text-decoration: none;
+    transition-duration: var(--proctor-duration-fast);
+    transition-property: background-color, border-color, color;
+    transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .primaryButton,
+  .primaryLink {
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-action-primary);
+    background: var(--proctor-color-action-primary);
+    color: var(--proctor-color-action-on-primary);
+  }
+
+  .primaryButton:hover:not(:disabled),
+  .primaryLink:hover {
+    border-color: var(--proctor-color-action-primary-hover);
+    background: var(--proctor-color-action-primary-hover);
+  }
+
+  .primaryButton:active:not(:disabled),
+  .primaryLink:active {
+    border-color: var(--proctor-color-action-primary-active);
+    background: var(--proctor-color-action-primary-active);
+  }
+
+  .primaryButton:disabled {
+    border-color: var(--proctor-color-action-primary-disabled);
+    background: var(--proctor-color-action-primary-disabled);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .providerGroup {
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .providerButton {
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-interactive);
+    background: var(--proctor-color-action-secondary);
+    color: var(--proctor-color-action-on-secondary);
+  }
+
+  .providerButton:hover {
+    background: var(--proctor-color-action-secondary-hover);
+  }
+
+  .providerButton:active {
+    background: var(--proctor-color-action-secondary-active);
+  }
+
+  .separator {
+    display: grid;
+    grid-template-columns: minmax(var(--proctor-space-6), 1fr) auto
+      minmax(var(--proctor-space-6), 1fr);
+    gap: var(--proctor-space-4);
+    align-items: center;
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-small);
+  }
+
+  .separator::before,
+  .separator::after {
+    block-size: var(--proctor-border-width-hairline);
+    background: var(--proctor-color-border-default);
+    content: "";
+  }
+
+  .registration {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-2);
+    justify-content: center;
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .textButton {
+    align-self: flex-start;
+    min-block-size: var(--proctor-control-size-default);
+    padding-inline: var(--proctor-space-0);
+    border: 0;
+    background: transparent;
+    color: var(--proctor-color-foreground-link);
+    text-decoration: underline;
+    text-decoration-thickness: max(1px, 0.08em);
+    text-underline-offset: 0.18em;
+  }
+
+  .textButton:disabled {
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .visuallyHidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    margin: -1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 48rem) {
+    .context {
+      gap: var(--proctor-space-4);
+      padding-block-end: var(--proctor-space-0);
+      border-block-end: 0;
+    }
+
+    .contextRule {
+      display: block;
+    }
+
+    .contextBody {
+      max-inline-size: 32ch;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .contextRule,
+    .separator::before,
+    .separator::after {
+      background: CanvasText;
+    }
+
+    .primaryButton,
+    .providerButton,
+    .primaryLink,
+    .field input,
+    .notice,
+    .formError {
+      border-color: ButtonText;
+    }
+  }
+}

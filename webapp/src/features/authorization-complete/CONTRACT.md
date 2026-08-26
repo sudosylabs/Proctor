@@ -1,15 +1,17 @@
 # Authorization-complete route contract
 
-This file is the exact preimplementation contract for the server-hosted
+This file is the exact contract for the server-hosted
 `/authorization/complete` feature. It owns the terminal presentation after
 the existing local or external login flow creates a Web Session.
 [`../../../DESIGN_SYSTEM.md`](../../../DESIGN_SYSTEM.md) owns shared
 presentation and interaction rules; the authentication and Session contracts
 remain authoritative for server behavior.
 
-No general authenticated shell, result component, notice, or button is created
-with this feature. Reuse begins only after another real page proves identical
-semantics.
+The narrow shared
+[`AccessPageShell`](../../components/AccessPageShell/CONTRACT.md) is proven
+by this route and `/login`. It owns only their structural frame. This feature
+creates no general authenticated shell, shared result component, notice, or
+button.
 
 ## Purpose and boundary
 
@@ -126,11 +128,11 @@ an icon, if later admitted, is decorative beside complete text.
 - Theme, locale, reduced-motion, and accessibility preferences contain no
   authentication state.
 
-## Implementation gate
+## Implementation boundary
 
-This page can be implemented against the current generated
-`GET /api/v1/users/me` contract. It requires no new server model, Store
-operation, persistence state, result endpoint, cookie, or OpenAPI route.
+This page uses the current generated `GET /api/v1/users/me` contract. It
+requires no new server model, Store operation, persistence state, result
+endpoint, cookie, or OpenAPI route.
 
 The small external-login failure redirect belongs to the existing provider
 start and callback behavior and returns to `/login`; it is not a prerequisite

@@ -8,14 +8,32 @@ const acceptanceViewports = [
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
 
-test("the production entry keeps its empty root fully themed and initialized", async ({
+test("the production login entry keeps its root fully themed and initialized", async ({
   page,
 }) => {
+  await page.route("**/api/v1/discovery", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        discovery_version: 1,
+        canonical_origin: "http://127.0.0.1:5173",
+        initialized: true,
+        capabilities: {
+          local_login: true,
+          public_registration: false,
+          invitation_admission: true,
+          desktop_authorization: true,
+        },
+        desktop_authorization: {},
+        providers: [],
+      }),
+    });
+  });
   await page.goto("/login");
 
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(page).toHaveTitle("Proctor");
+  await expect(page).toHaveTitle("Sign in · Proctor");
   const state = await page.evaluate(() => {
     const root = document.querySelector<HTMLElement>("#root");
     if (root === null) {

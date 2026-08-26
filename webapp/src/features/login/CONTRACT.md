@@ -1,14 +1,16 @@
 # Login route contract
 
-This file is the exact preimplementation contract for the server-hosted
-`/login` feature. It owns page state, same-origin API orchestration, navigation,
+This file is the exact contract for the server-hosted `/login` feature. It owns
+page state, same-origin API orchestration, navigation,
 and recovery. [`../../../DESIGN_SYSTEM.md`](../../../DESIGN_SYSTEM.md) owns the
 shared presentation and interaction rules; the Access Policy, authentication,
 and Session contracts remain authoritative for server behavior.
 
-No shared authentication shell, field, button, or provider component is
-introduced with this feature. The first implementation starts here and promotes
-a primitive only after another real page proves the same semantics.
+The narrow shared
+[`AccessPageShell`](../../components/AccessPageShell/CONTRACT.md) is proven
+by this route and `/authorization/complete`. It owns only their structural
+frame. Fields, buttons, provider actions, notices, and authentication behavior
+remain local to this feature.
 
 ## Purpose and boundary
 
@@ -250,18 +252,18 @@ returns from the MFA step.
   Policy, referrer, frame, MIME, or cookie contract.
 - Theme, locale, and accessibility preferences contain no authentication state.
 
-## Implementation gate
+## Implementation boundary
 
-The local-password, MFA, and external-provider success paths can be implemented
-against the current typed API. The only adjacent server behavior needed for a
-complete hosted journey is the fixed generic failure redirect described above.
-It extends the existing external-login start and callback handling; it does not
-introduce a new transaction purpose, persistence model, result endpoint, or
-Session behavior.
+The local-password, MFA, and external-provider success paths use the current
+typed API. The only adjacent server behavior needed for the complete hosted
+journey is the fixed generic failure redirect described above. It extends the
+existing external-login start and callback handling; it does not introduce a
+new transaction purpose, persistence model, result endpoint, or Session
+behavior.
 
 The companion
 [`/authorization/complete` contract](../authorization-complete/CONTRACT.md)
-can also be implemented against the current authenticated User API.
+uses the current authenticated User API.
 
 ## Acceptance
 
