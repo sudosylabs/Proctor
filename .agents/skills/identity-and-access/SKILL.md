@@ -11,12 +11,9 @@ description: Change Proctor bootstrap, Access Policy, hosted authentication, Inv
    Principal, Session, credential, Invitation, affiliation, membership, and
    Role Binding remain distinct.
 2. Choose the branch reference:
-   - bootstrap, Access Policy, desktop handoff, Invitations, or administrative
-     batches:
+   - bootstrap, Access Policy, hosted browser flows, desktop handoff,
+     Invitations, or administrative batches:
      [access and onboarding](references/access-and-onboarding.md);
-   - ordinary hosted login, external-provider recovery, or the terminal login
-     result:
-     [browser login](references/browser-login.md), after access and onboarding;
    - User identity, credentials, Sessions, MFA, account lifecycle, CAS, or
      OIDC: [identity and authentication](references/identity.md).
    Completion: proof, state, expiry, assurance, and admission ownership are

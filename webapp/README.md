@@ -18,7 +18,7 @@ and generate [`src/styles/tokens.css`](./src/styles/tokens.css) plus the typed
 runtime catalog. The first visible slice is the server-hosted `/login` route;
 its exact preimplementation behavior lives in the feature-local
 [`login` contract](./src/features/login/CONTRACT.md); its terminal
-browser-login behavior lives in the companion
+Session-confirmation behavior lives in the companion
 [`authorization-complete` contract](./src/features/authorization-complete/CONTRACT.md).
 No visual page or shared component is implemented yet.
 

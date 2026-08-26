@@ -285,16 +285,22 @@ host-only secure cookies, CSRF protection, and no third-party script, font,
 analytics, or image. Fragment credentials are captured and removed from
 history immediately.
 
-One `BrowserAuthenticationTransaction` owns the shared orchestration for web
-login, desktop authorization, Invitation acceptance, and provider connection.
-It stores hashed bearer proofs, exact purpose and expected provider, bounded
+Purpose-specific `BrowserAuthenticationTransaction` records own the hosted
+handoffs that exchange a browser credential or issue a later client code:
+Desktop authorization and Invitation acceptance. They store hashed bearer
+proofs, exact purpose and expected provider where applicable, bounded
 destination, creation/expiry/consumption state, and only the minimum resolved
-identity needed for its terminal effect. A host-only Secure, HttpOnly,
+identity needed for the terminal effect. A host-only Secure, HttpOnly,
 SameSite=Lax cookie scoped to the authentication path carries an opaque browser
 proof, never encoded User, Invitation, provider, purpose, or redirect state.
-The ordinary hosted-login specialization, including state-bound provider
-failure recovery and `/authorization/complete`, lives in the
-[browser login reference](browser-login.md).
+
+Ordinary web login does not require that extra handoff. Local login validates
+credentials and creates a Web Session through the existing direct login use
+case. External login uses the existing purpose-bound `ExternalLoginState`,
+provider state, and browser binding across its redirect. Provider connection
+uses the same external-protocol aggregate under its distinct closed purpose.
+These flows must not be forced into `BrowserAuthenticationTransaction` merely
+to share a hosted page or terminal presentation.
 
 The application-facing Browser Authentication Store is purpose-specific. Its
 named operations return only the facts required for the next decision: a new
@@ -311,19 +317,33 @@ server-page phase. Until that page exists, the implemented API starts the
 provider-protocol leg directly: `ExternalLoginState` carries a closed
 `connect` purpose, the exact current User, and the durable audit attempt across
 the provider redirect. It can complete only by attaching the proved immutable
-subject to that User and never creates a Session. This is not a second hosted
-browser-orchestration model; the future page must wrap the same terminal
-contract in `BrowserAuthenticationTransaction`. The application supplies only
-the validated bounded state lifetime; one PostgreSQL timestamp establishes
-creation and expiry, and callback consumption uses PostgreSQL time rather than
-the initiating or callback node clock.
+subject to that User and never creates a Session. The later hosted page uses
+that same protocol rather than wrapping it in another transaction aggregate.
+The application supplies only the validated bounded state lifetime; one
+PostgreSQL timestamp establishes creation and expiry, and callback consumption
+uses PostgreSQL time rather than the initiating or callback node clock.
 
-The terminal purpose is closed:
+Each flow's terminal effect is closed:
 
 - ordinary web login creates a Web Session;
 - desktop authorization resolves a User and issues one code;
 - Invitation acceptance creates or resolves the User and applies its package;
 - provider connection attaches an identity to the already authenticated User.
+
+The first hosted `/login` uses the implemented direct password and external
+provider entry points. Both successful paths create their ordinary Web Session
+and continue to the fixed `/authorization/complete` route, where the browser
+confirms that Session through the authenticated User API.
+
+External-provider failure recovery is presentation-only. Once an ordinary Web
+login start or callback is safely recognized and bound, failure redirects to
+the fixed `/login#external_login=failed` location after clearing the provider
+binding. The fragment contains exactly that closed generic value, no provider
+code, reason, identity, or prose; bootstrap removes it before render. It grants
+no capability and may be forged without changing authentication state.
+Malformed or unsolicited callbacks that cannot be bound to an ordinary Web
+login retain generic Problem Details. This recovery needs no new durable
+transaction, result endpoint, Session rule, or persistence state.
 
 Invitation acceptance and desktop authentication do not create an unexpected
 persistent browser Session. An existing valid browser Session may approve a
