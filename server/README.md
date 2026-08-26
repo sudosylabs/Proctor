@@ -157,8 +157,8 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/access-policy` (authorized policy and bounded history)
 - `POST /api/v1/access-policy/preflight` and `PUT /api/v1/access-policy`
   (strong recent Session; replacement also requires `Idempotency-Key`)
-- `POST /api/v1/auth/register` (policy-fenced public local registration; API
-  only, with the hosted `/register` page still deferred)
+- `POST /api/v1/auth/register` (policy-fenced public local registration used by
+  the hosted `/register` page)
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
@@ -646,13 +646,15 @@ The exact property and maintenance contract lives in
 translation behavior lives in `localization/`; mail-specific rendering lives
 beside composition in `app/mail/`.
 
-Consumer packages explicitly register every message they own, including
+Server consumer packages explicitly register every message they own, including
 dynamic families that cannot be found reliably by scanning source literals.
-Validate exact English coverage and placeholder contracts with
-`make -C server i18n-check`. Maintainers can also run the `list`, `missing`, or
-`format` subcommands through `go run ./cmd/ptool i18n`; formatting is an
-explicit write operation and the normal check never rewrites catalogs. The
-operator CLI selects a locale
+The browser owns the delegated `webapp.*` namespace and validates its exact
+source-to-catalog coverage while generating its typed catalog. Validate server
+coverage and placeholder contracts with `make -C server i18n-check`; validate
+browser ownership with `npm --prefix webapp run i18n:check` from the repository
+root. Maintainers can also run the `list`, `missing`, or `format` subcommands
+through `go run ./cmd/ptool i18n`; formatting is an explicit write operation
+and the normal check never rewrites catalogs. The operator CLI selects a locale
 from `PROCTOR_LOCALE`, then the standard `LC_ALL`, `LC_MESSAGES`, and `LANG`
 environment variables, while keeping command names, flags, and machine values
 stable.

@@ -233,7 +233,7 @@ navigation destinations.
 ## Hosted pages and browser authentication
 
 Proctor Desktop contains no login, registration, password, invitation, or
-provider-authentication form. Proctor Server eventually hosts:
+provider-authentication form. Proctor Server hosts:
 
 - `/setup`;
 - `/login`;
@@ -246,12 +246,23 @@ provider-authentication form. Proctor Server eventually hosts:
 - `/account/connect-provider`;
 - `/authorization/complete`.
 
+The packaged browser currently implements `/setup`, `/login`, `/register`, and
+`/authorization/complete`. The remaining declared routes retain their server
+transport and nonvisual bootstrap contracts until their feature pages are
+implemented one vertical slice at a time.
+
 When public local registration is enabled, `/register` creates a User with a
 local credential and begins ordinary mailbox verification but grants no
-Affiliation, membership, or Role Binding. When it is disabled, the same route
-explains that an Invitation is required without accepting an email or revealing
-Invitation state. `/join` remains the purpose-bearing account and relationship
-claim surface.
+Affiliation, membership, or Role Binding. The public form requires self-asserted
+first and last names alongside username, email, and password; it does not accept
+`display_name`, locale, timezone, lifecycle state, or authorization-bearing
+data. Those names establish profile presentation only and prove neither person
+identity nor institutional relationship. After creation, the registrant has no
+generic self-service profile mutation; the existing authorized User-management
+path remains the owner of profile changes. When public registration is
+disabled, the same route explains that an Invitation is required without
+accepting an email or revealing Invitation state. `/join` remains the
+purpose-bearing account and relationship claim surface.
 
 Hybrid login presents local and enabled provider choices. Several external
 providers produce a chooser. One external-only provider still requires an
@@ -259,13 +270,13 @@ explicit Continue action before redirect, avoiding silent loops. Password
 recovery is hidden when local login is unavailable while its API retains a
 generic response.
 
-Visual page and component implementation remains deliberately deferred. The
-server-hosted [webapp design system](../../../../webapp/DESIGN_SYSTEM.md) now owns the
-theme, token, typography, spacing, accessibility, CSS, and extension contract
-that those pages must use. Route, localization, state, and security contracts
-are accepted now; the project must not claim an end-to-end hosted journey
-until those pages exist. Human prose lives under `server/i18n`; presentation
-and email templates live under `server/templates`.
+The server-hosted [webapp design system](../../../../webapp/DESIGN_SYSTEM.md)
+owns the theme, token, typography, spacing, accessibility, CSS, and extension
+contract for every implemented page. Each remaining page still requires its
+own route-local state, presentation, security, and recovery contract before
+implementation; the project must not claim an end-to-end hosted journey until
+the complete journey exists. Human interface prose lives under `server/i18n`;
+presentation and email templates live under `server/templates`.
 
 The server-owned browser runtime is now established as a root Vite module. A
 release build generates its API types from the authoritative OpenAPI document,
@@ -276,8 +287,8 @@ serves only the declared hosted routes and existing fingerprinted assets;
 API, health, the undeclared origin root, non-fingerprinted assets, and unknown
 server paths retain their existing transport behavior. The browser package
 also owns a generated, contrast-audited light/dark semantic-token adapter and
-locally bundled typography. These are delivery and presentation foundations,
-not the deferred visual page implementation.
+locally bundled typography. The implemented access-page family consumes those
+foundations; a declared route does not imply that its visual feature exists.
 
 Credential-bearing pages use no-store responses, strict Content Security
 Policy, `Referrer-Policy: no-referrer`, frame denial, MIME-sniffing protection,
@@ -696,9 +707,9 @@ no automatic reminder.
 
 The accepted access design does not depend on mail implementation, but
 invitation-required admission cannot become operational until durable mail
-intent can commit atomically with Invitation creation. Hosted-page visual work
-now depends on the established webapp design-system contract and still
-requires page and component implementation.
+intent can commit atomically with Invitation creation. Every remaining hosted
+page depends on the established webapp design-system contract and still
+requires its own page and component implementation.
 
 ## Operations, retention, and verification
 
@@ -752,8 +763,9 @@ Implementation proceeds as independently reviewable vertical slices:
 6. transactional-mail integration and terminal external-identity Invitation
    reconciliation;
 7. typed administrative batches, CSV onboarding, and progression;
-8. server-hosted page and component implementation on the established design
-   system.
+8. incremental server-hosted page and component implementation on the
+   established design system, beginning with setup, login, registration, and
+   Session confirmation and continuing through the remaining declared routes.
 
 Mattermost was inspected as behavioral evidence at revision
 `8ce3c54a5ed76b2aa39a46cf8a1b517ea53ec0cc`, principally its user, team

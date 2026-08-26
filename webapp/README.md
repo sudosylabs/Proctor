@@ -35,6 +35,10 @@ Repeated action styling and single-line field behavior live beside the narrow
 [`InputField`](./src/components/InputField/CONTRACT.md) contracts. They remain
 domain-neutral; page modules still own values, validation, API orchestration,
 and recovery.
+Visible browser copy uses the delegated `webapp.*` namespace in
+`server/i18n`. `npm run i18n:generate` validates exact ownership against
+browser source literals before producing the typed runtime catalog; the server
+localization checker continues to own every other catalog namespace.
 Route modules remain thin orchestrators. Feature presentation lives under
 `src/components/` in PascalCase folders such as `Setup/` and `Registration/`,
 with context, state, form, and styles split by responsibility. Transport
