@@ -755,7 +755,7 @@ export interface paths {
         put?: never;
         /**
          * Register one unverified local account when current policy permits
-         * @description Creates one unverified local account only when the current Access Policy permits public registration. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.
+         * @description Creates one unverified local account only when the current Access Policy permits public registration. The required first and last names are self-asserted profile presentation, not identity proof. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.
          */
         post: operations["registerLocalUser"];
         delete?: never;
@@ -6584,6 +6584,8 @@ export interface components {
         PublicRegistrationRequest: {
             /** Format: email */
             email: string;
+            first_name: string;
+            last_name: string;
             password: string;
             username: string;
         };
@@ -9442,12 +9444,14 @@ export interface components {
                 "application/json": components["schemas"]["AccessPolicySettingsRequest"];
             };
         };
-        /** @description Supplies the new account's unique username, normalized email address, and policy-compliant local password. */
+        /** @description Supplies the new account's required first and last names, unique username, normalized email address, and policy-compliant local password. Public registration does not accept a display name. */
         PublicRegistration: {
             content: {
                 /**
                  * @example {
                  *       "email": "student.one@example.edu",
+                 *       "first_name": "Ada",
+                 *       "last_name": "Okafor",
                  *       "password": "correct-horse-battery-staple-2026",
                  *       "username": "student.one"
                  *     }

@@ -29,27 +29,33 @@ do not drive registration.
 
 ## Form and request
 
-The form contains required `email`, `username`, and `password` controls with
-visible labels, stable names, suitable types and autocomplete values, and
-associated validation. Required controls use native required semantics and the
-shared visible required mark. The password has a centered icon-only disclosure
-button with localized accessible-name and title text. The form also contains a
-required, client-only acknowledgment that registration does not grant
-institutional access; its checkbox and complete label form one aligned hit
-target. The acknowledgment is never persisted or transported and has no
-authorization meaning.
+The form contains required `first_name`, `last_name`, `email`, `username`, and
+`password` controls with visible labels, stable names, suitable types and
+autocomplete values, and associated validation. It does not expose or submit a
+`display_name`. First and last name share one row only when the available width
+supports it; each remains a normal field in narrow document flow. Required
+controls use native required semantics and the shared visible required mark.
+The password has a centered icon-only disclosure button with localized
+accessible-name and title text. The form also contains a required, client-only
+acknowledgment that registration does not grant institutional access; its
+checkbox and complete label form one aligned hit target. The acknowledgment is
+never persisted or transported and has no authorization meaning.
 
 Empty or malformed required values are rejected before transport and focus
-moves to the first invalid control. Username and email are trimmed at
-submission; the password remains byte-for-byte as entered. Paste is never
-blocked. One pending submission prevents duplicates, preserves the visible
-form, marks it busy, and announces progress.
+moves to the first invalid control. First name, last name, username, and email
+are trimmed at submission; the password remains byte-for-byte as entered.
+Names are self-asserted profile presentation and prove no identity or
+institutional relationship. Paste is never blocked. One pending submission
+prevents duplicates, preserves the visible form, marks it busy, and announces
+progress.
 
 The page sends exactly this same-origin request to
 `POST /api/v1/auth/register`:
 
 ```json
 {
+  "first_name": "Ada",
+  "last_name": "Okafor",
   "username": "<current username>",
   "email": "<current email address>",
   "password": "<current password>"

@@ -128,6 +128,12 @@
     gap: var(--proctor-space-5);
   }
 
+  .nameFields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--proctor-space-5);
+  }
+
   .formError {
     padding: var(--proctor-space-4);
     border-inline-start: var(--proctor-border-width-focus) solid
@@ -221,6 +227,12 @@
     .mailNote,
     .formError {
       border-color: ButtonText;
+    }
+  }
+
+  @media (min-width: 30rem) {
+    .nameFields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 }

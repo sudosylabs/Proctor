@@ -1792,12 +1792,12 @@
     "translation": "Authentication code"
   },
   {
-    "id": "webapp.login.form.mfa_help",
-    "translation": "Enter a current authenticator code or an unused recovery code."
-  },
-  {
     "id": "webapp.login.form.mfa_heading",
     "translation": "Confirm it’s you"
+  },
+  {
+    "id": "webapp.login.form.mfa_help",
+    "translation": "Enter a current authenticator code or an unused recovery code."
   },
   {
     "id": "webapp.login.form.password",
@@ -1964,8 +1964,16 @@
     "translation": "Enter your email address."
   },
   {
+    "id": "webapp.register.form.error.first_name_required",
+    "translation": "Enter your first name."
+  },
+  {
     "id": "webapp.register.form.error.generic",
     "translation": "Proctor couldn’t accept your registration request. Try again."
+  },
+  {
+    "id": "webapp.register.form.error.last_name_required",
+    "translation": "Enter your last name."
   },
   {
     "id": "webapp.register.form.error.password_invalid",
@@ -1982,6 +1990,14 @@
   {
     "id": "webapp.register.form.error.username_required",
     "translation": "Enter a username."
+  },
+  {
+    "id": "webapp.register.form.first_name",
+    "translation": "First name"
+  },
+  {
+    "id": "webapp.register.form.last_name",
+    "translation": "Last name"
   },
   {
     "id": "webapp.register.form.mail_note",
@@ -2021,7 +2037,7 @@
   },
   {
     "id": "webapp.register.lede",
-    "translation": "Use an email address, username, and password to register."
+    "translation": "Enter your name and local account details to register."
   },
   {
     "id": "webapp.register.loading",
@@ -2258,10 +2274,6 @@
   {
     "id": "webapp.setup.heading",
     "translation": "Set up Proctor"
-  },
-  {
-    "id": "webapp.setup.lede",
-    "translation": "Provide the operator proof, Institution identity, and first administrator."
   },
   {
     "id": "webapp.setup.loading",

@@ -15,6 +15,8 @@ export type RegistrationDiscoveryState =
 
 export interface RegistrationSubmission {
   email: string;
+  firstName: string;
+  lastName: string;
   username: string;
   password: string;
 }
@@ -92,6 +94,8 @@ export async function submitRegistration(
     const { error, response } = await apiClient.POST("/api/v1/auth/register", {
       body: {
         email: submission.email.trim(),
+        first_name: submission.firstName.trim(),
+        last_name: submission.lastName.trim(),
         username: submission.username.trim(),
         password: submission.password,
       },

@@ -13,7 +13,13 @@ import { InputField, RequiredMark } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import styles from "./Registration.module.css";
 
-type RegistrationField = "email" | "username" | "password" | "acknowledgment";
+type RegistrationField =
+  | "firstName"
+  | "lastName"
+  | "email"
+  | "username"
+  | "password"
+  | "acknowledgment";
 type FieldErrors = Partial<Record<RegistrationField, string>>;
 
 export interface RegistrationFormProps {
@@ -31,6 +37,8 @@ export function RegistrationForm({
   onPolicyChange,
   submitRegistration,
 }: RegistrationFormProps) {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +48,8 @@ export function RegistrationForm({
   const [formError, setFormError] = useState<string>();
   const [liveMessage, setLiveMessage] = useState("");
 
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  const lastNameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -47,6 +57,8 @@ export function RegistrationForm({
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const fieldRefs: Record<RegistrationField, React.RefObject<HTMLInputElement | null>> = {
+    firstName: firstNameRef,
+    lastName: lastNameRef,
     email: emailRef,
     username: usernameRef,
     password: passwordRef,
@@ -82,6 +94,16 @@ export function RegistrationForm({
     }
 
     const nextErrors: FieldErrors = {};
+    if (firstName.trim() === "") {
+      nextErrors.firstName = message(
+        "webapp.register.form.error.first_name_required",
+      );
+    }
+    if (lastName.trim() === "") {
+      nextErrors.lastName = message(
+        "webapp.register.form.error.last_name_required",
+      );
+    }
     if (email.trim() === "") {
       nextErrors.email = message("webapp.register.form.error.email_required");
     } else if (emailRef.current?.validity.typeMismatch) {
@@ -106,7 +128,14 @@ export function RegistrationForm({
     setFormError(undefined);
 
     const firstInvalid = (
-      ["email", "username", "password", "acknowledgment"] as const
+      [
+        "firstName",
+        "lastName",
+        "email",
+        "username",
+        "password",
+        "acknowledgment",
+      ] as const
     ).find((field) => nextErrors[field] !== undefined);
     if (firstInvalid !== undefined) {
       focusField(firstInvalid);
@@ -116,9 +145,17 @@ export function RegistrationForm({
     setPending(true);
     setLiveMessage(message("webapp.register.form.submitting"));
     try {
-      const result = await submitRegistration({ email, username, password });
+      const result = await submitRegistration({
+        email,
+        firstName,
+        lastName,
+        username,
+        password,
+      });
 
       if (result.kind === "accepted") {
+        setFirstName("");
+        setLastName("");
         setEmail("");
         setUsername("");
         setPassword("");
@@ -181,6 +218,40 @@ export function RegistrationForm({
             {formError}
           </div>
         )}
+
+        <div className={styles.nameFields}>
+          <InputField
+            ref={firstNameRef}
+            id="registration-first-name"
+            name="first_name"
+            label={message("webapp.register.form.first_name")}
+            type="text"
+            autoComplete="given-name"
+            value={firstName}
+            errorMessage={fieldErrors.firstName}
+            required
+            onChange={(event) => {
+              setFirstName(event.currentTarget.value);
+              clearFieldError("firstName");
+            }}
+          />
+
+          <InputField
+            ref={lastNameRef}
+            id="registration-last-name"
+            name="last_name"
+            label={message("webapp.register.form.last_name")}
+            type="text"
+            autoComplete="family-name"
+            value={lastName}
+            errorMessage={fieldErrors.lastName}
+            required
+            onChange={(event) => {
+              setLastName(event.currentTarget.value);
+              clearFieldError("lastName");
+            }}
+          />
+        </div>
 
         <InputField
           ref={emailRef}

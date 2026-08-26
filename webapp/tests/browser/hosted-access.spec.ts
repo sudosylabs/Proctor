@@ -187,6 +187,8 @@ test("public registration submits only account input and enters verification", a
   await page.route("**/api/v1/auth/register", async (route) => {
     expect(await route.request().postDataJSON()).toEqual({
       email: "student.one@example.edu",
+      first_name: "Ada",
+      last_name: "Okafor",
       username: "student.one",
       password: "private-registration-password",
     });
@@ -198,6 +200,11 @@ test("public registration submits only account input and enters verification", a
   await expect(page).toHaveTitle("Create an account · Proctor");
   await expect(page.getByText("Northbridge Institute")).toBeVisible();
 
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByLabel("First name")).toBeFocused();
+
+  await page.getByLabel("First name").fill("Ada");
+  await page.getByLabel("Last name").fill("Okafor");
   await page.getByLabel("Email address").fill("student.one@example.edu");
   await page.getByLabel("Username").fill("student.one");
   await page.locator("#registration-password").fill("private-registration-password");
@@ -538,6 +545,8 @@ test("required controls are marked and compound controls stay optically aligned"
   await mockDiscovery(page);
   await page.goto("/register");
   for (const id of [
+    "registration-first-name",
+    "registration-last-name",
     "registration-email",
     "registration-username",
     "registration-password",
@@ -548,6 +557,12 @@ test("required controls are marked and compound controls stay optically aligned"
       page.locator(`label[for="${id}"] [data-required-indicator]`),
     ).toHaveText("*");
   }
+
+  const firstNameBox = await page.locator("#registration-first-name").boundingBox();
+  const lastNameBox = await page.locator("#registration-last-name").boundingBox();
+  expect(firstNameBox).not.toBeNull();
+  expect(lastNameBox).not.toBeNull();
+  expect(Math.abs(firstNameBox!.y - lastNameBox!.y)).toBeLessThanOrEqual(1);
 
   const checkboxAlignment = await page.evaluate(() => {
     const checkbox = document.querySelector<HTMLInputElement>(
@@ -583,6 +598,20 @@ for (const pageCase of [
     await expect(
       page.getByRole("heading", { level: 1, name: pageCase.heading }),
     ).toBeVisible();
+
+    if (pageCase.route === "/register") {
+      const firstNameBox = await page
+        .locator("#registration-first-name")
+        .boundingBox();
+      const lastNameBox = await page
+        .locator("#registration-last-name")
+        .boundingBox();
+      expect(firstNameBox).not.toBeNull();
+      expect(lastNameBox).not.toBeNull();
+      expect(lastNameBox!.y).toBeGreaterThanOrEqual(
+        firstNameBox!.y + firstNameBox!.height,
+      );
+    }
 
     const theme = await page.evaluate(() => ({
       canvas: getComputedStyle(document.documentElement).backgroundColor,
