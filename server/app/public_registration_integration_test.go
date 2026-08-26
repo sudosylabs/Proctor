@@ -40,7 +40,10 @@ func TestPublicLocalRegistrationRealGraph(t *testing.T) {
 
 	const email = "new.public.student@example.edu"
 	const password = "registration correct horse battery staple"
-	body := map[string]any{"username": "new.public.student", "email": email, "password": password}
+	body := map[string]any{
+		"username": "new.public.student", "email": email, "first_name": "New",
+		"last_name": "Student", "password": password,
+	}
 	disabled := performJSONRequest(helper.Handler(), http.MethodPost, "/api/v1/auth/register", body, "")
 	if disabled.Code != http.StatusForbidden || !strings.Contains(disabled.Body.String(), "authentication.registration.invitation_required") ||
 		strings.Contains(disabled.Body.String(), email) {
@@ -62,7 +65,7 @@ func TestPublicLocalRegistrationRealGraph(t *testing.T) {
 		t.Fatalf("registration statuses accepted=%d replay=%d bodies=%q/%q", accepted.Code, replay.Code, accepted.Body.String(), replay.Body.String())
 	}
 	user, err := persistence.User().GetByEmail(context.Background(), email)
-	if err != nil || user.EmailVerified {
+	if err != nil || user.EmailVerified || user.FirstName != "New" || user.LastName != "Student" || user.DisplayName != "" {
 		t.Fatalf("registered User = %#v, %v", user, err)
 	}
 	var relationshipCount int

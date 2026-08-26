@@ -47,9 +47,11 @@ type loginRequest struct {
 }
 
 type publicRegistrationRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Password  string `json:"password"`
 }
 
 type passwordResetRequest struct {
@@ -289,7 +291,8 @@ func (module authenticationResourceModule) register(request operationRequest) (o
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
 		application.RegisterLocalUserCommand{
-			Username: input.Username, Email: input.Email, Password: input.Password,
+			Username: input.Username, Email: input.Email, FirstName: input.FirstName,
+			LastName: input.LastName, Password: input.Password,
 			Source: request.request.RemoteAddr,
 		},
 	); err != nil {

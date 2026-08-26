@@ -167,7 +167,7 @@ func identityAndSystemOpenAPIAgreementSuite() openAPIAgreementSuite {
 			{Name: "HealthResponse", DTO: reflect.TypeOf(healthResponse{}), Required: []string{"status"}},
 			{Name: "BuildInfoResponse", DTO: reflect.TypeOf(BuildInfo{}), Required: []string{"version", "commit", "build_time", "go_version"}},
 			{Name: "LoginRequest", DTO: reflect.TypeOf(loginRequest{}), Required: []string{"login_id", "password", "client_type"}},
-			{Name: "PublicRegistrationRequest", DTO: reflect.TypeOf(publicRegistrationRequest{}), Required: []string{"username", "email", "password"}},
+			{Name: "PublicRegistrationRequest", DTO: reflect.TypeOf(publicRegistrationRequest{}), Required: []string{"username", "email", "first_name", "last_name", "password"}},
 			{Name: "BrowserInvitationStartRequest", DTO: reflect.TypeOf(browserInvitationStartRequest{}), Required: []string{"claim"}},
 			{Name: "BrowserInvitationAcceptanceRequest", DTO: reflect.TypeOf(browserInvitationAcceptanceRequest{}), Required: []string{"handle", "password", "username"}},
 			{Name: "BrowserInvitationSessionAcceptanceRequest", DTO: reflect.TypeOf(browserInvitationSessionAcceptanceRequest{}), Required: []string{"handle"}},

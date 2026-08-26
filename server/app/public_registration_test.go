@@ -27,7 +27,8 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 	err := service.Register(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{
 		RequestID: "register-1", IPAddress: "192.0.2.10",
 	}), RegisterLocalUserCommand{
-		Username: "New.Student", Email: " New.Student@Example.EDU ", Password: "correct horse battery staple",
+		Username: "New.Student", Email: " New.Student@Example.EDU ",
+		FirstName: "  New  ", LastName: " Student ", Password: "correct horse battery staple",
 		Source: "192.0.2.10:443",
 	})
 	if err != nil {
@@ -39,7 +40,8 @@ func TestPublicRegistrationPreparesOneAtomicUnverifiedLocalAccount(t *testing.T)
 		input.VerificationDelivery == nil || input.VerificationJob == nil || input.AuditEvent == nil {
 		t.Fatalf("registration aggregate = %#v", input)
 	}
-	if input.User.Username != "new.student" || input.User.Email != "new.student@example.edu" || input.User.EmailVerified ||
+	if input.User.Username != "new.student" || input.User.Email != "new.student@example.edu" ||
+		input.User.FirstName != "New" || input.User.LastName != "Student" || input.User.DisplayName != "" || input.User.EmailVerified ||
 		input.PasswordCredential.UserID != input.User.ID || input.Settings.UserID != input.User.ID ||
 		input.VerificationToken.UserID != input.User.ID || input.VerificationToken.Target != input.User.Email ||
 		input.VerificationToken.Purpose != model.UserTokenEmailVerification ||
@@ -80,7 +82,8 @@ func TestPublicRegistrationFailsClosedBeforeAccountPreparationWhenPolicyOrMailDi
 			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 			service.policies = test.policy
 			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
-				Username: "student", Email: "student@example.edu", Password: "correct horse battery staple", Source: "192.0.2.20",
+				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+				Password: "correct horse battery staple", Source: "192.0.2.20",
 			})
 			if !Is(err, test.wantCode) {
 				t.Fatalf("Register() = %v, want %s", err, test.wantCode)
@@ -102,7 +105,8 @@ func TestPublicRegistrationConcealsDuplicateIdentity(t *testing.T) {
 			persistence := &publicRegistrationStoreFake{err: store.NewErrConflict("user", constraint, nil)}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
 			if err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
-				Username: "student", Email: "student@example.edu", Password: "correct horse battery staple", Source: "192.0.2.30",
+				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+				Password: "correct horse battery staple", Source: "192.0.2.30",
 			}); err != nil {
 				t.Fatalf("duplicate registration disclosed its outcome: %v", err)
 			}
@@ -125,7 +129,8 @@ func TestPublicRegistrationDoesNotConcealUnrelatedPersistenceConflicts(t *testin
 			persistence := &publicRegistrationStoreFake{err: conflict}
 			service := newTestPublicRegistrationService(t, persistence, &publicRegistrationMailFake{enabled: true}, time.Now())
 			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
-				Username: "student", Email: "student@example.edu", Password: "correct horse battery staple", Source: "192.0.2.30",
+				Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+				Password: "correct horse battery staple", Source: "192.0.2.30",
 			})
 			if !Is(err, "authentication.registration.unavailable") {
 				t.Fatalf("unrelated persistence conflict = %v, want authentication.registration.unavailable", err)
@@ -142,7 +147,8 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 		enabled: true, err: errors.New("seal failed"),
 	}, time.Now())
 	command := RegisterLocalUserCommand{
-		Username: "student", Email: "student@example.edu", Password: "correct horse battery staple", Source: "192.0.2.31",
+		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+		Password: "correct horse battery staple", Source: "192.0.2.31",
 	}
 	if err := mailFailure.Register(context.Background(), Invocation{}, command); !Is(err, "authentication.registration.unavailable") {
 		t.Fatalf("mail preparation failure = %v", err)
@@ -164,13 +170,46 @@ func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *te
 	mail := &publicRegistrationMailFake{enabled: true}
 	service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
 	err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
-		Username: "student", Email: "student@example.edu", Password: "", Source: "192.0.2.32",
+		Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+		Password: "", Source: "192.0.2.32",
 	})
 	if !Is(err, "authentication.password.invalid") {
 		t.Fatalf("invalid password = %v", err)
 	}
 	if persistence.input != nil || mail.prepareCalls != 0 {
 		t.Fatalf("invalid password reached mail/Store: calls=%d input=%#v", mail.prepareCalls, persistence.input)
+	}
+}
+
+func TestPublicRegistrationRequiresFirstAndLastNamesBeforeCredentialPreparation(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		firstName string
+		lastName  string
+	}{
+		{name: "missing first name", lastName: "Student"},
+		{name: "missing last name", firstName: "New"},
+		{name: "whitespace names", firstName: "  ", lastName: "\t"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			persistence := &publicRegistrationStoreFake{}
+			mail := &publicRegistrationMailFake{enabled: true}
+			service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
+			err := service.Register(context.Background(), Invocation{}, RegisterLocalUserCommand{
+				Username: "student", Email: "student@example.edu", FirstName: test.firstName,
+				LastName: test.lastName, Password: "correct horse battery staple", Source: "192.0.2.33",
+			})
+			if !Is(err, "authentication.registration.invalid") {
+				t.Fatalf("missing personal name = %v", err)
+			}
+			if persistence.input != nil || mail.prepareCalls != 0 {
+				t.Fatalf("invalid personal name reached mail/Store: calls=%d input=%#v", mail.prepareCalls, persistence.input)
+			}
+		})
 	}
 }
 
@@ -181,7 +220,7 @@ func TestPublicRegistrationUsesPrivateSharedAttemptAccounting(t *testing.T) {
 	service := newTestPublicRegistrationService(t, &publicRegistrationStoreFake{}, &publicRegistrationMailFake{enabled: true}, time.Now())
 	service.attempts = mustAuthenticationAttemptAccounting(t, cache)
 	service.rateLimit = LoginRateLimitPolicy{Window: time.Minute, MaximumAttempts: 1, MaximumSourceAttempts: 10}
-	command := RegisterLocalUserCommand{Username: "student", Email: " Student@Example.EDU ", Password: "correct horse battery staple", Source: "192.0.2.40:443"}
+	command := RegisterLocalUserCommand{Username: "student", Email: " Student@Example.EDU ", FirstName: "New", LastName: "Student", Password: "correct horse battery staple", Source: "192.0.2.40:443"}
 	if err := service.Register(context.Background(), Invocation{}, command); err != nil {
 		t.Fatal(err)
 	}

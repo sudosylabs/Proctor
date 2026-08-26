@@ -18,10 +18,12 @@ const publicRegistrationAuditAction = "authentication.public_registration"
 // RegisterLocalUserCommand contains the public, request-only account fields.
 // Password and mailbox values never enter audit data or successful responses.
 type RegisterLocalUserCommand struct {
-	Username string
-	Email    string
-	Password string
-	Source   string
+	Username  string
+	Email     string
+	FirstName string
+	LastName  string
+	Password  string
+	Source    string
 }
 
 type publicRegistrationStore interface {
@@ -98,11 +100,18 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 	if !s.mail.Enabled() {
 		return registrationUnavailable(errors.New("mail delivery is disabled"))
 	}
+	firstName := strings.TrimSpace(model.SanitizeUnicode(command.FirstName))
+	lastName := strings.TrimSpace(model.SanitizeUnicode(command.LastName))
+	if firstName == "" || lastName == "" {
+		return NewError("authentication.registration.invalid")
+	}
 
 	at := model.TimeUTC(s.now())
 	user, defaultJob, err := prepareUserDefaultProfilePictureJob(&model.User{
-		Username: command.Username,
-		Email:    command.Email,
+		Username:  command.Username,
+		Email:     command.Email,
+		FirstName: firstName,
+		LastName:  lastName,
 	}, at)
 	if err != nil {
 		return NewError("authentication.registration.invalid").Wrap(err)

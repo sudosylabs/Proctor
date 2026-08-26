@@ -4,7 +4,7 @@ paths:
       operationId: registerLocalUser
       summary: Register one unverified local account when current policy permits
       description: >-
-        Creates one unverified local account only when the current Access Policy permits public registration. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.
+        Creates one unverified local account only when the current Access Policy permits public registration. The required first and last names are self-asserted profile presentation, not identity proof. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.
       tags:
         - Authentication
       x-proctor-auth: public
@@ -35,12 +35,14 @@ components:
   requestBodies:
     PublicRegistration:
       required: true
-      description: Supplies the new account's unique username, normalized email address, and policy-compliant local password.
+      description: Supplies the new account's required first and last names, unique username, normalized email address, and policy-compliant local password. Public registration does not accept a display name.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/PublicRegistrationRequest'
           example:
+            first_name: Ada
+            last_name: Okafor
             username: student.one
             email: student.one@example.edu
             password: correct-horse-battery-staple-2026
@@ -49,10 +51,20 @@ components:
       type: object
       additionalProperties: false
       required:
+        - first_name
+        - last_name
         - username
         - email
         - password
       properties:
+        first_name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        last_name:
+          type: string
+          minLength: 1
+          maxLength: 64
         username:
           type: string
           minLength: 1

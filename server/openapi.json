@@ -1156,6 +1156,8 @@
           "application/json": {
             "example": {
               "email": "student.one@example.edu",
+              "first_name": "Ada",
+              "last_name": "Okafor",
               "password": "correct-horse-battery-staple-2026",
               "username": "student.one"
             },
@@ -1164,7 +1166,7 @@
             }
           }
         },
-        "description": "Supplies the new account's unique username, normalized email address, and policy-compliant local password.",
+        "description": "Supplies the new account's required first and last names, unique username, normalized email address, and policy-compliant local password. Public registration does not accept a display name.",
         "required": true
       },
       "PublishExamRevision": {
@@ -11583,6 +11585,16 @@
             "maxLength": 254,
             "type": "string"
           },
+          "first_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "last_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "password": {
             "type": "string"
           },
@@ -11593,6 +11605,8 @@
           }
         },
         "required": [
+          "first_name",
+          "last_name",
           "username",
           "email",
           "password"
@@ -15766,7 +15780,7 @@
     },
     "/api/v1/auth/register": {
       "post": {
-        "description": "Creates one unverified local account only when the current Access Policy permits public registration. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.",
+        "description": "Creates one unverified local account only when the current Access Policy permits public registration. The required first and last names are self-asserted profile presentation, not identity proof. Registration does not grant institutional affiliation or authorization, and a verification message is sent without returning credential material.",
         "operationId": "registerLocalUser",
         "requestBody": {
           "$ref": "#/components/requestBodies/PublicRegistration"

@@ -263,11 +263,14 @@ metadata.
 
 `POST /api/v1/auth/register` is a public strict-JSON API for the local
 self-registration capability advertised by discovery. It accepts only
-`username`, `email`, and `password`; the successful response is an empty
-no-store `202`, including a syntactically valid duplicate request. The route
-returns the bounded `authentication.registration.*` and shared authentication
-rate-limit vocabulary and never projects a User, mailbox, password, raw
-verification credential, or internal uniqueness outcome.
+`username`, `email`, required self-asserted `first_name` and `last_name`, and
+`password`; `display_name` is not a public-registration field. The successful
+response is an empty no-store `202`, including a syntactically valid duplicate
+request. The route returns the bounded `authentication.registration.*` and
+shared authentication rate-limit vocabulary and never projects a User,
+mailbox, password, raw verification credential, or internal uniqueness
+outcome. The personal names establish profile presentation only; they prove no
+identity, affiliation, membership, or authorization.
 
 The application accounts attempts under the canonical normalized mailbox and
 private source dimensions before preparing the account. The named PostgreSQL
@@ -276,7 +279,8 @@ policy and atomically creates only the unverified local User, password,
 settings, default-picture Job, safe audit, target-bound verification token,
 frozen encrypted credential delivery, and delivery Job. It creates no
 Affiliation, membership, or Role Binding. The packaged runtime owns `/register`,
-but this API does not implement or claim its deferred visual flow.
+whose hosted form consumes this API without acquiring any additional account
+or authorization semantics.
 
 ## Student Class Invitations
 
