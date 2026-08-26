@@ -18,6 +18,12 @@ accept an Invitation, authorize Proctor Desktop, connect a provider to an
 existing User, manage Sessions, or choose an arbitrary post-authentication
 destination.
 
+Every explicit authentication action first creates the `web_login` browser
+transaction defined by the identity-and-access
+[`browser login` reference](../../../../.agents/skills/identity-and-access/references/browser-login.md).
+That server-owned transaction pins the selected path, proof, lifetime, and
+terminal effect. This page never recreates that state in its component model.
+
 The first version accepts no credential or navigation input from the URL. It
 does not read a fragment, and it ignores query parameters. Both local and
 external success use the fixed, same-origin terminal route
@@ -119,26 +125,44 @@ person's input while typing, or places either value in a URL, storage,
 diagnostic, analytics, or error field. The server remains responsible for
 normalizing and resolving the login identifier.
 
-Submitting sends exactly this same-origin request:
+The first submit creates a password transaction with exactly this same-origin
+request:
+
+```json
+{ "authentication_path": "password" }
+```
+
+It sends the current credential only after creation succeeds, to
+`POST /api/v1/auth/browser/logins/{handle}/password`:
 
 ```json
 {
   "login_id": "<current login identifier>",
-  "password": "<current password>",
-  "client_type": "web"
+  "password": "<current password>"
 }
 ```
 
-The page does not invent `device_id` or `device_name`. While one submission is
-pending, it prevents duplicate submission, marks the form busy, preserves the
-visible controls, and announces progress. It does not optimistically navigate
-or automatically retry.
+The page sends no `client_type`, browser proof, device presentation,
+destination, or Session option. The server owns the HttpOnly transaction proof.
+While transaction creation or credential submission is pending, the page
+prevents duplicate submission, marks the form busy, preserves the visible
+controls, and announces progress. It does not optimistically navigate or
+automatically retry.
 
-A successful response is accepted only from `POST /api/v1/auth/login`. The
+Credential or MFA rejection leaves the same transaction pending while it is
+valid. A transaction-invalid, expired, or superseded response clears live
+password and MFA state; the next explicit submit creates a fresh transaction.
+Changing the form from its initial credential step to another authentication
+method also abandons the pending password transaction rather than repurposing
+it.
+
+A successful password response is accepted only from the transaction-specific
+password route and contains the fixed completion location. The ordinary
 browser-cookie transport is authoritative; the page does not persist or expose
 the response body or any unexpected token fields. It clears live credential
-state and replaces the current history entry with `/authorization/complete` so
-Back does not restore a submitted credential form.
+and handle state and replaces the current history entry with the returned
+same-origin `/authorization/complete#result=...` location so Back does not
+restore a submitted credential form.
 
 ## MFA continuation
 
@@ -149,11 +173,12 @@ labelled `mfa_code` control for a current TOTP or unused recovery code with
 recovery code is also valid, and it never blocks paste.
 
 The page focuses the MFA control once when the challenge appears. It retains
-the login identifier and password only in live document memory long enough to
-resubmit the same login request with `mfa_code`. Those values never enter
-history or durable browser storage. Successful navigation and unmount clear
-them. Returning to the credential step clears the password and MFA code and
-requires the password again.
+the transaction handle, login identifier, and password only in live document
+memory long enough to resubmit the same transaction-specific request with
+`mfa_code`. Those values never enter history or durable browser storage.
+Successful navigation and unmount clear them. Returning to the credential step
+abandons the transaction, clears the password and MFA code, and requires the
+password again.
 
 An invalid MFA code is associated with the MFA control and focuses it without
 clearing the login identifier. An unavailable MFA verifier is a challenge-level
@@ -162,20 +187,30 @@ recoverable error and does not silently fall back to single-factor login.
 ## External providers
 
 Each provider action uses its exact discovery `id` and visible
-`display_name`. Activation constructs this same-origin URL with encoded path
-and query values, then passes it through the existing same-origin provider
+`display_name`. Activation first creates a provider transaction with exactly:
+
+```json
+{
+  "authentication_path": "provider",
+  "provider_id": "<selected discovery provider ID>"
+}
+```
+
+Only after creation succeeds does the page construct the transaction-specific
+same-origin URL and pass it through the existing same-origin provider
 navigation boundary:
 
 ```text
-/api/v1/auth/providers/{provider_id}/login
-  ?client_type=web
-  &return_to=%2Fauthorization%2Fcomplete
+/api/v1/auth/browser/logins/{handle}/provider
 ```
 
-The explicit `client_type=web` is required even when a server default exists.
-The page supplies no device presentation and performs no client-side redirect
-to a provider origin. The Proctor endpoint creates the state-bound transaction,
-sets the browser binding, and owns the provider redirect.
+The page supplies no client type, provider return URL, failure URL, device
+presentation, or provider protocol parameter and performs no client-side
+redirect to a provider origin. The Proctor endpoint verifies the transaction
+proof, creates the linked provider state, sets its browser binding, and owns
+the provider redirect. The page clears its in-memory handle immediately before
+navigation; the server-held transaction remains authoritative across the
+external round trip.
 
 Provider actions remain real text actions rather than provider-logo-only
 controls. Unknown provider types receive the same neutral treatment as known
@@ -198,7 +233,7 @@ rendered directly. UI messages come from the webapp localization catalog.
 | `authentication.sessions.maximum_reached` | Blocking form error explaining that another active Session must be resolved; do not retry automatically |
 | `authentication.rate_limited` | Blocking form error asking the person to try later; no countdown is invented without a server retry interval |
 | `authentication.rate_limit_unavailable`, `authentication.internal` | Generic recoverable service error |
-| `request.invalid`, `authentication.client_type.invalid`, `authentication.password.invalid` | Generic safe form failure and a client-contract test failure |
+| `request.invalid`, `authentication.password.invalid` | Generic safe form failure and a client-contract test failure |
 | Any other code or transport failure | Generic recoverable failure |
 
 Empty required controls are caught before transport, with errors placed beside
@@ -218,27 +253,25 @@ returns from the MFA step.
   User, absent password credential, or policy-disabled local login.
 - No provider is inferred from a typed email domain or selected automatically.
 - Authentication success comes only from the server response and host-only
-  cookies; client state never manufactures a signed-in result.
+  cookies; client state never manufactures a signed-in result. The terminal
+  page confirms the resulting Session independently.
+- Transaction handles and completion selectors remain memory-only, are removed
+  from history where applicable, and are excluded from logs, storage, rendered
+  errors, screenshots, and reports even though neither is sufficient without
+  its HttpOnly browser proof.
 - The page does not override the server-owned no-store, Content Security
   Policy, referrer, frame, MIME, or cookie contract.
 - Theme, locale, and accessibility preferences contain no authentication state.
 
-## Implementation gates
+## Implementation gate
 
-The local-password and MFA flow can be implemented against the current typed
-API. The complete login journey must not be called finished until both adjacent
-server-hosted boundaries are contracted and implemented:
-
-1. `/authorization/complete` must own the safe terminal experience after a Web
-   Session is created.
-2. External-provider start and callback failures need a state-bound hosted
-   recovery destination. Today those redirect endpoints can return raw Problem
-   Details to the browser. The remedy must preserve the provider transaction's
-   fixed purpose and bounded local destination; `/login` must not accept an
-   untrusted failure URL or provider error payload in its query.
-
-These are server/browser protocol prerequisites, not reasons to hide enabled
-providers, silently redirect, or duplicate their policy in the page.
+The page is intentionally blocked on the accepted browser-login protocol. The
+current `POST /api/v1/auth/login` and direct provider-login routes do not
+provide its purpose-bound terminal recovery and must not be wrapped behind the
+new UI as if they did. Implement the server routes, Store transitions, OpenAPI
+sources, generated client, and
+[`/authorization/complete` contract](../authorization-complete/CONTRACT.md) as
+one vertical slice before implementing this page.
 
 ## Acceptance
 
@@ -246,12 +279,14 @@ The feature is complete only when tests cover:
 
 - every discovery state and the full local/provider method matrix;
 - canonical-origin mismatch and malformed discovery;
-- local success, generic credentials failure, duplicate-submit prevention,
-  rate limiting, Session maximum, transport failure, and retry;
+- password transaction creation, local success, generic credentials failure,
+  invalid/expired/superseded transaction recovery, duplicate-submit
+  prevention, rate limiting, Session maximum, transport failure, and retry;
 - TOTP and recovery-code MFA, invalid code, verifier unavailability, Back, and
   secret cleanup;
-- one and several external providers, explicit activation, encoded provider
-  IDs, the fixed return path, and same-origin navigation rejection;
+- one and several external providers, explicit activation, pinned provider
+  transaction creation, encoded handles, the fixed provider path, and
+  same-origin navigation rejection;
 - keyboard order, skip-link behavior, focus after validation and MFA
   transitions, live announcements, visible labels, paste, and password-manager
   semantics;

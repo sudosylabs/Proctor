@@ -287,12 +287,14 @@ history immediately.
 
 One `BrowserAuthenticationTransaction` owns the shared orchestration for web
 login, desktop authorization, Invitation acceptance, and provider connection.
-It stores a hashed random handle and browser proof, exact purpose and expected
-provider, bounded destination, creation/expiry/consumption state, and only the
-minimum resolved identity needed for its terminal effect. A host-only Secure,
-HttpOnly, SameSite=Lax cookie scoped to the authentication path carries an
-opaque browser proof, never encoded User, Invitation, provider, purpose, or
-redirect state.
+It stores hashed bearer proofs, exact purpose and expected provider, bounded
+destination, creation/expiry/consumption state, and only the minimum resolved
+identity needed for its terminal effect. A host-only Secure, HttpOnly,
+SameSite=Lax cookie scoped to the authentication path carries an opaque browser
+proof, never encoded User, Invitation, provider, purpose, or redirect state.
+The ordinary hosted-login specialization, including state-bound provider
+failure recovery and `/authorization/complete`, lives in the
+[browser login reference](browser-login.md).
 
 The application-facing Browser Authentication Store is purpose-specific. Its
 named operations return only the facts required for the next decision: a new
