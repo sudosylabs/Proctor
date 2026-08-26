@@ -137,6 +137,51 @@ func TestLocalizerRejectsDefinitionDrift(t *testing.T) {
 	}
 }
 
+func TestLocalizerDelegatesOneExplicitCatalogNamespace(t *testing.T) {
+	t.Parallel()
+	localizer, err := New(fstest.MapFS{"en.json": {Data: []byte(`[
+  {"id":"server.message","translation":"Server"},
+  {"id":"webapp.message","translation":"Browser"}
+]`)}}, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions := []Definition{{ID: "server.message", Origin: "server"}}
+	if err := localizer.ValidateDefinitionsWithDelegatedPrefixes(definitions, "webapp."); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := map[string]struct {
+		definitions []Definition
+		prefixes    []string
+	}{
+		"invalid prefix": {
+			definitions: definitions,
+			prefixes:    []string{"webapp"},
+		},
+		"duplicate prefix": {
+			definitions: definitions,
+			prefixes:    []string{"webapp.", "webapp."},
+		},
+		"delegated definition": {
+			definitions: []Definition{
+				{ID: "server.message", Origin: "server"},
+				{ID: "webapp.message", Origin: "server"},
+			},
+			prefixes: []string{"webapp."},
+		},
+	}
+	for name, test := range tests {
+		name, test := name, test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if err := localizer.ValidateDefinitionsWithDelegatedPrefixes(test.definitions, test.prefixes...); err == nil {
+				t.Fatal("invalid localization ownership was accepted")
+			}
+		})
+	}
+}
+
 func TestLocalizerUsesCLDRPluralForms(t *testing.T) {
 	t.Parallel()
 	localizer, err := New(fstest.MapFS{

@@ -95,6 +95,22 @@ func unicodeLetter(character rune) bool {
 // ValidateDefinitions proves that English contains exactly the declared IDs
 // and that each declaration describes the template variables in the catalog.
 func (l *Localizer) ValidateDefinitions(definitions []Definition) error {
+	return l.validateDefinitions(definitions, nil)
+}
+
+// ValidateDefinitionsWithDelegatedPrefixes proves the same contract while
+// leaving the named catalog namespaces to another consumer-owned checker. A
+// delegated prefix must end at a localization namespace boundary and may not
+// contain a definition supplied to this validation pass.
+func (l *Localizer) ValidateDefinitionsWithDelegatedPrefixes(definitions []Definition, prefixes ...string) error {
+	delegated, err := normalizeDelegatedPrefixes(prefixes)
+	if err != nil {
+		return err
+	}
+	return l.validateDefinitions(definitions, delegated)
+}
+
+func (l *Localizer) validateDefinitions(definitions []Definition, delegated []string) error {
 	if l == nil {
 		return errors.New("localizer is nil")
 	}
@@ -105,6 +121,9 @@ func (l *Localizer) ValidateDefinitions(definitions []Definition) error {
 	english := l.catalogs[EnglishLocale]
 	declared := make(map[string]Definition, len(merged))
 	for _, definition := range merged {
+		if prefix := matchingPrefix(definition.ID, delegated); prefix != "" {
+			return fmt.Errorf("localization id %q from %q belongs to delegated prefix %q", definition.ID, definition.Origin, prefix)
+		}
 		declared[definition.ID] = definition
 		message, exists := english[definition.ID]
 		if !exists {
@@ -118,11 +137,36 @@ func (l *Localizer) ValidateDefinitions(definitions []Definition) error {
 		}
 	}
 	for id := range english {
-		if _, exists := declared[id]; !exists {
+		if _, exists := declared[id]; !exists && matchingPrefix(id, delegated) == "" {
 			return fmt.Errorf("en.json contains orphan localization id %q", id)
 		}
 	}
 	return nil
+}
+
+func normalizeDelegatedPrefixes(prefixes []string) ([]string, error) {
+	delegated := append([]string(nil), prefixes...)
+	sort.Strings(delegated)
+	previous := ""
+	for _, prefix := range delegated {
+		if prefix == "" || !strings.HasSuffix(prefix, ".") || !keyPattern.MatchString(strings.TrimSuffix(prefix, ".")) {
+			return nil, fmt.Errorf("invalid delegated localization prefix %q", prefix)
+		}
+		if prefix == previous {
+			return nil, fmt.Errorf("duplicate delegated localization prefix %q", prefix)
+		}
+		previous = prefix
+	}
+	return delegated, nil
+}
+
+func matchingPrefix(id string, prefixes []string) string {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(id, prefix) {
+			return prefix
+		}
+	}
+	return ""
 }
 
 // MissingDefinitions returns declared IDs absent from a specific locale. A

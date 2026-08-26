@@ -82,7 +82,10 @@ func newI18nCheckCommand(options *i18nOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := localizer.ValidateDefinitions(definitions); err != nil {
+			// Browser source owns and exactly validates the webapp namespace in
+			// webapp/scripts/generate-i18n.mjs. Server consumers retain exact
+			// ownership of every other catalog entry.
+			if err := localizer.ValidateDefinitionsWithDelegatedPrefixes(definitions, "webapp."); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(command.OutOrStdout(), "validated %d messages across %d locale(s)\n", len(definitions), len(localizer.SupportedLocales()))
