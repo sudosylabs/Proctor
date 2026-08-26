@@ -23,5 +23,25 @@ export default tseslint.config(
       ecmaVersion: 2023,
       globals: globals.browser,
     },
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "lucide-react",
+              message:
+                "Import product icons through components/Icon/Icon instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/components/Icon/Icon.tsx"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
   },
 );

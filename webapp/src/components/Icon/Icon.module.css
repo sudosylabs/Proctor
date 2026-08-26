@@ -1,0 +1,21 @@
+@layer components {
+  .icon {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .small {
+    inline-size: var(--proctor-icon-size-small);
+    block-size: var(--proctor-icon-size-small);
+  }
+
+  .default {
+    inline-size: var(--proctor-icon-size-default);
+    block-size: var(--proctor-icon-size-default);
+  }
+
+  .large {
+    inline-size: var(--proctor-icon-size-large);
+    block-size: var(--proctor-icon-size-large);
+  }
+}
