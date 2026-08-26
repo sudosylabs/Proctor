@@ -1,0 +1,146 @@
+/* Copyright 2026 SudoSylabs. SPDX-License-Identifier: AGPL-3.0-only. */
+
+@layer base {
+  :where(html) {
+    min-block-size: 100%;
+    background: var(--proctor-color-background-canvas);
+    font-size: 100%;
+  }
+
+  :where(body, #root) {
+    min-block-size: 100vh;
+    background: var(--proctor-color-background-canvas);
+    color: var(--proctor-color-foreground-default);
+  }
+
+  :where(body) {
+    font-family: var(--proctor-font-family-text);
+    font-size: var(--proctor-font-size-body);
+    font-weight: var(--proctor-font-weight-regular);
+    line-height: var(--proctor-line-height-body);
+    letter-spacing: var(--proctor-letter-spacing-body);
+    overflow-wrap: anywhere;
+  }
+
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--proctor-font-family-text);
+    font-weight: var(--proctor-font-weight-semibold);
+    letter-spacing: var(--proctor-letter-spacing-heading);
+  }
+
+  :where(h1) {
+    font-size: var(--proctor-font-size-heading-large);
+    line-height: var(--proctor-line-height-heading-large);
+  }
+
+  :where(h2) {
+    font-size: var(--proctor-font-size-heading-medium);
+    line-height: var(--proctor-line-height-heading-medium);
+  }
+
+  :where(h3, h4) {
+    font-size: var(--proctor-font-size-heading-small);
+    line-height: var(--proctor-line-height-heading-small);
+  }
+
+  :where(h5, h6) {
+    font-size: var(--proctor-font-size-body);
+    line-height: var(--proctor-line-height-body);
+  }
+
+  :where(a) {
+    color: var(--proctor-color-foreground-link);
+    text-decoration-line: underline;
+    text-decoration-thickness: max(1px, 0.08em);
+    text-underline-offset: 0.18em;
+  }
+
+  :where(strong) {
+    font-weight: var(--proctor-font-weight-bold);
+  }
+
+  :where(small) {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  :where(code, kbd, samp, pre) {
+    font-family: var(--proctor-font-family-mono);
+  }
+
+  :where(pre) {
+    max-inline-size: 100%;
+    overflow-x: auto;
+  }
+
+  ::selection {
+    background: var(--proctor-color-selection-background);
+    color: var(--proctor-color-selection-foreground);
+  }
+
+  :where(
+      a[href],
+      area[href],
+      button,
+      input:not([type="hidden"]),
+      select,
+      textarea,
+      summary,
+      [tabindex],
+      [contenteditable="true"]
+    ):focus-visible {
+    outline-color: var(--proctor-color-focus-ring);
+    outline-offset: 2px;
+    outline-style: solid;
+    outline-width: var(--proctor-border-width-focus);
+  }
+
+  :where(.proctor-skip-link) {
+    position: fixed;
+    z-index: var(--proctor-layer-notification);
+    inset-block-start: var(--proctor-space-3);
+    inset-inline-start: var(--proctor-space-3);
+    max-inline-size: calc(100% - var(--proctor-space-6));
+    padding: var(--proctor-space-2) var(--proctor-space-3);
+    transform: translateY(calc(-100% - var(--proctor-space-6)));
+    background: var(--proctor-color-action-primary);
+    color: var(--proctor-color-action-on-primary);
+    font-weight: var(--proctor-font-weight-semibold);
+  }
+
+  :where(.proctor-skip-link):focus-visible {
+    transform: translateY(0);
+  }
+
+  :where(#main-content) {
+    scroll-margin-block-start: var(--proctor-space-4);
+  }
+
+  @supports (min-block-size: 100dvb) {
+    :where(body, #root) {
+      min-block-size: 100dvb;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :where(html) {
+      scroll-behavior: auto;
+    }
+  }
+
+  @media (forced-colors: active) {
+    :where(
+        a[href],
+        area[href],
+        button,
+        input:not([type="hidden"]),
+        select,
+        textarea,
+        summary,
+        [tabindex],
+        [contenteditable="true"]
+      ):focus-visible {
+      outline-color: Highlight;
+    }
+  }
+}

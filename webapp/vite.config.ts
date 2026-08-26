@@ -27,6 +27,7 @@ export default defineConfig({
   build: {
     assetsDir: "assets",
     sourcemap: false,
+    target: "baseline-widely-available",
   },
   server: {
     host: "127.0.0.1",

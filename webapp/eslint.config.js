@@ -7,7 +7,12 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["**/*.{js,mjs}", "vite.config.ts"],
+    files: [
+      "**/*.{js,mjs}",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "playwright.config.ts",
+    ],
     languageOptions: {
       globals: globals.node,
     },

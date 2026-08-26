@@ -16,13 +16,14 @@
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:browser": "playwright test",
     "api:generate": "openapi-typescript ../server/openapi.json -o src/api/generated/schema.ts",
     "api:check": "npm run api:generate && git diff --exit-code -- src/api/generated/schema.ts",
     "i18n:generate": "node ./scripts/generate-i18n.mjs",
     "i18n:check": "npm run i18n:generate && git diff --exit-code -- src/generated/i18n/catalogs.ts",
     "routes:generate": "node ./scripts/generate-routes.mjs",
     "routes:check": "npm run routes:generate && git diff --exit-code -- src/app/routes.ts",
-    "verify": "npm run brand-assets:check && npm run design-system:check && npm run api:check && npm run i18n:check && npm run routes:check && npm run typecheck && npm run lint && npm test",
+    "verify": "npm run brand-assets:check && npm run design-system:check && npm run api:check && npm run i18n:check && npm run routes:check && npm run typecheck && npm run lint && npm test && npm run test:browser",
     "check": "npm run verify && npm run build"
   },
   "dependencies": {
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "26.2.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",

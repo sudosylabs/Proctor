@@ -1,0 +1,40 @@
+/* Copyright 2026 SudoSylabs. SPDX-License-Identifier: AGPL-3.0-only. */
+
+@layer reset {
+  :where(*, *::before, *::after) {
+    box-sizing: border-box;
+  }
+
+  :where(body) {
+    margin: 0;
+  }
+
+  :where(h1, h2, h3, h4, h5, h6, p, blockquote, figure, pre, dl, dd) {
+    margin-block: 0;
+  }
+
+  :where(blockquote, figure) {
+    margin-inline: 0;
+  }
+
+  :where(ol, ul, menu) {
+    margin-block: 0;
+  }
+
+  :where(button, input, optgroup, select, textarea) {
+    max-inline-size: 100%;
+    color: inherit;
+    font: inherit;
+  }
+
+  :where(img, picture, svg, video, canvas) {
+    display: block;
+    block-size: auto;
+    max-inline-size: 100%;
+  }
+
+  :where(table) {
+    border-collapse: collapse;
+    border-spacing: 0;
+  }
+}

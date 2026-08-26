@@ -372,8 +372,7 @@ Global CSS is intentionally small and ordered through cascade layers:
 ~~~
 
 - `tokens` is generated from the human-owned token module.
-- `reset` and `base` will own document defaults once the first visible slice
-  requires them.
+- `reset` and `base` own the audited document mechanics and element defaults.
 - component styles remain colocated and locally scoped, consuming semantic
   custom properties.
 - `utilities` contains only a small reviewed set of structural helpers.
@@ -649,6 +648,7 @@ From `webapp`:
 ~~~sh
 npm run design-system:generate
 npm run design-system:check
+npm run test:browser
 npm run check
 ~~~
 

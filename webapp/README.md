@@ -2,9 +2,9 @@
 
 This private Vite module contains the browser runtime for Proctor's
 server-hosted access and onboarding pages. The visual page and design-system
-component implementation is deliberately deferred; the initial module owns
-routing, typed same-origin transport, browser credential handling, build
-output, and the generated token/theme foundation.
+component implementation is deliberately deferred. The module owns routing,
+typed same-origin transport, browser credential handling, build output, the
+generated token/theme system, and the document-level browser foundation.
 
 Runtime-owned brand assets live in
 [`src/assets/brand`](./src/assets/brand/README.md). They are reviewed copies or
@@ -15,18 +15,19 @@ production files receive immutable fingerprints.
 Human-owned tokens live in [`design-system/tokens.mjs`](./design-system/tokens.mjs)
 and generate [`src/styles/tokens.css`](./src/styles/tokens.css) plus the typed
 [`src/generated/design-system/themes.ts`](./src/generated/design-system/themes.ts)
-runtime catalog. The stylesheet is the only global style imported by the empty
-runtime; no visual page or component is implemented yet.
+runtime catalog. No visual page or shared component is implemented yet.
 
-The document-level browser contract is specified in `DESIGN_SYSTEM.md` before
-page work begins. Its reset, base styles, document controller, root boundary,
-and browser fixture remain the next implementation slice; the fixture is test
-infrastructure and will not become a hosted product route.
+The browser entry loads `reset.css`, the generated `tokens.css`, and `base.css`
+in declared cascade-layer order. The root also owns document metadata and
+bounded fatal recovery. The non-shipping fixture under `tests/fixtures` proves
+those rules in pinned Chromium, Firefox, and WebKit without becoming a hosted
+product route.
 
 Use Node.js 22 and the committed npm lockfile:
 
 ```sh
 npm ci
+npx playwright install chromium firefox webkit
 npm run check
 npm run dev
 ```

@@ -142,6 +142,7 @@ export function renderThemeCatalog(tokens = designTokens) {
   const themes = Object.entries(tokens.themes).map(([id, theme]) => ({
     id,
     colorScheme: theme.colorScheme,
+    themeColor: theme.color['background-canvas'],
   }));
   return `// Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
@@ -439,6 +440,9 @@ export async function auditDesignSystem({webappRoot = defaultWebappRoot} = {}) {
 
   try {
     const index = await readFile(resolve(webappRoot, 'index.html'), 'utf8');
+    if (!/<html\s+lang="en"\s+dir="ltr">/.test(index)) {
+      failures.push('index.html: safe language and direction fallbacks must be explicit');
+    }
     if (!/<meta\s+name="color-scheme"\s+content="light dark"\s*\/>/.test(index)) {
       failures.push('index.html: color-scheme metadata must advertise light and dark');
     }
@@ -453,6 +457,28 @@ export async function auditDesignSystem({webappRoot = defaultWebappRoot} = {}) {
     }
   } catch (error) {
     failures.push(`index.html: ${error.message}`);
+  }
+
+  try {
+    const entry = await readFile(resolve(webappRoot, 'src/main.tsx'), 'utf8');
+    const globalStyles = Array.from(
+      entry.matchAll(/import "\.\/styles\/(reset|tokens|base)\.css";/g),
+      (match) => match[1],
+    );
+    if (JSON.stringify(globalStyles) !== JSON.stringify(['reset', 'tokens', 'base'])) {
+      failures.push('src/main.tsx: global styles must load in reset, tokens, base order');
+    }
+  } catch (error) {
+    failures.push(`src/main.tsx: ${error.message}`);
+  }
+
+  try {
+    const viteConfig = await readFile(resolve(webappRoot, 'vite.config.ts'), 'utf8');
+    if (!/target:\s*"baseline-widely-available"/.test(viteConfig)) {
+      failures.push('vite.config.ts: production browser target must be explicit');
+    }
+  } catch (error) {
+    failures.push(`vite.config.ts: ${error.message}`);
   }
 
   const sourceRoot = resolve(webappRoot, 'src');

@@ -20,6 +20,8 @@ test('generated runtime catalog derives theme and preference identifiers', () =>
   const source = renderThemeCatalog();
   assert.match(source, /"id": "light"/);
   assert.match(source, /"id": "dark"/);
+  assert.match(source, /"themeColor": "#ffffff"/);
+  assert.match(source, /"themeColor": "#141016"/);
   assert.match(source, /export type ThemePreference/);
   assert.match(source, /value === "system" \|\| isThemeID\(value\)/);
 });

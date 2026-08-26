@@ -5,11 +5,13 @@
 export const themeCatalog = [
   {
     "id": "light",
-    "colorScheme": "light"
+    "colorScheme": "light",
+    "themeColor": "#ffffff"
   },
   {
     "id": "dark",
-    "colorScheme": "dark"
+    "colorScheme": "dark",
+    "themeColor": "#141016"
   }
 ] as const;
 

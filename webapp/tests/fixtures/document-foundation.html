@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#141016"
+      media="(prefers-color-scheme: dark)"
+    />
+    <title>Fixture fallback</title>
+  </head>
+  <body>
+    <a class="proctor-skip-link" href="#main-content">Skip to main content</a>
+    <div id="root">
+      <main id="main-content" tabindex="-1">
+        <h1>Large heading</h1>
+        <h2>Medium heading</h2>
+        <h3>Small heading</h3>
+        <h4>Another small heading</h4>
+        <h5>Body-sized heading</h5>
+        <h6>Another body-sized heading</h6>
+        <p>
+          Document prose includes a <a href="#details">semantic link</a>,
+          <strong>strong text</strong>, and <small>supporting text</small>.
+        </p>
+        <p data-testid="long-text">
+          urn:proctor:foundation:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        </p>
+        <pre data-testid="preformatted"><code>const_identifier_that_must_scroll_inside_its_own_region_without_widening_the_document = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";</code></pre>
+        <svg
+          data-testid="media"
+          role="img"
+          aria-label="Responsive test rectangle"
+          width="1200"
+          height="240"
+          viewBox="0 0 1200 240"
+        >
+          <rect width="1200" height="240" fill="currentColor"></rect>
+        </svg>
+        <table>
+          <caption>Foundation table</caption>
+          <thead>
+            <tr><th scope="col">Element</th><th scope="col">Behavior</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Table</th><td>Semantic and unstyled</td></tr>
+          </tbody>
+        </table>
+        <form id="details">
+          <label for="fixture-input">Native text control</label>
+          <input id="fixture-input" name="fixture" value="Legible text" />
+          <label for="fixture-select">Native select</label>
+          <select id="fixture-select" name="selection">
+            <option>First option</option>
+            <option>Second option</option>
+          </select>
+          <label for="fixture-textarea">Native textarea</label>
+          <textarea id="fixture-textarea" name="notes">Legible text</textarea>
+          <button type="button">Native action</button>
+        </form>
+        <details>
+          <summary>Native disclosure</summary>
+          <p>Disclosure content remains available.</p>
+        </details>
+      </main>
+    </div>
+    <script type="module" src="/tests/fixtures/document-foundation.ts"></script>
+  </body>
+</html>
