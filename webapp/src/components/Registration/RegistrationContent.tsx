@@ -6,6 +6,7 @@ import type {
   RegistrationSubmissionResult,
 } from "../../features/register/RegistrationApi";
 import { message } from "../../i18n/messages";
+import { Button, ButtonLink } from "../Button/Button";
 import { RegistrationForm } from "./RegistrationForm";
 import styles from "./Registration.module.css";
 
@@ -35,9 +36,9 @@ export function RegistrationContent({
         body={message("webapp.register.accepted.body")}
         label={message("webapp.register.accepted.label")}
       >
-        <a className={styles.primaryLink} href="/login">
+        <ButtonLink href="/login">
           {message("webapp.register.sign_in.action")}
-        </a>
+        </ButtonLink>
       </RegistrationRouteState>
     );
   }
@@ -57,9 +58,9 @@ export function RegistrationContent({
         heading={message("webapp.register.setup.heading")}
         body={message("webapp.register.setup.body")}
       >
-        <a className={styles.primaryLink} href="/setup">
+        <ButtonLink href="/setup">
           {message("webapp.register.setup.open")}
-        </a>
+        </ButtonLink>
       </RegistrationRouteState>
     );
   }
@@ -69,9 +70,9 @@ export function RegistrationContent({
         heading={message("webapp.register.invitation_required.heading")}
         body={message("webapp.register.invitation_required.body")}
       >
-        <a className={styles.primaryLink} href="/login">
+        <ButtonLink href="/login">
           {message("webapp.register.sign_in.action")}
-        </a>
+        </ButtonLink>
       </RegistrationRouteState>
     );
   }
@@ -81,13 +82,9 @@ export function RegistrationContent({
         heading={message("webapp.register.origin_mismatch.heading")}
         body={message("webapp.register.origin_mismatch.body")}
       >
-        <button
-          className={styles.primaryButton}
-          type="button"
-          onClick={() => window.location.reload()}
-        >
+        <Button onClick={() => window.location.reload()}>
           {message("webapp.register.reload")}
-        </button>
+        </Button>
       </RegistrationRouteState>
     );
   }
@@ -106,9 +103,9 @@ export function RegistrationContent({
             : "webapp.register.discovery_failure.body",
         )}
       >
-        <button className={styles.primaryButton} type="button" onClick={onRetry}>
+        <Button onClick={onRetry}>
           {message("webapp.register.retry")}
-        </button>
+        </Button>
       </RegistrationRouteState>
     );
   }

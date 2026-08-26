@@ -7,7 +7,10 @@ import type {
   RegistrationSubmissionResult,
 } from "../../features/register/RegistrationApi";
 import { message } from "../../i18n/messages";
+import { Button } from "../Button/Button";
 import { Icon } from "../Icon/Icon";
+import { InputField, RequiredMark } from "../InputField/InputField";
+import { PasswordField } from "../InputField/PasswordField";
 import styles from "./Registration.module.css";
 
 type RegistrationField = "email" | "username" | "password" | "acknowledgment";
@@ -32,7 +35,6 @@ export function RegistrationForm({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
@@ -180,152 +182,107 @@ export function RegistrationForm({
           </div>
         )}
 
-        <div className={styles.field}>
-          <label htmlFor="registration-email">
-            {message("webapp.register.form.email")}
-          </label>
-          <input
-            ref={emailRef}
-            id="registration-email"
-            name="email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            value={email}
-            aria-invalid={fieldErrors.email !== undefined}
-            aria-describedby={
-              fieldErrors.email === undefined ? undefined : "registration-email-error"
-            }
-            onChange={(event) => {
-              setEmail(event.currentTarget.value);
-              clearFieldError("email");
-            }}
-          />
-          {fieldErrors.email === undefined ? null : (
-            <p className={styles.fieldError} id="registration-email-error">
-              {fieldErrors.email}
-            </p>
-          )}
-        </div>
+        <InputField
+          ref={emailRef}
+          id="registration-email"
+          name="email"
+          label={message("webapp.register.form.email")}
+          type="email"
+          inputMode="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          spellCheck={false}
+          value={email}
+          errorMessage={fieldErrors.email}
+          required
+          onChange={(event) => {
+            setEmail(event.currentTarget.value);
+            clearFieldError("email");
+          }}
+        />
 
-        <div className={styles.field}>
-          <label htmlFor="registration-username">
-            {message("webapp.register.form.username")}
-          </label>
-          <input
-            ref={usernameRef}
-            id="registration-username"
-            name="username"
-            type="text"
-            autoComplete="username"
-            value={username}
-            aria-invalid={fieldErrors.username !== undefined}
-            aria-describedby={
-              fieldErrors.username === undefined
-                ? undefined
-                : "registration-username-error"
-            }
-            onChange={(event) => {
-              setUsername(event.currentTarget.value);
-              clearFieldError("username");
-            }}
-          />
-          {fieldErrors.username === undefined ? null : (
-            <p className={styles.fieldError} id="registration-username-error">
-              {fieldErrors.username}
-            </p>
-          )}
-        </div>
+        <InputField
+          ref={usernameRef}
+          id="registration-username"
+          name="username"
+          label={message("webapp.register.form.username")}
+          type="text"
+          autoCapitalize="none"
+          autoComplete="username"
+          spellCheck={false}
+          value={username}
+          errorMessage={fieldErrors.username}
+          required
+          onChange={(event) => {
+            setUsername(event.currentTarget.value);
+            clearFieldError("username");
+          }}
+        />
 
-        <div className={styles.field}>
-          <label htmlFor="registration-password">
-            {message("webapp.register.form.password")}
-          </label>
-          <div className={styles.passwordControl}>
-            <input
-              ref={passwordRef}
-              id="registration-password"
-              name="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="new-password"
-              value={password}
-              aria-invalid={fieldErrors.password !== undefined}
-              aria-describedby={
-                fieldErrors.password === undefined
-                  ? "registration-password-help"
-                  : "registration-password-help registration-password-error"
-              }
-              onChange={(event) => {
-                setPassword(event.currentTarget.value);
-                clearFieldError("password");
-              }}
-            />
-            <button
-              className={styles.passwordToggle}
-              type="button"
-              aria-controls="registration-password"
-              aria-pressed={showPassword}
-              disabled={pending}
-              onClick={() => setShowPassword((visible) => !visible)}
-            >
-              <Icon
-                name={showPassword ? "hidePassword" : "showPassword"}
-                size="small"
-              />
-              {message(
-                showPassword
-                  ? "webapp.register.form.password_hide"
-                  : "webapp.register.form.password_show",
-              )}
-            </button>
-          </div>
-          <p className={styles.fieldHelp} id="registration-password-help">
-            {message("webapp.register.form.password_help")}
-          </p>
-          {fieldErrors.password === undefined ? null : (
-            <p className={styles.fieldError} id="registration-password-error">
-              {fieldErrors.password}
-            </p>
-          )}
-        </div>
+        <PasswordField
+          ref={passwordRef}
+          id="registration-password"
+          name="password"
+          label={message("webapp.register.form.password")}
+          description={message("webapp.register.form.password_help")}
+          autoComplete="new-password"
+          value={password}
+          errorMessage={fieldErrors.password}
+          hidePasswordLabel={message("webapp.form.password_hide")}
+          showPasswordLabel={message("webapp.form.password_show")}
+          toggleDisabled={pending}
+          required
+          onChange={(event) => {
+            setPassword(event.currentTarget.value);
+            clearFieldError("password");
+          }}
+        />
 
         <div className={styles.acknowledgment}>
-          <input
-            ref={acknowledgmentRef}
-            id="registration-acknowledgment"
-            name="institutional_access_acknowledgment"
-            type="checkbox"
-            checked={acknowledged}
-            aria-invalid={fieldErrors.acknowledgment !== undefined}
-            aria-describedby={
-              fieldErrors.acknowledgment === undefined
-                ? undefined
-                : "registration-acknowledgment-error"
-            }
-            onChange={(event) => {
-              setAcknowledged(event.currentTarget.checked);
-              clearFieldError("acknowledgment");
-            }}
-          />
-          <div className={styles.acknowledgmentCopy}>
-            <label htmlFor="registration-acknowledgment">
+          <label
+            className={styles.checkboxLabel}
+            htmlFor="registration-acknowledgment"
+          >
+            <input
+              ref={acknowledgmentRef}
+              id="registration-acknowledgment"
+              name="institutional_access_acknowledgment"
+              type="checkbox"
+              checked={acknowledged}
+              aria-invalid={fieldErrors.acknowledgment !== undefined}
+              aria-describedby={
+                fieldErrors.acknowledgment === undefined
+                  ? undefined
+                  : "registration-acknowledgment-error"
+              }
+              required
+              onChange={(event) => {
+                setAcknowledged(event.currentTarget.checked);
+                clearFieldError("acknowledgment");
+              }}
+            />
+            <span>
               {message("webapp.register.form.acknowledgment")}
-            </label>
-            {fieldErrors.acknowledgment === undefined ? null : (
-              <p className={styles.fieldError} id="registration-acknowledgment-error">
-                {fieldErrors.acknowledgment}
-              </p>
-            )}
-          </div>
+              <RequiredMark />
+            </span>
+          </label>
+          {fieldErrors.acknowledgment === undefined ? null : (
+            <p
+              className={styles.checkboxError}
+              id="registration-acknowledgment-error"
+            >
+              {fieldErrors.acknowledgment}
+            </p>
+          )}
         </div>
 
-        <button className={styles.primaryButton} type="submit" disabled={pending}>
-          {message(
-            pending
-              ? "webapp.register.form.submitting"
-              : "webapp.register.form.submit",
-          )}
-        </button>
+        <Button
+          type="submit"
+          isLoading={pending}
+          loadingLabel={message("webapp.register.form.submitting")}
+        >
+          {message("webapp.register.form.submit")}
+        </Button>
 
         <div className={styles.signIn}>
           <p>{message("webapp.register.sign_in.prompt")}</p>

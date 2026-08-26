@@ -46,7 +46,6 @@ export function SetupPage() {
       aside={<SetupContext />}
       asideLabel={message("webapp.setup.context.eyebrow")}
       mainSize="content"
-      proofTone={status.kind === "complete" ? "success" : "primary"}
       skipLabel={message("webapp.setup.skip_to_main")}
       variant="split"
     >

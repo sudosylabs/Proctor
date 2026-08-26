@@ -77,6 +77,11 @@ for (const colorScheme of ["light", "dark"] as const) {
 
     const lockup = page.getByRole("img", { name: "Proctor" });
     await expect(lockup).toBeVisible();
+    expect(
+      await lockup.evaluate(
+        (image) => image.closest("header")?.children.length,
+      ),
+    ).toBe(1);
     const currentSource = await lockup.evaluate(
       (image: HTMLImageElement) => image.currentSrc,
     );
@@ -132,27 +137,30 @@ test("setup validates and atomically submits the installation", async ({
   await expect(page).toHaveURL(`${canonicalOrigin}/setup`);
   await expect(page).toHaveTitle("Set up Proctor · Proctor");
   await expect(
-    page.getByRole("heading", { level: 1, name: "Set up Proctor" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Establish this installation",
+    }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Create installation" }).click();
-  await expect(page.getByLabel("Bootstrap secret")).toBeFocused();
+  await expect(page.locator("#bootstrap-secret")).toBeFocused();
   await expect(page.getByText("Enter the one-time bootstrap secret.")).toBeVisible();
 
-  await page.getByLabel("Bootstrap secret").fill("operator-secret");
+  await page.locator("#bootstrap-secret").fill("operator-secret");
   await page.getByLabel("Institution name").fill("northbridge-university");
-  await page.getByLabel("Display name", { exact: true }).fill("Northbridge University");
+  await page.locator("#institution-display-name").fill("Northbridge University");
   await page.getByLabel("Description (optional)").fill("Examination services");
   await page.getByLabel("Email address").fill("initial-admin@example.edu");
   await page.getByLabel("Username").fill("initial-admin");
   await page
     .getByLabel("Display name (optional)")
     .fill("Initial Administrator");
-  await page.getByLabel("Password", { exact: true }).fill("private-bootstrap-password");
+  await page.locator("#administrator-password").fill("private-bootstrap-password");
   await page.getByRole("button", { name: "Create installation" }).click();
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Setup is complete" }),
+    page.getByRole("heading", { level: 2, name: "Setup is complete" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "Continue to sign in" })).toHaveAttribute(
     "href",
@@ -167,7 +175,7 @@ test("setup refuses to replace an initialized installation", async ({ page }) =>
   await page.goto("/setup");
 
   await expect(
-    page.getByRole("heading", { level: 1, name: "Setup is complete" }),
+    page.getByRole("heading", { level: 2, name: "Setup is complete" }),
   ).toBeVisible();
   await expect(page.getByLabel("Bootstrap secret")).toHaveCount(0);
 });
@@ -192,7 +200,7 @@ test("public registration submits only account input and enters verification", a
 
   await page.getByLabel("Email address").fill("student.one@example.edu");
   await page.getByLabel("Username").fill("student.one");
-  await page.getByLabel("Password", { exact: true }).fill("private-registration-password");
+  await page.locator("#registration-password").fill("private-registration-password");
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(
     page.getByLabel(
@@ -245,7 +253,7 @@ test("login presents the admitted methods and sanitizes provider failure state",
   await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
   await expect(page.getByText("Northbridge Institute")).toBeVisible();
   await expect(page.getByLabel("Email or username")).toBeVisible();
-  await expect(page.getByLabel("Password")).toHaveAttribute(
+  await expect(page.locator("#password")).toHaveAttribute(
     "autocomplete",
     "current-password",
   );
@@ -289,10 +297,14 @@ test("local login enters MFA without placing credentials in the URL", async ({ p
   });
   await page.goto("/login");
   await page.getByLabel("Email or username").fill("student@example.edu");
-  await page.getByLabel("Password").fill("private-password");
+  await page.locator("#password").fill("private-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page.getByLabel("Authentication code")).toBeFocused();
+  await expect(page.locator("#mfa-code")).toHaveAttribute("required", "");
+  await expect(
+    page.locator('label[for="mfa-code"] [data-required-indicator]'),
+  ).toHaveText("*");
   await expect(page).toHaveURL(`${canonicalOrigin}/login`);
   await expect(page.locator("body")).not.toContainText("private-password");
 });
@@ -324,7 +336,7 @@ test("successful local login replaces the form with Session confirmation", async
   });
   await page.goto("/login");
   await page.getByLabel("Email or username").fill("student@example.edu");
-  await page.getByLabel("Password").fill("private-password");
+  await page.locator("#password").fill("private-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);
@@ -422,6 +434,20 @@ for (const colorScheme of ["light", "dark"] as const) {
 test("the owned icon vocabulary preserves visible labels and disclosure state", async ({
   page,
 }) => {
+  await mockDiscovery(page, { ...defaultDiscovery, providers: [] });
+  await page.goto("/login");
+
+  const loginPassword = page.locator("#password");
+  const loginPasswordToggle = page.locator('button[aria-controls="password"]');
+  await expect(loginPasswordToggle).toHaveAccessibleName("Show password");
+  await expect(loginPasswordToggle).toHaveAttribute("title", "Show password");
+  await expect(loginPasswordToggle).toHaveText("");
+  await expect(loginPassword).toHaveAttribute("type", "password");
+  await loginPasswordToggle.click();
+  await expect(loginPasswordToggle).toHaveAccessibleName("Hide password");
+  await expect(loginPasswordToggle).toHaveAttribute("title", "Hide password");
+  await expect(loginPassword).toHaveAttribute("type", "text");
+
   await mockSetupStatus(page);
   await page.goto("/setup");
 
@@ -430,6 +456,8 @@ test("the owned icon vocabulary preserves visible labels and disclosure state", 
 
   const secretToggle = page.locator('button[aria-controls="bootstrap-secret"]');
   await expect(secretToggle).toHaveAccessibleName("Show bootstrap secret");
+  await expect(secretToggle).toHaveAttribute("title", "Show bootstrap secret");
+  await expect(secretToggle).toHaveText("");
   await expect(
     secretToggle.locator('[data-proctor-icon="showPassword"]'),
   ).toBeVisible();
@@ -446,6 +474,8 @@ test("the owned icon vocabulary preserves visible labels and disclosure state", 
     'button[aria-controls="registration-password"]',
   );
   await expect(passwordToggle).toHaveAccessibleName("Show password");
+  await expect(passwordToggle).toHaveAttribute("title", "Show password");
+  await expect(passwordToggle).toHaveText("");
   await expect(
     passwordToggle.locator('[data-proctor-icon="showPassword"]'),
   ).toBeVisible();
@@ -456,8 +486,87 @@ test("the owned icon vocabulary preserves visible labels and disclosure state", 
   ).toBeVisible();
 });
 
+test("required controls are marked and compound controls stay optically aligned", async ({
+  page,
+}) => {
+  await mockDiscovery(page, { ...defaultDiscovery, providers: [] });
+  await page.goto("/login");
+  for (const id of ["login-id", "password"]) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute("required", "");
+    await expect(
+      page.locator(`label[for="${id}"] [data-required-indicator]`),
+    ).toHaveText("*");
+  }
+
+  await mockSetupStatus(page);
+  await page.goto("/setup");
+
+  for (const id of [
+    "bootstrap-secret",
+    "institution-name",
+    "institution-display-name",
+    "administrator-email",
+    "administrator-username",
+    "administrator-password",
+  ]) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute("required", "");
+    await expect(
+      page.locator(`label[for="${id}"] [data-required-indicator]`),
+    ).toHaveText("*");
+  }
+  await expect(page.locator("#institution-description")).not.toHaveAttribute(
+    "required",
+    "",
+  );
+
+  const passwordAlignment = await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>(
+      "#administrator-password",
+    )!;
+    const toggle = document.querySelector<HTMLButtonElement>(
+      'button[aria-controls="administrator-password"]',
+    )!;
+    const inputBox = input.getBoundingClientRect();
+    const toggleBox = toggle.getBoundingClientRect();
+    return Math.abs(
+      inputBox.top + inputBox.height / 2 -
+        (toggleBox.top + toggleBox.height / 2),
+    );
+  });
+  expect(passwordAlignment).toBeLessThanOrEqual(1);
+
+  await mockDiscovery(page);
+  await page.goto("/register");
+  for (const id of [
+    "registration-email",
+    "registration-username",
+    "registration-password",
+    "registration-acknowledgment",
+  ]) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute("required", "");
+    await expect(
+      page.locator(`label[for="${id}"] [data-required-indicator]`),
+    ).toHaveText("*");
+  }
+
+  const checkboxAlignment = await page.evaluate(() => {
+    const checkbox = document.querySelector<HTMLInputElement>(
+      "#registration-acknowledgment",
+    )!;
+    const copy = checkbox.parentElement!.querySelector<HTMLElement>("span")!;
+    const checkboxBox = checkbox.getBoundingClientRect();
+    const copyBox = copy.getBoundingClientRect();
+    const lineHeight = Number.parseFloat(getComputedStyle(copy).lineHeight);
+    return Math.abs(
+      checkboxBox.top + checkboxBox.height / 2 -
+        (copyBox.top + lineHeight / 2),
+    );
+  });
+  expect(checkboxAlignment).toBeLessThanOrEqual(2);
+});
+
 for (const pageCase of [
-  { route: "/setup", heading: "Set up Proctor" },
+  { route: "/setup", heading: "Establish this installation" },
   { route: "/register", heading: "Create your account" },
 ] as const) {
   test(`${pageCase.route} follows dark mode and stays one-dimensional when narrow`, async ({

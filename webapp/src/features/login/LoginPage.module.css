@@ -121,13 +121,6 @@
     color: var(--proctor-color-foreground-muted);
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--proctor-space-2);
-  }
-
-  .field label,
   .providerGroup legend {
     font-size: var(--proctor-font-size-label);
     font-weight: var(--proctor-font-weight-semibold);
@@ -135,42 +128,7 @@
     letter-spacing: var(--proctor-letter-spacing-label);
   }
 
-  .labelRow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--proctor-space-2) var(--proctor-space-4);
-    align-items: baseline;
-    justify-content: space-between;
-  }
-
-  .labelRow a,
-  .registration,
-  .textButton {
-    font-size: var(--proctor-font-size-body-small);
-    line-height: var(--proctor-line-height-body-small);
-  }
-
-  .field input {
-    inline-size: 100%;
-    min-block-size: var(--proctor-control-size-comfortable);
-    padding-inline: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-strong);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-background-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
-  .field input:hover:not(:disabled) {
-    border-color: var(--proctor-color-border-interactive);
-  }
-
-  .field input[aria-invalid="true"] {
-    border-color: var(--proctor-color-state-danger);
-  }
-
-  .fieldError {
-    color: var(--proctor-color-state-danger);
+  .registration {
     font-size: var(--proctor-font-size-body-small);
     line-height: var(--proctor-line-height-body-small);
   }
@@ -183,69 +141,10 @@
     color: var(--proctor-color-foreground-default);
   }
 
-  .primaryButton,
-  .providerButton,
-  .primaryLink {
-    display: inline-flex;
-    min-block-size: var(--proctor-control-size-comfortable);
-    align-items: center;
-    justify-content: center;
-    padding: var(--proctor-space-3) var(--proctor-space-5);
-    border-radius: var(--proctor-radius-control);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    text-align: center;
-    text-decoration: none;
-    transition-duration: var(--proctor-duration-fast);
-    transition-property: background-color, border-color, color;
-    transition-timing-function: var(--proctor-easing-standard);
-  }
-
-  .primaryButton,
-  .primaryLink {
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-action-primary);
-    background: var(--proctor-color-action-primary);
-    color: var(--proctor-color-action-on-primary);
-  }
-
-  .primaryButton:hover:not(:disabled),
-  .primaryLink:hover {
-    border-color: var(--proctor-color-action-primary-hover);
-    background: var(--proctor-color-action-primary-hover);
-  }
-
-  .primaryButton:active:not(:disabled),
-  .primaryLink:active {
-    border-color: var(--proctor-color-action-primary-active);
-    background: var(--proctor-color-action-primary-active);
-  }
-
-  .primaryButton:disabled {
-    border-color: var(--proctor-color-action-primary-disabled);
-    background: var(--proctor-color-action-primary-disabled);
-    color: var(--proctor-color-foreground-disabled);
-  }
-
   .providerGroup {
     min-inline-size: 0;
     padding: 0;
     border: 0;
-  }
-
-  .providerButton {
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-interactive);
-    background: var(--proctor-color-action-secondary);
-    color: var(--proctor-color-action-on-secondary);
-  }
-
-  .providerButton:hover {
-    background: var(--proctor-color-action-secondary-hover);
-  }
-
-  .providerButton:active {
-    background: var(--proctor-color-action-secondary-active);
   }
 
   .separator {
@@ -271,22 +170,6 @@
     gap: var(--proctor-space-2);
     justify-content: center;
     color: var(--proctor-color-foreground-muted);
-  }
-
-  .textButton {
-    align-self: flex-start;
-    min-block-size: var(--proctor-control-size-default);
-    padding-inline: var(--proctor-space-0);
-    border: 0;
-    background: transparent;
-    color: var(--proctor-color-foreground-link);
-    text-decoration: underline;
-    text-decoration-thickness: max(1px, 0.08em);
-    text-underline-offset: 0.18em;
-  }
-
-  .textButton:disabled {
-    color: var(--proctor-color-foreground-disabled);
   }
 
   .visuallyHidden {
@@ -324,10 +207,6 @@
       background: CanvasText;
     }
 
-    .primaryButton,
-    .providerButton,
-    .primaryLink,
-    .field input,
     .notice,
     .formError {
       border-color: ButtonText;

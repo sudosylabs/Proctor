@@ -1,30 +1,31 @@
 @layer components {
   .page,
-  .headingGroup,
   .form,
   .section,
-  .field,
   .routeState,
   .routeStateCopy,
   .context,
+  .sectionIntro,
   .stepCopy {
     display: flex;
     flex-direction: column;
   }
 
-  .page,
+  .page {
+    inline-size: 100%;
+    max-inline-size: var(--proctor-measure-content);
+  }
+
   .routeState {
     gap: var(--proctor-space-6);
     max-inline-size: var(--proctor-measure-content);
   }
 
-  .headingGroup,
   .routeStateCopy {
     gap: var(--proctor-space-3);
   }
 
-  .headingGroup h1,
-  .routeState h1 {
+  .routeState h2 {
     font-family: var(--proctor-font-family-display);
     font-size: var(--proctor-font-size-display);
     font-weight: var(--proctor-font-weight-semibold);
@@ -33,7 +34,6 @@
     text-wrap: balance;
   }
 
-  .headingGroup p,
   .routeStateCopy p,
   .routeState > p {
     color: var(--proctor-color-foreground-muted);
@@ -42,8 +42,8 @@
   }
 
   .context {
-    gap: var(--proctor-space-3);
-    max-inline-size: 28rem;
+    gap: var(--proctor-space-0);
+    max-inline-size: 24rem;
   }
 
   .eyebrow {
@@ -55,18 +55,22 @@
   }
 
   .contextHeading {
+    margin-block-start: var(--proctor-space-4);
     font-family: var(--proctor-font-family-display);
-    font-size: var(--proctor-font-size-display);
+    font-size: var(--proctor-font-size-heading-large);
     font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-display);
+    line-height: var(--proctor-line-height-heading-large);
     letter-spacing: var(--proctor-letter-spacing-display);
     text-wrap: balance;
   }
 
-  .contextBody,
+  .contextBody {
+    margin-block-start: var(--proctor-space-5);
+    color: var(--proctor-color-foreground-muted);
+  }
+
   .stepCopy span,
-  .sectionHelp,
-  .fieldHelp {
+  .sectionHelp {
     color: var(--proctor-color-foreground-muted);
   }
 
@@ -74,7 +78,8 @@
     display: flex;
     flex-direction: column;
     padding: var(--proctor-space-0);
-    margin-block: var(--proctor-space-5) var(--proctor-space-4);
+    margin-block: calc(var(--proctor-space-7) + var(--proctor-space-1))
+      var(--proctor-space-7);
     list-style: none;
   }
 
@@ -82,44 +87,47 @@
     position: relative;
     display: grid;
     grid-template-columns: var(--proctor-space-7) minmax(0, 1fr);
-    gap: var(--proctor-space-3);
-    min-block-size: 6.75rem;
+    grid-template-rows: auto auto;
+    align-content: start;
+    column-gap: var(--proctor-space-2);
+    row-gap: var(--proctor-space-1);
+    min-block-size: 8rem;
+  }
+
+  .proofRail li:last-child {
+    min-block-size: var(--proctor-space-0);
   }
 
   .proofRail li::before {
     position: absolute;
-    inset-block-start: var(--proctor-space-2);
-    inset-inline-start: calc(var(--proctor-space-2) - var(--proctor-space-1));
+    inset-block-start: var(--proctor-space-1);
+    inset-inline-start: var(--proctor-space-2);
     inline-size: var(--proctor-space-3);
     block-size: var(--proctor-space-3);
-    border: var(--proctor-border-width-strong) solid
-      var(--proctor-color-border-interactive);
+    border: 0;
     border-radius: var(--proctor-radius-round);
-    background: var(--proctor-color-background-canvas);
+    background: var(--proctor-color-foreground-disabled);
     content: "";
   }
 
   .proofRail li:first-child::before {
-    border-color: var(--proctor-color-action-primary);
     background: var(--proctor-color-action-primary);
   }
 
   .proofRail li:not(:last-child)::after {
     position: absolute;
-    inset-block-start: calc(var(--proctor-space-2) + var(--proctor-space-3));
+    inset-block-start: var(--proctor-space-4);
     inset-block-end: calc(var(--proctor-space-2) * -1);
-    inset-inline-start: var(--proctor-space-2);
+    inset-inline-start: calc(
+      var(--proctor-space-3) + var(--proctor-border-width-hairline)
+    );
     inline-size: var(--proctor-border-width-strong);
     background: var(--proctor-color-border-default);
     content: "";
   }
 
-  .proofRail li:first-child::after {
-    background: var(--proctor-color-action-primary);
-  }
-
   .stepNumber {
-    padding-inline-start: var(--proctor-space-5);
+    grid-column: 2;
     color: var(--proctor-color-foreground-muted);
     font-family: var(--proctor-font-family-mono);
     font-size: var(--proctor-font-size-label);
@@ -127,12 +135,27 @@
     line-height: var(--proctor-line-height-heading-small);
   }
 
+  .proofRail li:first-child .stepNumber::before {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: var(--proctor-space-4);
+    inset-inline-start: calc(
+      var(--proctor-space-3) + var(--proctor-border-width-hairline)
+    );
+    inline-size: var(--proctor-border-width-strong);
+    block-size: calc(var(--proctor-space-9) - var(--proctor-space-2));
+    background: var(--proctor-color-action-primary);
+    content: "";
+  }
+
   .proofRail li:first-child .stepNumber {
     color: var(--proctor-color-foreground-link);
   }
 
   .stepCopy {
+    grid-column: 2;
     gap: var(--proctor-space-1);
+    margin-block-start: var(--proctor-space-1);
   }
 
   .stepCopy strong {
@@ -145,16 +168,16 @@
     line-height: var(--proctor-line-height-body-small);
   }
 
-  .contextNote,
-  .caution {
+  .contextNote {
     display: grid;
     grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
     gap: var(--proctor-space-3);
     align-items: start;
+    max-inline-size: 23.5rem;
     padding: var(--proctor-space-4);
     border: var(--proctor-border-width-hairline) solid
       var(--proctor-color-border-default);
-    border-radius: var(--proctor-radius-card);
+    border-radius: var(--proctor-radius-control);
   }
 
   .noteIcon {
@@ -162,113 +185,58 @@
   }
 
   .form {
-    gap: var(--proctor-space-6);
+    gap: var(--proctor-space-0);
   }
 
   .section {
-    gap: var(--proctor-space-4);
+    position: relative;
+    gap: var(--proctor-space-5);
     min-inline-size: 0;
     padding: var(--proctor-space-0);
-    padding-block-start: var(--proctor-space-6);
     border: 0;
+  }
+
+  .section + .section {
+    margin-block-start: calc(
+      var(--proctor-space-5) + var(--proctor-space-4)
+    );
+    padding-block-start: var(--proctor-space-6);
+  }
+
+  .section + .section::before {
+    position: absolute;
+    inset-block-start: var(--proctor-space-0);
+    inset-inline: var(--proctor-space-0);
     border-block-start: var(--proctor-border-width-hairline) solid
       var(--proctor-color-border-default);
+    content: "";
   }
 
-  .section:first-of-type {
-    padding-block-start: var(--proctor-space-0);
-    border-block-start: 0;
-  }
-
-  .section legend {
-    padding: var(--proctor-space-0);
+  .section h2 {
     font-size: var(--proctor-font-size-heading-small);
     font-weight: var(--proctor-font-weight-semibold);
     line-height: var(--proctor-line-height-heading-small);
   }
 
-  .sectionHelp {
-    margin-block-start: calc(var(--proctor-space-2) * -1);
+  .operatorSection {
+    gap: var(--proctor-space-4);
+  }
+
+  .sectionIntro {
+    gap: var(--proctor-space-3);
+  }
+
+  .operatorField {
+    max-inline-size: 33.5rem;
+  }
+
+  .administratorSection {
+    gap: var(--proctor-space-4);
   }
 
   .fieldGrid {
     display: grid;
-    gap: var(--proctor-space-4);
-  }
-
-  .field {
-    gap: var(--proctor-space-2);
-    min-inline-size: 0;
-  }
-
-  .field label {
-    font-size: var(--proctor-font-size-label);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    letter-spacing: var(--proctor-letter-spacing-label);
-  }
-
-  .field input {
-    inline-size: 100%;
-    min-block-size: var(--proctor-control-size-comfortable);
-    padding-inline: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-strong);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-background-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
-  .field input:hover:not(:disabled) {
-    border-color: var(--proctor-color-border-interactive);
-  }
-
-  .field input[aria-invalid="true"] {
-    border-color: var(--proctor-color-state-danger);
-  }
-
-  .passwordControl {
-    position: relative;
-  }
-
-  .passwordControl input {
-    padding-inline-end: 8rem;
-  }
-
-  .passwordToggle {
-    position: absolute;
-    display: inline-flex;
-    inset-block: var(--proctor-space-1);
-    inset-inline-end: var(--proctor-space-1);
-    min-block-size: var(--proctor-control-size-default);
-    gap: var(--proctor-space-2);
-    align-items: center;
-    justify-content: center;
-    padding-inline: var(--proctor-space-3);
-    border: 0;
-    border-radius: var(--proctor-radius-control);
-    background: transparent;
-    color: var(--proctor-color-foreground-link);
-    font-size: var(--proctor-font-size-body-small);
-    font-weight: var(--proctor-font-weight-semibold);
-  }
-
-  .passwordToggle:hover:not(:disabled) {
-    background: var(--proctor-color-action-secondary-hover);
-  }
-
-  .passwordToggle:disabled {
-    color: var(--proctor-color-foreground-disabled);
-  }
-
-  .fieldHelp,
-  .fieldError {
-    font-size: var(--proctor-font-size-body-small);
-    line-height: var(--proctor-line-height-body-small);
-  }
-
-  .fieldError {
-    color: var(--proctor-color-state-danger);
+    gap: var(--proctor-space-4) var(--proctor-space-6);
   }
 
   .formError {
@@ -280,8 +248,11 @@
   }
 
   .caution {
-    border-color: var(--proctor-color-state-warning);
-    background: var(--proctor-color-state-warning-surface);
+    display: grid;
+    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
+    gap: var(--proctor-space-3);
+    align-items: center;
+    margin-block-start: var(--proctor-space-5);
   }
 
   .cautionIcon {
@@ -293,45 +264,7 @@
     flex-wrap: wrap;
     gap: var(--proctor-space-4) var(--proctor-space-5);
     align-items: center;
-  }
-
-  .primaryButton,
-  .primaryLink {
-    display: inline-flex;
-    min-block-size: var(--proctor-control-size-comfortable);
-    align-items: center;
-    justify-content: center;
-    padding: var(--proctor-space-3) var(--proctor-space-5);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-action-primary);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-action-primary);
-    color: var(--proctor-color-action-on-primary);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    text-align: center;
-    text-decoration: none;
-    transition-duration: var(--proctor-duration-fast);
-    transition-property: background-color, border-color, color;
-    transition-timing-function: var(--proctor-easing-standard);
-  }
-
-  .primaryButton:hover:not(:disabled),
-  .primaryLink:hover {
-    border-color: var(--proctor-color-action-primary-hover);
-    background: var(--proctor-color-action-primary-hover);
-  }
-
-  .primaryButton:active:not(:disabled),
-  .primaryLink:active {
-    border-color: var(--proctor-color-action-primary-active);
-    background: var(--proctor-color-action-primary-active);
-  }
-
-  .primaryButton:disabled {
-    border-color: var(--proctor-color-action-primary-disabled);
-    background: var(--proctor-color-action-primary-disabled);
-    color: var(--proctor-color-foreground-disabled);
+    margin-block-start: calc(var(--proctor-space-5) - var(--proctor-space-1));
   }
 
   .visuallyHidden {
@@ -353,18 +286,19 @@
   }
 
   @media (forced-colors: active) {
-    .proofRail li::before,
     .contextNote,
-    .caution,
-    .field input,
-    .primaryButton,
-    .primaryLink,
     .formError {
       border-color: ButtonText;
     }
 
+    .proofRail li::before,
     .proofRail li::after {
       background: CanvasText;
+    }
+
+    .proofRail li:first-child::before,
+    .proofRail li:first-child .stepNumber::before {
+      background: Highlight;
     }
   }
 }

@@ -2,11 +2,9 @@
   .page,
   .headingGroup,
   .form,
-  .field,
   .routeState,
   .routeStateCopy,
-  .context,
-  .acknowledgmentCopy {
+  .context {
     display: flex;
     flex-direction: column;
   }
@@ -130,84 +128,6 @@
     gap: var(--proctor-space-5);
   }
 
-  .field {
-    gap: var(--proctor-space-2);
-  }
-
-  .field label {
-    font-size: var(--proctor-font-size-label);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    letter-spacing: var(--proctor-letter-spacing-label);
-  }
-
-  .field input {
-    inline-size: 100%;
-    min-block-size: var(--proctor-control-size-comfortable);
-    padding-inline: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-strong);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-background-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
-  .field input:hover:not(:disabled) {
-    border-color: var(--proctor-color-border-interactive);
-  }
-
-  .field input[aria-invalid="true"] {
-    border-color: var(--proctor-color-state-danger);
-  }
-
-  .passwordControl {
-    position: relative;
-  }
-
-  .passwordControl input {
-    padding-inline-end: 8rem;
-  }
-
-  .passwordToggle {
-    position: absolute;
-    display: inline-flex;
-    inset-block: var(--proctor-space-1);
-    inset-inline-end: var(--proctor-space-1);
-    min-block-size: var(--proctor-control-size-default);
-    gap: var(--proctor-space-2);
-    align-items: center;
-    justify-content: center;
-    padding-inline: var(--proctor-space-3);
-    border: 0;
-    border-radius: var(--proctor-radius-control);
-    background: transparent;
-    color: var(--proctor-color-foreground-link);
-    font-size: var(--proctor-font-size-body-small);
-    font-weight: var(--proctor-font-weight-semibold);
-  }
-
-  .passwordToggle:hover:not(:disabled) {
-    background: var(--proctor-color-action-secondary-hover);
-  }
-
-  .passwordToggle:disabled {
-    color: var(--proctor-color-foreground-disabled);
-  }
-
-  .fieldHelp,
-  .fieldError {
-    font-size: var(--proctor-font-size-body-small);
-    line-height: var(--proctor-line-height-body-small);
-  }
-
-  .fieldHelp {
-    color: var(--proctor-color-foreground-muted);
-  }
-
-  .fieldError {
-    color: var(--proctor-color-state-danger);
-  }
-
   .formError {
     padding: var(--proctor-space-4);
     border-inline-start: var(--proctor-border-width-focus) solid
@@ -217,70 +137,40 @@
   }
 
   .acknowledgment {
-    display: grid;
-    grid-template-columns: var(--proctor-control-size-default) minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: var(--proctor-space-2);
-    align-items: start;
   }
 
-  .acknowledgment > input {
+  .checkboxLabel {
+    display: grid;
+    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
+    gap: var(--proctor-space-3);
+    align-items: start;
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+    touch-action: manipulation;
+  }
+
+  .checkboxLabel input {
     inline-size: var(--proctor-icon-size-default);
     block-size: var(--proctor-icon-size-default);
-    margin-block: var(--proctor-space-1);
-    margin-inline: auto;
+    margin-block-start: calc(var(--proctor-space-1) / 2);
+    margin-inline: var(--proctor-space-0);
     accent-color: var(--proctor-color-action-primary);
   }
 
-  .acknowledgment > input[aria-invalid="true"] {
+  .checkboxLabel input[aria-invalid="true"] {
     outline-color: var(--proctor-color-state-danger);
   }
 
-  .acknowledgmentCopy {
-    gap: var(--proctor-space-2);
-  }
-
-  .acknowledgment label {
+  .checkboxError {
+    margin-inline-start: calc(
+      var(--proctor-icon-size-default) + var(--proctor-space-3)
+    );
+    color: var(--proctor-color-state-danger);
     font-size: var(--proctor-font-size-body-small);
     line-height: var(--proctor-line-height-body-small);
-  }
-
-  .primaryButton,
-  .primaryLink {
-    display: inline-flex;
-    min-block-size: var(--proctor-control-size-comfortable);
-    align-items: center;
-    justify-content: center;
-    padding: var(--proctor-space-3) var(--proctor-space-5);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-action-primary);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-action-primary);
-    color: var(--proctor-color-action-on-primary);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    text-align: center;
-    text-decoration: none;
-    transition-duration: var(--proctor-duration-fast);
-    transition-property: background-color, border-color, color;
-    transition-timing-function: var(--proctor-easing-standard);
-  }
-
-  .primaryButton:hover:not(:disabled),
-  .primaryLink:hover {
-    border-color: var(--proctor-color-action-primary-hover);
-    background: var(--proctor-color-action-primary-hover);
-  }
-
-  .primaryButton:active:not(:disabled),
-  .primaryLink:active {
-    border-color: var(--proctor-color-action-primary-active);
-    background: var(--proctor-color-action-primary-active);
-  }
-
-  .primaryButton:disabled {
-    border-color: var(--proctor-color-action-primary-disabled);
-    background: var(--proctor-color-action-primary-disabled);
-    color: var(--proctor-color-foreground-disabled);
   }
 
   .signIn {
@@ -328,9 +218,6 @@
     }
 
     .proofMark,
-    .field input,
-    .primaryButton,
-    .primaryLink,
     .mailNote,
     .formError {
       border-color: ButtonText;

@@ -48,7 +48,6 @@ export function RegisterPage() {
     <AccessPageShell
       aside={<RegistrationContext state={state} />}
       asideLabel={message("webapp.register.context.heading")}
-      proofTone={accepted ? "success" : "primary"}
       skipLabel={message("webapp.register.skip_to_main")}
       variant="split"
     >

@@ -1,0 +1,130 @@
+@layer components {
+  .field {
+    display: flex;
+    min-inline-size: 0;
+    flex-direction: column;
+    gap: var(--proctor-space-2);
+  }
+
+  .labelRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-2) var(--proctor-space-4);
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .labelRow label {
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+  }
+
+  .requiredMark {
+    margin-inline-start: var(--proctor-space-1);
+    color: var(--proctor-color-foreground-muted);
+    font-weight: var(--proctor-font-weight-bold);
+  }
+
+  .labelAccessory {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .control {
+    position: relative;
+  }
+
+  .input {
+    inline-size: 100%;
+    min-block-size: var(--proctor-control-size-comfortable);
+    padding-inline: var(--proctor-space-4);
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-strong);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-background-surface);
+    color: var(--proctor-color-foreground-default);
+    transition-duration: var(--proctor-duration-fast);
+    transition-property: background-color, border-color, color;
+    transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .input:hover:not(:disabled) {
+    border-color: var(--proctor-color-border-interactive);
+  }
+
+  .input[aria-invalid="true"] {
+    border-color: var(--proctor-color-state-danger);
+  }
+
+  .input:disabled {
+    border-color: var(--proctor-color-border-default);
+    background: var(--proctor-color-background-subtle);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .withTrailingControl {
+    padding-inline-end: calc(
+      var(--proctor-control-size-default) + var(--proctor-space-3)
+    );
+  }
+
+  .passwordToggle {
+    position: absolute;
+    display: grid;
+    inset-block-start: 50%;
+    inset-inline-end: calc(var(--proctor-space-1) / 2);
+    inline-size: var(--proctor-control-size-default);
+    block-size: var(--proctor-control-size-default);
+    place-items: center;
+    padding: var(--proctor-space-0);
+    border: 0;
+    border-radius: var(--proctor-radius-control);
+    background: transparent;
+    color: var(--proctor-color-foreground-muted);
+    touch-action: manipulation;
+    transform: translateY(-50%);
+    transition-duration: var(--proctor-duration-fast);
+    transition-property: background-color, color;
+    transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .passwordToggle:hover:not(:disabled) {
+    background: var(--proctor-color-action-secondary-hover);
+    color: var(--proctor-color-foreground-link);
+  }
+
+  .passwordToggle[aria-pressed="true"] {
+    color: var(--proctor-color-foreground-link);
+  }
+
+  .passwordToggle:disabled {
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .description,
+  .error {
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+  }
+
+  .description {
+    color: var(--proctor-color-foreground-muted);
+  }
+
+  .error {
+    color: var(--proctor-color-state-danger);
+  }
+
+  @media (forced-colors: active) {
+    .input,
+    .passwordToggle {
+      border-color: ButtonText;
+    }
+
+    .passwordToggle {
+      border: var(--proctor-border-width-hairline) solid ButtonText;
+    }
+  }
+}

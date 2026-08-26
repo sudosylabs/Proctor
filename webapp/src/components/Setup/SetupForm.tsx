@@ -5,7 +5,10 @@ import type {
   SetupSubmissionResult,
 } from "../../features/setup/SetupApi";
 import { message } from "../../i18n/messages";
+import { Button } from "../Button/Button";
 import { Icon } from "../Icon/Icon";
+import { InputField } from "../InputField/InputField";
+import { PasswordField } from "../InputField/PasswordField";
 import styles from "./Setup.module.css";
 
 type SetupField =
@@ -32,8 +35,6 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
   const [administratorUsername, setAdministratorUsername] = useState("");
   const [administratorDisplayName, setAdministratorDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [showSecret, setShowSecret] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
@@ -197,11 +198,6 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
 
   return (
     <section className={styles.page} aria-labelledby="setup-heading">
-      <header className={styles.headingGroup}>
-        <h1 id="setup-heading">{message("webapp.setup.heading")}</h1>
-        <p>{message("webapp.setup.lede")}</p>
-      </header>
-
       <form className={styles.form} onSubmit={submit} aria-busy={pending} noValidate>
         <div className={styles.visuallyHidden} aria-live="polite" aria-atomic="true">
           {liveMessage}
@@ -213,276 +209,176 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
           </div>
         )}
 
-        <fieldset className={styles.section}>
-          <legend>{message("webapp.setup.form.operator.heading")}</legend>
-          <p className={styles.sectionHelp}>
-            {message("webapp.setup.form.operator.body")}
-          </p>
-          <div className={styles.field}>
-            <label htmlFor="bootstrap-secret">
-              {message("webapp.setup.form.operator.secret")}
-            </label>
-            <div className={styles.passwordControl}>
-              <input
-                ref={bootstrapSecretRef}
-                id="bootstrap-secret"
-                name="bootstrap_secret"
-                type={showSecret ? "text" : "password"}
-                autoComplete="off"
-                value={bootstrapSecret}
-                aria-invalid={fieldErrors.bootstrap_secret !== undefined}
-                aria-describedby={
-                  fieldErrors.bootstrap_secret === undefined
-                    ? undefined
-                    : "bootstrap-secret-error"
-                }
-                onChange={(event) => {
-                  setBootstrapSecret(event.currentTarget.value);
-                  clearFieldError("bootstrap_secret");
-                }}
-              />
-              <button
-                className={styles.passwordToggle}
-                type="button"
-                aria-controls="bootstrap-secret"
-                aria-pressed={showSecret}
-                disabled={pending}
-                onClick={() => setShowSecret((visible) => !visible)}
-              >
-                <Icon
-                  name={showSecret ? "hidePassword" : "showPassword"}
-                  size="small"
-                />
-                {message(
-                  showSecret
-                    ? "webapp.setup.form.secret_hide"
-                    : "webapp.setup.form.secret_show",
-                )}
-              </button>
-            </div>
-            {fieldErrors.bootstrap_secret === undefined ? null : (
-              <p className={styles.fieldError} id="bootstrap-secret-error">
-                {fieldErrors.bootstrap_secret}
-              </p>
-            )}
+        <section
+          className={`${styles.section} ${styles.operatorSection}`}
+          aria-labelledby="operator-verification-heading"
+        >
+          <div className={styles.sectionIntro}>
+            <h2 id="operator-verification-heading">
+              {message("webapp.setup.form.operator.heading")}
+            </h2>
+            <p className={styles.sectionHelp}>
+              {message("webapp.setup.form.operator.body")}
+            </p>
           </div>
-        </fieldset>
+          <PasswordField
+            ref={bootstrapSecretRef}
+            className={styles.operatorField}
+            id="bootstrap-secret"
+            name="bootstrap_secret"
+            label={message("webapp.setup.form.operator.secret")}
+            autoComplete="off"
+            value={bootstrapSecret}
+            errorMessage={fieldErrors.bootstrap_secret}
+            hidePasswordLabel={message("webapp.setup.form.secret_hide")}
+            showPasswordLabel={message("webapp.setup.form.secret_show")}
+            toggleDisabled={pending}
+            required
+            onChange={(event) => {
+              setBootstrapSecret(event.currentTarget.value);
+              clearFieldError("bootstrap_secret");
+            }}
+          />
+        </section>
 
-        <fieldset className={styles.section}>
-          <legend>{message("webapp.setup.form.institution.heading")}</legend>
+        <section
+          className={styles.section}
+          aria-labelledby="institution-heading"
+        >
+          <h2 id="institution-heading">
+            {message("webapp.setup.form.institution.heading")}
+          </h2>
           <div className={styles.fieldGrid}>
-            <div className={styles.field}>
-              <label htmlFor="institution-name">
-                {message("webapp.setup.form.institution.name")}
-              </label>
-              <input
-                ref={institutionNameRef}
-                id="institution-name"
-                name="institution_name"
-                type="text"
-                autoComplete="off"
-                value={institutionName}
-                aria-invalid={fieldErrors.institution_name !== undefined}
-                aria-describedby={
-                  fieldErrors.institution_name === undefined
-                    ? undefined
-                    : "institution-name-error"
-                }
-                onChange={(event) => {
-                  setInstitutionName(event.currentTarget.value);
-                  clearFieldError("institution_name");
-                }}
-              />
-              {fieldErrors.institution_name === undefined ? null : (
-                <p className={styles.fieldError} id="institution-name-error">
-                  {fieldErrors.institution_name}
-                </p>
-              )}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="institution-display-name">
-                {message("webapp.setup.form.institution.display_name")}
-              </label>
-              <input
-                ref={institutionDisplayNameRef}
-                id="institution-display-name"
-                name="institution_display_name"
-                type="text"
-                autoComplete="organization"
-                value={institutionDisplayName}
-                aria-invalid={fieldErrors.institution_display_name !== undefined}
-                aria-describedby={
-                  fieldErrors.institution_display_name === undefined
-                    ? undefined
-                    : "institution-display-name-error"
-                }
-                onChange={(event) => {
-                  setInstitutionDisplayName(event.currentTarget.value);
-                  clearFieldError("institution_display_name");
-                }}
-              />
-              {fieldErrors.institution_display_name === undefined ? null : (
-                <p className={styles.fieldError} id="institution-display-name-error">
-                  {fieldErrors.institution_display_name}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className={styles.field}>
-            <label htmlFor="institution-description">
-              {message("webapp.setup.form.institution.description")}
-            </label>
-            <input
-              id="institution-description"
-              name="institution_description"
+            <InputField
+              ref={institutionNameRef}
+              id="institution-name"
+              name="institution_name"
+              label={message("webapp.setup.form.institution.name")}
               type="text"
+              autoCapitalize="none"
               autoComplete="off"
-              value={institutionDescription}
-              onChange={(event) => setInstitutionDescription(event.currentTarget.value)}
+              spellCheck={false}
+              value={institutionName}
+              errorMessage={fieldErrors.institution_name}
+              required
+              onChange={(event) => {
+                setInstitutionName(event.currentTarget.value);
+                clearFieldError("institution_name");
+              }}
+            />
+            <InputField
+              ref={institutionDisplayNameRef}
+              id="institution-display-name"
+              name="institution_display_name"
+              label={message("webapp.setup.form.institution.display_name")}
+              type="text"
+              autoComplete="organization"
+              value={institutionDisplayName}
+              errorMessage={fieldErrors.institution_display_name}
+              required
+              onChange={(event) => {
+                setInstitutionDisplayName(event.currentTarget.value);
+                clearFieldError("institution_display_name");
+              }}
             />
           </div>
-        </fieldset>
+          <InputField
+            id="institution-description"
+            name="institution_description"
+            label={message("webapp.setup.form.institution.description")}
+            type="text"
+            autoComplete="off"
+            value={institutionDescription}
+            onChange={(event) => setInstitutionDescription(event.currentTarget.value)}
+          />
+        </section>
 
-        <fieldset className={styles.section}>
-          <legend>{message("webapp.setup.form.administrator.heading")}</legend>
+        <section
+          className={`${styles.section} ${styles.administratorSection}`}
+          aria-labelledby="administrator-heading"
+        >
+          <h2 id="administrator-heading">
+            {message("webapp.setup.form.administrator.heading")}
+          </h2>
           <div className={styles.fieldGrid}>
-            <div className={styles.field}>
-              <label htmlFor="administrator-email">
-                {message("webapp.setup.form.administrator.email")}
-              </label>
-              <input
-                ref={administratorEmailRef}
-                id="administrator-email"
-                name="administrator_email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                value={administratorEmail}
-                aria-invalid={fieldErrors.administrator_email !== undefined}
-                aria-describedby={
-                  fieldErrors.administrator_email === undefined
-                    ? undefined
-                    : "administrator-email-error"
-                }
-                onChange={(event) => {
-                  setAdministratorEmail(event.currentTarget.value);
-                  clearFieldError("administrator_email");
-                }}
-              />
-              {fieldErrors.administrator_email === undefined ? null : (
-                <p className={styles.fieldError} id="administrator-email-error">
-                  {fieldErrors.administrator_email}
-                </p>
-              )}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="administrator-username">
-                {message("webapp.setup.form.administrator.username")}
-              </label>
-              <input
-                ref={administratorUsernameRef}
-                id="administrator-username"
-                name="administrator_username"
-                type="text"
-                autoComplete="username"
-                value={administratorUsername}
-                aria-invalid={fieldErrors.administrator_username !== undefined}
-                aria-describedby={
-                  fieldErrors.administrator_username === undefined
-                    ? undefined
-                    : "administrator-username-error"
-                }
-                onChange={(event) => {
-                  setAdministratorUsername(event.currentTarget.value);
-                  clearFieldError("administrator_username");
-                }}
-              />
-              {fieldErrors.administrator_username === undefined ? null : (
-                <p className={styles.fieldError} id="administrator-username-error">
-                  {fieldErrors.administrator_username}
-                </p>
-              )}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="administrator-display-name">
-                {message("webapp.setup.form.administrator.display_name")}
-              </label>
-              <input
-                id="administrator-display-name"
-                name="administrator_display_name"
-                type="text"
-                autoComplete="name"
-                value={administratorDisplayName}
-                onChange={(event) => setAdministratorDisplayName(event.currentTarget.value)}
-              />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="administrator-password">
-                {message("webapp.setup.form.administrator.password")}
-              </label>
-              <div className={styles.passwordControl}>
-                <input
-                  ref={passwordRef}
-                  id="administrator-password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="new-password"
-                  value={password}
-                  aria-invalid={fieldErrors.password !== undefined}
-                  aria-describedby={
-                    fieldErrors.password === undefined
-                      ? "administrator-password-help"
-                      : "administrator-password-help administrator-password-error"
-                  }
-                  onChange={(event) => {
-                    setPassword(event.currentTarget.value);
-                    clearFieldError("password");
-                  }}
-                />
-                <button
-                  className={styles.passwordToggle}
-                  type="button"
-                  aria-controls="administrator-password"
-                  aria-pressed={showPassword}
-                  disabled={pending}
-                  onClick={() => setShowPassword((visible) => !visible)}
-                >
-                  <Icon
-                    name={showPassword ? "hidePassword" : "showPassword"}
-                    size="small"
-                  />
-                  {message(
-                    showPassword
-                      ? "webapp.setup.form.password_hide"
-                      : "webapp.setup.form.password_show",
-                  )}
-                </button>
-              </div>
-              <p className={styles.fieldHelp} id="administrator-password-help">
-                {message("webapp.setup.form.password_help")}
-              </p>
-              {fieldErrors.password === undefined ? null : (
-                <p className={styles.fieldError} id="administrator-password-error">
-                  {fieldErrors.password}
-                </p>
-              )}
-            </div>
+            <InputField
+              ref={administratorEmailRef}
+              id="administrator-email"
+              name="administrator_email"
+              label={message("webapp.setup.form.administrator.email")}
+              type="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoComplete="email"
+              spellCheck={false}
+              value={administratorEmail}
+              errorMessage={fieldErrors.administrator_email}
+              required
+              onChange={(event) => {
+                setAdministratorEmail(event.currentTarget.value);
+                clearFieldError("administrator_email");
+              }}
+            />
+            <InputField
+              ref={administratorUsernameRef}
+              id="administrator-username"
+              name="administrator_username"
+              label={message("webapp.setup.form.administrator.username")}
+              type="text"
+              autoCapitalize="none"
+              autoComplete="username"
+              spellCheck={false}
+              value={administratorUsername}
+              errorMessage={fieldErrors.administrator_username}
+              required
+              onChange={(event) => {
+                setAdministratorUsername(event.currentTarget.value);
+                clearFieldError("administrator_username");
+              }}
+            />
+            <InputField
+              id="administrator-display-name"
+              name="administrator_display_name"
+              label={message("webapp.setup.form.administrator.display_name")}
+              type="text"
+              autoComplete="name"
+              value={administratorDisplayName}
+              onChange={(event) => setAdministratorDisplayName(event.currentTarget.value)}
+            />
+            <PasswordField
+              ref={passwordRef}
+              id="administrator-password"
+              name="password"
+              label={message("webapp.setup.form.administrator.password")}
+              description={message("webapp.setup.form.password_help")}
+              autoComplete="new-password"
+              value={password}
+              errorMessage={fieldErrors.password}
+              hidePasswordLabel={message("webapp.form.password_hide")}
+              showPasswordLabel={message("webapp.form.password_show")}
+              toggleDisabled={pending}
+              required
+              onChange={(event) => {
+                setPassword(event.currentTarget.value);
+                clearFieldError("password");
+              }}
+            />
           </div>
-        </fieldset>
+        </section>
 
-        <div className={styles.caution} role="note">
+        <p className={styles.caution} role="note">
           <Icon className={styles.cautionIcon} name="warning" />
-          <p>{message("webapp.setup.form.caution")}</p>
-        </div>
+          <span>{message("webapp.setup.form.caution")}</span>
+        </p>
 
         <div className={styles.actions}>
-          <button className={styles.primaryButton} type="submit" disabled={pending}>
-            {message(
-              pending
-                ? "webapp.setup.form.submitting"
-                : "webapp.setup.form.submit",
-            )}
-          </button>
+          <Button
+            type="submit"
+            isLoading={pending}
+            loadingLabel={message("webapp.setup.form.submitting")}
+          >
+            {message("webapp.setup.form.submit")}
+          </Button>
           <a href="/login">{message("webapp.setup.return_to_sign_in")}</a>
         </div>
       </form>

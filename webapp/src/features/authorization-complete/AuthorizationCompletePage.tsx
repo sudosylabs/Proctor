@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
+import { Button, ButtonLink } from "../../components/Button/Button";
 import { message } from "../../i18n/messages";
 import styles from "./AuthorizationCompletePage.module.css";
 
@@ -76,7 +77,6 @@ export function AuthorizationCompletePage() {
 
   return (
     <AccessPageShell
-      proofTone={state === "signed_in" ? "success" : "neutral"}
       skipLabel={message("webapp.authorization_complete.skip_to_main")}
       variant="status"
     >
@@ -135,26 +135,25 @@ function StatusContent({
         <p className={styles.body}>{content.body}</p>
         {state === "no_session" ? (
           <div className={styles.actions}>
-            <a className={styles.primaryLink} href="/login">
+            <ButtonLink href="/login">
               {message("webapp.authorization_complete.sign_in")}
-            </a>
+            </ButtonLink>
           </div>
         ) : null}
         {state === "unavailable" ? (
           <div className={styles.actions}>
-            <button
-              className={styles.primaryButton}
-              type="button"
-              disabled={retrying}
+            <Button
+              isLoading={retrying}
+              loadingLabel={message(
+                "webapp.authorization_complete.checking.label",
+              )}
               onClick={onRetry}
             >
-              {retrying
-                ? message("webapp.authorization_complete.checking.label")
-                : message("webapp.authorization_complete.unavailable.retry")}
-            </button>
-            <a className={styles.secondaryLink} href="/login">
+              {message("webapp.authorization_complete.unavailable.retry")}
+            </Button>
+            <ButtonLink href="/login" variant="secondary">
               {message("webapp.authorization_complete.sign_in")}
-            </a>
+            </ButtonLink>
           </div>
         ) : null}
       </div>

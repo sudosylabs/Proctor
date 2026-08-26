@@ -1720,6 +1720,14 @@
     "translation": "Try again"
   },
   {
+    "id": "webapp.form.password_hide",
+    "translation": "Hide password"
+  },
+  {
+    "id": "webapp.form.password_show",
+    "translation": "Show password"
+  },
+  {
     "id": "webapp.login.discovery_failure.body",
     "translation": "Proctor couldn’t load the sign-in methods for this installation."
   },
@@ -1988,14 +1996,6 @@
     "translation": "Use a unique, policy-compliant password."
   },
   {
-    "id": "webapp.register.form.password_hide",
-    "translation": "Hide password"
-  },
-  {
-    "id": "webapp.register.form.password_show",
-    "translation": "Show password"
-  },
-  {
     "id": "webapp.register.form.submit",
     "translation": "Create account"
   },
@@ -2238,14 +2238,6 @@
   {
     "id": "webapp.setup.form.password_help",
     "translation": "Use a unique, policy-compliant password."
-  },
-  {
-    "id": "webapp.setup.form.password_hide",
-    "translation": "Hide password"
-  },
-  {
-    "id": "webapp.setup.form.password_show",
-    "translation": "Show password"
   },
   {
     "id": "webapp.setup.form.secret_hide",

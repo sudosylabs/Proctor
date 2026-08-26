@@ -1,0 +1,87 @@
+@layer components {
+  .button {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-comfortable);
+    align-items: center;
+    justify-content: center;
+    padding: var(--proctor-space-3) var(--proctor-space-5);
+    border-radius: var(--proctor-radius-control);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    text-align: center;
+    text-decoration: none;
+    touch-action: manipulation;
+    transition-duration: var(--proctor-duration-fast);
+    transition-property: background-color, border-color, color;
+    transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .primary {
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-action-primary);
+    background: var(--proctor-color-action-primary);
+    color: var(--proctor-color-action-on-primary);
+  }
+
+  .primary:hover:not(:disabled) {
+    border-color: var(--proctor-color-action-primary-hover);
+    background: var(--proctor-color-action-primary-hover);
+  }
+
+  .primary:active:not(:disabled) {
+    border-color: var(--proctor-color-action-primary-active);
+    background: var(--proctor-color-action-primary-active);
+  }
+
+  .primary:disabled {
+    border-color: var(--proctor-color-action-primary-disabled);
+    background: var(--proctor-color-action-primary-disabled);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .secondary {
+    border: var(--proctor-border-width-hairline) solid
+      var(--proctor-color-border-interactive);
+    background: var(--proctor-color-action-secondary);
+    color: var(--proctor-color-action-on-secondary);
+  }
+
+  .secondary:hover:not(:disabled) {
+    background: var(--proctor-color-action-secondary-hover);
+  }
+
+  .secondary:active:not(:disabled) {
+    background: var(--proctor-color-action-secondary-active);
+  }
+
+  .secondary:disabled {
+    border-color: var(--proctor-color-border-default);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .text {
+    min-block-size: var(--proctor-control-size-default);
+    align-self: flex-start;
+    padding-inline: var(--proctor-space-0);
+    border: 0;
+    background: transparent;
+    color: var(--proctor-color-foreground-link);
+    text-decoration: underline;
+    text-decoration-thickness: max(1px, 0.08em);
+    text-underline-offset: 0.18em;
+  }
+
+  .text:hover:not(:disabled) {
+    color: var(--proctor-color-action-primary-hover);
+  }
+
+  .text:disabled {
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  @media (forced-colors: active) {
+    .button {
+      border-color: ButtonText;
+    }
+  }
+}

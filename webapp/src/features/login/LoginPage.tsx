@@ -10,7 +10,10 @@ import type { components } from "../../api/generated/schema";
 import { readProblemValue } from "../../api/problem";
 import { navigateToProvider } from "../../auth/navigation";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
+import { Button, ButtonLink } from "../../components/Button/Button";
 import { Icon } from "../../components/Icon/Icon";
+import { InputField } from "../../components/InputField/InputField";
+import { PasswordField } from "../../components/InputField/PasswordField";
 import { message } from "../../i18n/messages";
 import styles from "./LoginPage.module.css";
 
@@ -226,9 +229,9 @@ function DiscoveryContent({
         heading={message("webapp.login.setup.heading")}
         body={message("webapp.login.setup.body")}
       >
-        <a className={styles.primaryLink} href="/setup">
+        <ButtonLink href="/setup">
           {message("webapp.login.setup.open")}
-        </a>
+        </ButtonLink>
       </RouteState>
     );
   }
@@ -238,13 +241,9 @@ function DiscoveryContent({
         heading={message("webapp.login.origin_mismatch.heading")}
         body={message("webapp.login.origin_mismatch.body")}
       >
-        <button
-          className={styles.primaryButton}
-          type="button"
-          onClick={() => window.location.reload()}
-        >
+        <Button onClick={() => window.location.reload()}>
           {message("webapp.login.reload")}
-        </button>
+        </Button>
       </RouteState>
     );
   }
@@ -263,9 +262,9 @@ function DiscoveryContent({
             : "webapp.login.discovery_failure.body",
         )}
       >
-        <button className={styles.primaryButton} type="button" onClick={onRetry}>
+        <Button onClick={onRetry}>
           {message("webapp.login.retry")}
-        </button>
+        </Button>
       </RouteState>
     );
   }
@@ -325,10 +324,9 @@ function LoginMethods({
             {message("webapp.login.provider.group")}
           </legend>
           {discovery.providers.map((provider) => (
-            <button
-              className={styles.providerButton}
+            <Button
               key={provider.id}
-              type="button"
+              variant="secondary"
               onClick={() => {
                 onAuthenticationAction();
                 const parameters = new URLSearchParams({
@@ -343,7 +341,7 @@ function LoginMethods({
               {message("webapp.login.provider.continue", {
                 Provider: provider.display_name,
               })}
-            </button>
+            </Button>
           ))}
         </fieldset>
       ) : null}
@@ -504,66 +502,48 @@ function LocalLoginForm({
         </div>
       )}
 
-      <div className={styles.field}>
-        <label htmlFor="login-id">
-          {message("webapp.login.form.email_or_username")}
-        </label>
-        <input
-          ref={loginIDRef}
-          id="login-id"
-          name="login_id"
-          type="text"
-          autoComplete="username"
-          value={loginID}
-          aria-invalid={fieldErrors.login_id !== undefined}
-          aria-describedby={
-            fieldErrors.login_id === undefined ? undefined : "login-id-error"
-          }
-          onChange={(event) => {
-            setLoginID(event.currentTarget.value);
-            setFieldErrors((errors) => ({ ...errors, login_id: undefined }));
-            clearFormFailure();
-          }}
-        />
-        {fieldErrors.login_id === undefined ? null : (
-          <p className={styles.fieldError} id="login-id-error">
-            {fieldErrors.login_id}
-          </p>
-        )}
-      </div>
+      <InputField
+        ref={loginIDRef}
+        id="login-id"
+        name="login_id"
+        label={message("webapp.login.form.email_or_username")}
+        type="text"
+        autoCapitalize="none"
+        autoComplete="username"
+        spellCheck={false}
+        value={loginID}
+        errorMessage={fieldErrors.login_id}
+        required
+        onChange={(event) => {
+          setLoginID(event.currentTarget.value);
+          setFieldErrors((errors) => ({ ...errors, login_id: undefined }));
+          clearFormFailure();
+        }}
+      />
 
-      <div className={styles.field}>
-        <div className={styles.labelRow}>
-          <label htmlFor="password">
-            {message("webapp.login.form.password")}
-          </label>
+      <PasswordField
+        ref={passwordRef}
+        id="password"
+        name="password"
+        label={message("webapp.login.form.password")}
+        labelAccessory={
           <a href="/account/forgot-password">
             {message("webapp.login.form.forgot_password")}
           </a>
-        </div>
-        <input
-          ref={passwordRef}
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          aria-invalid={fieldErrors.password !== undefined}
-          aria-describedby={
-            fieldErrors.password === undefined ? undefined : "password-error"
-          }
-          onChange={(event) => {
-            setPassword(event.currentTarget.value);
-            setFieldErrors((errors) => ({ ...errors, password: undefined }));
-            clearFormFailure();
-          }}
-        />
-        {fieldErrors.password === undefined ? null : (
-          <p className={styles.fieldError} id="password-error">
-            {fieldErrors.password}
-          </p>
-        )}
-      </div>
+        }
+        autoComplete="current-password"
+        value={password}
+        errorMessage={fieldErrors.password}
+        hidePasswordLabel={message("webapp.form.password_hide")}
+        showPasswordLabel={message("webapp.form.password_show")}
+        toggleDisabled={pending}
+        required
+        onChange={(event) => {
+          setPassword(event.currentTarget.value);
+          setFieldErrors((errors) => ({ ...errors, password: undefined }));
+          clearFormFailure();
+        }}
+      />
 
       {mfaRequired ? (
         <div className={styles.mfaGroup}>
@@ -571,39 +551,28 @@ function LocalLoginForm({
             <h2>{message("webapp.login.form.mfa_heading")}</h2>
             <p id="mfa-help">{message("webapp.login.form.mfa_help")}</p>
           </div>
-          <div className={styles.field}>
-            <label htmlFor="mfa-code">
-              {message("webapp.login.form.mfa_code")}
-            </label>
-            <input
-              ref={mfaCodeRef}
-              id="mfa-code"
-              name="mfa_code"
-              type="text"
-              autoComplete="one-time-code"
-              value={mfaCode}
-              aria-invalid={fieldErrors.mfa_code !== undefined}
-              aria-describedby={
-                fieldErrors.mfa_code === undefined
-                  ? "mfa-help"
-                  : "mfa-help mfa-code-error"
-              }
-              onChange={(event) => {
-                setMFACode(event.currentTarget.value);
-                setFieldErrors((errors) => ({ ...errors, mfa_code: undefined }));
-                clearFormFailure();
-              }}
-            />
-            {fieldErrors.mfa_code === undefined ? null : (
-              <p className={styles.fieldError} id="mfa-code-error">
-                {fieldErrors.mfa_code}
-              </p>
-            )}
-          </div>
-          <button
-            className={styles.textButton}
-            type="button"
+          <InputField
+            ref={mfaCodeRef}
+            id="mfa-code"
+            name="mfa_code"
+            label={message("webapp.login.form.mfa_code")}
+            type="text"
+            autoCapitalize="none"
+            autoComplete="one-time-code"
+            describedBy="mfa-help"
+            spellCheck={false}
+            value={mfaCode}
+            errorMessage={fieldErrors.mfa_code}
+            required
+            onChange={(event) => {
+              setMFACode(event.currentTarget.value);
+              setFieldErrors((errors) => ({ ...errors, mfa_code: undefined }));
+              clearFormFailure();
+            }}
+          />
+          <Button
             disabled={pending}
+            variant="text"
             onClick={() => {
               setMFARequired(false);
               setPassword("");
@@ -615,15 +584,17 @@ function LocalLoginForm({
             }}
           >
             {message("webapp.login.form.mfa_back")}
-          </button>
+          </Button>
         </div>
       ) : null}
 
-      <button className={styles.primaryButton} type="submit" disabled={pending}>
-        {pending
-          ? message("webapp.login.form.signing_in")
-          : message("webapp.login.form.sign_in")}
-      </button>
+      <Button
+        type="submit"
+        isLoading={pending}
+        loadingLabel={message("webapp.login.form.signing_in")}
+      >
+        {message("webapp.login.form.sign_in")}
+      </Button>
     </form>
   );
 }

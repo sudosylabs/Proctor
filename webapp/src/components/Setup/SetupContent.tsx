@@ -6,6 +6,7 @@ import type {
   SetupSubmissionResult,
 } from "../../features/setup/SetupApi";
 import { message } from "../../i18n/messages";
+import { Button, ButtonLink } from "../Button/Button";
 import { SetupForm } from "./SetupForm";
 import styles from "./Setup.module.css";
 
@@ -24,8 +25,8 @@ export function SetupContent({
 }: SetupContentProps) {
   if (status.kind === "loading") {
     return (
-      <section className={styles.routeState} aria-labelledby="setup-heading">
-        <h1 id="setup-heading">{message("webapp.setup.heading")}</h1>
+      <section className={styles.routeState} aria-labelledby="setup-status-heading">
+        <h2 id="setup-status-heading">{message("webapp.setup.heading")}</h2>
         <p role="status" aria-live="polite">
           {message("webapp.setup.loading")}
         </p>
@@ -38,9 +39,9 @@ export function SetupContent({
         heading={message("webapp.setup.status_failure.heading")}
         body={message("webapp.setup.status_failure.body")}
       >
-        <button className={styles.primaryButton} type="button" onClick={onRetry}>
+        <Button onClick={onRetry}>
           {message("webapp.setup.status_failure.retry")}
-        </button>
+        </Button>
       </SetupRouteState>
     );
   }
@@ -50,9 +51,9 @@ export function SetupContent({
         heading={message("webapp.setup.already_initialized.heading")}
         body={message("webapp.setup.already_initialized.body")}
       >
-        <a className={styles.primaryLink} href="/login">
+        <ButtonLink href="/login">
           {message("webapp.setup.sign_in")}
-        </a>
+        </ButtonLink>
       </SetupRouteState>
     );
   }
@@ -69,9 +70,9 @@ function SetupRouteState({
   heading: string;
 }) {
   return (
-    <section className={styles.routeState} aria-labelledby="setup-heading">
+    <section className={styles.routeState} aria-labelledby="setup-status-heading">
       <div className={styles.routeStateCopy}>
-        <h1 id="setup-heading">{heading}</h1>
+        <h2 id="setup-status-heading">{heading}</h2>
         <p>{body}</p>
       </div>
       {children}

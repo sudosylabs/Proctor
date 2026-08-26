@@ -23,9 +23,9 @@ export function SetupContext() {
       <p className={styles.eyebrow}>
         {message("webapp.setup.context.eyebrow")}
       </p>
-      <p className={styles.contextHeading}>
+      <h1 className={styles.contextHeading} id="setup-heading">
         {message("webapp.setup.context.heading")}
-      </p>
+      </h1>
       <p className={styles.contextBody}>
         {message("webapp.setup.context.body")}
       </p>

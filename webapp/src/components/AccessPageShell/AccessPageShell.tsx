@@ -9,7 +9,6 @@ export interface AccessPageShellProps {
   asideLabel?: string;
   children: ReactNode;
   mainSize?: "content" | "form";
-  proofTone?: "primary" | "success" | "neutral";
   skipLabel: string;
   variant: "split" | "status";
 }
@@ -19,7 +18,6 @@ export function AccessPageShell({
   asideLabel,
   children,
   mainSize = "form",
-  proofTone = "primary",
   skipLabel,
   variant,
 }: AccessPageShellProps) {
@@ -28,9 +26,7 @@ export function AccessPageShell({
       <a className="proctor-skip-link" href="#main-content">
         {skipLabel}
       </a>
-      <div
-        className={`${styles.shell} ${styles[variant]} ${styles[proofTone]} ${styles[mainSize]}`}
-      >
+      <div className={`${styles.shell} ${styles[variant]} ${styles[mainSize]}`}>
         <div className={styles.frame}>
           <header className={styles.header}>
             <picture className={styles.brand}>
@@ -46,7 +42,6 @@ export function AccessPageShell({
                 height="32"
               />
             </picture>
-            <div className={styles.proofLine} aria-hidden="true" />
           </header>
 
           <div className={styles.layout}>
