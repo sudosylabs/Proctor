@@ -26,7 +26,7 @@ is a fenced workspace, not an eye.
 
 - [`mark/proctor-mark.svg`](mark/proctor-mark.svg) — purple on transparent
 - [`mark/proctor-mark-white.svg`](mark/proctor-mark-white.svg) — white on transparent
-- [`mark/proctor-mark-black.svg`](mark/proctor-mark-black.svg) — ink on transparent
+- [`mark/proctor-mark-black.svg`](mark/proctor-mark-black.svg) — ink on transparent; reserved for documentation-site presentation
 - [`mark/proctor-mark-512.png`](mark/proctor-mark-512.png) — purple raster
 - [`mark/proctor-mark-drawing.png`](mark/proctor-mark-drawing.png) — accepted original drawing
 
@@ -45,8 +45,12 @@ percent down-right so the L’s offset does not look top-heavy.
 ## Lockup
 
 Horizontal mark + outlined “Proctor”. Align the type with the square, not the
-full L. Dark lockup uses the purple mark and ink type; the white lockup is
-all white.
+full L. [`proctor-lockup.svg`](lockup/proctor-lockup.svg) uses the purple mark
+and ink type for light surfaces;
+[`proctor-lockup-purple-white.svg`](lockup/proctor-lockup-purple-white.svg)
+keeps the purple mark with white type for dark product surfaces; and
+[`proctor-lockup-white.svg`](lockup/proctor-lockup-white.svg) is the all-white
+monochrome lockup.
 
 Word outlines come from IBM Plex Sans Medium (SIL Open Font License). The
 font file is not vendored here.

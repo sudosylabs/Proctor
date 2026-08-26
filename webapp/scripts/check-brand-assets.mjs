@@ -13,6 +13,10 @@ const exactCopies = [
     canonical: 'mark/proctor-mark.svg',
   },
   {
+    local: 'proctor-mark-white.svg',
+    canonical: 'mark/proctor-mark-white.svg',
+  },
+  {
     local: 'proctor-lockup.svg',
     canonical: 'lockup/proctor-lockup.svg',
   },
@@ -20,19 +24,37 @@ const exactCopies = [
     local: 'proctor-lockup-white.svg',
     canonical: 'lockup/proctor-lockup-white.svg',
   },
+  {
+    local: 'proctor-lockup-purple-white.svg',
+    canonical: 'lockup/proctor-lockup-purple-white.svg',
+  },
 ];
 
-const derivedRasterSource = {
-  canonical: 'mark/proctor-mark-512.png',
-  canonicalSHA256:
-    '563655416240e68642d78aba57f363be03ce492172cb1215086ab5d5ea4944f5',
-};
+const derivedRasterSources = [
+  {
+    canonical: 'mark/proctor-mark-512.png',
+    canonicalSHA256:
+      '563655416240e68642d78aba57f363be03ce492172cb1215086ab5d5ea4944f5',
+  },
+  {
+    canonical: 'mark/proctor-mark-white.svg',
+    canonicalSHA256:
+      '2428d3e1d5b37e24f4300d87360cc5ac28121a5337bd63ccf947293010f88880',
+  },
+];
 
 const derivedRasters = [
   {
     local: 'proctor-mark-32.png',
     localSHA256:
       'ccdf760968020f6655e7b669782833b189d509d83d0c210d4a43e1e07664f800',
+    width: 32,
+    height: 32,
+  },
+  {
+    local: 'proctor-mark-white-32.png',
+    localSHA256:
+      'dfa09e566c353f5bb9a904347cb4e74e446a1601bcd6f6d1617b4f9b742f8e92',
     width: 32,
     height: 32,
   },
@@ -71,13 +93,15 @@ for (const asset of exactCopies) {
   }
 }
 
-const rasterSource = await readFile(
-  new URL(derivedRasterSource.canonical, canonicalAssets),
-);
-if (sha256(rasterSource) !== derivedRasterSource.canonicalSHA256) {
-  failures.push(
-    `${derivedRasterSource.canonical} changed; regenerate and review the webapp raster assets`,
+for (const source of derivedRasterSources) {
+  const rasterSource = await readFile(
+    new URL(source.canonical, canonicalAssets),
   );
+  if (sha256(rasterSource) !== source.canonicalSHA256) {
+    failures.push(
+      `${source.canonical} changed; regenerate and review the webapp raster assets`,
+    );
+  }
 }
 
 for (const asset of derivedRasters) {
