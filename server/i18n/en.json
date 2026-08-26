@@ -2304,6 +2304,90 @@
     "translation": "Try again"
   },
   {
+    "id": "webapp.verify_email.document_title",
+    "translation": "Verify email · Proctor"
+  },
+  {
+    "id": "webapp.verify_email.invalid.body",
+    "translation": "This link may have expired or already been used. Sign in to request another verification message."
+  },
+  {
+    "id": "webapp.verify_email.invalid.heading",
+    "translation": "This verification link can’t be used"
+  },
+  {
+    "id": "webapp.verify_email.invalid.label",
+    "translation": "Link unavailable"
+  },
+  {
+    "id": "webapp.verify_email.ready.action",
+    "translation": "Verify email"
+  },
+  {
+    "id": "webapp.verify_email.ready.body",
+    "translation": "Confirm that you want to verify the email address linked to this one-time message."
+  },
+  {
+    "id": "webapp.verify_email.ready.heading",
+    "translation": "Confirm your email"
+  },
+  {
+    "id": "webapp.verify_email.ready.label",
+    "translation": "Email verification"
+  },
+  {
+    "id": "webapp.verify_email.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.verify_email.skip_to_main",
+    "translation": "Skip to email verification"
+  },
+  {
+    "id": "webapp.verify_email.unavailable.body",
+    "translation": "Proctor couldn’t confirm the result. Try the link again, or sign in if it has already been used."
+  },
+  {
+    "id": "webapp.verify_email.unavailable.heading",
+    "translation": "We couldn’t verify your email"
+  },
+  {
+    "id": "webapp.verify_email.unavailable.label",
+    "translation": "Verification unavailable"
+  },
+  {
+    "id": "webapp.verify_email.unavailable.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.verify_email.verified.body",
+    "translation": "This email address is now verified. You can continue to sign in."
+  },
+  {
+    "id": "webapp.verify_email.verified.heading",
+    "translation": "Your email is verified"
+  },
+  {
+    "id": "webapp.verify_email.verified.label",
+    "translation": "Email verified"
+  },
+  {
+    "id": "webapp.verify_email.verifying.action",
+    "translation": "Verifying…"
+  },
+  {
+    "id": "webapp.verify_email.verifying.body",
+    "translation": "Keep this page open while Proctor checks the one-time link."
+  },
+  {
+    "id": "webapp.verify_email.verifying.heading",
+    "translation": "Verifying your email"
+  },
+  {
+    "id": "webapp.verify_email.verifying.label",
+    "translation": "Verification in progress"
+  },
+  {
     "id": "websocket.close.authorization_changed",
     "translation": "authorization changed"
   },

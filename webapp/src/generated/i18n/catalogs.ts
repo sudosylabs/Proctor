@@ -162,7 +162,28 @@ export const catalogs = {
     "webapp.setup.skip_to_main": "Skip to installation setup",
     "webapp.setup.status_failure.body": "Proctor couldn’t confirm whether this installation still needs setup.",
     "webapp.setup.status_failure.heading": "Setup status is unavailable",
-    "webapp.setup.status_failure.retry": "Try again"
+    "webapp.setup.status_failure.retry": "Try again",
+    "webapp.verify_email.document_title": "Verify email · Proctor",
+    "webapp.verify_email.invalid.body": "This link may have expired or already been used. Sign in to request another verification message.",
+    "webapp.verify_email.invalid.heading": "This verification link can’t be used",
+    "webapp.verify_email.invalid.label": "Link unavailable",
+    "webapp.verify_email.ready.action": "Verify email",
+    "webapp.verify_email.ready.body": "Confirm that you want to verify the email address linked to this one-time message.",
+    "webapp.verify_email.ready.heading": "Confirm your email",
+    "webapp.verify_email.ready.label": "Email verification",
+    "webapp.verify_email.sign_in": "Sign in",
+    "webapp.verify_email.skip_to_main": "Skip to email verification",
+    "webapp.verify_email.unavailable.body": "Proctor couldn’t confirm the result. Try the link again, or sign in if it has already been used.",
+    "webapp.verify_email.unavailable.heading": "We couldn’t verify your email",
+    "webapp.verify_email.unavailable.label": "Verification unavailable",
+    "webapp.verify_email.unavailable.retry": "Try again",
+    "webapp.verify_email.verified.body": "This email address is now verified. You can continue to sign in.",
+    "webapp.verify_email.verified.heading": "Your email is verified",
+    "webapp.verify_email.verified.label": "Email verified",
+    "webapp.verify_email.verifying.action": "Verifying…",
+    "webapp.verify_email.verifying.body": "Keep this page open while Proctor checks the one-time link.",
+    "webapp.verify_email.verifying.heading": "Verifying your email",
+    "webapp.verify_email.verifying.label": "Verification in progress"
   }
 } as const;
 

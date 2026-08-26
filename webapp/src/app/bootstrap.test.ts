@@ -125,4 +125,27 @@ describe("hosted page bootstrap", () => {
       credential: { kind: "desktop_browser_proof", value: "secret" },
     });
   });
+
+  it("removes and purpose-types an email verification token before rendering", () => {
+    const replacements: string[] = [];
+    const bootstrap = bootstrapHostedPage(
+      {
+        href: "https://proctor.example/account/verify-email#token=secret",
+        hash: "#token=secret",
+        pathname: "/account/verify-email",
+      },
+      {
+        state: null,
+        replaceState: (_state, _unused, url) => replacements.push(String(url)),
+      },
+    );
+
+    expect(replacements).toEqual([
+      "https://proctor.example/account/verify-email",
+    ]);
+    expect(bootstrap).toEqual({
+      route: "/account/verify-email",
+      credential: { kind: "email_verification_token", value: "secret" },
+    });
+  });
 });
