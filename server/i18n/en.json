@@ -1656,6 +1656,650 @@
     "translation": "Revoked by the user."
   },
   {
+    "id": "webapp.authorization_complete.checking.body",
+    "translation": "Proctor is checking for an active Session in this browser."
+  },
+  {
+    "id": "webapp.authorization_complete.checking.heading",
+    "translation": "Checking your sign-in"
+  },
+  {
+    "id": "webapp.authorization_complete.checking.label",
+    "translation": "Confirming Session"
+  },
+  {
+    "id": "webapp.authorization_complete.document_title",
+    "translation": "Sign-in status · Proctor"
+  },
+  {
+    "id": "webapp.authorization_complete.no_session.body",
+    "translation": "This browser doesn’t have an active Proctor Session."
+  },
+  {
+    "id": "webapp.authorization_complete.no_session.heading",
+    "translation": "You’re not signed in"
+  },
+  {
+    "id": "webapp.authorization_complete.no_session.label",
+    "translation": "No active Session"
+  },
+  {
+    "id": "webapp.authorization_complete.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.authorization_complete.signed_in.body",
+    "translation": "This browser has an active Proctor Session. You can close this page."
+  },
+  {
+    "id": "webapp.authorization_complete.signed_in.heading",
+    "translation": "You’re signed in"
+  },
+  {
+    "id": "webapp.authorization_complete.signed_in.label",
+    "translation": "Session confirmed"
+  },
+  {
+    "id": "webapp.authorization_complete.skip_to_main",
+    "translation": "Skip to sign-in status"
+  },
+  {
+    "id": "webapp.authorization_complete.unavailable.body",
+    "translation": "Proctor couldn’t confirm whether this browser has an active Session. Try again or start a new sign-in."
+  },
+  {
+    "id": "webapp.authorization_complete.unavailable.heading",
+    "translation": "We couldn’t check your sign-in"
+  },
+  {
+    "id": "webapp.authorization_complete.unavailable.label",
+    "translation": "Confirmation unavailable"
+  },
+  {
+    "id": "webapp.authorization_complete.unavailable.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.login.discovery_failure.body",
+    "translation": "Proctor couldn’t load the sign-in methods for this installation."
+  },
+  {
+    "id": "webapp.login.discovery_failure.heading",
+    "translation": "Sign-in methods are unavailable"
+  },
+  {
+    "id": "webapp.login.document_title",
+    "translation": "Sign in · Proctor"
+  },
+  {
+    "id": "webapp.login.external_failure",
+    "translation": "External sign-in wasn’t completed. Choose a method to try again."
+  },
+  {
+    "id": "webapp.login.form.email_or_username",
+    "translation": "Email or username"
+  },
+  {
+    "id": "webapp.login.form.error.generic",
+    "translation": "Proctor couldn’t sign you in. Check your details and try again."
+  },
+  {
+    "id": "webapp.login.form.error.invalid_credentials",
+    "translation": "The email, username, or password wasn’t accepted."
+  },
+  {
+    "id": "webapp.login.form.error.mfa_invalid",
+    "translation": "That authentication code wasn’t accepted."
+  },
+  {
+    "id": "webapp.login.form.error.mfa_unavailable",
+    "translation": "Proctor can’t verify an authentication code right now. Try again."
+  },
+  {
+    "id": "webapp.login.form.error.password_required",
+    "translation": "Enter your password."
+  },
+  {
+    "id": "webapp.login.form.error.rate_limited",
+    "translation": "Too many sign-in attempts were made. Try again later."
+  },
+  {
+    "id": "webapp.login.form.error.sessions_maximum",
+    "translation": "You already have the maximum number of active Sessions. Resolve another Session before signing in."
+  },
+  {
+    "id": "webapp.login.form.error.username_required",
+    "translation": "Enter your email or username."
+  },
+  {
+    "id": "webapp.login.form.forgot_password",
+    "translation": "Forgot password?"
+  },
+  {
+    "id": "webapp.login.form.mfa_back",
+    "translation": "Use a different password"
+  },
+  {
+    "id": "webapp.login.form.mfa_code",
+    "translation": "Authentication code"
+  },
+  {
+    "id": "webapp.login.form.mfa_help",
+    "translation": "Enter a current authenticator code or an unused recovery code."
+  },
+  {
+    "id": "webapp.login.form.mfa_heading",
+    "translation": "Confirm it’s you"
+  },
+  {
+    "id": "webapp.login.form.password",
+    "translation": "Password"
+  },
+  {
+    "id": "webapp.login.form.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.login.form.signing_in",
+    "translation": "Signing in…"
+  },
+  {
+    "id": "webapp.login.heading",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.login.institution.body",
+    "translation": "Your institution controls which sign-in methods are available."
+  },
+  {
+    "id": "webapp.login.institution.checking",
+    "translation": "Checking this installation’s access policy…"
+  },
+  {
+    "id": "webapp.login.institution.fallback",
+    "translation": "Institution access"
+  },
+  {
+    "id": "webapp.login.institution.label",
+    "translation": "Institution"
+  },
+  {
+    "id": "webapp.login.lede",
+    "translation": "Use your institution account to continue."
+  },
+  {
+    "id": "webapp.login.loading",
+    "translation": "Checking available sign-in methods…"
+  },
+  {
+    "id": "webapp.login.method_separator",
+    "translation": "or"
+  },
+  {
+    "id": "webapp.login.origin_mismatch.body",
+    "translation": "This page doesn’t match the Proctor origin configured for this installation. Reload from the address provided by your institution."
+  },
+  {
+    "id": "webapp.login.origin_mismatch.heading",
+    "translation": "This sign-in page can’t be used"
+  },
+  {
+    "id": "webapp.login.provider.continue",
+    "translation": "Continue with {{.Provider}}"
+  },
+  {
+    "id": "webapp.login.provider.group",
+    "translation": "Institution sign-in methods"
+  },
+  {
+    "id": "webapp.login.registration.action",
+    "translation": "Create an account"
+  },
+  {
+    "id": "webapp.login.registration.prompt",
+    "translation": "New to Proctor?"
+  },
+  {
+    "id": "webapp.login.reload",
+    "translation": "Reload page"
+  },
+  {
+    "id": "webapp.login.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.login.setup.body",
+    "translation": "Finish setting up this Proctor installation before signing in."
+  },
+  {
+    "id": "webapp.login.setup.heading",
+    "translation": "Setup is required"
+  },
+  {
+    "id": "webapp.login.setup.open",
+    "translation": "Open setup"
+  },
+  {
+    "id": "webapp.login.skip_to_main",
+    "translation": "Skip to sign in"
+  },
+  {
+    "id": "webapp.login.unavailable.body",
+    "translation": "This installation currently has no available sign-in method."
+  },
+  {
+    "id": "webapp.login.unavailable.heading",
+    "translation": "Sign in is unavailable"
+  },
+  {
+    "id": "webapp.register.accepted.body",
+    "translation": "Proctor accepted your registration request. A verification message will follow; verify your email before signing in."
+  },
+  {
+    "id": "webapp.register.accepted.heading",
+    "translation": "Check your email"
+  },
+  {
+    "id": "webapp.register.accepted.label",
+    "translation": "Registration accepted"
+  },
+  {
+    "id": "webapp.register.context.body",
+    "translation": "Public registration is available for this installation."
+  },
+  {
+    "id": "webapp.register.context.fallback",
+    "translation": "Institution access"
+  },
+  {
+    "id": "webapp.register.context.heading",
+    "translation": "Create a local account"
+  },
+  {
+    "id": "webapp.register.context.note",
+    "translation": "Registration creates an unverified User. Membership, roles, and Exam access are assigned separately."
+  },
+  {
+    "id": "webapp.register.discovery_failure.body",
+    "translation": "Proctor couldn’t load the registration policy for this installation."
+  },
+  {
+    "id": "webapp.register.discovery_failure.heading",
+    "translation": "Registration status is unavailable"
+  },
+  {
+    "id": "webapp.register.document_title",
+    "translation": "Create an account · Proctor"
+  },
+  {
+    "id": "webapp.register.form.acknowledgment",
+    "translation": "I understand that registration does not grant institutional access."
+  },
+  {
+    "id": "webapp.register.form.email",
+    "translation": "Email address"
+  },
+  {
+    "id": "webapp.register.form.error.acknowledgment_required",
+    "translation": "Confirm that registration does not grant institutional access."
+  },
+  {
+    "id": "webapp.register.form.error.details_invalid",
+    "translation": "Those registration details weren’t accepted. Review them and try again."
+  },
+  {
+    "id": "webapp.register.form.error.email_invalid",
+    "translation": "Enter a valid email address."
+  },
+  {
+    "id": "webapp.register.form.error.email_required",
+    "translation": "Enter your email address."
+  },
+  {
+    "id": "webapp.register.form.error.generic",
+    "translation": "Proctor couldn’t accept your registration request. Try again."
+  },
+  {
+    "id": "webapp.register.form.error.password_invalid",
+    "translation": "That password doesn’t meet this installation’s requirements."
+  },
+  {
+    "id": "webapp.register.form.error.password_required",
+    "translation": "Enter a password."
+  },
+  {
+    "id": "webapp.register.form.error.rate_limited",
+    "translation": "Too many registration attempts were made. Try again later."
+  },
+  {
+    "id": "webapp.register.form.error.username_required",
+    "translation": "Enter a username."
+  },
+  {
+    "id": "webapp.register.form.mail_note",
+    "translation": "We’ll send a verification message after your request is accepted."
+  },
+  {
+    "id": "webapp.register.form.password",
+    "translation": "Password"
+  },
+  {
+    "id": "webapp.register.form.password_help",
+    "translation": "Use a unique, policy-compliant password."
+  },
+  {
+    "id": "webapp.register.form.password_hide",
+    "translation": "Hide password"
+  },
+  {
+    "id": "webapp.register.form.password_show",
+    "translation": "Show password"
+  },
+  {
+    "id": "webapp.register.form.submit",
+    "translation": "Create account"
+  },
+  {
+    "id": "webapp.register.form.submitting",
+    "translation": "Creating account…"
+  },
+  {
+    "id": "webapp.register.form.username",
+    "translation": "Username"
+  },
+  {
+    "id": "webapp.register.heading",
+    "translation": "Create your account"
+  },
+  {
+    "id": "webapp.register.invitation_required.body",
+    "translation": "This Institution accepts new Users through an Invitation. Use the private link sent by the Institution."
+  },
+  {
+    "id": "webapp.register.invitation_required.heading",
+    "translation": "An Invitation is required"
+  },
+  {
+    "id": "webapp.register.lede",
+    "translation": "Use an email address, username, and password to register."
+  },
+  {
+    "id": "webapp.register.loading",
+    "translation": "Checking whether public registration is available…"
+  },
+  {
+    "id": "webapp.register.origin_mismatch.body",
+    "translation": "This page doesn’t match the Proctor origin configured for this installation. Reload from the address provided by your Institution."
+  },
+  {
+    "id": "webapp.register.origin_mismatch.heading",
+    "translation": "This registration page can’t be used"
+  },
+  {
+    "id": "webapp.register.proof.access",
+    "translation": "Institutional access is assigned separately"
+  },
+  {
+    "id": "webapp.register.proof.credentials",
+    "translation": "Credentials stay with this installation"
+  },
+  {
+    "id": "webapp.register.proof.verification",
+    "translation": "Email verification required"
+  },
+  {
+    "id": "webapp.register.reload",
+    "translation": "Reload page"
+  },
+  {
+    "id": "webapp.register.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.register.setup.body",
+    "translation": "Finish setting up this Proctor installation before creating an account."
+  },
+  {
+    "id": "webapp.register.setup.heading",
+    "translation": "Setup is required"
+  },
+  {
+    "id": "webapp.register.setup.open",
+    "translation": "Open setup"
+  },
+  {
+    "id": "webapp.register.sign_in.action",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.register.sign_in.prompt",
+    "translation": "Already have an account?"
+  },
+  {
+    "id": "webapp.register.skip_to_main",
+    "translation": "Skip to account registration"
+  },
+  {
+    "id": "webapp.register.unavailable.body",
+    "translation": "Proctor can’t accept public registration requests right now."
+  },
+  {
+    "id": "webapp.register.unavailable.heading",
+    "translation": "Registration is unavailable"
+  },
+  {
+    "id": "webapp.setup.already_initialized.body",
+    "translation": "This Proctor installation has already established its Institution and first administrator."
+  },
+  {
+    "id": "webapp.setup.already_initialized.heading",
+    "translation": "Setup is complete"
+  },
+  {
+    "id": "webapp.setup.context.administrator.body",
+    "translation": "First system administrator"
+  },
+  {
+    "id": "webapp.setup.context.administrator.label",
+    "translation": "Administrator"
+  },
+  {
+    "id": "webapp.setup.context.body",
+    "translation": "Create the Institution and first administrator for this Proctor installation."
+  },
+  {
+    "id": "webapp.setup.context.eyebrow",
+    "translation": "Installation setup"
+  },
+  {
+    "id": "webapp.setup.context.heading",
+    "translation": "Establish this installation"
+  },
+  {
+    "id": "webapp.setup.context.institution.body",
+    "translation": "Canonical and display identity"
+  },
+  {
+    "id": "webapp.setup.context.institution.label",
+    "translation": "Institution"
+  },
+  {
+    "id": "webapp.setup.context.note",
+    "translation": "One installation represents one Institution."
+  },
+  {
+    "id": "webapp.setup.context.operator.body",
+    "translation": "One-time bootstrap secret"
+  },
+  {
+    "id": "webapp.setup.context.operator.label",
+    "translation": "Operator authority"
+  },
+  {
+    "id": "webapp.setup.document_title",
+    "translation": "Set up Proctor · Proctor"
+  },
+  {
+    "id": "webapp.setup.form.administrator.display_name",
+    "translation": "Display name (optional)"
+  },
+  {
+    "id": "webapp.setup.form.administrator.email",
+    "translation": "Email address"
+  },
+  {
+    "id": "webapp.setup.form.administrator.heading",
+    "translation": "First administrator"
+  },
+  {
+    "id": "webapp.setup.form.administrator.password",
+    "translation": "Password"
+  },
+  {
+    "id": "webapp.setup.form.administrator.username",
+    "translation": "Username"
+  },
+  {
+    "id": "webapp.setup.form.caution",
+    "translation": "This action creates the Institution, first administrator, protected Role Binding, and initial Access Policy in one transaction."
+  },
+  {
+    "id": "webapp.setup.form.error.bootstrap_denied",
+    "translation": "That bootstrap secret wasn’t accepted. Check the value provided by the server operator."
+  },
+  {
+    "id": "webapp.setup.form.error.bootstrap_secret_required",
+    "translation": "Enter the one-time bootstrap secret."
+  },
+  {
+    "id": "webapp.setup.form.error.email_invalid",
+    "translation": "Enter a valid administrator email address."
+  },
+  {
+    "id": "webapp.setup.form.error.email_required",
+    "translation": "Enter the administrator email address."
+  },
+  {
+    "id": "webapp.setup.form.error.generic",
+    "translation": "Proctor couldn’t create the installation. No setup changes were applied. Review the details and try again."
+  },
+  {
+    "id": "webapp.setup.form.error.institution_display_name_required",
+    "translation": "Enter the Institution display name."
+  },
+  {
+    "id": "webapp.setup.form.error.institution_name_required",
+    "translation": "Enter the canonical Institution name."
+  },
+  {
+    "id": "webapp.setup.form.error.password_invalid",
+    "translation": "That password doesn’t meet this installation’s requirements."
+  },
+  {
+    "id": "webapp.setup.form.error.password_required",
+    "translation": "Enter the first administrator password."
+  },
+  {
+    "id": "webapp.setup.form.error.rate_limited",
+    "translation": "Too many setup attempts were made. Try again later."
+  },
+  {
+    "id": "webapp.setup.form.error.username_required",
+    "translation": "Enter the first administrator username."
+  },
+  {
+    "id": "webapp.setup.form.institution.description",
+    "translation": "Description (optional)"
+  },
+  {
+    "id": "webapp.setup.form.institution.display_name",
+    "translation": "Display name"
+  },
+  {
+    "id": "webapp.setup.form.institution.heading",
+    "translation": "Institution"
+  },
+  {
+    "id": "webapp.setup.form.institution.name",
+    "translation": "Institution name"
+  },
+  {
+    "id": "webapp.setup.form.operator.body",
+    "translation": "Enter the one-time secret provided by the server operator."
+  },
+  {
+    "id": "webapp.setup.form.operator.heading",
+    "translation": "Operator verification"
+  },
+  {
+    "id": "webapp.setup.form.operator.secret",
+    "translation": "Bootstrap secret"
+  },
+  {
+    "id": "webapp.setup.form.password_help",
+    "translation": "Use a unique, policy-compliant password."
+  },
+  {
+    "id": "webapp.setup.form.password_hide",
+    "translation": "Hide password"
+  },
+  {
+    "id": "webapp.setup.form.password_show",
+    "translation": "Show password"
+  },
+  {
+    "id": "webapp.setup.form.secret_hide",
+    "translation": "Hide bootstrap secret"
+  },
+  {
+    "id": "webapp.setup.form.secret_show",
+    "translation": "Show bootstrap secret"
+  },
+  {
+    "id": "webapp.setup.form.submit",
+    "translation": "Create installation"
+  },
+  {
+    "id": "webapp.setup.form.submitting",
+    "translation": "Creating installation…"
+  },
+  {
+    "id": "webapp.setup.heading",
+    "translation": "Set up Proctor"
+  },
+  {
+    "id": "webapp.setup.lede",
+    "translation": "Provide the operator proof, Institution identity, and first administrator."
+  },
+  {
+    "id": "webapp.setup.loading",
+    "translation": "Checking this installation’s setup status…"
+  },
+  {
+    "id": "webapp.setup.return_to_sign_in",
+    "translation": "Return to sign in"
+  },
+  {
+    "id": "webapp.setup.sign_in",
+    "translation": "Continue to sign in"
+  },
+  {
+    "id": "webapp.setup.skip_to_main",
+    "translation": "Skip to installation setup"
+  },
+  {
+    "id": "webapp.setup.status_failure.body",
+    "translation": "Proctor couldn’t confirm whether this installation still needs setup."
+  },
+  {
+    "id": "webapp.setup.status_failure.heading",
+    "translation": "Setup status is unavailable"
+  },
+  {
+    "id": "webapp.setup.status_failure.retry",
+    "translation": "Try again"
+  },
+  {
     "id": "websocket.close.authorization_changed",
     "translation": "authorization changed"
   },

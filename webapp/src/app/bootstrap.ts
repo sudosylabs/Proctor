@@ -15,6 +15,7 @@ export type HostedPageCredential =
 export interface HostedPageBootstrap {
   route?: HostedRoute;
   credential?: HostedPageCredential;
+  notice?: "external_login_failed";
 }
 
 type CredentialRoute = {
@@ -37,6 +38,25 @@ export function bootstrapHostedPage(
     return {};
   }
   const route = location.pathname;
+
+  if (
+    route === "/setup" ||
+    route === "/login" ||
+    route === "/register" ||
+    route === "/authorization/complete"
+  ) {
+    const fragment = location.hash;
+    if (fragment !== "") {
+      const sanitized = new URL(location.href);
+      sanitized.hash = "";
+      history.replaceState(history.state, "", sanitized);
+    }
+    if (route === "/login" && fragment === "#external_login=failed") {
+      return { route, notice: "external_login_failed" };
+    }
+    return { route };
+  }
+
   const expected = credentialRoutes[route];
   if (expected === undefined) {
     return { route };

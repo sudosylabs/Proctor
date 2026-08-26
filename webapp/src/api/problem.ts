@@ -7,6 +7,25 @@ export interface ProblemDetails {
   code?: string;
 }
 
+export function readProblemValue(value: unknown): ProblemDetails | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.type !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.status !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    type: value.type,
+    title: value.title,
+    status: value.status,
+    ...(typeof value.detail === "string" ? { detail: value.detail } : {}),
+    ...(typeof value.instance === "string" ? { instance: value.instance } : {}),
+    ...(typeof value.code === "string" ? { code: value.code } : {}),
+  };
+}
+
 export async function readProblem(response: Response): Promise<ProblemDetails | undefined> {
   const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim();
   if (contentType !== "application/problem+json") {
@@ -18,17 +37,7 @@ export async function readProblem(response: Response): Promise<ProblemDetails | 
   } catch {
     return undefined;
   }
-  if (!isRecord(value) || typeof value.type !== "string" || typeof value.title !== "string" || typeof value.status !== "number") {
-    return undefined;
-  }
-  return {
-    type: value.type,
-    title: value.title,
-    status: value.status,
-    ...(typeof value.detail === "string" ? { detail: value.detail } : {}),
-    ...(typeof value.instance === "string" ? { instance: value.instance } : {}),
-    ...(typeof value.code === "string" ? { code: value.code } : {}),
-  };
+  return readProblemValue(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readProblem } from "./problem";
+import { readProblem, readProblemValue } from "./problem";
 
 describe("readProblem", () => {
   it("returns a bounded Problem Details projection", async () => {
@@ -29,5 +29,22 @@ describe("readProblem", () => {
     await expect(readProblem(new Response("{}", {
       headers: { "Content-Type": "application/json" },
     }))).resolves.toBeUndefined();
+  });
+});
+
+describe("readProblemValue", () => {
+  it("projects a parsed Problem without retaining private fields", () => {
+    expect(readProblemValue({
+      type: "/problems/authentication",
+      title: "Authentication failed",
+      status: 401,
+      code: "authentication.invalid_credentials",
+      private_value: "must not escape",
+    })).toEqual({
+      type: "/problems/authentication",
+      title: "Authentication failed",
+      status: 401,
+      code: "authentication.invalid_credentials",
+    });
   });
 });
