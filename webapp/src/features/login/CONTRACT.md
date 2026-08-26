@@ -127,7 +127,9 @@ The local form contains visible, programmatically associated controls for:
 - `password`, labelled “Password”, with `type="password"` and
   `autocomplete="current-password"`.
 
-Both controls have stable names. The page never blocks paste, changes the
+Both controls are native-required and carry the shared visible required mark.
+The password field has a centered icon-only disclosure button with localized
+accessible-name and title text. The page never blocks paste, changes the
 person's input while typing, or places either value in a URL, storage,
 diagnostic, analytics, or error field. The server remains responsible for
 normalizing and resolving the login identifier.
@@ -158,8 +160,9 @@ Back does not restore a submitted credential form.
 `authentication.mfa.required` changes the same feature into an MFA challenge;
 it is not presented as a failed password. The challenge adds one visibly
 labelled `mfa_code` control for a current TOTP or unused recovery code with
-`autocomplete="one-time-code"`. It imposes no numeric-only pattern because a
-recovery code is also valid, and it never blocks paste.
+`autocomplete="one-time-code"`, native required semantics, and the shared
+visible required mark. It imposes no numeric-only pattern because a recovery
+code is also valid, and it never blocks paste.
 
 The page focuses the MFA control once when the challenge appears. It retains
 the login identifier and password only in live document memory long enough to

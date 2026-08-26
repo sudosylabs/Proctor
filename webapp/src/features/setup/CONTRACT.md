@@ -36,10 +36,12 @@ The visible form has three sections:
 
 Every control has a visible label, stable name, applicable input type and
 autocomplete value, associated validation guidance, and a minimum 44-pixel
-target. Password and bootstrap-secret disclosure is an explicit button with a
-text accessible name. Paste is never blocked. Optional empty profile values
-are omitted; required ordinary text is trimmed at submission while passwords
-and the bootstrap secret remain byte-for-byte as entered.
+target. Required controls use native required semantics and the shared visible
+required mark. Password and bootstrap-secret disclosure is a centered,
+icon-only button with localized accessible-name and title text. Paste is never
+blocked. Optional empty profile values are omitted; required ordinary text is
+trimmed at submission while passwords and the bootstrap secret remain
+byte-for-byte as entered.
 
 Empty required fields are rejected before transport. Focus moves to the first
 invalid control. One pending submission disables duplicate submission,

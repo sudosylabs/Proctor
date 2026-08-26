@@ -31,9 +31,13 @@ do not drive registration.
 
 The form contains required `email`, `username`, and `password` controls with
 visible labels, stable names, suitable types and autocomplete values, and
-associated validation. It also contains a required, client-only acknowledgment
-that registration does not grant institutional access. The acknowledgment is
-never persisted or transported and has no authorization meaning.
+associated validation. Required controls use native required semantics and the
+shared visible required mark. The password has a centered icon-only disclosure
+button with localized accessible-name and title text. The form also contains a
+required, client-only acknowledgment that registration does not grant
+institutional access; its checkbox and complete label form one aligned hit
+target. The acknowledgment is never persisted or transported and has no
+authorization meaning.
 
 Empty or malformed required values are rejected before transport and focus
 moves to the first invalid control. Username and email are trimmed at

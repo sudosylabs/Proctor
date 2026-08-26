@@ -38,6 +38,10 @@ component proven by real consumers. The first such component is the narrow
 establish a general authenticated application shell. The initial product icon
 vocabulary is governed by the narrow
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
+Repeated form behavior is governed by
+[`InputField`](./src/components/InputField/CONTRACT.md) and
+[`Button`](./src/components/Button/CONTRACT.md); feature forms retain their
+values, validation decisions, submission, and recovery.
 The system still owns no illustration set, general navigation behavior, or
 persisted theme chooser. Those decisions require a real flow and its states
 rather than speculative abstractions.
@@ -309,21 +313,21 @@ The initial measures are `36rem` for focused forms, `74ch` for prose, `72rem`
 for content, and `90rem` for the complete application frame. They are bounds,
 not instructions to fill every viewport.
 
-The initial access-page family uses the governed Proctor lockup and a thin
-proof line to connect product identity to the current task. Light presentation
-uses the purple-mark, ink-wordmark lockup; dark presentation uses the
-purple-mark, white-wordmark lockup. The standalone browser favicon follows the
-same system preference with a purple mark in light presentation and a white
-mark in dark presentation. The black mark is not a product-webapp asset.
+The initial access-page family gives the governed Proctor lockup clear space
+without an adjacent decorative rule. Light presentation uses the purple-mark,
+ink-wordmark lockup; dark presentation uses the purple-mark, white-wordmark
+lockup. The standalone browser favicon follows the same system preference with
+a purple mark in light presentation and a white mark in dark presentation. The
+black mark is not a product-webapp asset.
 
 On wide viewports, `/login` and `/register` separate safe Institution context
 from a focused form; `/setup` gives its one-time atomic form the wider content
 measure. The regions return to one-dimensional document flow when that
 separation no longer fits. `/authorization/complete` reduces the same frame to
 a bounded state rail: neutral while the Session is unconfirmed and teal only
-after the server confirms a valid Session. The rail and line are structural
-evidence, not decoration, and do not require unrelated hosted routes to reuse
-this family.
+after the server confirms a valid Session. That local rail is state evidence,
+not global decoration, and does not require unrelated hosted routes to reuse
+the pattern.
 
 Layer tokens progress from base (`0`) through sticky (`10`), popover (`20`),
 overlay (`30`), dialog (`40`), and notification (`50`). Components do not
@@ -338,6 +342,15 @@ focus-visible, disabled, pending, and relevant invalid or selected states.
 Hover never reveals required information. Actions use `button`; navigation
 uses a real link. Compound controls use `focus-within` when the group needs a
 single visible boundary.
+
+Required single-line fields use the native `required` attribute and a visible
+asterisk that is hidden from assistive technology; native semantics expose the
+constraint without polluting the accessible label. Descriptions and errors
+remain adjacent and programmatically associated. Password disclosure is an
+icon-only button centered within the input boundary, with a localized
+accessible name, matching title, and pressed state. Checkbox controls align to
+the first line of their label, and the complete label/control row is one hit
+target.
 
 The focus indicator is a three-pixel semantic focus ring with enough offset to
 remain visible against adjacent surfaces. Sticky regions, dialogs, and

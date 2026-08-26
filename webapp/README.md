@@ -30,6 +30,11 @@ Product icons use semantic names from the owned
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter; feature code never imports
 the underlying icon library directly. Brand and provider marks remain governed
 assets rather than product icons.
+Repeated action styling and single-line field behavior live beside the narrow
+[`Button`](./src/components/Button/CONTRACT.md) and
+[`InputField`](./src/components/InputField/CONTRACT.md) contracts. They remain
+domain-neutral; page modules still own values, validation, API orchestration,
+and recovery.
 Route modules remain thin orchestrators. Feature presentation lives under
 `src/components/` in PascalCase folders such as `Setup/` and `Registration/`,
 with context, state, form, and styles split by responsibility. Transport
