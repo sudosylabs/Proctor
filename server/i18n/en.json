@@ -2309,7 +2309,7 @@
   },
   {
     "id": "webapp.verify_email.invalid.body",
-    "translation": "This link may have expired or already been used. Sign in to request another verification message."
+    "translation": "This verification link is no longer available."
   },
   {
     "id": "webapp.verify_email.invalid.heading",
@@ -2320,12 +2320,16 @@
     "translation": "Link unavailable"
   },
   {
+    "id": "webapp.verify_email.invalid.notice",
+    "translation": "It may have expired or already been used. Sign in to request another verification message."
+  },
+  {
     "id": "webapp.verify_email.ready.action",
     "translation": "Verify email"
   },
   {
     "id": "webapp.verify_email.ready.body",
-    "translation": "Confirm that you want to verify the email address linked to this one-time message."
+    "translation": "Verify the email address linked to this one-time message."
   },
   {
     "id": "webapp.verify_email.ready.heading",
@@ -2336,8 +2340,12 @@
     "translation": "Email verification"
   },
   {
+    "id": "webapp.verify_email.ready.notice",
+    "translation": "This link can only be used once."
+  },
+  {
     "id": "webapp.verify_email.sign_in",
-    "translation": "Sign in"
+    "translation": "Return to sign in"
   },
   {
     "id": "webapp.verify_email.skip_to_main",
@@ -2345,7 +2353,7 @@
   },
   {
     "id": "webapp.verify_email.unavailable.body",
-    "translation": "Proctor couldn’t confirm the result. Try the link again, or sign in if it has already been used."
+    "translation": "Proctor couldn’t confirm the result."
   },
   {
     "id": "webapp.verify_email.unavailable.heading",
@@ -2356,12 +2364,16 @@
     "translation": "Verification unavailable"
   },
   {
+    "id": "webapp.verify_email.unavailable.notice",
+    "translation": "Try the link again, or sign in if it has already been used."
+  },
+  {
     "id": "webapp.verify_email.unavailable.retry",
     "translation": "Try again"
   },
   {
     "id": "webapp.verify_email.verified.body",
-    "translation": "This email address is now verified. You can continue to sign in."
+    "translation": "This email address is now verified."
   },
   {
     "id": "webapp.verify_email.verified.heading",
@@ -2370,6 +2382,10 @@
   {
     "id": "webapp.verify_email.verified.label",
     "translation": "Email verified"
+  },
+  {
+    "id": "webapp.verify_email.verified.notice",
+    "translation": "You can continue to sign in."
   },
   {
     "id": "webapp.verify_email.verifying.action",
@@ -2386,6 +2402,10 @@
   {
     "id": "webapp.verify_email.verifying.label",
     "translation": "Verification in progress"
+  },
+  {
+    "id": "webapp.verify_email.verifying.notice",
+    "translation": "The page will update when the check finishes."
   },
   {
     "id": "websocket.close.authorization_changed",

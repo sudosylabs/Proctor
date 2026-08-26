@@ -26,6 +26,10 @@ test("email verification requires deliberate token consumption", async ({
   ).toBeVisible();
   expect(requests).toBe(0);
   await expect(page.locator("body")).not.toContainText(verificationToken);
+  await expect(page.getByText("This link can only be used once.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Return to sign in", exact: true }),
+  ).toHaveAttribute("href", "/login");
 
   await page.getByRole("button", { name: "Verify email" }).click();
 
@@ -35,10 +39,11 @@ test("email verification requires deliberate token consumption", async ({
   });
   await expect(verifiedHeading).toBeVisible();
   await expect(verifiedHeading).toBeFocused();
-  await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-    "href",
-    "/login",
-  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.getByText("You can continue to sign in.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Return to sign in", exact: true }),
+  ).toHaveAttribute("href", "/login");
   expect(requests).toBe(1);
   await expect(page.locator("body")).not.toContainText(verificationToken);
 
@@ -106,6 +111,12 @@ test("terminal token failures remain deliberately indistinguishable", async ({
     name: "This verification link can’t be used",
   });
   await expect(invalidHeading).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(
+    page.getByText(
+      "It may have expired or already been used. Sign in to request another verification message.",
+    ),
+  ).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Private server");
   await expect(page.locator("body")).not.toContainText(verificationToken);
 });
@@ -152,6 +163,9 @@ test("a retryable failure retains one in-memory token without duplicate submissi
     name: "We couldn’t verify your email",
   });
   await expect(unavailableHeading).toBeFocused();
+  await expect(
+    page.getByText("Try the link again, or sign in if it has already been used."),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Your email is verified" }),

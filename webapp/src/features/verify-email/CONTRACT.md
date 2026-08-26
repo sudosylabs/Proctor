@@ -41,8 +41,10 @@ retry.
 
 The page requests the stable title `Verify email · Proctor`. It contains the
 shared first-focusable skip link, one `main` landmark, one state-specific `h1`,
-visible state label and supporting copy, and one polite live region. State is
-never communicated by color or icon alone.
+visible state label and supporting copy, one state-aware bordered notice, and
+one polite live region. The ready notice explains that the link is single-use;
+terminal and retryable outcomes replace that notice in place. State is never
+communicated by color or icon alone.
 
 There is no autofocus on initial load. After a user-triggered completion or
 retry resolves, focus moves to the resulting heading so the context change is
@@ -58,11 +60,18 @@ instance, and unknown code values are never rendered.
 
 | State | Entry | Available action |
 | --- | --- | --- |
-| Ready | One purpose-specific token was captured | Explicit `Verify email` button |
-| Verifying | The explicit completion request is pending | Disabled pending button; no duplicate request |
+| Ready | One purpose-specific token was captured | Explicit `Verify email` button and normal same-origin `Return to sign in` link |
+| Verifying | The explicit completion request is pending | Disabled pending button and normal same-origin `Return to sign in` link; no duplicate request |
 | Verified | The API returns exactly `204` | Normal same-origin `Sign in` link |
 | Link unavailable | No token exists, or the API returns `request.invalid` or `authentication.account_token.invalid` | Normal same-origin `Sign in` link |
 | Verification unavailable | Network failure, malformed response, rate limit, or any other bounded API failure | Explicit `Try again` button and normal `Sign in` link |
+
+The browser does not attempt to determine token expiry when the page opens.
+The credential is opaque to the page, and the server checks its active,
+unconsumed state against authoritative PostgreSQL time only when the person
+activates `Verify email`. An expired, superseded, consumed, malformed, or
+concurrently consumed token therefore enters the same link-unavailable state;
+the notice may name those possibilities but never claims which one occurred.
 
 The link-unavailable state does not distinguish malformed, expired,
 superseded, already-used, or concurrent-loser tokens. The unavailable state

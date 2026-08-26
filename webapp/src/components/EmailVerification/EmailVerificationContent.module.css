@@ -1,46 +1,30 @@
 @layer components {
   .status {
     --verification-status-color: var(--proctor-color-action-primary);
-    --verification-status-surface: var(--proctor-color-background-subtle);
+    --verification-notice-border: var(--proctor-color-border-interactive);
+    --verification-notice-surface: var(--proctor-color-background-surface);
 
     display: flex;
     flex-direction: column;
-    gap: var(--proctor-space-5);
     inline-size: 100%;
   }
 
   .verified {
     --verification-status-color: var(--proctor-color-state-success);
-    --verification-status-surface: var(--proctor-color-state-success-surface);
+    --verification-notice-border: var(--proctor-color-state-success);
+    --verification-notice-surface: var(--proctor-color-state-success-surface);
   }
 
   .invalid {
     --verification-status-color: var(--proctor-color-state-danger);
-    --verification-status-surface: var(--proctor-color-state-danger-surface);
+    --verification-notice-border: var(--proctor-color-state-danger);
+    --verification-notice-surface: var(--proctor-color-state-danger-surface);
   }
 
   .unavailable {
     --verification-status-color: var(--proctor-color-state-warning);
-    --verification-status-surface: var(--proctor-color-state-warning-surface);
-  }
-
-  .iconFrame {
-    display: grid;
-    inline-size: var(--proctor-control-size-comfortable);
-    block-size: var(--proctor-control-size-comfortable);
-    place-items: center;
-    border: var(--proctor-border-width-hairline) solid
-      var(--verification-status-color);
-    border-radius: var(--proctor-radius-card);
-    background: var(--verification-status-surface);
-    color: var(--verification-status-color);
-  }
-
-  .content {
-    display: flex;
-    min-inline-size: 0;
-    flex-direction: column;
-    gap: var(--proctor-space-4);
+    --verification-notice-border: var(--proctor-color-state-warning);
+    --verification-notice-surface: var(--proctor-color-state-warning-surface);
   }
 
   .label {
@@ -52,8 +36,9 @@
     text-transform: uppercase;
   }
 
-  .content h1 {
+  .status h1 {
     max-inline-size: 18ch;
+    margin-block-start: var(--proctor-space-4);
     font-family: var(--proctor-font-family-display);
     font-size: var(--proctor-font-size-display);
     font-weight: var(--proctor-font-weight-semibold);
@@ -64,9 +49,29 @@
 
   .body {
     max-inline-size: 46ch;
+    margin-block-start: var(--proctor-space-4);
     color: var(--proctor-color-foreground-muted);
     font-size: var(--proctor-font-size-body-large);
     line-height: var(--proctor-line-height-body-large);
+  }
+
+  .notice {
+    display: grid;
+    max-inline-size: 100%;
+    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
+    gap: var(--proctor-space-4);
+    align-items: center;
+    margin-block-start: var(--proctor-space-6);
+    padding: var(--proctor-space-4) var(--proctor-space-5);
+    border: var(--proctor-border-width-hairline) solid
+      var(--verification-notice-border);
+    border-radius: var(--proctor-radius-card);
+    background: var(--verification-notice-surface);
+    color: var(--verification-status-color);
+  }
+
+  .notice p {
+    color: var(--proctor-color-foreground-default);
   }
 
   .actions {
@@ -74,7 +79,14 @@
     flex-wrap: wrap;
     gap: var(--proctor-space-3) var(--proctor-space-5);
     align-items: center;
-    margin-block-start: var(--proctor-space-4);
+    margin-block-start: var(--proctor-space-6);
+  }
+
+  .signInLink {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-default);
+    align-items: center;
+    font-weight: var(--proctor-font-weight-semibold);
   }
 
   .visuallyHidden {
@@ -89,19 +101,24 @@
     white-space: nowrap;
   }
 
-  @media (min-width: 30rem) {
-    .status {
-      display: grid;
-      grid-template-columns: var(--proctor-control-size-comfortable) minmax(0, 1fr);
-      gap: var(--proctor-space-6);
-      align-items: start;
+  @media (max-width: 30rem) {
+    .actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .actions button {
+      inline-size: 100%;
+    }
+
+    .signInLink {
+      align-self: flex-start;
     }
   }
 
   @media (forced-colors: active) {
-    .iconFrame {
+    .notice {
       border-color: ButtonText;
-      color: ButtonText;
     }
   }
 }

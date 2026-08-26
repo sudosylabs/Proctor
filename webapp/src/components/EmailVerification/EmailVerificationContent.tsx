@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { EmailVerificationResult } from "../../features/verify-email/VerifyEmailApi";
 import { message } from "../../i18n/messages";
-import { Button, ButtonLink } from "../Button/Button";
+import { Button } from "../Button/Button";
 import { Icon, type IconName } from "../Icon/Icon";
 import styles from "./EmailVerificationContent.module.css";
 
@@ -56,12 +56,14 @@ export function EmailVerificationContent({
     }
     setState(nextState);
     setLiveMessage(copyFor(nextState).body);
-    requestAnimationFrame(() => headingRef.current?.focus());
+    requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }));
   }
 
   const copy = copyFor(state);
   const iconName: IconName =
-    state === "invalid" || state === "unavailable" ? "warning" : "mail";
+    state === "invalid" || state === "unavailable"
+      ? "warning"
+      : "information";
 
   return (
     <section
@@ -71,17 +73,16 @@ export function EmailVerificationContent({
       <div className={styles.visuallyHidden} aria-live="polite" aria-atomic="true">
         {liveMessage}
       </div>
-      <div className={styles.iconFrame} aria-hidden="true">
-        <Icon name={iconName} size="large" />
+      <p className={styles.label}>{copy.label}</p>
+      <h1 id="verify-email-heading" ref={headingRef} tabIndex={-1}>
+        {copy.heading}
+      </h1>
+      <p className={styles.body}>{copy.body}</p>
+      <div className={styles.notice}>
+        <Icon name={iconName} />
+        <p>{copy.notice}</p>
       </div>
-      <div className={styles.content}>
-        <p className={styles.label}>{copy.label}</p>
-        <h1 id="verify-email-heading" ref={headingRef} tabIndex={-1}>
-          {copy.heading}
-        </h1>
-        <p className={styles.body}>{copy.body}</p>
-        <VerificationActions state={state} onSubmit={submit} />
-      </div>
+      <VerificationActions state={state} onSubmit={submit} />
     </section>
   );
 }
@@ -103,6 +104,7 @@ function VerificationActions({
         >
           {message("webapp.verify_email.ready.action")}
         </Button>
+        <SignInLink />
       </div>
     );
   }
@@ -112,18 +114,22 @@ function VerificationActions({
         <Button onClick={onSubmit}>
           {message("webapp.verify_email.unavailable.retry")}
         </Button>
-        <ButtonLink href="/login" variant="secondary">
-          {message("webapp.verify_email.sign_in")}
-        </ButtonLink>
+        <SignInLink />
       </div>
     );
   }
   return (
     <div className={styles.actions}>
-      <ButtonLink href="/login">
-        {message("webapp.verify_email.sign_in")}
-      </ButtonLink>
+      <SignInLink />
     </div>
+  );
+}
+
+function SignInLink() {
+  return (
+    <a className={styles.signInLink} href="/login">
+      {message("webapp.verify_email.sign_in")}
+    </a>
   );
 }
 
@@ -134,30 +140,35 @@ function copyFor(state: VerificationState) {
         label: message("webapp.verify_email.ready.label"),
         heading: message("webapp.verify_email.ready.heading"),
         body: message("webapp.verify_email.ready.body"),
+        notice: message("webapp.verify_email.ready.notice"),
       };
     case "verifying":
       return {
         label: message("webapp.verify_email.verifying.label"),
         heading: message("webapp.verify_email.verifying.heading"),
         body: message("webapp.verify_email.verifying.body"),
+        notice: message("webapp.verify_email.verifying.notice"),
       };
     case "verified":
       return {
         label: message("webapp.verify_email.verified.label"),
         heading: message("webapp.verify_email.verified.heading"),
         body: message("webapp.verify_email.verified.body"),
+        notice: message("webapp.verify_email.verified.notice"),
       };
     case "invalid":
       return {
         label: message("webapp.verify_email.invalid.label"),
         heading: message("webapp.verify_email.invalid.heading"),
         body: message("webapp.verify_email.invalid.body"),
+        notice: message("webapp.verify_email.invalid.notice"),
       };
     case "unavailable":
       return {
         label: message("webapp.verify_email.unavailable.label"),
         heading: message("webapp.verify_email.unavailable.heading"),
         body: message("webapp.verify_email.unavailable.body"),
+        notice: message("webapp.verify_email.unavailable.notice"),
       };
   }
 }
