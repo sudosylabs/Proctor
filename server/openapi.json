@@ -114,7 +114,7 @@
         "name": "client_type",
         "required": false,
         "schema": {
-          "default": "desktop",
+          "default": "web",
           "enum": [
             "desktop",
             "web"
