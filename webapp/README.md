@@ -1,8 +1,7 @@
 # Proctor webapp
 
 This private Vite module contains the browser runtime for Proctor's
-server-hosted access and onboarding pages. The visual page and design-system
-component implementation is deliberately deferred. The module owns routing,
+server-hosted access and onboarding pages. The module owns routing,
 typed same-origin transport, browser credential handling, build output, the
 generated token/theme system, and the document-level browser foundation.
 
@@ -17,10 +16,25 @@ and generate [`src/styles/tokens.css`](./src/styles/tokens.css) plus the typed
 [`src/generated/design-system/themes.ts`](./src/generated/design-system/themes.ts)
 runtime catalog. The first visible slice is the server-hosted `/login` route;
 its exact preimplementation behavior lives in the feature-local
-[`login` contract](./src/features/login/CONTRACT.md); its terminal
+[`login` contract](./src/features/login/CONTRACT.md). One-time installation
+establishment and public local account admission live in the
+[`setup`](./src/features/setup/CONTRACT.md) and
+[`register`](./src/features/register/CONTRACT.md) contracts. Terminal
 Session-confirmation behavior lives in the companion
 [`authorization-complete` contract](./src/features/authorization-complete/CONTRACT.md).
-No visual page or shared component is implemented yet.
+Those routes form the initial visible access-page family. Their shared
+structural frame is governed beside
+[`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md); feature
+modules retain their own state, transport, content, and recovery behavior.
+Product icons use semantic names from the owned
+[`Icon`](./src/components/Icon/CONTRACT.md) adapter; feature code never imports
+the underlying icon library directly. Brand and provider marks remain governed
+assets rather than product icons.
+Route modules remain thin orchestrators. Feature presentation lives under
+`src/components/` in PascalCase folders such as `Setup/` and `Registration/`,
+with context, state, form, and styles split by responsibility. Transport
+operations stay in the owning feature module and are passed into visual
+components as typed functions.
 
 The browser entry loads `reset.css`, the generated `tokens.css`, and `base.css`
 in declared cascade-layer order. The root also owns document metadata and

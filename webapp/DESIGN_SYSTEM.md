@@ -31,10 +31,16 @@ This foundation owns:
 - CSS ownership and the path for adding themes, components, and pages; and
 - automated token generation, contrast checks, and authored-style guards.
 
-It does not yet own page composition, component APIs, an icon library or
-product icon vocabulary, illustration assets, navigation behavior, or a
-persisted theme chooser. Those decisions require a real hosted-page flow and
-its states rather than speculative abstractions.
+Page composition and component APIs remain feature-owned or governed beside a
+component proven by real consumers. The first such component is the narrow
+[`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md) shared by
+`/setup`, `/login`, `/register`, and `/authorization/complete`; it does not
+establish a general authenticated application shell. The initial product icon
+vocabulary is governed by the narrow
+[`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
+The system still owns no illustration set, general navigation behavior, or
+persisted theme chooser. Those decisions require a real flow and its states
+rather than speculative abstractions.
 
 ## Direction
 
@@ -258,16 +264,24 @@ receive a shadow merely to look complete.
 
 ## Icons and imagery
 
-The optical icon sizes are `16px`, `20px`, and `24px`. Product icons inherit
-`currentColor`, use a consistent stroke and view box, and never replace a text
-label merely to save space. Decorative icons are hidden from assistive
-technology; an icon-only action has an explicit accessible name and the
-default pointer target.
+Selected [Lucide React](https://lucide.dev/guide/packages/lucide-react) glyphs
+are the sole product-icon source and are exposed only through the owned
+[`Icon`](./src/components/Icon/CONTRACT.md) adapter. Feature code imports
+semantic Proctor names from that adapter, never `lucide-react`, so changing a
+glyph or source does not leak library APIs through the product. Add a name only
+when a concrete recurring use proves its meaning.
 
-Do not mix emoji, ad hoc SVGs, and several icon libraries. Select or create an
-icon source only when the first visible slice establishes a recurring product
-vocabulary, then wrap it behind one owned primitive. Product and provider
-marks remain original artwork and do not inherit the interface icon grammar.
+The optical sizes are `16px`, `20px`, and `24px`. Icons render as inline SVG,
+inherit `currentColor`, and use Lucide's consistent `24` view box with a `2px`
+stroke. They never replace a text label merely to save space. Decorative icons
+are hidden from assistive technology; an icon-only action has an explicit
+accessible name and the default pointer target on its owning control.
+
+Do not introduce emoji, text glyphs, ad hoc product SVGs, or another icon
+library. Product and provider marks remain original artwork and do not inherit
+the interface icon grammar. CSS indicators that express a component's
+structure or progress also remain owned by that component rather than being
+approximated by a glyph.
 Webapp-owned copies and their provenance are governed beside the assets in
 [`src/assets/brand`](./src/assets/brand/README.md); product code never imports
 the repository masters directly.
@@ -294,6 +308,22 @@ content itself is inherently two-dimensional.
 The initial measures are `36rem` for focused forms, `74ch` for prose, `72rem`
 for content, and `90rem` for the complete application frame. They are bounds,
 not instructions to fill every viewport.
+
+The initial access-page family uses the governed Proctor lockup and a thin
+proof line to connect product identity to the current task. Light presentation
+uses the purple-mark, ink-wordmark lockup; dark presentation uses the
+purple-mark, white-wordmark lockup. The standalone browser favicon follows the
+same system preference with a purple mark in light presentation and a white
+mark in dark presentation. The black mark is not a product-webapp asset.
+
+On wide viewports, `/login` and `/register` separate safe Institution context
+from a focused form; `/setup` gives its one-time atomic form the wider content
+measure. The regions return to one-dimensional document flow when that
+separation no longer fits. `/authorization/complete` reduces the same frame to
+a bounded state rail: neutral while the Session is unconfirmed and teal only
+after the server confirms a valid Session. The rail and line are structural
+evidence, not decoration, and do not require unrelated hosted routes to reuse
+this family.
 
 Layer tokens progress from base (`0`) through sticky (`10`), popover (`20`),
 overlay (`30`), dialog (`40`), and notification (`50`). Components do not
