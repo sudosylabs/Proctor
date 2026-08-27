@@ -1,8 +1,9 @@
 import { type FormEvent, useRef, useState } from "react";
 
 import type {
-  InvitationAcceptanceResult,
+  InvitationAccountAcceptanceResult,
   InvitationAccountSubmission,
+  InvitationSessionAcceptanceResult,
   InvitationStartResult,
 } from "../../features/join/InvitationApi";
 import { message } from "../../i18n/messages";
@@ -17,8 +18,8 @@ import styles from "./InvitationAcceptance.module.css";
 export interface InvitationContentProps {
   acceptAccount(
     submission: InvitationAccountSubmission,
-  ): Promise<InvitationAcceptanceResult>;
-  acceptSession(handle: string): Promise<InvitationAcceptanceResult>;
+  ): Promise<InvitationAccountAcceptanceResult>;
+  acceptSession(handle: string): Promise<InvitationSessionAcceptanceResult>;
   institutionName?: string;
   loading: boolean;
   state: InvitationStartResult;
@@ -106,7 +107,7 @@ function InvitationAccountForm({
 }: {
   acceptAccount(
     submission: InvitationAccountSubmission,
-  ): Promise<InvitationAcceptanceResult>;
+  ): Promise<InvitationAccountAcceptanceResult>;
   handle: string;
   institutionName?: string;
   onAccepted(): void;
@@ -153,22 +154,12 @@ function InvitationAccountForm({
       setUsername("");
       setPassword("");
       onAccepted();
-    } else if (
-      result.kind === "problem" &&
-      result.code === "authentication.password.invalid"
-    ) {
+    } else if (result.kind === "password_rejected") {
       setPasswordError(message("webapp.join.form.error.password_invalid"));
       requestAnimationFrame(() => passwordRef.current?.focus());
-    } else if (
-      result.kind === "problem" &&
-      (result.code === "invitation.invalid" ||
-        result.code === "invitation.user_invalid")
-    ) {
+    } else if (result.kind === "details_invalid") {
       setFormError(message("webapp.join.form.error.details_invalid"));
-    } else if (
-      result.kind === "problem" &&
-      result.code === "authentication.rate_limited"
-    ) {
+    } else if (result.kind === "rate_limited") {
       setFormError(message("webapp.join.form.error.rate_limited"));
     } else {
       setFormError(message("webapp.join.form.error.unavailable"));
@@ -275,7 +266,7 @@ function SessionInvitation({
   institutionName,
   onAccepted,
 }: {
-  acceptSession(handle: string): Promise<InvitationAcceptanceResult>;
+  acceptSession(handle: string): Promise<InvitationSessionAcceptanceResult>;
   handle: string;
   institutionName?: string;
   onAccepted(): void;
@@ -293,11 +284,7 @@ function SessionInvitation({
     const result = await acceptSession(handle);
     if (result.kind === "accepted") {
       onAccepted();
-    } else if (
-      result.kind === "problem" &&
-      (result.code === "authentication.required" ||
-        result.code === "authentication.invalid_token")
-    ) {
+    } else if (result.kind === "session_required") {
       setNeedsSession(true);
       setFormError(message("webapp.join.session.error.sign_in"));
     } else {

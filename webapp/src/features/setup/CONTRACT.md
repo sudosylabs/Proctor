@@ -57,6 +57,10 @@ authority, infer email verification, or navigate automatically.
 
 Problem behavior is selected only from the bounded `problem.code`:
 
+The setup action module owns that selection and successful-response validation.
+The form receives only semantic outcomes such as bootstrap denial, password
+rejection, rate limiting, completion, or safe unavailability.
+
 | Problem code | Page behavior |
 | --- | --- |
 | `installation.already_initialized` | Clear live secrets and show the setup-complete state |

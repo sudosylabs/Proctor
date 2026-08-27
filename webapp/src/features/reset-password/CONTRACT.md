@@ -18,3 +18,8 @@ may still be usable. The one-column task introduction explains the single-use
 recovery context without a progress indicator or additional server state.
 Pre-action and terminal explanatory evidence uses the shared `Notice`
 treatment.
+
+The completion action accepts only the declared HTTP 204 response and owns the
+mapping from concealed token failure, password rejection, rate limiting, and
+unknown or transport failure into semantic results. Presentation never receives
+or compares a server problem code.

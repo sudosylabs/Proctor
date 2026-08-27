@@ -220,6 +220,9 @@ Behavior is selected by the bounded `problem.code`, never by matching localized
 `title` or `detail`. Unknown, malformed, or non-Problem responses use the
 generic recoverable failure. Server prose and arbitrary response fields are not
 rendered directly. UI messages come from the webapp localization catalog.
+The login action module owns this classification and validates the successful
+web Session response. Presentation receives only the bounded semantic result;
+it does not receive or compare server codes.
 
 | Problem code | Page behavior |
 | --- | --- |

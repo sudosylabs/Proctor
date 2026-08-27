@@ -7,7 +7,6 @@ import {
 
 import { apiClient } from "../../api/client";
 import type { components } from "../../api/generated/schema";
-import { readProblemValue } from "../../api/problem";
 import { navigateToProvider } from "../../auth/navigation";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
@@ -16,6 +15,7 @@ import { InputField } from "../../components/InputField/InputField";
 import { PasswordField } from "../../components/InputField/PasswordField";
 import { Notice } from "../../components/Notice/Notice";
 import { message } from "../../i18n/messages";
+import { authenticateLocal, type AuthenticateLocal } from "./LoginApi";
 import styles from "./LoginPage.module.css";
 
 type Discovery = components["schemas"]["PublicAccessDiscoveryResponse"];
@@ -196,6 +196,7 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
         ) : null}
 
         <DiscoveryContent
+          authenticate={authenticateLocal}
           state={discoveryState}
           onRetry={retryDiscovery}
           onAuthenticationAction={() => setExternalNotice(false)}
@@ -206,12 +207,14 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
 }
 
 interface DiscoveryContentProps {
+  authenticate: AuthenticateLocal;
   onAuthenticationAction(): void;
   onRetry(): void;
   state: DiscoveryState;
 }
 
 function DiscoveryContent({
+  authenticate,
   onAuthenticationAction,
   onRetry,
   state,
@@ -270,6 +273,7 @@ function DiscoveryContent({
   }
   return (
     <LoginMethods
+      authenticate={authenticate}
       discovery={state.discovery}
       onAuthenticationAction={onAuthenticationAction}
     />
@@ -297,9 +301,11 @@ function RouteState({
 }
 
 function LoginMethods({
+  authenticate,
   discovery,
   onAuthenticationAction,
 }: {
+  authenticate: AuthenticateLocal;
   discovery: Discovery;
   onAuthenticationAction(): void;
 }) {
@@ -309,7 +315,10 @@ function LoginMethods({
   return (
     <div className={styles.methods}>
       {hasLocal ? (
-        <LocalLoginForm onAuthenticationAction={onAuthenticationAction} />
+        <LocalLoginForm
+          authenticate={authenticate}
+          onAuthenticationAction={onAuthenticationAction}
+        />
       ) : null}
 
       {hasLocal && hasProviders ? (
@@ -357,8 +366,10 @@ function LoginMethods({
 }
 
 function LocalLoginForm({
+  authenticate,
   onAuthenticationAction,
 }: {
+  authenticate: AuthenticateLocal;
   onAuthenticationAction(): void;
 }) {
   const [loginID, setLoginID] = useState("");
@@ -418,15 +429,12 @@ function LocalLoginForm({
     setPending(true);
     setLiveMessage(message("webapp.login.form.signing_in"));
     try {
-      const { data, error } = await apiClient.POST("/api/v1/auth/login", {
-        body: {
-          login_id: loginID,
-          password,
-          client_type: "web",
-          ...(mfaRequired ? { mfa_code: mfaCode } : {}),
-        },
+      const result = await authenticate({
+        loginID,
+        password,
+        ...(mfaRequired ? { mfaCode } : {}),
       });
-      if (data !== undefined) {
+      if (result.kind === "authenticated") {
         setLoginID("");
         setPassword("");
         setMFACode("");
@@ -434,8 +442,7 @@ function LocalLoginForm({
         return;
       }
 
-      const code = readProblemValue(error)?.code;
-      if (code === "authentication.mfa.required") {
+      if (result.kind === "mfa_required") {
         setMFARequired(true);
         setMFACode("");
         setFieldErrors({});
@@ -443,7 +450,7 @@ function LocalLoginForm({
         setLiveMessage(message("webapp.login.form.mfa_help"));
         return;
       }
-      if (code === "authentication.mfa.invalid_code") {
+      if (result.kind === "mfa_invalid") {
         const errorMessage = message("webapp.login.form.error.mfa_invalid");
         setFieldErrors({ mfa_code: errorMessage });
         setLiveMessage(errorMessage);
@@ -452,17 +459,17 @@ function LocalLoginForm({
       }
 
       let safeError: string;
-      switch (code) {
-        case "authentication.invalid_credentials":
+      switch (result.kind) {
+        case "invalid_credentials":
           safeError = message("webapp.login.form.error.invalid_credentials");
           break;
-        case "authentication.mfa.unavailable":
+        case "mfa_unavailable":
           safeError = message("webapp.login.form.error.mfa_unavailable");
           break;
-        case "authentication.sessions.maximum_reached":
+        case "session_limit":
           safeError = message("webapp.login.form.error.sessions_maximum");
           break;
-        case "authentication.rate_limited":
+        case "rate_limited":
           safeError = message("webapp.login.form.error.rate_limited");
           break;
         default:

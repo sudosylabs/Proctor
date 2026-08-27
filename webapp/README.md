@@ -56,6 +56,9 @@ Route modules remain thin orchestrators. Feature presentation lives under
 with context, state, form, and styles split by responsibility. Transport
 operations stay in the owning feature module and are passed into visual
 components as typed functions.
+Those feature action modules validate declared success responses and classify
+Problem Details into bounded semantic outcomes. Presentation components never
+receive server problem codes or select behavior from transport status.
 
 The browser entry loads `reset.css`, the generated `tokens.css`, and `base.css`
 in declared cascade-layer order. The root also owns document metadata and

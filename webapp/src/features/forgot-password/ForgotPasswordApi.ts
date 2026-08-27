@@ -3,8 +3,8 @@ import { readProblemValue } from "../../api/problem";
 
 export type PasswordResetRequestResult =
   | { kind: "accepted" }
-  | { kind: "problem"; code?: string }
-  | { kind: "failure" };
+  | { kind: "rate_limited" }
+  | { kind: "unavailable" };
 
 export async function requestPasswordReset(
   email: string,
@@ -17,8 +17,11 @@ export async function requestPasswordReset(
     if (response.status === 202) {
       return { kind: "accepted" };
     }
-    return { kind: "problem", code: readProblemValue(error)?.code };
+    if (readProblemValue(error)?.code === "authentication.rate_limited") {
+      return { kind: "rate_limited" };
+    }
+    return { kind: "unavailable" };
   } catch {
-    return { kind: "failure" };
+    return { kind: "unavailable" };
   }
 }

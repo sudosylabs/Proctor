@@ -46,10 +46,7 @@ export function ForgotPasswordContent({
     if (result.kind === "accepted") {
       setEmail("");
       setAccepted(true);
-    } else if (
-      result.kind === "problem" &&
-      result.code === "authentication.rate_limited"
-    ) {
+    } else if (result.kind === "rate_limited") {
       setFormError(message("webapp.forgot_password.form.error.rate_limited"));
     } else {
       setFormError(message("webapp.forgot_password.form.error.unavailable"));

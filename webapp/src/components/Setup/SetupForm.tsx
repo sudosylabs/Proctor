@@ -159,30 +159,20 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
         return;
       }
 
-      if (result.kind === "failure") {
-        showFormFailure(message("webapp.setup.form.error.generic"));
-        return;
-      }
-
-      switch (result.code) {
-        case "installation.already_initialized":
-          setBootstrapSecret("");
-          setPassword("");
-          onComplete();
-          return;
-        case "installation.bootstrap_denied":
+      switch (result.kind) {
+        case "bootstrap_denied":
           showFieldFailure(
             "bootstrap_secret",
             message("webapp.setup.form.error.bootstrap_denied"),
           );
           return;
-        case "authentication.password.invalid":
+        case "password_rejected":
           showFieldFailure(
             "password",
             message("webapp.setup.form.error.password_invalid"),
           );
           return;
-        case "authentication.rate_limited":
+        case "rate_limited":
           showFormFailure(message("webapp.setup.form.error.rate_limited"));
           return;
         default:

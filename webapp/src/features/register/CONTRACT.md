@@ -71,6 +71,10 @@ It offers a normal link to `/login`.
 
 Problem behavior is selected only from the bounded `problem.code`:
 
+The registration action module performs that classification. Presentation
+receives only semantic admission outcomes and never receives a server problem
+code or arbitrary response value.
+
 | Problem code | Page behavior |
 | --- | --- |
 | `authentication.password.invalid` | Associate policy-compliant guidance with the password field |

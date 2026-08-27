@@ -23,3 +23,8 @@ The ready account and Session variants use one centered task column. The
 Institution purpose precedes the current acceptance task, and stable package
 evidence appears through the shared `Notice` beside the controls it qualifies;
 the page does not present decorative or server-backed workflow steps.
+
+Invitation action modules validate the declared acceptance response and
+classify account and Session failures into separate bounded semantic outcomes.
+Presentation never receives a Problem Details code, response identifier, or
+arbitrary server value.

@@ -18,10 +18,17 @@ export interface InvitationAccountSubmission {
   username: string;
 }
 
-export type InvitationAcceptanceResult =
+export type InvitationAccountAcceptanceResult =
   | { kind: "accepted" }
-  | { kind: "problem"; code?: string }
-  | { kind: "failure" };
+  | { kind: "password_rejected" }
+  | { kind: "details_invalid" }
+  | { kind: "rate_limited" }
+  | { kind: "unavailable" };
+
+export type InvitationSessionAcceptanceResult =
+  | { kind: "accepted" }
+  | { kind: "session_required" }
+  | { kind: "unavailable" };
 
 export async function startInvitation(
   claim: string,
@@ -66,11 +73,11 @@ export async function requestInvitationInstitutionName(): Promise<
 
 export async function acceptInvitationAccount(
   submission: InvitationAccountSubmission,
-): Promise<InvitationAcceptanceResult> {
+): Promise<InvitationAccountAcceptanceResult> {
   try {
     const firstName = submission.firstName.trim();
     const lastName = submission.lastName.trim();
-    const { error, response } = await apiClient.POST(
+    const { data, error, response } = await apiClient.POST(
       "/api/v1/auth/browser/invitations/accept",
       {
         body: {
@@ -82,29 +89,45 @@ export async function acceptInvitationAccount(
         },
       },
     );
-    if (response.status === 200) {
+    if (response.status === 200 && isInvitationAcceptance(data)) {
       return { kind: "accepted" };
     }
-    return { kind: "problem", code: readProblemValue(error)?.code };
+    switch (readProblemValue(error)?.code) {
+      case "authentication.password.invalid":
+        return { kind: "password_rejected" };
+      case "invitation.invalid":
+      case "invitation.user_invalid":
+        return { kind: "details_invalid" };
+      case "authentication.rate_limited":
+        return { kind: "rate_limited" };
+      default:
+        return { kind: "unavailable" };
+    }
   } catch {
-    return { kind: "failure" };
+    return { kind: "unavailable" };
   }
 }
 
 export async function acceptInvitationSession(
   handle: string,
-): Promise<InvitationAcceptanceResult> {
+): Promise<InvitationSessionAcceptanceResult> {
   try {
-    const { error, response } = await apiClient.POST(
+    const { data, error, response } = await apiClient.POST(
       "/api/v1/auth/browser/invitations/accept-session",
       { body: { handle } },
     );
-    if (response.status === 200) {
+    if (response.status === 200 && isInvitationAcceptance(data)) {
       return { kind: "accepted" };
     }
-    return { kind: "problem", code: readProblemValue(error)?.code };
+    switch (readProblemValue(error)?.code) {
+      case "authentication.required":
+      case "authentication.invalid_token":
+        return { kind: "session_required" };
+      default:
+        return { kind: "unavailable" };
+    }
   } catch {
-    return { kind: "failure" };
+    return { kind: "unavailable" };
   }
 }
 
@@ -120,6 +143,15 @@ function isInvitationTransaction(
       value.purpose === "academic_unit_role" ||
       value.purpose === "institution_role") &&
     typeof value.expires_at === "number"
+  );
+}
+
+function isInvitationAcceptance(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.invitation_id === "string" &&
+    typeof value.user_id === "string" &&
+    typeof value.replayed === "boolean"
   );
 }
 

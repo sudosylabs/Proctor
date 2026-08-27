@@ -513,7 +513,9 @@ test("successful local login replaces the form with Session confirmation", async
     });
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ session: {} }),
+      body: JSON.stringify({
+        session: { id: "session-1", client_type: "web" },
+      }),
     });
   });
   await page.route("**/api/v1/users/me", async (route) => {
@@ -666,7 +668,11 @@ test("Invitation acceptance exchanges the claim before account creation", async 
     });
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ invitation_id: "invitation-1", user_id: "user-1" }),
+      body: JSON.stringify({
+        invitation_id: "invitation-1",
+        user_id: "user-1",
+        replayed: false,
+      }),
     });
   });
   await page.goto("/join#token=private-invitation-claim");

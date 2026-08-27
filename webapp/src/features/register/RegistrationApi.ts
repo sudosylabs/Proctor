@@ -23,8 +23,12 @@ export interface RegistrationSubmission {
 
 export type RegistrationSubmissionResult =
   | { kind: "accepted" }
-  | { kind: "problem"; code?: string }
-  | { kind: "failure" };
+  | { kind: "password_rejected" }
+  | { kind: "details_invalid" }
+  | { kind: "invitation_required" }
+  | { kind: "admission_unavailable" }
+  | { kind: "rate_limited" }
+  | { kind: "unavailable" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,11 +105,24 @@ export async function submitRegistration(
       },
     });
 
-    if (response.ok) {
+    if (response.status === 202) {
       return { kind: "accepted" };
     }
-    return { kind: "problem", code: readProblemValue(error)?.code };
+    switch (readProblemValue(error)?.code) {
+      case "authentication.password.invalid":
+        return { kind: "password_rejected" };
+      case "authentication.registration.invalid":
+        return { kind: "details_invalid" };
+      case "authentication.registration.invitation_required":
+        return { kind: "invitation_required" };
+      case "authentication.registration.unavailable":
+        return { kind: "admission_unavailable" };
+      case "authentication.rate_limited":
+        return { kind: "rate_limited" };
+      default:
+        return { kind: "unavailable" };
+    }
   } catch {
-    return { kind: "failure" };
+    return { kind: "unavailable" };
   }
 }

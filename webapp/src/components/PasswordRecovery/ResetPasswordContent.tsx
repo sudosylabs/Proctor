@@ -70,25 +70,15 @@ export function ResetPasswordContent({
       setPassword("");
       setConfirmation("");
       setState("complete");
-    } else if (
-      result.kind === "problem" &&
-      (result.code === "authentication.account_token.invalid" ||
-        result.code === "request.invalid")
-    ) {
+    } else if (result.kind === "invalid") {
       tokenRef.current = undefined;
       setPassword("");
       setConfirmation("");
       setState("invalid");
-    } else if (
-      result.kind === "problem" &&
-      result.code === "authentication.password.invalid"
-    ) {
+    } else if (result.kind === "password_rejected") {
       setPasswordError(message("webapp.reset_password.form.error.password_invalid"));
       requestAnimationFrame(() => passwordRef.current?.focus());
-    } else if (
-      result.kind === "problem" &&
-      result.code === "authentication.rate_limited"
-    ) {
+    } else if (result.kind === "rate_limited") {
       setFormError(message("webapp.reset_password.form.error.rate_limited"));
     } else {
       setFormError(message("webapp.reset_password.form.error.unavailable"));

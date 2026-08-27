@@ -164,30 +164,25 @@ export function RegistrationForm({
         return;
       }
 
-      if (result.kind === "failure") {
-        showFormFailure(message("webapp.register.form.error.generic"));
-        return;
-      }
-
-      switch (result.code) {
-        case "authentication.password.invalid":
+      switch (result.kind) {
+        case "password_rejected":
           showFieldFailure(
             "password",
             message("webapp.register.form.error.password_invalid"),
           );
           return;
-        case "authentication.registration.invalid":
+        case "details_invalid":
           showFormFailure(message("webapp.register.form.error.details_invalid"));
           return;
-        case "authentication.registration.invitation_required":
+        case "invitation_required":
           setPassword("");
           onPolicyChange({ kind: "invitation_required", discovery });
           return;
-        case "authentication.registration.unavailable":
+        case "admission_unavailable":
           setPassword("");
           onPolicyChange({ kind: "unavailable", discovery });
           return;
-        case "authentication.rate_limited":
+        case "rate_limited":
           showFormFailure(message("webapp.register.form.error.rate_limited"));
           return;
         default:

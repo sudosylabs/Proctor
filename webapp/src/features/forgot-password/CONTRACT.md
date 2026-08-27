@@ -11,6 +11,11 @@ field, keeps input stable during submission, and reserves action-adjacent
 copy. Successful submission clears the email and presents the generic
 check-your-email state.
 
+The recovery-request action accepts only the declared HTTP 202 response and
+maps rate limiting, unknown Problem Details, malformed responses, and transport
+failure into bounded semantic results. Presentation never compares a server
+problem code.
+
 The page uses one centered task column. Its recovery purpose, heading,
 supporting copy, form, stable generic evidence, and actions follow document
 order without implying server-backed progress. Stable evidence uses the shared

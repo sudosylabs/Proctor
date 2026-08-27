@@ -20,8 +20,10 @@ export interface SetupSubmission {
 
 export type SetupSubmissionResult =
   | { kind: "complete" }
-  | { kind: "problem"; code?: string }
-  | { kind: "failure" };
+  | { kind: "bootstrap_denied" }
+  | { kind: "password_rejected" }
+  | { kind: "rate_limited" }
+  | { kind: "unavailable" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,7 +52,7 @@ export async function submitInstallation(
     const description = submission.institutionDescription.trim();
     const administratorDisplayName =
       submission.administratorDisplayName.trim();
-    const { error, response } = await apiClient.POST("/api/v1/bootstrap", {
+    const { data, error, response } = await apiClient.POST("/api/v1/bootstrap", {
       body: {
         bootstrap_secret: submission.bootstrapSecret,
         institution: {
@@ -69,11 +71,22 @@ export async function submitInstallation(
       },
     });
 
-    if (response.ok) {
+    if (response.status === 201 && isRecord(data)) {
       return { kind: "complete" };
     }
-    return { kind: "problem", code: readProblemValue(error)?.code };
+    switch (readProblemValue(error)?.code) {
+      case "installation.already_initialized":
+        return { kind: "complete" };
+      case "installation.bootstrap_denied":
+        return { kind: "bootstrap_denied" };
+      case "authentication.password.invalid":
+        return { kind: "password_rejected" };
+      case "authentication.rate_limited":
+        return { kind: "rate_limited" };
+      default:
+        return { kind: "unavailable" };
+    }
   } catch {
-    return { kind: "failure" };
+    return { kind: "unavailable" };
   }
 }
