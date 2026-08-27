@@ -168,10 +168,10 @@ writing. Start passes a bounded lifetime rather than a node-computed deadline;
 creation, expiry, and one-use callback consumption are all evaluated against
 authoritative PostgreSQL time.
 
-The packaged runtime owns `/authorize/desktop`, but its visual flow and the
-Desktop UI are deliberately absent. Their later implementation must consume
-this protocol without adding provider tokens, Session credentials, or raw
-proofs to URLs, logs, or audit data.
+The packaged runtime implements `/authorize/desktop`; the Desktop UI remains a
+separate client concern. The hosted page consumes this protocol without adding
+provider tokens, Session credentials, or raw proofs to rendered content,
+storage, logs, or audit data.
 
 ## Authentication-method lifecycle
 

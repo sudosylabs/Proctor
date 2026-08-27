@@ -34,15 +34,19 @@ This foundation owns:
 Page composition and component APIs remain feature-owned or governed beside a
 component proven by real consumers. The first such component is the narrow
 [`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md) shared by
-`/setup`, `/login`, `/register`, `/account/verify-email`, and
-`/authorization/complete`; it does not establish a general authenticated
-application shell. The initial product icon vocabulary is governed by the narrow
+the complete ten-route hosted access family; it does not establish a general
+authenticated application shell. The focused single-column task introductions
+shared by password recovery, Invitation acceptance, and provider connection
+use the narrow
+[`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) contract.
+The initial product icon vocabulary is governed by the narrow
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
-Repeated form behavior is governed by
+Stable pre-action evidence and compact inline state use the narrow
+[`Notice`](./src/components/Notice/CONTRACT.md) contract. Repeated form
+behavior is governed by
 [`InputField`](./src/components/InputField/CONTRACT.md) and
-[`Button`](./src/components/Button/CONTRACT.md), while compact inline state
-evidence uses [`Notice`](./src/components/Notice/CONTRACT.md). Persistent
-form-level submission failures use the action-adjacent
+[`Button`](./src/components/Button/CONTRACT.md). Persistent form-level
+submission failures use the action-adjacent
 [`FormFeedback`](./src/components/FormFeedback/CONTRACT.md) region; features
 retain their values, copy, validation decisions, submission, and recovery.
 The system still owns no illustration set, general navigation behavior, or
@@ -338,6 +342,14 @@ separation no longer fits. `/account/verify-email` and
 Session confirmation uses a local state rail, while email verification uses a
 compact purpose and outcome marker; neither is global decoration or a demand
 that unrelated hosted routes reuse the pattern.
+
+Password recovery, Invitation acceptance, provider connection, and Desktop
+authorization use one centered task column. Their purpose label, page heading,
+supporting copy, controls, evidence, and actions follow document order without
+an explanatory step rail. The form widths remain feature-owned, while the
+shell keeps their starting position and page rhythm consistent. Stable
+pre-action evidence uses `Notice`; action-adjacent submission failures remain
+owned by `FormFeedback`.
 
 Layer tokens progress from base (`0`) through sticky (`10`), popover (`20`),
 overlay (`30`), dialog (`40`), and notification (`50`). Components do not

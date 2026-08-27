@@ -288,8 +288,9 @@ Desktop authentication does not use the JSON login operation or those browser
 cookies. The native client starts the system-browser authorization protocol at
 `POST /api/v1/auth/desktop/authorizations` and exchanges its short-lived,
 one-use code at `POST /api/v1/auth/desktop/token` for an ordinary rotating
-Desktop Session. The hosted `/authorize/desktop` page and Desktop UI remain
-visual implementation work; the packaged runtime already owns the route.
+Desktop Session. The packaged runtime implements the hosted
+`/authorize/desktop` confirmation page; the Desktop UI remains separate client
+work.
 
 External login uses the same browser session transport. The initiation endpoint
 stores only hashes of a one-use state and browser-binding credential in

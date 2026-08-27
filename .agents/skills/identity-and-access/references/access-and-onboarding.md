@@ -246,10 +246,9 @@ provider-authentication form. Proctor Server hosts:
 - `/account/connect-provider`;
 - `/authorization/complete`.
 
-The packaged browser currently implements `/setup`, `/login`, `/register`,
-`/account/verify-email`, and `/authorization/complete`. The remaining declared
-routes retain their server transport and nonvisual bootstrap contracts until
-their feature pages are implemented one vertical slice at a time.
+The packaged browser implements all ten declared routes. Each route retains a
+feature-local state, presentation, security, and recovery contract while using
+the shared nonvisual bootstrap and server transport boundaries.
 
 When public local registration is enabled, `/register` creates a User with a
 local credential and begins ordinary mailbox verification but grants no
@@ -329,13 +328,12 @@ timestamp for each transition, computes deadlines, and destroys consumed or
 cancelled proofs in the same atomic operation. Application code validates the
 narrow result and cannot reconstruct transition state from a broad aggregate.
 
-The hosted `/account/connect-provider` orchestration remains part of the later
-server-page phase. Until that page exists, the implemented API starts the
+The hosted `/account/connect-provider` page starts the implemented
 provider-protocol leg directly: `ExternalLoginState` carries a closed
 `connect` purpose, the exact current User, and the durable audit attempt across
 the provider redirect. It can complete only by attaching the proved immutable
-subject to that User and never creates a Session. The later hosted page uses
-that same protocol rather than wrapping it in another transaction aggregate.
+subject to that User and never creates a Session. The page uses that same
+protocol rather than wrapping it in another transaction aggregate.
 The application supplies only the validated bounded state lifetime; one
 PostgreSQL timestamp establishes creation and expiry, and callback consumption
 uses PostgreSQL time rather than the initiating or callback node clock.
@@ -435,8 +433,8 @@ The server protocol is exposed through four `no-store` operations:
 Session and approves the pinned authentication path,
 `POST /api/v1/auth/desktop/authorizations/cancel` proves and cancels a pending
 transaction, and `POST /api/v1/auth/desktop/token` performs the one-use code
-exchange. The authorization URL names the future `/authorize/desktop` hosted
-page; implementing that page and the Desktop client remains outside the server
+exchange. The authorization URL names the implemented `/authorize/desktop`
+hosted page; implementing the Desktop client remains outside the server
 protocol slice.
 
 Ordinary local or external browser login creates only a Web Session. Its
@@ -713,9 +711,9 @@ no automatic reminder.
 
 The accepted access design does not depend on mail implementation, but
 invitation-required admission cannot become operational until durable mail
-intent can commit atomically with Invitation creation. Every remaining hosted
-page depends on the established webapp design-system contract and still
-requires its own page and component implementation.
+intent can commit atomically with Invitation creation. Every hosted page
+depends on the established webapp design-system contract and retains its own
+page and component implementation.
 
 ## Operations, retention, and verification
 
@@ -770,9 +768,7 @@ Implementation proceeds as independently reviewable vertical slices:
    reconciliation;
 7. typed administrative batches, CSV onboarding, and progression;
 8. incremental server-hosted page and component implementation on the
-   established design system, beginning with setup, login, registration,
-   email verification, and Session confirmation and continuing through the
-   remaining declared routes.
+   established design system, now covering the complete declared route set.
 
 Mattermost was inspected as behavioral evidence at revision
 `8ce3c54a5ed76b2aa39a46cf8a1b517ea53ec0cc`, principally its user, team
