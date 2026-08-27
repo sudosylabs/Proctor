@@ -24,3 +24,7 @@ behavior. A failure remains visible until the owning feature makes it obsolete
 through an edit, retry, state transition, or successful completion. The stable
 `data-proctor-form-feedback` attribute is a diagnostic test hook and does not
 drive product behavior.
+
+An owning feature may assign the region an `id` when its persistent failure
+also describes a related control through `aria-describedby`; this does not
+change the region's announcement or layout responsibility.

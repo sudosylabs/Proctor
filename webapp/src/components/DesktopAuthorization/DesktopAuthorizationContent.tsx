@@ -135,7 +135,11 @@ export function DesktopAuthorizationContent({
           message={message("webapp.desktop_authorization.no_session.heading")}
         />
         <TaskState
-          body={message("webapp.desktop_authorization.no_session.body")}
+          body={
+            <span id="desktop-new-tab-description">
+              {message("webapp.desktop_authorization.no_session.body")}
+            </span>
+          }
           className={styles.taskState}
           focusHeading={retryRequested}
           heading={message("webapp.desktop_authorization.no_session.heading")}
@@ -143,7 +147,12 @@ export function DesktopAuthorizationContent({
           label={message("webapp.desktop_authorization.label")}
         >
           <TaskStateActions>
-            <ButtonLink href="/login" target="_blank">
+            <ButtonLink
+              aria-describedby="desktop-new-tab-description"
+              href="/login"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
               {message("webapp.desktop_authorization.no_session.sign_in")}
             </ButtonLink>
             <Button variant="text" onClick={retryContext}>
@@ -200,7 +209,7 @@ export function DesktopAuthorizationContent({
             </div>
             <div>
               <dt>{message("webapp.desktop_authorization.account")}</dt>
-              <dd>{context.context.account}</dd>
+              <dd translate="no">{context.context.account}</dd>
             </div>
             <div>
               <dt>{message("webapp.desktop_authorization.request")}</dt>

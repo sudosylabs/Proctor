@@ -36,3 +36,8 @@ Invitation action modules validate the declared acceptance response and
 classify account and Session failures into separate bounded semantic outcomes.
 Presentation never receives a Problem Details code, response identifier, or
 arbitrary server value.
+
+When Session acceptance reports that sign-in is required, the page preserves
+the purpose-bound handle by opening sign-in in a new tab. The persistent
+failure text visibly warns about that behavior, programmatically describes the
+link, and the new browsing context is isolated from the Invitation page.

@@ -202,7 +202,7 @@ function ProviderChooser({
               }}
             />
             <span className={styles.providerName}>{provider.display_name}</span>
-            <span className={styles.providerType}>
+            <span className={styles.providerType} translate="no">
               {providerType(provider.type)}
             </span>
           </label>

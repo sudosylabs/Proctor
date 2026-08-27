@@ -351,7 +351,13 @@ function SessionInvitation({
           {message("webapp.join.session.submit")}
         </Button>
         {needsSession ? (
-          <a className={styles.signInLink} href="/login" target="_blank">
+          <a
+            aria-describedby="join-session-feedback"
+            className={styles.signInLink}
+            href="/login"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
             {message("webapp.join.session.open_sign_in")}
           </a>
         ) : (
@@ -360,7 +366,7 @@ function SessionInvitation({
           </a>
         )}
       </div>
-      <FormFeedback message={formError} />
+      <FormFeedback id="join-session-feedback" message={formError} />
     </section>
   );
 }

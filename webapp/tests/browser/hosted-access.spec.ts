@@ -751,6 +751,53 @@ test("Invitation acceptance exchanges the claim before account creation", async 
   );
 });
 
+test("Session Invitation preserves its handle while warning about new-tab sign in", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await page.route("**/api/v1/auth/browser/invitations", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handle: "private-browser-handle",
+        purpose: "student_class",
+        requirement: "session",
+        expires_at: Date.now() + 300_000,
+      }),
+    });
+  });
+  await page.route(
+    "**/api/v1/auth/browser/invitations/accept-session",
+    async (route) => {
+      expect(await route.request().postDataJSON()).toEqual({
+        handle: "private-browser-handle",
+      });
+      await route.fulfill({
+        status: 401,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          type: "/problems/authentication-required",
+          title: "Authentication required",
+          status: 401,
+          code: "authentication.required",
+        }),
+      });
+    },
+  );
+  await page.goto("/join#token=private-invitation-claim");
+
+  await page.getByRole("button", { name: "Accept invitation" }).click();
+
+  const signInLink = page.getByRole("link", { name: "Open sign in" });
+  await expect(signInLink).toBeVisible();
+  await expect(signInLink).toHaveAttribute("target", "_blank");
+  await expect(signInLink).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(signInLink).toHaveAccessibleDescription(
+    "This browser needs an active Session. Open sign in in another tab, then try acceptance again here.",
+  );
+});
+
 test("Desktop authorization approves the exact sanitized request", async ({
   page,
 }) => {
@@ -784,7 +831,10 @@ test("Desktop authorization approves the exact sanitized request", async ({
     page.getByRole("heading", { name: "Continue in Proctor Desktop" }),
   ).toBeVisible();
   await expect(page.getByText("Northbridge Institute")).toBeVisible();
-  await expect(page.getByText("student.one")).toBeVisible();
+  await expect(page.getByText("student.one")).toHaveAttribute(
+    "translate",
+    "no",
+  );
   await page.getByRole("button", { name: "Continue to desktop" }).click();
 
   await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);
@@ -827,6 +877,34 @@ test("Desktop cancellation announces and focuses the replacement task", async ({
   await expect(
     page.getByRole("button", { name: "Continue to desktop" }),
   ).toHaveCount(0);
+});
+
+test("Desktop sign in warns about its state-preserving new tab", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/authentication-required",
+        title: "Authentication required",
+        status: 401,
+        code: "authentication.required",
+      }),
+    });
+  });
+  await page.goto(
+    "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+  );
+
+  const signInLink = page.getByRole("link", { name: "Open sign in" });
+  await expect(signInLink).toHaveAttribute("target", "_blank");
+  await expect(signInLink).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(signInLink).toHaveAccessibleDescription(
+    "Open sign in in another tab, then return here and check the browser Session again.",
+  );
 });
 
 test("Desktop rejection announces and focuses the unusable request", async ({
@@ -893,7 +971,10 @@ test("provider connection requires an explicit provider selection action", async
 
   await expect(page).toHaveTitle("Connect a provider · Proctor");
   await expect(page.getByText("University SSO", { exact: true })).toBeVisible();
-  await expect(page.getByText("OpenID Connect")).toBeVisible();
+  await expect(page.getByText("OpenID Connect")).toHaveAttribute(
+    "translate",
+    "no",
+  );
   await page.getByRole("button", { name: "Connect University SSO" }).click();
 
   await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);

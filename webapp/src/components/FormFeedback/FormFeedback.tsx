@@ -5,16 +5,18 @@ import styles from "./FormFeedback.module.css";
 
 export interface FormFeedbackProps {
   className?: string;
+  id?: string;
   message?: ReactNode;
 }
 
-export function FormFeedback({ className, message }: FormFeedbackProps) {
+export function FormFeedback({ className, id, message }: FormFeedbackProps) {
   return (
     <div
       aria-atomic="true"
       aria-live="polite"
       className={classes(styles.feedback, className)}
       data-proctor-form-feedback=""
+      id={id}
       role="status"
     >
       {message === undefined ? null : <Notice tone="danger">{message}</Notice>}

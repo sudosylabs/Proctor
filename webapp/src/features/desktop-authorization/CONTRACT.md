@@ -33,3 +33,8 @@ Cancellation and unusable results caused by an action focus the replacement
 heading; initial proof failure and background context checks do not take focus.
 Approval normally navigates immediately to the server-returned completion
 target, whose page owns the resulting orientation.
+
+The state-preserving sign-in link is visibly explained before it opens a new
+tab, uses that explanation as its accessible description, and isolates the new
+browsing context. The canonical username is exact identity evidence and opts
+out of automatic translation.

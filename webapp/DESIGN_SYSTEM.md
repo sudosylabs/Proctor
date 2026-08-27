@@ -420,6 +420,8 @@ Durable rules include:
 - announce asynchronous validation and completion through an appropriate live
   region without moving focus unnecessarily;
 - give icon-only actions an accessible name and hide decorative icons;
+- warn visibly and through an accessible description before a link opens a
+  new tab, and isolate that tab from the originating page;
 - provide dimensions and useful alternative text for meaningful images;
 - preserve browser zoom and provide keyboard alternatives for gestures; and
 - confirm destructive actions or provide a genuine undo path.

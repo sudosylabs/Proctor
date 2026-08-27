@@ -27,3 +27,5 @@ Loading, signed-out, unavailable, and empty-provider states use the shared
 `TaskState` hierarchy and persistent polite announcement. Initial context
 loading never takes focus. After an explicit retry replaces the retry control,
 the resulting task heading receives focus so the new context is clear.
+Rendered protocol names opt out of automatic translation so a browser cannot
+change the identity technology being presented.
