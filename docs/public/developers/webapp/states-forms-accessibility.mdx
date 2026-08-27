@@ -1,0 +1,184 @@
+---
+title: Design States, Forms, and Accessible Recovery
+description: Make every real browser state explicit, preserve safe form recovery, and verify interaction across input methods, themes, zoom, and localization growth.
+audience: developer
+maturity: preview
+slug: /developers/webapp/states-forms-accessibility/
+---
+
+# Design States, Forms, and Accessible Recovery
+
+An interface is complete when every state a real request can enter has a
+clear meaning, stable next action, and appropriate focus behavior. A polished
+ready-state screenshot is not evidence for pending, invalid, denied, expired,
+offline, or terminal behavior.
+
+## Name the State Vocabulary First
+
+Use only states the feature can actually enter. Distinguish states that require
+different copy, actions, focus, or privacy handling.
+
+| State | Required decision |
+| --- | --- |
+| Initial loading | What remains stable, what is announced, and whether retry is possible |
+| Ready | What task and primary action are available |
+| Empty | Why no item exists and which available action or orientation follows |
+| Field invalid | Which control is invalid, what guidance is adjacent, and where focus moves |
+| Submission failure | Whether values remain, where persistent feedback appears, and how retry works |
+| Denied or signed out | Whether existence must be concealed and which safe navigation remains |
+| Expired or unusable | Why the task cannot continue without exposing sensitive state |
+| Unavailable | Whether retry is safe, what remains visible, and what is not claimed |
+| Pending | Which action is in progress and how repeat activation is prevented |
+| Complete | What changed, what was intentionally cleared, and what the next safe action is |
+| Fatal | Why feature-owned recovery is impossible and which bounded root recovery remains |
+
+Do not merge a recoverable transport failure with an expired credential. Do
+not call a result empty when the viewer is unauthorized. Do not show a success
+state merely because a request received a 2xx response that the contract did
+not declare.
+
+## Put Evidence beside Its Cause
+
+Field validation belongs beside the field. A general submission failure
+belongs beside the action that produced it. Stable pre-action context belongs
+in normal document flow. Terminal replacement becomes the primary task.
+
+<GovernedFigure asset="developer-webapp-feedback-placement" />
+
+Avoid floating toasts for a failure that the person must read before retrying.
+Avoid moving the primary form merely to insert ordinary failure copy. Avoid
+using a tinted panel, icon, or color as the only state name.
+
+`FormFeedback` remains mounted with a reserved lane so an ordinary failure can
+appear without moving the fields or submit action. Longer localized copy may
+grow the page naturally; the lane is not a clipped fixed-height box.
+
+## Validate Forms in a Stable Order
+
+On submission:
+
+1. prevent the browser navigation;
+2. ignore repeat activation while the same attempt is pending;
+3. validate required and browser-only relationships in document order;
+4. set adjacent field guidance;
+5. focus the first invalid control;
+6. clear obsolete general feedback only when an edit or retry makes it stale;
+7. call the feature action with the smallest required input; and
+8. map its semantic result into a recoverable or terminal presentation state.
+
+Use native form semantics even when validation is feature-owned. A required
+single-line control keeps `required`, a visible label, stable `name`, correct
+`type`, `inputMode`, `autocomplete`, and programmatic description/error
+associations. Never block paste into passwords, codes, or other fields.
+
+Password confirmation is browser-only input. Do not send it to the server.
+Password disclosure remains an explicit named button with `aria-pressed`, a
+matching title, and a decorative governed icon. Toggling visibility must not
+change the value, transport body, or URL.
+
+## Distinguish Field and Form Failures
+
+A server password-policy rejection may identify the password field. Focus that
+field after the asynchronous result and preserve the typed value so it can be
+corrected. A rate limit or temporary transport failure is a general form
+failure. Keep focus where the person was working and announce the persistent
+feedback politely without focusing it.
+
+Never repeat the same message through a field error, form status, toast, and
+focused heading. One event should have one announcement path.
+
+## Treat Pending as a Real State
+
+Pending behavior must:
+
+- prevent duplicate activation;
+- expose `aria-busy` on the owning form or task;
+- keep a stable, localized progress label such as “Setting password…”;
+- preserve values until a terminal outcome requires clearing them;
+- avoid layout movement; and
+- retain complete meaning when reduced motion removes animation.
+
+A spinner or skeleton cannot be the only evidence. Do not disable the whole
+page when only one action is pending, and do not hide the navigation needed for
+safe cancellation unless the feature contract requires it.
+
+## Move Focus Only for Orientation
+
+Programmatic focus is evidence, not decoration.
+
+- Initial rendering and background loading do not steal focus.
+- A failed client validation focuses the first invalid field.
+- An asynchronous field-specific rejection may return focus to that field.
+- A general submission failure stays in a polite live region and does not move
+  focus.
+- A user-triggered replacement that removes the invoking form focuses the new
+  task heading.
+- A terminal state already present at initial load does not focus its heading.
+- Closing a temporary surface returns focus to its available invoker or the
+  nearest safe task landmark.
+
+Focusable headings use `tabindex="-1"`; they do not enter ordinary Tab order.
+The document's first keyboard stop remains the skip link.
+
+## Preserve Cookie, CSRF, and Origin Behavior
+
+The hosted client uses same-origin credentials. Unsafe requests receive the
+CSRF header when the server cookie is available. The browser never treats a
+CSRF cookie as application data or exposes it to presentation.
+
+Authentication and authorization remain server decisions. Hiding an action is
+useful presentation but never an authorization check. A feature must still map
+401, 403, concealed 404, expired credentials, and unavailable authority
+according to its exact public contract.
+
+Canonical-origin discovery rejects a server response whose declared origin
+does not match the page origin. Do not add a cross-origin fallback, permissive
+redirect, or local-storage issuer choice.
+
+## Design for Narrow Width and Localization Growth
+
+Build mobile-first with CSS Grid or Flexbox and logical properties. Rearrange
+when content stops working rather than targeting branded device names.
+
+At minimum, verify `390×844`, `768×1024`, and `1440×1024`. At 200% zoom, the
+primary task must remain available without page-level horizontal scrolling.
+Long labels, identifiers, and translated copy wrap without clipping or
+covering controls. Under the narrow action breakpoint, actions stack in
+document order and primary controls fill the available inline size.
+
+Do not shrink body text below the token scale, truncate required guidance, or
+use rendering code to measure a layout CSS can express.
+
+## Exercise Themes and User Preferences
+
+Every changed state must work in light, dark, and system preference modes.
+Consume semantic color tokens rather than checking a theme ID. State color is
+reserved for actual state evidence and is always paired with text, structure,
+or another non-color cue.
+
+Reduced motion removes non-essential repetition and collapses generated
+durations, but components must still expose the final state immediately.
+Forced colors may remove decorative paint and shadow; focus, boundaries,
+state names, and actions must survive.
+
+The current unauthenticated access pages follow system theme. Do not add a
+feature-local theme chooser or persistence mechanism. Persisted appearance
+requires a separate authenticated User Settings slice and one reviewed
+pre-paint owner.
+
+## Accessibility Acceptance
+
+For each real state, check:
+
+- native landmarks, headings, forms, labels, buttons, and links;
+- logical keyboard order and visible three-pixel focus treatment;
+- accessible names for icon-only controls;
+- adjacent and associated descriptions and errors;
+- one appropriate live announcement for asynchronous change;
+- pointer and touch targets of at least the governed default size;
+- browser zoom, text growth, reduced motion, and forced colors;
+- both product themes and the system preference;
+- no required information hidden behind hover; and
+- no secret, private identifier, or arbitrary remote prose in the DOM.
+
+Continue with [webapp testing](./testing.mdx).

@@ -1,0 +1,147 @@
+---
+title: Review a Hosted Webapp Change
+description: Review a Proctor browser feature at each changed boundary before running generated-adapter, interaction, accessibility, browser, and production-build gates.
+audience: developer
+maturity: preview
+slug: /developers/webapp/review-checklists/
+---
+
+# Review a Hosted Webapp Change
+
+Use the sections touched by the change, then finish with the cross-boundary
+review. A checklist supports judgment; it does not replace the current feature,
+component, API, and design-system contracts.
+
+## Route and Bootstrap
+
+- Is route membership authored in the server catalog and generated into the
+  browser adapter?
+- Does the exhaustive descriptor declare one title, fragment policy,
+  purpose-specific bootstrap projection, and page renderer?
+- Are unknown paths rejected instead of captured by a generic fallback?
+- Is the complete fragment removed before parsing or React rendering?
+- Does the parser reject empty, extra, wrong-purpose, and malformed evidence?
+- Are query values independently bounded where a flow genuinely needs them?
+- Do root tests prove the route catalog and bootstrap union remain exhaustive?
+
+## Root and Page Composition
+
+- Does the root own only document, bootstrap, dispatch, and fatal recovery?
+- Is the route page thin and explicit about its real dependencies?
+- Does the page contain one main landmark, one `h1`, and a working skip link?
+- Does the selected shell contract apply to this page family and state?
+- Is effective theme resolution shared by document and shell?
+- Has a feature avoided inventing a global store, service locator, router, or
+  authenticated shell?
+
+## Feature Contract and State
+
+- Does the feature contract name real states, credentials, transport,
+  recovery, focus, privacy, and deliberate exclusions?
+- Are semantically distinct loading, empty, invalid, denied, expired,
+  unavailable, pending, complete, and fatal states kept distinct where they
+  change behavior?
+- Does ordinary recoverable failure preserve values and safe retry?
+- Are credentials and sensitive values cleared on the exact terminal outcomes
+  that make them obsolete?
+- Does state remain local to the owning feature rather than leaking into a
+  visual component or the root?
+
+## API and Problem Details
+
+- Does the action call the generated same-origin client?
+- Does the request include only the public contract fields?
+- Is the declared success status accepted exactly?
+- Are public error codes mapped into a bounded feature result?
+- Do unknown status, malformed body, unknown code, and network rejection fail
+  safely?
+- Is arbitrary server `title`, `detail`, identifier, or stack absent from
+  presentation?
+- Do cookie credentials, CSRF headers, and canonical-origin checks retain
+  their shared behavior?
+- Were OpenAPI and generated TypeScript changed at their sources rather than
+  patched?
+
+## Localization and Content
+
+- Is every visible message in the server-owned `webapp.*` catalog?
+- Is the generated catalog current?
+- Are sentences complete messages rather than concatenated fragments?
+- Are placeholders bounded, safe, and escaped by ordinary React rendering?
+- Do dates, times, numbers, durations, and lists use `Intl` where applicable?
+- Does copy use canonical Proctor vocabulary and active, specific action names?
+- Do errors explain the next safe step without exposing protected state?
+- Does long copy wrap without clipping, overlay, or horizontal page overflow?
+
+## Forms and Focus
+
+- Does every control have a visible label, stable name, correct type, input
+  mode, autocomplete value, and native required semantics where applicable?
+- Are descriptions and field errors adjacent and programmatically associated?
+- Does failed submission focus the first invalid control?
+- Does an asynchronous field rejection return focus only when orientation
+  benefits?
+- Does general form feedback remain beside the action without stealing focus?
+- Is there one announcement path for each asynchronous state change?
+- Are paste, zoom, native control affordances, and keyboard activation intact?
+- Are pending labels explicit and duplicate activation prevented?
+- Are secret confirmation values kept out of transport when they are only
+  browser validation?
+
+## Components and Visual System
+
+- Does every reused component's contract match the needed behavior?
+- Was a new pattern kept local until a second consumer proved reuse?
+- If promoted, does the component have a narrow contract and focused tests?
+- Are styles colocated and built from semantic tokens?
+- Are literal colors, feature palettes, unreviewed shadows, arbitrary radii,
+  `transition: all`, removed outlines, and ad hoc z-index values absent?
+- Does state color represent real meaning and retain a text or structural cue?
+- Are product icons imported only through the owned adapter?
+- Are brand and provider marks kept outside the product-icon vocabulary?
+
+## Responsive, Theme, and Motion
+
+- Does the layout work at `390×844`, `768×1024`, and `1440×1024`?
+- Does 200% zoom preserve the task without page-level horizontal scrolling?
+- Do actions stack in meaningful document order when narrow?
+- Do short and long localized labels preserve control and content containment?
+- Do light, dark, and system preference use the same semantic roles?
+- Does reduced motion preserve complete state meaning and stop non-essential
+  repetition?
+- Do forced colors preserve focus, boundaries, state names, and actions?
+- Are focus rings visible and unclipped against every adjacent surface?
+
+## Unit and Browser Evidence
+
+- Do unit tests cover pure parsing, exact response mapping, and component
+  semantics at their owning boundary?
+- Do browser fixtures contain only bounded synthetic data?
+- Do selectors prefer role, accessible name, label, stable ID, and contracted
+  diagnostic hooks in that order?
+- Are geometry assertions limited to meaningful stability, alignment,
+  containment, or overflow claims?
+- Do route scenarios prove history, request, state, recovery, focus,
+  announcement, navigation, and sensitive-data absence where applicable?
+- Does the suite run in pinned Chromium, Firefox, and WebKit?
+- Is platform-specific support claimed only when the actual platform was
+  reviewed?
+
+## Cross-Boundary Review
+
+- Is there one authority for route membership, public HTTP shape, localization,
+  theme meaning, component behavior, and feature state?
+- Does each generated file identify and follow its human-owned source?
+- Could the feature still recover if the request fails, repeats, or returns an
+  unknown response?
+- Can a credential, password, Invitation claim, private identifier, or
+  arbitrary server message enter the URL, DOM, storage, logs, screenshot, or
+  test failure?
+- Does the interface remain understandable without color, hover, motion, a
+  wide viewport, or a particular theme?
+- Do focused tests and the full webapp gate pass?
+- If public documentation or architecture changed, do the documentation and
+  architecture gates pass?
+
+Return to [developing the hosted webapp](../webapp-workflow.mdx) or the
+[password-reset vertical slice](./password-reset-slice.mdx).

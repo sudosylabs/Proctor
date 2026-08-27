@@ -1,144 +1,117 @@
 ---
-title: Change the Hosted Webapp
-description: Work on Proctor's React and Vite browser application without duplicating API, localization, routing, or design-system authority.
+title: Develop the Hosted Webapp
+description: Build an accessible browser feature without duplicating route, API, localization, authentication, or design-system authority.
 audience: developer
 maturity: preview
 slug: /developers/webapp-workflow/
 ---
 
-# Change the Hosted Webapp
+# Develop the Hosted Webapp
 
-The private `webapp` package builds the browser application shipped beside the
-server binary. It owns browser routing, same-origin transport, credential-safe
-client behavior, locally generated design tokens, and feature presentation.
-The server remains authoritative for application state, authentication,
-authorization, and the public HTTP contract.
+The private `webapp` package builds the React and Vite application served by
+Proctor. Its current product surface is the bounded family of access and
+onboarding pages: setup, sign-in, registration, Invitation acceptance,
+password recovery, email verification, Desktop authorization, provider
+connection, and terminal Session confirmation.
 
-## Prepare the Package
+The browser owns presentation and interaction. It does not become an
+alternative authority for routes, HTTP shapes, localization messages,
+authentication policy, or durable application state. A complete feature
+therefore consumes generated adapters, classifies remote outcomes into a small
+feature state, and renders that state through components whose contracts
+already match the behavior.
 
-Use the pinned Node version and committed lockfile:
+<GovernedFigure asset="developer-webapp-feature-ownership" />
 
-```sh
-cd webapp
-npm ci
-npx playwright install chromium firefox webkit
-```
+## Follow the Manual
 
-For product-backed development, start the server and dependencies from the
-repository root, then run Vite in another terminal:
-
-```sh
-make run-server
-make run-webapp
-```
-
-See [local setup](./local-setup.mdx) for ports, generated state, and
-origin-sensitive flows.
-
-## Find the Feature Owner
-
-Feature modules live under `webapp/src/features`. Reusable presentation proven
-by real feature consumers lives under `webapp/src/components`. A component or
-feature with non-obvious behavior keeps a nearby `CONTRACT.md`.
-
-| Location | Owns |
+| If you need to understand… | Read… |
 | --- | --- |
-| `src/features/<feature>` | Route orchestration, transport calls, feature state, and recovery behavior |
-| `src/components/<Component>` | Repeated visual or interaction behavior with real consumers |
-| `src/api/generated` | Generated TypeScript API schema; never hand-edit |
-| `src/generated/i18n` | Generated browser localization catalog; never hand-edit |
-| `src/app/routes.ts` | Generated route adapter; never hand-edit |
-| `design-system/tokens.mjs` | Human-owned product tokens and theme definitions |
-| `src/styles` | Reset, generated tokens, and document-level base styles |
+| Browser startup, generated routes, bootstrap sanitization, and page composition | [Architecture and routing](./webapp/architecture-routing.mdx) |
+| Feature modules, API adapters, Problem Details, localization, CSS, and component promotion | [Features, API, and localization](./webapp/features-api-localization.mdx) |
+| Loading and failure states, forms, focus, cookies, CSRF, responsive layout, and themes | [States, forms, and accessibility](./webapp/states-forms-accessibility.mdx) |
+| Unit tests, Playwright fixtures, selectors, viewports, and browser evidence | [Test the hosted webapp](./webapp/testing.mdx) |
+| How to judge visual hierarchy and interaction quality | [Review the product interface](./webapp/visual-review.mdx) |
+| How one implemented password-reset route crosses every browser boundary | [Password-reset vertical slice](./webapp/password-reset-slice.mdx) |
+| What to check before requesting review | [Webapp review checklists](./webapp/review-checklists.mdx) |
 
-Keep route modules thin. Feature-specific values, validation, asynchronous
-state, and recovery stay with the feature rather than being pushed into a
-generic form or page shell.
+## Place Each Decision Once
 
-## Implement a Browser Change
+| Decision | Owner |
+| --- | --- |
+| Which browser paths the server hosts | `server/webui/hosted_routes.json` |
+| How each hosted route sanitizes bootstrap input and selects a page | `webapp/src/app/HostedRoutes.tsx` |
+| Public request and response shapes | Human-owned YAML under `server/openapi` |
+| Browser compile-time HTTP types | Generated `webapp/src/api/generated/schema.ts` |
+| Same-origin credentials and CSRF transport mechanics | `webapp/src/api/client.ts` and `webapp/src/auth` |
+| Which remote outcomes matter to one feature | The feature-owned API action |
+| Feature state, validation, recovery, and visible copy selection | The owning feature and presentation module |
+| Repeated domain-neutral interaction behavior | A shared component with a narrow adjacent contract |
+| Visible English source messages | The `webapp.*` namespace under `server/i18n` |
+| Product tokens and durable visual rules | `webapp/design-system/tokens.mjs` and `webapp/DESIGN_SYSTEM.md` |
+| Reset and document defaults | `webapp/src/styles` |
+| Feature and component styling | Colocated CSS Modules |
 
-1. Read the feature and component contracts that already own the flow.
-2. List loading, success, empty, validation, denied, expired, unavailable, and
-   retry states before changing the visual surface.
-3. Reuse the owned Button, InputField, Icon, and AccessPageShell components
-   only where their contracts apply.
-4. Call the typed same-origin API adapter. Do not duplicate server validation
-   or authorize from client state.
-5. Add visible copy to the server-owned `webapp.*` localization namespace and
-   regenerate the typed catalog.
-6. Add focused unit tests and browser tests for the complete interaction.
-7. Review responsive layout, keyboard order, focus, reduced motion, light and
-   dark themes, failure recovery, and localization growth.
+When two rows appear to own the same choice, stop and resolve the duplication.
+For example, OpenAPI says which error codes an operation may return. The
+feature action decides which of those codes produce the same safe visible
+outcome. A presentation component receives that outcome; it does not compare
+HTTP statuses or Problem Details itself.
 
-## Keep Generated Adapters Current
+## Work from States, Not from Screens
 
-Run the focused generator when its source changes:
+Before changing code, write a feature map:
 
-```sh
-cd webapp
-npm run api:generate
-npm run i18n:generate
-npm run routes:generate
-```
+~~~text
+Purpose:          what task can the person complete?
+Hosted route:     which server-owned path presents it?
+Bootstrap input:  what sanitized, purpose-specific input reaches React?
+API operations:   which generated operations are consumed?
+States:           initial, loading, ready, empty, invalid, denied, unavailable,
+                  pending, complete, and terminal states that can really occur
+Recovery:         which state preserves values, retries, redirects, or stops?
+Focus:            where does focus begin and move after each user action?
+Copy:             which webapp.* messages are required?
+Components:       which existing contracts apply, and what remains local?
+Evidence:         which unit and browser tests prove behavior and presentation?
+~~~
 
-The normal gate regenerates and rejects drift. Generated files are reviewable
-outputs, not alternate authoring locations.
+Do not start with a page mockup and then force every state into it. A loading
+view may have no form. A terminal result may remove the invoking action and
+move focus to a replacement heading. An ordinary submission failure should
+usually preserve the fields, action position, and focus.
 
-For a design-token change:
+## Preserve the Browser Trust Boundary
 
-```sh
-npm run design-system:generate
-npm run design-system:check
-```
+The hosted webapp always addresses the Installation that served it. It has no
+remote API-base option. Cookie credentials remain same-origin, unsafe methods
+add the CSRF header when the server cookie is present, and sensitive fragment
+credentials are removed from browser history before React renders.
 
-Product components consume the webapp token system. They do not import the
-documentation site's Docusaurus tokens or add a second palette inside feature
-styles.
+The browser may improve guidance, but the server still validates input,
+authenticates the principal, authorizes actions, and commits durable state.
+Never render arbitrary server error text, infer permission from a hidden
+control, or treat browser storage as an authority.
 
-## Run Focused Checks
+## Know the Live Authorities
 
-During implementation:
+This manual explains contributor tasks rather than duplicating every route or
+component. During implementation, read:
 
-```sh
-npm run typecheck
-npm run lint
-npm test
-npm run test:browser
-```
+- the [webapp package guide](https://github.com/sudosylabs/Proctor/blob/main/webapp/README.md);
+- the [product design-system contract](https://github.com/sudosylabs/Proctor/blob/main/webapp/DESIGN_SYSTEM.md);
+- the feature and component `CONTRACT.md` files beside the changed code;
+- the reviewed OpenAPI YAML for public HTTP behavior;
+- the server localization catalog for visible messages; and
+- current unit and Playwright tests for executable evidence.
 
-Before handoff, run the complete package gate:
+## First Change Route
 
-```sh
-npm run check
-```
+Read the [password-reset vertical slice](./webapp/password-reset-slice.mdx)
+before implementing another hosted page. It demonstrates credential-safe
+bootstrap, generated routing and API types, feature-owned result mapping,
+field and form errors, terminal replacement, localization, shared components,
+and browser evidence without presenting a copy-and-paste page template.
 
-It validates brand assets and design tokens, checks API, localization, and
-route generation, type-checks, lints, runs unit and browser suites, and builds
-the production bundle.
-
-## Browser Review Matrix
-
-Exercise every changed state at minimum in:
-
-- Chromium, Firefox, and WebKit through the pinned Playwright suite;
-- keyboard-only navigation and visible focus;
-- a narrow mobile viewport and a desktop viewport;
-- light and dark themes;
-- reduced motion; and
-- long localized text without clipping or layout escape.
-
-Do not use hover as the only disclosure, disable browser zoom, place secrets in
-URLs or storage, or treat a successful transport response as proof that an
-authorization decision was correct.
-
-{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
-entry points before publishing IDE-specific launch files or debugger commands.
-Until then, keep this guide tool-neutral and use focused tests plus browser
-developer tools for diagnosis. */}
-
-## Next
-
-- Coordinate an [HTTP contract change](./http-and-openapi.mdx).
-- Select the [repository verification level](./testing.mdx).
-- Update [public documentation](./documentation.mdx) for released
-  reader-visible behavior.
+Finish with the [webapp review checklists](./webapp/review-checklists.mdx) and
+the repository [verification ladder](./testing.mdx).

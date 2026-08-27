@@ -1,0 +1,188 @@
+---
+title: Test the Hosted Webapp
+description: Use focused unit evidence and three-engine Playwright scenarios to prove generated contracts, semantic state, interaction, accessibility, and responsive presentation.
+audience: developer
+maturity: preview
+slug: /developers/webapp/testing/
+---
+
+# Test the Hosted Webapp
+
+Webapp tests prove decisions at the boundary that owns them. A unit test can
+show that a feature action accepts only HTTP 204. A browser test can show that
+the resulting form replacement removes sensitive values, announces completion,
+and focuses the new heading. Neither result substitutes for the other.
+
+## Choose the Narrowest Evidence
+
+| Change | First evidence |
+| --- | --- |
+| Pure parsing, CSRF, fragment, or result mapping | Focused Vitest unit test |
+| Component semantic markup and ARIA association | Component unit test |
+| Generated route, API, i18n, token, or brand adapter | Owning generator check |
+| Page state transition, focus, history, or navigation | Playwright scenario |
+| Responsive, theme, zoom, reduced-motion, or geometry behavior | Playwright in the real page |
+| Production asset and route packaging | Vite production build |
+
+Write the smallest test that can prove the decision, then add the widest
+relevant evidence for the assembled behavior.
+
+## Unit-Test Feature Actions as Closed Mappings
+
+A feature action test uses the same typed client boundary while replacing the
+request method with an in-memory result. Cover:
+
+- the exact declared success response;
+- an unexpected 2xx response;
+- each allowlisted Problem Details code that changes feature behavior;
+- an unknown problem code;
+- a malformed or missing problem body; and
+- a rejected request.
+
+Assert the small semantic union, not implementation calls that do not affect
+behavior. Do not snapshot an entire generated schema or duplicate OpenAPI
+fixtures inside every feature test.
+
+## Unit-Test Components at Their Contract
+
+Component tests verify native element choice and stable relationships:
+
+- a visible label targets the correct control;
+- required, invalid, described-by, live-region, and busy semantics exist;
+- an icon-only disclosure control has a localized accessible name and title;
+- a task replacement keeps one `h1` and a grouped action region; and
+- shared diagnostic attributes remain present where browser tests use them.
+
+Avoid asserting every CSS class or serialized markup character. Those tests
+make harmless refactors expensive without proving interaction.
+
+## Use Playwright for User-Visible Outcomes
+
+The pinned suite runs the same scenarios in Chromium, Firefox, and WebKit. Its
+Vite server uses `127.0.0.1:5173`, matching the canonical origin in synthetic
+discovery fixtures.
+
+Browser tests intercept only the operations required by the scenario. Use
+bounded synthetic data, explicit statuses, and complete response shapes. A
+test must never depend on a developer's running server, account, browser
+profile, clock, or Institution data.
+
+A complete route scenario should prove the relevant combination of:
+
+- exact initial URL and history sanitization;
+- document title, one page heading, and route purpose;
+- request method and bounded body;
+- semantic ready, failure, retry, and terminal states;
+- value preservation or clearing;
+- focus and live announcement;
+- safe fixed navigation;
+- absence of credentials and sensitive form values from the DOM and URL; and
+- responsive and theme behavior.
+
+## Prefer Resilient Selectors
+
+Select the interface as a user or accessibility API would:
+
+1. role plus accessible name;
+2. visible label;
+3. stable form-control ID when the ID is itself part of the contract;
+4. a narrow diagnostic `data-proctor-*` hook owned by a component contract;
+5. CSS structure only for a real geometry or ordering assertion.
+
+Do not select generated class names, DOM depth, English text fragments when an
+accessible role exists, or arbitrary `data-testid` values that restate
+implementation structure.
+
+A diagnostic hook may locate the persistent form-feedback lane or notice tone.
+Product code never branches on that hook.
+
+## Assert Geometry Only When Geometry Carries Meaning
+
+Geometry assertions are valuable when they prove stability or containment:
+
+- the submit action does not move when ordinary failure copy appears;
+- an inline disclosure button stays vertically aligned with its field;
+- a responsive two-column pair becomes one-dimensional when narrow;
+- the page has no unexpected horizontal overflow at zoom; or
+- a focus outline is not clipped by a container.
+
+Measure document coordinates rather than screenshot pixels when the claim is
+structural. Use screenshots as additional review evidence, not as the only test
+for semantic behavior.
+
+## Exercise the Browser Matrix
+
+The minimum acceptance viewports are:
+
+| Name | Size | Purpose |
+| --- | --- | --- |
+| Compact | `390×844` | Narrow one-dimensional task and touch target behavior |
+| Tablet | `768×1024` | Intermediate wrapping and layout transition |
+| Desktop | `1440×1024` | Full frame, reading measure, and intentional whitespace |
+
+For a visible slice, exercise:
+
+- Chromium, Firefox, and WebKit;
+- light, dark, and system theme modes;
+- keyboard traversal and focus-visible behavior;
+- 200% browser zoom;
+- reduced motion;
+- short and long localized copy;
+- pending, success, recoverable failure, and terminal failure that the feature
+  can enter; and
+- forced colors or high-contrast behavior where automated support exists,
+  followed by manual review where it does not.
+
+WebKit automation is not a claim of complete Safari coverage. A
+platform-specific feature still requires evidence in the actual supported
+platform.
+
+## Keep Fixtures Safe and Deterministic
+
+Synthetic fixture values should be obvious, minimal, and bounded. Use fixed
+example names and loopback origins. Keep credentials recognizable as private
+test placeholders and assert that they disappear from the URL and DOM.
+
+Do not reuse production exports, realistic answer content, personal email,
+unbounded random strings, or wall-clock deadlines when a fixed value will do.
+Failure output must remain safe even when the complete fixture is printed.
+
+## Run Focused Checks
+
+During implementation:
+
+~~~sh
+cd webapp
+npm run typecheck
+npm run lint
+npm test
+npm run test:browser
+~~~
+
+Run generators for the sources you changed:
+
+~~~sh
+npm run routes:generate
+npm run api:generate
+npm run i18n:generate
+npm run design-system:generate
+~~~
+
+Before handoff:
+
+~~~sh
+npm run check
+~~~
+
+The complete gate verifies brand assets and design tokens, rejects stale API,
+localization, and route adapters, type-checks, lints, runs unit and browser
+tests, and builds the production bundle.
+
+{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
+entry points before publishing IDE-specific launch files or debugger commands. */}
+
+The debugger convention is intentionally unresolved. Use focused tests and
+browser developer tools without publishing editor-specific launch files as a
+repository standard.
+
+Continue with the [visual review guide](./visual-review.mdx).

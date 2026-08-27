@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Hosted webapp feature ownership</title>
+  <desc id="description">Four human-owned sources define hosted routes, HTTP operations, visible messages, and visual rules. Deterministic generators project those sources into typed browser adapters. The hosted-route root, feature-owned action and state, and contracted shared components compose those adapters into one user-visible page without becoming competing authorities.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+
+  <text x="56" y="72" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">HUMAN-OWNED SOURCES</text>
+
+  <rect x="56" y="88" width="260" height="120" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="128" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Hosted routes</text>
+  <text x="80" y="160" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Server route catalog</text>
+  <text x="80" y="184" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">MEMBERSHIP</text>
+
+  <rect x="332" y="88" width="260" height="120" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="356" y="128" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">HTTP contract</text>
+  <text x="356" y="160" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Reviewed OpenAPI YAML</text>
+  <text x="356" y="184" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">WIRE SHAPE</text>
+
+  <rect x="608" y="88" width="260" height="120" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="632" y="128" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Visible messages</text>
+  <text x="632" y="160" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Server i18n catalog</text>
+  <text x="632" y="184" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">LANGUAGE</text>
+
+  <rect x="884" y="88" width="260" height="120" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="908" y="128" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Visual system</text>
+  <text x="908" y="160" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Tokens + contracts</text>
+  <text x="908" y="184" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">MEANING</text>
+
+  <text x="56" y="264" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">GENERATED BROWSER ADAPTERS</text>
+
+  <path d="M 186 208 V 280" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+  <path d="M 462 208 V 280" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+  <path d="M 738 208 V 280" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+  <path d="M 1014 208 V 280" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+
+  <rect x="56" y="280" width="260" height="88" rx="12" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="320" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">routes.ts</text>
+  <text x="80" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Finite path union</text>
+
+  <rect x="332" y="280" width="260" height="88" rx="12" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="356" y="320" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">schema.ts</text>
+  <text x="356" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Typed operation shapes</text>
+
+  <rect x="608" y="280" width="260" height="88" rx="12" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="632" y="320" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">messages.ts</text>
+  <text x="632" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Typed message IDs</text>
+
+  <rect x="884" y="280" width="260" height="88" rx="12" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="908" y="320" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">tokens + icon adapter</text>
+  <text x="908" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Semantic presentation roles</text>
+
+  <rect x="56" y="432" width="1088" height="176" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="464" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTHORED FEATURE COMPOSITION</text>
+
+  <rect x="80" y="480" width="280" height="104" rx="12" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="104" y="520" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Hosted-route root</text>
+  <text x="104" y="552" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Sanitize · project · dispatch</text>
+
+  <rect x="392" y="480" width="392" height="104" rx="12" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="416" y="520" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Feature action + state machine</text>
+  <text x="416" y="552" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Map outcomes · recover · select copy</text>
+
+  <rect x="816" y="480" width="304" height="104" rx="12" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="840" y="520" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Contracted components</text>
+  <text x="840" y="552" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Shell · fields · feedback · tasks</text>
+
+  <path d="M 186 368 V 416 H 344 V 480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 462 368 V 416 H 520 V 480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 738 368 V 416 H 656 V 480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 1014 368 V 480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+
+  <path d="M 360 532 H 392" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 784 532 H 816" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+
+  <path d="M 56 648 V 664 H 1144 V 648" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="696" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">One page composes reviewed authorities; it does not duplicate them.</text>
+</svg>

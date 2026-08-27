@@ -1,0 +1,202 @@
+---
+title: Own Features, API Calls, and Localization
+description: Keep feature behavior cohesive while consuming generated HTTP and localization adapters and promoting only proven shared components.
+audience: developer
+maturity: preview
+slug: /developers/webapp/features-api-localization/
+---
+
+# Own Features, API Calls, and Localization
+
+A webapp feature owns one user task and the browser decisions needed to present
+it safely. It does not copy the server's domain policy, expose raw transport
+results to visual components, or create abstractions before another consumer
+proves the same behavior.
+
+## Start with the Feature Contract
+
+Read the feature-local `CONTRACT.md` before code. A useful contract identifies:
+
+- the hosted route and purpose;
+- sanitized bootstrap input and its lifetime;
+- API operations and accepted success responses;
+- the bounded feature-state vocabulary;
+- validation, pending, failure, retry, and terminal behavior;
+- which fields or credentials must never be rendered, stored, or logged;
+- focus and announcement behavior;
+- shared component contracts that apply; and
+- behavior the feature deliberately does not own.
+
+The contract records stable, non-obvious behavior. It does not list every
+function, CSS class, message key, or test name that a contributor can discover
+from the tree.
+
+## Keep the Route Page Thin
+
+The route-level page connects real dependencies to presentation. For example,
+the password-reset page selects the single-column access shell, provides its
+localized skip-link label, and passes the real completion action into the
+reset content.
+
+This seam keeps presentation testable with an in-memory action and keeps the
+transport action independently testable. Avoid putting form state in the
+route catalog or making a shared shell import a feature API.
+
+A typical ownership split is:
+
+| Part | Owns |
+| --- | --- |
+| Feature page | Real dependency wiring and page-shell selection |
+| Feature API action | Generated HTTP call, accepted success, allowlisted Problem Details mapping, safe fallback |
+| Feature content | Values, validation, pending state, semantic results, focus, announcement, and recovery |
+| Shared components | Domain-neutral semantics and interaction already proven by real consumers |
+| CSS Module | Local composition through semantic tokens |
+
+The exact file split may vary. Preserve the responsibility split rather than
+copying filenames mechanically.
+
+## Consume the Same-Origin API Client
+
+`src/api/client.ts` constructs the typed `openapi-fetch` client with an empty
+base URL and `same-origin` credentials. Hosted pages always call the
+Installation that served them; they cannot select another issuer or API host.
+
+The shared request middleware:
+
+- preserves same-origin credentials;
+- reads the server-issued CSRF cookie only inside the browser;
+- adds `X-Proctor-CSRF-Token` to unsafe methods when available; and
+- leaves safe methods and an explicitly supplied header unchanged.
+
+Feature actions call an operation from the generated `paths` contract. They do
+not construct a second API client, paste request interfaces from Go, or widen
+the base URL for convenience.
+
+## Map Transport into Semantic Results
+
+An API action accepts only the response declared by the feature contract. A
+200 response is not interchangeable with a declared 204 merely because both
+are successful HTTP statuses.
+
+Map allowlisted Problem Details codes into a bounded union:
+
+~~~ts
+type Result =
+  | { kind: "complete" }
+  | { kind: "invalid" }
+  | { kind: "password_rejected" }
+  | { kind: "rate_limited" }
+  | { kind: "unavailable" };
+~~~
+
+The union is presentation-safe. It contains no server title, detail, stack,
+credential, request ID, or arbitrary code. Unknown status, malformed body,
+unknown problem code, and transport rejection fail into the bounded
+`unavailable` result unless the owning feature defines a stricter terminal
+outcome.
+
+Presentation branches on `kind`, never on HTTP status or Problem Details. This
+keeps copy, recovery, focus, and privacy under feature ownership.
+
+## Treat OpenAPI as the Browser Contract Source
+
+Human-owned YAML under `server/openapi` defines the public operation. The
+reviewed `server/openapi.json` is generated from it. The webapp's
+`src/api/generated/schema.ts` is then generated from that artifact.
+
+When the public shape changes:
+
+~~~sh
+make -C server openapi-build
+make -C server openapi-agreement
+cd webapp
+npm run api:generate
+npm run api:check
+~~~
+
+Review the YAML and generated diffs. Do not patch `schema.ts`, add a parallel
+handwritten response interface, or accept an undeclared response to make a
+browser test pass.
+
+The feature still performs runtime classification. TypeScript proves the
+declared compile-time shape; it cannot prove that a remote response actually
+contains that shape.
+
+## Keep Visible Messages in the Server Catalog
+
+Visible browser copy uses the server-owned `webapp.*` message namespace. The
+webapp generator validates that source ownership and produces the typed
+`src/generated/i18n/catalogs.ts` adapter. `message()` accepts only a generated
+message ID.
+
+After adding or changing visible copy:
+
+~~~sh
+cd webapp
+npm run i18n:generate
+npm run i18n:check
+~~~
+
+Do not hide English source strings in components, concatenate translated
+fragments, or render an API error's `title` or `detail`. Keep placeholders
+bounded and purpose-specific. Dates, times, numbers, durations, and lists use
+`Intl` rather than hand-built English formatting.
+
+Layouts must tolerate longer translations and future right-to-left direction.
+Use logical CSS properties, allow wrapping, and do not let an English action
+label determine a fixed control width.
+
+## Reuse Components by Contract
+
+Use a shared component only when its purpose and state contract match the
+feature. The current access family has deliberately narrow primitives:
+
+- `AccessPageShell` for identity, skip link, main landmark, and frame;
+- `AccessTaskIntro` for one focused task introduction;
+- `TaskState` for loading, unavailable, and terminal task replacement;
+- `InputField` and `PasswordField` for governed single-line controls;
+- `Button` and `ButtonLink` for action and navigation hierarchy;
+- `Notice` for stable inline evidence; and
+- `FormFeedback` for persistent action-adjacent submission failure.
+
+These names are not a promise of a general component library. For example,
+`TaskState` does not replace field errors, and `Notice` does not become a toast
+or live region by default.
+
+Start a new visual pattern inside the first feature. Promote it only after a
+second real consumer requires the same semantics and behavior. Then add a
+narrow component contract, focused tests, both-theme evidence, content-growth
+evidence, and every existing consumer migration in one change.
+
+## Keep CSS Ownership Local
+
+The browser imports global styles in this order:
+
+~~~text
+reset.css
+tokens.css
+base.css
+~~~
+
+The reset owns interoperable mechanics. Generated tokens own system scales and
+complete semantic themes. Base CSS owns document defaults. Component and
+feature CSS stays colocated in CSS Modules.
+
+Authored CSS consumes semantic variables. It does not introduce literal
+colors, literal font families, unreviewed shadows, `transition: all`, removed
+focus outlines, or arbitrary stacking values. A local one-off layout value may
+remain local until repetition proves a new token; duplicating a palette is
+never a local exception.
+
+## Review the Feature Boundary
+
+- Does the contract describe real behavior without becoming a tree inventory?
+- Does the route page wire dependencies without absorbing feature state?
+- Does the API action use the generated same-origin client?
+- Are declared successes exact and unknown failures bounded?
+- Does presentation receive semantic results rather than transport values?
+- Is every visible message generated from the server catalog?
+- Does component reuse follow an existing contract?
+- Are new styles local, semantic, theme-complete, and focus-safe?
+
+Continue with [states, forms, and accessibility](./states-forms-accessibility.mdx).

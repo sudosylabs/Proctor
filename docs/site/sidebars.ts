@@ -122,9 +122,50 @@ const sidebars: SidebarsConfig = {
                   ],
                 },
                 {
-                  type: 'doc',
-                  id: 'developers/webapp-workflow',
-                  label: 'Webapp Workflow',
+                  type: 'category',
+                  label: 'Webapp Development',
+                  collapsed: false,
+                  link: {
+                    type: 'doc',
+                    id: 'developers/webapp-workflow',
+                  },
+                  items: [
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/architecture-routing',
+                      label: 'Architecture and Routing',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/features-api-localization',
+                      label: 'Features, API, and Localization',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/states-forms-accessibility',
+                      label: 'States, Forms, and Accessibility',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/testing',
+                      label: 'Testing the Webapp',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/visual-review',
+                      label: 'Visual Review',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/password-reset-slice',
+                      label: 'Complete Vertical Slice',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/webapp/review-checklists',
+                      label: 'Review Checklists',
+                    },
+                  ],
                 },
                 {
                   type: 'doc',

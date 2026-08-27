@@ -1,0 +1,163 @@
+---
+title: Review the Product Interface
+description: Judge a hosted webapp change against Proctor's visual hierarchy, semantic state, interaction, responsive, theme, and accessibility contracts.
+audience: developer
+maturity: preview
+slug: /developers/webapp/visual-review/
+---
+
+# Review the Product Interface
+
+Visual review asks whether the interface communicates the correct task and
+state under real conditions. It is not a final polish pass after behavior is
+finished. Layout, focus, error placement, responsive order, theme contrast,
+and copy growth are part of behavior.
+
+The current access pages should feel calm, precise, and explicit about the
+next safe action. Purple marks the primary Proctor-controlled path. Teal,
+amber, and coral appear only when success, attention, or failure is actually
+true. Neutral surfaces carry ordinary structure.
+
+## Begin with a Real Implemented State
+
+The password-reset form is a useful reference because it has one task column,
+two related password fields, stable pre-action evidence, one primary action,
+safe navigation, and a reserved form-feedback lane.
+
+<GovernedFigure asset="developer-password-reset-form" />
+
+The screenshot is evidence for the current implementation, not a reusable page
+template. A different feature may need loading context, a split layout, an
+empty state, or no form at all.
+
+## Review Hierarchy before Detail
+
+Ask these questions in order:
+
+1. Can a reader identify the page purpose and current state without hovering?
+2. Is there one visually dominant action or decision?
+3. Does supporting context appear before the action that depends on it?
+4. Are ordinary evidence, warning, failure, and completion visibly distinct
+   without creating a different card system for each state?
+5. Does the document still read correctly if color, motion, and shadow vanish?
+
+Do not begin by adjusting radii or colors while the state hierarchy is unclear.
+Do not wrap every section in a card to make the page look designed. Borders,
+spacing, typography, and one semantic rule usually provide enough structure.
+
+## Compare Acceptable and Unacceptable Failure Placement
+
+<GovernedFigure asset="developer-webapp-feedback-placement" />
+
+An acceptable field failure is adjacent to the field, programmatically
+associated, and followed by an unchanged action position. A general failure
+appears in the reserved action-adjacent feedback lane and is politely
+announced without stealing focus.
+
+Reject a review when:
+
+- the only failure appears in a disappearing toast;
+- the error is detached from the field or action that caused it;
+- inserting feedback moves the primary action unexpectedly;
+- failure is communicated only through a red border or icon;
+- arbitrary server detail becomes visible copy; or
+- the same message is announced through several competing live regions.
+
+## Check the Token and Component System
+
+Accept:
+
+- semantic variables such as background, foreground, action, focus, and state;
+- established 8-pixel structural spacing with 4-pixel optical corrections;
+- 6-pixel controls, 12-pixel cards, and 16-pixel large panels where those
+  shapes are real;
+- shadows only for genuine elevation;
+- the shared product-icon adapter; and
+- local CSS Modules for feature composition.
+
+Reject:
+
+- literal colors or a feature-owned palette;
+- gradients or colored cards used only for variety;
+- inconsistent radii on adjacent equivalent objects;
+- shadows on every container;
+- emoji, text glyphs, ad hoc SVG controls, or direct icon-library imports;
+- `transition: all`, removed focus outlines, or arbitrary high z-index values;
+  and
+- a new shared component without two real consumers and a narrow contract.
+
+## Review Every Interactive State
+
+For each button, link, field, toggle, selection, or temporary surface, inspect
+the applicable rest, hover, active, focus-visible, disabled, pending, invalid,
+selected, and terminal states.
+
+Hover may add confirmation but never reveal required information. Pending
+actions keep an explicit text label. Disabled content is not the sole source of
+an explanation. Destructive actions are distinct and confirmed or genuinely
+undoable.
+
+Keyboard review starts at the skip link and follows document order. Focus
+indicators remain visible against every adjacent surface and are not clipped by
+overflow, sticky content, or rounded containers.
+
+## Review Responsive Behavior as Recomposition
+
+At `390×844`, do not merely shrink the desktop page. Verify that:
+
+- all regions return to one-dimensional document flow where required;
+- primary actions remain reachable and use the available inline width;
+- action order remains meaningful;
+- labels and guidance wrap without covering controls;
+- the page owns vertical scrolling and has no nested task scroller; and
+- 200% zoom introduces no page-level horizontal overflow.
+
+At `768×1024`, look for awkward intermediate wrapping rather than assuming the
+mobile and desktop extremes cover it. At `1440×1024`, preserve bounded form and
+reading measures; empty width is not a reason to stretch controls or prose.
+
+## Review Themes without Designing Two Products
+
+Inspect light, dark, and system preference for every changed state. Components
+consume the same semantic roles in both themes. Dark mode is not an inverted
+screenshot and does not introduce new state meaning.
+
+Verify:
+
+- canvas, surface, text, border, link, focus, action, and state contrast;
+- the correct governed Proctor lockup for the effective color scheme;
+- native control and scrollbar color scheme;
+- transparent notices remain transparent; and
+- state surfaces appear only when their named state is true.
+
+Do not branch feature behavior on theme or select a brand asset directly from
+a feature component.
+
+## Review Content Growth and Bidirectionality
+
+Test long headings, field labels, validation guidance, action names, and
+paragraphs. Copy may grow the page vertically; it may not clip, overlap,
+truncate required meaning, or create a horizontal page scroller.
+
+Use complete messages instead of concatenated fragments. Inspect logical
+padding, margins, borders, alignment, and directional icons under right-to-left
+direction. Protocol values and the Proctor brand may remain untranslated where
+their contracts require it.
+
+## Record Evidence, Not Taste
+
+A useful review note names:
+
+- the state and route inspected;
+- browser, viewport, theme, zoom, motion, and locale;
+- keyboard and focus observations;
+- overflow and content-growth results;
+- any forced-color or screen-reader evidence; and
+- the owning token, component, feature, or route contract for a requested
+  change.
+
+“This feels off” may begin an investigation, but the actionable conclusion
+should identify hierarchy, containment, contrast, state meaning, interaction,
+or ownership.
+
+Use the [webapp review checklists](./review-checklists.mdx) before handoff.

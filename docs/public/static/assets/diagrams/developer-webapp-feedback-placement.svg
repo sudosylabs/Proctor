@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Form feedback placement comparison</title>
+  <desc id="description">The left example detaches failure from its cause: a temporary toast sits above a password field marked only by a coral border, leaving no adjacent explanation. The right example places field guidance directly below the invalid field and reserves a persistent general-feedback lane immediately above the unchanged primary action.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <path d="M 600 56 V 664" stroke="#e1dce5" stroke-width="2"/>
+
+  <rect x="56" y="56" width="88" height="32" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="100" y="77" text-anchor="middle" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AVOID</text>
+  <text x="56" y="120" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Failure detached from its cause</text>
+
+  <rect x="80" y="144" width="440" height="72" rx="12" fill="#fff0f1" stroke="#b4233c" stroke-width="2" stroke-dasharray="9 7"/>
+  <circle cx="112" cy="180" r="10" fill="#b4233c"/>
+  <text x="136" y="176" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Something went wrong</text>
+  <text x="136" y="198" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">Temporary toast, remote from the action</text>
+
+  <rect x="80" y="248" width="440" height="304" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="112" y="288" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Set a new password</text>
+  <text x="112" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">New password</text>
+  <rect x="112" y="352" width="376" height="48" rx="6" fill="#ffffff" stroke="#b4233c" stroke-width="2"/>
+  <text x="112" y="424" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">No adjacent explanation</text>
+  <rect x="112" y="464" width="176" height="48" rx="6" fill="#5c00aa"/>
+  <text x="200" y="494" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Set password</text>
+
+  <path d="M 80 600 V 616 H 520 V 600" fill="none" stroke="#b4233c" stroke-width="1"/>
+  <text x="300" y="648" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Color carries the field meaning; retry context can disappear.</text>
+
+  <rect x="656" y="56" width="88" height="32" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="700" y="77" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">USE</text>
+  <text x="656" y="120" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Evidence placed beside its cause</text>
+
+  <rect x="632" y="144" width="512" height="408" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="664" y="184" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Set a new password</text>
+  <text x="664" y="232" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">New password</text>
+  <rect x="664" y="248" width="448" height="48" rx="6" fill="#ffffff" stroke="#b4233c" stroke-width="2"/>
+  <path d="M 664 312 H 680" stroke="#b4233c" stroke-width="3"/>
+  <text x="688" y="316" fill="#b4233c" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Use at least 12 characters.</text>
+  <text x="664" y="368" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PERSISTENT FORM-FEEDBACK LANE</text>
+  <rect x="664" y="384" width="448" height="64" rx="6" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <circle cx="688" cy="416" r="8" fill="#b4233c"/>
+  <text x="712" y="412" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Password could not be changed</text>
+  <text x="712" y="434" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">Try again; your safe input remains.</text>
+  <rect x="664" y="472" width="176" height="48" rx="6" fill="#5c00aa"/>
+  <text x="752" y="502" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Set password</text>
+  <rect x="864" y="480" width="248" height="32" rx="16" fill="#f7f5f9" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="988" y="501" text-anchor="middle" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">Action position remains stable</text>
+
+  <path d="M 632 600 V 616 H 1144 V 600" fill="none" stroke="#5c00aa" stroke-width="1"/>
+  <text x="888" y="648" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Field and form failures remain readable, associated, and recoverable.</text>
+
+  <text x="600" y="696" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ONE EVENT · ONE ANNOUNCEMENT PATH</text>
+</svg>

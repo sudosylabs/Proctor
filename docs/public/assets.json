@@ -455,6 +455,235 @@
         "server/httpapi/user_settings.go",
         "server/openapi/fragments/users/users-settings.yaml"
       ]
+    },
+    {
+      "id": "developer-webapp-feature-ownership",
+      "path": "static/assets/diagrams/developer-webapp-feature-ownership.svg",
+      "public_path": "/assets/diagrams/developer-webapp-feature-ownership.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's hosted-route, OpenAPI, localization, design-system, feature, and component contracts; no upstream artwork or expression was copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains repository boundary and generated-adapter labels only; no Institution, User, credential, request, hostname, filesystem path, or operational data."
+      },
+      "alt": "Four human-owned sources define hosted route membership, HTTP shapes, visible messages, and visual meaning. Their generated browser adapters feed the hosted-route root, feature action and state machine, and contracted shared components that compose one page without duplicating those authorities.",
+      "caption": "A hosted feature composes generated projections of reviewed sources. The page owns interaction state; it does not become another authority for routes, HTTP, language, or visual meaning.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 12000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "6b65f47d153f6c4bcc678fa3ebf2223eb9f5512c414412c6f4fa64930f1d6654",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "server/webui/hosted_routes.json",
+        "server/openapi/base.yaml",
+        "server/i18n/en.json",
+        "webapp/DESIGN_SYSTEM.md",
+        "webapp/src/app/HostedRoutes.tsx",
+        "webapp/src/app/CONTRACT.md"
+      ]
+    },
+    {
+      "id": "developer-password-reset-browser-flow",
+      "path": "static/assets/diagrams/developer-password-reset-browser-flow.svg",
+      "public_path": "/assets/diagrams/developer-password-reset-browser-flow.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from the implemented Proctor password-reset bootstrap, API action, form state, focus, and recovery contracts; no upstream artwork or expression was copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Uses a masked fragment example and generic outcome labels only; no real credential, User, Institution, email address, request, hostname, or operational data."
+      },
+      "alt": "A password-reset credential arrives in a masked URL fragment. The root removes the complete fragment before parsing one purpose-specific token. The ready form keeps that token out of rendering and storage, then posts only the token and password. A bounded result mapper selects complete, unusable, or retryable behavior with distinct clearing, focus, and recovery rules.",
+      "caption": "Credential sanitation happens before rendering. The feature then maps one bounded HTTP result into the exact terminal or recoverable state that owns the next focus and secret-lifetime decision.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 12000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "f9b7e3e018f86bb714fdfdb029623524ca79e442d724fb72e10062bac0f4a267",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "webapp/src/app/HostedRoutes.tsx",
+        "webapp/src/auth/fragments.ts",
+        "webapp/src/features/reset-password/CONTRACT.md",
+        "webapp/src/features/reset-password/ResetPasswordApi.ts",
+        "webapp/src/components/PasswordRecovery/ResetPasswordContent.tsx",
+        "server/openapi/fragments/authentication/auth-password-reset.yaml"
+      ]
+    },
+    {
+      "id": "developer-webapp-feedback-placement",
+      "path": "static/assets/diagrams/developer-webapp-feedback-placement.svg",
+      "public_path": "/assets/diagrams/developer-webapp-feedback-placement.svg",
+      "kind": "illustration",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's InputField, FormFeedback, and password-recovery contracts; no upstream artwork or expression was copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains synthetic password-form labels and bounded failure examples only; no password value, User, Institution, email address, credential, request, or operational data."
+      },
+      "alt": "A side-by-side form comparison. The discouraged example shows a temporary detached toast and an invalid field identified only by its coral border. The accepted example places a specific error immediately below the invalid field and reserves a persistent general-feedback lane directly above an unchanged primary action.",
+      "caption": "Place evidence beside its cause: field guidance follows the field, general submission failure stays beside the action, and recoverable feedback does not unexpectedly move that action.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 10000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "89a8da80530b1a00b8e11c3d7d57eff48bb91b275eff11efe9eaf6a9eae6c376",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "webapp/src/components/InputField/CONTRACT.md",
+        "webapp/src/components/FormFeedback/CONTRACT.md",
+        "webapp/src/components/PasswordRecovery/ResetPasswordContent.tsx",
+        "webapp/src/components/PasswordRecovery/PasswordRecovery.module.css"
+      ]
+    },
+    {
+      "id": "developer-password-reset-form",
+      "path": "static/assets/screenshots/developer-password-reset-form.png",
+      "public_path": "/assets/screenshots/developer-password-reset-form.png",
+      "kind": "screenshot",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor product screenshot; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Deterministic Chromium capture of the actual /account/reset-password ready state at 1440x1024 CSS pixels, 100% scale, light theme, reduced motion, English locale, and UTC. The tracked fixture supplies one synthetic fragment credential that the root removes before rendering.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "The captured ready state contains no entered values or remote data. Its synthetic fragment credential was removed before rendering and is absent from the screenshot; no Institution, User, email address, hostname, filesystem path, or operational data is visible."
+      },
+      "alt": "The implemented Proctor password-reset page on a white canvas. The Proctor wordmark is at the top left. A bounded task column presents the Account recovery eyebrow, Choose a new password heading, two labeled password fields with visibility controls, password guidance, a Session-revocation note, one purple Set new password action, and a Return to sign in link.",
+      "caption": "The implemented ready state uses one bounded task column, adjacent field guidance, stable pre-action evidence, one primary action, safe navigation, and space for persistent form feedback.",
+      "width": 1440,
+      "height": 1024,
+      "max_bytes": 100000,
+      "theme": "light",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "7b7e69e154345816f0846d76a1d77e29e7baa236f2e62775590595b205dbcfdb",
+        "reviewed": "2026-08-27",
+        "method": "Exact 1440x1024 product capture inspected at full size and in the documentation page at 1440x1024 and 390x844 in light and dark site themes; narrow review verifies the figure container, caption, and full-size control rather than recapturing the desktop product state.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "webapp/tests/fixtures/documentation-password-reset.json",
+        "webapp/src/features/reset-password/CONTRACT.md",
+        "webapp/src/features/reset-password/ResetPasswordPage.tsx",
+        "webapp/src/components/PasswordRecovery/ResetPasswordContent.tsx",
+        "webapp/src/components/PasswordRecovery/PasswordRecovery.module.css",
+        "webapp/src/components/AccessPageShell/CONTRACT.md"
+      ]
     }
   ]
 }

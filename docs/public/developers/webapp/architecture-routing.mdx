@@ -1,0 +1,171 @@
+---
+title: Understand Webapp Architecture and Routing
+description: Trace a server-hosted browser page from the sealed route catalog through sanitized bootstrap, root orchestration, and feature presentation.
+audience: developer
+maturity: preview
+slug: /developers/webapp/architecture-routing/
+---
+
+# Understand Webapp Architecture and Routing
+
+The hosted webapp is not a general single-page router that claims every unknown
+path. The server owns a finite route catalog, the browser generates a typed
+membership adapter from that catalog, and one authored descriptor map provides
+the behavior for every generated route.
+
+This arrangement makes route drift fail during generation, type-checking, and
+tests rather than appearing as an inaccessible production page.
+
+## Read the Runtime from Outside In
+
+| Location | Responsibility |
+| --- | --- |
+| `server/webui/hosted_routes.json` | Sealed list of paths served with the browser application |
+| `webapp/src/app/routes.ts` | Generated readonly route tuple and `HostedRoute` union |
+| `webapp/src/app/HostedRoutes.tsx` | Exhaustive descriptor, bootstrap projection, document-title key, and page renderer |
+| `webapp/src/app/App.tsx` | Root document synchronization, localized title, and selected page |
+| `webapp/src/features/<feature>` | Thin route page and feature-owned transport action |
+| `webapp/src/components/<Component>` | Presentation proven by one or more real consumers |
+| `webapp/src/theme` | One effective product-theme resolution |
+| `webapp/src/styles` | Reset, generated tokens, and document defaults |
+
+Use the table to navigate; do not reproduce it as a new architectural registry
+in code. The current tree and contracts remain authoritative.
+
+## Generated Membership, Authored Behavior
+
+The route generator reads the server catalog and writes `src/app/routes.ts`.
+That file exports the literal `hostedRoutes` tuple and its derived union. It is
+never edited directly.
+
+`HostedRoutes.tsx` is the authored counterpart. Its descriptor map is typed
+over the generated union, so every route must supply:
+
+- one localized document-title key;
+- one explicit fragment policy;
+- one purpose-specific bootstrap projection; and
+- one page renderer.
+
+Adding a server route without its browser behavior fails compilation. Removing
+a server route leaves an authored extra key that the completeness tests reject.
+Unknown paths return no bootstrap and no catch-all browser page.
+
+After changing the server catalog, run:
+
+~~~sh
+cd webapp
+npm run routes:generate
+npm run routes:check
+~~~
+
+Review both the server catalog and generated adapter. Route membership is a
+public serving decision even when the page itself is unauthenticated.
+
+## Sanitize Before React Renders
+
+Some hosted pages begin with a short-lived value in a URL fragment. Fragments
+are not sent in the HTTP request, but they can still leak through history,
+screenshots, copied addresses, extensions, or later browser code if retained.
+
+The root bootstrap therefore:
+
+1. recognizes only the fragment policy declared for the exact route;
+2. removes the complete fragment from browser history before interpreting it;
+3. accepts one exact parameter and rejects extra or empty values;
+4. projects a purpose-specific credential type; and
+5. passes only that projection to the selected feature.
+
+The bootstrap union distinguishes an Invitation claim, password-reset token,
+email-verification token, and Desktop browser proof. It deliberately exposes no
+generic `token` object that features could exchange accidentally.
+
+Credential-free pages also clear unexpected fragments. Login recognizes only
+its exact bounded external-login failure notice. Desktop query evidence is
+length-bounded separately from its fragment proof.
+
+## Keep the Root Narrow
+
+The root owns concerns that must be correct before a feature can safely render:
+
+- Strict Mode mounting;
+- sanitized bootstrap input;
+- exhaustive hosted-route dispatch;
+- document language, direction, title, theme, and theme-color metadata; and
+- a bounded fatal render boundary.
+
+It does not own feature API calls, form values, password policy, Invitation
+state, navigation decisions, or visible recovery. A feature that can recognize
+and recover from a remote failure should render that recovery itself. The fatal
+boundary is reserved for bootstrap or rendering failures that prevent the
+feature from doing so.
+
+## Use the Shared Initial-Resource Lifecycle Deliberately
+
+Routes that load one bounded initial result may use the application-owned
+`AsyncResource` lifecycle. It reuses the current promise across React Strict
+Mode remounts, gives each retry a newer identity, ignores stale completions,
+and stops notifications after unsubscribe.
+
+Its input loader must already return a feature result. The lifecycle does not
+interpret HTTP, Problem Details, copy, focus, or recovery. Do not turn it into
+a global data-fetching service or a place to store domain state.
+
+The password-reset route needs no initial request: sanitized bootstrap already
+decides whether a usable credential is present. Other routes, such as provider
+connection, use the initial-resource lifecycle because their visible state
+depends on bounded server discovery.
+
+## Compose the Page through Owned Boundaries
+
+`AccessPageShell` provides the Proctor identity, skip link, one main landmark,
+bounded frame, and responsive structural variant for the hosted access family.
+It does not own headings, forms, evidence, API state, or navigation.
+
+The shared `ProductTheme` resolves system or explicit preference once. The
+document and shell consume the same effective result; features do not select
+theme assets or query `prefers-color-scheme` independently.
+
+Inside the shell:
+
+- a feature page connects the real transport action to presentation;
+- feature content owns state, values, copy selection, and recovery;
+- shared components own only their contracted interaction and visual behavior;
+- CSS Modules own feature and component presentation; and
+- the generated token layer supplies semantic values in every registered
+  theme.
+
+The current shell is for access and onboarding pages. It is not evidence for a
+future authenticated application shell, sidebar, dashboard, or navigation
+model.
+
+## Add a Hosted Route
+
+Implement a new route in this order:
+
+1. Define the server-hosted path and serving behavior.
+2. Regenerate the typed route membership adapter.
+3. Add the exhaustive authored descriptor and purpose-specific bootstrap type.
+4. Write a feature contract describing real states, credentials, transport,
+   recovery, and exclusions.
+5. Add the feature action and presentation without widening root ownership.
+6. Add localized messages to the server-owned `webapp.*` catalog.
+7. Add unit and browser evidence for the complete route.
+8. Run route, API, i18n, type, lint, test, browser, and production-build gates.
+
+If the route needs a new bootstrap credential kind, review URL sanitation and
+privacy before implementing the page. If it needs an existing shared
+component to take on new semantics, update that component contract and every
+consumer test in the same change.
+
+## Review the Boundary
+
+- Does the server catalog own membership while the browser owns presentation?
+- Is the descriptor exhaustive and the bootstrap type purpose-specific?
+- Is sensitive fragment material removed before rendering?
+- Does the root remain independent of feature transport and state?
+- Does the page have one main landmark, one `h1`, and a keyboard-reachable skip
+  link?
+- Is theme resolution shared instead of inferred by individual pages?
+- Does an unknown route remain unknown rather than falling into a generic app?
+
+Continue with [features, API, and localization](./features-api-localization.mdx).
