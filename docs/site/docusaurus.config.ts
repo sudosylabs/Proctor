@@ -5,6 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Proctor Documentation',
   tagline: 'Run examinations with the rules in view',
+  favicon: 'img/brand/proctor-mark-dark.svg',
 
   // Keep authored and generated content on Docusaurus' forward-compatible MDX
   // parser. The API plugin has its own content root so every file is compiled
@@ -17,7 +18,7 @@ const config: Config = {
   // build from inventing a production hostname before that decision is made.
   url: process.env.DOCS_SITE_URL ?? 'https://docs.proctor.invalid',
   baseUrl: process.env.BASE_URL ?? '/',
-  staticDirectories: ['static', '../public/static', '../../assets/brand'],
+  staticDirectories: ['static', '../public/static'],
   trailingSlash: false,
 
   organizationName: 'sudosylabs',
@@ -120,12 +121,11 @@ const config: Config = {
       respectPrefersColorScheme: false,
     },
     navbar: {
-      title: 'Proctor Docs',
       logo: {
-        alt: 'Proctor',
-        src: 'mark/proctor-mark-white.svg',
-        srcDark: 'mark/proctor-mark-white.svg',
-        width: 28,
+        alt: 'Proctor Docs',
+        src: 'img/brand/proctor-docs-lockup-white.svg',
+        srcDark: 'img/brand/proctor-docs-lockup-white.svg',
+        width: 216,
         height: 28,
       },
       items: [
@@ -148,6 +148,13 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
+      logo: {
+        alt: 'Proctor Docs',
+        src: 'img/brand/proctor-docs-lockup-white.svg',
+        srcDark: 'img/brand/proctor-docs-lockup-white.svg',
+        width: 192,
+        height: 25,
+      },
       links: [
         {
           title: 'Run Proctor',

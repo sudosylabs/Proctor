@@ -16,7 +16,7 @@ lockup, copy the needed files into that package and use the copy.
 | [`mark/`](mark/) | Standalone container mark, transparent |
 | [`app-icon/`](app-icon/) | Desktop / dock tile: purple squircle, white knockout |
 | [`avatar/`](avatar/) | GitHub and circular avatars: purple circle, white knockout |
-| [`lockup/`](lockup/) | Mark + “Proctor” wordmark |
+| [`lockup/`](lockup/) | Mark + “Proctor” or “Proctor Docs” wordmark |
 
 ## Mark
 
@@ -50,7 +50,8 @@ and ink type for light surfaces;
 [`proctor-lockup-purple-white.svg`](lockup/proctor-lockup-purple-white.svg)
 keeps the purple mark with white type for dark product surfaces; and
 [`proctor-lockup-white.svg`](lockup/proctor-lockup-white.svg) is the all-white
-monochrome lockup.
+monochrome lockup. The documentation site uses the dedicated all-white
+[`proctor-docs-lockup-white.svg`](lockup/proctor-docs-lockup-white.svg).
 
 Word outlines come from IBM Plex Sans Medium (SIL Open Font License). The
 font file is not vendored here.

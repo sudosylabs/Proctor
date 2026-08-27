@@ -30,11 +30,11 @@
 }
 
 .tooltip {
-  background: var(--proctor-footer);
-  border: var(--proctor-stroke-hairline) solid var(--proctor-footer-border);
+  background: var(--proctor-surface-raised);
+  border: var(--proctor-stroke-hairline) solid var(--proctor-border-strong);
   border-radius: var(--proctor-radius-card);
   box-shadow: var(--proctor-shadow);
-  color: var(--proctor-footer-ink);
+  color: var(--proctor-ink-soft);
   display: grid;
   font-family: var(--ifm-font-family-base);
   font-size: var(--proctor-type-body-small-size);
@@ -47,12 +47,8 @@
 }
 
 .tooltipTerm {
-  color: var(--proctor-primary);
-  font-weight: 700;
-}
-
-[data-theme="dark"] .tooltipTerm {
   color: var(--proctor-primary-strong);
+  font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -48,12 +48,12 @@ It should not include:
 
 Follow the applicable workflow:
 
-- [server behavior](/developers/server-workflow/);
-- [hosted webapp](/developers/webapp-workflow/);
-- [reusable module](/developers/reusable-modules/);
-- [HTTP and OpenAPI](/developers/http-and-openapi/);
-- [persistence](/developers/persistence/); or
-- [documentation](/developers/documentation/).
+- [server behavior](./server-workflow.mdx);
+- [hosted webapp](./webapp-workflow.mdx);
+- [reusable module](./reusable-modules.mdx);
+- [HTTP and OpenAPI](./http-and-openapi.mdx);
+- [persistence](./persistence.mdx); or
+- [documentation](./documentation.mdx).
 
 Update source and tests together. When a behavior or authority changes, update
 its component contract, public guide and maturity, API source, or owning
@@ -79,7 +79,7 @@ work must be recorded in `server/NOTICE` when required.
 
 Run the focused test while developing, then the owning module gate, the
 relevant integration target, and the highest honest product gate. Use the
-[testing guide](/developers/testing/) instead of running every expensive suite
+[testing guide](./testing.mdx) instead of running every expensive suite
 after every edit.
 
 At minimum before handoff:

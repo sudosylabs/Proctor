@@ -64,14 +64,13 @@ textarea:focus-visible {
 
 .navbar__logo {
   height: 1.75rem;
-  margin-right: var(--proctor-space-3);
-  width: 1.75rem;
+  margin-right: 0;
+  width: auto;
 }
 
-.navbar__title {
-  font-size: 0.96rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.navbar__logo img {
+  height: 100%;
+  width: auto;
 }
 
 .navbar__link {
@@ -657,6 +656,18 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+.footer__logo {
+  display: block;
+  height: auto;
+  margin-inline: auto;
+}
+
+.footer__bottom {
+  border-top: var(--proctor-stroke-hairline) solid var(--proctor-footer-border);
+  margin-top: var(--proctor-space-6);
+  padding-top: var(--proctor-space-6);
+}
+
 @media (min-width: 997px) {
   .theme-doc-sidebar-container {
     width: var(--doc-sidebar-width) !important;
@@ -723,8 +734,8 @@ textarea:focus-visible {
     padding-inline: var(--proctor-space-3);
   }
 
-  .navbar__title {
-    font-size: 0.9rem;
+  .navbar__logo {
+    height: 1.5rem;
   }
 
   .breadcrumbs {

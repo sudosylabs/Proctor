@@ -85,7 +85,7 @@ to the sealed production catalog; do not register routes through package
 initialization or expose a mutable router.
 
 If the public HTTP contract changes, follow the complete
-[HTTP and OpenAPI workflow](/developers/http-and-openapi/) in the same slice.
+[HTTP and OpenAPI workflow](./http-and-openapi.mdx) in the same slice.
 The handler, route manifest, DTOs, public errors, and OpenAPI document must
 agree.
 
@@ -108,7 +108,7 @@ That gate includes architecture, localization, OpenAPI agreement, unit tests,
 race tests, and vet without requiring external services. Add the relevant
 dependency-backed target when behavior crosses PostgreSQL, Redis, S3-compatible
 storage, SMTP, providers, realtime, or multiple nodes. See the
-[testing guide](/developers/testing/) for the command matrix.
+[testing guide](./testing.mdx) for the command matrix.
 
 Integration tests should enter through the real `server.New` graph when the
 behavior depends on composition. Adapter contracts should use reusable
@@ -128,6 +128,6 @@ they must not silently skip the claimed coverage.
 
 ## Next
 
-- Add or change an [HTTP operation](/developers/http-and-openapi/).
-- Change [persistence](/developers/persistence/).
-- Choose the correct [test and integration gates](/developers/testing/).
+- Add or change an [HTTP operation](./http-and-openapi.mdx).
+- Change [persistence](./persistence.mdx).
+- Choose the correct [test and integration gates](./testing.mdx).
