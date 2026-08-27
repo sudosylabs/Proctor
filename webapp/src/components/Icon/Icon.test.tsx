@@ -3,13 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { Icon, type IconName, type IconSize } from "./Icon";
 
-const names: IconName[] = [
-  "information",
-  "warning",
-  "mail",
-  "showPassword",
-  "hidePassword",
-];
+const names: IconName[] = ["showPassword", "hidePassword"];
 
 describe("Icon", () => {
   it.each(names)("renders the governed %s icon as decorative SVG", (name) => {
@@ -26,7 +20,7 @@ describe("Icon", () => {
   it.each(["small", "default", "large"] satisfies IconSize[])(
     "accepts the governed %s size",
     (size) => {
-      expect(renderToStaticMarkup(<Icon name="information" size={size} />)).toContain(
+      expect(renderToStaticMarkup(<Icon name="showPassword" size={size} />)).toContain(
         "<svg",
       );
     },

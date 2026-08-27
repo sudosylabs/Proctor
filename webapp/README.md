@@ -32,11 +32,13 @@ Product icons use semantic names from the owned
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter; feature code never imports
 the underlying icon library directly. Brand and provider marks remain governed
 assets rather than product icons.
-Repeated action styling and single-line field behavior live beside the narrow
+Repeated action styling, single-line field behavior, and inline state evidence
+live beside the narrow
 [`Button`](./src/components/Button/CONTRACT.md) and
-[`InputField`](./src/components/InputField/CONTRACT.md) contracts. They remain
-domain-neutral; page modules still own values, validation, API orchestration,
-and recovery.
+[`InputField`](./src/components/InputField/CONTRACT.md), and
+[`Notice`](./src/components/Notice/CONTRACT.md) contracts. They remain
+domain-neutral; page modules still own values, copy, semantics, validation, API
+orchestration, and recovery.
 Visible browser copy uses the delegated `webapp.*` namespace in
 `server/i18n`. `npm run i18n:generate` validates exact ownership against
 browser source literals before producing the typed runtime catalog; the server

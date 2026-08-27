@@ -1,5 +1,5 @@
 import { message } from "../../i18n/messages";
-import { Icon } from "../Icon/Icon";
+import { Notice } from "../Notice/Notice";
 import styles from "./Setup.module.css";
 
 export function SetupContext() {
@@ -42,10 +42,9 @@ export function SetupContext() {
           </li>
         ))}
       </ol>
-      <div className={styles.contextNote} role="note">
-        <Icon className={styles.noteIcon} name="information" />
+      <Notice className={styles.contextNote} role="note" tone="information">
         <p>{message("webapp.setup.context.note")}</p>
-      </div>
+      </Notice>
     </div>
   );
 }

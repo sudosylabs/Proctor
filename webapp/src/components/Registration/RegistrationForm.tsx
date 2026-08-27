@@ -8,9 +8,9 @@ import type {
 } from "../../features/register/RegistrationApi";
 import { message } from "../../i18n/messages";
 import { Button } from "../Button/Button";
-import { Icon } from "../Icon/Icon";
 import { InputField, RequiredMark } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
+import { Notice } from "../Notice/Notice";
 import styles from "./Registration.module.css";
 
 type RegistrationField =
@@ -214,9 +214,9 @@ export function RegistrationForm({
         </div>
 
         {formError === undefined ? null : (
-          <div className={styles.formError} ref={errorSummaryRef} tabIndex={-1}>
+          <Notice ref={errorSummaryRef} tabIndex={-1} tone="danger">
             {formError}
-          </div>
+          </Notice>
         )}
 
         <div className={styles.nameFields}>
@@ -360,10 +360,9 @@ export function RegistrationForm({
           <a href="/login">{message("webapp.register.sign_in.action")}</a>
         </div>
 
-        <div className={styles.mailNote} role="note">
-          <Icon className={styles.mailIcon} name="mail" />
+        <Notice role="note" tone="information">
           <p>{message("webapp.register.form.mail_note")}</p>
-        </div>
+        </Notice>
       </form>
     </section>
   );

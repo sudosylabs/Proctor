@@ -11,9 +11,9 @@ import { readProblemValue } from "../../api/problem";
 import { navigateToProvider } from "../../auth/navigation";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
-import { Icon } from "../../components/Icon/Icon";
 import { InputField } from "../../components/InputField/InputField";
 import { PasswordField } from "../../components/InputField/PasswordField";
+import { Notice } from "../../components/Notice/Notice";
 import { message } from "../../i18n/messages";
 import styles from "./LoginPage.module.css";
 
@@ -189,10 +189,9 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
         </header>
 
         {externalNotice ? (
-          <div className={styles.notice} role="note">
-            <Icon className={styles.noticeIcon} name="information" />
+          <Notice role="note" tone="warning">
             <p>{message("webapp.login.external_failure")}</p>
-          </div>
+          </Notice>
         ) : null}
 
         <DiscoveryContent
@@ -493,13 +492,13 @@ function LocalLoginForm({
       </div>
 
       {formError === undefined ? null : (
-        <div
-          className={styles.formError}
+        <Notice
           ref={errorSummaryRef}
           tabIndex={-1}
+          tone="danger"
         >
           {formError}
-        </div>
+        </Notice>
       )}
 
       <InputField

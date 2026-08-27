@@ -1,9 +1,6 @@
 import {
   Eye,
   EyeOff,
-  Info,
-  Mail,
-  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -11,10 +8,7 @@ import styles from "./Icon.module.css";
 
 const iconComponents = {
   hidePassword: EyeOff,
-  information: Info,
-  mail: Mail,
   showPassword: Eye,
-  warning: TriangleAlert,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof iconComponents;

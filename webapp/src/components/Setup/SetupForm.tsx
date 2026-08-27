@@ -6,9 +6,9 @@ import type {
 } from "../../features/setup/SetupApi";
 import { message } from "../../i18n/messages";
 import { Button } from "../Button/Button";
-import { Icon } from "../Icon/Icon";
 import { InputField } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
+import { Notice } from "../Notice/Notice";
 import styles from "./Setup.module.css";
 
 type SetupField =
@@ -204,9 +204,9 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
         </div>
 
         {formError === undefined ? null : (
-          <div className={styles.formError} ref={errorSummaryRef} tabIndex={-1}>
+          <Notice ref={errorSummaryRef} tabIndex={-1} tone="danger">
             {formError}
-          </div>
+          </Notice>
         )}
 
         <section
@@ -366,10 +366,9 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
           </div>
         </section>
 
-        <p className={styles.caution} role="note">
-          <Icon className={styles.cautionIcon} name="warning" />
-          <span>{message("webapp.setup.form.caution")}</span>
-        </p>
+        <Notice className={styles.caution} role="note" tone="warning">
+          {message("webapp.setup.form.caution")}
+        </Notice>
 
         <div className={styles.actions}>
           <Button

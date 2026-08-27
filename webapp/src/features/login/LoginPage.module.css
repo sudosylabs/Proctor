@@ -65,25 +65,6 @@
     color: var(--proctor-color-foreground-muted);
   }
 
-  .notice {
-    display: grid;
-    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
-    gap: var(--proctor-space-3);
-    align-items: start;
-    padding: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-default);
-    border-inline-start: var(--proctor-border-width-focus) solid
-      var(--proctor-color-state-info);
-    border-radius: var(--proctor-radius-control);
-    background: var(--proctor-color-state-info-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
-  .noticeIcon {
-    color: var(--proctor-color-state-info);
-  }
-
   .loading {
     padding-block: var(--proctor-space-4);
     color: var(--proctor-color-foreground-muted);
@@ -131,14 +112,6 @@
   .registration {
     font-size: var(--proctor-font-size-body-small);
     line-height: var(--proctor-line-height-body-small);
-  }
-
-  .formError {
-    padding: var(--proctor-space-4);
-    border-inline-start: var(--proctor-border-width-focus) solid
-      var(--proctor-color-state-danger);
-    background: var(--proctor-color-state-danger-surface);
-    color: var(--proctor-color-foreground-default);
   }
 
   .providerGroup {
@@ -207,9 +180,5 @@
       background: CanvasText;
     }
 
-    .notice,
-    .formError {
-      border-color: ButtonText;
-    }
   }
 }

@@ -40,8 +40,9 @@ application shell. The initial product icon vocabulary is governed by the narrow
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
 Repeated form behavior is governed by
 [`InputField`](./src/components/InputField/CONTRACT.md) and
-[`Button`](./src/components/Button/CONTRACT.md); feature forms retain their
-values, validation decisions, submission, and recovery.
+[`Button`](./src/components/Button/CONTRACT.md), while compact inline state
+evidence uses [`Notice`](./src/components/Notice/CONTRACT.md); features retain
+their values, copy, semantics, validation decisions, submission, and recovery.
 The system still owns no illustration set, general navigation behavior, or
 persisted theme chooser. Those decisions require a real flow and its states
 rather than speculative abstractions.

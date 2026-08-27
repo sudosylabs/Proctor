@@ -28,6 +28,9 @@ test("email verification requires deliberate token consumption", async ({
   await expect(page.locator("body")).not.toContainText(verificationToken);
   await expect(page.getByText("This link can only be used once.")).toBeVisible();
   await expect(
+    page.locator('[data-proctor-notice-tone="accent"]'),
+  ).toBeVisible();
+  await expect(
     page.getByRole("link", { name: "Return to sign in", exact: true }),
   ).toHaveAttribute("href", "/login");
 
@@ -41,6 +44,9 @@ test("email verification requires deliberate token consumption", async ({
   await expect(verifiedHeading).toBeFocused();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByText("You can continue to sign in.")).toBeVisible();
+  await expect(
+    page.locator('[data-proctor-notice-tone="success"]'),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Return to sign in", exact: true }),
   ).toHaveAttribute("href", "/login");
@@ -82,6 +88,9 @@ test("missing and malformed fragment credentials make no request", async ({
       0,
     );
     await expect(page.locator("body")).not.toContainText("secret");
+    await expect(
+      page.locator('[data-proctor-notice-tone="danger"]'),
+    ).toBeVisible();
   }
   expect(requests).toBe(0);
 });
@@ -165,6 +174,9 @@ test("a retryable failure retains one in-memory token without duplicate submissi
   await expect(unavailableHeading).toBeFocused();
   await expect(
     page.getByText("Try the link again, or sign in if it has already been used."),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-proctor-notice-tone="warning"]'),
   ).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(

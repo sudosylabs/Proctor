@@ -169,19 +169,7 @@
   }
 
   .contextNote {
-    display: grid;
-    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
-    gap: var(--proctor-space-3);
-    align-items: start;
     max-inline-size: 23.5rem;
-    padding: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-default);
-    border-radius: var(--proctor-radius-control);
-  }
-
-  .noteIcon {
-    color: var(--proctor-color-state-info);
   }
 
   .form {
@@ -239,24 +227,8 @@
     gap: var(--proctor-space-4) var(--proctor-space-6);
   }
 
-  .formError {
-    padding: var(--proctor-space-4);
-    border-inline-start: var(--proctor-border-width-focus) solid
-      var(--proctor-color-state-danger);
-    background: var(--proctor-color-state-danger-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
   .caution {
-    display: grid;
-    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
-    gap: var(--proctor-space-3);
-    align-items: center;
     margin-block-start: var(--proctor-space-5);
-  }
-
-  .cautionIcon {
-    color: var(--proctor-color-state-warning);
   }
 
   .actions {
@@ -286,11 +258,6 @@
   }
 
   @media (forced-colors: active) {
-    .contextNote,
-    .formError {
-      border-color: ButtonText;
-    }
-
     .proofRail li::before,
     .proofRail li::after {
       background: CanvasText;

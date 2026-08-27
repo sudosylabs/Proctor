@@ -2,9 +2,10 @@
 
 `Icon` is the sole product-icon adapter for the server-hosted webapp. It maps
 stable, semantic Proctor names to selected Lucide React glyphs so feature code
-does not depend on library names or APIs. The initial vocabulary is
-`information`, `warning`, `mail`, `showPassword`, and `hidePassword`; a new name
-is added only after a concrete product use proves its meaning.
+does not depend on library names or APIs. The current vocabulary is
+`showPassword` and `hidePassword`; a new name is added only after a concrete
+product use proves its meaning. Inline notices deliberately rely on text and a
+semantic rule instead of an icon.
 
 The component owns inline SVG rendering, the design-system `16px`, `20px`, and
 `24px` size tokens, a consistent `2px` stroke, `currentColor`, and a stable
@@ -23,5 +24,5 @@ indicators are not product icons. They retain their own asset or component
 contracts and must not be approximated with Lucide glyphs.
 
 Unit tests cover every governed name and size. Browser tests cover icons in
-their real notice and password-disclosure contexts, including theme and narrow
-layout behavior.
+their real password-disclosure contexts, including theme and narrow layout
+behavior.

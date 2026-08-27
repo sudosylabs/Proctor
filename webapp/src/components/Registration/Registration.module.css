@@ -134,14 +134,6 @@
     gap: var(--proctor-space-5);
   }
 
-  .formError {
-    padding: var(--proctor-space-4);
-    border-inline-start: var(--proctor-border-width-focus) solid
-      var(--proctor-color-state-danger);
-    background: var(--proctor-color-state-danger-surface);
-    color: var(--proctor-color-foreground-default);
-  }
-
   .acknowledgment {
     display: flex;
     flex-direction: column;
@@ -189,22 +181,6 @@
     line-height: var(--proctor-line-height-body-small);
   }
 
-  .mailNote {
-    display: grid;
-    grid-template-columns: var(--proctor-icon-size-default) minmax(0, 1fr);
-    gap: var(--proctor-space-3);
-    align-items: start;
-    padding: var(--proctor-space-4);
-    border: var(--proctor-border-width-hairline) solid
-      var(--proctor-color-border-default);
-    border-radius: var(--proctor-radius-card);
-    color: var(--proctor-color-foreground-muted);
-  }
-
-  .mailIcon {
-    color: var(--proctor-color-state-info);
-  }
-
   .visuallyHidden {
     position: absolute;
     inline-size: 1px;
@@ -223,9 +199,7 @@
       background: CanvasText;
     }
 
-    .proofMark,
-    .mailNote,
-    .formError {
+    .proofMark {
       border-color: ButtonText;
     }
   }

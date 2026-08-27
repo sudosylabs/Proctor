@@ -1,0 +1,40 @@
+@layer components {
+  .notice {
+    --notice-accent: var(--proctor-color-state-info);
+
+    padding-block: var(--proctor-space-1);
+    padding-inline-start: var(--proctor-space-4);
+    border-inline-start: var(--proctor-border-width-strong) solid
+      var(--notice-accent);
+    color: var(--proctor-color-foreground-subtle);
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+    overflow-wrap: anywhere;
+  }
+
+  .accent {
+    --notice-accent: var(--proctor-color-action-primary);
+  }
+
+  .information {
+    --notice-accent: var(--proctor-color-state-info);
+  }
+
+  .success {
+    --notice-accent: var(--proctor-color-state-success);
+  }
+
+  .warning {
+    --notice-accent: var(--proctor-color-state-warning);
+  }
+
+  .danger {
+    --notice-accent: var(--proctor-color-state-danger);
+  }
+
+  @media (forced-colors: active) {
+    .notice {
+      border-color: ButtonText;
+    }
+  }
+}

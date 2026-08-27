@@ -270,7 +270,7 @@ test("login presents the admitted methods and sanitizes provider failure state",
     ),
   ).toBeVisible();
   await expect(
-    page.locator('[data-proctor-icon="information"]'),
+    page.locator('[data-proctor-notice-tone="warning"]'),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continue with University SSO" }),
@@ -420,13 +420,17 @@ for (const colorScheme of ["light", "dark"] as const) {
       onPrimary: getComputedStyle(document.documentElement)
         .getPropertyValue("--proctor-color-action-on-primary")
         .trim(),
-      information: getComputedStyle(
-        document.querySelector<SVGElement>(
-          '[data-proctor-icon="information"]',
-        )!,
-      ).color,
-      informationToken: getComputedStyle(document.documentElement)
-        .getPropertyValue("--proctor-color-state-info")
+      noticeRule: getComputedStyle(
+        document.querySelector<HTMLElement>("[data-proctor-notice]")!,
+      ).borderInlineStartColor,
+      noticeBackground: getComputedStyle(
+        document.querySelector<HTMLElement>("[data-proctor-notice]")!,
+      ).backgroundColor,
+      noticeRadius: getComputedStyle(
+        document.querySelector<HTMLElement>("[data-proctor-notice]")!,
+      ).borderRadius,
+      warningToken: getComputedStyle(document.documentElement)
+        .getPropertyValue("--proctor-color-state-warning")
         .trim(),
     }));
     expect(colors.body).toBe(colors.canvas);
@@ -434,11 +438,13 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(colors.primaryText).toBe(
       colorToRGB(colors.onPrimary),
     );
-    expect(colors.information).toBe(colorToRGB(colors.informationToken));
+    expect(colors.noticeRule).toBe(colorToRGB(colors.warningToken));
+    expect(colors.noticeBackground).toBe("rgba(0, 0, 0, 0)");
+    expect(colors.noticeRadius).toBe("0px");
   });
 }
 
-test("the owned icon vocabulary preserves visible labels and disclosure state", async ({
+test("shared notices and password disclosure controls keep their contracts", async ({
   page,
 }) => {
   await mockDiscovery(page, { ...defaultDiscovery, providers: [] });
@@ -458,8 +464,13 @@ test("the owned icon vocabulary preserves visible labels and disclosure state", 
   await mockSetupStatus(page);
   await page.goto("/setup");
 
-  await expect(page.locator('[data-proctor-icon="information"]')).toBeVisible();
-  await expect(page.locator('[data-proctor-icon="warning"]')).toBeVisible();
+  await expect(page.locator("[data-proctor-notice]")).toHaveCount(2);
+  await expect(
+    page.locator('[data-proctor-notice-tone="information"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-proctor-notice-tone="warning"]'),
+  ).toBeVisible();
 
   const secretToggle = page.locator('button[aria-controls="bootstrap-secret"]');
   await expect(secretToggle).toHaveAccessibleName("Show bootstrap secret");
@@ -476,7 +487,9 @@ test("the owned icon vocabulary preserves visible labels and disclosure state", 
 
   await mockDiscovery(page);
   await page.goto("/register");
-  await expect(page.locator('[data-proctor-icon="mail"]')).toBeVisible();
+  await expect(
+    page.locator('[data-proctor-notice-tone="information"]'),
+  ).toBeVisible();
   const passwordToggle = page.locator(
     'button[aria-controls="registration-password"]',
   );

@@ -9,8 +9,10 @@ and Session contracts remain authoritative for server behavior.
 The narrow shared
 [`AccessPageShell`](../../components/AccessPageShell/CONTRACT.md) is proven
 by this route and `/authorization/complete`. It owns only their structural
-frame. Fields, buttons, provider actions, notices, and authentication behavior
-remain local to this feature.
+frame. The domain-neutral
+[`Notice`](../../components/Notice/CONTRACT.md) owns the inline state-evidence
+treatment; fields, buttons, provider actions, notice copy and semantics, and
+authentication behavior remain local to this feature.
 
 ## Purpose and boundary
 

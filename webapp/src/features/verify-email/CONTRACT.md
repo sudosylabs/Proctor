@@ -41,10 +41,12 @@ retry.
 
 The page requests the stable title `Verify email · Proctor`. It contains the
 shared first-focusable skip link, one `main` landmark, one state-specific `h1`,
-visible state label and supporting copy, one state-aware bordered notice, and
-one polite live region. The ready notice explains that the link is single-use;
-terminal and retryable outcomes replace that notice in place. State is never
-communicated by color or icon alone.
+visible state label and supporting copy, one compact state-aware evidence note,
+and one polite live region. The note is anchored by a semantic state rule
+rather than enclosed in a tinted alert panel, and composes the shared `Notice`
+component without delegating state or copy to it. The ready note explains that
+the link is single-use; terminal and retryable outcomes replace it in place.
+State is never communicated by color or shape alone.
 
 There is no autofocus on initial load. After a user-triggered completion or
 retry resolves, focus moves to the resulting heading so the context change is

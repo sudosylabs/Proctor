@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { EmailVerificationResult } from "../../features/verify-email/VerifyEmailApi";
 import { message } from "../../i18n/messages";
 import { Button } from "../Button/Button";
-import { Icon, type IconName } from "../Icon/Icon";
+import { Notice, type NoticeTone } from "../Notice/Notice";
 import styles from "./EmailVerificationContent.module.css";
 
 type VerificationState =
@@ -60,10 +60,6 @@ export function EmailVerificationContent({
   }
 
   const copy = copyFor(state);
-  const iconName: IconName =
-    state === "invalid" || state === "unavailable"
-      ? "warning"
-      : "information";
 
   return (
     <section
@@ -78,10 +74,9 @@ export function EmailVerificationContent({
         {copy.heading}
       </h1>
       <p className={styles.body}>{copy.body}</p>
-      <div className={styles.notice}>
-        <Icon name={iconName} />
+      <Notice className={styles.notice} tone={noticeToneFor(state)}>
         <p>{copy.notice}</p>
-      </div>
+      </Notice>
       <VerificationActions state={state} onSubmit={submit} />
     </section>
   );
@@ -131,6 +126,20 @@ function SignInLink() {
       {message("webapp.verify_email.sign_in")}
     </a>
   );
+}
+
+function noticeToneFor(state: VerificationState): NoticeTone {
+  switch (state) {
+    case "ready":
+    case "verifying":
+      return "accent";
+    case "verified":
+      return "success";
+    case "invalid":
+      return "danger";
+    case "unavailable":
+      return "warning";
+  }
 }
 
 function copyFor(state: VerificationState) {
