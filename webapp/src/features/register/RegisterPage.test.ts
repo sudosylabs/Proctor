@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveRegistrationDiscovery } from "./RegistrationApi";
+import {
+  resolveRegistrationDiscovery,
+  type Discovery,
+} from "./RegistrationApi";
 
-const discovery = {
+const discovery: Discovery = {
   discovery_version: 1,
   canonical_origin: "https://proctor.example",
   initialized: true,
@@ -12,28 +15,32 @@ const discovery = {
     invitation_admission: true,
     desktop_authorization: true,
   },
-  desktop_authorization: {},
+  desktop_authorization: {
+    protocol: "proctor-desktop-authorization",
+    minimum_version: 1,
+    maximum_version: 1,
+  },
   institution: {
     id: "institution-1",
     name: "northbridge",
     display_name: "Northbridge Institute",
   },
   providers: [],
-} as const;
+};
 
 describe("resolveRegistrationDiscovery", () => {
   it("admits public registration only for the serving origin", () => {
     expect(
-      resolveRegistrationDiscovery(discovery, "https://proctor.example"),
+      resolveRegistrationDiscovery({ kind: "ready", discovery }),
     ).toEqual({ kind: "ready", discovery });
     expect(
-      resolveRegistrationDiscovery(discovery, "https://other.example"),
+      resolveRegistrationDiscovery({ kind: "origin_mismatch" }),
     ).toEqual({ kind: "origin_mismatch" });
   });
 
   it("distinguishes setup and Invitation admission", () => {
     const setup = { ...discovery, initialized: false };
-    expect(resolveRegistrationDiscovery(setup, "https://proctor.example")).toEqual({
+    expect(resolveRegistrationDiscovery({ kind: "ready", discovery: setup })).toEqual({
       kind: "setup",
       discovery: setup,
     });
@@ -44,18 +51,14 @@ describe("resolveRegistrationDiscovery", () => {
     };
     expect(
       resolveRegistrationDiscovery(
-        invitationRequired,
-        "https://proctor.example",
+        { kind: "ready", discovery: invitationRequired },
       ),
     ).toEqual({ kind: "invitation_required", discovery: invitationRequired });
   });
 
-  it("rejects malformed discovery", () => {
-    expect(
-      resolveRegistrationDiscovery(
-        { ...discovery, capabilities: {} },
-        "https://proctor.example",
-      ),
-    ).toEqual({ kind: "failure" });
+  it("fails safely when shared discovery is unavailable", () => {
+    expect(resolveRegistrationDiscovery({ kind: "unavailable" })).toEqual({
+      kind: "failure",
+    });
   });
 });

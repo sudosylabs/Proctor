@@ -10,6 +10,10 @@ Before accepting input, the page requests `GET /api/v1/discovery`, validates
 the versioned public projection, and pins its `canonical_origin` to the origin
 serving the page.
 
+The shared hosted-authentication boundary owns that fetch, validation, and
+origin comparison. Registration receives its bounded result and alone decides
+whether setup, public registration, or Invitation admission applies.
+
 - Loading names the bounded policy check and exposes no form.
 - An uninitialized installation links to `/setup`.
 - An initialized, same-origin installation with

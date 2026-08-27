@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDiscovery } from "./LoginPage";
+import type { PublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
+import { resolveLoginDiscovery } from "./LoginDiscovery";
 
-const discovery = {
+const discovery: PublicAccessDiscovery = {
   discovery_version: 1,
   canonical_origin: "https://proctor.example",
   initialized: true,
@@ -12,27 +13,47 @@ const discovery = {
     invitation_admission: true,
     desktop_authorization: true,
   },
-  desktop_authorization: {},
+  desktop_authorization: {
+    protocol: "proctor-desktop-authorization",
+    minimum_version: 1,
+    maximum_version: 1,
+  },
   providers: [],
 };
 
-describe("resolveDiscovery", () => {
+describe("resolveLoginDiscovery", () => {
   it("admits a valid same-origin local-login document", () => {
-    expect(resolveDiscovery(discovery, "https://proctor.example")).toEqual({
+    expect(resolveLoginDiscovery({ kind: "ready", discovery })).toEqual({
       kind: "ready",
       discovery,
     });
   });
 
-  it("fails closed when the canonical origin differs", () => {
-    expect(resolveDiscovery(discovery, "https://other.example")).toEqual({
+  it("preserves origin mismatch and shared discovery failure", () => {
+    expect(resolveLoginDiscovery({ kind: "origin_mismatch" })).toEqual({
       kind: "origin_mismatch",
+    });
+    expect(resolveLoginDiscovery({ kind: "unavailable" })).toEqual({
+      kind: "failure",
     });
   });
 
-  it("rejects a malformed success body", () => {
-    expect(resolveDiscovery({ ...discovery, providers: [{}] }, "https://proctor.example")).toEqual({
-      kind: "failure",
+  it("keeps setup and unavailable-method decisions feature-owned", () => {
+    const setup = { ...discovery, initialized: false };
+    expect(resolveLoginDiscovery({ kind: "ready", discovery: setup })).toEqual({
+      kind: "setup",
+      discovery: setup,
+    });
+
+    const unavailable = {
+      ...discovery,
+      capabilities: { ...discovery.capabilities, local_login: false },
+    };
+    expect(
+      resolveLoginDiscovery({ kind: "ready", discovery: unavailable }),
+    ).toEqual({
+      kind: "unavailable",
+      discovery: unavailable,
     });
   });
 });

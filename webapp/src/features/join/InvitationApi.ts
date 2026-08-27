@@ -1,6 +1,8 @@
 import { apiClient } from "../../api/client";
 import type { components } from "../../api/generated/schema";
 import { readProblemValue } from "../../api/problem";
+import { requestPublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
+import type { PublicAccessDiscoveryResult } from "../../auth/PublicAccessDiscovery";
 
 export type InvitationTransaction =
   components["schemas"]["BrowserInvitationStartResponse"];
@@ -51,22 +53,24 @@ export async function startInvitation(
   }
 }
 
-export async function requestInvitationInstitutionName(): Promise<
+export async function requestInvitationInstitutionName(
+  servingOrigin: string,
+): Promise<
   string | undefined
 > {
-  try {
-    const { data, response } = await apiClient.GET("/api/v1/discovery");
-    if (
-      response.status === 200 &&
-      isRecord(data) &&
-      isRecord(data.institution) &&
-      typeof data.institution.display_name === "string" &&
-      data.institution.display_name !== ""
-    ) {
-      return data.institution.display_name;
-    }
-  } catch {
-    // The Invitation remains usable without optional public presentation.
+  return resolveInvitationInstitutionName(
+    await requestPublicAccessDiscovery(servingOrigin),
+  );
+}
+
+export function resolveInvitationInstitutionName(
+  result: PublicAccessDiscoveryResult,
+): string | undefined {
+  if (
+    result.kind === "ready" &&
+    result.discovery.institution?.display_name !== ""
+  ) {
+    return result.discovery.institution?.display_name;
   }
   return undefined;
 }

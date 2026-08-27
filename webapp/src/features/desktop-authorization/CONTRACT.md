@@ -11,6 +11,9 @@ the exact three proofs and navigates only to the server-returned loopback
 redirect. Cancellation posts the same proof set and terminally replaces the
 confirmation task. No Desktop Session credential or provider token enters the
 browser page.
+The Institution presentation comes only from the shared, fully validated,
+same-origin public discovery result. Origin mismatch, malformed discovery, or
+missing Institution presentation fails the context check closed.
 
 Missing or rejected proofs share one unusable-request state. A signed-out
 browser retains the in-memory request while offering sign-in in a separate tab

@@ -1,8 +1,12 @@
 import { apiClient } from "../../api/client";
-import type { components } from "../../api/generated/schema";
 import { readProblemValue } from "../../api/problem";
+import {
+  requestPublicAccessDiscovery,
+  type PublicAccessDiscovery,
+  type PublicAccessDiscoveryResult,
+} from "../../auth/PublicAccessDiscovery";
 
-export type Discovery = components["schemas"]["PublicAccessDiscoveryResponse"];
+export type Discovery = PublicAccessDiscovery;
 
 export type RegistrationDiscoveryState =
   | { kind: "loading" }
@@ -30,65 +34,31 @@ export type RegistrationSubmissionResult =
   | { kind: "rate_limited" }
   | { kind: "unavailable" };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isRegistrationDiscovery(value: unknown): value is Discovery {
-  if (
-    !isRecord(value) ||
-    value.discovery_version !== 1 ||
-    typeof value.canonical_origin !== "string" ||
-    typeof value.initialized !== "boolean" ||
-    !isRecord(value.capabilities) ||
-    typeof value.capabilities.public_registration !== "boolean"
-  ) {
-    return false;
-  }
-  return (
-    value.institution === undefined ||
-    (isRecord(value.institution) &&
-      typeof value.institution.id === "string" &&
-      typeof value.institution.name === "string" &&
-      typeof value.institution.display_name === "string")
-  );
-}
-
 export function resolveRegistrationDiscovery(
-  value: unknown,
-  servingOrigin: string,
+  result: PublicAccessDiscoveryResult,
 ): RegistrationDiscoveryState {
-  if (!isRegistrationDiscovery(value)) {
+  if (result.kind === "unavailable") {
     return { kind: "failure" };
   }
-
-  let canonicalOrigin: string;
-  try {
-    canonicalOrigin = new URL(value.canonical_origin).origin;
-  } catch {
-    return { kind: "failure" };
+  if (result.kind === "origin_mismatch") {
+    return result;
   }
-  if (canonicalOrigin !== servingOrigin) {
-    return { kind: "origin_mismatch" };
+  const { discovery } = result;
+  if (!discovery.initialized) {
+    return { kind: "setup", discovery };
   }
-  if (!value.initialized) {
-    return { kind: "setup", discovery: value };
+  if (!discovery.capabilities.public_registration) {
+    return { kind: "invitation_required", discovery };
   }
-  if (!value.capabilities.public_registration) {
-    return { kind: "invitation_required", discovery: value };
-  }
-  return { kind: "ready", discovery: value };
+  return { kind: "ready", discovery };
 }
 
 export async function requestRegistrationDiscovery(
   servingOrigin: string,
 ): Promise<RegistrationDiscoveryState> {
-  try {
-    const { data } = await apiClient.GET("/api/v1/discovery");
-    return resolveRegistrationDiscovery(data, servingOrigin);
-  } catch {
-    return { kind: "failure" };
-  }
+  return resolveRegistrationDiscovery(
+    await requestPublicAccessDiscovery(servingOrigin),
+  );
 }
 
 export async function submitRegistration(

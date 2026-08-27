@@ -36,7 +36,7 @@ export function DesktopAuthorizationPage({
     if (requestRef.current?.attempt !== attempt) {
       requestRef.current = {
         attempt,
-        promise: requestDesktopAuthorizationContext(),
+        promise: requestDesktopAuthorizationContext(window.location.origin),
       };
     }
     void requestRef.current.promise.then((result) => {

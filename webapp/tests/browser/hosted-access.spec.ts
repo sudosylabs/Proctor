@@ -12,7 +12,11 @@ const defaultDiscovery = {
     invitation_admission: true,
     desktop_authorization: true,
   },
-  desktop_authorization: {},
+  desktop_authorization: {
+    protocol: "proctor-desktop-authorization",
+    minimum_version: 1,
+    maximum_version: 1,
+  },
   institution: {
     id: "institution-1",
     name: "northbridge",

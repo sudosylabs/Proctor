@@ -5,9 +5,8 @@ import {
   useState,
 } from "react";
 
-import { apiClient } from "../../api/client";
-import type { components } from "../../api/generated/schema";
 import { navigateToProvider } from "../../auth/navigation";
+import type { PublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
 import { FormFeedback } from "../../components/FormFeedback/FormFeedback";
@@ -16,17 +15,11 @@ import { PasswordField } from "../../components/InputField/PasswordField";
 import { Notice } from "../../components/Notice/Notice";
 import { message } from "../../i18n/messages";
 import { authenticateLocal, type AuthenticateLocal } from "./LoginApi";
+import {
+  requestLoginDiscovery,
+  type LoginDiscoveryState,
+} from "./LoginDiscovery";
 import styles from "./LoginPage.module.css";
-
-type Discovery = components["schemas"]["PublicAccessDiscoveryResponse"];
-
-type DiscoveryState =
-  | { kind: "loading" }
-  | { kind: "ready"; discovery: Discovery }
-  | { kind: "setup"; discovery: Discovery }
-  | { kind: "unavailable"; discovery: Discovery }
-  | { kind: "origin_mismatch" }
-  | { kind: "failure" };
 
 type FieldErrors = Partial<Record<"login_id" | "password" | "mfa_code", string>>;
 
@@ -34,84 +27,7 @@ export interface LoginPageProps {
   externalLoginFailed: boolean;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isDiscovery(value: unknown): value is Discovery {
-  if (!isRecord(value) || value.discovery_version !== 1) {
-    return false;
-  }
-  if (
-    typeof value.canonical_origin !== "string" ||
-    typeof value.initialized !== "boolean" ||
-    !isRecord(value.capabilities) ||
-    typeof value.capabilities.local_login !== "boolean" ||
-    typeof value.capabilities.public_registration !== "boolean" ||
-    typeof value.capabilities.invitation_admission !== "boolean" ||
-    typeof value.capabilities.desktop_authorization !== "boolean" ||
-    !Array.isArray(value.providers)
-  ) {
-    return false;
-  }
-  if (
-    !value.providers.every(
-      (provider) =>
-        isRecord(provider) &&
-        typeof provider.id === "string" &&
-        provider.id !== "" &&
-        typeof provider.display_name === "string" &&
-        provider.display_name !== "" &&
-        typeof provider.type === "string",
-    )
-  ) {
-    return false;
-  }
-  return (
-    value.institution === undefined ||
-    (isRecord(value.institution) &&
-      typeof value.institution.id === "string" &&
-      typeof value.institution.name === "string" &&
-      typeof value.institution.display_name === "string")
-  );
-}
-
-export function resolveDiscovery(
-  value: unknown,
-  servingOrigin: string,
-): DiscoveryState {
-  if (!isDiscovery(value)) {
-    return { kind: "failure" };
-  }
-
-  let canonicalOrigin: string;
-  try {
-    canonicalOrigin = new URL(value.canonical_origin).origin;
-  } catch {
-    return { kind: "failure" };
-  }
-  if (canonicalOrigin !== servingOrigin) {
-    return { kind: "origin_mismatch" };
-  }
-  if (!value.initialized) {
-    return { kind: "setup", discovery: value };
-  }
-  if (!value.capabilities.local_login && value.providers.length === 0) {
-    return { kind: "unavailable", discovery: value };
-  }
-  return { kind: "ready", discovery: value };
-}
-
-async function requestDiscovery(): Promise<DiscoveryState> {
-  try {
-    const { data } = await apiClient.GET("/api/v1/discovery");
-    return resolveDiscovery(data, window.location.origin);
-  } catch {
-    return { kind: "failure" };
-  }
-}
-
-function institutionName(state: DiscoveryState): string | undefined {
+function institutionName(state: LoginDiscoveryState): string | undefined {
   if (
     state.kind !== "ready" &&
     state.kind !== "setup" &&
@@ -122,7 +38,7 @@ function institutionName(state: DiscoveryState): string | undefined {
   return state.discovery.institution?.display_name;
 }
 
-function LoginContext({ state }: { state: DiscoveryState }) {
+function LoginContext({ state }: { state: LoginDiscoveryState }) {
   const name = institutionName(state);
   return (
     <div className={styles.context}>
@@ -143,13 +59,13 @@ function LoginContext({ state }: { state: DiscoveryState }) {
 }
 
 export function LoginPage({ externalLoginFailed }: LoginPageProps) {
-  const [discoveryState, setDiscoveryState] = useState<DiscoveryState>({
+  const [discoveryState, setDiscoveryState] = useState<LoginDiscoveryState>({
     kind: "loading",
   });
   const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
   const discoveryRequest = useRef<{
     attempt: number;
-    promise: Promise<DiscoveryState>;
+    promise: Promise<LoginDiscoveryState>;
   } | undefined>(undefined);
   const [externalNotice, setExternalNotice] = useState(externalLoginFailed);
 
@@ -158,7 +74,7 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
     if (discoveryRequest.current?.attempt !== discoveryAttempt) {
       discoveryRequest.current = {
         attempt: discoveryAttempt,
-        promise: requestDiscovery(),
+        promise: requestLoginDiscovery(window.location.origin),
       };
     }
     void discoveryRequest.current.promise.then((result) => {
@@ -210,7 +126,7 @@ interface DiscoveryContentProps {
   authenticate: AuthenticateLocal;
   onAuthenticationAction(): void;
   onRetry(): void;
-  state: DiscoveryState;
+  state: LoginDiscoveryState;
 }
 
 function DiscoveryContent({
@@ -306,7 +222,7 @@ function LoginMethods({
   onAuthenticationAction,
 }: {
   authenticate: AuthenticateLocal;
-  discovery: Discovery;
+  discovery: PublicAccessDiscovery;
   onAuthenticationAction(): void;
 }) {
   const hasLocal = discovery.capabilities.local_login;

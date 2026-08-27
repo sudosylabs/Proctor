@@ -30,7 +30,9 @@ export function JoinPage({ claim }: JoinPageProps) {
     }
     let subscribed = true;
     requestRef.current ??= startInvitation(claim);
-    institutionRequestRef.current ??= requestInvitationInstitutionName();
+    institutionRequestRef.current ??= requestInvitationInstitutionName(
+      window.location.origin,
+    );
     void Promise.all([requestRef.current, institutionRequestRef.current]).then(
       ([result, name]) => {
         if (subscribed) {

@@ -1,5 +1,9 @@
 import { apiClient } from "../../api/client";
 import { readProblemValue } from "../../api/problem";
+import {
+  requestPublicAccessDiscovery,
+  type PublicAccessDiscoveryLoader,
+} from "../../auth/PublicAccessDiscovery";
 
 export interface DesktopAuthorizationContext {
   account: string;
@@ -28,25 +32,26 @@ export type DesktopCancellationResult =
   | { kind: "invalid" }
   | { kind: "unavailable" };
 
-export async function requestDesktopAuthorizationContext(): Promise<DesktopContextResult> {
+export async function requestDesktopAuthorizationContext(
+  servingOrigin: string,
+  loadDiscovery: PublicAccessDiscoveryLoader = requestPublicAccessDiscovery,
+): Promise<DesktopContextResult> {
   try {
     const [userResult, discoveryResult] = await Promise.all([
       apiClient.GET("/api/v1/users/me"),
-      apiClient.GET("/api/v1/discovery"),
+      loadDiscovery(servingOrigin),
     ]);
     if (userResult.response.status === 401) {
       return { kind: "no_session" };
     }
     if (
       userResult.response.status !== 200 ||
-      discoveryResult.response.status !== 200 ||
+      discoveryResult.kind !== "ready" ||
       !isRecord(userResult.data) ||
       typeof userResult.data.username !== "string" ||
       userResult.data.username === "" ||
-      !isRecord(discoveryResult.data) ||
-      !isRecord(discoveryResult.data.institution) ||
-      typeof discoveryResult.data.institution.display_name !== "string" ||
-      discoveryResult.data.institution.display_name === ""
+      discoveryResult.discovery.institution?.display_name === undefined ||
+      discoveryResult.discovery.institution.display_name === ""
     ) {
       return { kind: "unavailable" };
     }
@@ -54,7 +59,7 @@ export async function requestDesktopAuthorizationContext(): Promise<DesktopConte
       kind: "ready",
       context: {
         account: userResult.data.username,
-        installation: discoveryResult.data.institution.display_name,
+        installation: discoveryResult.discovery.institution.display_name,
       },
     };
   } catch {

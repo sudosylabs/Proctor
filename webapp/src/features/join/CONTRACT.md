@@ -18,6 +18,8 @@ superseded, or otherwise unusable claims share bounded recipient-safe copy.
 Retryable infrastructure failure preserves the purpose-bound browser handle.
 The optional Institution name comes only from public discovery and never gates
 acceptance.
+It is read only from the shared, fully validated, same-origin discovery result;
+malformed or origin-mismatched discovery is treated as absent presentation.
 
 The ready account and Session variants use one centered task column. The
 Institution purpose precedes the current acceptance task, and stable package

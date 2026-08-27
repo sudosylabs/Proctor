@@ -30,6 +30,9 @@ family. Their shared
 structural frame is governed beside
 [`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md); feature
 modules retain their own state, transport, content, and recovery behavior.
+The shared [`auth` contract](./src/auth/CONTRACT.md) owns runtime validation and
+canonical-origin pinning for public discovery; each consuming feature still
+owns its admission decisions and visible states.
 The remaining focused access tasks share the narrow
 [`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) introduction
 and [`Notice`](./src/components/Notice/CONTRACT.md) evidence contracts without

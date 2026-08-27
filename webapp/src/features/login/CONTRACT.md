@@ -51,12 +51,17 @@ The page does not also request `GET /api/v1/auth/providers` during initial
 render. That endpoint remains useful to other clients and future explicit
 refresh behavior, but two initial sources would create an avoidable race.
 
-Before enabling an authentication action, the page parses
-`canonical_origin` and requires its origin to equal `window.location.origin`.
+Before enabling an authentication action, the shared hosted-authentication
+boundary parses `canonical_origin` and requires its origin to equal
+`window.location.origin`.
 It neither sends credentials nor follows an automatic redirect when the
 origins disagree. Institution and provider display names are escaped text
 content; neither may enter the document title, logs, error reports, or raw
 markup.
+
+It performs the fetch, complete runtime validation, and origin comparison once.
+Login receives only that validated result and retains ownership of setup,
+method availability, and recovery states.
 
 ## Document and semantic structure
 

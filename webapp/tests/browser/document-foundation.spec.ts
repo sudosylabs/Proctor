@@ -24,7 +24,11 @@ test("the production login entry keeps its root fully themed and initialized", a
           invitation_admission: true,
           desktop_authorization: true,
         },
-        desktop_authorization: {},
+        desktop_authorization: {
+          protocol: "proctor-desktop-authorization",
+          minimum_version: 1,
+          maximum_version: 1,
+        },
         providers: [],
       }),
     });
