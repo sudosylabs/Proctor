@@ -132,6 +132,23 @@ func (d ActionDefinition) AcceptsResource(resourceType ResourceType) bool {
 	return d.ResourceType == resourceType || slices.Contains(d.CompatibleResourceTypes, resourceType)
 }
 
+// SupportsRoleScope reports whether a Role Binding at scopeType can grant the
+// action. This is deliberately distinct from AcceptsResource: a binding at an
+// Academic Unit may grant an action whose concrete resource is a descendant
+// Exam, Sitting, Submission, Programme, or Class.
+func (d ActionDefinition) SupportsRoleScope(scopeType RoleScopeType) bool {
+	switch scopeType {
+	case RoleScopeInstitution:
+		return d.InheritInstitutionScope
+	case RoleScopeAcademicUnit:
+		return d.InheritAcademicUnitScopes
+	case RoleScopeClass:
+		return d.AcceptsResource(ResourceClass)
+	default:
+		return false
+	}
+}
+
 var actionDefinitions = map[Action]ActionDefinition{
 	ActionInstitutionManage: {
 		Action: ActionInstitutionManage, ResourceType: ResourceInstitution,

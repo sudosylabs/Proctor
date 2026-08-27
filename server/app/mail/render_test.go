@@ -264,6 +264,31 @@ func TestRendererRejectsUnsafeActionURL(t *testing.T) {
 	}
 }
 
+func TestRendererLoopbackHTTPRequiresExplicitDevelopmentPolicy(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		"http://localhost:8065/join#token=representative",
+		"http://127.0.0.1:8065/join#token=representative",
+		"http://[::1]:8065/join#token=representative",
+	} {
+		if err := validateActionURL(raw, false); err == nil {
+			t.Errorf("validateActionURL(%q) accepted loopback HTTP without development policy", raw)
+		}
+		if err := validateActionURL(raw, true); err != nil {
+			t.Errorf("validateActionURL(%q) rejected explicit loopback development URL: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{
+		"http://192.0.2.1:8065/join#token=representative",
+		"http://user@localhost:8065/join#token=representative",
+	} {
+		if err := validateActionURL(raw, true); err == nil {
+			t.Errorf("validateActionURL(%q) accepted unsafe HTTP development URL", raw)
+		}
+	}
+}
+
 func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 	t.Parallel()
 

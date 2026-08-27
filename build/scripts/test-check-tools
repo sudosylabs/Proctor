@@ -1,0 +1,60 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: test-check-tools CHECK_TOOLS_SCRIPT\n' >&2
+	exit 2
+fi
+
+check_tools_script=$1
+test_directory=$(mktemp -d "${TMPDIR:-/tmp}/proctor-check-tools-test.XXXXXX")
+trap 'rm -rf "$test_directory"' EXIT INT TERM
+
+for command_name in fake-npm fake-jq fake-curl; do
+	command_path=$test_directory/$command_name
+	printf '#!/bin/sh\nexit 0\n' >"$command_path"
+	chmod 755 "$command_path"
+done
+
+cat >"$test_directory/fake-go" <<'EOF'
+#!/bin/sh
+[ "$1" = env ] && [ "$2" = GOVERSION ]
+printf '%s\n' "${FAKE_GO_VERSION:-go1.25.4}"
+EOF
+chmod 755 "$test_directory/fake-go"
+
+cat >"$test_directory/fake-docker" <<'EOF'
+#!/bin/sh
+case "$*" in
+	'compose version'|'info') exit 0 ;;
+	*) exit 1 ;;
+esac
+EOF
+chmod 755 "$test_directory/fake-docker"
+
+cat >"$test_directory/node" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${FAKE_NODE_VERSION:?}"
+EOF
+chmod 755 "$test_directory/node"
+
+run_check() {
+	PATH="$test_directory:$PATH" FAKE_NODE_VERSION=$1 "$check_tools_script" \
+		"$test_directory/fake-go" "$test_directory/fake-npm" \
+		"$test_directory/fake-docker" "$test_directory/fake-jq" \
+		"$test_directory/fake-curl"
+}
+
+for version in v20.19.0 v20.20.1 v22.12.0 v22.22.0 v23.0.0; do
+	run_check "$version"
+done
+
+for version in v19.99.0 v20 v20.18.9 v21.7.3 v22.11.0 not-a-version; do
+	if run_check "$version" >/dev/null 2>&1; then
+		printf 'check-tools accepted unsupported Node version %s\n' "$version" >&2
+		exit 1
+	fi
+done

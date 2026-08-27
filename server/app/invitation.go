@@ -1204,7 +1204,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		if err != nil || role.ID != roleID || role.IsArchived() {
 			return nil, "", invitationError(err)
 		}
-		if err = validateInvitationDelegableRole(role, model.ResourceAcademicUnit); err != nil {
+		if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 			return nil, "", err
 		}
 		if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
@@ -1256,7 +1256,7 @@ func (s *invitationService) prepareReplacement(ctx context.Context, invocation I
 		if err != nil || role.ID != roleID || role.IsArchived() {
 			return nil, "", invitationError(err)
 		}
-		if err = validateInvitationDelegableRole(role, model.ResourceInstitution); err != nil {
+		if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 			return nil, "", err
 		}
 		if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
@@ -1456,14 +1456,8 @@ func (s *invitationService) IssueTeacherAcademicUnit(ctx context.Context, invoca
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationError(err)
 	}
-	if role.BuiltIn || role.Name == model.SystemAdministratorRoleName || len(role.Permissions) == 0 {
-		return InvitationView{}, NewError("invitation.role_not_delegable")
-	}
-	for _, action := range role.Permissions {
-		definition, ok := model.DefinitionForAction(model.Action(action))
-		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(model.ResourceAcademicUnit) {
-			return InvitationView{}, NewError("invitation.role_not_delegable")
-		}
+	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
+		return InvitationView{}, err
 	}
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
 		return InvitationView{}, err
@@ -1597,7 +1591,7 @@ func (s *invitationService) IssueAcademicUnitRole(ctx context.Context, invocatio
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationError(err)
 	}
-	if err = validateInvitationDelegableRole(role, model.ResourceAcademicUnit); err != nil {
+	if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 		return InvitationView{}, err
 	}
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeAcademicUnit, unitID.String()); err != nil {
@@ -1641,7 +1635,7 @@ func (s *invitationService) IssueInstitutionRole(ctx context.Context, invocation
 	if err != nil || role.ID != roleID || role.IsArchived() {
 		return InvitationView{}, invitationError(err)
 	}
-	if err = validateInvitationDelegableRole(role, model.ResourceInstitution); err != nil {
+	if err = validateInvitationDelegableRole(role, model.RoleScopeInstitution); err != nil {
 		return InvitationView{}, err
 	}
 	if err = s.authorization.CanDelegateActionsAtScope(ctx, invocation, role.Permissions, model.RoleScopeInstitution, institutionID.String()); err != nil {
@@ -1790,13 +1784,13 @@ func (s *invitationService) completeOnboardingInvitationNoOp(ctx context.Context
 	return view, nil
 }
 
-func validateInvitationDelegableRole(role *model.Role, resourceType model.ResourceType) error {
+func validateInvitationDelegableRole(role *model.Role, scopeType model.RoleScopeType) error {
 	if role == nil || role.IsArchived() || role.BuiltIn || role.Name == model.SystemAdministratorRoleName || len(role.Permissions) == 0 {
 		return NewError("invitation.role_not_delegable")
 	}
 	for _, action := range role.Permissions {
 		definition, ok := model.DefinitionForAction(model.Action(action))
-		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+		if !ok || definition.RelationshipOnly || !definition.SupportsRoleScope(scopeType) {
 			return NewError("invitation.role_not_delegable")
 		}
 	}

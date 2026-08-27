@@ -24,7 +24,7 @@
   <text x="80" y="256" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LIFECYCLE OWNER</text>
   <path d="M 80 280 H 232" fill="none" stroke="#e1dce5" stroke-width="1"/>
   <text x="80" y="312" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">run-server</text>
-  <text x="80" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">run-webapp</text>
+  <text x="80" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">run-webapp · dev-seed</text>
   <text x="80" y="376" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">dev-down · dev-reset</text>
 
   <rect x="320" y="72" width="248" height="120" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
@@ -65,7 +65,7 @@
   <text x="664" y="456" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LOCAL DIAGNOSIS · NOT PRODUCT AUTHORITY</text>
   <text x="664" y="504" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Prometheus · Grafana</text>
   <text x="664" y="536" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Loki · OpenTelemetry Collector</text>
-  <text x="664" y="568" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Metrics, dashboards, logs, traces</text>
+  <text x="664" y="568" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Metrics, dashboards, structured logs</text>
 
   <path d="M 568 400 H 600 V 496 H 640" fill="none" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
 

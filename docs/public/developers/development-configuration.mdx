@@ -1,0 +1,179 @@
+---
+title: Configure the Development Runtime
+description: Override local ports, origins, images, and generated state without editing tracked topology files or committing secrets.
+audience: developer
+maturity: preview
+slug: /developers/development-configuration/
+---
+
+# Configure the Development Runtime
+
+The root Makefile is the supported configuration boundary for local product
+development. Use its variables to avoid port conflicts or to test a controlled
+image upgrade. Do not edit Compose files, generated JSON, or generated secrets
+for a personal workstation preference.
+
+## Know the Precedence
+
+For the root Make lifecycle, the highest-precedence value wins:
+
+1. a command-line Make value;
+2. an assignment in the ignored root `config.override.mk`;
+3. an environment value; then
+4. the tracked default in `build/make/config.mk`.
+
+Use the command line for one experiment:
+
+```sh
+make PROCTOR_SERVER_PORT=18080 run-server
+```
+
+Use the environment when a parent tool owns the value:
+
+```sh
+PROCTOR_SERVER_PORT=18080 make run-server
+```
+
+Use `config.override.mk` for a stable workstation preference:
+
+```makefile title="config.override.mk"
+PROCTOR_SERVER_PORT := 18080
+PROCTOR_POSTGRES_PORT := 25432
+PROCTOR_REDIS_PORT := 26379
+```
+
+`config.override.mk` is ignored by Git. Keep it local. Never place production
+credentials or a shared environment's connection details in it.
+
+## Keep the Listener and Public Origin Distinct
+
+`PROCTOR_SERVER_PORT` selects the loopback listener. The default
+`PROCTOR_SERVER_PUBLIC_URL` is `http://localhost:` followed by that port. The
+public URL is the canonical browser origin used for redirects, browser
+transactions, and local mail action links.
+
+For the compiled hosted webapp, overriding only the port is enough:
+
+```sh
+make PROCTOR_SERVER_PORT=18080 run-server
+```
+
+For an origin-sensitive Vite flow, the public URL must instead match Vite:
+
+```sh
+make PROCTOR_SERVER_PUBLIC_URL=http://127.0.0.1:5173 run-server
+```
+
+`localhost` and `127.0.0.1` are both loopback, but browsers treat them as
+different origins. Use the exact configured scheme, host, and port throughout
+one flow.
+
+Local HTTP action links are accepted only for an explicitly loopback public
+origin. A non-loopback HTTP public URL remains invalid; production origins use
+HTTPS.
+
+## Common Port and Project Overrides
+
+| Make variable | Default | Consumer |
+| --- | --- | --- |
+| `PROCTOR_COMPOSE_PROJECT_NAME` | `proctor-dev` | Compose network, containers, and named volumes |
+| `PROCTOR_SERVER_PORT` | `8065` | Single-node HTTP listener and seed API address |
+| `PROCTOR_SERVER_PUBLIC_URL` | `http://localhost:8065` | Canonical single-node browser origin |
+| `PROCTOR_METRICS_PORT` | `8067` | Protected Proctor metrics listener |
+| `PROCTOR_CLUSTER_HTTP_PORT` | `18065` | HAProxy cluster gateway |
+| `PROCTOR_POSTGRES_PORT` | `15432` | PostgreSQL host binding |
+| `PROCTOR_REDIS_PORT` | `16379` | Redis host binding |
+| `PROCTOR_MINIO_PORT` | `19000` | MinIO S3 API |
+| `PROCTOR_MINIO_CONSOLE_PORT` | `19001` | MinIO console |
+| `PROCTOR_MAILPIT_SMTP_PORT` | `11025` | Mailpit SMTP listener |
+| `PROCTOR_MAILPIT_HTTP_PORT` | `18025` | Mailpit browser and API |
+| `PROCTOR_PROMETHEUS_PORT` | `19090` | Prometheus browser and API |
+| `PROCTOR_GRAFANA_PORT` | `13000` | Grafana browser and API |
+| `PROCTOR_LOKI_PORT` | `13100` | Loki API |
+| `PROCTOR_OTEL_HEALTH_PORT` | `13133` | Collector health extension |
+
+When you change a service port through Make, the generated server configuration,
+Compose binding, and relevant test address receive the same value. If a custom
+tool bypasses Make, it owns that coordination itself.
+
+Use a different `PROCTOR_COMPOSE_PROJECT_NAME` when two repository checkouts
+must run simultaneously. Also assign distinct host ports; project names isolate
+containers and volumes, not host listeners.
+
+## Controlled Image Overrides
+
+Tracked defaults select exact service versions and immutable multi-platform
+digests. The corresponding variables are:
+
+```text
+PROCTOR_POSTGRES_IMAGE
+PROCTOR_REDIS_IMAGE
+PROCTOR_MINIO_IMAGE
+PROCTOR_MAILPIT_IMAGE
+PROCTOR_PROMETHEUS_IMAGE
+PROCTOR_GRAFANA_IMAGE
+PROCTOR_LOKI_IMAGE
+PROCTOR_OTEL_IMAGE
+PROCTOR_HAPROXY_IMAGE
+PROCTOR_RUNTIME_IMAGE
+PROCTOR_BUILDENV_IMAGE
+```
+
+Override an image only for an intentional compatibility or upgrade test. Record
+the exact tag and digest in review evidence. A mutable tag alone does not prove
+which artifact passed.
+
+## Understand Generated `.build/dev` State
+
+`make dev-state` recreates derived configuration while preserving existing
+generated secrets. The default ignored tree contains:
+
+| Path | Meaning | Safe to commit? |
+| --- | --- | --- |
+| `.build/dev/config/` | Full generated single-node and per-cluster-node server configuration | No |
+| `.build/dev/secrets/environment` | Bootstrap, sealing, and other development secret values | No |
+| `.build/dev/secrets/metrics-token` | Prometheus bearer credential | No |
+| `.build/dev/secrets/metrics-*.pem` | Local metrics certificate and private key | No |
+| `.build/dev/observability/` | Generated Prometheus target discovery | No |
+| `.build/dev/logs/` | Single-node and per-node structured logs | No |
+| `.build/dev/prometheus/` | Local time-series history | No |
+| `.build/dev/otel/` | Collector file-read checkpoints | No |
+| `.build/dev/seed/credentials.json` | Random synthetic account credentials, mode `0600` | Never |
+| `.build/dev/seed/fixture.json` | Synthetic fixture identifiers, mode `0600` | No |
+
+These files are outputs, not documentation or configuration authority. Change
+the tracked server example, build scripts, Make variables, or topology owner
+that generates them. A direct edit can disappear on the next lifecycle run and
+cannot be reviewed reliably.
+
+## Preserve or Recreate Secrets Intentionally
+
+Generated secret creation is idempotent: ordinary `make run-server`,
+`make run-cluster`, and `make dev-state` runs reuse existing values. This keeps
+encrypted local payloads and protected metrics readable across restarts.
+
+`make dev-down` stops containers and preserves generated state. `make dev-reset`
+deletes Compose named volumes and guarded seed files, but it does not present
+itself as a general-purpose deletion command for all ignored build output.
+Treat deliberate secret rotation or removal as a separate local maintenance
+decision; stale encrypted payloads become unreadable when their key is removed.
+
+## Diagnose an Override Before Changing Code
+
+When an override appears ineffective:
+
+1. check whether the same variable was supplied on the Make command line;
+2. inspect `config.override.mk` for a higher-precedence local assignment;
+3. check the exported environment;
+4. confirm the spelling against `make help` and `build/make/config.mk`;
+5. restart the process or containers that consume immutable startup
+   configuration; and
+6. verify the resulting listener or generated file without printing secrets.
+
+Avoid copying all of `.build/dev/secrets/environment` into a terminal or issue.
+Inspect only the non-secret field needed for diagnosis, and redact values before
+sharing output.
+
+Return to [local setup](./local-setup.mdx) for the first-success sequence or
+continue to [cluster development](./cluster-development.mdx) for the three-node
+topology.

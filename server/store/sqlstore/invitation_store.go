@@ -3026,9 +3026,13 @@ func validateScopedRoleInvitationPackage(ctx context.Context, tx *sqlxTxWrapper,
 	if !slices.Equal(current, invitation.RoleActions) || (invitation.IntendedEndsAt.Valid && !model.TimeUTC(at).Before(invitation.IntendedEndsAt.Time)) {
 		return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
 	}
+	scopeType := model.RoleScopeAcademicUnit
+	if resourceType == model.ResourceInstitution {
+		scopeType = model.RoleScopeInstitution
+	}
 	for _, action := range current {
 		definition, ok := model.DefinitionForAction(model.Action(action))
-		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+		if !ok || definition.RelationshipOnly || !definition.SupportsRoleScope(scopeType) {
 			return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
 		}
 	}
@@ -3044,13 +3048,13 @@ func requireScopedRoleInvitationAuthority(ctx context.Context, tx *sqlxTxWrapper
 		return fmt.Errorf("lock scoped Role Invitation inviter: %w", err)
 	}
 	actions := append([]string{string(model.ActionInvitationCreate), string(model.ActionRoleBindingManage)}, invitation.RoleActions...)
+	scopeType := model.RoleScopeAcademicUnit
+	if invitation.Purpose == model.InvitationPurposeInstitutionRole {
+		scopeType = model.RoleScopeInstitution
+	}
 	for index, action := range actions {
 		definition, ok := model.DefinitionForAction(model.Action(action))
-		resourceType := model.ResourceAcademicUnit
-		if invitation.Purpose == model.InvitationPurposeInstitutionRole {
-			resourceType = model.ResourceInstitution
-		}
-		if !ok || definition.RelationshipOnly || !definition.AcceptsResource(resourceType) {
+		if !ok || definition.RelationshipOnly || !definition.SupportsRoleScope(scopeType) {
 			return store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
 		}
 		strictParent := index >= 2 && teacherInvitationProtectedDelegationAction(model.Action(action))
@@ -3143,7 +3147,7 @@ type teacherInvitationDelegationPlan struct {
 
 func teacherInvitationDelegationRequirement(action model.Action) (teacherInvitationDelegationPlan, error) {
 	definition, ok := model.DefinitionForAction(action)
-	if !ok || definition.RelationshipOnly || !definition.AcceptsResource(model.ResourceAcademicUnit) {
+	if !ok || definition.RelationshipOnly || !definition.SupportsRoleScope(model.RoleScopeAcademicUnit) {
 		return teacherInvitationDelegationPlan{}, store.NewErrConflict("invitation", "invitation_role_snapshot", nil)
 	}
 	return teacherInvitationDelegationPlan{

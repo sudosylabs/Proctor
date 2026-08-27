@@ -316,7 +316,7 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 	now := model.TimeFromMillis(1_800_000_000_000)
 	unitID, roleID, inviterID := model.NewAcademicUnitID(), model.NewRoleID(), model.NewUserID()
 	role := &model.Role{ID: roleID, Name: "teacher", DisplayName: "Teacher",
-		Permissions: []string{string(model.ActionProgrammeManage), string(model.ActionAcademicUnitView)}}
+		Permissions: []string{string(model.ActionProgrammeManage), string(model.ActionAcademicUnitView), string(model.ActionExamManage)}}
 	persistence := &invitationStoreFake{}
 	authorizer := &invitationAuthorizerFake{}
 	mail := &invitationMailPreparerFake{}
@@ -331,7 +331,7 @@ func TestInvitationServiceIssuesTeacherPackageThroughDelegationCeiling(t *testin
 	}
 	if view.AcademicUnitID != unitID || view.RoleID != roleID || persistence.teacherIssued == nil ||
 		persistence.teacherIssued.Lifetime != model.InvitationLifetime ||
-		!slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionProgrammeManage)}) {
+		!slices.Equal(persistence.teacherIssued.Invitation.RoleActions, []string{string(model.ActionAcademicUnitView), string(model.ActionExamManage), string(model.ActionProgrammeManage)}) {
 		t.Fatalf("teacher issue view/input = %#v / %#v", view, persistence.teacherIssued)
 	}
 	if !slices.Equal(authorizer.actions, []model.Action{model.ActionInvitationCreate, model.ActionAcademicUnitMembersManage}) ||

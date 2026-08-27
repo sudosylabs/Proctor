@@ -54,6 +54,29 @@ func TestAuthorizationRegistryIsClosedAndResourceTyped(t *testing.T) {
 	}
 }
 
+func TestActionDefinitionDistinguishesConcreteResourcesFromRoleScopes(t *testing.T) {
+	t.Parallel()
+
+	examManage, ok := DefinitionForAction(ActionExamManage)
+	if !ok {
+		t.Fatal("exam.manage is not registered")
+	}
+	if examManage.AcceptsResource(ResourceAcademicUnit) {
+		t.Fatal("exam.manage accepted an Academic Unit as its concrete resource")
+	}
+	if !examManage.SupportsRoleScope(RoleScopeInstitution) ||
+		!examManage.SupportsRoleScope(RoleScopeAcademicUnit) ||
+		examManage.SupportsRoleScope(RoleScopeClass) {
+		t.Fatalf("exam.manage Role scopes = institution:%v academic_unit:%v class:%v",
+			examManage.SupportsRoleScope(RoleScopeInstitution),
+			examManage.SupportsRoleScope(RoleScopeAcademicUnit),
+			examManage.SupportsRoleScope(RoleScopeClass))
+	}
+	if examManage.SupportsRoleScope(RoleScopeType("future")) {
+		t.Fatal("exam.manage accepted an unknown Role scope")
+	}
+}
+
 func TestJobActionsAreInstitutionScopedAndKnown(t *testing.T) {
 	for _, action := range []Action{ActionJobView, ActionJobManage} {
 		definition, ok := DefinitionForAction(action)

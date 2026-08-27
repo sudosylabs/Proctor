@@ -15,6 +15,12 @@ Run `make help` for the current command surface. The main lifecycles are:
   `make dev-down` to stop them or `make dev-reset` to remove their volumes.
 - `make run-webapp` runs Vite with HMR and proxies API/WebSocket traffic to an
   independently running server.
+- `make dev-seed` uses only the public HTTP API and locally captured Mailpit
+  invitations to create a guarded synthetic Institution, administrator, Exam
+  Manager, Candidate, academic structure, Exam Revision, and future Sitting.
+  It refuses non-loopback servers, an Installation it did not initialize, and
+  ambiguous partial state. Credentials and fixture identifiers are written
+  mode `0600` below `.build/dev/seed`; a successful replay is read-only.
 - `make run-cluster` builds the immutable runtime image, starts three active
   Proctor nodes plus shared dependencies and observability, puts HAProxy in
   front of their readiness endpoints, and follows application/gateway logs.
@@ -47,10 +53,13 @@ tracked defaults.
 
 All disposable state is below ignored `.build/dev`: generated full server
 configuration, bootstrap and sealing keys, a development metrics certificate,
-Prometheus target discovery, log files, and collector checkpoints. No tracked
-configuration points at an ignored file as an authority; the scripts recreate
-the state from the canonical server example and tracked topology definitions.
-The scripts are idempotent and do not replace existing generated secrets.
+Prometheus target discovery, log files, collector checkpoints, and guarded
+synthetic seed credentials and identifiers. No tracked configuration points at
+an ignored file as an authority; the scripts recreate the state from the
+canonical server example and tracked topology definitions. Configuration and
+secret generation are idempotent and do not replace existing generated
+secrets. `make dev-reset` removes the local seed files together with the
+development containers and volumes.
 
 The Compose files are deliberately layered:
 

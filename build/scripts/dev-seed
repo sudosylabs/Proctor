@@ -1,0 +1,426 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 7 ]; then
+	printf 'usage: dev-seed STATE_DIR ENVIRONMENT_FILE SERVER_URL MAILPIT_URL JQ CURL OPENSSL\n' >&2
+	exit 2
+fi
+
+state_directory=$1
+environment_file=$2
+server_url=${3%/}
+mailpit_url=${4%/}
+jq_command=$5
+curl_command=$6
+openssl_command=$7
+
+case "$server_url" in
+	http://127.0.0.1:*|http://localhost:*) ;;
+	*)
+		printf 'development seed refuses non-loopback server URL: %s\n' "$server_url" >&2
+		exit 2
+		;;
+esac
+case "$mailpit_url" in
+	http://127.0.0.1:*|http://localhost:*) ;;
+	*)
+		printf 'development seed refuses non-loopback Mailpit URL: %s\n' "$mailpit_url" >&2
+		exit 2
+		;;
+esac
+
+if [ ! -f "$environment_file" ]; then
+	printf 'generated development environment not found: %s\n' "$environment_file" >&2
+	printf 'run make dev-state before seeding\n' >&2
+	exit 1
+fi
+
+umask 077
+mkdir -p "$state_directory"
+
+credentials_file=$state_directory/credentials.json
+fixture_file=$state_directory/fixture.json
+in_progress_file=$state_directory/in-progress.json
+request_file=$state_directory/.request.$$
+response_file=$state_directory/.response.$$
+temporary_file=$state_directory/.temporary.$$
+trap 'rm -f "$request_file" "$response_file" "$temporary_file"' EXIT INT TERM
+
+fail() {
+	printf '%s\n' "$1" >&2
+	exit 1
+}
+
+wait_for_server() {
+	attempt=0
+	while [ "$attempt" -lt 30 ]; do
+		if "$curl_command" --fail --silent --show-error --max-time 2 "$server_url/health/ready" >/dev/null 2>&1; then
+			return 0
+		fi
+		attempt=$((attempt + 1))
+		sleep 1
+	done
+	return 1
+}
+
+api_call() {
+	method=$1
+	path=$2
+	request=$3
+	token=$4
+	expected_status=$5
+	idempotency_key=${6:-}
+
+	set -- --silent --show-error --max-time 20 --request "$method" --url "$server_url$path" \
+		--header 'Accept: application/json' --output "$response_file" --write-out '%{http_code}'
+	if [ -n "$token" ]; then
+		set -- "$@" --header "Authorization: Bearer $token"
+	fi
+	if [ -n "$idempotency_key" ]; then
+		set -- "$@" --header "Idempotency-Key: $idempotency_key"
+	fi
+	if [ "$request" != - ]; then
+		set -- "$@" --header 'Content-Type: application/json' --data-binary "@$request"
+	fi
+
+	status=$($curl_command "$@") || fail "request failed: $method $path"
+	if [ "$status" != "$expected_status" ]; then
+		printf 'request failed: %s %s returned HTTP %s, expected %s\n' "$method" "$path" "$status" "$expected_status" >&2
+		if "$jq_command" -e . "$response_file" >/dev/null 2>&1; then
+			"$jq_command" -c '{type,title,status,detail,code,errors}' "$response_file" >&2
+		else
+			head -c 2048 "$response_file" >&2
+		fi
+		printf '\n' >&2
+		exit 1
+	fi
+}
+
+json_value() {
+	"$jq_command" -er "$1" "$response_file" || fail "server response is missing required fixture state: $1"
+}
+
+print_summary() {
+	printf 'Development fixture is ready.\n'
+	printf 'Fixture summary: %s\n' "$fixture_file"
+	printf 'Local credentials: %s (mode 600; do not share or commit)\n' "$credentials_file"
+	"$jq_command" -r '
+		"Institution: " + .institution.display_name,
+		"Academic Unit: " + .academic_unit.display_name,
+		"Class: " + .class.display_name,
+		"Exam: " + .exam.title,
+		"Upcoming Sitting: " + .sitting.scheduled_start_at + " to " + .sitting.scheduled_end_at
+	' "$fixture_file"
+}
+
+wait_for_invitation_claim() {
+	recipient=$1
+	attempt=0
+	while [ "$attempt" -lt 45 ]; do
+		status=$($curl_command --silent --show-error --max-time 5 \
+			--url "$mailpit_url/api/v1/messages?limit=100" \
+			--output "$response_file" --write-out '%{http_code}') || status=000
+		if [ "$status" = 200 ]; then
+			message_ids=$($jq_command -r '.messages[]?.ID' "$response_file" 2>/dev/null || true)
+			for message_id in $message_ids; do
+				status=$($curl_command --silent --show-error --max-time 5 \
+					--url "$mailpit_url/api/v1/message/$message_id" \
+					--output "$response_file" --write-out '%{http_code}') || status=000
+				[ "$status" = 200 ] || continue
+				grep -F "$recipient" "$response_file" >/dev/null 2>&1 || continue
+				claim=$("$jq_command" -r '
+					try (((.Text // "") + "\n" + (.HTML // "")) |
+						capture("/join#token=(?<claim>[A-Za-z0-9_-]{43})").claim)
+					catch ""
+				' "$response_file" 2>/dev/null || true)
+				if [ -n "$claim" ]; then
+					printf '%s\n' "$claim"
+					return 0
+				fi
+			done
+		fi
+		attempt=$((attempt + 1))
+		sleep 1
+	done
+	return 1
+}
+
+wait_for_server || fail "Proctor is not ready at $server_url; keep make run-server running in another terminal"
+
+if [ -f "$in_progress_file" ] && [ ! -f "$fixture_file" ]; then
+	fail "an earlier development seed stopped after making partial changes; run make dev-reset before retrying"
+fi
+
+api_call GET /api/v1/bootstrap - '' 200
+initialized=$("$jq_command" -r '.initialized' "$response_file")
+case "$initialized" in
+	true|false) ;;
+	*) fail "server response is missing valid Installation bootstrap state" ;;
+esac
+
+if [ -f "$fixture_file" ]; then
+	[ "$initialized" = true ] || fail "development fixture state exists but the Installation is pristine; run make dev-reset to reconcile local state"
+	[ -f "$credentials_file" ] || fail "development fixture exists without its local credentials; run make dev-reset before recreating it"
+	print_summary
+	exit 0
+fi
+
+[ "$initialized" = false ] || fail "development seed refuses an initialized Installation it did not create; use a fresh make dev-reset environment"
+
+bootstrap_secret=$(sed -n 's/^PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET=//p' "$environment_file")
+case "$bootstrap_secret" in
+	''|*[!0-9a-f]*) fail "generated development environment contains an invalid bootstrap secret" ;;
+esac
+[ "${#bootstrap_secret}" -eq 64 ] || fail "generated development environment contains an invalid bootstrap secret"
+
+if [ ! -f "$credentials_file" ]; then
+	admin_password="Dev-Admin-$($openssl_command rand -hex 18)!"
+	teacher_password="Dev-Teacher-$($openssl_command rand -hex 18)!"
+	candidate_password="Dev-Candidate-$($openssl_command rand -hex 18)!"
+	"$jq_command" -n \
+		--arg server_url "$server_url" \
+		--arg admin_password "$admin_password" \
+		--arg teacher_password "$teacher_password" \
+		--arg candidate_password "$candidate_password" '
+		{
+		  schema_version: 1,
+		  server_url: $server_url,
+		  users: {
+		    administrator: {
+		      username: "northbridge-admin",
+		      email: "administrator@northbridge.example",
+		      password: $admin_password
+		    },
+		    exam_manager: {
+		      username: "ada-lovelace",
+		      email: "ada.lovelace@northbridge.example",
+		      password: $teacher_password
+		    },
+		    candidate: {
+		      username: "samira-okafor",
+		      email: "samira.okafor@northbridge.example",
+		      password: $candidate_password
+		    }
+		  }
+		}
+	' >"$temporary_file"
+	mv "$temporary_file" "$credentials_file"
+	chmod 600 "$credentials_file"
+fi
+
+[ "$("$jq_command" -r '.server_url' "$credentials_file")" = "$server_url" ] || fail "development credentials belong to another server URL; run make dev-reset"
+
+"$jq_command" -n --arg server_url "$server_url" --arg started_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+	'{schema_version: 1, status: "creating", server_url: $server_url, started_at: $started_at}' >"$temporary_file"
+mv "$temporary_file" "$in_progress_file"
+
+admin_username=$("$jq_command" -r '.users.administrator.username' "$credentials_file")
+admin_email=$("$jq_command" -r '.users.administrator.email' "$credentials_file")
+admin_password=$("$jq_command" -r '.users.administrator.password' "$credentials_file")
+teacher_username=$("$jq_command" -r '.users.exam_manager.username' "$credentials_file")
+teacher_email=$("$jq_command" -r '.users.exam_manager.email' "$credentials_file")
+teacher_password=$("$jq_command" -r '.users.exam_manager.password' "$credentials_file")
+candidate_username=$("$jq_command" -r '.users.candidate.username' "$credentials_file")
+candidate_email=$("$jq_command" -r '.users.candidate.email' "$credentials_file")
+candidate_password=$("$jq_command" -r '.users.candidate.password' "$credentials_file")
+
+"$jq_command" -n \
+	--arg bootstrap_secret "$bootstrap_secret" \
+	--arg username "$admin_username" --arg email "$admin_email" --arg password "$admin_password" '
+	{
+	  institution: {
+	    name: "northbridge-university",
+	    display_name: "Northbridge University",
+	    description: "Synthetic local-development Institution"
+	  },
+	  administrator: {
+	    username: $username,
+	    email: $email,
+	    display_name: "Northbridge Administrator",
+	    first_name: "Northbridge",
+	    last_name: "Administrator",
+	    locale: "en",
+	    timezone: "UTC"
+	  },
+	  password: $password,
+	  bootstrap_secret: $bootstrap_secret
+	}
+' >"$request_file"
+api_call POST /api/v1/bootstrap "$request_file" '' 201
+institution_id=$(json_value '.state.institution_id')
+administrator_user_id=$(json_value '.state.administrator_user_id')
+
+"$jq_command" -n --arg login_id "$admin_username" --arg password "$admin_password" '
+	{login_id: $login_id, password: $password, client_type: "cli", device_id: "dev-seed", device_name: "Proctor development seed"}
+' >"$request_file"
+api_call POST /api/v1/auth/login "$request_file" '' 200
+admin_token=$(json_value '.tokens.access_token')
+
+"$jq_command" -n '{
+	name: "development-exam-manager",
+	display_name: "Development Exam Manager",
+	description: "Synthetic Academic Unit Role for an Exam Manager",
+	permissions: [
+	  "academic_unit.view",
+	  "class.view",
+	  "exam.create",
+	  "exam.manage",
+	  "exam.publish",
+	  "exam.sitting.create",
+	  "exam.sitting.manage",
+	  "exam.sitting.view",
+	  "exam.view",
+	  "programme.view",
+	  "programme_level.view",
+	  "submission.release",
+	  "submission.review",
+	  "submission.view"
+	]
+}' >"$request_file"
+api_call POST /api/v1/roles "$request_file" "$admin_token" 201
+exam_manager_role_id=$(json_value '.id')
+
+"$jq_command" -n '{name: "computing", display_name: "School of Computing", description: "Synthetic academic home for development fixtures"}' >"$request_file"
+api_call POST /api/v1/academic-units "$request_file" "$admin_token" 201 dev-seed-academic-unit-v1
+academic_unit_id=$(json_value '.id')
+
+"$jq_command" -n '{name: "bsc-computer-science", display_name: "BSc Computer Science", description: "Synthetic local-development Programme"}' >"$request_file"
+api_call POST "/api/v1/academic-units/$academic_unit_id/programmes" "$request_file" "$admin_token" 201
+programme_id=$(json_value '.id')
+
+"$jq_command" -n '{name: "level-100", display_name: "Level 100", description: "Synthetic first Programme Level"}' >"$request_file"
+api_call POST "/api/v1/programmes/$programme_id/levels" "$request_file" "$admin_token" 201
+programme_level_id=$(json_value '.id')
+
+now_seconds=$(date +%s)
+period_start_ms=$(((now_seconds - 86400) * 1000))
+period_end_ms=$(((now_seconds + 34560000) * 1000))
+"$jq_command" -n --arg owner_id "$institution_id" --argjson start_at "$period_start_ms" --argjson end_at "$period_end_ms" '{
+	owner_type: "institution", owner_id: $owner_id,
+	name: "development-period", display_name: "Development Academic Period",
+	description: "Rolling synthetic Academic Period for local development",
+	start_at: $start_at, end_at: $end_at
+}' >"$request_file"
+api_call POST /api/v1/academic-periods "$request_file" "$admin_token" 201 dev-seed-academic-period-v1
+academic_period_id=$(json_value '.id')
+
+"$jq_command" -n --arg academic_period_id "$academic_period_id" '{
+	academic_period_id: $academic_period_id,
+	name: "cs-level-100-a", display_name: "Computer Science Level 100 — A",
+	description: "Synthetic Candidate roster for local development"
+}' >"$request_file"
+api_call POST "/api/v1/programme-levels/$programme_level_id/classes" "$request_file" "$admin_token" 201
+class_id=$(json_value '.id')
+
+"$jq_command" -n --arg email "$teacher_email" --arg role_id "$exam_manager_role_id" --arg username "$teacher_username" '{
+	email: $email, role_id: $role_id, suggested_username: $username,
+	suggested_display_name: "Ada Lovelace", suggested_first_name: "Ada",
+	suggested_last_name: "Lovelace", suggested_locale: "en", suggested_timezone: "UTC"
+}' >"$request_file"
+api_call POST "/api/v1/academic-units/$academic_unit_id/invitations/teacher" "$request_file" "$admin_token" 201
+teacher_invitation_id=$(json_value '.id')
+teacher_claim=$(wait_for_invitation_claim "$teacher_email") || fail "timed out waiting for the synthetic Exam Manager Invitation in Mailpit"
+
+"$jq_command" -n --arg claim "$teacher_claim" --arg password "$teacher_password" --arg username "$teacher_username" '{
+	claim: $claim, password: $password, username: $username,
+	display_name: "Ada Lovelace", first_name: "Ada", last_name: "Lovelace",
+	locale: "en", timezone: "UTC"
+}' >"$request_file"
+api_call POST /api/v1/invitations/teacher-academic-unit/accept "$request_file" '' 200
+exam_manager_user_id=$(json_value '.user_id')
+
+"$jq_command" -n --arg email "$candidate_email" --arg username "$candidate_username" '{
+	email: $email, suggested_username: $username,
+	suggested_display_name: "Samira Okafor", suggested_first_name: "Samira",
+	suggested_last_name: "Okafor", suggested_locale: "en", suggested_timezone: "UTC"
+}' >"$request_file"
+api_call POST "/api/v1/classes/$class_id/invitations/student" "$request_file" "$admin_token" 201
+candidate_invitation_id=$(json_value '.id')
+candidate_claim=$(wait_for_invitation_claim "$candidate_email") || fail "timed out waiting for the synthetic Candidate Invitation in Mailpit"
+
+"$jq_command" -n --arg claim "$candidate_claim" --arg password "$candidate_password" --arg username "$candidate_username" '{
+	claim: $claim, password: $password, username: $username,
+	display_name: "Samira Okafor", first_name: "Samira", last_name: "Okafor",
+	locale: "en", timezone: "UTC"
+}' >"$request_file"
+api_call POST /api/v1/invitations/student-class/accept "$request_file" '' 200
+candidate_user_id=$(json_value '.user_id')
+
+"$jq_command" -n --arg login_id "$teacher_username" --arg password "$teacher_password" '
+	{login_id: $login_id, password: $password, client_type: "cli", device_id: "dev-seed-exam-manager", device_name: "Proctor development seed Exam Manager"}
+' >"$request_file"
+api_call POST /api/v1/auth/login "$request_file" '' 200
+teacher_token=$(json_value '.tokens.access_token')
+
+"$jq_command" -n --arg academic_unit_id "$academic_unit_id" '{
+	academic_unit_id: $academic_unit_id,
+	title: "Introduction to Programming — Development Exam",
+	instructions_markdown: "Complete the synthetic programming tasks and keep your work in the Attempt Workspace."
+}' >"$request_file"
+api_call POST /api/v1/exams "$request_file" "$teacher_token" 201 dev-seed-exam-v1
+exam_id=$(json_value '.exam.id')
+draft_revision=$(json_value '.draft.revision')
+
+"$jq_command" -n --argjson expected_draft_revision "$draft_revision" '{expected_draft_revision: $expected_draft_revision}' >"$request_file"
+api_call POST "/api/v1/exams/$exam_id/revisions" "$request_file" "$teacher_token" 201 dev-seed-exam-publication-v1
+exam_revision_id=$(json_value '.id')
+
+sitting_start_seconds=$((now_seconds + 604800))
+sitting_end_seconds=$((sitting_start_seconds + 7200))
+sitting_start=$("$jq_command" -nr --argjson value "$sitting_start_seconds" '$value | strftime("%Y-%m-%dT%H:%M:%SZ")')
+sitting_end=$("$jq_command" -nr --argjson value "$sitting_end_seconds" '$value | strftime("%Y-%m-%dT%H:%M:%SZ")')
+"$jq_command" -n --arg exam_revision_id "$exam_revision_id" --arg class_id "$class_id" \
+	--arg scheduled_start_at "$sitting_start" --arg scheduled_end_at "$sitting_end" '{
+	exam_revision_id: $exam_revision_id, class_id: $class_id,
+	scheduled_start_at: $scheduled_start_at, scheduled_end_at: $scheduled_end_at
+}' >"$request_file"
+api_call POST "/api/v1/exams/$exam_id/sittings" "$request_file" "$teacher_token" 201 dev-seed-sitting-v1
+exam_sitting_id=$(json_value '.id')
+
+"$jq_command" -n \
+	--arg server_url "$server_url" \
+	--arg completed_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+	--arg institution_id "$institution_id" \
+	--arg administrator_user_id "$administrator_user_id" \
+	--arg academic_unit_id "$academic_unit_id" \
+	--arg programme_id "$programme_id" \
+	--arg programme_level_id "$programme_level_id" \
+	--arg academic_period_id "$academic_period_id" \
+	--arg class_id "$class_id" \
+	--arg exam_manager_role_id "$exam_manager_role_id" \
+	--arg exam_manager_user_id "$exam_manager_user_id" \
+	--arg candidate_user_id "$candidate_user_id" \
+	--arg teacher_invitation_id "$teacher_invitation_id" \
+	--arg candidate_invitation_id "$candidate_invitation_id" \
+	--arg exam_id "$exam_id" \
+	--arg exam_revision_id "$exam_revision_id" \
+	--arg exam_sitting_id "$exam_sitting_id" \
+	--arg sitting_start "$sitting_start" \
+	--arg sitting_end "$sitting_end" '
+	{
+	  schema_version: 1, status: "ready", server_url: $server_url, completed_at: $completed_at,
+	  institution: {id: $institution_id, name: "northbridge-university", display_name: "Northbridge University"},
+	  users: {
+	    administrator: {id: $administrator_user_id, username: "northbridge-admin"},
+	    exam_manager: {id: $exam_manager_user_id, username: "ada-lovelace"},
+	    candidate: {id: $candidate_user_id, username: "samira-okafor"}
+	  },
+	  academic_unit: {id: $academic_unit_id, name: "computing", display_name: "School of Computing"},
+	  programme: {id: $programme_id, name: "bsc-computer-science", display_name: "BSc Computer Science"},
+	  programme_level: {id: $programme_level_id, name: "level-100", display_name: "Level 100"},
+	  academic_period: {id: $academic_period_id, name: "development-period", display_name: "Development Academic Period"},
+	  class: {id: $class_id, name: "cs-level-100-a", display_name: "Computer Science Level 100 — A"},
+	  exam_manager_role: {id: $exam_manager_role_id, name: "development-exam-manager"},
+	  invitations: {exam_manager_id: $teacher_invitation_id, candidate_id: $candidate_invitation_id},
+	  exam: {id: $exam_id, revision_id: $exam_revision_id, title: "Introduction to Programming — Development Exam"},
+	  sitting: {id: $exam_sitting_id, scheduled_start_at: $sitting_start, scheduled_end_at: $sitting_end}
+	}
+' >"$temporary_file"
+mv "$temporary_file" "$fixture_file"
+chmod 600 "$fixture_file"
+rm -f "$in_progress_file"
+
+print_summary

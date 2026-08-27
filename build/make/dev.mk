@@ -1,4 +1,4 @@
-.PHONY: dev-tools dev-secrets dev-config dev-state webapp-build run run-server run-webapp dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
+.PHONY: dev-tools dev-secrets dev-config dev-state dev-seed webapp-build run run-server run-webapp dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
 
 dev-tools: ## Validate the host development toolchain.
 	@"$(ROOT_DIR)/build/scripts/check-tools" "$(GO)" "$(NPM)" "$(DOCKER)" "$(JQ)" "$(CURL)"
@@ -16,6 +16,12 @@ dev-config:
 
 dev-state: dev-secrets dev-config
 
+dev-seed: dev-tools dev-state ## Create or report the guarded synthetic local-development fixture.
+	@"$(ROOT_DIR)/build/scripts/dev-seed" \
+		"$(DEV_SEED_DIR)" "$(DEV_ENV_FILE)" \
+		"http://127.0.0.1:$(PROCTOR_SERVER_PORT)" "http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)" \
+		"$(JQ)" "$(CURL)" openssl
+
 webapp-build: webapp-install ## Compile the hosted webapp with matching build identity.
 	cd "$(WEBAPP_DIR)" && PROCTOR_BUILD_VERSION='$(VERSION)' PROCTOR_BUILD_COMMIT='$(COMMIT)' $(NPM) run build
 
@@ -30,7 +36,7 @@ run: run-server ## Run the production-shaped single-node development lifecycle.
 run-server: dev-tools webapp-build dev-up ## Build the webapp, start dependencies, and run the server in the foreground.
 	@set -a; . "$(DEV_ENV_FILE)"; set +a; \
 	PROCTOR_SERVER_LISTEN_ADDRESS='127.0.0.1:$(PROCTOR_SERVER_PORT)' \
-	PROCTOR_SERVER_PUBLIC_URL='http://localhost:$(PROCTOR_SERVER_PORT)' \
+	PROCTOR_SERVER_PUBLIC_URL='$(PROCTOR_SERVER_PUBLIC_URL)' \
 	PROCTOR_SERVER_WEBAPP_DIRECTORY='$(WEBAPP_DIR)/dist' \
 	PROCTOR_DATABASE_DATA_SOURCE='postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable' \
 	PROCTOR_CACHE_BACKEND='redis' \
@@ -61,6 +67,8 @@ dev-down: ## Stop developer services without deleting persistent data.
 
 dev-reset: ## Delete all developer containers and persistent volumes.
 	@$(DEV_COMPOSE) down --volumes --remove-orphans
+	@rm -f "$(DEV_SEED_CREDENTIALS_FILE)" "$(DEV_SEED_FIXTURE_FILE)" "$(DEV_SEED_IN_PROGRESS_FILE)"
+	@rmdir "$(DEV_SEED_DIR)" 2>/dev/null || true
 
 dev-logs: ## Follow dependency and observability logs.
 	@$(DEV_COMPOSE) logs --follow

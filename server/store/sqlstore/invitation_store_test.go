@@ -21,6 +21,13 @@ func TestTeacherInvitationDelegationRequirementRejectsInertAcademicUnitAction(t 
 	if !requirement.Institution || !requirement.AcademicUnit {
 		t.Fatalf("programme.manage delegation requirement = %#v", requirement)
 	}
+	examRequirement, err := teacherInvitationDelegationRequirement(model.ActionExamManage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !examRequirement.Institution || !examRequirement.AcademicUnit {
+		t.Fatalf("exam.manage delegation requirement = %#v", examRequirement)
+	}
 }
 
 func TestInvitationEffectiveIntervalCovered(t *testing.T) {

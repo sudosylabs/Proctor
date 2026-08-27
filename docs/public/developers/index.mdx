@@ -15,16 +15,16 @@ choose the owner of a change, use the nearest contract, and run checks in order
 of cost.
 
 <Maturity state="preview">
-  The development environment, module checks, API compiler, browser gates, and
-  documentation build are implemented. Project-wide contributor governance and
-  the supported operating-system policy remain open and are called out where
-  they affect a task.
+  The contributor environment, guarded synthetic fixture, module checks, API
+  compiler, browser gates, and documentation build are implemented. Production
+  deployment guidance remains intentionally incomplete until its operator
+  inputs are available.
 </Maturity>
 
 ## Start Here
 
-1. [Prepare the local environment](./local-setup.mdx) and run the
-   production-shaped single-node lifecycle.
+1. [Prepare the local environment](./local-setup.mdx), create the guarded
+   synthetic fixture, and prove your first browser session.
 2. [Tour the repository boundaries](./repository-boundaries.mdx) before
    deciding where a change belongs.
 3. Follow the workflow for the surface you are changing, then use the
@@ -43,6 +43,14 @@ of cost.
 | Change durable data or SQL | [Persistence workflow](./persistence.mdx) | Store conformance, migration and PostgreSQL integration tests |
 | Change public or maintainer documentation | [Documentation workflow](./documentation.mdx) | Affected generators, docs check, architecture gate |
 | Prepare work for review | [Contribution checklist](./contribution-checklist.mdx) | Clean diff and the highest relevant repository gate |
+
+## Operate the Development Runtime
+
+| Need | Guide |
+| --- | --- |
+| Inspect PostgreSQL, Redis, MinIO, mail, metrics, dashboards, or logs | [Local services](./local-services.mdx) |
+| Prove three-node discovery, load balancing, and one-node recovery | [Cluster development](./cluster-development.mdx) |
+| Change ports, origins, image pins, or persistent local overrides | [Development configuration](./development-configuration.mdx) |
 
 ## Keep the Authority in One Place
 

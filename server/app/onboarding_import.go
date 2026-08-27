@@ -548,7 +548,7 @@ func (s *onboardingImportService) validateExternalTarget(ctx context.Context, in
 		if err != nil || role.IsArchived() {
 			return invitationError(err)
 		}
-		if err = validateInvitationDelegableRole(role, model.ResourceAcademicUnit); err != nil {
+		if err = validateInvitationDelegableRole(role, model.RoleScopeAcademicUnit); err != nil {
 			return err
 		}
 		if preview {
@@ -1174,7 +1174,7 @@ func (s *onboardingImportService) previewRoleAuthorization(ctx context.Context, 
 			return err
 		}
 	}
-	if err := validateInvitationDelegableRole(role, resourceType); err != nil {
+	if err := validateInvitationDelegableRole(role, scopeType); err != nil {
 		return err
 	}
 	resource := model.Resource{Type: resourceType, ID: scopeID}

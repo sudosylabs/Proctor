@@ -32,6 +32,21 @@ const sidebars: SidebarsConfig = {
             {type: 'doc', id: 'developers/local-setup', label: 'Local Setup'},
             {
               type: 'doc',
+              id: 'developers/local-services',
+              label: 'Local Services',
+            },
+            {
+              type: 'doc',
+              id: 'developers/cluster-development',
+              label: 'Cluster Development',
+            },
+            {
+              type: 'doc',
+              id: 'developers/development-configuration',
+              label: 'Development Configuration',
+            },
+            {
+              type: 'doc',
               id: 'developers/repository-boundaries',
               label: 'Repository Boundaries',
             },

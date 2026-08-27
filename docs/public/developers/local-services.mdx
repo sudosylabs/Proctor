@@ -1,0 +1,326 @@
+---
+title: Inspect Local Development Services
+description: Understand, inspect, troubleshoot, and safely reset every service in Proctor's tracked local runtime.
+audience: developer
+maturity: preview
+slug: /developers/local-services/
+---
+
+# Inspect Local Development Services
+
+`make run-server` starts one coherent local runtime. PostgreSQL is the durable
+authority; Redis accelerates and coordinates; MinIO stores managed bytes;
+Mailpit captures outbound mail; and the Prometheus, Grafana, Loki, and
+OpenTelemetry components make the node observable.
+
+The default lifecycle waits for every container listed here. A service may be
+optional in a production design, but it is not optional to the tracked
+development command when that command configures Proctor to use it.
+
+## Addresses at a Glance
+
+| Service | Loopback address | State in the default stack | Primary configuration owner |
+| --- | --- | --- | --- |
+| PostgreSQL | `127.0.0.1:15432` | Required, persistent | `build/compose/dependencies.yaml` |
+| Redis | `127.0.0.1:16379` | Required, deliberately disposable | `build/compose/dependencies.yaml` |
+| MinIO API | `http://127.0.0.1:19000` | Required, persistent | `build/compose/dependencies.yaml` |
+| MinIO console | `http://127.0.0.1:19001` | Inspection UI | `build/compose/dependencies.yaml` |
+| Mailpit SMTP | `127.0.0.1:11025` | Required when local mail is enabled | `build/compose/dependencies.yaml` |
+| Mailpit UI/API | `http://127.0.0.1:18025` | Persistent captured mail | `build/compose/dependencies.yaml` |
+| Prometheus | `http://127.0.0.1:19090` | Required by the tracked lifecycle | `build/observability/prometheus/` |
+| Grafana | `http://127.0.0.1:13000` | Required by the tracked lifecycle | `build/observability/grafana/` |
+| Loki | `http://127.0.0.1:13100` | Required by the tracked lifecycle | `build/observability/loki/` |
+| OpenTelemetry health | `http://127.0.0.1:13133` | Required log pipeline | `build/observability/otel/collector.yaml` |
+
+All published ports bind to loopback. These credentials, endpoints, anonymous
+dashboards, and insecure protocols are development choices; they are not a
+production deployment example.
+
+## Inspect the Stack as a Whole
+
+List service and health state:
+
+```sh
+docker compose \
+  -f build/compose/dependencies.yaml \
+  -f build/compose/observability.yaml \
+  ps
+```
+
+Follow all container logs:
+
+```sh
+make dev-logs
+```
+
+For a bounded service log, name the container and limit the tail:
+
+```sh
+docker compose \
+  -f build/compose/dependencies.yaml \
+  -f build/compose/observability.yaml \
+  logs --tail=100 postgres
+```
+
+Replace `postgres` with `redis`, `minio`, `mailpit`, `prometheus`, `grafana`,
+`loki`, or `otel-collector`. Proctor's own foreground output is in terminal 1
+and `.build/dev/logs/local/server.log`.
+
+## PostgreSQL: Durable Application Authority
+
+**Why it exists.** PostgreSQL owns durable application state: Installation and
+identity records, academic structure, Exams, Sittings, audit, Jobs, mail intent,
+and managed-file metadata. Redis and cluster messages are never recovery
+sources for this state.
+
+**Health and inspection.** The Compose health check runs `pg_isready`. Re-run
+the same bounded check without opening an interactive SQL shell:
+
+```sh
+docker compose -f build/compose/dependencies.yaml \
+  exec postgres pg_isready -U proctor -d proctor
+```
+
+Expected output ends with `accepting connections`. Startup also logs
+`database migrations complete` before Proctor becomes ready.
+
+**Logs and reset.** Inspect `postgres` container logs for recovery, storage, or
+connection failures. `make dev-down` preserves the `postgres-data` volume;
+`make dev-reset` deletes it and therefore deletes the local Installation. Never
+point development reset commands at a shared or production database.
+
+**Typical failure symptoms.** Proctor cannot finish startup, readiness remains
+unavailable, migration errors appear before `server started`, or HTTP mutations
+return a persistence-unavailable error.
+
+**Affected tests.** Run `make -C server integration-postgres` for focused Store
+and application integration, or root `make integration` for the complete
+dependency-backed server suite.
+
+## Redis: Disposable Shared Coordination
+
+**Why it exists.** The default server uses Redis for the Installation-shared
+application cache, authentication counters, and cross-node transient
+coordination. The local in-process Store cache is a separate bounded LRU.
+
+**Health and inspection.** Compose uses `redis-cli ping`:
+
+```sh
+docker compose -f build/compose/dependencies.yaml \
+  exec redis redis-cli ping
+```
+
+Expected output is `PONG`. The server startup record
+`application cache ready` should identify `redis` and
+`installation_shared`.
+
+**Logs and reset.** Redis runs read-only with `/data` on tmpfs, snapshots off,
+and append-only persistence off. `make dev-down` removes the container and its
+cache contents; no Redis volume is preserved. That loss is intentional because
+PostgreSQL can reconstruct authoritative behavior.
+
+**Typical failure symptoms.** Authentication rate-limit or cache operations
+degrade, realtime multi-node tests fail to converge, or server startup reports
+the cache backend unavailable. Deleting Redis data must never delete a User,
+Exam, audit event, or other durable fact.
+
+**Affected tests.** Run `make -C server integration-redis` for reusable cache
+conformance and `make -C server integration-realtime` for Redis-backed
+multi-node realtime behavior.
+
+## MinIO: Local S3-Compatible Byte Storage
+
+**Why it exists.** MinIO implements the S3 adapter used by the VFS boundary.
+PostgreSQL owns managed-file metadata; MinIO owns the corresponding bytes. The
+`minio-init` one-shot container creates the `proctor-dev` bucket idempotently.
+
+**Health and inspection.** Check the S3 health endpoint:
+
+```sh
+curl --fail --silent --show-error \
+  http://127.0.0.1:19000/minio/health/live
+```
+
+An empty successful response is healthy. Use the
+MinIO console at `http://127.0.0.1:19001` only to inspect synthetic local
+objects.
+The local credentials are `proctorminio` and `proctorminio-secret`.
+
+**Logs and reset.** Inspect `minio` and `minio-init` logs when bucket creation
+or object access fails. `make dev-down` preserves `minio-data`;
+`make dev-reset` deletes it. Reset PostgreSQL and MinIO together when you need a
+clean Installation so metadata and bytes cannot drift.
+
+**Typical failure symptoms.** Startup reports the filesystem backend
+unavailable; uploads, renditions, Workspace projection, or purge operations
+fail; or `minio-init` cannot create the bucket.
+
+**Affected tests.** Run `make -C server integration-s3`. It certifies reusable
+S3 conformance plus server file-purge and Attempt Workspace integrations.
+
+## Mailpit: Captured Development Mail
+
+**Why it exists.** Mailpit accepts SMTP from the real durable mail worker while
+keeping all messages local. It is the only supported way for the development
+seed to recover Invitation claims; the API, audit, logs, and fixture files
+never disclose those credentials.
+
+**Health and inspection.** Open Mailpit at `http://127.0.0.1:18025`. The Compose
+health check uses Mailpit's built-in readiness command. After `make dev-seed`,
+filter for `ada.lovelace@northbridge.example` or
+`samira.okafor@northbridge.example`.
+
+The SMTP listener is `127.0.0.1:11025`; the Proctor server connects to it
+directly. Do not configure a real recipient or external relay for the synthetic
+fixture.
+
+**Logs and reset.** Inspect `mailpit` container logs for listener or database
+errors and Proctor logs for closed mail failure codes. `make dev-down`
+preserves captured messages in `mailpit-data`; `make dev-reset` deletes them.
+
+**Typical failure symptoms.** Invitation creation reports mail unavailable,
+`make dev-seed` times out waiting for a claim, the mail subsystem health record
+is degraded, or queued Mail Delivery Jobs cannot reach SMTP.
+
+**Affected tests.** Root `make integration` covers application-through-SMTP
+paths. Mail-specific certification lives behind
+`make -C server phase-transactional-mail` and includes Mailpit-backed delivery.
+
+## Prometheus: Metrics Collection and Rules
+
+**Why it exists.** Prometheus scrapes Proctor's TLS- and bearer-protected
+metrics listener. Generated file discovery selects either the single node or
+the three-node topology; tracked rules evaluate operational signals.
+
+**Health and inspection.** Verify Prometheus itself:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:19090/-/ready
+```
+
+Then verify the Proctor scrape target:
+
+```sh
+curl --fail --silent --get \
+  --data-urlencode 'query=up{job="proctor"}' \
+  http://127.0.0.1:19090/api/v1/query | jq '.data.result'
+```
+
+The tracked configuration is `build/observability/prometheus/prometheus.yaml`;
+rules live beside it. Target discovery, the local CA, and bearer credential are
+generated below `.build/dev`.
+
+**Logs and reset.** Inspect `prometheus` logs for TLS, bearer, target-discovery,
+or rule-loading errors. Compose stores time-series data in the ignored
+`.build/dev/prometheus` bind directory, not in application authority. Removing
+metrics history is operationally safe, but never use it as evidence that
+application state was reset.
+
+**Typical failure symptoms.** The Proctor target is down, dashboards show no
+series, `cluster-smoke` cannot observe readiness or peer count, or logs report a
+certificate or bearer mismatch.
+
+**Affected tests.** `make cluster-smoke` certifies target count, node readiness,
+peer metrics, and build identity. `make build-scripts-check` validates generated
+development observability inputs.
+
+## Grafana: Read-Only Local Dashboards
+
+**Why it exists.** Grafana provisions the tracked Proctor overview dashboard
+and Prometheus and Loki data sources. Local anonymous access has Viewer rights;
+the login form and online update checks are disabled.
+
+**Health and inspection.** Check the API, then open the dashboard:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:13000/api/health | jq .
+```
+
+Open the Proctor overview at
+`http://127.0.0.1:13000/d/proctor-overview/proctor-overview`.
+Provisioned dashboards are read-only. Make durable edits in
+`build/observability/grafana/`, not through the local UI.
+
+**Logs and reset.** Inspect `grafana` logs for provisioning or data-source
+errors. `make dev-down` preserves `grafana-data`; `make dev-reset` removes the
+volume. The tracked dashboard remains the authority after either action.
+
+**Typical failure symptoms.** Grafana is healthy but panels have no data when
+Prometheus cannot scrape or Loki has no ingested logs; a provisioning failure
+instead appears in Grafana startup logs.
+
+**Affected tests.** The development stack health wait and `cluster-smoke`
+exercise the backing data path. Dashboard JSON remains part of repository and
+documentation review.
+
+## Loki: Local Structured Log Store
+
+**Why it exists.** Loki stores the structured server records collected from
+ignored local log files. It is an observability store, never an audit or
+application authority.
+
+**Health and inspection.** Verify readiness:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:13100/ready
+```
+
+Expected output is `ready`. Query logs through Grafana's Explore view using the
+provisioned Loki source. Keep queries bounded by time and labels; ordinary logs
+must not contain credentials, exam answers, or unbounded user content.
+
+**Logs and reset.** Inspect `loki` logs for ingestion and storage errors.
+`make dev-down` preserves `loki-data`; `make dev-reset` removes it. Losing Loki
+history does not remove durable security audit records from PostgreSQL.
+
+**Typical failure symptoms.** Grafana log panels are empty, the collector
+reports export failures, or the Loki readiness endpoint does not return 200.
+
+**Affected tests.** The tracked lifecycle health-checks Loki and the collector;
+`make cluster-diagnostics` includes their bounded container output when the
+cluster path fails.
+
+## OpenTelemetry Collector: Log Tail and Export Pipeline
+
+**Why it exists.** The Collector tails `.build/dev/logs/*/server.log`, parses
+JSON records, attaches the Proctor service and node identity, and exports them
+to Loki over OTLP HTTP. It does not receive application traces in the current
+development topology.
+
+**Health and inspection.** Check the configured health extension:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:13133/
+```
+
+The request must return HTTP 200. Collector configuration lives in
+`build/observability/otel/collector.yaml`; read checkpoints live in the ignored
+`.build/dev/otel` directory.
+
+**Logs and reset.** Inspect `otel-collector` logs for file discovery, parsing,
+checkpoint, or Loki export failures. Resetting its checkpoint may replay local
+log files into Loki; duplicate diagnostic records are acceptable because logs
+are not authoritative state.
+
+**Typical failure symptoms.** Proctor writes structured files but Grafana shows
+no recent logs, exporter retries mention Loki, or the health port is
+unavailable.
+
+**Affected tests.** `make build-scripts-check` covers generated target and
+configuration scripts. Cluster failure capture includes the Collector logs.
+
+## Stop and Reset Without Losing the Wrong State
+
+Use `make dev-down` for an ordinary stop. It preserves named volumes and the
+ignored `.build/dev` configuration, secrets, logs, metrics history, collector
+checkpoints, and seed files. Redis contents disappear because Redis is
+deliberately ephemeral.
+
+Use `make dev-reset` only when you intend to delete PostgreSQL, MinIO, Mailpit,
+Grafana, and Loki named volumes plus the guarded seed files. Generated secrets,
+configuration, logs, Prometheus history, and Collector checkpoints remain
+ignored local build output and may be regenerated or discarded independently;
+none is an application recovery source.
+
+Continue with [cluster development](./cluster-development.mdx) to see how the
+same dependencies support three active Proctor nodes.

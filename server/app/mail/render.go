@@ -9,6 +9,7 @@ import (
 	"fmt"
 	htmltemplate "html/template"
 	"io/fs"
+	"net"
 	"net/url"
 	"strings"
 	texttemplate "text/template"
@@ -100,15 +101,33 @@ type renderedMessage struct {
 }
 
 type templateRenderer struct {
-	localizer *localization.Localizer
-	html      map[model.MailTemplateKey]*htmltemplate.Template
-	text      map[model.MailTemplateKey]*texttemplate.Template
+	localizer                    *localization.Localizer
+	html                         map[model.MailTemplateKey]*htmltemplate.Template
+	text                         map[model.MailTemplateKey]*texttemplate.Template
+	allowLoopbackHTTPDevelopment bool
+}
+
+// RendererPolicy contains composition-proven transport exceptions. Production
+// callers leave it at its zero value so action links remain HTTPS-only.
+type RendererPolicy struct {
+	AllowLoopbackHTTPDevelopment bool
 }
 
 // NewRenderer constructs the application-owned renderer from presentation
 // assets and the installation localizer.
 func NewRenderer(files fs.FS, localizer *localization.Localizer) (Renderer, error) {
 	return newRenderer(files, localizer, true)
+}
+
+// NewRendererWithPolicy constructs a renderer with an explicit
+// composition-owned local-development policy.
+func NewRendererWithPolicy(files fs.FS, localizer *localization.Localizer, policy RendererPolicy) (Renderer, error) {
+	renderer, err := newRenderer(files, localizer, true)
+	if err != nil {
+		return nil, err
+	}
+	renderer.allowLoopbackHTTPDevelopment = policy.AllowLoopbackHTTPDevelopment
+	return renderer, nil
 }
 
 func newRenderer(files fs.FS, localizer *localization.Localizer, validateCompleteCatalog bool) (*templateRenderer, error) {
@@ -161,7 +180,7 @@ func (r *templateRenderer) render(request renderRequest) (renderedMessage, error
 	if copy.ActionLabel == "" {
 		actionURL = ""
 	} else {
-		if err := validateActionURL(actionURL); err != nil {
+		if err := validateActionURL(actionURL, r.allowLoopbackHTTPDevelopment); err != nil {
 			return renderedMessage{}, err
 		}
 	}
@@ -447,7 +466,7 @@ func validBoundedMailLabel(value string) bool {
 	return true
 }
 
-func validateActionURL(raw string) error {
+func validateActionURL(raw string, allowLoopbackHTTPDevelopment bool) error {
 	if raw == "" || len(raw) > 4096 {
 		return errors.New("mail action URL is missing or too long")
 	}
@@ -457,8 +476,22 @@ func validateActionURL(raw string) error {
 		}
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+	if err != nil || parsed.Host == "" || parsed.User != nil {
 		return errors.New("mail action URL must be an absolute HTTPS URL without user information")
+	}
+	if parsed.Scheme == "https" {
+		return nil
+	}
+	if parsed.Scheme != "http" || !allowLoopbackHTTPDevelopment {
+		return errors.New("mail action URL must be an absolute HTTPS URL without user information")
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return errors.New("mail action URL HTTP development origin must be loopback")
 	}
 	return nil
 }

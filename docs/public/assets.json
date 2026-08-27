@@ -310,7 +310,7 @@
       "last_reviewed": "2026-08-27",
       "visual_review": {
         "status": "approved",
-        "source_sha256": "6defc3d58150721143dd19b7df5aaa528555c421f8a63a6298a17868c419559e",
+        "source_sha256": "b57715815ce370c24dc7d5d5d0e77fa1679abe84f579a5400d9cc99e4657296f",
         "reviewed": "2026-08-27",
         "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
         "checks": [

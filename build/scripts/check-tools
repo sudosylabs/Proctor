@@ -32,9 +32,29 @@ if [ "$go_major" -lt 1 ] || { [ "$go_major" -eq 1 ] && [ "$go_minor" -lt 25 ]; }
 fi
 
 node_version=$(node --version)
+case "${node_version#v}" in
+	*.*) ;;
+	*)
+		printf 'unrecognized Node version %s\n' "$node_version" >&2
+		exit 1
+		;;
+esac
 node_major=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f1)
 node_minor=$(printf '%s' "$node_version" | sed 's/^v//' | cut -d. -f2)
-if [ "$node_major" -lt 20 ] || { [ "$node_major" -eq 20 ] && [ "$node_minor" -lt 19 ]; }; then
+case "$node_major:$node_minor" in
+	*[!0-9:]*|:*|*:)
+		printf 'unrecognized Node version %s\n' "$node_version" >&2
+		exit 1
+		;;
+esac
+if [ "$node_major" -eq 20 ]; then
+	node_supported=$([ "$node_minor" -ge 19 ] && printf true || printf false)
+elif [ "$node_major" -ge 22 ]; then
+	node_supported=$({ [ "$node_major" -gt 22 ] || [ "$node_minor" -ge 12 ]; } && printf true || printf false)
+else
+	node_supported=false
+fi
+if [ "$node_supported" != true ]; then
 	printf 'unsupported Node version %s; use webapp/.nvmrc\n' "$node_version" >&2
 	exit 1
 fi

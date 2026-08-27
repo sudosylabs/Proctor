@@ -369,6 +369,12 @@ rendering and passes the claim as purpose-specific in-memory state to the
 future visual flow. The supporting API exchanges it for a short-lived server
 transaction and HttpOnly proof. Resend rotates the credential rather than
 reproducing the old link.
+
+Production mail action URLs are absolute HTTPS URLs. The composition-owned
+loopback HTTP development proof may relax only the scheme for `localhost` or a
+literal loopback address so the tracked local Mailpit workflow remains usable;
+the renderer rechecks the host and never accepts user information or a
+non-loopback HTTP destination.
 Acceptance must still recheck the Invitation's pending state, expiry, target
 email, purpose package, and the current authorization of the relationship it
 will establish.

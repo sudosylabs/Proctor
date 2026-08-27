@@ -95,7 +95,9 @@ func defaultConsumerConstructors(snapshot config.Config, overrideWebappFiles fs.
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("open mail templates: %w", err)
 	}
-	mailRenderer, err := appmail.NewRenderer(templateFiles, localizer)
+	mailRenderer, err := appmail.NewRendererWithPolicy(templateFiles, localizer, appmail.RendererPolicy{
+		AllowLoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(snapshot.Server.PublicURL),
+	})
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("construct mail renderer: %w", err)
 	}

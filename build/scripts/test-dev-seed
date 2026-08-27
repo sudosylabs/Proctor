@@ -1,0 +1,237 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: test-dev-seed DEV_SEED_SCRIPT\n' >&2
+	exit 2
+fi
+
+dev_seed_script=$1
+test_directory=$(mktemp -d "${TMPDIR:-/tmp}/proctor-dev-seed-test.XXXXXX")
+trap 'rm -rf "$test_directory"' EXIT INT TERM
+
+fake_state=$test_directory/fake-state
+mkdir -p "$fake_state"
+
+cat >"$test_directory/fake-openssl" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = rand ] && [ "$2" = -hex ] && [ "$3" = 18 ]
+printf '0123456789abcdef0123456789abcdef0123\n'
+EOF
+chmod 755 "$test_directory/fake-openssl"
+
+cat >"$test_directory/fake-curl" <<'EOF'
+#!/bin/sh
+set -eu
+
+state=${PROCTOR_DEV_SEED_FAKE_STATE:?}
+method=GET
+url=
+output=
+write_out=
+request_file=
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--request) method=$2; shift 2 ;;
+		--url) url=$2; shift 2 ;;
+		--output) output=$2; shift 2 ;;
+		--write-out) write_out=$2; shift 2 ;;
+		--data-binary) request_file=${2#@}; shift 2 ;;
+		--header|--max-time) shift 2 ;;
+		--fail|--silent|--show-error) shift ;;
+		http://*) url=$1; shift ;;
+		*) shift ;;
+	esac
+done
+
+printf '%s %s\n' "$method" "$url" >>"$state/calls"
+status=200
+body='{}'
+
+case "$method $url" in
+	"GET http://127.0.0.1:8065/health/ready")
+		body='{"status":"ok"}'
+		;;
+	"GET http://127.0.0.1:8065/api/v1/bootstrap")
+		if [ -f "$state/initialized" ]; then body='{"initialized":true}'; else body='{"initialized":false}'; fi
+		;;
+	"POST http://127.0.0.1:8065/api/v1/bootstrap")
+		touch "$state/initialized"
+		status=201
+		body='{"state":{"institution_id":"institution-id","administrator_user_id":"administrator-id"}}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/auth/login")
+		login_id=$(jq -r '.login_id' "$request_file")
+		case "$login_id" in
+			northbridge-admin) token=administrator-token ;;
+			ada-lovelace) token=exam-manager-token ;;
+			*) status=401; token=invalid ;;
+		esac
+		body=$(printf '{"tokens":{"access_token":"%s"}}' "$token")
+		;;
+	"POST http://127.0.0.1:8065/api/v1/roles")
+		status=201
+		role_name=$(jq -r '.name' "$request_file")
+		case "$role_name" in
+			development-exam-manager)
+				if ! jq -e '.permissions | index("exam.manage") and index("exam.publish") and index("exam.sitting.create")' "$request_file" >/dev/null; then
+					status=400
+					body='{"code":"request.invalid"}'
+				else
+					body='{"id":"exam-manager-role-id"}'
+				fi
+				;;
+			*) status=400; body='{"code":"request.invalid"}' ;;
+		esac
+		;;
+	"POST http://127.0.0.1:8065/api/v1/academic-units")
+		status=201
+		body='{"id":"academic-unit-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/academic-units/academic-unit-id/programmes")
+		status=201
+		body='{"id":"programme-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/programmes/programme-id/levels")
+		status=201
+		body='{"id":"programme-level-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/academic-periods")
+		status=201
+		body='{"id":"academic-period-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/programme-levels/programme-level-id/classes")
+		status=201
+		body='{"id":"class-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/academic-units/academic-unit-id/invitations/teacher")
+		if [ "$(jq -r '.role_id' "$request_file")" = exam-manager-role-id ]; then
+			status=201
+			body='{"id":"teacher-invitation-id"}'
+			touch "$state/teacher-mail"
+		else
+			status=400
+			body='{"code":"request.invalid"}'
+		fi
+		;;
+	"POST http://127.0.0.1:8065/api/v1/invitations/teacher-academic-unit/accept")
+		body='{"user_id":"exam-manager-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/classes/class-id/invitations/student")
+		status=201
+		body='{"id":"candidate-invitation-id"}'
+		touch "$state/candidate-mail"
+		;;
+	"POST http://127.0.0.1:8065/api/v1/invitations/student-class/accept")
+		body='{"user_id":"candidate-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/exams")
+		status=201
+		body='{"exam":{"id":"exam-id"},"draft":{"revision":1}}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/exams/exam-id/revisions")
+		status=201
+		body='{"id":"exam-revision-id"}'
+		;;
+	"POST http://127.0.0.1:8065/api/v1/exams/exam-id/sittings")
+		status=201
+		body='{"id":"exam-sitting-id"}'
+		;;
+	"GET http://127.0.0.1:18025/api/v1/messages?limit=100")
+		messages='[]'
+		[ ! -f "$state/teacher-mail" ] || messages='[{"ID":"teacher-message"}]'
+		[ ! -f "$state/candidate-mail" ] || messages='[{"ID":"candidate-message"},{"ID":"teacher-message"}]'
+		body=$(printf '{"messages":%s}' "$messages")
+		;;
+	"GET http://127.0.0.1:18025/api/v1/message/teacher-message")
+		body='{"To":[{"Address":"ada.lovelace@northbridge.example"}],"Text":"Join: http://localhost:8065/join#token=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","HTML":""}'
+		;;
+	"GET http://127.0.0.1:18025/api/v1/message/candidate-message")
+		body='{"To":[{"Address":"samira.okafor@northbridge.example"}],"Text":"","HTML":"<a href=\"http://localhost:8065/join#token=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\">Join</a>"}'
+		;;
+	*)
+		status=500
+		body=$(printf '{"detail":"unhandled fake request: %s %s"}' "$method" "$url")
+		;;
+esac
+
+if [ -n "$output" ]; then
+	printf '%s\n' "$body" >"$output"
+else
+	printf '%s\n' "$body"
+fi
+[ -z "$write_out" ] || printf '%s' "$status"
+[ "$status" -lt 400 ]
+EOF
+chmod 755 "$test_directory/fake-curl"
+
+environment_file=$test_directory/environment
+printf 'PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET=%064d\n' 0 >"$environment_file"
+
+export PROCTOR_DEV_SEED_FAKE_STATE=$fake_state
+"$dev_seed_script" "$test_directory/seed" "$environment_file" \
+	'http://127.0.0.1:8065' 'http://127.0.0.1:18025' \
+	jq "$test_directory/fake-curl" "$test_directory/fake-openssl" >"$test_directory/first-output"
+
+jq -e '
+	.status == "ready" and
+	.institution.id == "institution-id" and
+	.users.exam_manager.id == "exam-manager-id" and
+	.users.candidate.id == "candidate-id" and
+	.exam.revision_id == "exam-revision-id" and
+	.sitting.id == "exam-sitting-id"
+' "$test_directory/seed/fixture.json" >/dev/null
+jq -e '
+	.users.administrator.password | startswith("Dev-Admin-")
+' "$test_directory/seed/credentials.json" >/dev/null
+file_mode() {
+	case "$(uname -s)" in
+		Darwin) stat -f '%Lp' "$1" ;;
+		*) stat -c '%a' "$1" ;;
+	esac
+}
+[ "$(file_mode "$test_directory/seed/credentials.json")" = 600 ]
+[ "$(file_mode "$test_directory/seed/fixture.json")" = 600 ]
+[ ! -e "$test_directory/seed/in-progress.json" ]
+grep -q 'Development fixture is ready' "$test_directory/first-output"
+if grep -q '/api/v1/role-bindings' "$fake_state/calls"; then
+	printf 'development seed bypassed the invitation-owned Role Binding package\n' >&2
+	exit 1
+fi
+
+calls_before=$(wc -l <"$fake_state/calls")
+"$dev_seed_script" "$test_directory/seed" "$environment_file" \
+	'http://127.0.0.1:8065' 'http://127.0.0.1:18025' \
+	jq "$test_directory/fake-curl" "$test_directory/fake-openssl" >"$test_directory/replay-output"
+calls_after=$(wc -l <"$fake_state/calls")
+[ "$calls_after" -eq $((calls_before + 2)) ]
+tail -n 2 "$fake_state/calls" | grep -q '^GET http://127.0.0.1:8065/health/ready$'
+tail -n 1 "$fake_state/calls" | grep -q '^GET http://127.0.0.1:8065/api/v1/bootstrap$'
+
+if "$dev_seed_script" "$test_directory/foreign-installation" "$environment_file" \
+	'http://127.0.0.1:8065' 'http://127.0.0.1:18025' \
+	jq "$test_directory/fake-curl" "$test_directory/fake-openssl" >/dev/null 2>&1; then
+	printf 'development seed accepted an initialized Installation without its fixture marker\n' >&2
+	exit 1
+fi
+
+if "$dev_seed_script" "$test_directory/rejected" "$environment_file" \
+	'https://proctor.example.edu' 'http://127.0.0.1:18025' \
+	jq "$test_directory/fake-curl" "$test_directory/fake-openssl" >/dev/null 2>&1; then
+	printf 'development seed accepted a non-loopback server URL\n' >&2
+	exit 1
+fi
+
+mkdir -p "$test_directory/incomplete"
+printf '{"status":"creating"}\n' >"$test_directory/incomplete/in-progress.json"
+if "$dev_seed_script" "$test_directory/incomplete" "$environment_file" \
+	'http://127.0.0.1:8065' 'http://127.0.0.1:18025' \
+	jq "$test_directory/fake-curl" "$test_directory/fake-openssl" >/dev/null 2>&1; then
+	printf 'development seed accepted incomplete fixture state\n' >&2
+	exit 1
+fi
