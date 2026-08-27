@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-
+import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { InvitationContent } from "../../components/InvitationAcceptance/InvitationContent";
 import { message } from "../../i18n/messages";
@@ -15,37 +14,32 @@ export interface JoinPageProps {
   claim?: string;
 }
 
-export function JoinPage({ claim }: JoinPageProps) {
-  const [state, setState] = useState<InvitationStartResult>(
-    claim === undefined ? { kind: "invalid" } : { kind: "unavailable" },
-  );
-  const [loading, setLoading] = useState(claim !== undefined);
-  const [institutionName, setInstitutionName] = useState<string>();
-  const requestRef = useRef<Promise<InvitationStartResult>>(undefined);
-  const institutionRequestRef = useRef<Promise<string | undefined>>(undefined);
+interface JoinInitialResult {
+  institutionName?: string;
+  state: InvitationStartResult;
+}
 
-  useEffect(() => {
-    if (claim === undefined) {
-      return;
-    }
-    let subscribed = true;
-    requestRef.current ??= startInvitation(claim);
-    institutionRequestRef.current ??= requestInvitationInstitutionName(
-      window.location.origin,
-    );
-    void Promise.all([requestRef.current, institutionRequestRef.current]).then(
-      ([result, name]) => {
-        if (subscribed) {
-          setState(result);
-          setInstitutionName(name);
-          setLoading(false);
-        }
-      },
-    );
-    return () => {
-      subscribed = false;
-    };
-  }, [claim]);
+export function JoinPage({ claim }: JoinPageProps) {
+  const initialResource = useAsyncResource<JoinInitialResult>(
+    async () => {
+      if (claim === undefined) {
+        return { state: { kind: "invalid" } };
+      }
+      const [state, institutionName] = await Promise.all([
+        startInvitation(claim),
+        requestInvitationInstitutionName(window.location.origin),
+      ]);
+      return {
+        state,
+        ...(institutionName === undefined ? {} : { institutionName }),
+      };
+    },
+    {
+      state:
+        claim === undefined ? { kind: "invalid" } : { kind: "unavailable" },
+    },
+    claim !== undefined,
+  );
 
   return (
     <AccessPageShell
@@ -54,9 +48,9 @@ export function JoinPage({ claim }: JoinPageProps) {
       variant="single"
     >
       <InvitationContent
-        institutionName={institutionName}
-        loading={loading}
-        state={state}
+        institutionName={initialResource.value.institutionName}
+        loading={initialResource.loading}
+        state={initialResource.value.state}
         acceptAccount={acceptInvitationAccount}
         acceptSession={acceptInvitationSession}
       />

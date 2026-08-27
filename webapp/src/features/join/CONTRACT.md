@@ -3,7 +3,8 @@
 `/join` captures an `invitation_claim` from the URL fragment before render and
 exchanges it once through `POST /api/v1/auth/browser/invitations`. The claim is
 never rendered, copied into a query string, provider state, storage, logs, or
-feedback. React Strict Mode reuses one in-flight exchange promise.
+feedback. The shared initial-resource lifecycle composes its two independent
+requests and reuses one in-flight result under React Strict Mode.
 
 The returned purpose and requirement decide the closed terminal operation. An
 `account` transaction collects username, password, and optional first and last

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-
+import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { SetupContent } from "../../components/Setup/SetupContent";
 import { SetupContext } from "../../components/Setup/SetupContext";
@@ -11,35 +10,13 @@ import {
 } from "./SetupApi";
 
 export function SetupPage() {
-  const [status, setStatus] = useState<SetupStatus>({ kind: "loading" });
-  const [statusAttempt, setStatusAttempt] = useState(0);
-  const statusRequest = useRef<{
-    attempt: number;
-    promise: Promise<SetupStatus>;
-  }>(undefined);
-
-  useEffect(() => {
-    let subscribed = true;
-    if (statusRequest.current?.attempt !== statusAttempt) {
-      statusRequest.current = {
-        attempt: statusAttempt,
-        promise: requestInstallationStatus(),
-      };
-    }
-    void statusRequest.current.promise.then((result) => {
-      if (subscribed) {
-        setStatus(result);
-      }
-    });
-    return () => {
-      subscribed = false;
-    };
-  }, [statusAttempt]);
-
-  function retryStatus() {
-    setStatus({ kind: "loading" });
-    setStatusAttempt((attempt) => attempt + 1);
-  }
+  const statusResource = useAsyncResource<SetupStatus>(
+    requestInstallationStatus,
+    { kind: "loading" },
+  );
+  const status: SetupStatus = statusResource.loading
+    ? { kind: "loading" }
+    : statusResource.value;
 
   return (
     <AccessPageShell
@@ -52,8 +29,8 @@ export function SetupPage() {
       <SetupContent
         status={status}
         submitSetup={submitInstallation}
-        onComplete={() => setStatus({ kind: "complete" })}
-        onRetry={retryStatus}
+        onComplete={() => statusResource.replace({ kind: "complete" })}
+        onRetry={statusResource.retry}
       />
     </AccessPageShell>
   );

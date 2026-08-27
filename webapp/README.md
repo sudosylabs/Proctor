@@ -33,6 +33,8 @@ modules retain their own state, transport, content, and recovery behavior.
 The shared [`auth` contract](./src/auth/CONTRACT.md) owns runtime validation and
 canonical-origin pinning for public discovery; each consuming feature still
 owns its admission decisions and visible states.
+The [`application orchestration contract`](./src/app/CONTRACT.md) owns the
+StrictMode-safe initial resource and retry lifecycle used by route modules.
 The remaining focused access tasks share the narrow
 [`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) introduction
 and [`Notice`](./src/components/Notice/CONTRACT.md) evidence contracts without

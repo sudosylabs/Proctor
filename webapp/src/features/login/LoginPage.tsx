@@ -5,6 +5,7 @@ import {
   useState,
 } from "react";
 
+import { useAsyncResource } from "../../app/AsyncResource";
 import { navigateToProvider } from "../../auth/navigation";
 import type { PublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
@@ -59,38 +60,14 @@ function LoginContext({ state }: { state: LoginDiscoveryState }) {
 }
 
 export function LoginPage({ externalLoginFailed }: LoginPageProps) {
-  const [discoveryState, setDiscoveryState] = useState<LoginDiscoveryState>({
-    kind: "loading",
-  });
-  const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
-  const discoveryRequest = useRef<{
-    attempt: number;
-    promise: Promise<LoginDiscoveryState>;
-  } | undefined>(undefined);
+  const discoveryResource = useAsyncResource<LoginDiscoveryState>(
+    () => requestLoginDiscovery(window.location.origin),
+    { kind: "loading" },
+  );
+  const discoveryState: LoginDiscoveryState = discoveryResource.loading
+    ? { kind: "loading" }
+    : discoveryResource.value;
   const [externalNotice, setExternalNotice] = useState(externalLoginFailed);
-
-  useEffect(() => {
-    let subscribed = true;
-    if (discoveryRequest.current?.attempt !== discoveryAttempt) {
-      discoveryRequest.current = {
-        attempt: discoveryAttempt,
-        promise: requestLoginDiscovery(window.location.origin),
-      };
-    }
-    void discoveryRequest.current.promise.then((result) => {
-      if (subscribed) {
-        setDiscoveryState(result);
-      }
-    });
-    return () => {
-      subscribed = false;
-    };
-  }, [discoveryAttempt]);
-
-  function retryDiscovery() {
-    setDiscoveryState({ kind: "loading" });
-    setDiscoveryAttempt((attempt) => attempt + 1);
-  }
 
   return (
     <AccessPageShell
@@ -114,7 +91,7 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
         <DiscoveryContent
           authenticate={authenticateLocal}
           state={discoveryState}
-          onRetry={retryDiscovery}
+          onRetry={discoveryResource.retry}
           onAuthenticationAction={() => setExternalNotice(false)}
         />
       </section>

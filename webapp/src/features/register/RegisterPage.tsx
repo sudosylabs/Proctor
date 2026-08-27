@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
+import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { RegistrationContent } from "../../components/Registration/RegistrationContent";
 import { RegistrationContext } from "../../components/Registration/RegistrationContext";
@@ -11,38 +12,14 @@ import {
 } from "./RegistrationApi";
 
 export function RegisterPage() {
-  const [state, setState] = useState<RegistrationDiscoveryState>({
-    kind: "loading",
-  });
+  const discoveryResource = useAsyncResource<RegistrationDiscoveryState>(
+    () => requestRegistrationDiscovery(window.location.origin),
+    { kind: "loading" },
+  );
+  const state: RegistrationDiscoveryState = discoveryResource.loading
+    ? { kind: "loading" }
+    : discoveryResource.value;
   const [accepted, setAccepted] = useState(false);
-  const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
-  const discoveryRequest = useRef<{
-    attempt: number;
-    promise: Promise<RegistrationDiscoveryState>;
-  }>(undefined);
-
-  useEffect(() => {
-    let subscribed = true;
-    if (discoveryRequest.current?.attempt !== discoveryAttempt) {
-      discoveryRequest.current = {
-        attempt: discoveryAttempt,
-        promise: requestRegistrationDiscovery(window.location.origin),
-      };
-    }
-    void discoveryRequest.current.promise.then((result) => {
-      if (subscribed) {
-        setState(result);
-      }
-    });
-    return () => {
-      subscribed = false;
-    };
-  }, [discoveryAttempt]);
-
-  function retryDiscovery() {
-    setState({ kind: "loading" });
-    setDiscoveryAttempt((attempt) => attempt + 1);
-  }
 
   return (
     <AccessPageShell
@@ -56,8 +33,8 @@ export function RegisterPage() {
         state={state}
         submitRegistration={submitRegistration}
         onAccepted={() => setAccepted(true)}
-        onPolicyChange={setState}
-        onRetry={retryDiscovery}
+        onPolicyChange={discoveryResource.replace}
+        onRetry={discoveryResource.retry}
       />
     </AccessPageShell>
   );

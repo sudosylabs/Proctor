@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-
+import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { ProviderConnectionContent } from "../../components/ProviderConnection/ProviderConnectionContent";
 import { message } from "../../i18n/messages";
@@ -10,39 +9,10 @@ import {
 } from "./ProviderConnectionApi";
 
 export function ConnectProviderPage() {
-  const [state, setState] = useState<ProviderConnectionContextResult>({
-    kind: "unavailable",
-  });
-  const [loading, setLoading] = useState(true);
-  const [attempt, setAttempt] = useState(0);
-  const requestRef = useRef<{
-    attempt: number;
-    promise: Promise<ProviderConnectionContextResult>;
-  }>(undefined);
-
-  useEffect(() => {
-    let subscribed = true;
-    if (requestRef.current?.attempt !== attempt) {
-      requestRef.current = {
-        attempt,
-        promise: requestProviderConnectionContext(),
-      };
-    }
-    void requestRef.current.promise.then((result) => {
-      if (subscribed) {
-        setState(result);
-        setLoading(false);
-      }
-    });
-    return () => {
-      subscribed = false;
-    };
-  }, [attempt]);
-
-  function retry() {
-    setLoading(true);
-    setAttempt((value) => value + 1);
-  }
+  const contextResource = useAsyncResource<ProviderConnectionContextResult>(
+    requestProviderConnectionContext,
+    { kind: "unavailable" },
+  );
 
   return (
     <AccessPageShell
@@ -51,10 +21,10 @@ export function ConnectProviderPage() {
       variant="single"
     >
       <ProviderConnectionContent
-        loading={loading}
-        state={state}
+        loading={contextResource.loading}
+        state={contextResource.value}
         beginConnection={beginProviderConnection}
-        onRetry={retry}
+        onRetry={contextResource.retry}
         onRedirect={(url) => window.location.assign(url)}
       />
     </AccessPageShell>

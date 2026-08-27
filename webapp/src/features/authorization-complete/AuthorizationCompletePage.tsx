@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
+import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
 import { message } from "../../i18n/messages";
@@ -38,41 +39,35 @@ async function confirmSession(): Promise<ConfirmationState> {
 }
 
 export function AuthorizationCompletePage() {
-  const [state, setState] = useState<ConfirmationState>("checking");
-  const [retrying, setRetrying] = useState(false);
+  const confirmation = useAsyncResource<ConfirmationState>(
+    confirmSession,
+    "checking",
+  );
+  const state = confirmation.hasResolved ? confirmation.value : "checking";
+  const retrying = confirmation.hasResolved && confirmation.loading;
   const [liveMessage, setLiveMessage] = useState(
     message("webapp.authorization_complete.checking.body"),
   );
-  const initialRequest = useRef<Promise<ConfirmationState> | undefined>(undefined);
+  const retryRequested = useRef(false);
   const unavailableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let subscribed = true;
-    initialRequest.current ??= confirmSession();
-    void initialRequest.current.then((result) => {
-      if (subscribed) {
-        setState(result);
-        setLiveMessage(stateBody(result));
+    if (!confirmation.loading && confirmation.hasResolved) {
+      setLiveMessage(stateBody(confirmation.value));
+      if (retryRequested.current && confirmation.value === "unavailable") {
+        requestAnimationFrame(() => unavailableRef.current?.focus());
       }
-    });
-    return () => {
-      subscribed = false;
-    };
-  }, []);
+      retryRequested.current = false;
+    }
+  }, [confirmation.hasResolved, confirmation.loading, confirmation.value]);
 
-  async function retry() {
-    if (retrying) {
+  function retry() {
+    if (confirmation.loading) {
       return;
     }
-    setRetrying(true);
+    retryRequested.current = true;
     setLiveMessage(message("webapp.authorization_complete.checking.body"));
-    const result = await confirmSession();
-    setState(result);
-    setLiveMessage(stateBody(result));
-    setRetrying(false);
-    if (result === "unavailable") {
-      requestAnimationFrame(() => unavailableRef.current?.focus());
-    }
+    confirmation.retry();
   }
 
   return (
