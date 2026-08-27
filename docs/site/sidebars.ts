@@ -88,6 +88,52 @@ const sidebars: SidebarsConfig = {
               label: 'Testing and Verification',
             },
             {
+              type: 'category',
+              label: 'Troubleshooting',
+              collapsed: true,
+              link: {
+                type: 'doc',
+                id: 'developers/troubleshooting/index',
+              },
+              items: [
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/runtime-readiness',
+                  label: 'Runtime and Readiness',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/http-access',
+                  label: 'HTTP Access',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/data-content',
+                  label: 'Data and Content',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/mail',
+                  label: 'Transactional Mail',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/jobs-realtime',
+                  label: 'Jobs and Realtime',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/browser',
+                  label: 'Browser Application',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/troubleshooting/cluster',
+                  label: 'Cluster Failures',
+                },
+              ],
+            },
+            {
               type: 'doc',
               id: 'developers/documentation',
               label: 'Documentation',

@@ -339,6 +339,64 @@
         "build/make/dev.mk",
         "webapp/README.md"
       ]
+    },
+    {
+      "id": "developer-request-diagnostic-path",
+      "path": "static/assets/diagrams/developer-request-diagnostic-path.svg",
+      "public_path": "/assets/diagrams/developer-request-diagnostic-path.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's HTTP transport, application, persistence, runtime, and post-commit effect contracts; no upstream artwork or expression was copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains generic request-boundary labels and safe evidence categories only; no Institution, User, Exam, credential, request, hostname, filesystem path, or operational data."
+      },
+      "alt": "A client request passes through the HTTP transport boundary and the owning application use case before PostgreSQL commits authoritative state, audit, and durable Job or mail intent. Cache, cluster, WebSocket, and SMTP effects follow the commit and are reconstructible or best effort. Problem Details and a request ID identify transport failures, durable records prove the committed outcome, and metrics or bounded logs explain effect delivery.",
+      "caption": "Diagnose the first unproven owner in order. Response evidence explains rejection, durable records prove the PostgreSQL outcome, and metrics or bounded logs explain post-commit delivery without overriding that outcome.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "2c054ba9d486291ffc8a5537794b43aa0844fd2c972e1077fc2bed32b4e9d181",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        ".agents/skills/http-api/references/transport.md",
+        ".agents/skills/server-boundaries/references/application.md",
+        ".agents/skills/runtime-operations/references/runtime.md",
+        "server/httpapi/CONTRACT.md",
+        "server/httpapi/problem.go",
+        "server/metrics/module.go"
+      ]
     }
   ]
 }

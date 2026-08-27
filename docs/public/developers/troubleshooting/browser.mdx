@@ -1,0 +1,121 @@
+---
+title: Browser Application
+description: Diagnose hosted-build identity, Vite proxying, browser origins, generated-contract drift, browser tests, traces, and cross-browser failures.
+audience: developer
+maturity: preview
+---
+
+# Browser Application
+
+Proctor has two intentional browser workflows. `make run-server` serves the
+compiled, production-shaped webapp. `make run-webapp` runs Vite with hot module
+replacement and proxies API and WebSocket traffic to Proctor. Name which one is
+failing before comparing their behavior.
+
+## Identify the Serving Mode
+
+| Observation | Hosted build | Vite workflow |
+| --- | --- | --- |
+| Browser URL | Server public URL, normally port `8065` | Vite URL, normally port `5173` |
+| Assets | `webapp/dist` | Vite development server |
+| Build identity | `webapp/dist/webapp-build.json` must match | Development bundle |
+| API and WebSocket path | Served by the same Proctor origin | Proxied to `PROCTOR_SERVER_DEV_URL` |
+
+If the hosted login route fails, start with:
+
+```sh
+make webapp-build
+make dev-doctor
+```
+
+Do not delete `webapp/dist` as a first step. Its build identity is useful
+evidence when the server refuses stale or mismatched assets.
+
+## Use the Browser Network Record
+
+For one failing interaction, record:
+
+- document origin and request URL;
+- method, status, Problem Details `code`, and request ID;
+- whether the request was cookie or bearer authenticated;
+- whether an unsafe cookie request carried the CSRF header; and
+- whether the response was HTML, JSON, a redirect, or an asset.
+
+Never copy credential values, cookies, authorization headers, CSRF tokens,
+private response bodies, exam answers, or student data. Prefer a synthetic
+fixture and a redacted screenshot that contains only the relevant surface.
+
+If an API call or WebSocket works directly but fails through Vite, compare the
+visible browser origin, configured public URL, and
+`PROCTOR_SERVER_DEV_URL`. Correct those values as one origin decision; do not
+disable Origin or CSRF enforcement.
+
+## Detect Generated-Contract Drift
+
+Generated adapters can compile while being stale relative to their authored
+source. Run the checks owned by the surface:
+
+```sh
+make -C server openapi-check
+cd webapp
+npm run api:check
+npm run i18n:check
+npm run routes:check
+npm run check:design-system
+```
+
+When a check reports drift, change the authored source and run its repository
+generator. Do not hand-edit a generated adapter to silence the check. The
+[webapp workflow](../webapp-workflow.mdx) maps each source to its generator.
+
+## Reduce Browser-Test Failures
+
+Install the repository's browser engines when Playwright reports that they are
+missing:
+
+```sh
+cd webapp
+npx playwright install chromium firefox webkit
+```
+
+Reproduce one project before running the matrix:
+
+```sh
+npm run test:browser -- --project=chromium
+npm run test:browser -- --project=firefox
+npm run test:browser -- --project=webkit
+```
+
+A one-browser failure is evidence of a compatibility, timing, focus, or
+platform behavior difference. Do not add arbitrary delay until you identify
+the condition the test should observe. Use accessible roles and stable user
+outcomes rather than implementation selectors.
+
+Playwright retains traces on failure under ignored test output. A trace can
+contain complete URLs, DOM text, request metadata, and screenshots. Review it
+locally and redact it before sharing. Never commit traces or screenshots
+captured from a non-synthetic environment.
+
+## Keep Debugging Tool-Neutral
+
+Use browser developer tools, focused tests, and the foreground Go server. The
+repository does not yet publish IDE-specific launch files or debugger recipes,
+because it has not defined one repository-owned Go and browser debugging
+contract.
+
+{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
+entry points before publishing IDE-specific launch files or debugger commands.
+Keep this guide tool-neutral until that contract exists. */}
+
+## Prove the Recovery
+
+Repeat the narrow interaction in the serving mode that failed. Then run:
+
+```sh
+cd webapp
+npm run check
+```
+
+For a hosted-build defect, rebuild and prove the production-shaped route on
+the foreground server. For a browser behavior defect, run the full Chromium,
+Firefox, and WebKit matrix.

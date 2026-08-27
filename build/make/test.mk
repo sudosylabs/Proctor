@@ -5,6 +5,7 @@ check: build-scripts-check webapp-check docs-check server-check ## Run the herme
 build-scripts-check:
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
+	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"
 	@"$(ROOT_DIR)/build/scripts/test-dev-secrets" "$(ROOT_DIR)/build/scripts/dev-secrets" "$(ROOT_DIR)/build/dev/metrics-openssl.cnf"
 	@"$(ROOT_DIR)/build/scripts/test-dev-seed" "$(ROOT_DIR)/build/scripts/dev-seed"
 

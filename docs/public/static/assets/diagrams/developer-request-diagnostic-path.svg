@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Diagnosing a Proctor request by ownership boundary</title>
+  <desc id="description">A client request passes through the HTTP transport boundary to the owning application use case and then to a PostgreSQL durable commit. Cache invalidation, cluster publication, WebSocket notification, and SMTP submission occur only after the commit and are reconstructible or best effort. Response fields, durable records, metrics, and bounded logs identify the boundary to diagnose.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
+    </marker>
+    <marker id="arrow-transient" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#0b766e"/>
+    </marker>
+    <marker id="arrow-neutral" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#655f69"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+
+  <rect x="56" y="160" width="176" height="224" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="200" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Client request</text>
+  <text x="80" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ONE REPRODUCTION</text>
+  <path d="M 80 248 H 208" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="80" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser or API client</text>
+  <text x="80" y="320" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Method · path</text>
+  <text x="80" y="352" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">EXPECTED → ACTUAL</text>
+
+  <rect x="264" y="160" width="192" height="224" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="288" y="200" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">HTTP boundary</text>
+  <text x="288" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">TRANSPORT PROOF</text>
+  <path d="M 288 248 H 432" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="288" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Decode · validate</text>
+  <text x="288" y="320" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Credential · CSRF</text>
+  <text x="288" y="352" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">FAIL CLOSED</text>
+
+  <rect x="488" y="160" width="192" height="224" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="512" y="200" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Owning use case</text>
+  <text x="512" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">APPLICATION POLICY</text>
+  <path d="M 512 248 H 656" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="512" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Action + resource</text>
+  <text x="512" y="320" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Current authority</text>
+  <text x="512" y="352" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ALLOW OR DENY</text>
+
+  <rect x="712" y="160" width="192" height="224" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="736" y="200" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">PostgreSQL</text>
+  <text x="736" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DURABLE COMMIT</text>
+  <path d="M 736 248 H 880" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="736" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">State · audit</text>
+  <text x="736" y="320" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Job · mail intent</text>
+  <text x="736" y="352" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTHORITATIVE</text>
+
+  <rect x="936" y="160" width="208" height="224" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="960" y="200" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Post-commit effects</text>
+  <text x="960" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RECONSTRUCTIBLE</text>
+  <path d="M 960 248 H 1120" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="960" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Cache · cluster</text>
+  <text x="960" y="320" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">WebSocket · SMTP</text>
+  <text x="960" y="352" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AFTER COMMIT</text>
+
+  <path d="M 232 272 H 264" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 456 272 H 488" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 680 272 H 712" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 904 272 H 936" fill="none" stroke="#0b766e" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
+
+  <rect x="56" y="448" width="400" height="112" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="80" y="488" fill="#b4233c" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Response evidence</text>
+  <text x="80" y="520" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Status · stable code · request ID</text>
+  <text x="80" y="544" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO CREDENTIALS OR PRIVATE DETAIL</text>
+  <path d="M 360 384 V 448" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+
+  <rect x="488" y="448" width="416" height="112" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="512" y="488" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Durable evidence</text>
+  <text x="512" y="520" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Current record · audit · Job or Delivery state</text>
+  <text x="512" y="544" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PROVES THE COMMITTED OUTCOME</text>
+  <path d="M 584 384 V 416 H 696 V 448" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+  <path d="M 808 384 V 416 H 696" fill="none" stroke="#655f69" stroke-width="2"/>
+  <circle cx="696" cy="416" r="4" fill="#655f69"/>
+
+  <rect x="936" y="448" width="208" height="112" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="960" y="488" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Effect evidence</text>
+  <text x="960" y="520" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Metrics · bounded logs</text>
+  <text x="960" y="544" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXPLAINS DELIVERY</text>
+  <path d="M 1040 384 V 448" fill="none" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
+
+  <path d="M 56 616 V 632 H 1144 V 616" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="664" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Find the first unproven boundary; a failed post-commit effect does not erase the PostgreSQL outcome.</text>
+</svg>

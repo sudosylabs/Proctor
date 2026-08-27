@@ -1,0 +1,116 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+script=$1
+test_dir=$(mktemp -d)
+cleanup() {
+	status=$?
+	trap - EXIT HUP INT TERM
+	rm -rf "$test_dir"
+	exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+cat >"$test_dir/check-tools" <<'EOF'
+#!/bin/sh
+if [ "${FAKE_TOOL_FAILURE:-}" = true ]; then
+	exit 1
+fi
+EOF
+
+cat >"$test_dir/docker" <<'EOF'
+#!/bin/sh
+case "$1" in
+compose)
+	exit 0
+	;;
+info)
+	if [ "${FAKE_DOCKER_FAILURE:-}" = true ]; then
+		exit 1
+	fi
+	exit 0
+	;;
+ps)
+	service=
+	for argument in "$@"; do
+		case "$argument" in
+		label=com.docker.compose.service=*) service=${argument##*=} ;;
+		esac
+	done
+	if [ -n "$service" ] && [ "$service" != "${FAKE_MISSING_SERVICE:-}" ]; then
+		printf 'container-%s\n' "$service"
+	fi
+	;;
+inspect)
+	service=${4#container-}
+	if [ "$service" = "${FAKE_UNHEALTHY_SERVICE:-}" ]; then
+		printf 'unhealthy\n'
+	else
+		printf 'healthy\n'
+	fi
+	;;
+*)
+	exit 1
+	;;
+esac
+EOF
+
+cat >"$test_dir/curl" <<'EOF'
+#!/bin/sh
+url=
+for argument in "$@"; do
+	url=$argument
+done
+if [ "$url" = "${FAKE_FAILED_URL:-}" ]; then
+	exit 22
+fi
+EOF
+
+chmod +x "$test_dir/check-tools" "$test_dir/docker" "$test_dir/curl"
+mkdir -p "$test_dir/webapp"
+: >"$test_dir/local.json"
+: >"$test_dir/webapp/webapp-build.json"
+
+run_doctor() {
+	"$script" \
+		"$test_dir/check-tools" go npm "$test_dir/docker" jq "$test_dir/curl" proctor-test \
+		http://127.0.0.1:8065 http://127.0.0.1:18025 http://127.0.0.1:19000 \
+		http://127.0.0.1:19090 http://127.0.0.1:13000 http://127.0.0.1:13100 \
+		http://127.0.0.1:13133 "$test_dir/local.json" "$test_dir/webapp/webapp-build.json"
+}
+
+healthy_output=$(run_doctor)
+printf '%s\n' "$healthy_output" | grep -q '^PASS  toolchain$'
+printf '%s\n' "$healthy_output" | grep -q '^PASS  container postgres is healthy$'
+printf '%s\n' "$healthy_output" | grep -q '^PASS  server readiness$'
+printf '%s\n' "$healthy_output" | grep -q '^Summary: 22 passed, 0 errors$'
+
+failed_output="$test_dir/failed-output"
+if FAKE_FAILED_URL=http://127.0.0.1:8065/health/ready run_doctor >"$failed_output" 2>&1; then
+	printf 'dev-doctor unexpectedly accepted unavailable readiness\n' >&2
+	exit 1
+fi
+grep -q '^ERROR server readiness$' "$failed_output"
+grep -q '^Summary: 21 passed, 1 errors$' "$failed_output"
+
+if FAKE_UNHEALTHY_SERVICE=redis run_doctor >"$failed_output" 2>&1; then
+	printf 'dev-doctor unexpectedly accepted an unhealthy container\n' >&2
+	exit 1
+fi
+grep -q '^ERROR container redis is unhealthy$' "$failed_output"
+
+if FAKE_TOOL_FAILURE=true run_doctor >"$failed_output" 2>&1; then
+	printf 'dev-doctor unexpectedly accepted invalid tools\n' >&2
+	exit 1
+fi
+grep -q '^ERROR toolchain; run make dev-tools for the exact failure$' "$failed_output"
+
+rm -f "$test_dir/local.json"
+if run_doctor >"$failed_output" 2>&1; then
+	printf 'dev-doctor unexpectedly accepted missing generated state\n' >&2
+	exit 1
+fi
+grep -q '^ERROR generated server configuration is missing$' "$failed_output"

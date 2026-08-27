@@ -1,7 +1,16 @@
-.PHONY: dev-tools dev-secrets dev-config dev-state dev-seed webapp-build run run-server run-webapp dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
+.PHONY: dev-tools dev-doctor dev-secrets dev-config dev-state dev-seed webapp-build run run-server run-webapp dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
 
 dev-tools: ## Validate the host development toolchain.
 	@"$(ROOT_DIR)/build/scripts/check-tools" "$(GO)" "$(NPM)" "$(DOCKER)" "$(JQ)" "$(CURL)"
+
+dev-doctor: ## Diagnose the expected local stack without changing it.
+	@"$(ROOT_DIR)/build/scripts/dev-doctor" \
+		"$(ROOT_DIR)/build/scripts/check-tools" "$(GO)" "$(NPM)" "$(DOCKER)" "$(JQ)" "$(CURL)" \
+		"$(PROCTOR_COMPOSE_PROJECT_NAME)" "http://127.0.0.1:$(PROCTOR_SERVER_PORT)" \
+		"http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)" "http://127.0.0.1:$(PROCTOR_MINIO_PORT)" \
+		"http://127.0.0.1:$(PROCTOR_PROMETHEUS_PORT)" "http://127.0.0.1:$(PROCTOR_GRAFANA_PORT)" \
+		"http://127.0.0.1:$(PROCTOR_LOKI_PORT)" "http://127.0.0.1:$(PROCTOR_OTEL_HEALTH_PORT)" \
+		"$(DEV_CONFIG_DIR)/local.json" "$(WEBAPP_DIR)/dist/webapp-build.json"
 
 dev-secrets:
 	@"$(ROOT_DIR)/build/scripts/dev-secrets" "$(DEV_SECRETS_DIR)" "$(ROOT_DIR)/build/dev/metrics-openssl.cnf"

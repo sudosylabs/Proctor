@@ -21,6 +21,11 @@ Run `make help` for the current command surface. The main lifecycles are:
   It refuses non-loopback servers, an Installation it did not initialize, and
   ambiguous partial state. Credentials and fixture identifiers are written
   mode `0600` below `.build/dev/seed`; a successful replay is read-only.
+- `make dev-doctor` performs a bounded, read-only check of the host toolchain,
+  Docker daemon, expected Compose containers, generated local artifacts, and
+  loopback service, server, and hosted-webapp health. It prints closed check
+  names only and never reads configuration, credentials, mail, or application
+  records into its output.
 - `make run-cluster` builds the immutable runtime image, starts three active
   Proctor nodes plus shared dependencies and observability, puts HAProxy in
   front of their readiness endpoints, and follows application/gateway logs.

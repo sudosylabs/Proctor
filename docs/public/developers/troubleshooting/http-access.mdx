@@ -1,0 +1,121 @@
+---
+title: HTTP Access and Authorization
+description: Diagnose Problem Details, request correlation, credentials, CSRF, Origin, assurance, authorization, and concealed resources.
+audience: developer
+maturity: preview
+---
+
+# HTTP Access and Authorization
+
+An HTTP failure is most useful when reduced to its status, stable error code,
+and request ID. Those three fields identify the class of failure without
+exposing a credential or private denial reason.
+
+<GovernedFigure asset="developer-request-diagnostic-path" />
+
+## Preserve the Safe Response Fields
+
+Proctor error responses use Problem Details. When reproducing a synthetic
+request, keep the headers separately and project the body to safe fields:
+
+```sh
+curl --silent --show-error \
+  --dump-header /tmp/proctor-response-headers \
+  http://127.0.0.1:8065/api/v1/example \
+  | jq '{type, title, status, code, request_id}'
+```
+
+Replace the example path with the operation under test. Do not paste an
+`Authorization`, cookie, CSRF, invitation, or reset credential into a shell
+history or issue. Use only synthetic local credentials and redact the request
+before sharing it.
+
+The `X-Request-ID` response header and body `request_id` correlate the response
+with structured server records. For the default local file log, search for one
+known identifier rather than publishing the entire file:
+
+```sh
+rg -n '"request_id":"<request-id>"' .build/dev/logs/local/server.log
+```
+
+Unexpected failures deliberately return a generic `internal` problem. The
+correlated server record owns the internal cause; the public response does not.
+
+## Interpret the Boundary That Rejected the Request
+
+| Status | First question | Common owner |
+| --- | --- | --- |
+| `400` | Did decoding, validation, or CSRF proof fail? | HTTP boundary or request schema |
+| `401` | Is exactly one permitted credential present and valid? | Credential verification |
+| `403` | Does the principal meet assurance and current authority? | Route assurance or owning use case |
+| `404` | Is the route wrong, the resource absent, or denial intentionally concealed? | Router or resource authorization |
+| `409` | Did a revision, idempotency key, or state transition conflict? | Owning application use case |
+| `429` | Which bounded policy rejected excess attempts? | Authentication or request rate policy |
+| `500` | What does the correlated internal record report? | Server implementation or dependency |
+| `503` | Which required serving capability is unavailable? | Runtime readiness or application dependency |
+
+The stable `code` is more precise than the localized title. Use it when writing
+a regression test.
+
+## Diagnose Credential Selection
+
+Each route declares the credential kinds and assurance it accepts. Proctor
+rejects ambiguous combinations rather than choosing one silently.
+
+- Browser Sessions use host-only, `HttpOnly`, `SameSite=Lax` cookies.
+- Unsafe cookie-authenticated requests also require the rotating signed
+  double-submit `X-Proctor-CSRF-Token` proof.
+- Bearer requests do not use the cookie CSRF proof, but the route must permit
+  that bearer credential kind.
+- Mixed bearer and cookie credentials, or duplicate authentication cookies,
+  are rejected.
+- A Personal Access Token never silently gains interactive-session assurance.
+
+In the browser network panel, inspect whether the request mode is cookie or
+bearer without copying the credential value. Confirm the route's declared
+requirement in the [API reference](/api/), then reproduce only that mode.
+
+## Separate Assurance From Permission
+
+Authentication establishes an immutable principal: identity, credential kind,
+Session identity where applicable, and assurance. It does not grant permission.
+The owning application use case combines that principal with an exact action
+and resource, reads current authority from PostgreSQL, and records the
+security-sensitive decision where the contract requires it.
+
+A request can therefore fail even when login is valid:
+
+- the route requires MFA or recent authentication;
+- the Session was revoked after the credential was issued;
+- current role bindings no longer allow the action;
+- the exact resource is outside the principal's scope; or
+- denial is returned as `404` to avoid disclosing whether a sensitive resource
+  exists.
+
+Do not “fix” this by trusting role or membership claims cached in a token. Test
+the current authority and the exact resource selector.
+
+## Check Origin and Browser Transport
+
+The configured public origin includes the exact scheme, host, and port. Cookie
+WebSocket handshakes must present that exact Origin. A valid cookie sent from a
+different development port is not the same security context.
+
+When an interaction works with a direct client but not in the browser, compare:
+
+1. the browser's visible origin;
+2. the configured Proctor public URL;
+3. the Vite proxy target when HMR is running;
+4. cookie versus bearer request mode; and
+5. the CSRF header on unsafe cookie requests.
+
+Do not disable Origin or CSRF enforcement for convenience. Correct the local
+origin and proxy inputs instead.
+
+## Prove the Recovery
+
+Add or run the narrowest transport or application test that represents the
+rejection. If the public operation changed, regenerate and verify OpenAPI as
+described in [HTTP and OpenAPI](../http-and-openapi.mdx). Finish by repeating
+the exact synthetic request and confirming both its result and its correlated
+structured record.

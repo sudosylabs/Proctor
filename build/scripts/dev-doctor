@@ -1,0 +1,115 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 16 ]; then
+	printf 'usage: dev-doctor CHECK_TOOLS GO NPM DOCKER JQ CURL PROJECT SERVER_URL MAILPIT_URL MINIO_URL PROMETHEUS_URL GRAFANA_URL LOKI_URL OTEL_URL CONFIG_FILE WEBAPP_MANIFEST\n' >&2
+	exit 2
+fi
+
+check_tools_script=$1
+go_command=$2
+npm_command=$3
+docker_command=$4
+jq_command=$5
+curl_command=$6
+project_name=$7
+server_url=$8
+mailpit_url=$9
+minio_url=${10}
+prometheus_url=${11}
+grafana_url=${12}
+loki_url=${13}
+otel_url=${14}
+config_file=${15}
+webapp_manifest=${16}
+
+passed=0
+failed=0
+
+pass_check() {
+	passed=$((passed + 1))
+	printf 'PASS  %s\n' "$1"
+}
+
+fail_check() {
+	failed=$((failed + 1))
+	printf 'ERROR %s\n' "$1"
+}
+
+check_http() {
+	check_name=$1
+	check_url=$2
+	if "$curl_command" --fail --silent --show-error --max-time 2 --output /dev/null "$check_url" 2>/dev/null; then
+		pass_check "$check_name"
+	else
+		fail_check "$check_name"
+	fi
+}
+
+printf 'Proctor local development diagnosis\n\n'
+
+if "$check_tools_script" "$go_command" "$npm_command" "$docker_command" "$jq_command" "$curl_command" >/dev/null 2>&1; then
+	pass_check 'toolchain'
+else
+	fail_check 'toolchain; run make dev-tools for the exact failure'
+fi
+
+if "$docker_command" compose version >/dev/null 2>&1; then
+	pass_check 'Docker Compose plugin'
+else
+	fail_check 'Docker Compose plugin is unavailable'
+fi
+
+if "$docker_command" info >/dev/null 2>&1; then
+	pass_check 'Docker daemon'
+else
+	fail_check 'Docker daemon is unavailable'
+fi
+
+for service in postgres redis minio mailpit prometheus grafana loki otel-collector; do
+	container_id=$("$docker_command" ps --all \
+		--filter "label=com.docker.compose.project=$project_name" \
+		--filter "label=com.docker.compose.service=$service" \
+		--format '{{.ID}}' 2>/dev/null | sed -n '1p' || true)
+	if [ -z "$container_id" ]; then
+		fail_check "container $service is missing"
+		continue
+	fi
+	container_state=$("$docker_command" inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || printf unknown)
+	case "$container_state" in
+	healthy | running)
+		pass_check "container $service is $container_state"
+		;;
+	*)
+		fail_check "container $service is $container_state"
+		;;
+	esac
+done
+
+if [ -r "$config_file" ]; then
+	pass_check 'generated server configuration is present'
+else
+	fail_check 'generated server configuration is missing'
+fi
+
+if [ -r "$webapp_manifest" ]; then
+	pass_check 'hosted webapp build identity is present'
+else
+	fail_check 'hosted webapp build identity is missing'
+fi
+
+check_http 'MinIO liveness' "$minio_url/minio/health/live"
+check_http 'Mailpit HTTP service' "$mailpit_url/"
+check_http 'Prometheus readiness' "$prometheus_url/-/ready"
+check_http 'Grafana health' "$grafana_url/api/health"
+check_http 'Loki readiness' "$loki_url/ready"
+check_http 'OpenTelemetry Collector health' "$otel_url/"
+check_http 'server liveness' "$server_url/health/live"
+check_http 'server readiness' "$server_url/health/ready"
+check_http 'hosted webapp login route' "$server_url/login"
+
+printf '\nSummary: %s passed, %s errors\n' "$passed" "$failed"
+[ "$failed" -eq 0 ]

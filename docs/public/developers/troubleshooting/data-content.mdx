@@ -1,0 +1,123 @@
+---
+title: Data and Managed Content
+description: Diagnose PostgreSQL, Redis, VFS, MinIO, migration, metadata, and object-byte failures without confusing authority with cache.
+audience: developer
+maturity: preview
+---
+
+# Data and Managed Content
+
+Proctor separates three responsibilities that can look like “data” from the
+outside:
+
+- PostgreSQL is authoritative for durable application state and managed-file
+  metadata.
+- Redis contains disposable, reconstructible cache state.
+- VFS stores managed bytes; the local S3-compatible adapter uses MinIO.
+
+Identify which responsibility is wrong before clearing or repairing anything.
+
+## Start With the Ownership Question
+
+| Symptom | Authority to inspect | Do not assume |
+| --- | --- | --- |
+| A User, Exam, Job, Session, or authorization record is absent | PostgreSQL | Redis can restore it |
+| A value remains stale after a durable change | PostgreSQL result, then Redis invalidation | The cache is authoritative |
+| File metadata exists but content cannot be read | PostgreSQL metadata and VFS bytes | Deleting the metadata repairs the object |
+| An object exists in MinIO without a visible File | PostgreSQL workflow and cleanup state | Every physical object is publishable content |
+| Startup fails while applying schema changes | PostgreSQL migration state | A browser or cache reset can help |
+
+## PostgreSQL: Prove Durable State
+
+Check the container and its bounded logs first:
+
+```sh
+docker compose -f build/compose/dependencies.yaml ps postgres
+docker compose -f build/compose/dependencies.yaml \
+  logs --no-color --tail=100 postgres
+```
+
+Then run the focused store test or PostgreSQL integration suite for the model
+that owns the behavior:
+
+```sh
+make -C server integration-postgres
+```
+
+Prefer application and Store contract tests over ad hoc SQL updates. Manual
+row changes bypass revision fences, named aggregate transactions, durable
+audit, idempotent outcomes, and post-commit effect ordering. They often turn a
+reproducible defect into a new one.
+
+For migration failures, preserve the first server and PostgreSQL error. An old
+pre-release development database can require deliberate recreation against a
+new baseline; follow [Runtime and readiness](./runtime-readiness.mdx) before
+deleting it.
+
+## Redis: Treat Cache as Reconstructible
+
+Confirm the service is reachable:
+
+```sh
+docker compose -f build/compose/dependencies.yaml ps redis
+docker compose -f build/compose/dependencies.yaml \
+  logs --no-color --tail=100 redis
+docker compose -f build/compose/dependencies.yaml \
+  exec redis redis-cli ping
+```
+
+If PostgreSQL contains the correct committed state but a read remains stale,
+test the cache invalidation or revision behavior at the Store boundary. The
+portable cache conformance and server Redis integration checks are the
+appropriate proof:
+
+```sh
+make -C server integration-redis
+```
+
+Clearing a local Redis database can remove disposable state, but it should
+follow evidence that the defect is cache-local. It must never be presented as
+a repair for missing durable state.
+
+## VFS and MinIO: Match Metadata to Bytes
+
+Check the local object service without listing or publishing object contents:
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:19000/minio/health/live
+docker compose -f build/compose/dependencies.yaml \
+  logs --no-color --tail=100 minio
+make -C server integration-s3
+```
+
+The VFS adapter owns byte operations. PostgreSQL owns the File record, scope,
+status, retention policy, authorization context, and links to domain resources.
+A successful object upload alone does not make bytes a valid managed File.
+
+When metadata and bytes disagree:
+
+1. Record the synthetic File identifier and operation that created it.
+2. Determine whether the failure happened before or after the authoritative
+   PostgreSQL commit.
+3. Inspect the relevant command outcome, cleanup, or rendition workflow.
+4. Reproduce through the owning application service and focused Store/VFS
+   test.
+
+Do not repair the condition by manually copying an object, inventing a row, or
+making a private object public. Those actions bypass authorization, retention,
+integrity, and audit guarantees.
+
+## Preserve Privacy While Diagnosing Files
+
+Use synthetic content. Share identifiers, status names, byte counts, media
+types, and checksums only when they are non-sensitive and necessary. Do not
+attach student uploads, exam resources, answers, rendition bytes, object keys,
+signed URLs, local storage paths, or raw database exports.
+
+## Prove the Recovery
+
+Run the narrow conformance or integration suite for the failing adapter, then
+repeat the user-visible operation through its application boundary. Confirm
+that PostgreSQL commits before any cache invalidation, cleanup publication, or
+other transient effect and that an exact retry produces the documented
+idempotent outcome.

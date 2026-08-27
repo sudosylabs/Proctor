@@ -1,0 +1,116 @@
+---
+title: Transactional Mail
+description: Diagnose committed mail intent, durable delivery work, rendering, SMTP acceptance, retry, suppression, and local Mailpit behavior.
+audience: developer
+maturity: preview
+---
+
+# Transactional Mail
+
+“No email arrived” does not identify a failing layer. Proctor first commits
+business state and mail intent, then durable work renders the message and
+submits it to SMTP. The SMTP server can accept the message without guaranteeing
+that an inbox provider will deliver it.
+
+## Locate the Furthest Durable State
+
+Follow the pipeline in order:
+
+1. Was the business mutation committed?
+2. Was the exact mail occurrence and Mail Delivery committed with it?
+3. Does the related Job exist and have runnable state?
+4. Did template rendering and portable message validation succeed?
+5. What SMTP outcome was recorded?
+6. In local development, does Mailpit show the synthetic message?
+
+Do not repeat the original mutation until you know its idempotency outcome. A
+retry may replay an already committed result rather than create a second mail
+occurrence.
+
+## Read the Delivery State Precisely
+
+| State | Meaning | Diagnostic direction |
+| --- | --- | --- |
+| `Queued` | Durable delivery work awaits execution | Inspect Job claiming and queue latency |
+| `Sending` | A worker owns the current send attempt | Inspect the current attempt and lease |
+| `Accepted` | SMTP accepted the completed DATA transaction | Check Mailpit locally or downstream delivery externally |
+| `Failed` | The delivery reached a terminal failure | Inspect bounded outcome and attempt history |
+| `Suppressed` | Policy deliberately prevents submission | Identify the suppression reason; do not force-send |
+| `Canceled` | The durable work was canceled | Identify the owning cancellation decision |
+
+`Accepted` is not an inbox-delivery receipt. Conversely, an empty Mailpit inbox
+with no committed Delivery indicates a failure before SMTP, not a Mailpit
+problem.
+
+## Prove the Local SMTP Boundary
+
+```sh
+make dev-doctor
+docker compose -f build/compose/dependencies.yaml ps mailpit
+docker compose -f build/compose/dependencies.yaml \
+  logs --no-color --tail=100 mailpit
+```
+
+Open the local Mailpit interface from the URL documented in
+[Local services](../local-services.mdx). Use only the guarded synthetic
+fixture. The Mailpit UI contains complete message bodies and recipient
+addresses; do not screenshot or export it when real or personal data is
+present.
+
+For portable composition or SMTP adapter defects, run the mail module tests
+with workspace assistance disabled:
+
+```sh
+GOWORK=off go test ./...
+GOWORK=off go test -race ./...
+```
+
+Run those commands from `packages/mail`. Server-owned templates, localization,
+recipient selection, retry policy, and durable delivery state remain server
+responsibilities and need their focused server tests.
+
+## Use Metrics Without Exposing Messages
+
+The following metric families expose bounded outcomes rather than message
+bodies:
+
+- `proctor_mail_health`
+- `proctor_mail_queue`
+- `proctor_mail_deliveries_total`
+- `proctor_smtp_messages_total`
+
+Query one family through local Prometheus:
+
+```sh
+curl --silent --get \
+  --data-urlencode 'query=proctor_mail_health' \
+  http://127.0.0.1:19090/api/v1/query \
+  | jq '.data.result'
+```
+
+Use identifiers and bounded state or outcome labels to correlate a synthetic
+failure. Never add recipient addresses, subjects, template payloads, SMTP
+credentials, reset links, invitation claims, or message bodies to metrics or
+ordinary logs.
+
+## Choose the Correct Recovery
+
+| Finding | Recovery |
+| --- | --- |
+| Business state committed but no delivery intent exists | Fix the owning aggregate transaction and add a regression test |
+| Delivery is queued but no attempt starts | Diagnose the durable Job runner |
+| Rendering fails | Correct the server-owned template, locale data, or frozen payload contract |
+| SMTP is temporarily unavailable | Preserve durable work and let bounded retry policy operate |
+| Delivery is terminally failed | Use the authorized operator retry only after correcting the cause |
+| Delivery is suppressed | Correct the policy or configuration decision; do not bypass it per message |
+
+Disabling mail terminally suppresses outstanding mail work. It is an operator
+policy change, not a pause switch for a temporary SMTP outage.
+
+## Prove the Recovery
+
+Create one new synthetic occurrence through the real application use case.
+Confirm the business state, Delivery, and Job commit as one intended outcome;
+observe the state transition to `Accepted`; and confirm the message in local
+Mailpit. Then run the focused server test and the mail module conformance gates
+for the boundary you changed.

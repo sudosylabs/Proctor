@@ -30,6 +30,10 @@ of cost.
 3. Follow the workflow for the surface you are changing, then use the
    [verification ladder](./testing.mdx) before proposing the work.
 
+If the environment or a workflow fails, start with
+[`make dev-doctor`](./troubleshooting/index.mdx). It is read-only and routes
+the first failing boundary to a focused diagnosis without erasing local state.
+
 <GovernedFigure asset="developer-repository-boundaries" />
 
 ## Choose the Work You Are Doing
@@ -42,6 +46,7 @@ of cost.
 | Add or change an HTTP operation | [HTTP and OpenAPI](./http-and-openapi.mdx) | OpenAPI build, agreement, reference audit |
 | Change durable data or SQL | [Persistence workflow](./persistence.mdx) | Store conformance, migration and PostgreSQL integration tests |
 | Change public or maintainer documentation | [Documentation workflow](./documentation.mdx) | Affected generators, docs check, architecture gate |
+| Diagnose a failing development workflow | [Troubleshooting](./troubleshooting/index.mdx) | Narrow reproduction, boundary check, original workflow |
 | Prepare work for review | [Contribution checklist](./contribution-checklist.mdx) | Clean diff and the highest relevant repository gate |
 
 ## Operate the Development Runtime

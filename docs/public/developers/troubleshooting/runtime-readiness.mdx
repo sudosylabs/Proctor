@@ -1,0 +1,159 @@
+---
+title: Runtime and Readiness
+description: Diagnose toolchain, container, dependency, port, startup, migration, and readiness failures in the local Proctor runtime.
+audience: developer
+maturity: preview
+---
+
+# Runtime and Readiness
+
+The local environment has three distinct layers: host tools, persistent Docker
+services, and the foreground Proctor process. Diagnose them in that order so a
+dependency failure is not mistaken for an application failure.
+
+## Establish the Failing Layer
+
+```sh
+make dev-doctor
+```
+
+Read the result from top to bottom. The first error identifies the earliest
+unproven layer. A missing server endpoint after an unhealthy PostgreSQL
+container is not yet evidence of a server defect.
+
+| First error | Meaning | Next command |
+| --- | --- | --- |
+| `toolchain` | A pinned or required host command is unavailable | `make dev-tools` |
+| `Docker Compose plugin` | The Docker client cannot invoke Compose v2 | `docker compose version` |
+| `Docker daemon` | The client cannot reach the engine | `docker info` |
+| `container … is missing` | The expected Compose project has no such service | `make dev-up` |
+| `container … is unhealthy` | The service started but failed its health contract | Inspect that service's bounded logs |
+| generated configuration or webapp identity is missing | The derived local state is incomplete | `make dev-state` or `make webapp-build` |
+| a dependency endpoint fails | The container may be running without serving correctly | Check its health endpoint and logs |
+| server liveness fails | No healthy server process is serving that address | Inspect the foreground server output |
+| server readiness fails | The process lives but cannot safely accept product traffic | Follow readiness dependencies below |
+
+## Prove the Host Tools
+
+```sh
+make dev-tools
+```
+
+This is the version authority for Go, Node.js, npm, Docker, Compose, `jq`, and
+`curl`. Fix its first reported mismatch before reinstalling application
+dependencies. When a tool was upgraded, start a new shell so the command path
+and version cache are current.
+
+## Prove Containers Before the Server
+
+```sh
+docker compose \
+  -f build/compose/dependencies.yaml \
+  -f build/compose/observability.yaml \
+  ps
+docker compose \
+  -f build/compose/dependencies.yaml \
+  -f build/compose/observability.yaml \
+  logs --no-color --tail=100 postgres redis minio
+```
+
+Keep logs bounded and select only the service that owns the failed health
+check. The normal local lifecycle is:
+
+```sh
+make dev-up
+make run-server
+```
+
+`make run-server` intentionally keeps Proctor in the foreground. The first
+startup error remains visible and `Ctrl-C` initiates its normal shutdown. Do
+not background the process while diagnosing startup.
+
+## Resolve a Port Conflict Without Killing Unknown Work
+
+On macOS, identify the listener for the exact port:
+
+```sh
+lsof -nP -iTCP:8065 -sTCP:LISTEN
+```
+
+On Linux:
+
+```sh
+ss -ltnp 'sport = :8065'
+```
+
+Confirm that the process belongs to this development environment before
+stopping it. If another project legitimately owns the port, choose a complete,
+non-overlapping Proctor port set with the supported `PROCTOR_*_PORT` Make
+overrides described in [Development configuration](../development-configuration.mdx).
+Changing only the HTTP port can leave the public origin, Vite proxy, metrics,
+or dependency endpoints inconsistent.
+
+## Distinguish Liveness From Readiness
+
+```sh
+curl --fail --silent --show-error http://127.0.0.1:8065/health/live
+curl --fail --silent --show-error http://127.0.0.1:8065/health/ready
+```
+
+Liveness means the process is running. Readiness means the server has completed
+startup and its required serving capabilities are available. A live but
+unready process should stay out of load-balancer traffic.
+
+When readiness fails:
+
+1. Keep the foreground startup output.
+2. Check PostgreSQL first because it owns durable application state.
+3. Check configured runtime capabilities such as VFS, mail, and cluster
+   serving admission without assuming every optional integration gates
+   readiness in the same way.
+4. Correct the first unavailable authority, then recheck readiness.
+
+Do not weaken readiness to make the endpoint green. The failed check is the
+protection.
+
+## Diagnose Generated State
+
+The local lifecycle derives configuration under ignored `.build/dev` state and
+serves the compiled webapp only when `webapp/dist/webapp-build.json` matches the
+server build identity.
+
+```sh
+make dev-state
+make webapp-build
+make dev-doctor
+```
+
+Treat generated state as an output. Change tracked configuration templates or
+Make inputs, then regenerate; do not make a lasting fix by editing the ignored
+JSON directly. Never attach the generated configuration or secrets to an issue.
+
+## Handle Migration Failures
+
+Migration errors are PostgreSQL errors, not Redis or browser errors. Preserve
+the first migration message and the database logs before taking action.
+
+Proctor is pre-release. Old disposable development databases may be
+incompatible with the current baseline and can require explicit recreation.
+That does not make deletion the default response:
+
+1. Decide whether the database contains anything you need to retain.
+2. Save any approved development-only evidence outside the reset path.
+3. Stop the foreground server.
+4. Only for an intentionally disposable fixture, run `make dev-reset` and
+   recreate it with the documented local setup.
+
+Never apply that development recovery to an operator installation, and never
+manually mark a failed migration as complete.
+
+## Prove the Recovery
+
+Repeat `make dev-doctor`, then repeat the command that originally failed. For
+a server change, finish with the focused Go test and the appropriate server
+gate. For a runtime composition change, also run:
+
+```sh
+make -C server architecture
+make -C server check
+```

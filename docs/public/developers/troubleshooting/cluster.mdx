@@ -1,0 +1,86 @@
+---
+title: Cluster Failures
+description: Diagnose gateway, node readiness, peer discovery, membership, cluster propagation, scrape targets, and one-node recovery in the local HA topology.
+audience: developer
+maturity: preview
+---
+
+# Cluster Failures
+
+One Proctor installation may have several identical application nodes, but it
+still has one PostgreSQL authority. Diagnose whether the failure is gateway
+routing, node serving, peer discovery, or post-commit propagation. A missed
+cluster message must not be confused with a lost durable commit.
+
+## Capture Bounded Topology Evidence
+
+```sh
+make cluster-diagnostics
+```
+
+This prints Compose state and a bounded tail for the gateway, three Proctor
+nodes, Prometheus, and the OpenTelemetry Collector. Keep the first node-specific
+error and avoid replacing it with an unbounded combined log.
+
+Then probe each layer:
+
+1. Gateway readiness and the public cluster port.
+2. Individual node liveness and readiness.
+3. Stable node identity and compatible cluster protocol.
+4. Member discovery, advertised address, and shared encryption-key agreement.
+5. Prometheus target health for every expected node.
+
+The exact local ports, node names, and expected topology are documented in
+[Cluster development](../cluster-development.mdx).
+
+## Route Common Symptoms
+
+| Symptom | Likely boundary | Evidence |
+| --- | --- | --- |
+| Gateway is unavailable but nodes are ready | Gateway container or routing configuration | Gateway status and bounded log |
+| One node is live but unready | That node's required serving capability | Node readiness and first startup error |
+| Nodes serve HTTP but report too few peers | Member discovery, advertised address, protocol, or key | Membership state and cluster metrics |
+| Requests work only on one node | Gateway routing or node-specific state/configuration | Repeatable node identity and per-node response |
+| Durable reads are correct but a live view is stale | Cluster or WebSocket post-commit effect | Authoritative HTTP result, propagation metric, client resync |
+| Prometheus omits one node | Generated scrape targets, TLS, or metrics listener | Target status and node metrics health |
+| Work pauses after node loss | Job lease recovery or serving admission | Job attempts, lease expiry, remaining-node readiness |
+
+## Preserve the Authority Boundary
+
+Nodes share PostgreSQL and managed content configuration. Redis, membership
+messages, cache invalidations, and WebSocket fan-out are reconstructible or
+best effort. After an ambiguous failure, query authoritative state through
+HTTP before retrying a mutation.
+
+Do not repair cluster membership by changing PostgreSQL rows, disabling serving
+admission, assigning duplicate node identities, or weakening protocol/key
+checks. Those protections prevent a node with incompatible or incomplete state
+from accepting traffic.
+
+## Test One-Node Loss
+
+The repository smoke test certifies three-node readiness, metrics, load
+balancing, and recovery while one node is stopped:
+
+```sh
+make cluster-smoke
+```
+
+The target owns its own controlled stop and restart. Do not manually kill a
+random node while another test or development session is using the same
+Compose project.
+
+If the smoke test fails, retain its first error and immediately run
+`make cluster-diagnostics` before bringing the topology down. Diagnose the
+failed stage rather than repeating the entire smoke loop until it passes.
+
+## Prove the Recovery
+
+Repeat the smallest node, gateway, or membership probe first. Then run
+`make cluster-smoke` from a known topology. Confirm that:
+
+- all expected nodes become ready;
+- the gateway routes across the healthy set;
+- metrics identify each serving node;
+- one-node loss leaves the installation available; and
+- the restored node rejoins without changing durable authority.

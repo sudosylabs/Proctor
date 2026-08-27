@@ -1,0 +1,112 @@
+---
+title: Diagnose Development Failures
+description: Find the failing Proctor boundary, collect safe evidence, and recover the local environment without erasing useful state.
+audience: developer
+maturity: preview
+slug: /developers/troubleshooting/
+---
+
+# Diagnose Development Failures
+
+A useful diagnosis names the first boundary that is wrong. It does not begin
+with a reset. Preserve the evidence, reduce the failure to one surface, and
+only then change state.
+
+## The First Five Minutes
+
+From the repository root, run the read-only local diagnosis:
+
+```sh
+make dev-doctor
+```
+
+The command checks the required tools, Docker, expected containers, generated
+development state, dependency endpoints, server health, and the hosted login
+route. It prints a closed list of pass or error labels. It does not start or
+stop services, read secrets, inspect application records, or print response
+bodies.
+
+Then follow this order:
+
+1. Keep the first error. Later failures are often consequences.
+2. Reproduce it with the narrowest command or request that still fails.
+3. Choose the guide for the owner of that signal.
+4. Make one reversible recovery change.
+5. Repeat the narrow reproduction, then the relevant verification gate.
+
+## Route the Symptom
+
+| What you observe | Inspect first | Continue with |
+| --- | --- | --- |
+| A required command is missing or has the wrong version | `make dev-tools` | [Runtime and readiness](./runtime-readiness.mdx) |
+| Docker is unavailable, a container is absent, or a dependency is unhealthy | `make dev-doctor` | [Runtime and readiness](./runtime-readiness.mdx) |
+| The server starts but never becomes ready | `/health/live`, then `/health/ready` | [Runtime and readiness](./runtime-readiness.mdx) |
+| A port cannot bind or the browser reaches another process | Listener ownership for that exact port | [Runtime and readiness](./runtime-readiness.mdx) |
+| An API request returns a Problem Details response | `status`, `code`, and `request_id` | [HTTP access and authorization](./http-access.mdx) |
+| Login works but an unsafe browser request fails | Cookie, CSRF header, and exact Origin | [HTTP access and authorization](./http-access.mdx) |
+| A row, cache entry, or managed object appears inconsistent | Identify PostgreSQL, Redis, or VFS ownership | [Data and managed content](./data-content.mdx) |
+| A committed action produced no message | Mail Delivery state, Job state, then SMTP | [Transactional mail](./mail.mdx) |
+| Work is queued, retried, stuck, or duplicated | Job and Job Attempt history | [Jobs and realtime](./jobs-realtime.mdx) |
+| Live updates stop or arrive with a sequence gap | WebSocket close, replay result, then HTTP state | [Jobs and realtime](./jobs-realtime.mdx) |
+| Vite and the hosted build behave differently | Build identity, proxy target, and browser network trace | [Browser application](./browser.mdx) |
+| One clustered node disappears or results vary by node | Bounded cluster diagnostics and per-node readiness | [Cluster failures](./cluster.mdx) |
+
+## Build a Minimal Reproduction
+
+Write the reproduction so another developer can run it without guessing:
+
+```text
+Starting state:
+Command or request:
+Expected result:
+Actual result:
+First failing boundary:
+Relevant commit:
+Environment versions:
+Verification after recovery:
+```
+
+Prefer a focused test, one HTTP request, or one UI interaction over a long
+manual journey. If the failure crosses layers, prove each seam separately:
+client to HTTP, HTTP to the owning use case, use case to PostgreSQL, and only
+then post-commit effects.
+
+## Collect Evidence Safely
+
+Good evidence is bounded and correlatable:
+
+- the exact failing command and its first error;
+- HTTP status, stable Problem Details `code`, and `request_id`;
+- the smallest relevant tail of structured logs;
+- Job, Mail Delivery, or Attempt identifiers and state names;
+- the Git commit and Go, Node.js, npm, Docker, and Compose versions; and
+- expected behavior stated separately from the observation.
+
+Do not attach credentials, cookies, authorization or CSRF headers, invitation
+claims, generated secrets, configuration files, environment dumps, message
+bodies, email addresses, student data, exam content or answers, workspace
+content, private authorization rationale, or unbounded logs. A request ID is
+usually enough to join an HTTP response to the server record.
+
+## Recover Deliberately
+
+Use the least destructive recovery that addresses the proven boundary. A
+restart may be appropriate for a dead disposable service. Clearing Redis can
+be appropriate because it is reconstructible. Deleting PostgreSQL or VFS
+state is a different decision because they carry authoritative records and
+managed bytes.
+
+`make dev-reset` deletes the local Compose volumes. Use it only when you have
+already decided that the entire local fixture and its evidence are disposable.
+It is not a diagnostic command.
+
+## Know When the Diagnosis Is Complete
+
+A failure is resolved only when all three statements are true:
+
+1. The narrow reproduction now passes.
+2. The relevant boundary check or test passes.
+3. The original user-visible workflow passes without a broader workaround.
+
+If the explanation still depends on “it worked after a reset,” keep
+investigating. The reset may have removed the evidence rather than the cause.

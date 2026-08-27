@@ -1,0 +1,106 @@
+---
+title: Jobs and Realtime
+description: Diagnose durable Job execution, attempts, leases, retries, cancellation, WebSocket delivery, replay, backpressure, and authoritative resynchronization.
+audience: developer
+maturity: preview
+---
+
+# Jobs and Realtime
+
+Durable Jobs and WebSocket events solve different problems. A Job records
+finite work that must survive process loss. A WebSocket event is a best-effort
+notification that tells a connected client to refresh. Neither is a substitute
+for PostgreSQL-authoritative state.
+
+## Diagnose a Job From Durable History
+
+Use the authenticated [API reference](/api/) contract to list Jobs, retrieve
+one Job, and list its attempts. Record only synthetic identifiers, state names,
+bounded error codes, attempt numbers, and timestamps.
+
+| Job state | Meaning | What to inspect next |
+| --- | --- | --- |
+| `Queued` | Work is eligible for a compatible worker | Queue latency, descriptor compatibility, and capacity |
+| `Running` | One current claim token and lease own execution | Attempt heartbeat, lease age, and activity checkpoint |
+| `CancelRequested` | Cancellation is durable but the worker has not completed it | Worker checkpoint and cancellation handling |
+| `Succeeded` | The terminal outcome committed | Verify the owning result rather than rerunning work |
+| `Failed` | Retry policy or an operator decision ended execution | Attempt history and bounded failure code |
+| `Canceled` | Cancellation completed terminally | The actor and documented cancellation path |
+
+Job attempts are at-least-once. A worker can stop after an external effect but
+before committing its outcome. Implementations must use idempotent activities,
+checkpoints, and stable operation identity instead of assuming one execution.
+
+## Understand Lease and Retry Evidence
+
+The default claim lease is 60 seconds with a 15-second heartbeat. An expired
+lease makes work reclaimable; a newer claim token fences the old worker from
+committing. That transition can look like duplicate execution while still
+protecting the single durable outcome.
+
+Inspect the sequence, not only the final error:
+
+1. Job creation and descriptor version.
+2. Claiming node, attempt number, and claim time.
+3. Heartbeats and current lease deadline.
+4. Activity checkpoint or completed activity result.
+5. Retry scheduling, cancellation, or terminal commit.
+
+An incompatible restore does not consume the attempt budget. Fix worker or
+descriptor compatibility rather than repeatedly retrying the same mismatch.
+Queued and running Jobs are never retention-deleted.
+
+Useful metric families include:
+
+- `proctor_jobs_executions_total`
+- `proctor_jobs_execution_duration_seconds`
+- `proctor_jobs_active`
+- `proctor_jobs_activities_total`
+- `proctor_jobs_activity_duration_seconds`
+- `proctor_jobs_queue_latency_seconds`
+
+Use metrics to find the failing class, then durable history for one synthetic
+Job to explain it. Metrics do not replace the Job record.
+
+## Diagnose WebSocket Establishment
+
+When the connection never opens, inspect the browser handshake:
+
+- the URL and configured public origin;
+- exactly one permitted cookie or bearer credential mode;
+- the exact Origin for cookie-authenticated connections;
+- HTTP status and stable Problem Details code when upgrade is rejected; and
+- server readiness on the node that received the handshake.
+
+Do not paste cookies, bearer values, or a full handshake export into an issue.
+
+## Diagnose Missing or Gapped Events
+
+Every connection has bounded sequencing. A reconnect may request local-node
+replay, but replay history is finite and node-local. A reconnect routed to
+another node or a sequence older than the retained buffer may not be replayable.
+
+The correct client response to a gap or failed replay is:
+
+1. discard assumptions based on the missing notification;
+2. refetch the affected resource through authoritative HTTP;
+3. replace local derived state with that response; and
+4. resume realtime updates from the new known point.
+
+Cluster messages and WebSocket publications occur after the durable commit.
+Their loss can delay a view, but it must not reverse the committed outcome.
+
+Relevant metric families include `proctor_websocket_connections`,
+`proctor_websocket_messages_total`, `proctor_websocket_replays_total`,
+`proctor_websocket_backpressure_disconnects_total`, and
+`proctor_websocket_subscriptions`. A backpressure disconnect means the client
+could not consume the bounded outbound queue; it must reconnect and
+resynchronize rather than demand an unbounded server buffer.
+
+## Prove the Recovery
+
+For a Job defect, add a focused test that covers claim fencing, retry,
+checkpoint, cancellation, or terminal outcome as appropriate. For a WebSocket
+defect, prove both the realtime path and HTTP resynchronization. Then run the
+relevant PostgreSQL or cluster integration suite and repeat one synthetic
+end-to-end workflow.
