@@ -52,6 +52,94 @@ The HTTP Routing Kernel is sealed before serving. Add the resource to its
 explicit production catalog; do not register routes through initialization,
 expose router internals, or add a generic response-writer escape hatch.
 
+## Trace the Sealed Route Catalog
+
+The production route path is intentionally searchable:
+
+```text
+httpapi.New
+  → productionResources
+  → one cohesive <domain>Resource
+  → publicRoute / principalRoute / sessionRoute / …
+  → catalog validation and immutable dispatch
+  → one application capability
+```
+
+The resource constructor declares typed paths, operations, credential
+requirements, allowed public errors, body limits, idempotency, and any named
+protocol-specific result. It retains only its narrow application capability.
+It never retains the complete HTTP options, application facade, router, root
+Store, platform, or concrete adapter.
+
+The catalog rejects duplicate normalized method/path shapes, unknown parameter
+kinds, invalid authentication requirements, and incomplete public-error
+mappings before the server can accept traffic. Every entry point—including
+the WebSocket upgrade—appears in this catalog.
+
+## Keep Handlers Mechanical
+
+An ordinary handler should be easy to review in one pass:
+
+1. decode a bounded request into a transport-owned DTO;
+2. parse canonical IDs and other wire values;
+3. map them explicitly into one typed application command or query;
+4. call one application capability with the immutable invocation; and
+5. map the safe result into a response DTO.
+
+Apply the body limit before decoding. JSON requests accept exactly one value,
+reject unknown fields and trailing content, and distinguish omission, zero,
+and explicit null with `Optional[T]` when the contract needs that distinction.
+Only a named bounded extension object may accept unknown keys.
+
+Domain models never double as request or response DTOs. An innocent field
+added to a domain record must not silently become a new public field.
+
+Ordinary operations return a typed status/body result and `error`. Redirects,
+uploads, downloads, and upgrade transfer use reviewed named result types. The
+WebSocket handshake is the sole raw-response exception because a successful
+upgrade transfers connection ownership to the sibling transport.
+
+## Declare Credential and Assurance Separately
+
+Every route declares what establishes its principal: public, authenticated,
+interactive Session, refresh credential, strong authentication, recent
+reauthentication, or a composed requirement. Administrative permission is not
+a route authentication class; the application use case evaluates it against
+the current resource.
+
+Cookie-authenticated unsafe requests also require the route’s CSRF proof.
+Bearer and cookie sources cannot be mixed and resolved by precedence. Keep the
+runtime declaration, OpenAPI `security`, and `x-proctor-auth` value in exact
+agreement.
+
+## Map Expected Failures Exhaustively
+
+An expected application failure uses a stable dotted code with explicitly safe
+fields. It contains no HTTP status, localized prose, request ID, SQL detail, or
+stack trace. The transport maps only allowlisted codes to declared RFC 9457
+Problem Details responses.
+
+Unknown or undeclared errors become a generic correlated internal failure and
+are logged once at the outer operational boundary. Never improvise a status
+from an error string. The owning resource’s agreement test proves its complete
+success schema and public-error set against OpenAPI.
+
+Read [authorization, errors, and audit](./server/authorization-errors-audit.mdx)
+before deciding whether a denied exact resource is safely forbidden or
+concealed as not found.
+
+## Design Collections and Cursors
+
+New collections return an object with a non-null `items` array and optional
+`next_cursor`. Unbounded collections use keyset pagination, not growing
+offsets.
+
+Cursors are opaque, versioned, bounded, and untrusted. Clients return them
+unchanged. The shared envelope validates canonical encoding and object shape;
+the resource owns the keyset fields, stable ordering, semantic validation, and
+any compatibility window. Never include a private Workspace path, credential,
+or unbounded filter in a cursor.
+
 ## Supply the Full Contract
 
 Every operation has exactly one public product-area tag and all of the

@@ -1,0 +1,182 @@
+---
+title: Review a Server Change
+description: Review a Proctor server slice at each changed boundary before running the broad repository gates.
+audience: developer
+maturity: preview
+slug: /developers/server/review-checklists/
+---
+
+# Review a Server Change
+
+Use only the sections touched by the change, then finish with the cross-boundary
+review. A checklist supports judgment; it does not replace reading the current
+code, tests, and owning contract.
+
+## Domain Model
+
+- Does the name preserve canonical Proctor meaning?
+- Does the constructor establish a completely valid value?
+- Are state transitions named and locally complete?
+- Are timestamps facts rather than revision tokens?
+- Are absence, inactive, expired, archived, disabled, and terminal states
+  represented distinctly?
+- Does rehydrated invalid state fail as an integrity error?
+- Are slices, maps, and byte values cloned where ownership could be ambiguous?
+- Do table-driven tests cover invalid boundaries and transition races visible
+  at the model level?
+
+## Application Use Case
+
+- Is there one typed command or query and one typed result?
+- Does context.Context carry only cancellation, deadlines, and propagation?
+- Does Invocation carry the immutable principal and safe call metadata?
+- Is current authorization performed immediately before work or mutation?
+- Is intrinsic self-service policy explicit rather than an accidental missing
+  check?
+- Does the use case prepare audit and semantic idempotency?
+- Does it call one named Store guarantee rather than coordinating CRUD calls?
+- Do post-commit effects occur only after the Store result?
+- Can replay, no-op, and transient effect failure avoid duplicate effects?
+- Are consumer-owned interfaces narrow and located beside the consumer?
+
+## Store Contract and PostgreSQL
+
+- Does the contract state exact absence, atomicity, concurrency, and race
+  outcomes?
+- Does it return domain values or explicit Store projections rather than SQL
+  rows?
+- Is every list bounded and authorization-constrained where necessary?
+- Do constraints enforce invariants independently of application prechecks?
+- Is lock order consistent with related aggregate operations?
+- Does PostgreSQL time decide deadlines and leases that race with commits?
+- Are revisions, idempotency keys, time, and unique identity used for their
+  distinct purposes?
+- Is retry limited to an explicit safe operation?
+- Do conformance tests and a PostgreSQL race test prove the guarantee?
+- Does migration work follow the current pre-release baseline policy?
+
+## HTTP Resource
+
+- Is the route in one cohesive resource and the sealed production catalog?
+- Does it retain only a narrow application capability?
+- Is credential and assurance classification explicit?
+- Are cookie mutation CSRF and Origin rules correct?
+- Is the request body bounded before decoding?
+- Does strict JSON reject unknown fields, duplicates where required, and
+  trailing values?
+- Are request and response DTOs separate from domain and Store types?
+- Are public errors allowlisted and unknown errors fail-closed?
+- Does concealment avoid revealing protected resource existence?
+- Are upload, download, redirect, or upgrade effects represented by a named
+  result rather than unrestricted response writing?
+
+## OpenAPI and Compatibility
+
+- Is the human-owned YAML module the only edited public contract source?
+- Do security, x-proctor-auth, idempotency, and error codes match runtime?
+- Does every parameter and request body explain its purpose?
+- Are mutation examples schema-valid, synthetic, and free of secrets or local
+  data?
+- Are collection and cursor shapes bounded and additive?
+- Could any rename, narrower validation, removed error, changed concealment, or
+  required input break an existing v1 client?
+- Did agreement tests independently declare the expected route and schemas?
+- Were the JSON artifact, browser types, and API reference regenerated rather
+  than patched?
+
+## Authorization and Audit
+
+- Does authentication establish proof without pretending to grant permission?
+- Is the stable action compatible with the canonical resource?
+- Does scope resolve from current authoritative relationships?
+- Are Personal Access Token actions and subtree ceilings intersected with
+  current roles?
+- Are strong and recent assurance tested independently from permission?
+- Are allow, deny, stale-authority, and cross-scope paths covered?
+- Does a required audit failure prevent the operation?
+- Are audit values bounded and free of credentials, content, answers, and
+  private rationale?
+- Does a critical attempt reach one terminal outcome or remain visibly
+  reconcilable?
+
+## Jobs and Mail
+
+- Is the work finite and genuinely process-loss-sensitive?
+- Does the descriptor close payload versions, retry, timeout, concurrency,
+  cancellation, visibility, and retention?
+- Is claim ownership fenced by token and lease?
+- Does the handler remain idempotent under at-least-once execution?
+- Does checkpointing follow durable domain progress?
+- Can an incompatible node relinquish without exhausting failure attempts?
+- Does a mail-producing business transaction commit occurrence, encrypted
+  delivery, and Job intent atomically?
+- Is recipient meaning frozen, relevance rechecked, and Message-ID stable?
+- Are raw Job documents, recipients, copy, and internal failures excluded from
+  generic projections?
+
+## Files, Workspaces, and Execution
+
+- Is semantic authority in PostgreSQL and byte storage opaque in VFS?
+- Is this a File Revision, Workspace Content Version, or another established
+  model rather than a forced generic file?
+- Does fallible byte staging precede atomic visibility?
+- Can cleanup distinguish invisible orphan, unknown outcome, retained
+  reference, and purge eligibility?
+- Do purpose-specific reads authorize metadata before opening bytes?
+- Are public and signed storage URLs absent?
+- Does an acknowledged Workspace change survive loss of every transient
+  projection?
+- Are execution grants current, fenced, and replaceable?
+- Are PTY bytes, paths, content, and host credentials excluded from logs and
+  events?
+
+## Realtime and Cluster
+
+- Is the event a minimal past-tense fact published after commit?
+- Can the client reconstruct authority after a missed or duplicate event?
+- Are connection queues, replay, payloads, and fan-out bounded?
+- Is slow-consumer behavior explicit?
+- Does subscription authorization use current action/resource policy?
+- Does node-local replay fall back to HTTP resynchronization after a gap or
+  node change?
+- Are peer-received events prevented from rebroadcasting?
+- Is cluster delivery treated as an accelerator rather than authority?
+- Are compatibility, malformed input, handler panic, and key rotation covered?
+
+## Runtime and Integration
+
+- Is a value correctly classified as deployment configuration or application
+  data?
+- Is every secret redacted from display, errors, logs, metrics, audit, and
+  examples?
+- Is reload atomic, or is restart stated and tested?
+- Does the root select the concrete adapter exactly once?
+- Is the lifecycle owner explicit and reverse shutdown bounded?
+- Does external identity use exact provider ID and opaque subject?
+- Does the CLI remain a thin caller of the root facade?
+- Are stable machine fields locale-independent?
+- Are metric labels closed and low-cardinality?
+
+## Cross-Boundary Finish
+
+1. Read the final diff as a reviewer, not as its author.
+2. Confirm every behavior has one authority and no stale duplicate.
+3. Search for leaked secrets, credentials, student data, Exam answers, mail or
+   file content, raw provider data, and local paths.
+4. Run focused tests first and fix their evidence before broad gates.
+5. Run every generator affected by a human-owned input.
+6. Run the relevant dependency-backed integration suite.
+7. Run:
+
+~~~sh
+make -C server architecture
+make -C server check
+git diff --check
+~~~
+
+8. Add make docs-check for public or API documentation and the appropriate
+   independent-module gate for a reusable package change.
+9. Report exactly what ran, what did not, and any remaining narrow TODO.
+
+The general [verification ladder](../testing.mdx) maps the remaining product
+and CI gates.

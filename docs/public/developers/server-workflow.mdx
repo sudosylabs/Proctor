@@ -1,133 +1,124 @@
 ---
-title: Change the Proctor Server
-description: Follow Proctor's domain, application, persistence, transport, and composition boundaries while implementing a complete server slice.
+title: Develop the Proctor Server
+description: Navigate the server architecture, place policy at the correct boundary, and deliver one verified behavior from domain model to public contract.
 audience: developer
 maturity: preview
 slug: /developers/server-workflow/
 ---
 
-# Change the Proctor Server
+# Develop the Proctor Server
 
-A server change is complete when one user-visible or operational behavior works
-through the real boundary that owns it. Avoid horizontal scaffolding that adds
-models, interfaces, stores, or routes without a working use case.
+The Proctor server is organized around ownership, not around framework layers.
+A change starts with a user-visible or operational behavior, crosses only the
+boundaries that behavior needs, and finishes with evidence at every changed
+boundary. The aim is not to create a model, service, Store, and route for
+symmetry. The aim is to make one coherent behavior true.
 
-## Before Editing
+This manual is for contributors who already write Go but do not yet know where
+Proctor keeps policy, durable guarantees, transport rules, or runtime
+ownership. Read it in order for a first server change; return to the focused
+chapters during review.
 
-1. Read the nearest package comment, component contract, and relevant section
-   of the [server guide](https://github.com/sudosylabs/Proctor/blob/main/server/README.md).
-2. Check the relevant public page's maturity, then confirm behavior in the
-   current code and tests so planned contracts are not mistaken for released
-   behavior.
-3. Search for the current concept and its tests with `rg`; do not infer an
-   inventory from filenames alone.
-4. Identify the domain term, action, resource, credential requirement, durable
-   authority, and post-commit effects involved.
-5. Inspect the working tree and preserve unrelated changes.
+<GovernedFigure asset="developer-repository-boundaries" />
 
-## Place Each Decision Once
+## Follow the Manual
+
+| If you need to understand… | Read… |
+| --- | --- |
+| Where a package belongs and how the server is assembled | [Architecture and composition](./server/architecture-composition.mdx) |
+| What belongs in a domain model versus an application use case | [Domain and application](./server/domain-application.mdx) |
+| Store contracts, PostgreSQL transactions, locks, revisions, and retries | [Persistence and transactions](./persistence.mdx) |
+| Routes, DTOs, OpenAPI, idempotency, and compatibility | [HTTP and OpenAPI](./http-and-openapi.mdx) |
+| Current authorization, assurance, concealment, Problem Details, and audit | [Authorization, errors, and audit](./server/authorization-errors-audit.mdx) |
+| Process-loss-safe background work and transactional delivery | [Jobs and transactional mail](./server/jobs-mail.mdx) |
+| File metadata, VFS bytes, uploads, protected downloads, and execution projection | [Files, workspaces, and execution](./server/files-execution.mdx) |
+| WebSocket state, replay, backpressure, cluster propagation, and effects | [Realtime, clustering, and effects](./server/realtime-cluster-effects.mdx) |
+| Providers, configuration, CLI, lifecycle, logs, metrics, and localization | [Runtime and external integrations](./server/runtime-integrations.mdx) |
+| How one implemented operation crosses the complete stack | [User Settings vertical slice](./server/user-settings-slice.mdx) |
+| What to check before requesting review | [Server review checklists](./server/review-checklists.mdx) |
+
+## The Placement Rule
+
+Ask who must remain correct if the transport, database, cache, or application
+node changes.
 
 | Decision | Owner |
 | --- | --- |
-| Local state validity and state transition | `server/model` |
-| Use-case policy, authorization, audit intent, and effect timing | `server/app` or a justified application child |
-| Atomic persistence guarantee | A named contract under `server/store` |
-| Locking, constraints, retries, and SQL transaction mechanics | `server/store/sqlstore` |
-| Request decoding, response DTO, credential and assurance declaration | `server/httpapi` |
-| Connection protocol, replay, subscription, or backpressure | `server/websocket` and application realtime contracts |
-| Backend selection and lifecycle wiring | Module-root `server.New` composition |
+| Whether one value or state transition is locally valid | `server/model` |
+| Whether the current actor may perform the use case, and in what order | `server/app` or one justified application child |
+| What must commit atomically and which races have one winner | A named contract under `server/store` |
+| How PostgreSQL locks, constrains, retries, and commits it | `server/store/sqlstore` |
+| How an HTTP request becomes a typed command and a safe response | `server/httpapi` |
+| What the public wire contract promises | Human-owned YAML under `server/openapi` |
+| How a WebSocket connection sequences, replays, and sheds load | `server/websocket` |
+| How portable cache, mail, or VFS mechanics work | The corresponding independent module under `packages` |
+| Which concrete adapters run and who closes them | Module-root `server.New` and `platform.Service` |
 
-Transport code establishes an immutable principal and checks the route's
-credential and assurance requirement. The owning application use case performs
-the authoritative action-and-resource authorization check against current
-state. Membership, affiliation, or authentication alone never implies
-permission.
+If two rows appear to own the same decision, the design is not finished. For
+example, transport owns strict JSON decoding, while the domain owns the local
+validity of the decoded value. PostgreSQL may enforce the invariant again for
+concurrency, but it does not become the author of business policy.
 
-## Shape the Use Case
+## Work One Vertical Slice at a Time
 
-Prefer a direct, typed method:
+Before editing, write a short boundary map in your notes:
 
-```go
-result, err := application.CreateResource(ctx, invocation, command)
+```text
+Behavior:        what changes for a User or operator?
+Domain term:     which canonical concept and transition are involved?
+Principal:       who or what invokes the behavior?
+Action/resource: what current authority is required?
+Durable fact:    what must survive process loss?
+Public shape:    which route, DTO, errors, and examples change?
+Effects:         what happens only after commit?
+Evidence:        which focused, conformance, integration, and broad tests prove it?
 ```
 
-`context.Context` carries cancellation and deadlines. The invocation carries
-the principal and bounded safe call metadata. The command carries explicit
-inputs. Do not hide identity, permissions, Store access, or mutable policy in
-context values or global state.
+Then inspect the current code and tests. Do not create an interface until its
+consumer and complete need are known. Do not create a child package until the
+responsibility has enough stable structure to survive deletion of its current
+callers. Do not add a route until the application behavior exists without
+HTTP.
 
-Application-facing interfaces belong beside the consumer and expose one
-cohesive need. Persistence is the deliberate grouped exception: `store.Store`
-and its per-model or aggregate contracts remain together for shared
-conformance testing.
+## Preserve the Non-Negotiable Order
 
-## Preserve Durable Ordering
+For an actor-sensitive mutation, the usual chronology is:
 
-For a state-changing use case:
+1. Establish a bounded immutable invocation from the transport proof.
+2. Resolve the canonical resource and current authority.
+3. Authorize immediately before expensive work or mutation.
+4. Prepare safe audit intent and, when required, command idempotency.
+5. Commit the durable state, required audit, retained outcome, Job, or mail
+   intent through one named Store operation.
+6. Publish cache, cluster, WebSocket, execution, or other reconstructible
+   effects only after commit.
+7. Translate the result into an allowlisted public response.
 
-1. resolve the exact resource and current authority;
-2. authorize immediately before expensive work or mutation;
-3. prepare bounded audit intent and any idempotent semantic fingerprint;
-4. commit state, audit, and required durable work atomically where the contract
-   requires it; and
-5. only after commit, invalidate caches or publish cluster, realtime,
-   execution, or other best-effort effects.
+Not every read or mutation uses every step. The omission must follow the
+owning contract, not convenience in a handler.
 
-Queued mail and finite background work use durable records because delivery or
-continuation must survive process loss. Ordinary realtime publication remains
-best-effort and reconstructible.
+## Know the Sources of Truth
 
-## Add an HTTP Surface Deliberately
+This manual explains how to work. It deliberately does not duplicate live
+inventories. Use these authorities while implementing:
 
-An HTTP resource owns one cohesive path family, DTO mapping, explicit
-authentication requirement, and allowlist of public errors. Add the resource
-to the sealed production catalog; do not register routes through package
-initialization or expose a mutable router.
+- the [server module guide](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
+  for construction, running, and verification;
+- the [HTTP transport contract](https://github.com/sudosylabs/Proctor/blob/main/server/httpapi/CONTRACT.md)
+  for exact routing and mapping guarantees;
+- the [OpenAPI authoring guide](https://github.com/sudosylabs/Proctor/blob/main/server/openapi/README.md)
+  for the human-first public contract workflow;
+- the [cluster guarantees](https://github.com/sudosylabs/Proctor/blob/main/server/cluster/GUARANTEES.md)
+  for exact delivery and recovery behavior; and
+- code, tests, configuration examples, and command help for discoverable
+  implementation detail.
 
-If the public HTTP contract changes, follow the complete
-[HTTP and OpenAPI workflow](./http-and-openapi.mdx) in the same slice.
-The handler, route manifest, DTOs, public errors, and OpenAPI document must
-agree.
+## First Change Route
 
-## Test in Layers
+For a first contribution, use the [User Settings vertical slice](./server/user-settings-slice.mdx)
+as a reading exercise before changing another feature. It shows what each file
+contributes without presenting a copy-and-paste package template. Your feature
+may need fewer boundaries or different ones.
 
-Start with the narrowest useful feedback:
-
-```sh
-cd server
-go test ./path/to/package -run '^TestExactBehavior$' -count=1
-```
-
-Then run the hermetic server gate:
-
-```sh
-make -C server check
-```
-
-That gate includes architecture, localization, OpenAPI agreement, unit tests,
-race tests, and vet without requiring external services. Add the relevant
-dependency-backed target when behavior crosses PostgreSQL, Redis, S3-compatible
-storage, SMTP, providers, realtime, or multiple nodes. See the
-[testing guide](./testing.mdx) for the command matrix.
-
-Integration tests should enter through the real `server.New` graph when the
-behavior depends on composition. Adapter contracts should use reusable
-conformance suites. Tests must fail when an invoked dependency is unavailable;
-they must not silently skip the claimed coverage.
-
-## Review the Finished Slice
-
-- Does every changed concept retain its canonical Proctor meaning?
-- Is the application independent of concrete transport and infrastructure?
-- Does authorization use current resource state?
-- Are logs, metrics, audit values, examples, and errors bounded and safe?
-- Does durable state commit before transient effects?
-- Is there exactly one composition path and one public contract source?
-- Did the change update its nearest contract, public guidance, or maturity
-  statement when that authority changed?
-
-## Next
-
-- Add or change an [HTTP operation](./http-and-openapi.mdx).
-- Change [persistence](./persistence.mdx).
-- Choose the correct [test and integration gates](./testing.mdx).
+Finish with the [server review checklists](./server/review-checklists.mdx) and
+the repository [verification ladder](./testing.mdx).

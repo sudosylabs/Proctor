@@ -1,0 +1,177 @@
+---
+title: Understand Server Architecture and Composition
+description: Trace dependency direction, server.New construction, lifecycle ownership, readiness, and reverse shutdown without creating a second composition path.
+audience: developer
+maturity: preview
+slug: /developers/server/architecture-composition/
+---
+
+# Understand Server Architecture and Composition
+
+The module-root `server.New` function is the only production composition root.
+It selects concrete infrastructure, transfers infrastructure ownership to the
+platform service, constructs the application and transports, and returns an
+inert server. `Server.Run` starts the runtime. This separation lets tests build
+the real graph without starting listeners or background work during
+construction.
+
+## Read Dependencies from the Outside In
+
+The normal policy direction is:
+
+```text
+HTTP · WebSocket · Jobs
+          ↓
+ application use cases
+          ↓
+ domain + Store contracts
+          ↑
+ SQL · VFS · cache · SMTP · cluster adapters
+```
+
+The arrows show compile-time dependency and policy direction, not request
+chronology. An outer adapter translates. An application use case decides. A
+domain model protects local validity. A Store contract names a durable
+guarantee. A concrete adapter implements that guarantee.
+
+The root package is allowed to import construction dependencies because it
+assembles the graph. That exception does not make it a home for business
+rules.
+
+## Tour the Stable Landmarks
+
+Use this as an orientation map, not as a complete package inventory.
+
+| Location | Responsibility | Common mistake |
+| --- | --- | --- |
+| `server/model` | Cohesive domain values, records, constructors, and local transitions | Adding transport or SQL fields to a domain type |
+| `server/app` | Use-case policy, current authorization, audit intent, coordination, and effect timing | Retaining the root Store or configuration as a service locator |
+| `server/app/job` | Generic durable Job execution mechanics | Importing the parent application or a concrete handler catalog |
+| `server/app/realtime` | Transport-neutral events and peer propagation semantics | Owning WebSocket connection state or retrying transient publication |
+| `server/store` | Bounded Store contracts and named aggregate operations | Exposing raw transaction callbacks or SQL rows |
+| `server/store/sqlstore` | PostgreSQL implementation, locks, constraints, and migrations | Re-deciding application policy inside SQL code |
+| `server/httpapi` | Sealed route catalog, DTOs, credential requirements, Problem Details | Reaching directly into Store or SQL |
+| `server/websocket` | Connection protocol, sequencing, replay, liveness, and backpressure | Treating a socket as durable authority |
+| `server/platform` | Infrastructure lifecycle and health | Passing it into the application as a locator |
+| module-root `server` | Adapter selection, wiring, readiness, serving, and shutdown | Adding a second constructor path in a command or test |
+
+Selective child packages exist only where a responsibility has substantial
+structure and can still point inward without importing its parent. Do not
+repeat the existing child layout for visual symmetry.
+
+## Follow `server.New`
+
+Read [`server/server.go`](https://github.com/sudosylabs/Proctor/blob/main/server/server.go)
+and the cohesive construction files beside it as one composition path. The
+important ownership transfers are:
+
+1. Load and validate the required operator-owned configuration.
+2. Construct PostgreSQL and the selected cache, mail, VFS, cluster, logging,
+   metrics, provider, and execution-host adapters.
+3. Give shared infrastructure to `platform.Service`, which owns its health,
+   reconfiguration, and disposal from that point onward.
+4. Build stateless or application-facing projections, such as File Content,
+   over borrowed capabilities rather than handing the platform to callers.
+5. Translate configuration into small immutable policies or narrow dynamic
+   providers.
+6. Call the sole `app.New` constructor.
+7. Construct HTTP and WebSocket transports from narrow application
+   capabilities.
+8. Attach local sinks and cluster fan-out once, then discard temporary wiring
+   projections.
+
+Construction must unwind every acquired owner if a later step fails. A newly
+constructed server has no listener, worker, or maintenance goroutine running.
+
+## Follow `app.New`
+
+`app.New` constructs focused services in an explicit dependency order and
+assembles the `app.App` facade. The facade is a collection of use cases, not a
+persistence accessor. Focused services receive the exact Store and behavioral
+ports they consume; they do not ask `App` or a dependencies object for another
+service at runtime.
+
+When adding a dependency:
+
+- put the interface beside its consumer unless it is part of the deliberate
+  grouped Store family;
+- validate required dependencies in the constructor;
+- keep constructors inert;
+- project only the methods the consumer needs; and
+- update the architecture policy when a new production import is intentional.
+
+The need to reach through `App`, `platform.Service`, `config.Config`, or a root
+Store usually means the consumer boundary is still too broad.
+
+## Understand Startup and Readiness
+
+`Server.Run` enters runtime stages in dependency order. In broad terms it:
+
+1. starts shared platform dependencies;
+2. commits the PostgreSQL serving-node lease;
+3. reconciles protected roles and pending offline recovery;
+4. starts durable Jobs and required periodic work;
+5. starts WebSocket, metrics, listener ownership, and HTTP serving; and
+6. publishes readiness only when the node can safely receive traffic.
+
+Liveness, readiness, and detailed diagnostics answer different questions.
+Liveness means the process can respond. Readiness means the node is safe to
+route traffic to. Detailed dependency state is operator-only and must not be
+smuggled into a public health response.
+
+A host-process readiness observer, such as the systemd notification adapter,
+runs only after internal readiness. It reports outward; it does not own server
+lifecycle and cannot make an otherwise ready server fail.
+
+## Understand Reverse Shutdown
+
+Normal shutdown first makes the node unready, then drains consumers before
+their dependencies:
+
+```text
+public readiness off
+        ↓
+HTTP drain → Jobs → WebSocket → HTTP transport → serving lease → Platform
+```
+
+Only stages that successfully started need active drain behavior, but every
+constructed owner must be disposed exactly once. Close-before-start, partial
+startup failure, concurrent close, and repeated close are normal test cases,
+not edge cases to leave undefined.
+
+A serving-lease renewal failure follows a stricter path: make the node unready
+and force-stop HTTP before the lease can expire. Do not withdraw a failed lease
+as if shutdown were graceful; PostgreSQL expiry protects offline recovery from
+starting too early.
+
+## Add or Move a Package
+
+Before extracting a package, answer all of these:
+
+1. What stable responsibility does it own?
+2. Which production package consumes it?
+3. Which dependencies must it import, and which must it never import?
+4. Can it be introduced with working behavior rather than empty scaffolding?
+5. Would deleting the package force its responsibility to become less clear?
+
+Add a package comment naming ownership, exclusions, and allowed dependencies.
+Then run:
+
+```sh
+make -C server architecture
+```
+
+The architecture gate is an executable import policy. It has no waiver or
+debt list; an intentional new edge must still preserve the inward graph.
+
+## Composition Review
+
+- Is `server.New` still the sole production construction path?
+- Are constructors inert and fail-fast?
+- Did each acquired owner transfer exactly once and unwind on failure?
+- Does `platform.Service` remain outside application policy?
+- Did configuration become a small policy or provider before entering `app`?
+- Does shutdown reverse successful startup stages under bounded deadlines?
+- Can `testlib` exercise the real graph without recreating composition?
+
+Continue with [domain and application design](./domain-application.mdx).

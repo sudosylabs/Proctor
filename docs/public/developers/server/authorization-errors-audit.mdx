@@ -1,0 +1,203 @@
+---
+title: Authorize, Conceal, and Audit Server Behavior
+description: Separate credential assurance from current action-and-resource authorization, expose only allowlisted failures, and make required audit durable.
+audience: developer
+maturity: preview
+slug: /developers/server/authorization-errors-audit/
+---
+
+# Authorize, Conceal, and Audit Server Behavior
+
+Authentication answers “which principal presented acceptable proof?”
+Authorization answers “may that principal perform this action on this exact
+resource now?” Audit records the security-relevant decision or transition.
+Proctor keeps those questions separate so a valid credential, historical
+membership, or stale role snapshot cannot silently grant authority.
+
+<GovernedFigure asset="protected-request-assurance-flow" />
+
+## Start with Principal, Action, and Resource
+
+The transport establishes an immutable principal containing bounded identity,
+credential, provider, assurance, client, and authentication-time context. It
+does not contain a permission or role snapshot.
+
+Application authorization combines:
+
+- that principal;
+- one stable domain action such as `class.members.view`;
+- the canonical resource being acted on; and
+- current roles, bindings, relationships, state, and credential ceilings from
+  authoritative storage.
+
+Action names describe domain capability, not HTTP verbs or route names. Role
+Bindings are additive and denied by default. Their Institution, Academic Unit,
+or Class scope is resolved to the actual resource; it is not inferred from a
+path parameter the caller supplied.
+
+## Put Each Check at Its Owner
+
+| Question | Owner |
+| --- | --- |
+| Is a credential present and valid for this route? | HTTP or WebSocket transport |
+| Does the route require an interactive, strong, or recent Session? | Transport declaration and authentication |
+| Is the action compatible with this resource kind? | Access Control application boundary |
+| What is the resource’s current authorization scope? | Application scope resolver over authoritative Store facts |
+| May this principal perform the action now? | Owning application use case |
+| Should a denial be forbidden or concealed? | Owning use case and transport mapping contract |
+| Must the decision or mutation be durably audited? | Application and named Store operation |
+
+Transport middleware must not preflight permission and hand the application a
+reusable authorization receipt. The state can change between middleware and
+mutation, and list/search authorization often belongs inside a bounded query.
+
+For exact actor-sensitive operations, resolve current authority immediately
+before expensive work or mutation. For collections, derive a bounded visibility
+scope first and have persistence apply it in the query; do not fetch everything
+and filter in memory.
+
+## Distinguish Credential Assurance
+
+A route may require:
+
+- any authenticated principal;
+- an interactive Session rather than a Personal Access Token;
+- strong authentication;
+- recent reauthentication;
+- both strong and recent authentication; or
+- a purpose-specific refresh or protected Attempt credential.
+
+These are credential ceilings, not permissions. A strong recent Session can
+still lack the action on the resource. A role grant cannot make a Personal
+Access Token satisfy a route reserved for an interactive Session.
+
+When adding a sensitive operation, test both axes:
+
+| Credential/assurance | Current authority | Expected outcome |
+| --- | --- | --- |
+| insufficient | any | authentication or assurance failure |
+| sufficient | denied | forbidden or concealed response |
+| sufficient | allowed | use case may continue |
+| sufficient at login, now revoked | denied | current decision wins |
+
+## Choose Concealment Deliberately
+
+A forbidden response confirms that the target exists. For private exact
+resources—another User’s protected data, an unauthorized Exam Sitting,
+Submission, Attempt, or file—existence may itself be sensitive. The owning use
+case therefore decides whether a denied, missing, mismatched, inactive, or
+out-of-scope target must share one not-found response.
+
+Concealment must be consistent:
+
+- resolve only the state needed to make the safe decision;
+- map all concealed cases to the same public code and shape;
+- omit private IDs, state, scope, and mismatch detail;
+- retain internal causes only for bounded outer diagnostics; and
+- test horizontal access using two synthetic resources in different scopes.
+
+Do not return forbidden during one failure path and not found during another if
+that distinction reveals the protected fact.
+
+## Build Stable Application Errors
+
+Expected failures use `*app.Error` with:
+
+- one stable dotted code;
+- a small allowlist of safe fields; and
+- an optional wrapped internal cause.
+
+The application error contains no status code, localization, request ID, SQL
+message, provider payload, or stack trace. HTTP and WebSocket own separate,
+exhaustive mappings to their protocols.
+
+```text
+driver or adapter failure
+          ↓
+typed Store or port failure
+          ↓
+application interpretation
+          ↓
+stable app.Error when public and expected
+          ↓
+Problem Details or WebSocket error envelope
+```
+
+Unknown failures become a generic correlated internal error. Localized
+`title` and `detail` are resolved only at the transport edge; the type,
+status, code, safe fields, and request correlation remain locale-independent.
+
+### Public error review
+
+- Is the code useful to a client without exposing private state?
+- Is every field bounded, typed, and explicitly safe?
+- Is it allowlisted by the resource and declared in OpenAPI?
+- Does every declared code map to a response?
+- Do unknown errors fail closed?
+- Are localized messages presentation rather than durable machine state?
+
+## Make Audit a Durable Contract
+
+Operational logs and audit events have different purposes. Logs explain
+runtime behavior and may be dropped or rotated. PostgreSQL audit records are
+authoritative security evidence.
+
+A safe audit event may contain the actor or system principal, stable action,
+canonical resource, resolved academic scope, outcome, request and node
+correlation, time, and approved bounded prior/result projections. It never
+contains credentials, secrets, Exam answers, mail or file content, private
+manager rationale, provider assertions, or unbounded user input.
+
+Authorization decisions that require audit fail closed when the durable event
+cannot be written. A critical mutation may use an attempt-to-terminal protocol:
+
+1. persist the audit attempt;
+2. perform the named mutation;
+3. commit successful terminal audit with the durable outcome; or
+4. complete failure audit separately when no state committed.
+
+If terminal completion fails after a state commit, return an internal failure
+and retain the incomplete attempt for operator reconciliation. Do not claim the
+mutation rolled back when it did not.
+
+For a mutation whose successful audit belongs in the same transaction, the
+application prepares safe audit intent and the named Store operation commits
+state, audit, and retained idempotent outcome together.
+
+## Keep Observability Safe
+
+Request-driven application services normally return errors rather than logging
+them. The outer operational boundary logs an unexpected failure once with
+bounded scalar fields such as component, request ID, node ID, and approved
+entity IDs.
+
+Never add arbitrary maps or complete structs to logs or metrics. Metrics use
+closed low-cardinality labels—route templates, operation names, result classes,
+and configured backend types—not User IDs, paths, addresses, cache keys,
+recipient data, or error strings.
+
+## Authorization and Audit Test Matrix
+
+For an actor-sensitive change, cover:
+
+- the allowed action at exact and inherited scopes;
+- incompatible action/resource pairs;
+- denied, missing, archived, and out-of-scope resources;
+- stale membership, Role Binding, account, and credential state;
+- Personal Access Token action and scope ceilings;
+- required strong or recent assurance;
+- concealment parity and response-field redaction;
+- audit success, denial, and audit-write failure;
+- idempotent replay with fresh authorization;
+- post-commit invalidation failure; and
+- cross-node correctness without an authorization cache.
+
+Then run the owning package tests, HTTP/OpenAPI agreement when applicable, and:
+
+```sh
+make -C server architecture
+make -C server check
+```
+
+Continue with [HTTP and OpenAPI](../http-and-openapi.mdx) or the
+[User Settings vertical slice](./user-settings-slice.mdx).

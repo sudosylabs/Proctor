@@ -56,9 +56,70 @@ const sidebars: SidebarsConfig = {
               collapsed: true,
               items: [
                 {
-                  type: 'doc',
-                  id: 'developers/server-workflow',
-                  label: 'Server Workflow',
+                  type: 'category',
+                  label: 'Server Development',
+                  collapsed: false,
+                  link: {
+                    type: 'doc',
+                    id: 'developers/server-workflow',
+                  },
+                  items: [
+                    {
+                      type: 'doc',
+                      id: 'developers/server/architecture-composition',
+                      label: 'Architecture and Composition',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/domain-application',
+                      label: 'Domain and Application',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/persistence',
+                      label: 'Persistence and Transactions',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/http-and-openapi',
+                      label: 'HTTP and OpenAPI',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/authorization-errors-audit',
+                      label: 'Authorization, Errors, and Audit',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/jobs-mail',
+                      label: 'Jobs and Transactional Mail',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/files-execution',
+                      label: 'Files, Workspaces, and Execution',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/realtime-cluster-effects',
+                      label: 'Realtime, Cluster, and Effects',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/runtime-integrations',
+                      label: 'Runtime and Integrations',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/user-settings-slice',
+                      label: 'Complete Vertical Slice',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/review-checklists',
+                      label: 'Review Checklists',
+                    },
+                  ],
                 },
                 {
                   type: 'doc',
@@ -69,16 +130,6 @@ const sidebars: SidebarsConfig = {
                   type: 'doc',
                   id: 'developers/reusable-modules',
                   label: 'Reusable Modules',
-                },
-                {
-                  type: 'doc',
-                  id: 'developers/http-and-openapi',
-                  label: 'HTTP and OpenAPI',
-                },
-                {
-                  type: 'doc',
-                  id: 'developers/persistence',
-                  label: 'Persistence',
                 },
               ],
             },

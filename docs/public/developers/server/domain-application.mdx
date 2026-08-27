@@ -1,0 +1,183 @@
+---
+title: Design Domain and Application Behavior
+description: Put local invariants in domain models and actor-sensitive policy, authorization, coordination, and effects in focused application use cases.
+audience: developer
+maturity: preview
+slug: /developers/server/domain-application/
+---
+
+# Design Domain and Application Behavior
+
+Domain models and application use cases solve different problems. A domain
+model can say whether a value or local transition is valid. An application use
+case can say whether this principal may perform that transition now, which
+records must change together, and which effects follow a successful commit.
+
+Keeping that distinction explicit makes the same behavior usable from HTTP,
+WebSocket, a durable Job, or a command without copying policy into each entry
+point.
+
+## Start with Canonical Meaning
+
+Before adding a type, name the concept in Proctor’s vocabulary and find its
+existing model. Similar everyday words are not interchangeable here: a
+Session is not an Exam Attempt, an Exam Revision is not an Exam Sitting, and a
+Workspace Content Version is not a retained File Revision.
+
+A domain model normally owns:
+
+- canonical identifiers and closed state values;
+- constructor validation and normalized local values;
+- transitions that depend only on the aggregate’s current state and explicit
+  inputs;
+- local temporal ordering; and
+- safe cloning or projection behavior where mutable slices or maps exist.
+
+It does not own HTTP status codes, SQL column names, authorization lookups,
+SMTP delivery, WebSocket messages, deployment configuration, or global service
+discovery.
+
+## Write Constructors That Establish Valid State
+
+Prefer a constructor that returns either a valid value or an error:
+
+```go
+document, err := model.NewUserSettingsDocument(userID, revision, createdAt)
+if err != nil {
+	return err
+}
+```
+
+Keep `Validate` useful for Store rehydration and boundary checks. Invalid data
+read from persistence is an internal integrity failure; it is not ordinary
+not-found behavior and must not be silently repaired by a transport handler.
+
+For a transition method, make the state change named and explicit. A method
+called `Archive`, `Publish`, `Renew`, or `Submit` communicates more than a
+generic `Update` or `Process`. Use timestamps as facts, not as optimistic
+concurrency tokens; use an explicit revision when callers must fence a write.
+
+### Domain review
+
+- Can the type exist independently of HTTP, SQL, Redis, VFS, SMTP, or cluster?
+- Does construction reject every locally invalid state?
+- Are zero, absent, expired, archived, disabled, and terminal states distinct?
+- Are mutable inputs defensively copied where callers could retain them?
+- Do tests cover transition boundaries and rejected states, not only the happy
+  constructor?
+
+## Shape One Application Use Case
+
+Public application methods use typed commands or queries and typed results:
+
+```go
+result, err := application.ReplaceOwnUserSettings(
+	ctx,
+	invocation,
+	app.ReplaceOwnUserSettingsCommand{
+		Source: source,
+		FormatVersion: 1,
+		ExpectedRevision: revision,
+		IdempotencyKey: key,
+	},
+)
+```
+
+`context.Context` carries cancellation, deadlines, and propagation. It does
+not hide a User, permission, Store, mutation origin, or other security state.
+`app.Invocation` carries the immutable principal and bounded call metadata
+needed for authorization and audit. The command carries the use-case input.
+
+A focused service implementation normally remains unexported behind methods on
+`app.App`. Its constructor receives narrow consumer-owned ports. Keep the
+facade convenient for transports without turning it into a general service or
+Store locator.
+
+## Authorize Current State
+
+Authentication proves a credential and establishes a principal. It does not
+grant permission. An actor-sensitive use case resolves the canonical resource
+and checks the stable action against current authoritative relationships
+immediately before expensive work or mutation.
+
+Do not authorize from:
+
+- a role snapshot stored in a Session;
+- an Affiliation or membership alone;
+- a transport preflight receipt;
+- cache presence;
+- a route name or HTTP method; or
+- an earlier read whose authority may now be stale.
+
+Some self-owned resources have intrinsic application policy rather than a
+grantable role action. That exception still belongs in the use case and still
+honors its credential ceiling. User Settings, for example, require the current
+interactive Session principal and accept no caller-supplied User ID.
+
+## Prepare Durable Intent Before Calling Store
+
+The application decides the meaning of the transaction:
+
+- which canonical resource is changing;
+- which current authorization must hold;
+- whether idempotency is required and what semantic input it fingerprints;
+- which safe audit event is mandatory;
+- which domain records or durable work must commit together; and
+- which result is safe to retain for replay.
+
+It then calls a named Store operation. The application never coordinates this
+with a generic SQL transaction callback.
+
+Idempotency is semantic. The command owner defines a stable operation name and
+normalizes the bounded inputs that make two requests “the same.” Do not hash an
+HTTP body blindly or make the transport define business replay meaning.
+
+## Publish Only After Commit
+
+An application event is a minimal past-tense fact such as
+`UserSettingsChanged`. It carries approved IDs, revision, and time—not a
+mutable entity, credential, answer, arbitrary map, or transport-ready JSON.
+
+After a successful Store result, the use case may request cache invalidation,
+local realtime publication, peer fan-out, execution projection, or another
+reconstructible effect. A failure in one of those effects is diagnosed without
+rolling back or repeating the durable outcome.
+
+Use a durable Job or mail occurrence when continuation or delivery itself must
+survive process loss. Ordinary realtime fan-out does not become an outbox by
+default.
+
+## Use Application Child Packages Deliberately
+
+Most capabilities begin as cohesive files in `server/app`. A child package is
+justified when it owns substantial stable mechanics, has several collaborators,
+can expose a narrow facade, and can point inward without importing its parent.
+
+Current examples illustrate different reasons:
+
+- `app/job` owns a generic engine independent of domain handlers;
+- `app/realtime` owns transport-neutral event and propagation contracts;
+- `app/mail` owns product mail preparation and rendering contracts; and
+- focused `app/exam` children own distinct examination mechanics.
+
+They are not a folder template. A new capability does not earn a child package
+because another capability has one.
+
+## Test Application Policy
+
+Use small handwritten fakes for the exact consumer-owned ports. Test observable
+ordering and outcomes:
+
+- invalid principal or input fails before persistence;
+- current authorization is checked at the correct point;
+- audit failure prevents a fail-closed mutation;
+- the named Store command contains the complete intended facts;
+- replay does not repeat post-commit effects;
+- a changed outcome publishes the expected safe event; and
+- a transient effect failure does not rewrite a committed result.
+
+Then use Store conformance or integration tests for the atomic guarantee and
+the real composition graph when wiring matters.
+
+Continue with [persistence and transactions](../persistence.mdx) and
+[authorization, errors, and audit](./authorization-errors-audit.mdx).

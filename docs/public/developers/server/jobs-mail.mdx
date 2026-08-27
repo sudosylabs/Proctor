@@ -1,0 +1,208 @@
+---
+title: Build Durable Jobs and Transactional Mail
+description: Make finite background work and required product communication survive node loss, retry, cancellation, and multi-node claiming.
+audience: developer
+maturity: preview
+slug: /developers/server/jobs-mail/
+---
+
+# Build Durable Jobs and Transactional Mail
+
+A goroutine is not durable work. If the process may disappear after a user
+receives success, any required continuation must already be represented by a
+PostgreSQL fact another node can claim. Proctor uses Jobs for finite background
+work and a separate mail domain for durable notification intent.
+
+## Decide Whether Work Is a Job
+
+Use a Job when the work is finite, retryable, and valuable to trace after the
+request or process ends. Examples include content processing, default-picture
+generation, bounded cleanup, mail delivery, and Sitting closure.
+
+Do not create a Job for a continuous runtime loop such as:
+
+- WebSocket ping and liveness;
+- cluster discovery maintenance;
+- cache reaping; or
+- another owner’s ongoing lifecycle.
+
+A small bounded periodic maintenance pass may run under the Job engine
+lifecycle without creating a durable Job occurrence when its named PostgreSQL
+operation already makes every node converge. Record that distinction
+explicitly.
+
+## Understand the Ownership Split
+
+| Boundary | Owns |
+| --- | --- |
+| Domain model | Stable Job intent, current lifecycle, and append-only Job Attempt history |
+| `store.JobStore` | Enqueue, claim, lease fence, checkpoint, terminal transition, and retention guarantees |
+| `app/job` | Generic engine mechanics and safe projections |
+| Owning application capability | Why work exists, actor authorization, domain policy, and durable effects |
+| `app/jobs` | Typed handler catalog, versioned payloads, descriptors, recurrence definitions, and concrete handlers |
+| Module-root server | Engine start, readiness participation, and close order |
+
+A worker receives only the capabilities its handler declares. It does not
+receive `App`, a root Store, the platform, or a service catalog.
+
+## Define the Descriptor Before the Handler
+
+Each closed Job Type declares:
+
+- supported command, checkpoint, and result versions;
+- timeout and per-node concurrency;
+- maximum failed attempts and bounded backoff;
+- whether cancellation is supported;
+- safe visibility and public failure codes;
+- retention;
+- natural or deduplication identity; and
+- the exact handler.
+
+Commands are immutable typed documents. Checkpoints are mutable, typed,
+bounded progress. Results are safe typed summaries. Arbitrary JSON maps are not
+a Job API, even if PostgreSQL stores the documents as JSONB.
+
+Startup builds one immutable instance-scoped catalog and rejects duplicate
+types, missing handlers, or invalid descriptors. Do not use package
+initialization or a process-global registry.
+
+## Design for At-Least-Once Execution
+
+PostgreSQL claims a bounded ordered selection and creates a Job Attempt with an
+unguessable claim token and lease expiry. Heartbeat, checkpoint, and terminal
+updates require that current token. An expired lease can be reclaimed; the old
+worker is permanently fenced from changing Job state.
+
+Therefore:
+
+- handlers must be idempotent;
+- a successful external call before a lost database acknowledgement is an
+  unknown outcome, not proof of failure;
+- domain state must commit before the Job checkpoint claims progress; and
+- the retry path must detect already-completed durable effects.
+
+At-least-once execution does not imply every external system provides
+exactly-once effects.
+
+## Use Checkpoints and Work Budgets
+
+Checkpoint only after the durable unit represented by that cursor has
+completed. Store a stable cursor and safe counts, not a complete result set or
+unbounded error history.
+
+For a bounded occurrence, reserve work durably before processing when a retry
+must not reuse uncertain capacity. A reservation observed ahead of the
+checkpoint is burned as unknown work. This is stricter than recomputing progress
+from process memory and prevents lease loss from exceeding the occurrence
+budget.
+
+Progress uses optional `Current`, `Total`, and one closed safe stage. Derive a
+percentage only when the total is known.
+
+## Classify Completion and Cancellation
+
+A handler returns one of a small set of meanings: succeeded, retryable failure,
+relinquished for an incompatible node, permanent failure, or canceled.
+
+- Retry transient dependency failures inside the descriptor’s bounded policy.
+- Fail unsupported payload versions and invariant violations permanently.
+- Relinquish immutable work when another node may possess a required
+  deployment capability; do not consume the failure-attempt budget.
+- Contain a panic, record only a safe failure code, and apply the retry policy.
+
+Cancellation is cooperative. Queued work may cancel immediately. Running work
+records the request and cancels its context after observation. A non-cancelable
+atomic commit finishes; the fenced terminal operation resolves the race
+without pretending committed domain state was rolled back.
+
+## Keep Job Operations Safe
+
+Generic Job operations expose bounded list, detail, Attempt history,
+cancellation, and explicitly supported retry. They never expose raw command,
+checkpoint, result, deduplication key, claim token, internal error, mail body,
+file content, or student work.
+
+`job.view` protects safe inspection and `job.manage` protects cancellation
+and retry. Those actions neither create arbitrary Job Types nor grant access to
+a domain-specific payload such as an onboarding roster.
+
+## Treat Mail as Its Own Durable Domain
+
+Transactional mail communicates one bounded application or security fact to a
+specific recipient. The independent `packages/mail` module owns portable MIME,
+validation, SMTP, and transport outcome classification. Server-owned
+`app/mail` owns product meaning, definitions, localization, templates,
+recipient rules, encrypted frozen payloads, suppression, delivery policy, and
+stable Message-ID construction.
+
+A `MailOccurrence` is one logical notification caused by a domain transition.
+A `MailDelivery` is one frozen recipient delivery. A generic Job executes
+expansion or delivery but does not replace either mail record.
+
+The originating named Store mutation commits:
+
+1. the business change;
+2. required audit;
+3. the Mail Occurrence;
+4. one or more Mail Deliveries; and
+5. the delivery or expansion Job.
+
+SMTP is never called inside that transaction. If enabled mail is mandatory for
+the transition and its durable intent cannot be prepared or persisted, the
+business mutation rolls back.
+
+## Freeze Meaning Before Delivery
+
+Do not re-resolve recipient address, locale, or template data when a worker
+runs. Direct delivery freezes the exact recipient and rendered alternatives.
+Fan-out freezes a bounded locale-indexed render bundle, then expands each
+recipient under the owning roster contract.
+
+The recoverable payload is encrypted at rest and destroyed after acceptance,
+terminal suppression, cancellation, or expiry. Plain durable metadata remains
+a safe routing projection only. A stable Message-ID survives automatic and
+operator retry; SMTP acceptance means the remote SMTP server accepted DATA,
+not that the message reached an inbox.
+
+Before each attempt, perform the template family’s relevance check. An expired
+recovery credential or superseded Sitting fact is suppressed rather than
+delivered late. Historical security notices and receipts may remain relevant.
+
+## Author Templates and Localization
+
+Human copy belongs in the localization catalogs. Typed template data, authored
+MJML, generated HTML, authored plain text, and reusable partials stay under
+`server/templates`. Templates receive one closed typed presentation model;
+they do not query application state, construct routes, read environment values,
+or choose headers.
+
+When templates or message copy change, follow the
+[transactional-mail template workflow](https://github.com/sudosylabs/Proctor/blob/main/server/templates/README.md).
+Regenerate tracked HTML, render the synthetic preview set, and verify both
+alternatives. Never use production recipient data in previews.
+
+## Verify Failure and Recovery
+
+For Jobs, test claim fencing, lease expiry, checkpoint replay, incompatible
+nodes, cancellation, retention, unknown outcomes, and multi-node contention.
+For mail, also test:
+
+- business-plus-mail atomic commit;
+- definition completeness and typed rendering;
+- locale fallback and escaping;
+- encryption, key availability, and rotation;
+- disabled-mode suppression;
+- relevance checks and stable Message-ID retry;
+- bounded fan-out and recipient deduplication; and
+- application-through-SMTP behavior using the isolated capture service.
+
+Use the focused phase targets described by the current server Makefile, then
+run:
+
+```sh
+make -C server check
+make -C server architecture
+```
+
+When delivery fails locally, use the [Jobs and realtime troubleshooting guide](../troubleshooting/jobs-realtime.mdx)
+or [mail troubleshooting guide](../troubleshooting/mail.mdx).

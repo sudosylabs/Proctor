@@ -1,0 +1,181 @@
+---
+title: Develop Realtime, Clustering, and Effects
+description: Keep WebSocket connections bounded and node-local while using best-effort cluster propagation only after authoritative commits.
+audience: developer
+maturity: preview
+slug: /developers/server/realtime-cluster-effects/
+---
+
+# Develop Realtime, Clustering, and Effects
+
+Realtime delivery helps a connected client notice a committed fact quickly. It
+does not make a fact durable. A WebSocket belongs to one application node;
+cluster propagation can notify peers; PostgreSQL and managed content remain
+the recovery authority when either path misses a message.
+
+## Separate the Three Boundaries
+
+| Boundary | Responsibility |
+| --- | --- |
+| Owning application use case | Event meaning, authorization timing, and post-commit publication |
+| `app/realtime` | Transport-neutral event and close-reason contracts, local-first delivery, peer codecs, loop prevention, and security invalidation semantics |
+| `server/websocket` | Upgrade, connection state, wire envelopes, sequencing, replay, liveness, subscriptions, and backpressure |
+| Cluster adapter | Authenticated bounded peer delivery and membership, not application policy |
+
+The application Realtime module is inert after construction. It owns no
+listener, goroutine, queue, retry loop, WebSocket, or cluster lifecycle. The
+composition root attaches its local sink and peer fan-out once before
+readiness.
+
+## Publish a Past-Tense Fact
+
+Create an event only after the durable state exists. Name it in the past tense,
+for example `UserSettingsChanged` or `SessionRevoked`. Include only the
+minimal approved identifiers, revision, state code, and event time a consumer
+needs to refetch or invalidate.
+
+Never include:
+
+- credentials, Session tokens, or continuity secrets;
+- Exam answers, Workspace content, paths, or PTY bytes;
+- mail bodies or recipient addresses;
+- private rationale or provider claims;
+- mutable domain records; or
+- arbitrary maps and error strings.
+
+The normal publication sequence is local-first, then best-effort peer fan-out.
+A peer-received event applies local work only and is never rebroadcast.
+
+## Decide Whether Delivery Is Durable
+
+Use ordinary realtime when the consumer can reconstruct the truth:
+
+- cache invalidation;
+- refetch hints;
+- connection close or subscription invalidation;
+- safe lifecycle facts; and
+- presence-like or transient UI coordination.
+
+Use a named Store operation, durable Job, mail occurrence, or purpose-specific
+outbox when the continuation itself must survive loss. Do not add retries to
+ordinary realtime until the product contract requires durable delivery.
+
+A failed post-commit publication is reported as a bounded transient diagnostic.
+It must not turn a successful durable mutation into a rollback claim or cause
+the application to repeat the mutation.
+
+## Establish and Authorize Connections
+
+The HTTP route catalog owns the named WebSocket upgrade. Cookie-authenticated
+upgrades require the exact configured public Origin; bearer-authenticated
+native clients may omit Origin. A successful upgrade transfers the connection
+to the sibling WebSocket transport.
+
+Each connection retains:
+
+- one immutable principal;
+- one node-local connection identity;
+- monotonic outbound sequence;
+- bounded outbound and replay queues;
+- explicit subscriptions;
+- liveness state; and
+- an enforced backpressure policy.
+
+Subscription requests carry an explicit action and resource and call the
+application authorization boundary. Authentication at upgrade is not
+permission to subscribe forever. Role, Role Binding, assurance, account, and
+Session changes can invalidate the affected connections across nodes.
+
+## Design Replay and Resynchronization
+
+Replay is bounded and node-local. Reconnection to the same node may recover
+only the events retained in that node’s queue. If the requested sequence is too
+old or the client reaches another node, the server creates a fresh connection
+and requires authoritative HTTP resynchronization.
+
+Do not transfer replay queues between nodes or claim cluster messages form a
+durable event log. A client must already know how to rebuild each subscribed
+view from its HTTP authority.
+
+PTY output is deliberately non-replayable. It belongs to the current protected
+Attempt Connection and execution stream, not the ordinary realtime event
+history.
+
+## Bound Backpressure
+
+Every queue and payload has a hard bound. Decide what happens when a consumer
+cannot keep up:
+
+- coalesce a replaceable refetch hint;
+- drop an explicitly disposable signal;
+- close the slow connection with a stable reason; or
+- reject new work before memory grows without limit.
+
+Never block an application mutation indefinitely on one client’s socket. Never
+place unbounded work on the cluster receive callback. Backpressure behavior is
+part of the protocol and needs deterministic tests.
+
+## Keep WebSocket Errors Protocol-Native
+
+WebSocket uses its own versioned error envelope and bounded close reasons. It
+reuses stable application codes where appropriate but does not send HTTP
+Problem Details after upgrade. Unknown failures map to a generic unavailable
+code and retain only bounded outer diagnostics.
+
+Wire DTOs are strict, versioned, and size-limited. Reject missing or unknown
+schema versions where the protocol requires a closed contract. An
+acknowledgement returns only safe receipt facts; it does not echo credentials,
+private policy, or rejected payloads.
+
+## Understand Cluster Transport
+
+Single-node and Memberlist adapters implement the same application-facing
+transport meaning. Memberlist provides peer membership and best-effort bounded
+delivery. It does not replace Redis, PostgreSQL, VFS, or a Job queue.
+
+Multi-node mode:
+
+- discovers compatible peers through short-lived PostgreSQL leases and
+  optional configured seeds;
+- authenticates gossip with its own rotating encryption key ring;
+- validates node identity and protocol ranges continuously;
+- allows unknown safe message types or fields only within the declared rolling
+  compatibility policy;
+- contains handler panics and never logs payload data; and
+- recovers from missed delivery through TTL, revalidation, periodic repair, or
+  client refetch.
+
+Redis is required for coherent disposable authentication counters in
+Memberlist mode. It is not the peer transport and remains non-authoritative.
+
+Read the exact [cluster delivery guarantees](https://github.com/sudosylabs/Proctor/blob/main/server/cluster/GUARANTEES.md)
+before changing message envelopes, admission, discovery, key rotation, or
+shutdown.
+
+## Test Realtime and Cluster Behavior
+
+Cover:
+
+- upgrade credential and Origin rules;
+- current subscription authorization;
+- event and error schema versions;
+- sequence monotonicity and replay window boundaries;
+- resynchronization after a gap or node change;
+- queue saturation and close/drop policy;
+- local-first then peer publication;
+- no rebroadcast of peer-received events;
+- invalidation after role, account, assurance, or Session change;
+- peer incompatibility and malformed message rejection;
+- duplicate, missing, and delayed delivery;
+- handler panic containment; and
+- recovery from PostgreSQL authority after missed propagation.
+
+Use focused unit tests first, then:
+
+```sh
+make -C server integration-realtime
+make -C server architecture
+```
+
+For a local incident, use [Jobs and realtime troubleshooting](../troubleshooting/jobs-realtime.mdx)
+or [cluster troubleshooting](../troubleshooting/cluster.mdx).

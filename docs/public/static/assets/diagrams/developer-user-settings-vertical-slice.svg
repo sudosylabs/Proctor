@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">User Settings replacement ownership flow</title>
+  <desc id="description">A session-authenticated HTTP request is strictly decoded into the owning application use case. The use case refers to the User Settings domain model, prepares self-owned policy, audit, and idempotency, and calls one named Store replacement. PostgreSQL locks the current document and commits source, audit, and replay outcome before a best-effort realtime refetch hint is published.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
+    </marker>
+    <marker id="arrow-transient" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#0b766e"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+
+  <rect x="272" y="56" width="192" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="296" y="96" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Domain model</text>
+  <text x="296" y="128" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Exact source · revision</text>
+  <text x="296" y="152" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LOCAL VALIDITY</text>
+  <path d="M 368 168 V 208" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-primary)"/>
+
+  <rect x="56" y="208" width="184" height="224" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="248" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">HTTP resource</text>
+  <text x="80" y="272" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PUT · SESSION</text>
+  <path d="M 80 296 H 216" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="80" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Strict DTO · CSRF</text>
+  <text x="80" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Body + key bounds</text>
+  <text x="80" y="408" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">TRANSLATE</text>
+
+  <rect x="272" y="208" width="192" height="224" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="296" y="248" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Owning use case</text>
+  <text x="296" y="272" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">REPLACE OWN</text>
+  <path d="M 296 296 H 440" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="296" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Self-owned policy</text>
+  <text x="296" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Audit · idempotency</text>
+  <text x="296" y="408" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DECIDE</text>
+
+  <rect x="496" y="208" width="184" height="224" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="520" y="248" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Store contract</text>
+  <text x="520" y="272" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NAMED REPLACE</text>
+  <path d="M 520 296 H 656" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="520" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Revision fence</text>
+  <text x="520" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Atomic outcome</text>
+  <text x="520" y="408" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">GUARANTEE</text>
+
+  <rect x="712" y="208" width="184" height="224" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="736" y="248" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">PostgreSQL</text>
+  <text x="736" y="272" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DURABLE COMMIT</text>
+  <path d="M 736 296 H 872" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="736" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Row lock · source</text>
+  <text x="736" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Audit · replay result</text>
+  <text x="736" y="408" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTHORITATIVE</text>
+
+  <rect x="928" y="208" width="216" height="224" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="952" y="248" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Realtime effect</text>
+  <text x="952" y="272" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AFTER COMMIT</text>
+  <path d="M 952 296 H 1120" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="952" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Bounded refetch hint</text>
+  <text x="952" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Source never published</text>
+  <text x="952" y="408" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RECONSTRUCTIBLE</text>
+
+  <path d="M 240 320 H 272" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 464 320 H 496" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 680 320 H 712" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 896 320 H 928" fill="none" stroke="#0b766e" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
+
+  <rect x="56" y="488" width="1088" height="96" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="528" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">One committed meaning</text>
+  <text x="80" y="560" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">The response and an identical replay identify the same durable revision; a transient notification failure cannot erase or repeat it.</text>
+
+  <path d="M 56 632 V 648 H 1144 V 632" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="680" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Each boundary owns one decision; only PostgreSQL makes the replacement authoritative.</text>
+</svg>

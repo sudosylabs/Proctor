@@ -54,6 +54,105 @@ Read paths must remain bounded and authorization-aware where visibility is
 part of the query. Avoid loading an unrestricted collection and filtering it
 in application memory.
 
+## Use Precise Lookup Semantics
+
+Store methods use three distinct absence contracts:
+
+| Operation | Meaning when no record exists |
+| --- | --- |
+| `Get` | Return `store.ErrNotFound` |
+| `Find` | Return the explicit `found` value as false |
+| `List` | Return an empty collection |
+
+`(nil, nil)` never means “not found.” A returned record is rehydrated into a
+domain type and validated before it crosses the adapter boundary. An invalid
+persisted record is an integrity failure, not an absent record.
+
+Store contracts return domain values or explicit Store-owned projections and
+aggregate results. Keep SQL rows, nullable driver types, query builders,
+column names, and transaction handles private to `sqlstore`.
+
+## Name the Atomic Guarantee
+
+A named Store operation is valuable when its name and parameters expose the
+complete race that must be resolved. For example, a conditional replacement
+may need to:
+
+1. lock the current aggregate;
+2. resolve an existing idempotent outcome;
+3. compare the expected revision;
+4. write the new state;
+5. write required audit;
+6. retain a bounded replay result; and
+7. commit all of those facts together.
+
+The application prepares the policy-bearing inputs. The Store contract states
+what wins under concurrency. The SQL implementation chooses row locks,
+advisory locks, constraints, and statement order.
+
+Do not split a guarantee into a sequence of public Store calls merely because
+each call would be smaller. Another node can act between those calls.
+
+## Use Constraints and Locks Together
+
+Choose the narrowest PostgreSQL mechanism that protects the invariant:
+
+- a unique, foreign-key, check, or exclusion constraint for facts that must be
+  true regardless of caller;
+- `SELECT … FOR UPDATE` when one current row serializes a transition;
+- a transaction-scoped advisory lock for a bounded namespace that has no
+  natural row yet; and
+- `SKIP LOCKED` for work claiming or bounded maintenance where several nodes
+  may safely divide eligible rows.
+
+Application prechecks can improve error quality but never replace the
+constraint or lock that closes the race. Translate expected constraint
+outcomes into typed Store errors; preserve unexpected driver detail only in the
+wrapped internal cause.
+
+Keep a canonical lock order when a transaction touches several aggregates.
+Review existing named operations that touch the same rows before adding
+another order.
+
+## Separate Revisions, Time, and Idempotency
+
+These mechanisms answer different questions:
+
+| Mechanism | Question |
+| --- | --- |
+| Explicit revision | Is this still the exact state the caller inspected? |
+| PostgreSQL time | Is a deadline, lease, or effective period current at commit? |
+| Idempotency key | Has this authenticated semantic command already completed? |
+| Unique constraint | Can two durable records with this identity coexist? |
+
+Do not use timestamps as optimistic revisions. Do not treat an idempotency key
+as permission to skip current authorization. An exact replay returns its
+retained result only after the current use case has repeated the checks required
+by its contract.
+
+Retry only operations on an explicit safe allowlist. A transient database
+failure may occur after an unknown commit outcome, so an operation is not safe
+to retry merely because the SQL text looks simple. The retry layer remains
+nearest SQL; timing wraps the complete cache-miss path; and cache sits outside
+both so a hit does not pretend database work happened.
+
+## Maintain Store Conformance
+
+Each Store contract’s reusable conformance suite is the executable statement
+of its portable behavior. Add cases for:
+
+- invalid input and exact absence semantics;
+- successful and no-op outcomes;
+- stale revisions and competing writers;
+- idempotent replay, conflict, and in-progress states;
+- required audit failure;
+- database-time expiry or lease fences; and
+- unknown-outcome or adapter error translation.
+
+The PostgreSQL adapter must pass the same observable suite as any test or
+memory adapter. Add a PostgreSQL-specific race test where the guarantee depends
+on actual locking or constraints rather than a sequential fake.
+
 ## Current Pre-Release Migration Rule
 
 The repository currently owns one rewritable schema baseline:

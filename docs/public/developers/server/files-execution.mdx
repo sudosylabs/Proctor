@@ -1,0 +1,178 @@
+---
+title: Develop Files, Workspaces, and Execution
+description: Preserve PostgreSQL metadata authority while streaming opaque VFS bytes and projecting acknowledged Attempt Workspace state into replaceable execution hosts.
+audience: developer
+maturity: preview
+slug: /developers/server/files-execution/
+---
+
+# Develop Files, Workspaces, and Execution
+
+Proctor separates semantic file state from physical bytes. PostgreSQL knows
+what content means, who owns it, whether it is available, and who may read it.
+VFS stores opaque bytes. An Execution Environment is a replaceable projection
+of an Attempt Workspace, never a second durable workspace.
+
+## Keep Metadata and Bytes in Their Places
+
+| Boundary | Owns | Must not own |
+| --- | --- | --- |
+| Application and domain | Purpose, owner, authorization, lifecycle, retention, publication, and events | Concrete VFS backend or object paths |
+| PostgreSQL | Stable identities, revisions, relationships, availability, leases, checksums, and authoritative selection | Raw streamed content |
+| File Content module | Bounded validation/transformation, renditions, private key derivation, exact reads, and physical purge over VFS | Domain authorization or infrastructure lifecycle |
+| `packages/vfs` | Backend-neutral streaming operations and opaque storage concurrency | Proctor domain meaning, discovery, or permission |
+| Execution host | Isolated guest mechanics, projection, PTY, readiness, and capacity | Attempt, Session, Sitting, or general VFS authority |
+
+Never authorize from a VFS path, object key, bucket listing, local path, or
+backend revision. Object keys are private, unguessable, and independent of
+logical Workspace paths.
+
+## Choose the Correct Content Model
+
+A stable File Entry with immutable File Revisions fits content where retained
+generations have product meaning, such as profile pictures and Exam Resources.
+A File Revision can own several renditions without turning each size or format
+into another content change.
+
+An Attempt Workspace has a different model:
+
+- Workspace Entry is stable identity;
+- Workspace Path is mutable logical location;
+- Workspace Content Version is an opaque comparison token for current bytes;
+- the journal retains bounded acknowledged changes; and
+- Submission pins one immutable manifest without copying bytes.
+
+Do not turn every workspace save into a retained File Revision or use a path as
+entry identity. User Settings are another separate model: exact PostgreSQL
+source, not a generic file or VFS object.
+
+## Stage Fallible Byte Work Before Visibility
+
+An upload normally follows this order:
+
+1. validate the purpose and create a short-lived PostgreSQL Upload Lease with
+   preallocated identities and private storage keys;
+2. stream to a new immutable VFS object under a hard byte limit while computing
+   its checksum;
+3. decode, inspect, or derive every required rendition before publication;
+4. call one named Store operation that verifies the unexpired lease and commits
+   metadata, domain relationship, audit, and lease consumption; and
+5. publish safe effects only after commit.
+
+If the database outcome is unknown, do not delete the object immediately. It
+may now be referenced by a successful commit. Bounded cleanup resolves durable
+references and safety windows before idempotent physical deletion.
+
+Visible metadata must never point to partial bytes. Only an Available revision
+may be downloaded, indexed, distributed, or projected. Pending, quarantined,
+and rejected states remain explicit even if the first inspection adapter is a
+no-op.
+
+## Build Purpose-Specific HTTP Operations
+
+Expose profile-picture, Exam Resource, Starter Workspace, Attempt Workspace, or
+Submission operations—not a generic endpoint that accepts caller-provided
+owner and purpose values.
+
+For uploads:
+
+- apply the transport body limit before reading content;
+- verify media type from bytes rather than trusting the filename or header;
+- stream instead of buffering unbounded content;
+- reject malformed multipart order and extra parts;
+- require the exact authorization, revision, lease, and idempotency contract;
+  and
+- keep temporary identifiers, object keys, and backend failures out of the
+  response.
+
+For protected downloads:
+
+- resolve current semantic authorization before opening content;
+- select one exact Available rendition through PostgreSQL metadata;
+- return a named binary result with explicit media type, length, ETag, cache,
+  and `nosniff` behavior;
+- set private or no-store caching according to the purpose; and
+- never return a public or signed storage URL.
+
+The response writer must stop if the application cannot establish the complete
+result before headers are committed.
+
+## Preserve Workspace Acknowledgement
+
+An acknowledged Attempt Workspace mutation survives loss of the client,
+application node, and execution host. Replacement stages new bytes, then
+conditionally swaps the PostgreSQL pointer and content version. A response is
+success only after that durable commit.
+
+Each mutation carries:
+
+- an idempotency key;
+- the expected Workspace Entry, Path, and Content Version conditions;
+- the active protected Attempt credential and Connection selector; and
+- explicit Participation identity and generation.
+
+Reconnect consumes the ordered journal after the last acknowledged Workspace
+Cursor or refreshes a complete pinned manifest after a gap. A WebSocket event is
+only a targeted refetch hint; it contains no path, content, object selector, or
+credential.
+
+## Treat Execution as a Projection
+
+An Execution Profile is authored on an Exam Draft and frozen into an Exam
+Revision. It selects whether an Attempt Terminal exists, an installation
+catalog image, and a network mode. It does not select a host, upload a kernel,
+or become a Dockerfile.
+
+The application owns placement and an opaque execution grant. The external
+execenv contract owns:
+
+- host readiness and capacity;
+- ensure and idempotent revoke;
+- full-tree replacement and incremental apply;
+- guest change watch/open;
+- freeze and thaw; and
+- exactly one PTY attachment.
+
+Candidates and creators never learn host addresses or credentials. Hosts never
+receive Proctor Sessions, Participation records, or general VFS credentials.
+Production requires isolated hosts; the in-memory adapter is test-only.
+
+## Coordinate Two Workspace Writers
+
+The protected browser IDE and Attempt Terminal may both change the Workspace.
+Both paths commit through the same authoritative Workspace mutation policy.
+Mutation origin is an explicit closed value:
+
+- candidate-originated committed changes may be applied to the guest; and
+- execution-host-originated changes are published to the client but are not
+  echoed back to the host.
+
+Do not infer origin from context or connection type. Host events are bounded,
+validated against the same path and quota rules, and acknowledged through
+PostgreSQL before becoming Submission state.
+
+Observation loss or an unacknowledgeable guest event closes the terminal and
+durably releases the exact grant. A later authorized open creates a fresh
+projection from acknowledged Workspace state. In-place recovery must not claim
+that unobserved guest writes are durable.
+
+PTY octets are a separate transport stream. They are not Workspace mutations,
+realtime domain events, logs, audit data, or Integrity Evidence.
+
+## Review Files and Execution
+
+- Does PostgreSQL remain the only semantic authority?
+- Can an object or host identifier be changed without changing domain identity?
+- Is every upload bounded before and during streaming?
+- Can a database failure leave only invisible content?
+- Does cleanup wait through unknown outcomes and retained references?
+- Are protected reads purpose-specific and free of public storage URLs?
+- Can an acknowledged Workspace change survive every transient component loss?
+- Does host projection fence the current grant and Participation authority?
+- Are paths, bytes, PTY output, credentials, and private content absent from
+  ordinary logs, events, metrics, and unsafe audit fields?
+
+Run the focused Store/VFS and execution tests, the applicable dependency-backed
+integration targets, and the server architecture gate. Use
+[data and content troubleshooting](../troubleshooting/data-content.mdx) for
+local failures.

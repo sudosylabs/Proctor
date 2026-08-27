@@ -397,6 +397,64 @@
         "server/httpapi/problem.go",
         "server/metrics/module.go"
       ]
+    },
+    {
+      "id": "developer-user-settings-vertical-slice",
+      "path": "static/assets/diagrams/developer-user-settings-vertical-slice.svg",
+      "public_path": "/assets/diagrams/developer-user-settings-vertical-slice.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from the implemented Proctor User Settings model, application, Store, PostgreSQL, HTTP, OpenAPI, and realtime contracts; no upstream artwork or expression was copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains generic boundary labels and the public operation purpose only; no User, Session, settings source, credential, Institution, request, hostname, filesystem path, or operational data."
+      },
+      "alt": "A Session-authenticated User Settings replacement passes from strict HTTP decoding to the owning self-service application use case, which refers to the domain model and prepares audit and idempotency before calling a named Store replacement. PostgreSQL locks the current document and commits the source, audit, and replay outcome before a best-effort realtime refetch hint is published.",
+      "caption": "Each boundary owns one part of the replacement. PostgreSQL makes the source, audit, and replay outcome authoritative; realtime publishes only a post-commit refetch hint and never the settings source.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "7e9b09ea0aba09a7300384a5440b92ffafd419e91633553728c11e91ec29d7b6",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "server/model/user_settings.go",
+        "server/app/user_settings.go",
+        "server/store/store.go",
+        "server/store/sqlstore/user_settings_store.go",
+        "server/httpapi/user_settings.go",
+        "server/openapi/fragments/users/users-settings.yaml"
+      ]
     }
   ]
 }

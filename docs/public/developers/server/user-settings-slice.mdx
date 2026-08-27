@@ -1,0 +1,283 @@
+---
+title: Trace a Complete User Settings Slice
+description: Follow the implemented conditional User Settings replacement through model, application, Store, PostgreSQL, HTTP, OpenAPI, generated browser types, tests, and post-commit realtime.
+audience: developer
+maturity: preview
+slug: /developers/server/user-settings-slice/
+---
+
+# Trace a Complete User Settings Slice
+
+This tutorial reads one existing behavior end to end: replacing the signed-in
+User’s exact User Settings Document. It is a useful teaching slice because it
+has real concurrency, privacy, idempotency, audit, and realtime requirements
+without the additional lifecycle of an Exam or file upload.
+
+The goal is not to copy its files for every feature. The goal is to see how one
+decision is carried across the boundaries that need it and nowhere else.
+
+<GovernedFigure asset="developer-user-settings-vertical-slice" />
+
+## State the Behavior Before Reading Code
+
+The operation is:
+
+~~~text
+PUT /api/v1/users/me/settings
+~~~
+
+An interactive Session may replace only its own complete settings source. The
+request supplies the exact current revision and a required idempotency key. A
+stale revision cannot overwrite another client’s save. A committed change,
+safe audit event, and retained replay outcome are atomic. Realtime sends one
+post-commit refetch hint and never carries the source document.
+
+That statement already tells us which boundaries are needed:
+
+| Concern | Boundary |
+| --- | --- |
+| Exact source, format, revision, and timestamp validity | Domain model |
+| Session-only self ownership, JSONC policy, audit intent, idempotency meaning, effect timing | Application |
+| Atomic revision fence, audit, and replay outcome | Store contract |
+| Locking and SQL transaction | PostgreSQL adapter |
+| Strict JSON, body limit, Session/CSRF, DTOs, response cache policy | HTTP |
+| Public fields, examples, errors, and operation metadata | OpenAPI |
+| Browser compile-time contract | Generated TypeScript |
+| Fast and dependency-backed evidence | Tests |
+
+## 1. Begin at the Domain Model
+
+Read [server/model/user_settings.go](https://github.com/sudosylabs/Proctor/blob/main/server/model/user_settings.go).
+
+UserSettingsDocument defines:
+
+- one owning User ID;
+- exact source that generic JSON cannot accidentally expose;
+- a positive format version;
+- an opaque revision token;
+- creation and update times; and
+- hard source and structural bounds.
+
+NewUserSettingsDocument produces canonical initial source. Validate checks
+durable local validity, including UTF-8, source size, revision shape, and time
+ordering. It does not parse HTTP, identify the caller, authorize access, or
+query PostgreSQL.
+
+Run the model tests:
+
+~~~sh
+cd server
+go test ./model -run '^Test(UserSettings|NewUserSettings)' -count=1
+~~~
+
+When designing another model, stop here until invalid state and transitions are
+covered independently of transport and persistence.
+
+## 2. Read the Application Command
+
+Read [server/app/user_settings.go](https://github.com/sudosylabs/Proctor/blob/main/server/app/user_settings.go).
+
+The public command is explicit:
+
+~~~go
+type ReplaceOwnUserSettingsCommand struct {
+	Source           string
+	FormatVersion    int
+	ExpectedRevision model.UserSettingsRevision
+	IdempotencyKey   string
+}
+~~~
+
+There is no caller-supplied User ID. The application derives ownership from the
+immutable Session principal. This is a deliberate self-service policy, not an
+HTTP shortcut.
+
+Follow ReplaceOwn in order:
+
+1. require a valid interactive Session principal;
+2. require the idempotency key and supported format;
+3. validate the exact JSONC source under application-owned structural bounds;
+4. read the current self-owned document and reject invalid persisted state;
+5. derive a new opaque revision and monotonic update time;
+6. prepare semantic idempotency for user_settings.replace;
+7. prepare safe audit only when the expected revision matches and content
+   actually changes;
+8. call the named Store replacement;
+9. map typed Store conflicts into stable application errors; and
+10. publish one refetch event only for a fresh committed change.
+
+The effect failure reporter records a bounded transient diagnostic. It cannot
+change the returned committed result.
+
+Run the focused application tests:
+
+~~~sh
+cd server
+go test ./app -run '^TestUserSettings' -count=1
+~~~
+
+Read the test names as a policy checklist: exact-source reads, unsupported
+read-only formats, Session requirement, safe failures, atomic mutation input,
+invalid source, conflict mapping, unknown outcomes, one post-commit hint,
+replay suppression, concurrent writers, and effect failure.
+
+## 3. Inspect the Narrow Store Contract
+
+Read the UserSettingsStore section of
+[server/store/store.go](https://github.com/sudosylabs/Proctor/blob/main/server/store/store.go).
+
+The consumer needs two operations:
+
+~~~go
+type UserSettingsStore interface {
+	Get(context.Context, model.UserID) (*model.UserSettingsDocument, error)
+	Replace(
+		context.Context,
+		*UserSettingsReplacement,
+		*CommandIdempotency,
+	) (*UserSettingsReplacementResult, error)
+}
+~~~
+
+Replace is not generic update CRUD. Its command carries expected and next
+revisions, exact source, format, time, and optional prepared audit. Its second
+input carries the bounded authenticated semantic command. Its result makes
+changed and replayed outcomes explicit.
+
+This contract lets the application express policy without knowing about row
+locks, SQL statements, or a transaction handle.
+
+## 4. Follow the PostgreSQL Transaction
+
+Read [server/store/sqlstore/user_settings_store.go](https://github.com/sudosylabs/Proctor/blob/main/server/store/sqlstore/user_settings_store.go).
+
+The adapter:
+
+1. validates the complete replacement and idempotency command;
+2. enters the shared idempotent-mutation transaction;
+3. locks the User Settings row with FOR UPDATE;
+4. validates the rehydrated current document;
+5. compares the expected revision;
+6. returns a no-op outcome when source and format already match;
+7. requires valid prepared audit for an actual change;
+8. conditionally updates the exact row and revision;
+9. inserts the successful audit event;
+10. encodes the bounded versioned replay outcome; and
+11. commits or rolls back the complete result.
+
+The retained outcome omits the settings source. An identical retry can return
+the committed revision without replaying the mutation or effect. Reusing the
+same key for different semantic input conflicts.
+
+The reusable Store conformance lives in
+[server/store/storetest/user_settings_store.go](https://github.com/sudosylabs/Proctor/blob/main/server/store/storetest/user_settings_store.go).
+The SQL adapter runs it inside the PostgreSQL integration suite; this is where
+actual locking, concurrent writers, and persistence-time outcomes are proved.
+
+## 5. Read the HTTP Resource
+
+Read [server/httpapi/user_settings.go](https://github.com/sudosylabs/Proctor/blob/main/server/httpapi/user_settings.go).
+
+The resource owns separate request and response DTOs. The replacement route:
+
+- is PUT on the one literal self path;
+- requires a Session;
+- adds cookie CSRF through the Session mutation class;
+- requires Idempotency-Key;
+- applies a hard body limit before decoding;
+- declares its complete public-error allowlist; and
+- returns Cache-Control: private, no-store.
+
+The handler strictly decodes one JSON value, parses the opaque revision, maps
+to the application command, and maps the safe result back. It does not parse
+JSONC itself, read the Store, authorize another User, write audit, or publish
+realtime.
+
+Run the transport and agreement tests:
+
+~~~sh
+cd server
+go test ./httpapi -run '^TestUserSettings' -count=1
+~~~
+
+The tests prove body and field strictness, maximum source handling, Session and
+path restrictions, private caching, no source echo after replacement, and
+runtime/OpenAPI agreement.
+
+## 6. Read the Human-Owned OpenAPI
+
+Read [server/openapi/fragments/users/users-settings.yaml](https://github.com/sudosylabs/Proctor/blob/main/server/openapi/fragments/users/users-settings.yaml).
+
+The YAML owns the public path, summaries, behavior, security, Proctor
+authentication/idempotency/error metadata, request body purpose, schemas,
+response cache header, and synthetic example. It does not dictate the domain
+model or SQL table.
+
+If the public shape changes, edit this YAML and run:
+
+~~~sh
+make -C server openapi-build
+make -C server openapi-check
+make -C server openapi-agreement
+~~~
+
+Review the generated server/openapi.json diff. Do not edit it.
+
+## 7. Regenerate the Browser Consumer
+
+The hosted webapp consumes the reviewed OpenAPI artifact through generated
+types in webapp/src/api/generated/schema.ts. It receives typed
+UserSettingsReplaceRequest, UserSettingsResponse, and
+UserSettingsReplacementResponse shapes without importing Go DTOs.
+
+After an OpenAPI schema change:
+
+~~~sh
+cd webapp
+npm run api:generate
+npm run api:check
+~~~
+
+Do not patch the generated TypeScript to compensate for missing OpenAPI fields.
+The source contract must be corrected.
+
+## 8. Prove the Complete Slice
+
+During implementation, run the focused model, application, and HTTP commands
+above. Then run:
+
+~~~sh
+make -C server openapi-agreement
+make -C server architecture
+make -C server check
+~~~
+
+When PostgreSQL is available, add the real transaction and composition
+evidence:
+
+~~~sh
+make -C server integration-postgres
+~~~
+
+For a public documentation or API-reference change, finish with:
+
+~~~sh
+make docs-check
+~~~
+
+## Apply the Pattern Without Copying It
+
+For another feature, ask which of these boundaries are actually required.
+
+- A pure domain transition may need no route, SQL, or realtime event.
+- A read may need current authorization but no audit or idempotency.
+- A cross-model mutation may need a larger named aggregate operation.
+- Required process-loss continuation may add a Job.
+- Required communication may add mail intent in the same commit.
+- File content may add a staged VFS operation and cleanup safety window.
+
+The invariant is not “every feature has these files.” The invariant is that
+every needed owner participates, no owner is duplicated, and the widest
+relevant test proves the assembled behavior.
+
+Continue with the [server review checklists](./review-checklists.mdx).

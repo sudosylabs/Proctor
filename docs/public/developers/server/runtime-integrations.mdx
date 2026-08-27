@@ -1,0 +1,192 @@
+---
+title: Develop Runtime and External Integrations
+description: Change configuration, CLI commands, external authentication, localization, logs, metrics, and lifecycle integrations without leaking infrastructure into application policy.
+audience: developer
+maturity: preview
+slug: /developers/server/runtime-integrations/
+---
+
+# Develop Runtime and External Integrations
+
+Runtime code turns operator-owned configuration into concrete capabilities and
+owns their lifecycle. Application code consumes small policies and narrow
+ports. This boundary is what lets one-node and active-active installations use
+the same product semantics with different adapters.
+
+## Separate Configuration from Application Data
+
+Deployment configuration includes listeners, public URL, PostgreSQL, cache,
+cluster, VFS, SMTP, execution hosts, external providers, logging, metrics,
+secrets, and process limits. It is operator-owned JSON plus explicit
+`PROCTOR_` environment overrides.
+
+Institution presentation, academic policy, Exam defaults, invitation behavior,
+roles, and the revisioned Access Policy are PostgreSQL application data changed
+through authorized use cases.
+
+Do not put deployment secrets in application tables or make application
+settings environment variables. Do not hand `config.Config` or `config.Store`
+to a use case. The composition root translates configuration into:
+
+- a small immutable policy;
+- a narrow provider for explicitly dynamic behavior; or
+- a concrete adapter behind a consumer-owned interface.
+
+The active configuration file is required and never generated or silently
+overwritten. Unknown fields fail validation. Secret fields remain redacted in
+display, logs, diagnostics, and errors.
+
+## Decide Reload versus Restart
+
+Reload only when the owning capability can validate a complete replacement and
+swap it atomically while in-flight callers retain a coherent snapshot.
+
+Current dynamic examples include logging targets and the external-provider
+registry. Listener addresses, TLS mode, cluster backend, node identity, and
+execution-host catalog require restart. Do not claim a field is reloadable
+because its Go struct can be changed.
+
+When adding configuration:
+
+1. add the typed field and built-in default;
+2. add the canonical example field, including a visible empty value when it is
+   secret;
+3. add a stable environment override only when scalar override is appropriate;
+4. validate shape separately from external connectivity;
+5. redact it deliberately if sensitive;
+6. state whether it reloads or requires restart; and
+7. add schema/default/example drift tests.
+
+Structured host and provider entries stay in the file so identity, endpoint,
+trust, and credentials are reviewed together.
+
+## Build External Authentication as an Adapter
+
+CAS and OIDC implementations live under `server/platform/externalauth` behind
+a protocol-neutral application contract. The composition root builds an
+instance-scoped registry from configuration and can atomically replace the
+whole provider set.
+
+The adapter owns protocol mechanics:
+
+- authorization or service URLs;
+- callback exchange and validation;
+- bounded network requests and responses;
+- signature, issuer, audience, nonce, ticket, or subject verification; and
+- conversion to a bounded opaque provider result.
+
+The application owns:
+
+- one-use PostgreSQL-backed login state and browser proof;
+- the purpose of the flow—Web Session, Desktop authorization, Invitation, or
+  identity linking;
+- Access Policy admission;
+- exact provider-ID plus opaque-subject identity;
+- User provisioning or linking;
+- Session issuance; and
+- audit and safe public failures.
+
+Never link an existing User because provider email or username happens to
+match. Never persist or log provider tokens, codes, tickets, raw claims,
+subjects, or response bodies. Provider profile changes do not silently rewrite
+established Proctor fields.
+
+CAS and OIDC are the implemented provider families. SAML/RENATER, LDAP, and
+provider-directory synchronization remain product decisions; do not document
+or scaffold them as supported behavior.
+
+{/* TODO(external-provider-roadmap): Replace the preceding decision note only
+after the next provider family and any directory synchronization/deprovisioning
+contract are accepted and implemented. */}
+
+## Keep CLI Commands Thin
+
+The `proctor` command assembles its Cobra tree under
+`server/cmd/proctor/commands` and calls the module-root server facade. It may
+parse flags, select an explicit configuration path, present safe output, and
+map process exit behavior. It must not construct PostgreSQL, application
+services, or platform adapters independently.
+
+For a command:
+
+- create fresh command state for every invocation;
+- keep secrets out of arguments when they would enter process listings;
+- use private standard input for purpose-specific secret entry;
+- emit structured or human output intentionally;
+- keep command help as the exact discoverable option inventory; and
+- enter application policy through the root facade rather than calling Store.
+
+An offline recovery command still uses named Store guarantees and audit. It is
+not permission to add a hidden network endpoint or a second normal runtime.
+
+## Add Localization at the Presentation Edge
+
+Stable machine values—error code, HTTP status, state, action, resource, and
+protocol fields—remain locale-independent. Human titles, details, built-in
+role copy, mail copy, command copy, and bounded WebSocket messages resolve from
+the embedded localization catalogs.
+
+HTTP negotiates from `Accept-Language`, then falls back through the
+Installation locale and English. A WebSocket fixes its locale during the
+handshake. Mail freezes recipient-localized copy before durable delivery.
+
+Add English canonical messages first. Keep IDs stable and semantic. Tests must
+prove placeholder signatures, fallback behavior, and catalog completeness.
+Never store translated text in durable machine-state fields when the code or
+meaning is the real contract.
+
+## Instrument at Boundaries
+
+Request-driven application services return failures rather than logging them.
+Unexpected failures are logged once at the outer boundary. Long-lived workers
+receive a narrow logger only for events that would otherwise be unobservable.
+
+Logging fields are bounded scalars. Do not log complete structs, configuration,
+credentials, Sessions, provider payloads, mail or file content, Workspace
+paths, Exam answers, or raw claims.
+
+Metrics use one private Prometheus registry and low-cardinality closed labels.
+Instrument HTTP route templates, Store operation classes, adapter outcomes,
+queue state, and other stable boundaries. Never label User, resource, node,
+host, path, recipient, cache key, payload, or raw error text.
+
+The optional metrics listener is node-local and loopback-bound by default.
+Non-loopback exposure requires static TLS and bearer protection. It exposes
+`GET /metrics` only, never profiling routes, and participates in the same
+owned lifecycle as the server.
+
+## Add an Infrastructure Adapter
+
+Before wiring a new adapter:
+
+1. identify the existing consumer-owned contract;
+2. keep selection in module-root `server.New`;
+3. validate configuration and connectivity before readiness;
+4. transfer exactly one lifecycle owner;
+5. classify failures into the narrow portable contract;
+6. provide a conformance suite when several adapters implement the behavior;
+7. expose bounded health without private configuration; and
+8. close it in reverse order under a deadline.
+
+Do not create a platform getter so application code can discover the adapter.
+If a consumer needs only one operation, project that operation.
+
+## Runtime Review
+
+- Is the input deployment configuration or durable application data?
+- Is every secret redacted and excluded from diagnostics?
+- Is reconfiguration atomic, or is restart explicitly required?
+- Does the application see only a policy or narrow port?
+- Does external authentication resolve identity only by provider ID and opaque
+  subject?
+- Is the CLI a thin caller of the root facade?
+- Are localization and protocol values kept separate?
+- Are logging and metrics bounded and low-cardinality?
+- Does readiness fail when a mandatory capability is unusable?
+- Is shutdown ownership exact and reversible after partial startup?
+
+Run the affected configuration, provider, localization, logging, metrics, and
+lifecycle tests, then the corresponding integration target and
+`make -C server architecture`. Use
+[runtime and readiness troubleshooting](../troubleshooting/runtime-readiness.mdx)
+when a local node cannot start.
