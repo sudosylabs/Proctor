@@ -1,8 +1,8 @@
 .panel {
-  background: var(--proctor-sidebar);
-  border: var(--proctor-stroke-hairline) solid var(--proctor-border);
-  border-left: var(--proctor-space-1) solid var(--proctor-primary);
-  border-radius: var(--proctor-radius-card);
+  background: color-mix(in srgb, var(--proctor-sidebar) 64%, transparent);
+  border: 0;
+  border-left: var(--proctor-stroke-flow) solid var(--proctor-primary);
+  border-radius: 0;
   color: var(--proctor-ink-soft);
   margin: var(--proctor-space-6) 0;
   padding: var(--proctor-space-4) var(--proctor-space-5);

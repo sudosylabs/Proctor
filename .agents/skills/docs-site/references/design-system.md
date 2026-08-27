@@ -1,9 +1,10 @@
 # Documentation visual-system reference
 
-Proctor documentation should feel like technical evidence prepared for an
+Proctor documentation should feel like a technical handbook prepared for an
 operator, institution administrator, security reviewer, or developer who needs
 to trust what they are reading. Its design is precise, calm, and inspectable.
-It is neither a marketing skin nor a collection of page-specific visual ideas.
+It is neither a marketing skin, an application dashboard, nor a collection of
+page-specific visual ideas.
 
 This document owns the durable visual language. The human-edited values live in
 [`docs/site/design-system/tokens.mjs`](../../../../docs/site/design-system/tokens.mjs). The
@@ -13,17 +14,31 @@ validator. Edit the source module, not either adapter.
 
 ## Direction
 
-The subject is self-hosted examination infrastructure. The audience needs
-assurance about authority, sequence, state, and recovery. The design therefore
-uses the visual language of an evidence sheet: aligned registration geometry,
-fenced regions, explicit paths, and short verification rails. These devices
-encode containment or proof; they are never background decoration.
+The subject is self-hosted examination infrastructure. The audience needs to
+read for long periods and needs assurance about authority, sequence, state,
+and recovery. The primary visual language is therefore a restrained technical
+handbook: a strongly branded global bar, quiet paper-like reading surfaces,
+visible navigation depth, generous prose rhythm, and compact evidence cues.
+Ordinary prose is allowed to look like prose. It does not sit inside cards,
+badges, tinted panels, or repeated full-width rules merely to make a page feel
+designed.
 
-The signature element is the **fenced evidence plate**. A plate is a bounded
-surface with a restrained 8-pixel drafting grid and one clearly emphasized
-relationship. Use it for an illustration, architecture map, or other evidence
-that must be inspected separately from prose. Do not cover ordinary pages in a
-grid or repeat the Proctor mark as a pattern.
+Purple owns the global navigation and marks the current path, authoritative
+actions, and selected technical state. It should occupy few, deliberate
+surfaces. A large pale-purple rectangle is not the default treatment for
+guidance, metadata, search results, or navigation. Those components rely first
+on typography, spacing, and one-dimensional rules.
+
+The signature illustration element is the **fenced evidence plate**. A plate
+is a bounded surface with a restrained 8-pixel drafting grid and one clearly
+emphasized relationship. Use it for an illustration, architecture map, or
+other evidence that must be inspected separately from prose. Do not cover
+ordinary pages in a grid or repeat the Proctor mark as a pattern.
+
+The signature reading cue is a **registration rule**: a short purple line that
+anchors guide metadata, selected navigation, or a factual note to the same
+left-hand reading edge. It is never used as an arbitrary divider, and several
+rules must not compete in the same component.
 
 The desktop reading structure is intentionally asymmetric:
 
@@ -43,6 +58,12 @@ Guide pages keep a `72–76ch` prose measure, contextual section navigation on
 the left, and an on-page outline on the right when headings warrant one. A
 compact metadata line before the page heading identifies the intended audience
 and content maturity. That line is orientation, not a decorative badge row.
+
+Page headings are editorial rather than promotional. Use a compact display
+size, a comfortable lead paragraph, and whitespace to separate sections.
+Second-level headings do not receive a full-width border by default. Tables use
+horizontal reading rules rather than a boxed spreadsheet grid. Code blocks and
+search are raised only as much as their interaction requires.
 
 API overview pages use the same reader but may begin with a contract summary:
 what is authoritative, how much of the contract is indexed, and whether the
@@ -94,7 +115,7 @@ standard foreground/surface pairs in both themes.
 | Role | Light | Dark |
 | --- | --- | --- |
 | Canvas | `#FFFFFF` | `#141016` |
-| Sidebar | `#F7F5F9` | `#1B151E` |
+| Sidebar | `#FAF9FB` | `#1B151E` |
 | Surface | `#FFFFFF` | `#211A25` |
 | Raised surface | `#FFFFFF` | `#2A2130` |
 | Border | `#E1DCE5` | `#3B3142` |
@@ -127,10 +148,10 @@ The site type scale is:
 | Caption | `0.75rem` | `1.5` | `400` |
 | Utility label | `0.75rem` | `1.25` | `600` |
 | Small body | `0.875rem` | `1.6` | `400` |
-| Body | `1rem` | `1.75` | `400` |
+| Body | `1rem` | `1.7` | `400` |
 | Small heading | `1.25rem` | `1.35` | `600` |
-| Section heading | `1.75rem` | `1.2` | `600` |
-| Page heading | `3rem` | `1.05` | `700` |
+| Section heading | `1.625rem` | `1.25` | `600` |
+| Page heading | `2.625rem` | `1.1` | `600` |
 
 Responsive page headings may use `clamp()` around the page-heading token. Body
 copy stays within `72–76ch`; a large viewport is not permission to lengthen a

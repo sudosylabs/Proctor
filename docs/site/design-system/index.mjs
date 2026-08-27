@@ -50,10 +50,10 @@ ${infimaVariables(designTokens.infima.light)}
   --ifm-font-family-base: ${designTokens.typography.sans.family};
   --ifm-font-family-monospace: ${designTokens.typography.mono.family};
   --ifm-heading-font-family: var(--ifm-font-family-base);
-  --ifm-heading-font-weight: 700;
+  --ifm-heading-font-weight: 600;
   --ifm-heading-color: var(--proctor-ink);
   --ifm-font-color-base: var(--proctor-ink-soft);
-  --ifm-navbar-height: 3.75rem;
+  --ifm-navbar-height: 4rem;
   --ifm-navbar-shadow: none;
   --ifm-global-radius: var(--proctor-radius-control);
   --ifm-code-font-size: 0.875rem;

@@ -3,11 +3,24 @@
   color: var(--proctor-ink-muted);
   display: flex;
   flex-wrap: wrap;
-  font-family: var(--ifm-font-family-monospace);
   font-size: var(--proctor-type-caption-size);
   gap: var(--proctor-space-2);
-  letter-spacing: 0.025em;
-  margin: 0 0 var(--proctor-space-3);
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  margin: 0 0 var(--proctor-space-4);
+  padding-left: var(--proctor-space-7);
+  position: relative;
+  text-transform: uppercase;
+}
+
+.meta::before {
+  background: var(--proctor-primary);
+  content: "";
+  height: var(--proctor-stroke-component);
+  left: 0;
+  position: absolute;
+  top: 50%;
+  width: var(--proctor-space-6);
 }
 
 .divider {

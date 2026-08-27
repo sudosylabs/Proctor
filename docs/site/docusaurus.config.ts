@@ -17,7 +17,7 @@ const config: Config = {
   // build from inventing a production hostname before that decision is made.
   url: process.env.DOCS_SITE_URL ?? 'https://docs.proctor.invalid',
   baseUrl: process.env.BASE_URL ?? '/',
-  staticDirectories: ['static', '../public/static'],
+  staticDirectories: ['static', '../public/static', '../../assets/brand'],
   trailingSlash: false,
 
   organizationName: 'sudosylabs',
@@ -121,6 +121,13 @@ const config: Config = {
     },
     navbar: {
       title: 'Proctor Docs',
+      logo: {
+        alt: 'Proctor',
+        src: 'mark/proctor-mark-white.svg',
+        srcDark: 'mark/proctor-mark-white.svg',
+        width: 28,
+        height: 28,
+      },
       items: [
         {to: '/operator/', label: 'Operate', position: 'left'},
         {
@@ -166,7 +173,7 @@ const config: Config = {
       copyright: 'Proctor is open-source examination infrastructure.',
     },
     prism: {
-      theme: prismThemes.github,
+      theme: prismThemes.dracula,
       darkTheme: prismThemes.dracula,
       additionalLanguages: ['bash', 'json', 'go'],
     },

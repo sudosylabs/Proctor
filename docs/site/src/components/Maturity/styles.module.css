@@ -1,34 +1,39 @@
 .notice {
-  background: var(--proctor-primary-soft);
-  border: 1px solid color-mix(in srgb, var(--proctor-primary) 28%, transparent);
-  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--proctor-sidebar) 64%, transparent);
+  border: 0;
+  border-left: var(--proctor-stroke-flow) solid var(--proctor-attention);
+  border-radius: 0;
   display: grid;
-  gap: 0.45rem;
-  margin: 1.5rem 0 2rem;
-  max-width: 72ch;
-  padding: 1rem 1.1rem;
+  gap: var(--proctor-space-4);
+  grid-template-columns: minmax(8.5rem, auto) minmax(0, 1fr);
+  margin: var(--proctor-space-5) 0 var(--proctor-space-7);
+  max-width: 74ch;
+  padding: var(--proctor-space-4) var(--proctor-space-5);
 }
 
 .notice strong {
   align-items: center;
-  color: var(--proctor-ink);
+  align-self: start;
+  color: var(--proctor-attention);
   display: flex;
-  font-size: 0.67rem;
+  font-size: var(--proctor-type-caption-size);
   font-weight: 700;
   gap: 0.45rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .notice strong i {
-  background: var(--proctor-primary);
+  background: currentColor;
   border-radius: 50%;
   height: 0.45rem;
   width: 0.45rem;
 }
 
 .notice div {
-  font-size: 0.9rem;
+  color: var(--proctor-ink-soft);
+  font-size: var(--proctor-type-body-small-size);
+  line-height: var(--proctor-type-body-small-line);
 }
 
 .notice div > :last-child {
@@ -36,19 +41,22 @@
 }
 
 .available {
-  background: var(--proctor-complete-soft);
-  border-color: color-mix(in srgb, var(--proctor-complete) 28%, transparent);
+  background: color-mix(in srgb, var(--proctor-complete-soft) 64%, transparent);
+  border-left-color: var(--proctor-complete);
 }
 
-.available strong i {
-  background: var(--proctor-complete);
+.available strong {
+  color: var(--proctor-complete);
 }
 
 .planned {
-  background: var(--proctor-attention-soft);
-  border-color: color-mix(in srgb, var(--proctor-attention) 28%, transparent);
+  background: color-mix(in srgb, var(--proctor-attention-soft) 64%, transparent);
 }
 
-.planned strong i {
-  background: var(--proctor-attention);
+@media (max-width: 640px) {
+  .notice {
+    gap: var(--proctor-space-2);
+    grid-template-columns: 1fr;
+    padding-inline: var(--proctor-space-4);
+  }
 }

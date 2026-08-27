@@ -15,16 +15,17 @@
 }
 
 .hero h1 {
-  font-size: clamp(2.6rem, 6vw, 4rem);
-  letter-spacing: -0.05em;
-  line-height: 1;
+  font-size: clamp(2.15rem, 4.5vw, var(--proctor-type-heading-large-size));
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: var(--proctor-type-heading-large-line);
   margin: 0;
 }
 
 .hero > p {
   color: var(--proctor-ink-soft);
-  font-size: 1.1rem;
-  line-height: 1.65;
+  font-size: 1.0625rem;
+  line-height: 1.7;
   margin: var(--proctor-space-4) 0 0;
   max-width: 62ch;
 }
@@ -46,11 +47,12 @@
 
 .record > div {
   min-width: 0;
-  padding: var(--proctor-space-4);
+  padding: var(--proctor-space-4) 0;
 }
 
 .record > div + div {
   border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  padding-left: var(--proctor-space-4);
 }
 
 .record dt {
@@ -88,5 +90,6 @@
   .record > div + div {
     border-left: 0;
     border-top: var(--proctor-stroke-hairline) solid var(--proctor-border);
+    padding-left: 0;
   }
 }

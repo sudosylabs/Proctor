@@ -4,8 +4,10 @@
 
 .filter {
   background: var(--proctor-sidebar);
-  border: var(--proctor-stroke-hairline) solid var(--proctor-border);
-  border-radius: var(--proctor-radius-card);
+  border: 0;
+  border-bottom: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  border-top: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  border-radius: 0;
   display: grid;
   gap: var(--proctor-space-2);
   padding: var(--proctor-space-4);

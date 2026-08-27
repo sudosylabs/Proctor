@@ -5,8 +5,8 @@
 
 .plate {
   background: var(--proctor-plate);
-  border: var(--proctor-stroke-hairline) solid var(--proctor-border-strong);
-  border-radius: var(--proctor-radius-card);
+  border: var(--proctor-stroke-component) solid var(--proctor-border-strong);
+  border-radius: var(--proctor-radius-plate);
   overflow: hidden;
 }
 
@@ -17,18 +17,18 @@
 }
 
 .caption {
-  align-items: baseline;
+  align-items: flex-start;
   color: var(--proctor-ink-muted);
   display: flex;
   font-size: var(--proctor-type-body-small-size);
   gap: var(--proctor-space-3);
   line-height: 1.55;
-  margin: var(--proctor-space-3) 0 0;
+  margin: var(--proctor-space-4) 0 0;
   max-width: 82ch;
 }
 
 .kind {
-  color: var(--proctor-ink-muted);
+  color: var(--proctor-primary-strong);
   flex: none;
   font-family: var(--ifm-font-family-monospace);
   font-size: var(--proctor-type-caption-size);

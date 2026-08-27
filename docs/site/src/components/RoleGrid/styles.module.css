@@ -34,7 +34,7 @@
 
 .card:hover,
 .card:focus-visible {
-  background: var(--proctor-primary-soft);
+  background: var(--proctor-sidebar);
   color: var(--proctor-ink-soft);
   text-decoration: none;
 }
@@ -64,7 +64,7 @@
 
 .card strong {
   color: var(--proctor-ink);
-  font-size: var(--proctor-type-heading-small-size);
+  font-size: 1.125rem;
   letter-spacing: -0.025em;
   line-height: 1.2;
   min-width: 0;
