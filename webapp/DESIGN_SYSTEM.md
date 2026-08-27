@@ -187,14 +187,21 @@ documentation identity while serving denser product interaction:
 
 | Role | Light | Dark |
 | --- | --- | --- |
-| Canvas | `#FFFFFF` | `#141016` |
-| Subtle background | `#F7F5F9` | `#1B151E` |
-| Surface | `#FFFFFF` | `#211A25` |
-| Raised surface | `#FFFFFF` | `#2A2130` |
-| Primary text | `#161616` | `#F8F6FA` |
-| Muted text | `#655F69` | `#AEA4B3` |
-| Default border | `#E1DCE5` | `#3B3142` |
-| Focus | `#5C00AA` | `#C38BF5` |
+| Canvas | `#FFFFFF` | `#111111` |
+| Subtle background | `#F7F5F9` | `#171717` |
+| Surface | `#FFFFFF` | `#1C1C1C` |
+| Raised surface | `#FFFFFF` | `#242424` |
+| Primary text | `#161616` | `#F5F3FF` |
+| Muted text | `#655F69` | `#A1A1AA` |
+| Default border | `#E1DCE5` | `#2E2E2E` |
+| Focus | `#5C00AA` | `#F5F3FF` |
+
+Dark presentation uses a neutral working environment and a brighter adaptive
+violet for interaction. Its governed accent roles are primary `#A855F7`, hover
+`#C084FC`, on-primary `#0A0A0A`, focus `#F5F3FF`, and link `#E9D5FF`.
+Success uses `#3ECF8E` on `#0F241C`, warning uses `#F5B942` on `#2A2110`, and
+danger uses `#F87171` on `#2A1218`. These state surfaces are reserved for
+actual state evidence rather than general section tinting.
 
 The audit verifies standard foreground/surface pairs at `4.5:1`, state text on
 its state surface at `4.5:1`, and focus rings at `3:1` against their adjacent

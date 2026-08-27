@@ -11,7 +11,7 @@ export const themeCatalog = [
   {
     "id": "dark",
     "colorScheme": "dark",
-    "themeColor": "#141016"
+    "themeColor": "#111111"
   }
 ] as const;
 

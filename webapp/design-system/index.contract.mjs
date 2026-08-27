@@ -21,9 +21,51 @@ test('generated runtime catalog derives theme and preference identifiers', () =>
   assert.match(source, /"id": "light"/);
   assert.match(source, /"id": "dark"/);
   assert.match(source, /"themeColor": "#ffffff"/);
-  assert.match(source, /"themeColor": "#141016"/);
+  assert.match(source, /"themeColor": "#111111"/);
   assert.match(source, /export type ThemePreference/);
   assert.match(source, /value === "system" \|\| isThemeID\(value\)/);
+});
+
+test('dark theme preserves the governed neutral, accent, and state palette', () => {
+  const color = designTokens.themes.dark.color;
+  assert.deepEqual(
+    {
+      canvas: color['background-canvas'],
+      subtle: color['background-subtle'],
+      surface: color['background-surface'],
+      raised: color['background-raised'],
+      border: color['border-default'],
+      primary: color['action-primary'],
+      hover: color['action-primary-hover'],
+      onPrimary: color['action-on-primary'],
+      focus: color['focus-ring'],
+      link: color['foreground-link'],
+      success: color['state-success'],
+      successSurface: color['state-success-surface'],
+      warning: color['state-warning'],
+      warningSurface: color['state-warning-surface'],
+      danger: color['state-danger'],
+      dangerSurface: color['state-danger-surface'],
+    },
+    {
+      canvas: '#111111',
+      subtle: '#171717',
+      surface: '#1c1c1c',
+      raised: '#242424',
+      border: '#2e2e2e',
+      primary: '#a855f7',
+      hover: '#c084fc',
+      onPrimary: '#0a0a0a',
+      focus: '#f5f3ff',
+      link: '#e9d5ff',
+      success: '#3ecf8e',
+      successSurface: '#0f241c',
+      warning: '#f5b942',
+      warningSurface: '#2a2110',
+      danger: '#f87171',
+      dangerSurface: '#2a1218',
+    },
+  );
 });
 
 test('generated CSS supports system, light, dark, and reduced-motion modes', () => {
