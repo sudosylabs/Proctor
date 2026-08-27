@@ -13,14 +13,16 @@ enters the component.
 
 `Notice` renders a neutral `div` and adds no ARIA role or live-region behavior
 by default. The feature owns whether static content is a `note`, whether a
-changed message is announced through its existing live region, and whether a
-form-level error summary receives programmatic focus. Native `div` attributes,
-refs, and `className` are forwarded for those semantics and local layout only.
+changed message is announced through its existing live region, and whether the
+notice is part of a larger status component. Native `div` attributes, refs,
+and `className` are forwarded for those semantics and local layout only.
 The stable `data-proctor-notice` and `data-proctor-notice-tone` attributes are
 diagnostic test hooks; product behavior must not branch on them.
 
 The component owns its type, logical padding, state rule, forced-colors
 boundary, and wrapping behavior in both themes. Consumers may set placement or
 measure but must not replace its color, typography, rule, background, radius,
-or internal spacing. It does not implement toasts, overlays, dismissal,
-actions, route-wide status layouts, or field-level validation.
+or internal spacing. It does not implement form-feedback announcements,
+toasts, overlays, dismissal, actions, route-wide status layouts, or
+field-level validation. `FormFeedback` composes its danger treatment when a
+submission failure must remain beside an action.

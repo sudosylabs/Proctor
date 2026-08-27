@@ -68,7 +68,9 @@ Problem behavior is selected only from the bounded `problem.code`:
 No server title, detail, identifier, administrator profile, bootstrap secret,
 password, or response resource is rendered, logged, serialized, persisted, or
 placed in a URL. A failed transaction is never described as partially
-complete.
+complete. A general form failure remains in the reserved feedback region after
+the action row and is announced politely without moving focus. The form fields
+and action row remain stationary while ordinary failure copy appears.
 
 ## Presentation
 

@@ -4,7 +4,8 @@
   .form,
   .routeState,
   .routeStateCopy,
-  .context {
+  .context,
+  .submission {
     display: flex;
     flex-direction: column;
   }
@@ -132,6 +133,10 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--proctor-space-5);
+  }
+
+  .submission {
+    gap: var(--proctor-space-2);
   }
 
   .acknowledgment {

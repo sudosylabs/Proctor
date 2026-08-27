@@ -73,9 +73,10 @@ the document controller. The visible structure contains:
 - only the registration and recovery links admitted below.
 
 There is no autofocus on page load. Loading, failure, and method availability
-do not move focus. State changes are announced through one page-owned live
-region; focus moves only for invalid form input or the MFA transition described
-below.
+do not move focus. Each changed state has one announcement path: progress and
+the MFA transition use the page-owned live region, while a general submission
+failure uses the always-mounted `FormFeedback` region after the submit action.
+Focus moves only for invalid form input or the MFA transition described below.
 
 All authored page copy uses `webapp.login.*` messages in `server/i18n`; the
 generated webapp catalog is the runtime view. The implementation does not
@@ -234,10 +235,12 @@ rendered directly. UI messages come from the webapp localization catalog.
 
 Empty required controls are caught before transport, with errors placed beside
 and associated with the controls. After a rejected submission, focus moves to
-the first invalid control; otherwise it moves to the form-level error summary.
-Changing input clears only the error made obsolete by that change. Failures do
-not clear typed credentials unless the person leaves the form or explicitly
-returns from the MFA step.
+the first invalid control. A general credential- or challenge-level failure
+appears persistently in the reserved region after the submit action, is
+announced politely, and does not move focus. The fields and submit action do
+not move when ordinary failure copy appears. Changing input clears only the
+error made obsolete by that change. Failures do not clear typed credentials
+unless the person leaves the form or explicitly returns from the MFA step.
 
 ## Security and privacy invariants
 

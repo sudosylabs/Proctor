@@ -41,8 +41,10 @@ application shell. The initial product icon vocabulary is governed by the narrow
 Repeated form behavior is governed by
 [`InputField`](./src/components/InputField/CONTRACT.md) and
 [`Button`](./src/components/Button/CONTRACT.md), while compact inline state
-evidence uses [`Notice`](./src/components/Notice/CONTRACT.md); features retain
-their values, copy, semantics, validation decisions, submission, and recovery.
+evidence uses [`Notice`](./src/components/Notice/CONTRACT.md). Persistent
+form-level submission failures use the action-adjacent
+[`FormFeedback`](./src/components/FormFeedback/CONTRACT.md) region; features
+retain their values, copy, validation decisions, submission, and recovery.
 The system still owns no illustration set, general navigation behavior, or
 persisted theme chooser. Those decisions require a real flow and its states
 rather than speculative abstractions.
@@ -387,6 +389,9 @@ Durable rules include:
 - never block paste into passwords, one-time codes, or any other input;
 - place validation guidance beside its field, associate it programmatically,
   and focus the first invalid field after a failed submission;
+- keep a general submission failure beside the action that produced it,
+  persist it until recovery makes it obsolete, and do not move focus merely to
+  announce it;
 - announce asynchronous validation and completion through an appropriate live
   region without moving focus unnecessarily;
 - give icon-only actions an accessible name and hide decorative icons;

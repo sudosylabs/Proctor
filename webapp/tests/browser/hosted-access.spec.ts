@@ -52,6 +52,58 @@ async function mockSetupStatus(page: Page, initialized = false) {
   });
 }
 
+async function submissionGeometry(page: Page, firstControl: string) {
+  return page.evaluate((selector) => {
+    const control = document.querySelector<HTMLElement>(selector)!;
+    const button = document.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    )!;
+    const feedback = document.querySelector<HTMLElement>(
+      "[data-proctor-form-feedback]",
+    )!;
+    const documentTop = (element: HTMLElement) =>
+      element.getBoundingClientRect().top + window.scrollY;
+
+    return {
+      buttonTop: documentTop(button),
+      controlTop: documentTop(control),
+      feedbackHeight: feedback.getBoundingClientRect().height,
+    };
+  }, firstControl);
+}
+
+async function expectPersistentSubmissionFailure(
+  page: Page,
+  expectedMessage: string,
+  before: Awaited<ReturnType<typeof submissionGeometry>>,
+  firstControl: string,
+) {
+  const feedback = page.locator("[data-proctor-form-feedback]");
+  await expect(feedback).toHaveAttribute("role", "status");
+  await expect(feedback).toHaveAttribute("aria-live", "polite");
+  await expect(feedback).toContainText(expectedMessage);
+  await expect(
+    feedback.locator('[data-proctor-notice-tone="danger"]'),
+  ).toBeVisible();
+  await expect(feedback).not.toBeFocused();
+
+  const after = await submissionGeometry(page, firstControl);
+  expect(after.controlTop).toBe(before.controlTop);
+  expect(after.buttonTop).toBe(before.buttonTop);
+  expect(after.feedbackHeight).toBe(before.feedbackHeight);
+  expect(
+    await feedback.evaluate((element) => {
+      const button = element.parentElement?.querySelector('button[type="submit"]');
+      return (
+        button !== null &&
+        (button.compareDocumentPosition(element) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !==
+          0
+      );
+    }),
+  ).toBe(true);
+}
+
 for (const colorScheme of ["light", "dark"] as const) {
   test(`${colorScheme} presentation selects the governed favicon and lockup`, async ({
     page,
@@ -286,6 +338,117 @@ test("local validation focuses the first invalid field", async ({ page }) => {
   await expect(page.getByLabel("Email or username")).toBeFocused();
   await expect(page.getByText("Enter your email or username.")).toBeVisible();
   await expect(page.getByText("Enter your password.")).toBeVisible();
+});
+
+test("login failure stays beside the action without moving the credentials", async ({
+  page,
+}) => {
+  await mockDiscovery(page, { ...defaultDiscovery, providers: [] });
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/invalid-credentials",
+        title: "Credentials were not accepted",
+        status: 401,
+        code: "authentication.invalid_credentials",
+      }),
+    });
+  });
+  await page.goto("/login");
+  await page.getByLabel("Email or username").fill("student@example.edu");
+  await page.locator("#password").fill("private-password");
+
+  const before = await submissionGeometry(page, "#login-id");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expectPersistentSubmissionFailure(
+    page,
+    "The email, username, or password wasn’t accepted.",
+    before,
+    "#login-id",
+  );
+});
+
+test("setup failure stays below the action without moving the atomic form", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/bootstrap", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ initialized: false }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 503,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/installation-unavailable",
+        title: "Installation unavailable",
+        status: 503,
+        code: "installation.unavailable",
+      }),
+    });
+  });
+  await page.goto("/setup");
+  await page.locator("#bootstrap-secret").fill("operator-secret");
+  await page.getByLabel("Institution name").fill("northbridge-university");
+  await page.locator("#institution-display-name").fill("Northbridge University");
+  await page.getByLabel("Email address").fill("initial-admin@example.edu");
+  await page.getByLabel("Username").fill("initial-admin");
+  await page.locator("#administrator-password").fill("private-password");
+
+  const before = await submissionGeometry(page, "#bootstrap-secret");
+  await page.getByRole("button", { name: "Create installation" }).click();
+
+  await expectPersistentSubmissionFailure(
+    page,
+    "Proctor couldn’t create the installation. No setup changes were applied. Review the details and try again.",
+    before,
+    "#bootstrap-secret",
+  );
+});
+
+test("registration failure stays below the action without moving account input", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await page.route("**/api/v1/auth/register", async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/internal",
+        title: "Internal failure",
+        status: 500,
+        code: "authentication.internal",
+      }),
+    });
+  });
+  await page.goto("/register");
+  await page.getByLabel("First name").fill("Ada");
+  await page.getByLabel("Last name").fill("Okafor");
+  await page.getByLabel("Email address").fill("student.one@example.edu");
+  await page.getByLabel("Username").fill("student.one");
+  await page.locator("#registration-password").fill("private-password");
+  await page
+    .getByLabel(
+      "I understand that registration does not grant institutional access.",
+    )
+    .check();
+
+  const before = await submissionGeometry(page, "#registration-first-name");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expectPersistentSubmissionFailure(
+    page,
+    "Proctor couldn’t accept your registration request. Try again.",
+    before,
+    "#registration-first-name",
+  );
 });
 
 test("local login enters MFA without placing credentials in the URL", async ({ page }) => {

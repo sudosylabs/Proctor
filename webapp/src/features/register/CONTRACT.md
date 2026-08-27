@@ -81,7 +81,10 @@ Problem behavior is selected only from the bounded `problem.code`:
 | `authentication.rate_limit_unavailable`, `request.invalid`, unknown, malformed, or transport failure | Show a generic recoverable form failure |
 
 Server prose and arbitrary fields are never rendered. Passwords and response
-data never enter logs, analytics, storage, history, or document metadata.
+data never enter logs, analytics, storage, history, or document metadata. A
+general form failure remains in the reserved feedback region after the submit
+action and is announced politely without moving focus. Account fields and the
+submit action remain stationary while ordinary failure copy appears.
 
 ## Presentation
 

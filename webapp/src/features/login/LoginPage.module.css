@@ -76,7 +76,8 @@
   .routeState,
   .routeStateCopy,
   .mfaGroup,
-  .mfaHeading {
+  .mfaHeading,
+  .submission {
     display: flex;
     flex-direction: column;
   }
@@ -93,7 +94,8 @@
   }
 
   .routeStateCopy,
-  .mfaHeading {
+  .mfaHeading,
+  .submission {
     gap: var(--proctor-space-2);
   }
 

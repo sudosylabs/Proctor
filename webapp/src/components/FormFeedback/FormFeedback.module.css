@@ -1,0 +1,6 @@
+@layer components {
+  .feedback {
+    min-inline-size: 0;
+    min-block-size: calc(var(--proctor-space-7) + var(--proctor-space-2));
+  }
+}

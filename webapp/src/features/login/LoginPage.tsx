@@ -11,6 +11,7 @@ import { readProblemValue } from "../../api/problem";
 import { navigateToProvider } from "../../auth/navigation";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
+import { FormFeedback } from "../../components/FormFeedback/FormFeedback";
 import { InputField } from "../../components/InputField/InputField";
 import { PasswordField } from "../../components/InputField/PasswordField";
 import { Notice } from "../../components/Notice/Notice";
@@ -371,7 +372,6 @@ function LocalLoginForm({
   const loginIDRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const mfaCodeRef = useRef<HTMLInputElement>(null);
-  const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mfaRequired) {
@@ -381,10 +381,6 @@ function LocalLoginForm({
 
   function clearFormFailure() {
     setFormError(undefined);
-  }
-
-  function focusSummary() {
-    requestAnimationFrame(() => errorSummaryRef.current?.focus());
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -473,13 +469,11 @@ function LocalLoginForm({
           safeError = message("webapp.login.form.error.generic");
       }
       setFormError(safeError);
-      setLiveMessage(safeError);
-      focusSummary();
+      setLiveMessage("");
     } catch {
       const safeError = message("webapp.login.form.error.generic");
       setFormError(safeError);
-      setLiveMessage(safeError);
-      focusSummary();
+      setLiveMessage("");
     } finally {
       setPending(false);
     }
@@ -490,16 +484,6 @@ function LocalLoginForm({
       <div className={styles.visuallyHidden} aria-live="polite" aria-atomic="true">
         {liveMessage}
       </div>
-
-      {formError === undefined ? null : (
-        <Notice
-          ref={errorSummaryRef}
-          tabIndex={-1}
-          tone="danger"
-        >
-          {formError}
-        </Notice>
-      )}
 
       <InputField
         ref={loginIDRef}
@@ -587,13 +571,16 @@ function LocalLoginForm({
         </div>
       ) : null}
 
-      <Button
-        type="submit"
-        isLoading={pending}
-        loadingLabel={message("webapp.login.form.signing_in")}
-      >
-        {message("webapp.login.form.sign_in")}
-      </Button>
+      <div className={styles.submission}>
+        <Button
+          type="submit"
+          isLoading={pending}
+          loadingLabel={message("webapp.login.form.signing_in")}
+        >
+          {message("webapp.login.form.sign_in")}
+        </Button>
+        <FormFeedback message={formError} />
+      </div>
     </form>
   );
 }

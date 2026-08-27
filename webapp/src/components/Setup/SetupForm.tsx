@@ -6,6 +6,7 @@ import type {
 } from "../../features/setup/SetupApi";
 import { message } from "../../i18n/messages";
 import { Button } from "../Button/Button";
+import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { InputField } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
@@ -46,7 +47,6 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
   const administratorEmailRef = useRef<HTMLInputElement>(null);
   const administratorUsernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
-  const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const fieldRefs: Record<SetupField, React.RefObject<HTMLInputElement | null>> = {
     bootstrap_secret: bootstrapSecretRef,
@@ -75,8 +75,7 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
 
   function showFormFailure(error: string) {
     setFormError(error);
-    setLiveMessage(error);
-    requestAnimationFrame(() => errorSummaryRef.current?.focus());
+    setLiveMessage("");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -202,12 +201,6 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
         <div className={styles.visuallyHidden} aria-live="polite" aria-atomic="true">
           {liveMessage}
         </div>
-
-        {formError === undefined ? null : (
-          <Notice ref={errorSummaryRef} tabIndex={-1} tone="danger">
-            {formError}
-          </Notice>
-        )}
 
         <section
           className={`${styles.section} ${styles.operatorSection}`}
@@ -370,15 +363,18 @@ export function SetupForm({ onComplete, submitSetup }: SetupFormProps) {
           {message("webapp.setup.form.caution")}
         </Notice>
 
-        <div className={styles.actions}>
-          <Button
-            type="submit"
-            isLoading={pending}
-            loadingLabel={message("webapp.setup.form.submitting")}
-          >
-            {message("webapp.setup.form.submit")}
-          </Button>
-          <a href="/login">{message("webapp.setup.return_to_sign_in")}</a>
+        <div className={styles.submission}>
+          <div className={styles.actions}>
+            <Button
+              type="submit"
+              isLoading={pending}
+              loadingLabel={message("webapp.setup.form.submitting")}
+            >
+              {message("webapp.setup.form.submit")}
+            </Button>
+            <a href="/login">{message("webapp.setup.return_to_sign_in")}</a>
+          </div>
+          <FormFeedback message={formError} />
         </div>
       </form>
     </section>

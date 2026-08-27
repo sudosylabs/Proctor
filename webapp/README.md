@@ -36,9 +36,11 @@ Repeated action styling, single-line field behavior, and inline state evidence
 live beside the narrow
 [`Button`](./src/components/Button/CONTRACT.md) and
 [`InputField`](./src/components/InputField/CONTRACT.md), and
-[`Notice`](./src/components/Notice/CONTRACT.md) contracts. They remain
-domain-neutral; page modules still own values, copy, semantics, validation, API
-orchestration, and recovery.
+[`Notice`](./src/components/Notice/CONTRACT.md) contracts. Persistent
+submission failures use the shared action-adjacent
+[`FormFeedback`](./src/components/FormFeedback/CONTRACT.md) region. These
+components remain domain-neutral; page modules still own values, copy,
+validation, API orchestration, and recovery.
 Visible browser copy uses the delegated `webapp.*` namespace in
 `server/i18n`. `npm run i18n:generate` validates exact ownership against
 browser source literals before producing the typed runtime catalog; the server

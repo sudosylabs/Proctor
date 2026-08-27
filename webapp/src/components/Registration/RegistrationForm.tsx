@@ -8,6 +8,7 @@ import type {
 } from "../../features/register/RegistrationApi";
 import { message } from "../../i18n/messages";
 import { Button } from "../Button/Button";
+import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { InputField, RequiredMark } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
@@ -54,7 +55,6 @@ export function RegistrationForm({
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const acknowledgmentRef = useRef<HTMLInputElement>(null);
-  const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const fieldRefs: Record<RegistrationField, React.RefObject<HTMLInputElement | null>> = {
     firstName: firstNameRef,
@@ -83,8 +83,7 @@ export function RegistrationForm({
 
   function showFormFailure(error: string) {
     setFormError(error);
-    setLiveMessage(error);
-    requestAnimationFrame(() => errorSummaryRef.current?.focus());
+    setLiveMessage("");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -212,12 +211,6 @@ export function RegistrationForm({
         <div className={styles.visuallyHidden} aria-live="polite" aria-atomic="true">
           {liveMessage}
         </div>
-
-        {formError === undefined ? null : (
-          <Notice ref={errorSummaryRef} tabIndex={-1} tone="danger">
-            {formError}
-          </Notice>
-        )}
 
         <div className={styles.nameFields}>
           <InputField
@@ -347,13 +340,16 @@ export function RegistrationForm({
           )}
         </div>
 
-        <Button
-          type="submit"
-          isLoading={pending}
-          loadingLabel={message("webapp.register.form.submitting")}
-        >
-          {message("webapp.register.form.submit")}
-        </Button>
+        <div className={styles.submission}>
+          <Button
+            type="submit"
+            isLoading={pending}
+            loadingLabel={message("webapp.register.form.submitting")}
+          >
+            {message("webapp.register.form.submit")}
+          </Button>
+          <FormFeedback message={formError} />
+        </div>
 
         <div className={styles.signIn}>
           <p>{message("webapp.register.sign_in.prompt")}</p>
