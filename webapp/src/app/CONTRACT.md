@@ -20,8 +20,11 @@ exchange and optional Institution discovery remain distinct feature requests,
 but one route-owned loader composes them with `Promise.all` before handing the
 combined result to the lifecycle.
 
-The same directory owns root route and document orchestration. Those concerns
-must not absorb feature presentation or credentials after sanitized bootstrap.
+The same directory owns root route and document orchestration. The document
+synchronizer applies the root state and theme-color metadata from the shared
+resolved product theme; it does not independently infer an effective theme.
+Those concerns must not absorb feature presentation or credentials after
+sanitized bootstrap.
 
 ## Hosted route descriptors
 

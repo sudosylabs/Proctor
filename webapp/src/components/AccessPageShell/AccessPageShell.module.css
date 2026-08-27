@@ -24,9 +24,6 @@
 
   .brand {
     display: block;
-  }
-
-  .brand img {
     block-size: var(--proctor-space-6);
     inline-size: auto;
   }

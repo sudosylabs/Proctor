@@ -13,11 +13,12 @@ document metadata. Feature pages provide all visible localized copy and retain
 their own state semantics.
 
 The shell renders a canonical Proctor lockup rather than reconstructing one
-from the standalone mark and live text. Light presentation uses the purple
-mark with ink wordmark; dark presentation uses the purple mark with white
-wordmark. Neither lockup has an enclosing background or adjacent decorative
-rule. Feature state is named within the task content rather than encoded in
-the global brand header.
+from the standalone mark and live text. It consumes the shared effective
+product theme: a light-scheme theme uses the purple mark with ink wordmark and
+a dark-scheme theme uses the purple mark with white wordmark. It does not query
+the system preference or import theme IDs. Neither lockup has an enclosing
+background or adjacent decorative rule. Feature state is named within the task
+content rather than encoded in the global brand header.
 
 All variants preserve one-dimensional flow at narrow widths and 200% zoom.
 The `split` variant introduces its dividing rule only when the form and context

@@ -15,6 +15,10 @@ import {
   bootstrapHostedPage,
   type HostedPageBootstrap,
 } from "./app/HostedRoutes";
+import {
+  readSystemColorScheme,
+  resolveProductTheme,
+} from "./theme/ProductTheme";
 import { redactedRootErrorOptions } from "./app/rootErrors";
 
 const root = document.getElementById("root");
@@ -25,7 +29,11 @@ if (root === null) {
 let bootstrap: HostedPageBootstrap | undefined;
 let bootstrapFailed = false;
 try {
-  synchronizeDocument(document, defaultDocumentDescriptor);
+  synchronizeDocument(
+    document,
+    defaultDocumentDescriptor,
+    resolveProductTheme("system", readSystemColorScheme()),
+  );
   bootstrap = bootstrapHostedPage(window.location, window.history);
 } catch {
   bootstrapFailed = true;

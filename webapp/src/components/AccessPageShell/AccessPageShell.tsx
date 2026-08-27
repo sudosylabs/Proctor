@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import proctorLockupDark from "../../assets/brand/proctor-lockup-purple-white.svg";
 import proctorLockupLight from "../../assets/brand/proctor-lockup.svg";
+import { useProductTheme } from "../../theme/ProductTheme";
 import styles from "./AccessPageShell.module.css";
 
 export interface AccessPageShellProps {
@@ -21,6 +22,12 @@ export function AccessPageShell({
   skipLabel,
   variant,
 }: AccessPageShellProps) {
+  const { effectiveTheme } = useProductTheme();
+  const lockup =
+    effectiveTheme.colorScheme === "dark"
+      ? proctorLockupDark
+      : proctorLockupLight;
+
   return (
     <>
       <a className="proctor-skip-link" href="#main-content">
@@ -29,19 +36,15 @@ export function AccessPageShell({
       <div className={`${styles.shell} ${styles[variant]} ${styles[mainSize]}`}>
         <div className={styles.frame}>
           <header className={styles.header}>
-            <picture className={styles.brand}>
-              <source
-                media="(prefers-color-scheme: dark)"
-                srcSet={proctorLockupDark}
-              />
-              <img
-                src={proctorLockupLight}
-                alt="Proctor"
-                translate="no"
-                width="163"
-                height="32"
-              />
-            </picture>
+            <img
+              className={styles.brand}
+              src={lockup}
+              alt="Proctor"
+              data-proctor-lockup-color-scheme={effectiveTheme.colorScheme}
+              translate="no"
+              width="163"
+              height="32"
+            />
           </header>
 
           <div className={styles.layout}>

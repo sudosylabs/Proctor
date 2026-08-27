@@ -1,7 +1,7 @@
-import {
-  themeCatalog,
-  type ThemePreference,
-} from "../generated/design-system/themes";
+import type {
+  ResolvedProductTheme,
+  ThemeColorMetadata,
+} from "../theme/ProductTheme";
 
 export type DocumentDirection = "ltr" | "rtl";
 
@@ -9,37 +9,13 @@ export interface DocumentDescriptor {
   language: string;
   direction: DocumentDirection;
   title: string;
-  themePreference: ThemePreference;
 }
 
 export const defaultDocumentDescriptor: DocumentDescriptor = {
   language: "en",
   direction: "ltr",
   title: "Proctor",
-  themePreference: "system",
 };
-
-interface ThemeColorMetadata {
-  content: string;
-  media?: string;
-}
-
-function desiredThemeColorMetadata(
-  themePreference: ThemePreference,
-): ThemeColorMetadata[] {
-  if (themePreference === "system") {
-    return themeCatalog.map((theme) => ({
-      content: theme.themeColor,
-      media: `(prefers-color-scheme: ${theme.colorScheme})`,
-    }));
-  }
-
-  const theme = themeCatalog.find(({ id }) => id === themePreference);
-  if (theme === undefined) {
-    return [];
-  }
-  return [{ content: theme.themeColor }];
-}
 
 function themeColorMetadataMatches(
   elements: HTMLMetaElement[],
@@ -60,9 +36,8 @@ function themeColorMetadataMatches(
 
 function synchronizeThemeColorMetadata(
   document: Document,
-  themePreference: ThemePreference,
+  desired: ThemeColorMetadata[],
 ) {
-  const desired = desiredThemeColorMetadata(themePreference);
   const existing = Array.from(
     document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'),
   );
@@ -87,16 +62,17 @@ function synchronizeThemeColorMetadata(
 export function synchronizeDocument(
   document: Document,
   descriptor: DocumentDescriptor,
+  theme: ResolvedProductTheme,
 ) {
   const root = document.documentElement;
   root.lang = descriptor.language;
   root.dir = descriptor.direction;
   document.title = descriptor.title;
 
-  if (descriptor.themePreference === "system") {
+  if (theme.rootTheme === undefined) {
     root.removeAttribute("data-theme");
   } else {
-    root.dataset.theme = descriptor.themePreference;
+    root.dataset.theme = theme.rootTheme;
   }
-  synchronizeThemeColorMetadata(document, descriptor.themePreference);
+  synchronizeThemeColorMetadata(document, theme.themeColorMetadata);
 }

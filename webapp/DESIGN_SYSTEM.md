@@ -146,8 +146,11 @@ document element:
 Every registered theme exposes exactly the same semantic color and elevation
 keys. The generator rejects incomplete themes, so a component never asks which
 theme is active. Each theme also sets native `color-scheme`, allowing browser
-controls and scrollbars to match. A future theme controller must keep
-`<meta name="theme-color">` aligned with the effective canvas.
+controls and scrollbars to match. The narrow
+[`ProductTheme`](./src/theme/CONTRACT.md) runtime resolves the effective
+registered theme once for document metadata, root state, and the hosted-page
+lockup. A future theme controller supplies only a typed preference to that
+owner and must not reproduce effective-theme logic.
 
 The label in the token source is for maintainers and design tooling. A visible
 theme chooser resolves its user-facing label through the webapp localization
@@ -332,11 +335,13 @@ for content, and `90rem` for the complete application frame. They are bounds,
 not instructions to fill every viewport.
 
 The initial access-page family gives the governed Proctor lockup clear space
-without an adjacent decorative rule. Light presentation uses the purple-mark,
-ink-wordmark lockup; dark presentation uses the purple-mark, white-wordmark
-lockup. The standalone browser favicon follows the same system preference with
-a purple mark in light presentation and a white mark in dark presentation. The
-black mark is not a product-webapp asset.
+without an adjacent decorative rule. An effective light-scheme product theme
+uses the purple-mark, ink-wordmark lockup; an effective dark-scheme product
+theme uses the purple-mark, white-wordmark lockup. The standalone browser
+favicon intentionally remains a browser-chrome policy that follows the system
+preference: purple mark for system light and white mark for system dark. An
+explicit product theme does not rewrite that favicon choice. The black mark is
+not a product-webapp asset.
 
 On wide viewports, `/login` and `/register` separate safe Institution context
 from a focused form; `/setup` gives its one-time atomic form the wider content

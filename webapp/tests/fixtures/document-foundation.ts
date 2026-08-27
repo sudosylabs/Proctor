@@ -2,6 +2,11 @@ import {
   synchronizeDocument,
   type DocumentDescriptor,
 } from "../../src/app/document";
+import type { ThemePreference } from "../../src/generated/design-system/themes";
+import {
+  readSystemColorScheme,
+  resolveProductTheme,
+} from "../../src/theme/ProductTheme";
 import "../../src/styles/reset.css";
 import "../../src/styles/tokens.css";
 import "../../src/styles/base.css";
@@ -10,19 +15,24 @@ const descriptor: DocumentDescriptor = {
   language: "en",
   direction: "ltr",
   title: "Document foundation · Proctor",
-  themePreference: "system",
 };
 
-synchronizeDocument(document, descriptor);
+setTheme("system");
 
 declare global {
   interface Window {
     setDocumentFoundationTheme: (
-      themePreference: DocumentDescriptor["themePreference"],
+      themePreference: ThemePreference,
     ) => void;
   }
 }
 
-window.setDocumentFoundationTheme = (themePreference) => {
-  synchronizeDocument(document, { ...descriptor, themePreference });
-};
+window.setDocumentFoundationTheme = setTheme;
+
+function setTheme(themePreference: ThemePreference) {
+  synchronizeDocument(
+    document,
+    descriptor,
+    resolveProductTheme(themePreference, readSystemColorScheme()),
+  );
+}

@@ -1,6 +1,11 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
+import type { ThemePreference } from "../generated/design-system/themes";
 import { message } from "../i18n/messages";
+import {
+  ProductThemeProvider,
+  useResolvedProductTheme,
+} from "../theme/ProductTheme";
 import {
   defaultDocumentDescriptor,
   synchronizeDocument,
@@ -13,17 +18,27 @@ import {
 
 export interface AppProps {
   bootstrap: HostedPageBootstrap;
+  themePreference?: ThemePreference;
 }
 
-export function App({ bootstrap }: AppProps) {
+export function App({ bootstrap, themePreference = "system" }: AppProps) {
   const title = message(hostedRouteDocumentTitle(bootstrap.route));
+  const theme = useResolvedProductTheme(themePreference);
 
-  useEffect(() => {
-    synchronizeDocument(document, {
-      ...defaultDocumentDescriptor,
-      title,
-    });
-  }, [title]);
+  useLayoutEffect(() => {
+    synchronizeDocument(
+      document,
+      {
+        ...defaultDocumentDescriptor,
+        title,
+      },
+      theme,
+    );
+  }, [theme, title]);
 
-  return renderHostedPage(bootstrap);
+  return (
+    <ProductThemeProvider value={theme}>
+      {renderHostedPage(bootstrap)}
+    </ProductThemeProvider>
+  );
 }

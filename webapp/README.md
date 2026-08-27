@@ -14,7 +14,10 @@ production files receive immutable fingerprints.
 Human-owned tokens live in [`design-system/tokens.mjs`](./design-system/tokens.mjs)
 and generate [`src/styles/tokens.css`](./src/styles/tokens.css) plus the typed
 [`src/generated/design-system/themes.ts`](./src/generated/design-system/themes.ts)
-runtime catalog. The first visible slice is the server-hosted `/login` route;
+runtime catalog. The narrow
+[`product theme contract`](./src/theme/CONTRACT.md) resolves one effective
+theme for document metadata, semantic tokens, and the in-page lockup. The first
+visible slice is the server-hosted `/login` route;
 its exact preimplementation behavior lives in the feature-local
 [`login` contract](./src/features/login/CONTRACT.md). One-time installation
 establishment and public local account admission live in the
