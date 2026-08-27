@@ -1,0 +1,169 @@
+---
+title: Contribute Documentation
+description: Put Proctor guidance in the correct authority, maintain generated views, and verify public pages, API reference, terminology, and governed visuals.
+audience: developer
+maturity: preview
+slug: /developers/documentation/
+---
+
+# Contribute Documentation
+
+Documentation is part of the product contract. A useful change gives one
+reader the information needed to complete a task without turning prose into a
+second implementation inventory.
+
+## Choose the Owning Location
+
+| Information | Author it in |
+| --- | --- |
+| Public task guidance for operators, administrators, security reviewers, or developers | `docs/public` |
+| Authored API concepts and worked recipes | `docs/api` |
+| Exact public paths, schemas, errors, authentication, and examples | `server/openapi` |
+| Docusaurus rendering, components, search, and generated adapters | `docs/site` |
+| Exact behavior of one component | A README or `CONTRACT.md` beside it |
+| Durable domain or architectural rule and rationale | The owning tracked skill, reference, or component contract routed by `AGENTS.md` |
+| Public availability or maturity | The affected public page and the implementation and tests that support it |
+| Discoverable implementation detail | Code, tests, configuration, or command help |
+
+Avoid copying an architecture or component contract into public prose. Explain
+the reader's task and consequence, then link to the exact source when a
+contributor needs deeper engineering context.
+
+## Author a Public Page
+
+Every authored page begins with the required metadata:
+
+```mdx
+---
+title: Clear Task-Oriented Title
+description: One sentence describing the outcome and scope.
+audience: developer
+maturity: preview
+slug: /developers/example/
+---
+```
+
+Allowed maturity values are `available`, `preview`, and `planned`. Planned
+content remains outside ordinary navigation until it describes usable behavior.
+Do not use maturity as marketing; it reports implementation and release state.
+
+A durable page should answer:
+
+1. Who is this for?
+2. What can they accomplish now?
+3. What must they know before starting?
+4. What exact command or decision advances the task?
+5. How do they verify success and recover from failure?
+6. Where should they continue?
+
+## Use Canonical Language
+
+Use the terms defined in the public [glossary](/glossary/). Preserve important
+distinctions: an Installation is not a tenant; a Class is not a generic group;
+an Exam Revision is not an Exam Sitting; an authentication Session is not an
+Exam Attempt.
+
+Use the inline `Term` glossary component only for a deliberately selected first
+occurrence where the definition materially helps the reader. Keep tooltips out
+of headings, code, API paths, tables dense with repeated terms, and
+illustrations.
+
+After a canonical glossary authority changes, regenerate and check its public
+views from `docs/site`:
+
+```sh
+npm run generate:glossary
+npm run check:glossary
+npm run test:glossary
+```
+
+## Add a Visual Only When It Explains
+
+A diagram or screenshot is evidence, not decoration. Add one when it makes an
+ownership, sequence, lifecycle, spatial relationship, or stable UI procedure
+materially easier to understand than prose.
+
+Every visual must have one registry record in `docs/public/assets.json`, exact
+bytes below `docs/public/static/assets`, synthetic and privacy-reviewed content,
+useful alternative text, a caption, dimensions, review triggers, and a visual
+acceptance hash. Public MDX references the asset through `GovernedFigure` using
+only its stable registry ID.
+
+Do not add Markdown images, raw `img` elements, image imports, direct asset
+paths, unregistered files, real operational screenshots, or copied vendor
+artwork.
+
+Review diagrams at full size and inside the page. Every word must stay in its
+container; every connector must join its source and target; the complete
+structure must remain recognizable at 390 × 844; and meaning must survive
+print, dark surrounding UI, and loss of color.
+
+Run the asset gate from `docs/site`:
+
+```sh
+npm run validate:assets
+npm run test:assets
+```
+
+## Keep Search and API Views Current
+
+Authored public or API content changes require the deterministic local search
+adapter to be regenerated:
+
+```sh
+cd docs/site
+npm run generate:search
+npm run check:search
+npm run test:search
+```
+
+The search index remains local and sends no reader query to an external
+service.
+
+API endpoint and product-area pages are generated from the reviewed
+`server/openapi.json` artifact. Edit the human-owned YAML modules and use the
+[HTTP and OpenAPI workflow](/developers/http-and-openapi/); never edit
+`docs/api/reference` output.
+
+## Preview and Verify
+
+Start the documentation site from the repository root:
+
+```sh
+make docs-start
+```
+
+Before handoff, run:
+
+```sh
+make docs-check
+make -C server architecture
+```
+
+The docs gate checks metadata, terminology adapters, design tokens, icons,
+search, governed assets, OpenAPI content and rendering, TypeScript, broken
+links, and the production build.
+
+For a visible change, inspect desktop and mobile layouts, both themes,
+keyboard order and focus, reduced motion, zoom, wrapping, figure legibility,
+and unintended horizontal overflow.
+
+{/* TODO(docs-editorial-policy): Decide whether Proctor adopts a tracked prose
+linter and public style vocabulary before documenting a lint command. The
+current checks validate metadata, links, domain markup, generated adapters, and
+the production build but do not claim general editorial lint coverage. */}
+
+## Review the Source
+
+- Does the page solve a task rather than repeat a file inventory?
+- Does every statement belong to this authority?
+- Are unresolved facts explicit TODO comments rather than invented promises?
+- Are examples synthetic and free of credentials, student data, Exam answers,
+  hostnames, object keys, and local paths?
+- Are external links HTTPS and internal routes checked?
+- Did every affected generated view rebuild from its named tracked input?
+
+## Next
+
+- Prepare the [contribution checklist](/developers/contribution-checklist/).
+- Run the complete [documentation and product gates](/developers/testing/).

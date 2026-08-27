@@ -1,0 +1,139 @@
+---
+title: Change HTTP and OpenAPI
+description: Keep Proctor routes, DTOs, authentication requirements, public errors, authored YAML, generated JSON, and rendered API reference in agreement.
+audience: developer
+maturity: preview
+slug: /developers/http-and-openapi/
+---
+
+# Change HTTP and OpenAPI
+
+Proctor's public API has one human authoring system and several verified
+consumers. Resource-oriented YAML modules under `server/openapi` own the wire
+contract and reference prose. The compiler produces `server/openapi.json`;
+runtime agreement tests, the webapp type generator, and the documentation site
+consume that reviewed artifact.
+
+Never edit `server/openapi.json` or generated endpoint pages by hand.
+
+## Find the Existing Owner
+
+Search by path or stable operation ID:
+
+```sh
+rg -n '/api/v1/exams|operationId: createExam' server/openapi/fragments
+```
+
+Choose the existing product-area directory and narrowest resource module.
+Create another descriptive YAML file only when no existing resource is a
+natural owner. Files are discovered recursively; there is no manifest to edit.
+
+Definitions used by one resource stay in that resource file. Promote a schema,
+parameter, request body, or response to a product-area `shared.yaml` only when
+several resources in that area consume it. The root `shared.yaml` is for
+genuinely cross-area definitions.
+
+## Implement One Complete Operation
+
+An operation change normally touches these surfaces together:
+
+1. **Application capability** — typed command or query and result.
+2. **HTTP resource** — strict request DTO, explicit domain mapping, typed
+   result, and allowlisted public errors.
+3. **Route catalog** — one explicit credential and assurance requirement.
+4. **OpenAPI source** — exact path, method, schema, prose, examples, and Proctor
+   extensions.
+5. **Agreement tests** — route, authentication, DTO, success schema, and public
+   error agreement.
+6. **Consumer adapters** — regenerate webapp API types or update authored API
+   recipes when the public contract requires it.
+
+The HTTP Routing Kernel is sealed before serving. Add the resource to its
+explicit production catalog; do not register routes through initialization,
+expose router internals, or add a generic response-writer escape hatch.
+
+## Supply the Full Contract
+
+Every operation has exactly one public product-area tag and all of the
+following:
+
+- concise imperative `summary`;
+- substantive behavioral `description`;
+- explicit OpenAPI `security`;
+- `x-proctor-auth` matching the runtime route;
+- `x-proctor-error-codes` matching declared responses;
+- `x-proctor-idempotency` set to `none`, `optional`, or `required`;
+- a purpose description for every parameter and request body; and
+- a schema-valid synthetic request example for mutations, or an executable
+  `x-codeSamples` example for bodyless and multipart mutations.
+
+Public failures use RFC 9457 Problem Details and stable application codes.
+Unknown application errors fail closed; do not turn an undeclared internal
+error into an improvised public response.
+
+Examples must never contain real Institutions, Users, Exams, answers,
+credentials, email addresses, object keys, hostnames, or local paths. Use
+clearly synthetic values and explicit credential placeholders.
+
+## Build and Prove Agreement
+
+Regenerate the reviewed artifact:
+
+```sh
+make -C server openapi-build
+```
+
+Review the `server/openapi.json` diff, then validate source-to-artifact drift:
+
+```sh
+make -C server openapi-check
+```
+
+Prove agreement with the registered HTTP surface:
+
+```sh
+make -C server openapi-agreement
+```
+
+For a reference-content or presentation change, also run:
+
+```sh
+cd docs/site
+npm run audit:openapi
+npm run test:openapi-audit
+npm run test:openapi-reference
+```
+
+Finish with `make docs-check` when endpoint pages, product-area navigation, API
+recipes, or reference presentation changed.
+
+## Regenerate Browser Types
+
+When a changed schema is consumed by the hosted webapp:
+
+```sh
+cd webapp
+npm run api:generate
+npm run api:check
+```
+
+The generated TypeScript schema is a consumer of the reviewed OpenAPI artifact.
+Do not patch it to compensate for an incomplete source contract.
+
+## Preserve Compatibility
+
+The current public API is versioned under `/api/v1`. Contract changes are
+additive unless a new API version and migration path are explicitly designed.
+Renaming a field, narrowing an accepted value, changing concealment behavior,
+or removing a public error may be breaking even when Go compilation succeeds.
+
+{/* TODO(api-sdks): Decide whether generated client SDKs belong in this
+repository, which languages are supported, and how they are versioned before
+adding SDK generation or publication instructions. */}
+
+## Next
+
+- Coordinate the owning [server use case](/developers/server-workflow/).
+- Update the [hosted webapp](/developers/webapp-workflow/) when it consumes the
+  contract.
+- Select the complete [verification level](/developers/testing/).

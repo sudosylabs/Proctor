@@ -1,0 +1,144 @@
+---
+title: Change the Hosted Webapp
+description: Work on Proctor's React and Vite browser application without duplicating API, localization, routing, or design-system authority.
+audience: developer
+maturity: preview
+slug: /developers/webapp-workflow/
+---
+
+# Change the Hosted Webapp
+
+The private `webapp` package builds the browser application shipped beside the
+server binary. It owns browser routing, same-origin transport, credential-safe
+client behavior, locally generated design tokens, and feature presentation.
+The server remains authoritative for application state, authentication,
+authorization, and the public HTTP contract.
+
+## Prepare the Package
+
+Use the pinned Node version and committed lockfile:
+
+```sh
+cd webapp
+npm ci
+npx playwright install chromium firefox webkit
+```
+
+For product-backed development, start the server and dependencies from the
+repository root, then run Vite in another terminal:
+
+```sh
+make run-server
+make run-webapp
+```
+
+See [local setup](/developers/local-setup/) for ports, generated state, and
+origin-sensitive flows.
+
+## Find the Feature Owner
+
+Feature modules live under `webapp/src/features`. Reusable presentation proven
+by real feature consumers lives under `webapp/src/components`. A component or
+feature with non-obvious behavior keeps a nearby `CONTRACT.md`.
+
+| Location | Owns |
+| --- | --- |
+| `src/features/<feature>` | Route orchestration, transport calls, feature state, and recovery behavior |
+| `src/components/<Component>` | Repeated visual or interaction behavior with real consumers |
+| `src/api/generated` | Generated TypeScript API schema; never hand-edit |
+| `src/generated/i18n` | Generated browser localization catalog; never hand-edit |
+| `src/app/routes.ts` | Generated route adapter; never hand-edit |
+| `design-system/tokens.mjs` | Human-owned product tokens and theme definitions |
+| `src/styles` | Reset, generated tokens, and document-level base styles |
+
+Keep route modules thin. Feature-specific values, validation, asynchronous
+state, and recovery stay with the feature rather than being pushed into a
+generic form or page shell.
+
+## Implement a Browser Change
+
+1. Read the feature and component contracts that already own the flow.
+2. List loading, success, empty, validation, denied, expired, unavailable, and
+   retry states before changing the visual surface.
+3. Reuse the owned Button, InputField, Icon, and AccessPageShell components
+   only where their contracts apply.
+4. Call the typed same-origin API adapter. Do not duplicate server validation
+   or authorize from client state.
+5. Add visible copy to the server-owned `webapp.*` localization namespace and
+   regenerate the typed catalog.
+6. Add focused unit tests and browser tests for the complete interaction.
+7. Review responsive layout, keyboard order, focus, reduced motion, light and
+   dark themes, failure recovery, and localization growth.
+
+## Keep Generated Adapters Current
+
+Run the focused generator when its source changes:
+
+```sh
+cd webapp
+npm run api:generate
+npm run i18n:generate
+npm run routes:generate
+```
+
+The normal gate regenerates and rejects drift. Generated files are reviewable
+outputs, not alternate authoring locations.
+
+For a design-token change:
+
+```sh
+npm run design-system:generate
+npm run design-system:check
+```
+
+Product components consume the webapp token system. They do not import the
+documentation site's Docusaurus tokens or add a second palette inside feature
+styles.
+
+## Run Focused Checks
+
+During implementation:
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run test:browser
+```
+
+Before handoff, run the complete package gate:
+
+```sh
+npm run check
+```
+
+It validates brand assets and design tokens, checks API, localization, and
+route generation, type-checks, lints, runs unit and browser suites, and builds
+the production bundle.
+
+## Browser Review Matrix
+
+Exercise every changed state at minimum in:
+
+- Chromium, Firefox, and WebKit through the pinned Playwright suite;
+- keyboard-only navigation and visible focus;
+- a narrow mobile viewport and a desktop viewport;
+- light and dark themes;
+- reduced motion; and
+- long localized text without clipping or layout escape.
+
+Do not use hover as the only disclosure, disable browser zoom, place secrets in
+URLs or storage, or treat a successful transport response as proof that an
+authorization decision was correct.
+
+{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
+entry points before publishing IDE-specific launch files or debugger commands.
+Until then, keep this guide tool-neutral and use focused tests plus browser
+developer tools for diagnosis. */}
+
+## Next
+
+- Coordinate an [HTTP contract change](/developers/http-and-openapi/).
+- Select the [repository verification level](/developers/testing/).
+- Update [public documentation](/developers/documentation/) for released
+  reader-visible behavior.

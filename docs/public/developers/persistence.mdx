@@ -1,0 +1,132 @@
+---
+title: Change Persistence and Migrations
+description: Evolve Proctor Store contracts, PostgreSQL operations, constraints, caches, and the current pre-release schema baseline safely.
+audience: developer
+maturity: preview
+slug: /developers/persistence/
+---
+
+# Change Persistence and Migrations
+
+PostgreSQL is authoritative for durable Proctor application state. Persistence
+does more than execute queries: it owns locking, database-time decisions,
+constraints, optimistic concurrency, and named atomic guarantees required by
+application use cases.
+
+Redis, in-process caches, cluster messages, and runtime projections remain
+disposable and reconstructible. Never make them the sole copy of state that
+must survive restart or failover.
+
+## Start from the Application Guarantee
+
+Before writing SQL, name the complete operation the application needs. A
+cross-model mutation should become a typed, named Store operation such as a
+bootstrap, transfer, command-outcome, or lifecycle transition—not a generic
+transaction callback exposed to application code.
+
+The application owns policy and transaction intent. The SQL adapter owns:
+
+- row and advisory locking;
+- PostgreSQL-time evaluation;
+- uniqueness and referential constraints;
+- revision and idempotency fences;
+- statement ordering;
+- commit or rollback; and
+- translation into portable Store outcomes.
+
+Raw SQL transactions, SQL handles, and `WithTransaction(func(Store))` do not
+cross into `server/app`.
+
+## Implement a Store Change
+
+1. Add or refine the smallest cohesive Store contract under `server/store`.
+2. Add conformance cases that express observable results and race guarantees.
+3. Implement the contract in `server/store/sqlstore` with explicit bounded
+   queries and constraints.
+4. Update memory or test adapters used by consumers; do not weaken the contract
+   to make a fake easier to write.
+5. Add application integration coverage through the real composition graph
+   when transaction behavior affects a use case.
+6. Update metrics through the existing bounded recorder or wrapper rather than
+   adding query text, resource IDs, or error text as labels.
+
+Read paths must remain bounded and authorization-aware where visibility is
+part of the query. Avoid loading an unrestricted collection and filtering it
+in application memory.
+
+## Current Pre-Release Migration Rule
+
+The repository currently owns one rewritable schema baseline:
+
+```text
+server/migrations/postgres/000001_baseline.up.sql
+server/migrations/postgres/000001_baseline.down.sql
+```
+
+Before the first stable release, incompatible development schemas are not
+upgraded. Schema work updates that baseline and its round-trip tests; affected
+developer databases must be discarded and recreated. Do not add a chain of
+historical development migrations that pretends to be a supported upgrade
+contract.
+
+Reset the repository-owned local environment with:
+
+```sh
+make dev-reset
+```
+
+The command deletes local developer containers and volumes. Preserve anything
+you need before running it.
+
+{/* TODO(migration-policy): Before the first stable release, define and
+publish the append-only migration, compatibility window, rollback, backup, and
+mixed-version deployment policy. Replace the rewritable-baseline instructions
+only after that production decision is accepted. */}
+
+## Run Focused PostgreSQL Tests
+
+Start with the affected package or conformance test, then run the repository
+target that provisions and removes its PostgreSQL dependency:
+
+```sh
+make -C server integration-postgres
+```
+
+The target covers Store conformance, migrations, application transactions,
+identity and authorization races, Jobs, files, mail, examinations, and other
+PostgreSQL-backed behavior. An invoked integration suite fails when PostgreSQL
+is unavailable rather than skipping.
+
+The hermetic server gate remains required:
+
+```sh
+make -C server check
+```
+
+## Treat Caches as Adapters
+
+The Store read-through cache is a bounded local optimization. The application
+cache may use memory or Redis. Neither changes PostgreSQL authority.
+
+Commit durable state first, then invalidate or publish. A missed invalidation
+must recover through bounded TTL, current reads, revalidation, or client
+resynchronization. Do not use cache presence as proof of authorization or
+cluster delivery as proof that another node observed a commit.
+
+## Review Persistence Safety
+
+- Are lists, scans, retries, and retained fields bounded?
+- Does a named operation expose the complete atomic guarantee?
+- Are current authority and database-time conditions checked inside the
+  transaction where races matter?
+- Do constraints protect invariants even when two nodes act concurrently?
+- Are retries safe against unknown commit outcomes?
+- Do logs, metrics, errors, and audit data omit SQL text, secrets, answers,
+  content, and uncontrolled values?
+- Does the change pass migration round-trip and the affected conformance suite?
+
+## Next
+
+- Coordinate [application behavior](/developers/server-workflow/).
+- Add or update the [HTTP contract](/developers/http-and-openapi/).
+- Choose the [integration and CI gates](/developers/testing/).

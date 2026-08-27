@@ -1,0 +1,160 @@
+---
+title: Set Up a Local Development Environment
+description: Validate the Proctor toolchain, start the single-node product, use the Vite development loop, and manage local dependencies safely.
+audience: developer
+maturity: preview
+slug: /developers/local-setup/
+---
+
+# Set Up a Local Development Environment
+
+The root Makefile is the stable interface for product development. It creates
+generated state below `.build/dev`, starts pinned dependency containers, builds
+the hosted webapp, and runs the Go server in the foreground.
+
+{/* TODO(contributor-platforms): Decide and publish the supported contributor
+operating-system matrix, including whether native Windows is supported or WSL
+is required. Current tracked scripts require a POSIX shell and Docker Compose;
+do not describe untested platforms as supported. */}
+
+## Install the Required Tools
+
+| Tool | Repository expectation |
+| --- | --- |
+| Go | The workspace and all modules declare Go 1.25.4; the tool check accepts Go 1.25 or newer |
+| Node.js | Use the webapp-pinned Node 22.22.0; package engines also accept compatible Node 20.19 or newer |
+| npm | Use the committed lockfiles through `npm ci` |
+| Docker | Docker Engine with the Compose plugin; the daemon must be running |
+| Shell tools | `make`, `jq`, `curl`, and `openssl` |
+
+From the repository root, validate the complete host toolchain:
+
+```sh
+make dev-tools
+```
+
+The check fails with the first missing or unsupported tool. It also verifies
+that Docker Compose and the Docker daemon are usable.
+
+## Start the Product
+
+Run the production-shaped single-node development lifecycle:
+
+```sh
+make run-server
+```
+
+This command:
+
+1. installs and builds the hosted webapp;
+2. generates development configuration and secrets without replacing existing
+   generated secrets;
+3. starts and health-checks PostgreSQL, Redis, MinIO, Mailpit, Prometheus,
+   Grafana, Loki, and the OpenTelemetry Collector; and
+4. runs Proctor in the foreground at `http://localhost:8065`.
+
+The pristine local installation uses loopback-only bootstrap development mode.
+Its generated bootstrap secret is displayed once by the controlling process,
+outside structured logs. Treat it as a credential even though it belongs only
+to local development.
+
+<GovernedFigure asset="developer-local-runtime" />
+
+## Use the Vite Feedback Loop
+
+Keep `make run-server` running, then start Vite in another terminal:
+
+```sh
+make run-webapp
+```
+
+Vite serves the browser application at `http://127.0.0.1:5173` and proxies API
+and WebSocket traffic to the Go listener at `http://127.0.0.1:8065`. Changes to
+browser source receive the faster Vite feedback loop; server changes still
+require restarting the foreground Go process.
+
+For flows whose redirect or callback depends on the configured public origin,
+follow the [webapp source guide](https://github.com/sudosylabs/Proctor/blob/main/webapp/README.md)
+and set the server public URL to the Vite origin. Do not debug origin-sensitive
+behavior with mismatched public and browser origins.
+
+## Inspect Local Services
+
+The tracked defaults bind developer services to loopback:
+
+| Service | Default address | Purpose |
+| --- | --- | --- |
+| Proctor | `http://127.0.0.1:8065` | Server and compiled hosted webapp |
+| Vite | `http://127.0.0.1:5173` | Optional browser HMR loop |
+| PostgreSQL | `127.0.0.1:15432` | Durable local application state |
+| Redis | `127.0.0.1:16379` | Disposable shared cache and counters |
+| MinIO | `http://127.0.0.1:19000` | S3-compatible local VFS backend |
+| MinIO console | `http://127.0.0.1:19001` | Local object-store inspection |
+| Mailpit | `http://127.0.0.1:18025` | Synthetic mail inspection |
+| Prometheus | `http://127.0.0.1:19090` | Metrics queries |
+| Grafana | `http://127.0.0.1:13000` | Tracked dashboards |
+| Loki | `http://127.0.0.1:13100` | Local log storage API |
+
+Print the observability URLs without memorizing them:
+
+```sh
+make metrics-urls
+```
+
+## Stop, Preserve, or Reset State
+
+| Command | Effect |
+| --- | --- |
+| `make dev-down` | Stops developer services and preserves their volumes |
+| `make dev-reset` | Deletes developer containers and persistent volumes |
+| `make dev-logs` | Follows dependency and observability logs |
+
+`dev-reset` is intentionally destructive to the local developer installation.
+Use it when testing first-run behavior or when pre-release schema instructions
+require a clean database—not as an ordinary stop command.
+
+Generated configuration, secrets, logs, target discovery, and collector state
+live below ignored `.build/dev`. They are outputs of tracked scripts, not files
+to commit or link as documentation authority.
+
+## Override a Local Default
+
+For one invocation, pass a Make variable:
+
+```sh
+make PROCTOR_SERVER_PORT=18080 run-server
+```
+
+For persistent local overrides, create the ignored root
+`config.override.mk`. Precedence is command-line value, local override file,
+environment value, then tracked default. Never add real credentials to tracked
+Make or Compose files.
+
+## Exercise the Three-Node Topology
+
+Run the complete active-active development topology:
+
+```sh
+make run-cluster
+```
+
+This builds the runtime image, starts three Proctor nodes behind HAProxy, and
+follows gateway and node logs. Certify readiness, metrics, peer discovery,
+load balancing, and one-node failure recovery with:
+
+```sh
+make cluster-smoke
+```
+
+Use `make cluster-down` to stop it while preserving state, or
+`make cluster-diagnostics` to print bounded diagnostics after a failure.
+
+{/* TODO(developer-fixtures): Define a tracked, synthetic development seed
+workflow for a complete Institution, academic structure, Users, and Exams.
+Until it exists, do not publish ad-hoc database imports or real data snapshots. */}
+
+## Next
+
+- Learn [where a change belongs](/developers/repository-boundaries/).
+- Follow the [webapp workflow](/developers/webapp-workflow/) for browser work.
+- Use the [testing ladder](/developers/testing/) before a full product gate.

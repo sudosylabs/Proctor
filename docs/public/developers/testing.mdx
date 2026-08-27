@@ -1,0 +1,129 @@
+---
+title: Test and Verify Changes
+description: Move from focused feedback to module, integration, architecture, browser, documentation, and complete CI gates without running everything blindly.
+audience: developer
+maturity: preview
+slug: /developers/testing/
+---
+
+# Test and Verify Changes
+
+Run checks in order of cost. The narrowest test should explain a local failure;
+the widest relevant gate should prove that the finished slice still composes
+with the product.
+
+## The Verification Ladder
+
+### 1. Focused Behavior
+
+Run the exact package and test while implementing:
+
+```sh
+cd server
+go test ./app -run '^TestExactBehavior$' -count=1
+```
+
+Use `-race` when concurrency or shared state is involved. Keep pure isolated
+tests network-free and parallel where safe.
+
+### 2. Owning Package or Module
+
+| Surface | Complete local gate |
+| --- | --- |
+| Server | `make -C server check` |
+| Webapp | `npm --prefix webapp run check` |
+| Cache | `make -C packages/cache check` |
+| Mail | `make -C packages/mail check` |
+| VFS | `GOWORK=off go test -race ./...` and `GOWORK=off go vet ./...` from `packages/vfs` |
+| Documentation | `make docs-check` |
+
+### 3. Dependency-Backed Behavior
+
+| Boundary | Command |
+| --- | --- |
+| All tagged server integration tests | `make -C server integration-all` |
+| PostgreSQL Store, migrations, and application behavior | `make -C server integration-postgres` |
+| Redis cache conformance | `make -C server integration-redis` |
+| S3-compatible VFS and server file content | `make -C server integration-s3` |
+| CAS and OIDC application integration | `make -C server integration-providers` |
+| WebSocket and two-node Memberlist behavior | `make -C server integration-realtime` |
+
+These targets provision pinned dependencies, wait for health, and remove them
+after the test. If the requested service is unavailable, the test fails; it
+does not silently report success.
+
+### 4. Cross-Module and Product Gates
+
+```sh
+make independent-modules
+make check
+```
+
+`independent-modules` runs test, race, vet, and build with `GOWORK=off` for all
+four Go modules. The root `check` verifies build scripts, the webapp,
+documentation, and the hermetic server gate.
+
+Use the complete CI-facing gate when the change warrants packaging and all
+dependency-backed suites:
+
+```sh
+make ci
+```
+
+`make ci` also assembles and verifies a release-style package. Release output
+must not already exist; the packaging targets refuse to reuse a directory that
+might contain operator configuration.
+
+## Match Tests to Risk
+
+| Change | Minimum additional evidence |
+| --- | --- |
+| Domain constructor or transition | Table-driven invariant and transition tests |
+| Application authorization or audit | Allow, deny, concealment, stale authority, and audit-failure behavior |
+| Named Store operation | Shared conformance plus PostgreSQL race/integration test |
+| Cache, mail, VFS, cluster, or execution adapter | Reusable conformance and failure classification |
+| HTTP resource | DTO, credential, assurance, Problem Details, result ordering, and OpenAPI agreement |
+| WebSocket behavior | Authentication, subscription authorization, replay/resync, bounds, and backpressure |
+| Job behavior | Claim, lease, checkpoint, retry, cancellation, process-loss, and retention behavior |
+| Webapp interaction | Unit state coverage plus Chromium, Firefox, and WebKit browser behavior |
+| Documentation presentation | Generator checks, production build, desktop/mobile and light/dark browser review |
+
+## Diagnose a Cluster Failure
+
+The three-node development certification is separate from ordinary unit and
+integration tests:
+
+```sh
+make cluster-smoke
+```
+
+After a failure, print bounded state and logs:
+
+```sh
+make cluster-diagnostics
+```
+
+The smoke target checks readiness, metrics, peer discovery, build identity,
+gateway traffic, and recovery while one node is stopped, then restores the
+node.
+
+## Keep Tests Trustworthy
+
+- Prefer observable behavior over implementation call counts.
+- Use small handwritten fakes for consumer-owned application ports.
+- Use external-package tests for exported contracts; reserve same-package tests
+  for important unexported mechanics.
+- Make concurrency deterministic with synchronization, not sleeps.
+- Keep fixtures synthetic and bounded.
+- Never place credentials, student data, Exam answers, mail bodies, workspace
+  content, or operational identifiers in failure output.
+- Do not weaken a conformance suite for one adapter; fix the adapter or make an
+  optional capability explicit.
+
+## Before Handoff
+
+1. Run `git diff --check`.
+2. Review generated output and ensure it came from the tracked source.
+3. Check the diff for secrets, local paths, snapshots, and unrelated changes.
+4. Run the highest relevant gate above.
+5. Report exactly what passed and any dependency-backed check that was not run.

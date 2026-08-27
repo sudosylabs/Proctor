@@ -1,0 +1,119 @@
+---
+title: Understand Repository Boundaries
+description: Choose the owning Proctor module or product surface without reversing dependency direction or duplicating contracts.
+audience: developer
+maturity: preview
+slug: /developers/repository-boundaries/
+---
+
+# Understand Repository Boundaries
+
+Proctor is a monorepo, not a single Go module. The root workspace makes local
+development convenient, but each Go module retains its own dependency,
+compatibility, testing, and licensing boundary.
+
+## The Four Go Modules
+
+| Module | Owns | Must not own |
+| --- | --- | --- |
+| `packages/cache` | Portable cache behavior, codecs, TTLs, conditional writes, counters, memory and Redis adapters | Proctor cache eligibility, authorization, durable state, server types |
+| `packages/mail` | Transport-neutral messages, validation, MIME, SMTP, delivery outcome classification | Proctor templates, recipients, retry, queueing, institution policy |
+| `packages/vfs` | Portable streaming file operations and local, memory, and S3-compatible backends | Proctor metadata, authorization, retention, Exam or User meaning |
+| `server` | Domain, application policy, persistence contracts and adapters, transports, runtime composition | Browser presentation or portable behavior without a Proctor-independent contract |
+
+The root `go.work` connects these modules for repository development. It is not
+a production dependency and cannot hide a module that fails independently.
+
+## Product Surfaces Outside the Go Workspace
+
+| Surface | Responsibility |
+| --- | --- |
+| `webapp` | The server-hosted React application and its browser contracts |
+| `docs/public` and `docs/api` | Task-oriented public guidance and authored API guidance |
+| `docs/site` | Docusaurus rendering, generated adapters, search, and presentation |
+| `build` and the root Makefile | Product lifecycle, local infrastructure, checks, packaging, and release inputs |
+| `deploy` | Tracked deployment support files and examples |
+
+These surfaces may be released with the server product, but they do not become
+additional Go modules or alternate composition roots.
+
+## Decide Where a Change Belongs
+
+Ask these questions in order:
+
+1. **Is the behavior meaningful without Proctor?** A portable cache, mail, or
+   filesystem guarantee may belong in a reusable module. Institution, access,
+   examination, audit, and delivery policy remain in the server.
+2. **Who consumes the behavior?** Put a narrow interface beside the consumer.
+   Do not create a provider-shaped abstraction and ask every caller to depend
+   on it.
+3. **Is the responsibility stable?** File size, symmetry, or a hypothetical
+   future backend does not justify a package.
+4. **Where is concrete infrastructure selected?** Only the module-root
+   `server.New` composition path selects production adapters.
+5. **Which contract changes?** Update the exact component contract, public
+   contract, tests, or guide in the same slice.
+
+## The Server Dependency Direction
+
+Inside `server`, domain models own local invariants. Application services own
+use-case policy, current authorization, transaction intent, audit, and effect
+timing. Persistence implements bounded Store contracts. HTTP and WebSocket are
+outer adapters that translate to and from application capabilities.
+
+Infrastructure points inward:
+
+```text
+HTTP / WebSocket / Jobs
+          ↓
+   application use cases
+          ↓
+domain models + Store contracts
+          ↑
+SQL / Redis / VFS / SMTP / cluster adapters
+```
+
+The arrows are dependency and policy direction, not request chronology.
+Application services never receive a platform service locator or root Store
+accessor, and transport code never reaches SQL directly.
+
+## Stable Server Landmarks
+
+| Location | Use it for |
+| --- | --- |
+| `server/model` | Cohesive domain state, local validation, and transitions |
+| `server/app` | Use cases, authorization timing, audit intent, coordination, and post-commit effects |
+| `server/store` | Bounded persistence and named aggregate contracts |
+| `server/store/sqlstore` | PostgreSQL implementation, locking, constraints, and migration integration |
+| `server/httpapi` | Route catalog, DTOs, credential requirements, Problem Details, and HTTP mapping |
+| `server/websocket` | Authenticated connection transport and protocol behavior |
+| `server/platform` | Infrastructure lifecycle and health, never application service location |
+| module-root `server` | Concrete composition, readiness, serving, and reverse shutdown |
+
+Packages should be named for one responsibility. Avoid `util`, `common`,
+`shared`, `base`, `core`, `services`, or `repositories` as catch-all homes.
+
+## Prove the Boundary
+
+Run the import-policy gate whenever a server package or documentation of its
+boundaries changes:
+
+```sh
+make -C server architecture
+```
+
+Run every Go module without workspace assistance before changing a reusable
+module contract or its server consumption:
+
+```sh
+make independent-modules
+```
+
+The first command rejects forbidden production imports. The second runs test,
+race, vet, and build checks with `GOWORK=off` across all four modules.
+
+## Next
+
+- Make a [server change](/developers/server-workflow/).
+- Work on a [reusable module](/developers/reusable-modules/).
+- Review the complete [verification ladder](/developers/testing/).

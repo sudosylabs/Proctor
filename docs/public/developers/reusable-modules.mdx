@@ -1,0 +1,136 @@
+---
+title: Change a Reusable Go Module
+description: Preserve the independent cache, mail, and VFS contracts while adding portable behavior or an adapter.
+audience: developer
+maturity: preview
+slug: /developers/reusable-modules/
+---
+
+# Change a Reusable Go Module
+
+`packages/cache`, `packages/mail`, and `packages/vfs` are independent Go
+modules. Their exported contracts must remain useful without importing the
+Proctor server or assigning Proctor-specific meaning to portable operations.
+
+## Choose the Correct Module
+
+### Cache
+
+The cache module owns encoded memory and Redis behavior, key validation, TTL
+normalization, conditional writes, counters, capabilities, and reusable backend
+conformance. It does not own durable state, authorization, cache eligibility,
+namespaces, broad prefix deletion, or distributed locking.
+
+[Read the cache contract](https://github.com/sudosylabs/Proctor/blob/main/packages/cache/README.md).
+
+### Mail
+
+The mail module owns transport-neutral messages, validation, MIME composition,
+SMTP security, bounded delivery, and portable delivery-outcome classification.
+It does not own Proctor templates, recipients, localization, queueing, retry,
+rate limits, or provider webhooks.
+
+[Read the mail contract](https://github.com/sudosylabs/Proctor/blob/main/packages/mail/README.md).
+
+### VFS
+
+The VFS module owns portable streaming file operations, normalized relative
+paths, opaque conditional revisions, range reads, listing, capabilities, and
+memory, local, and S3-compatible backends. It does not own Users, Exams,
+authorization, retention, metadata, object keys, or workspace policy.
+
+[Read the VFS contract](https://github.com/sudosylabs/Proctor/blob/main/packages/vfs/README.md).
+
+## Change the Contract Safely
+
+1. State the portable behavior and explicit exclusions in the module README.
+2. Update the core interface only when every conforming backend can implement
+   the guarantee. Use a narrow optional capability when support is not
+   universal.
+3. Add behavior to the shared conformance suite before or with adapter work.
+4. Keep errors portable through `errors.Is` or `errors.As`.
+5. Prove cancellation, bounds, ownership, and concurrency semantics—not only
+   the happy path.
+6. Update the server consumer separately through its narrow inward contract.
+
+An adapter owns protocol mechanics. The application using the adapter owns
+policy. For example, the Redis adapter may implement atomic counter behavior;
+the Proctor server decides what is counted and whether an unavailable counter
+must fail closed.
+
+## Run Each Module Independently
+
+For cache:
+
+```sh
+make -C packages/cache check
+make -C packages/cache conformance-redis
+```
+
+For mail:
+
+```sh
+make -C packages/mail check
+make -C packages/mail conformance-smtp
+```
+
+For VFS:
+
+```sh
+cd packages/vfs
+GOWORK=off go test ./...
+GOWORK=off go test -race ./...
+GOWORK=off go vet ./...
+GOWORK=off go build ./...
+```
+
+The S3-compatible VFS conformance and server file-content integration are
+owned by the server integration target:
+
+```sh
+make -C server integration-s3
+```
+
+After any reusable-module or cross-module change, run all four modules outside
+workspace assistance:
+
+```sh
+make independent-modules
+```
+
+## Add a Backend
+
+A new backend must:
+
+- depend only on the portable module contract and its implementation library;
+- report optional capabilities explicitly;
+- pass the shared conformance suite;
+- document configuration and ownership of any supplied client;
+- avoid logging values, credentials, message content, file content, or unsafe
+  backend error details; and
+- retain cancellation, size, timeout, and cleanup behavior under failure.
+
+Do not add an adapter solely for symmetry. There must be a concrete consumer
+and a deployment or test path that exercises it.
+
+## Protect the License Boundary
+
+Reusable modules are Apache-2.0. The combined server and webapp are
+AGPL-3.0-only. Do not move server implementation into a reusable module or copy
+AGPL, source-available, or commercial upstream code into `packages`.
+
+Direct or substantial upstream adaptation must retain the required notices and
+record the exact repository, revision, path, license, and nature of the
+adaptation. A conceptual pattern is not permission to copy expression.
+
+## Compatibility
+
+All three modules are pre-v1. Exported APIs may still change, but compatibility
+cost is real: update every repository consumer, conformance suite, example, and
+README in the same coherent slice.
+
+## Next
+
+- Understand the [server consumption boundary](/developers/server-workflow/).
+- Run the complete [testing ladder](/developers/testing/).
+- Use the [contribution checklist](/developers/contribution-checklist/).

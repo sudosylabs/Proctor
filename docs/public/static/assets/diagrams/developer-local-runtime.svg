@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Proctor local development runtime</title>
+  <desc id="description">The root Makefile owns the local developer lifecycle. The optional Vite process proxies browser API and WebSocket traffic to the foreground Proctor server. The server uses health-checked PostgreSQL, Redis, MinIO, and Mailpit services. Prometheus, Grafana, Loki, and the OpenTelemetry Collector form a reconstructible observability stack, while generated configuration, secrets, and logs remain under ignored build state.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
+    </marker>
+    <marker id="arrow-neutral" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#655f69"/>
+    </marker>
+    <marker id="arrow-transient" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#0b766e"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+
+  <rect x="56" y="192" width="200" height="216" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="232" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Root Makefile</text>
+  <text x="80" y="256" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LIFECYCLE OWNER</text>
+  <path d="M 80 280 H 232" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="80" y="312" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">run-server</text>
+  <text x="80" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">run-webapp</text>
+  <text x="80" y="376" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">dev-down · dev-reset</text>
+
+  <rect x="320" y="72" width="248" height="120" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="344" y="112" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Vite HMR</text>
+  <text x="344" y="144" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser UI · optional loop</text>
+  <text x="344" y="168" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">127.0.0.1:5173</text>
+
+  <path d="M 256 248 H 288 V 132 H 320" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+
+  <rect x="320" y="248" width="248" height="200" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="344" y="288" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Proctor server</text>
+  <text x="344" y="312" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">FOREGROUND PROCESS · :8065</text>
+  <path d="M 344 336 H 544" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="344" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Compiled hosted webapp</text>
+  <text x="344" y="400" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">API · WebSocket · Jobs</text>
+  <text x="344" y="424" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Readiness and metrics</text>
+
+  <path d="M 256 344 H 320" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 444 192 V 248" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+  <text x="460" y="224" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PROXY</text>
+
+  <rect x="640" y="72" width="504" height="264" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="664" y="112" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Health-checked dependencies</text>
+  <text x="664" y="136" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PINNED DEVELOPMENT SERVICES</text>
+  <rect x="664" y="168" width="216" height="56" rx="6" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="688" y="202" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">PostgreSQL · durable</text>
+  <rect x="904" y="168" width="216" height="56" rx="6" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="928" y="202" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Redis · disposable</text>
+  <rect x="664" y="248" width="216" height="56" rx="6" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="688" y="282" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">MinIO · file content</text>
+  <rect x="904" y="248" width="216" height="56" rx="6" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="928" y="282" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Mailpit · captured mail</text>
+
+  <path d="M 568 328 H 640" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+
+  <rect x="640" y="392" width="504" height="208" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="664" y="432" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Reconstructible observability</text>
+  <text x="664" y="456" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LOCAL DIAGNOSIS · NOT PRODUCT AUTHORITY</text>
+  <text x="664" y="504" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Prometheus · Grafana</text>
+  <text x="664" y="536" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Loki · OpenTelemetry Collector</text>
+  <text x="664" y="568" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Metrics, dashboards, logs, traces</text>
+
+  <path d="M 568 400 H 600 V 496 H 640" fill="none" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
+
+  <rect x="320" y="504" width="248" height="96" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7"/>
+  <text x="344" y="544" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Generated local state</text>
+  <text x="344" y="576" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">.BUILD/DEV · IGNORED</text>
+  <path d="M 256 376 H 288 V 552 H 320" fill="none" stroke="#0b766e" stroke-width="2" stroke-dasharray="9 7" marker-end="url(#arrow-transient)"/>
+
+  <path d="M 56 624 V 640 H 1144 V 624" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="672" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Tracked scripts recreate the environment; generated secrets and state never become repository authority.</text>
+</svg>

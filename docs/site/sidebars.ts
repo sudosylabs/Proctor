@@ -23,7 +23,67 @@ const sidebars: SidebarsConfig = {
       label: 'Build and Integrate',
       collapsed: false,
       items: [
-        {type: 'doc', id: 'developers/index', label: 'Developer Guide'},
+        {
+          type: 'category',
+          label: 'Developer Guide',
+          collapsed: false,
+          link: {type: 'doc', id: 'developers/index'},
+          items: [
+            {type: 'doc', id: 'developers/local-setup', label: 'Local Setup'},
+            {
+              type: 'doc',
+              id: 'developers/repository-boundaries',
+              label: 'Repository Boundaries',
+            },
+            {
+              type: 'category',
+              label: 'Work on Proctor',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'developers/server-workflow',
+                  label: 'Server Workflow',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/webapp-workflow',
+                  label: 'Webapp Workflow',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/reusable-modules',
+                  label: 'Reusable Modules',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/http-and-openapi',
+                  label: 'HTTP and OpenAPI',
+                },
+                {
+                  type: 'doc',
+                  id: 'developers/persistence',
+                  label: 'Persistence',
+                },
+              ],
+            },
+            {
+              type: 'doc',
+              id: 'developers/testing',
+              label: 'Testing and Verification',
+            },
+            {
+              type: 'doc',
+              id: 'developers/documentation',
+              label: 'Documentation',
+            },
+            {
+              type: 'doc',
+              id: 'developers/contribution-checklist',
+              label: 'Contribution Checklist',
+            },
+          ],
+        },
         {type: 'link', href: '/api/', label: 'API Reference'},
       ],
     },

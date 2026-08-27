@@ -1,0 +1,133 @@
+---
+title: Change the Proctor Server
+description: Follow Proctor's domain, application, persistence, transport, and composition boundaries while implementing a complete server slice.
+audience: developer
+maturity: preview
+slug: /developers/server-workflow/
+---
+
+# Change the Proctor Server
+
+A server change is complete when one user-visible or operational behavior works
+through the real boundary that owns it. Avoid horizontal scaffolding that adds
+models, interfaces, stores, or routes without a working use case.
+
+## Before Editing
+
+1. Read the nearest package comment, component contract, and relevant section
+   of the [server guide](https://github.com/sudosylabs/Proctor/blob/main/server/README.md).
+2. Check the relevant public page's maturity, then confirm behavior in the
+   current code and tests so planned contracts are not mistaken for released
+   behavior.
+3. Search for the current concept and its tests with `rg`; do not infer an
+   inventory from filenames alone.
+4. Identify the domain term, action, resource, credential requirement, durable
+   authority, and post-commit effects involved.
+5. Inspect the working tree and preserve unrelated changes.
+
+## Place Each Decision Once
+
+| Decision | Owner |
+| --- | --- |
+| Local state validity and state transition | `server/model` |
+| Use-case policy, authorization, audit intent, and effect timing | `server/app` or a justified application child |
+| Atomic persistence guarantee | A named contract under `server/store` |
+| Locking, constraints, retries, and SQL transaction mechanics | `server/store/sqlstore` |
+| Request decoding, response DTO, credential and assurance declaration | `server/httpapi` |
+| Connection protocol, replay, subscription, or backpressure | `server/websocket` and application realtime contracts |
+| Backend selection and lifecycle wiring | Module-root `server.New` composition |
+
+Transport code establishes an immutable principal and checks the route's
+credential and assurance requirement. The owning application use case performs
+the authoritative action-and-resource authorization check against current
+state. Membership, affiliation, or authentication alone never implies
+permission.
+
+## Shape the Use Case
+
+Prefer a direct, typed method:
+
+```go
+result, err := application.CreateResource(ctx, invocation, command)
+```
+
+`context.Context` carries cancellation and deadlines. The invocation carries
+the principal and bounded safe call metadata. The command carries explicit
+inputs. Do not hide identity, permissions, Store access, or mutable policy in
+context values or global state.
+
+Application-facing interfaces belong beside the consumer and expose one
+cohesive need. Persistence is the deliberate grouped exception: `store.Store`
+and its per-model or aggregate contracts remain together for shared
+conformance testing.
+
+## Preserve Durable Ordering
+
+For a state-changing use case:
+
+1. resolve the exact resource and current authority;
+2. authorize immediately before expensive work or mutation;
+3. prepare bounded audit intent and any idempotent semantic fingerprint;
+4. commit state, audit, and required durable work atomically where the contract
+   requires it; and
+5. only after commit, invalidate caches or publish cluster, realtime,
+   execution, or other best-effort effects.
+
+Queued mail and finite background work use durable records because delivery or
+continuation must survive process loss. Ordinary realtime publication remains
+best-effort and reconstructible.
+
+## Add an HTTP Surface Deliberately
+
+An HTTP resource owns one cohesive path family, DTO mapping, explicit
+authentication requirement, and allowlist of public errors. Add the resource
+to the sealed production catalog; do not register routes through package
+initialization or expose a mutable router.
+
+If the public HTTP contract changes, follow the complete
+[HTTP and OpenAPI workflow](/developers/http-and-openapi/) in the same slice.
+The handler, route manifest, DTOs, public errors, and OpenAPI document must
+agree.
+
+## Test in Layers
+
+Start with the narrowest useful feedback:
+
+```sh
+cd server
+go test ./path/to/package -run '^TestExactBehavior$' -count=1
+```
+
+Then run the hermetic server gate:
+
+```sh
+make -C server check
+```
+
+That gate includes architecture, localization, OpenAPI agreement, unit tests,
+race tests, and vet without requiring external services. Add the relevant
+dependency-backed target when behavior crosses PostgreSQL, Redis, S3-compatible
+storage, SMTP, providers, realtime, or multiple nodes. See the
+[testing guide](/developers/testing/) for the command matrix.
+
+Integration tests should enter through the real `server.New` graph when the
+behavior depends on composition. Adapter contracts should use reusable
+conformance suites. Tests must fail when an invoked dependency is unavailable;
+they must not silently skip the claimed coverage.
+
+## Review the Finished Slice
+
+- Does every changed concept retain its canonical Proctor meaning?
+- Is the application independent of concrete transport and infrastructure?
+- Does authorization use current resource state?
+- Are logs, metrics, audit values, examples, and errors bounded and safe?
+- Does durable state commit before transient effects?
+- Is there exactly one composition path and one public contract source?
+- Did the change update its nearest contract, public guidance, or maturity
+  statement when that authority changed?
+
+## Next
+
+- Add or change an [HTTP operation](/developers/http-and-openapi/).
+- Change [persistence](/developers/persistence/).
+- Choose the correct [test and integration gates](/developers/testing/).

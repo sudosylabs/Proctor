@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {auditSearchIndex, buildSearchIndex, renderSearchData} from './index.mjs';
+import {
+  auditSearchIndex,
+  buildSearchIndex,
+  renderSearchData,
+  searchableText,
+} from './index.mjs';
+
+test('source-only MDX comments never enter reader search data', () => {
+  assert.equal(
+    searchableText('Visible before. {/* TODO(owner): internal decision. */} Visible after.'),
+    'Visible before. Visible after.',
+  );
+});
 
 test('the tracked search index is current', async () => {
   assert.deepEqual(await auditSearchIndex(), []);

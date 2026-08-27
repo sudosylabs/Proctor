@@ -33,11 +33,12 @@ function parseFrontmatter(source) {
   return {fields, body: source.slice(match[0].length)};
 }
 
-function searchableText(body) {
+export function searchableText(body) {
   return compact(
     body
       .replace(/^\s*import\s+.*$/gm, ' ')
       .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
       .replace(/<[^>]+>/g, ' ')
       .replace(/!?(\[([^\]]+)\])\([^)]*\)/g, '$2')
       .replace(/[`*_>#|{}]/g, ' '),

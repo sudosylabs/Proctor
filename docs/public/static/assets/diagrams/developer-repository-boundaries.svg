@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Proctor repository module boundaries</title>
+  <desc id="description">The root Go workspace references four independently verified modules. The Proctor server module contains transport, application, domain, and Store contract boundaries and consumes portable cache, mail, and VFS modules. Workspace references assist local development but do not replace each module's independent tests and build.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
+    </pattern>
+    <marker id="arrow-primary" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#5c00aa"/>
+    </marker>
+    <marker id="arrow-neutral" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 12 6 L 0 12 Z" fill="#655f69"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+
+  <rect x="56" y="56" width="1088" height="80" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="94" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Root go.work</text>
+  <text x="80" y="118" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DEVELOPMENT REFERENCES · NOT A RELEASE-TIME DEPENDENCY</text>
+
+  <path d="M 600 136 V 160 M 204 160 H 1020" fill="none" stroke="#5c00aa" stroke-width="2" stroke-dasharray="9 7"/>
+  <path d="M 204 160 V 176" fill="none" stroke="#5c00aa" stroke-width="2" marker-end="url(#arrow-primary)"/>
+  <path d="M 496 160 V 176" fill="none" stroke="#5c00aa" stroke-width="2" marker-end="url(#arrow-primary)"/>
+  <path d="M 752 160 V 176" fill="none" stroke="#5c00aa" stroke-width="2" marker-end="url(#arrow-primary)"/>
+  <path d="M 1020 160 V 176" fill="none" stroke="#5c00aa" stroke-width="2" marker-end="url(#arrow-primary)"/>
+  <circle cx="600" cy="160" r="5" fill="#5c00aa"/>
+  <circle cx="204" cy="160" r="4" fill="#5c00aa"/>
+  <circle cx="496" cy="160" r="4" fill="#5c00aa"/>
+  <circle cx="752" cy="160" r="4" fill="#5c00aa"/>
+  <circle cx="1020" cy="160" r="4" fill="#5c00aa"/>
+
+  <rect x="56" y="176" width="296" height="296" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="216" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Server module</text>
+  <text x="80" y="240" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SERVER</text>
+  <rect x="80" y="264" width="248" height="48" rx="6" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="204" y="294" text-anchor="middle" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">HTTP · WebSocket · Jobs</text>
+  <path d="M 204 312 V 328" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+  <rect x="80" y="328" width="248" height="48" rx="6" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="204" y="358" text-anchor="middle" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Application use cases</text>
+  <path d="M 204 376 V 392" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
+  <rect x="80" y="392" width="248" height="56" rx="6" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="204" y="416" text-anchor="middle" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Domain + Store contracts</text>
+  <text x="204" y="438" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">POLICY POINTS INWARD</text>
+
+  <rect x="384" y="176" width="224" height="296" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="408" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Cache module</text>
+  <text x="408" y="240" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PACKAGES/CACHE</text>
+  <path d="M 408 264 H 584" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="408" y="296" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Portable cache contract</text>
+  <text x="408" y="328" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Memory · Redis</text>
+  <text x="408" y="384" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO DURABLE STATE</text>
+  <text x="408" y="416" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO SERVER TYPES</text>
+
+  <rect x="640" y="176" width="224" height="296" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="664" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Mail module</text>
+  <text x="664" y="240" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PACKAGES/MAIL</text>
+  <path d="M 664 264 H 840" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="664" y="296" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Compose · validate</text>
+  <text x="664" y="328" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">SMTP · outcomes</text>
+  <text x="664" y="384" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO TEMPLATES</text>
+  <text x="664" y="416" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO RETRY POLICY</text>
+
+  <rect x="896" y="176" width="248" height="296" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="920" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">VFS module</text>
+  <text x="920" y="240" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PACKAGES/VFS</text>
+  <path d="M 920 264 H 1120" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="920" y="296" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Portable file operations</text>
+  <text x="920" y="328" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Memory · local · S3</text>
+  <text x="920" y="384" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO DOMAIN METADATA</text>
+  <text x="920" y="416" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO AUTHORIZATION</text>
+
+  <path d="M 204 472 V 520 H 496 V 472" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 204 520 H 752 V 472" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 204 520 H 1020 V 472" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <circle cx="204" cy="520" r="5" fill="#5c00aa"/>
+  <text x="624" y="552" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SERVER CONSUMES PORTABLE CONTRACTS</text>
+
+  <path d="M 56 608 V 624 H 1144 V 608" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="656" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">The workspace joins development; every module still passes test, race, vet, and build with GOWORK=off.</text>
+</svg>

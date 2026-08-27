@@ -1,0 +1,122 @@
+---
+title: Prepare a Contribution
+description: Scope, implement, verify, review, and hand off a Proctor change while preserving unrelated work, licensing, and source authority.
+audience: developer
+maturity: preview
+slug: /developers/contribution-checklist/
+---
+
+# Prepare a Contribution
+
+This checklist covers the repository-owned technical path from an understood
+change to a reviewable diff. It does not invent project governance that has not
+yet been decided.
+
+{/* TODO(contributor-governance): Publish the official issue intake,
+maintainer ownership, branch naming, commit policy, pull-request template,
+review requirements, DCO or CLA decision, code of conduct, and community
+support channel. Do not copy Mattermost's Jira, CLA, community, or branch rules
+into Proctor without an explicit project decision. */}
+
+## 1. Establish the Scope
+
+- State the user, operator, developer, or system outcome.
+- Identify the domain terms and invariants involved.
+- Find the current implementation, tests, nearest component contract, and
+  relevant public maturity statement.
+- Inspect `git status` and distinguish existing work from your change.
+- List affected public contracts, generated artifacts, and documentation
+  authorities before editing.
+- Stop and request a decision when missing information would materially change
+  behavior, security, compatibility, licensing, or deployment support.
+
+## 2. Choose the Smallest Complete Slice
+
+A complete slice crosses every boundary needed for one behavior and no more.
+It may include a model transition, application use case, Store operation, HTTP
+mapping, OpenAPI source, tests, and public guidance together.
+
+It should not include:
+
+- placeholder packages or interfaces;
+- broad refactors justified only by symmetry or file size;
+- a second source of truth for an existing contract;
+- unrelated formatting or generated noise; or
+- speculative support for an unselected platform, provider, or workflow.
+
+## 3. Implement Through the Owner
+
+Follow the applicable workflow:
+
+- [server behavior](/developers/server-workflow/);
+- [hosted webapp](/developers/webapp-workflow/);
+- [reusable module](/developers/reusable-modules/);
+- [HTTP and OpenAPI](/developers/http-and-openapi/);
+- [persistence](/developers/persistence/); or
+- [documentation](/developers/documentation/).
+
+Update source and tests together. When a behavior or authority changes, update
+its component contract, public guide and maturity, API source, or owning
+tracked reference in the same slice.
+
+## 4. Handle Upstream Work Correctly
+
+Mattermost is an eligible behavior and source reference, not an automatic
+template. Before copying or substantially adapting upstream expression:
+
+1. record the exact repository, revision, path, and governing license;
+2. confirm the license is compatible with the destination;
+3. rework the behavior through Proctor's domain, architecture, security, and
+   accessibility boundaries;
+4. preserve required notices and record provenance immediately; and
+5. review for copied branding, fixtures, secrets, and assumptions.
+
+Reusable Apache-2.0 modules cannot contain implementation copied from AGPL,
+source-available, or commercial Mattermost code. Mattermost-derived server
+work must be recorded in `server/NOTICE` when required.
+
+## 5. Verify in Increasing Scope
+
+Run the focused test while developing, then the owning module gate, the
+relevant integration target, and the highest honest product gate. Use the
+[testing guide](/developers/testing/) instead of running every expensive suite
+after every edit.
+
+At minimum before handoff:
+
+```sh
+git diff --check
+git status --short
+```
+
+For server or documentation boundary changes:
+
+```sh
+make -C server architecture
+```
+
+## 6. Review the Diff as a Reviewer
+
+- Read the complete diff, including generated artifacts.
+- Confirm generated files match their human-owned inputs.
+- Search for credentials, tokens, private keys, real email addresses, student
+  data, Exam answers, local paths, hostnames, and oversized fixtures.
+- Check that errors, logs, metrics, audit values, and examples remain bounded.
+- Confirm unrelated user work was neither staged nor reformatted.
+- Re-read changed prose for promises not proved by released behavior.
+- Verify that removed authority was actually removed rather than left as a
+  stale compatibility copy.
+
+## 7. Hand Off Clearly
+
+Report:
+
+1. the outcome, not only the files changed;
+2. the durable boundary or contract that now owns it;
+3. the focused and broad checks that passed;
+4. any integration or environment-dependent check not run; and
+5. every unresolved decision or source TODO that remains.
+
+Do not describe a preview behavior as generally available, a best-effort effect
+as durable, an integrity flag as a finding of guilt, or an inferred platform as
+supported.

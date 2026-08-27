@@ -1,53 +1,75 @@
 ---
 title: Develop With Proctor
-description: Find Proctor's module boundaries, canonical contracts, and contribution checks.
+description: Set up Proctor, find the correct ownership boundary, make a focused change, and verify it with the repository's real gates.
 audience: developer
 maturity: preview
 slug: /developers/
 ---
 
-import Link from '@docusaurus/Link';
-
 # Develop With Proctor
 
-Proctor is a Go workspace with four independently versioned modules and one
-hosted React application. Repository development connects them; every Go module
-must still build and test without workspace assistance.
+Proctor is one product repository with four independently versioned Go modules,
+a server-hosted React application, and a separately built documentation site.
+This guide turns those boundaries into a contribution path: start the product,
+choose the owner of a change, use the nearest contract, and run checks in order
+of cost.
 
 <Maturity state="preview">
-  This is the first public developer entry point. Exact setup and command
-  authority remains in the module READMEs and root build guide while the public
-  contribution journey is expanded.
+  The development environment, module checks, API compiler, browser gates, and
+  documentation build are implemented. Project-wide contributor governance and
+  the supported operating-system policy remain open and are called out where
+  they affect a task.
 </Maturity>
 
-## Choose the Owning Module
+## Start Here
 
-| Module | Owns |
-| --- | --- |
-| `packages/cache` | Reusable cache contracts and adapters |
-| `packages/mail` | Reusable mail composition and delivery contracts |
-| `packages/vfs` | Reusable virtual-file-system contracts and adapters |
-| `server` | Proctor domain, application, transports, persistence, and composition |
-| `webapp` | The hosted browser application |
+1. [Prepare the local environment](/developers/local-setup/) and run the
+   production-shaped single-node lifecycle.
+2. [Tour the repository boundaries](/developers/repository-boundaries/) before
+   deciding where a change belongs.
+3. Follow the workflow for the surface you are changing, then use the
+   [verification ladder](/developers/testing/) before proposing the work.
 
-Reusable packages never import server types. Business logic remains independent
-of HTTP, WebSocket, SQL, Redis, SMTP, VFS, Memberlist, and concrete adapters.
-The module-root `server.New` function is the only composition root that selects
-infrastructure.
+<GovernedFigure asset="developer-repository-boundaries" />
 
-## Start With the Right Source
+## Choose the Work You Are Doing
 
-- [Repository documentation hub](https://github.com/sudosylabs/Proctor/blob/main/docs/README.md)
-  routes architectural and product questions.
-- [Build guide](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
-  owns product-level commands and development infrastructure.
-- [Server README](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
-  owns server-specific commands and configuration.
-- <Link to="/api/">API guide</Link> explains the reviewed HTTP contract.
+| Goal | Start with | Finish with |
+| --- | --- | --- |
+| Change domain or server behavior | [Server workflow](/developers/server-workflow/) | Focused tests, server check, affected integration suite |
+| Change a hosted browser flow | [Webapp workflow](/developers/webapp-workflow/) | Generated adapters, browser matrix, webapp check |
+| Change cache, mail, or VFS behavior | [Reusable modules](/developers/reusable-modules/) | Module conformance, race, vet, workspace-independent build |
+| Add or change an HTTP operation | [HTTP and OpenAPI](/developers/http-and-openapi/) | OpenAPI build, agreement, reference audit |
+| Change durable data or SQL | [Persistence workflow](/developers/persistence/) | Store conformance, migration and PostgreSQL integration tests |
+| Change public or maintainer documentation | [Documentation workflow](/developers/documentation/) | Affected generators, docs check, architecture gate |
+| Prepare work for review | [Contribution checklist](/developers/contribution-checklist/) | Clean diff and the highest relevant repository gate |
 
-## Contribution Rule
+## Keep the Authority in One Place
 
-Make the smallest coherent change, add tests proportional to risk, and update
-the authority that owns any changed domain language, behavior, public contract,
-or command. Generated documentation must name its tracked input and rebuild
-deterministically.
+Public guides explain tasks and consequences. The OpenAPI YAML modules own the
+public HTTP contract. Component contracts and module READMEs own non-obvious
+behavior at their boundary. Code, tests, configuration, and command help remain
+the authority for implementation detail that can be discovered directly.
+
+When a change alters more than one of those authorities, update them together.
+Do not solve drift by copying the same inventory into several documents.
+
+## Four Rules That Prevent Expensive Mistakes
+
+1. **Choose ownership before abstraction.** Add a package or interface only
+   for a stable responsibility with a real consumer.
+2. **Keep policy inward.** HTTP, WebSocket, SQL, Redis, SMTP, VFS, Memberlist,
+   and execution-host adapters do not own business rules.
+3. **Commit before effects.** Durable state commits before cache invalidation,
+   cluster fan-out, realtime publication, execution projection, or delivery.
+4. **Verify the smallest honest surface first.** A focused test gives fast
+   feedback; the relevant module and product gates prove the complete boundary.
+
+## Reference Sources
+
+- [Product build guide](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
+- [Server development guide](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
+- [Hosted webapp guide](https://github.com/sudosylabs/Proctor/blob/main/webapp/README.md)
+- [HTTP transport contract](https://github.com/sudosylabs/Proctor/blob/main/server/httpapi/CONTRACT.md)
+- [OpenAPI authoring guide](https://github.com/sudosylabs/Proctor/blob/main/server/openapi/README.md)
+- [Repository licensing](https://github.com/sudosylabs/Proctor/blob/main/LICENSING.md)

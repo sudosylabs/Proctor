@@ -226,6 +226,119 @@
         "docs/api/recipes/manage-sitting.mdx",
         "docs/api/recipes/candidate-attempt.mdx"
       ]
+    },
+    {
+      "id": "developer-repository-boundaries",
+      "path": "static/assets/diagrams/developer-repository-boundaries.svg",
+      "public_path": "/assets/diagrams/developer-repository-boundaries.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's module contracts and server dependency reference; Mattermost artwork and expression were not copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains repository module and responsibility labels only; no Institution, User, Exam, credential, hostname, local filesystem path, or operational data."
+      },
+      "alt": "The root Go workspace references four independently verified modules. The server module contains transport, application, domain, and Store contract boundaries and consumes the portable cache, mail, and VFS modules. The workspace assists repository development but every module must still pass test, race, vet, and build checks with workspace assistance disabled.",
+      "caption": "The root workspace joins development without erasing module boundaries. Server policy points inward, portable packages expose Proctor-independent contracts, and every Go module remains independently verifiable.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "a51c1244f47814222095af80cac51d05d57b539b60f03b1a56dd16e9eeed035f",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "go.work",
+        ".agents/skills/server-boundaries/references/dependencies.md",
+        "packages/cache/README.md",
+        "packages/mail/README.md",
+        "packages/vfs/README.md"
+      ]
+    },
+    {
+      "id": "developer-local-runtime",
+      "path": "static/assets/diagrams/developer-local-runtime.svg",
+      "public_path": "/assets/diagrams/developer-local-runtime.svg",
+      "kind": "diagram",
+      "owner": "Proctor documentation maintainers",
+      "license": {
+        "status": "pending",
+        "expression": null,
+        "note": "Original Proctor artwork; publication waits for the repository documentation-license decision."
+      },
+      "provenance": "Original deterministic SVG authored from Proctor's tracked root development lifecycle, build defaults, and runtime contracts; Mattermost artwork and expression were not copied.",
+      "privacy_review": {
+        "status": "approved",
+        "basis": "Contains generic developer service names and documented loopback ports only; no Institution, User, Exam, credential, external hostname, local filesystem path, or operational data."
+      },
+      "alt": "The root Makefile owns the local development lifecycle. Its optional Vite process proxies browser API and WebSocket traffic to the foreground Proctor server. The server uses health-checked PostgreSQL, Redis, MinIO, and Mailpit services. Prometheus, Grafana, Loki, and the OpenTelemetry Collector are reconstructible diagnostic services, while generated configuration, secrets, and logs remain under ignored build state.",
+      "caption": "The root Makefile owns one reproducible local lifecycle: the server remains foreground-visible, dependencies are health-checked, observability is reconstructible, and generated secrets and state remain ignored outputs.",
+      "width": 1200,
+      "height": 720,
+      "max_bytes": 100000,
+      "theme": "light-high-contrast",
+      "visual_system": "proctor-assurance-v1",
+      "last_reviewed": "2026-08-27",
+      "visual_review": {
+        "status": "approved",
+        "source_sha256": "6defc3d58150721143dd19b7df5aaa528555c421f8a63a6298a17868c419559e",
+        "reviewed": "2026-08-27",
+        "method": "Full-size SVG and in-page browser geometry review at 1200x720, 1440x1024, and 390x844 in light and dark site themes.",
+        "checks": [
+          "text_containment",
+          "connector_continuity",
+          "rendered_legibility",
+          "narrow_viewport",
+          "print_contrast"
+        ],
+        "viewports": [
+          {
+            "name": "desktop",
+            "width": 1440,
+            "height": 1024
+          },
+          {
+            "name": "mobile",
+            "width": 390,
+            "height": 844
+          }
+        ]
+      },
+      "review_triggers": [
+        "build/README.md",
+        "build/make/config.mk",
+        "build/make/dev.mk",
+        "webapp/README.md"
+      ]
     }
   ]
 }
