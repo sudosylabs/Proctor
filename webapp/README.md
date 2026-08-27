@@ -36,9 +36,10 @@ owns its admission decisions and visible states.
 The [`application orchestration contract`](./src/app/CONTRACT.md) owns the
 StrictMode-safe initial resource and retry lifecycle used by route modules.
 The remaining focused access tasks share the narrow
-[`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) introduction
-and [`Notice`](./src/components/Notice/CONTRACT.md) evidence contracts without
-introducing decorative workflow steps.
+[`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) introduction,
+[`TaskState`](./src/components/TaskState/CONTRACT.md) terminal and loading-state
+grammar, and [`Notice`](./src/components/Notice/CONTRACT.md) evidence contract
+without introducing decorative workflow steps.
 Product icons use semantic names from the owned
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter; feature code never imports
 the underlying icon library directly. Brand and provider marks remain governed

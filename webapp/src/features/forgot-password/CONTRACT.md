@@ -11,6 +11,11 @@ field, keeps input stable during submission, and reserves action-adjacent
 copy. Successful submission clears the email and presents the generic
 check-your-email state.
 
+The accepted replacement uses the shared `TaskState` hierarchy and persistent
+polite announcement. Because submission removes the invoking form, focus moves
+to its replacement heading; initial presentation and ordinary form failures do
+not move focus.
+
 The recovery-request action accepts only the declared HTTP 202 response and
 maps rate limiting, unknown Problem Details, malformed responses, and transport
 failure into bounded semantic results. Presentation never compares a server

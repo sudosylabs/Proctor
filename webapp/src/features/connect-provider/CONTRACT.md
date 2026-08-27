@@ -22,3 +22,8 @@ The ready chooser uses one centered task column and a visible native radio
 indicator. Two compact shared `Notice` instances keep the password/profile and
 email non-merge guarantees together without introducing a progress rail or
 provider artwork.
+
+Loading, signed-out, unavailable, and empty-provider states use the shared
+`TaskState` hierarchy and persistent polite announcement. Initial context
+loading never takes focus. After an explicit retry replaces the retry control,
+the resulting task heading receives focus so the new context is clear.

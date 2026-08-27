@@ -26,3 +26,10 @@ The confirmation uses one centered task column with a plain key-value evidence
 list, one bounded warning `Notice`, and the approval actions in document order.
 It is not vertically centered like a terminal status and introduces no device
 or progress illustration.
+
+Checking, signed-out, unavailable, invalid, cancelled, and transient approved
+states use the shared `TaskState` hierarchy and persistent polite announcement.
+Cancellation and unusable results caused by an action focus the replacement
+heading; initial proof failure and background context checks do not take focus.
+Approval normally navigates immediately to the server-returned completion
+target, whose page owns the resulting orientation.

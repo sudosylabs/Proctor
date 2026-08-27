@@ -1,0 +1,65 @@
+@layer components {
+  .state {
+    display: flex;
+    inline-size: 100%;
+    min-inline-size: 0;
+    flex-direction: column;
+    gap: var(--proctor-space-4);
+  }
+
+  .state h1 {
+    max-inline-size: 28ch;
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .label {
+    color: var(--proctor-color-foreground-link);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .body {
+    max-inline-size: 58ch;
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-3) var(--proctor-space-5);
+    align-items: center;
+  }
+
+  .visuallyHidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    margin: -1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 30rem) {
+    .actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .actions > * {
+      inline-size: 100%;
+    }
+  }
+}

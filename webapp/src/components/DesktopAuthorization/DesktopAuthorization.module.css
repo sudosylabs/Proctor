@@ -1,44 +1,14 @@
 @layer components {
-  .page,
-  .taskState {
+  .page {
     display: flex;
     inline-size: 100%;
+    gap: var(--proctor-space-5);
+    max-inline-size: 44rem;
     flex-direction: column;
   }
 
-  .page {
-    gap: var(--proctor-space-5);
-    max-inline-size: 44rem;
-  }
-
   .taskState {
-    gap: var(--proctor-space-4);
-  }
-
-  .label {
-    color: var(--proctor-color-foreground-link);
-    font-size: var(--proctor-font-size-label);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-label);
-    letter-spacing: var(--proctor-letter-spacing-label);
-    text-transform: uppercase;
-  }
-
-  .taskState h1 {
-    max-inline-size: 28ch;
-    font-family: var(--proctor-font-family-display);
-    font-size: var(--proctor-font-size-display);
-    font-weight: var(--proctor-font-weight-semibold);
-    line-height: var(--proctor-line-height-display);
-    letter-spacing: var(--proctor-letter-spacing-display);
-    text-wrap: balance;
-  }
-
-  .taskState > p:not(.label) {
-    max-inline-size: 52ch;
-    color: var(--proctor-color-foreground-muted);
-    font-size: var(--proctor-font-size-body-large);
-    line-height: var(--proctor-line-height-body-large);
+    max-inline-size: 44rem;
   }
 
   .details {
@@ -75,13 +45,6 @@
     overflow-wrap: anywhere;
   }
 
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--proctor-space-3) var(--proctor-space-5);
-    align-items: center;
-  }
-
   .expiry {
     color: var(--proctor-color-foreground-muted);
     font-size: var(--proctor-font-size-body-small);
@@ -92,15 +55,6 @@
     .details dl > div {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--proctor-space-1);
-    }
-
-    .actions {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .actions > * {
-      inline-size: 100%;
     }
   }
 }

@@ -7,6 +7,11 @@ import { Button } from "../Button/Button";
 import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
+import {
+  TaskState,
+  TaskStateActions,
+  TaskStateAnnouncement,
+} from "../TaskState/TaskState";
 import styles from "./PasswordRecovery.module.css";
 
 type ResetState = "ready" | "complete" | "invalid";
@@ -27,6 +32,7 @@ export function ResetPasswordContent({
   const [state, setState] = useState<ResetState>(
     token === undefined ? "invalid" : "ready",
   );
+  const [transitioned, setTransitioned] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [passwordError, setPasswordError] = useState<string>();
@@ -70,11 +76,13 @@ export function ResetPasswordContent({
       setPassword("");
       setConfirmation("");
       setState("complete");
+      setTransitioned(true);
     } else if (result.kind === "invalid") {
       tokenRef.current = undefined;
       setPassword("");
       setConfirmation("");
       setState("invalid");
+      setTransitioned(true);
     } else if (result.kind === "password_rejected") {
       setPasswordError(message("webapp.reset_password.form.error.password_invalid"));
       requestAnimationFrame(() => passwordRef.current?.focus());
@@ -87,113 +95,125 @@ export function ResetPasswordContent({
   }
 
   if (state !== "ready") {
+    const heading = message(
+      state === "complete"
+        ? "webapp.reset_password.complete.heading"
+        : "webapp.reset_password.invalid.heading",
+    );
     return (
-      <section className={styles.routeState} aria-labelledby="reset-heading">
-        <p className={styles.stateLabel}>
-          {message(
-            state === "complete"
-              ? "webapp.reset_password.complete.label"
-              : "webapp.reset_password.invalid.label",
-          )}
-        </p>
-        <h1 id="reset-heading">
-          {message(
-            state === "complete"
-              ? "webapp.reset_password.complete.heading"
-              : "webapp.reset_password.invalid.heading",
-          )}
-        </h1>
-        <p>
-          {message(
+      <>
+        <TaskStateAnnouncement message={transitioned ? heading : ""} />
+        <TaskState
+          body={message(
             state === "complete"
               ? "webapp.reset_password.complete.body"
               : "webapp.reset_password.invalid.body",
           )}
-        </p>
-        <Notice
-          role="note"
-          tone={state === "complete" ? "information" : "warning"}
-        >
-          {message(
+          className={styles.taskState}
+          focusHeading={transitioned}
+          heading={heading}
+          headingID="reset-heading"
+          label={message(
             state === "complete"
-              ? "webapp.reset_password.complete.note"
-              : "webapp.reset_password.invalid.note",
+              ? "webapp.reset_password.complete.label"
+              : "webapp.reset_password.invalid.label",
           )}
-        </Notice>
-        <a className={styles.signInLink} href="/login">
-          {message("webapp.reset_password.sign_in")}
-        </a>
-      </section>
+        >
+          <Notice
+            role="note"
+            tone={state === "complete" ? "information" : "warning"}
+          >
+            {message(
+              state === "complete"
+                ? "webapp.reset_password.complete.note"
+                : "webapp.reset_password.invalid.note",
+            )}
+          </Notice>
+          <TaskStateActions>
+            <a className={styles.signInLink} href="/login">
+              {message("webapp.reset_password.sign_in")}
+            </a>
+          </TaskStateActions>
+        </TaskState>
+      </>
     );
   }
 
   return (
-    <section className={styles.page} aria-labelledby="reset-heading">
-      <AccessTaskIntro
-        eyebrow={message("webapp.reset_password.context.eyebrow")}
-        heading={message("webapp.reset_password.context.heading")}
-        body={message("webapp.reset_password.context.body")}
-        headingID="reset-heading"
-      />
-      <header className={styles.headingGroup}>
-        <h2>{message("webapp.reset_password.heading")}</h2>
-        <p>{message("webapp.reset_password.lede")}</p>
-      </header>
-      <form className={styles.form} onSubmit={submit} aria-busy={pending} noValidate>
-        <PasswordField
-          ref={passwordRef}
-          id="new-password"
-          name="new_password"
-          label={message("webapp.reset_password.form.password")}
-          autoComplete="new-password"
-          value={password}
-          errorMessage={passwordError}
-          hidePasswordLabel={message("webapp.form.password_hide")}
-          showPasswordLabel={message("webapp.form.password_show")}
-          toggleDisabled={pending}
-          required
-          onChange={(event) => {
-            setPassword(event.currentTarget.value);
-            setPasswordError(undefined);
-            setFormError(undefined);
-          }}
+    <>
+      <TaskStateAnnouncement message="" />
+      <section className={styles.page} aria-labelledby="reset-heading">
+        <AccessTaskIntro
+          eyebrow={message("webapp.reset_password.context.eyebrow")}
+          heading={message("webapp.reset_password.context.heading")}
+          body={message("webapp.reset_password.context.body")}
+          headingID="reset-heading"
         />
-        <PasswordField
-          ref={confirmationRef}
-          id="confirm-new-password"
-          name="confirm_new_password"
-          label={message("webapp.reset_password.form.confirmation")}
-          description={message("webapp.reset_password.form.password_help")}
-          autoComplete="new-password"
-          value={confirmation}
-          errorMessage={confirmationError}
-          hidePasswordLabel={message("webapp.form.password_hide")}
-          showPasswordLabel={message("webapp.form.password_show")}
-          toggleDisabled={pending}
-          required
-          onChange={(event) => {
-            setConfirmation(event.currentTarget.value);
-            setConfirmationError(undefined);
-            setFormError(undefined);
-          }}
-        />
-        <Notice role="note">
-          {message("webapp.reset_password.form.session_note")}
-        </Notice>
-        <div className={styles.actionRow}>
-          <Button
-            type="submit"
-            isLoading={pending}
-            loadingLabel={message("webapp.reset_password.form.submitting")}
-          >
-            {message("webapp.reset_password.form.submit")}
-          </Button>
-          <a className={styles.signInLink} href="/login">
-            {message("webapp.reset_password.sign_in")}
-          </a>
-        </div>
-        <FormFeedback message={formError} />
-      </form>
-    </section>
+        <header className={styles.headingGroup}>
+          <h2>{message("webapp.reset_password.heading")}</h2>
+          <p>{message("webapp.reset_password.lede")}</p>
+        </header>
+        <form
+          className={styles.form}
+          onSubmit={submit}
+          aria-busy={pending}
+          noValidate
+        >
+          <PasswordField
+            ref={passwordRef}
+            id="new-password"
+            name="new_password"
+            label={message("webapp.reset_password.form.password")}
+            autoComplete="new-password"
+            value={password}
+            errorMessage={passwordError}
+            hidePasswordLabel={message("webapp.form.password_hide")}
+            showPasswordLabel={message("webapp.form.password_show")}
+            toggleDisabled={pending}
+            required
+            onChange={(event) => {
+              setPassword(event.currentTarget.value);
+              setPasswordError(undefined);
+              setFormError(undefined);
+            }}
+          />
+          <PasswordField
+            ref={confirmationRef}
+            id="confirm-new-password"
+            name="confirm_new_password"
+            label={message("webapp.reset_password.form.confirmation")}
+            description={message("webapp.reset_password.form.password_help")}
+            autoComplete="new-password"
+            value={confirmation}
+            errorMessage={confirmationError}
+            hidePasswordLabel={message("webapp.form.password_hide")}
+            showPasswordLabel={message("webapp.form.password_show")}
+            toggleDisabled={pending}
+            required
+            onChange={(event) => {
+              setConfirmation(event.currentTarget.value);
+              setConfirmationError(undefined);
+              setFormError(undefined);
+            }}
+          />
+          <Notice role="note">
+            {message("webapp.reset_password.form.session_note")}
+          </Notice>
+          <div className={styles.actionRow}>
+            <Button
+              type="submit"
+              isLoading={pending}
+              loadingLabel={message("webapp.reset_password.form.submitting")}
+            >
+              {message("webapp.reset_password.form.submit")}
+            </Button>
+            <a className={styles.signInLink} href="/login">
+              {message("webapp.reset_password.sign_in")}
+            </a>
+          </div>
+          <FormFeedback message={formError} />
+        </form>
+      </section>
+    </>
   );
 }

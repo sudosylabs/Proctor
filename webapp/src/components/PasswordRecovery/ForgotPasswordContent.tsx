@@ -7,6 +7,11 @@ import { Button } from "../Button/Button";
 import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { InputField } from "../InputField/InputField";
 import { Notice } from "../Notice/Notice";
+import {
+  TaskState,
+  TaskStateActions,
+  TaskStateAnnouncement,
+} from "../TaskState/TaskState";
 import styles from "./PasswordRecovery.module.css";
 
 export interface ForgotPasswordContentProps {
@@ -56,73 +61,88 @@ export function ForgotPasswordContent({
 
   if (accepted) {
     return (
-      <section className={styles.routeState} aria-labelledby="forgot-heading">
-        <p className={styles.stateLabel}>
-          {message("webapp.forgot_password.accepted.label")}
-        </p>
-        <h1 id="forgot-heading">
-          {message("webapp.forgot_password.accepted.heading")}
-        </h1>
-        <p>{message("webapp.forgot_password.accepted.body")}</p>
-        <Notice role="note">
-          {message("webapp.forgot_password.accepted.note")}
-        </Notice>
-        <a className={styles.signInLink} href="/login">
-          {message("webapp.forgot_password.sign_in")}
-        </a>
-      </section>
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.forgot_password.accepted.heading")}
+        />
+        <TaskState
+          body={message("webapp.forgot_password.accepted.body")}
+          className={styles.taskState}
+          focusHeading
+          heading={message("webapp.forgot_password.accepted.heading")}
+          headingID="forgot-heading"
+          label={message("webapp.forgot_password.accepted.label")}
+        >
+          <Notice role="note">
+            {message("webapp.forgot_password.accepted.note")}
+          </Notice>
+          <TaskStateActions>
+            <a className={styles.signInLink} href="/login">
+              {message("webapp.forgot_password.sign_in")}
+            </a>
+          </TaskStateActions>
+        </TaskState>
+      </>
     );
   }
 
   return (
-    <section className={styles.page} aria-labelledby="forgot-heading">
-      <AccessTaskIntro
-        eyebrow={message("webapp.forgot_password.context.eyebrow")}
-        heading={message("webapp.forgot_password.context.heading")}
-        body={message("webapp.forgot_password.context.body")}
-        headingID="forgot-heading"
-      />
-      <header className={styles.headingGroup}>
-        <h2>{message("webapp.forgot_password.heading")}</h2>
-        <p>{message("webapp.forgot_password.lede")}</p>
-      </header>
-      <form className={styles.form} onSubmit={submit} aria-busy={pending} noValidate>
-        <InputField
-          ref={emailRef}
-          id="password-reset-email"
-          name="email"
-          label={message("webapp.forgot_password.form.email")}
-          type="email"
-          inputMode="email"
-          autoCapitalize="none"
-          autoComplete="email"
-          spellCheck={false}
-          value={email}
-          errorMessage={emailError}
-          required
-          onChange={(event) => {
-            setEmail(event.currentTarget.value);
-            setEmailError(undefined);
-            setFormError(undefined);
-          }}
+    <>
+      <TaskStateAnnouncement message="" />
+      <section className={styles.page} aria-labelledby="forgot-heading">
+        <AccessTaskIntro
+          eyebrow={message("webapp.forgot_password.context.eyebrow")}
+          heading={message("webapp.forgot_password.context.heading")}
+          body={message("webapp.forgot_password.context.body")}
+          headingID="forgot-heading"
         />
-        <Notice role="note">
-          {message("webapp.forgot_password.context.note")}
-        </Notice>
-        <div className={styles.actionRow}>
-          <Button
-            type="submit"
-            isLoading={pending}
-            loadingLabel={message("webapp.forgot_password.form.submitting")}
-          >
-            {message("webapp.forgot_password.form.submit")}
-          </Button>
-          <a className={styles.signInLink} href="/login">
-            {message("webapp.forgot_password.sign_in")}
-          </a>
-        </div>
-        <FormFeedback message={formError} />
-      </form>
-    </section>
+        <header className={styles.headingGroup}>
+          <h2>{message("webapp.forgot_password.heading")}</h2>
+          <p>{message("webapp.forgot_password.lede")}</p>
+        </header>
+        <form
+          className={styles.form}
+          onSubmit={submit}
+          aria-busy={pending}
+          noValidate
+        >
+          <InputField
+            ref={emailRef}
+            id="password-reset-email"
+            name="email"
+            label={message("webapp.forgot_password.form.email")}
+            type="email"
+            inputMode="email"
+            autoCapitalize="none"
+            autoComplete="email"
+            spellCheck={false}
+            value={email}
+            errorMessage={emailError}
+            required
+            onChange={(event) => {
+              setEmail(event.currentTarget.value);
+              setEmailError(undefined);
+              setFormError(undefined);
+            }}
+          />
+          <Notice role="note">
+            {message("webapp.forgot_password.context.note")}
+          </Notice>
+          <div className={styles.actionRow}>
+            <Button
+              type="submit"
+              isLoading={pending}
+              loadingLabel={message("webapp.forgot_password.form.submitting")}
+            >
+              {message("webapp.forgot_password.form.submit")}
+            </Button>
+            <a className={styles.signInLink} href="/login">
+              {message("webapp.forgot_password.sign_in")}
+            </a>
+          </div>
+          <FormFeedback message={formError} />
+        </form>
+      </section>
+    </>
   );
 }

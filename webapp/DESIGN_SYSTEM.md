@@ -39,6 +39,10 @@ authenticated application shell. The focused single-column task introductions
 shared by password recovery, Invitation acceptance, and provider connection
 use the narrow
 [`AccessTaskIntro`](./src/components/AccessTaskIntro/CONTRACT.md) contract.
+Their loading, unavailable, terminal, and context-replacement states use the
+narrow [`TaskState`](./src/components/TaskState/CONTRACT.md) contract for a
+consistent hierarchy, responsive action rhythm, live announcement, and
+bounded heading-focus behavior.
 The initial product icon vocabulary is governed by the narrow
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter proven across those pages.
 Stable pre-action evidence and compact inline state use the narrow
@@ -349,7 +353,16 @@ supporting copy, controls, evidence, and actions follow document order without
 an explanatory step rail. The form widths remain feature-owned, while the
 shell keeps their starting position and page rhythm consistent. Stable
 pre-action evidence uses `Notice`; action-adjacent submission failures remain
-owned by `FormFeedback`.
+owned by `FormFeedback`. Loading, unavailable, terminal, and user-triggered
+context-replacement states use the same display-scale heading, supporting-copy
+measure, and action rhythm through `TaskState`; feature modules continue to
+own copy, state choice, evidence, actions, and maximum width. Under `30rem`,
+task-state actions stack in document order and fill the available inline size.
+The live status region remains mounted across task replacement. It announces
+bounded localized state copy, while heading focus moves only when a
+user-triggered replacement removes the invoking control and orientation would
+otherwise be lost. Initial loading and ordinary status updates never steal
+focus; validation continues to focus the first invalid field.
 
 Layer tokens progress from base (`0`) through sticky (`10`), popover (`20`),
 overlay (`30`), dialog (`40`), and notification (`50`). Components do not

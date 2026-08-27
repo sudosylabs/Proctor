@@ -613,8 +613,11 @@ test("password recovery keeps its accepted response generic", async ({ page }) =
 
   await expect(
     page.getByRole("heading", { level: 1, name: "Check your email" }),
-  ).toBeVisible();
+  ).toBeFocused();
+  await expect(page.getByRole("status")).toContainText("Check your email");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
   await expect(page.getByText("Request accepted")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Return to sign in" })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("student.one@example.edu");
 });
 
@@ -638,7 +641,43 @@ test("password reset consumes only the sanitized fragment credential", async ({
 
   await expect(
     page.getByRole("heading", { name: "Your password was changed" }),
-  ).toBeVisible();
+  ).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(
+    "Your password was changed",
+  );
+  await expect(page.locator("body")).not.toContainText("private-reset-token");
+  await expect(page.locator("body")).not.toContainText("new-private-password");
+});
+
+test("password reset announces an unusable link returned after submission", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/password-reset/complete", async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/account-token-invalid",
+        title: "Reset link unavailable",
+        status: 400,
+        code: "authentication.account_token.invalid",
+      }),
+    });
+  });
+  await page.goto("/account/reset-password#token=private-reset-token");
+  await page.locator("#new-password").fill("new-private-password");
+  await page.locator("#confirm-new-password").fill("new-private-password");
+
+  await page.getByRole("button", { name: "Set new password" }).click();
+
+  const heading = page.getByRole("heading", {
+    level: 1,
+    name: "This reset link can’t be used",
+  });
+  await expect(heading).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(
+    "This reset link can’t be used",
+  );
   await expect(page.locator("body")).not.toContainText("private-reset-token");
   await expect(page.locator("body")).not.toContainText("new-private-password");
 });
@@ -700,7 +739,11 @@ test("Invitation acceptance exchanges the claim before account creation", async 
 
   await expect(
     page.getByRole("heading", { name: "Your Invitation is accepted" }),
-  ).toBeVisible();
+  ).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(
+    "Your Invitation is accepted",
+  );
+  await expect(page.getByRole("button", { name: "Accept invitation" })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("private-invitation-claim");
   await expect(page.locator("body")).not.toContainText("private-browser-handle");
   await expect(page.locator("body")).not.toContainText(
@@ -749,6 +792,80 @@ test("Desktop authorization approves the exact sanitized request", async ({
     page.getByRole("heading", { name: "You’re signed in" }),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText("private-browser-proof");
+});
+
+test("Desktop cancellation announces and focuses the replacement task", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await mockCurrentUser(page);
+  await page.route(
+    "**/api/v1/auth/desktop/authorizations/cancel",
+    async (route) => {
+      expect(await route.request().postDataJSON()).toEqual({
+        handle: "desktop-handle",
+        browser_proof: "private-browser-proof",
+        state: "desktop-state",
+      });
+      await route.fulfill({ status: 204 });
+    },
+  );
+  await page.goto(
+    "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+  );
+
+  await page.getByRole("button", { name: "Cancel request" }).click();
+
+  const heading = page.getByRole("heading", {
+    level: 1,
+    name: "The request was cancelled",
+  });
+  await expect(heading).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(
+    "The request was cancelled",
+  );
+  await expect(
+    page.getByRole("button", { name: "Continue to desktop" }),
+  ).toHaveCount(0);
+});
+
+test("Desktop rejection announces and focuses the unusable request", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await mockCurrentUser(page);
+  await page.route(
+    "**/api/v1/auth/desktop/authorizations/cancel",
+    async (route) => {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          type: "/problems/desktop-authorization-invalid",
+          title: "Desktop request unavailable",
+          status: 409,
+          code: "authentication.desktop_authorization.invalid",
+        }),
+      });
+    },
+  );
+  await page.goto(
+    "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+  );
+
+  await page.getByRole("button", { name: "Cancel request" }).click();
+
+  const heading = page.getByRole("heading", {
+    level: 1,
+    name: "This Desktop request can’t be used",
+  });
+  await expect(heading).toBeFocused();
+  await expect(page.getByRole("status")).toContainText(
+    "This Desktop request can’t be used",
+  );
+  await expect(
+    page.getByRole("link", { name: "Return to sign in" }),
+  ).toBeVisible();
 });
 
 test("provider connection requires an explicit provider selection action", async ({
@@ -836,6 +953,53 @@ test("provider connection presents a signed-out state without shifting into a ch
     "/login",
   );
   await expect(page.getByRole("radio")).toHaveCount(0);
+});
+
+test("provider retry announces and focuses the resulting task", async ({
+  page,
+}) => {
+  let providerAttempt = 0;
+  await mockCurrentUser(page);
+  await page.route("**/api/v1/auth/providers", async (route) => {
+    providerAttempt += 1;
+    if (providerAttempt === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          type: "/problems/internal",
+          title: "Internal failure",
+          status: 500,
+          code: "authentication.internal",
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(defaultDiscovery.providers),
+    });
+  });
+  await page.goto("/account/connect-provider");
+
+  const unavailableHeading = page.getByRole("heading", {
+    level: 1,
+    name: "Provider connection is unavailable",
+  });
+  await expect(unavailableHeading).toBeVisible();
+  await expect(unavailableHeading).not.toBeFocused();
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Add another sign-in method",
+    }),
+  ).toBeFocused();
+  await expect(page.getByRole("status").first()).toContainText(
+    "Connect a provider",
+  );
+  expect(providerAttempt).toBe(2);
 });
 
 for (const pageCase of [

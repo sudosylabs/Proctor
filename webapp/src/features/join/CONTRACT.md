@@ -27,6 +27,11 @@ Institution purpose precedes the current acceptance task, and stable package
 evidence appears through the shared `Notice` beside the controls it qualifies;
 the page does not present decorative or server-backed workflow steps.
 
+Loading, unavailable, invalid, and accepted route states use the shared
+`TaskState` hierarchy and persistent polite announcement. Acceptance moves
+focus to the replacement heading because the action controls disappear;
+initial loading and background context completion do not take focus.
+
 Invitation action modules validate the declared acceptance response and
 classify account and Session failures into separate bounded semantic outcomes.
 Presentation never receives a Problem Details code, response identifier, or

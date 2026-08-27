@@ -13,6 +13,11 @@ import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { InputField } from "../InputField/InputField";
 import { PasswordField } from "../InputField/PasswordField";
 import { Notice } from "../Notice/Notice";
+import {
+  TaskState,
+  TaskStateActions,
+  TaskStateAnnouncement,
+} from "../TaskState/TaskState";
 import styles from "./InvitationAcceptance.module.css";
 
 export interface InvitationContentProps {
@@ -36,66 +41,96 @@ export function InvitationContent({
 
   if (accepted) {
     return (
-      <InvitationRouteState
-        label={message("webapp.join.accepted.label")}
-        heading={message("webapp.join.accepted.heading")}
-        body={message("webapp.join.accepted.body")}
-      >
-        <ButtonLink href="/login">{message("webapp.join.sign_in")}</ButtonLink>
-      </InvitationRouteState>
+      <>
+        <TaskStateAnnouncement message={message("webapp.join.accepted.heading")} />
+        <InvitationRouteState
+          focusHeading
+          label={message("webapp.join.accepted.label")}
+          heading={message("webapp.join.accepted.heading")}
+          body={message("webapp.join.accepted.body")}
+        >
+          <TaskStateActions>
+            <ButtonLink href="/login">
+              {message("webapp.join.sign_in")}
+            </ButtonLink>
+          </TaskStateActions>
+        </InvitationRouteState>
+      </>
     );
   }
   if (loading) {
     return (
-      <InvitationRouteState
-        heading={message("webapp.join.loading.heading")}
-        body={message("webapp.join.loading.body")}
-      />
+      <>
+        <TaskStateAnnouncement message={message("webapp.join.loading.heading")} />
+        <InvitationRouteState
+          busy
+          heading={message("webapp.join.loading.heading")}
+          body={message("webapp.join.loading.body")}
+        />
+      </>
     );
   }
   if (state.kind === "invalid") {
     return (
-      <InvitationRouteState
-        label={message("webapp.join.invalid.label")}
-        heading={message("webapp.join.invalid.heading")}
-        body={message("webapp.join.invalid.body")}
-      >
-        <ButtonLink href="/login" variant="secondary">
-          {message("webapp.join.sign_in")}
-        </ButtonLink>
-      </InvitationRouteState>
+      <>
+        <TaskStateAnnouncement message={message("webapp.join.invalid.heading")} />
+        <InvitationRouteState
+          label={message("webapp.join.invalid.label")}
+          heading={message("webapp.join.invalid.heading")}
+          body={message("webapp.join.invalid.body")}
+        >
+          <TaskStateActions>
+            <ButtonLink href="/login" variant="secondary">
+              {message("webapp.join.sign_in")}
+            </ButtonLink>
+          </TaskStateActions>
+        </InvitationRouteState>
+      </>
     );
   }
   if (state.kind === "unavailable") {
     return (
-      <InvitationRouteState
-        label={message("webapp.join.unavailable.label")}
-        heading={message("webapp.join.unavailable.heading")}
-        body={message("webapp.join.unavailable.body")}
-      >
-        <Button onClick={() => window.location.reload()}>
-          {message("webapp.join.unavailable.retry")}
-        </Button>
-      </InvitationRouteState>
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.join.unavailable.heading")}
+        />
+        <InvitationRouteState
+          label={message("webapp.join.unavailable.label")}
+          heading={message("webapp.join.unavailable.heading")}
+          body={message("webapp.join.unavailable.body")}
+        >
+          <TaskStateActions>
+            <Button onClick={() => window.location.reload()}>
+              {message("webapp.join.unavailable.retry")}
+            </Button>
+          </TaskStateActions>
+        </InvitationRouteState>
+      </>
     );
   }
   if (state.transaction.requirement === "session") {
     return (
-      <SessionInvitation
-        handle={state.transaction.handle}
-        institutionName={institutionName}
-        acceptSession={acceptSession}
-        onAccepted={() => setAccepted(true)}
-      />
+      <>
+        <TaskStateAnnouncement message={message("webapp.join.session.heading")} />
+        <SessionInvitation
+          handle={state.transaction.handle}
+          institutionName={institutionName}
+          acceptSession={acceptSession}
+          onAccepted={() => setAccepted(true)}
+        />
+      </>
     );
   }
   return (
-    <InvitationAccountForm
-      handle={state.transaction.handle}
-      institutionName={institutionName}
-      acceptAccount={acceptAccount}
-      onAccepted={() => setAccepted(true)}
-    />
+    <>
+      <TaskStateAnnouncement message={message("webapp.join.heading")} />
+      <InvitationAccountForm
+        handle={state.transaction.handle}
+        institutionName={institutionName}
+        acceptAccount={acceptAccount}
+        onAccepted={() => setAccepted(true)}
+      />
+    </>
   );
 }
 
@@ -361,21 +396,30 @@ function InvitationIntro({
 
 function InvitationRouteState({
   body,
+  busy = false,
   children,
+  focusHeading = false,
   heading,
   label,
 }: {
   body: string;
+  busy?: boolean;
   children?: React.ReactNode;
+  focusHeading?: boolean;
   heading: string;
   label?: string;
 }) {
   return (
-    <section className={styles.routeState} aria-labelledby="join-heading">
-      {label === undefined ? null : <p className={styles.stateLabel}>{label}</p>}
-      <h1 id="join-heading">{heading}</h1>
-      <p>{body}</p>
+    <TaskState
+      body={body}
+      busy={busy}
+      className={styles.taskState}
+      focusHeading={focusHeading}
+      heading={heading}
+      headingID="join-heading"
+      label={label}
+    >
       {children}
-    </section>
+    </TaskState>
   );
 }

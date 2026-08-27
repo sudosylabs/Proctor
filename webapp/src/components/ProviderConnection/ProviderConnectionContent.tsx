@@ -10,6 +10,11 @@ import { AccessTaskIntro } from "../AccessTaskIntro/AccessTaskIntro";
 import { Button, ButtonLink } from "../Button/Button";
 import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { Notice } from "../Notice/Notice";
+import {
+  TaskState,
+  TaskStateActions,
+  TaskStateAnnouncement,
+} from "../TaskState/TaskState";
 import styles from "./ProviderConnection.module.css";
 
 export interface ProviderConnectionContentProps {
@@ -27,65 +32,108 @@ export function ProviderConnectionContent({
   onRetry,
   state,
 }: ProviderConnectionContentProps) {
+  const [retryRequested, setRetryRequested] = useState(false);
+
+  function retry() {
+    setRetryRequested(true);
+    onRetry();
+  }
+
   if (loading) {
     return (
-      <ProviderRouteState
-        heading={message("webapp.connect_provider.loading.heading")}
-        body={message("webapp.connect_provider.loading.body")}
-      />
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.connect_provider.loading.heading")}
+        />
+        <ProviderRouteState
+          busy
+          heading={message("webapp.connect_provider.loading.heading")}
+          body={message("webapp.connect_provider.loading.body")}
+        />
+      </>
     );
   }
   if (state.kind === "no_session") {
     return (
-      <ProviderRouteState
-        heading={message("webapp.connect_provider.no_session.heading")}
-        body={message("webapp.connect_provider.no_session.body")}
-      >
-        <ButtonLink href="/login">
-          {message("webapp.connect_provider.no_session.sign_in")}
-        </ButtonLink>
-      </ProviderRouteState>
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.connect_provider.no_session.heading")}
+        />
+        <ProviderRouteState
+          focusHeading={retryRequested}
+          heading={message("webapp.connect_provider.no_session.heading")}
+          body={message("webapp.connect_provider.no_session.body")}
+        >
+          <TaskStateActions>
+            <ButtonLink href="/login">
+              {message("webapp.connect_provider.no_session.sign_in")}
+            </ButtonLink>
+          </TaskStateActions>
+        </ProviderRouteState>
+      </>
     );
   }
   if (state.kind === "unavailable") {
     return (
-      <ProviderRouteState
-        heading={message("webapp.connect_provider.unavailable.heading")}
-        body={message("webapp.connect_provider.unavailable.body")}
-      >
-        <Button onClick={onRetry}>
-          {message("webapp.connect_provider.unavailable.retry")}
-        </Button>
-      </ProviderRouteState>
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.connect_provider.unavailable.heading")}
+        />
+        <ProviderRouteState
+          focusHeading={retryRequested}
+          heading={message("webapp.connect_provider.unavailable.heading")}
+          body={message("webapp.connect_provider.unavailable.body")}
+        >
+          <TaskStateActions>
+            <Button onClick={retry}>
+              {message("webapp.connect_provider.unavailable.retry")}
+            </Button>
+          </TaskStateActions>
+        </ProviderRouteState>
+      </>
     );
   }
   if (state.context.providers.length === 0) {
     return (
-      <ProviderRouteState
-        heading={message("webapp.connect_provider.empty.heading")}
-        body={message("webapp.connect_provider.empty.body")}
-      >
-        <a className={styles.returnLink} href="/authorization/complete">
-          {message("webapp.connect_provider.return")}
-        </a>
-      </ProviderRouteState>
+      <>
+        <TaskStateAnnouncement
+          message={message("webapp.connect_provider.empty.heading")}
+        />
+        <ProviderRouteState
+          focusHeading={retryRequested}
+          heading={message("webapp.connect_provider.empty.heading")}
+          body={message("webapp.connect_provider.empty.body")}
+        >
+          <TaskStateActions>
+            <a className={styles.returnLink} href="/authorization/complete">
+              {message("webapp.connect_provider.return")}
+            </a>
+          </TaskStateActions>
+        </ProviderRouteState>
+      </>
     );
   }
   return (
-    <ProviderChooser
-      providers={state.context.providers}
-      beginConnection={beginConnection}
-      onRedirect={onRedirect}
-    />
+    <>
+      <TaskStateAnnouncement message={message("webapp.connect_provider.heading")} />
+      <ProviderChooser
+        focusHeading={retryRequested}
+        providers={state.context.providers}
+        beginConnection={beginConnection}
+        onRedirect={onRedirect}
+      />
+    </>
   );
 }
 
 function ProviderChooser({
   beginConnection,
+  focusHeading,
   onRedirect,
   providers,
 }: {
   beginConnection(providerID: string): Promise<BeginProviderConnectionResult>;
+  focusHeading: boolean;
   onRedirect(url: string): void;
   providers: Provider[];
 }) {
@@ -127,6 +175,7 @@ function ProviderChooser({
         eyebrow={message("webapp.connect_provider.context.eyebrow")}
         heading={message("webapp.connect_provider.context.heading")}
         body={message("webapp.connect_provider.context.body")}
+        focusHeading={focusHeading}
         headingID="connect-provider-heading"
       />
       <header className={styles.headingGroup}>
@@ -198,18 +247,27 @@ function providerType(type: string): string {
 
 function ProviderRouteState({
   body,
+  busy = false,
   children,
+  focusHeading = false,
   heading,
 }: {
   body: string;
+  busy?: boolean;
   children?: React.ReactNode;
+  focusHeading?: boolean;
   heading: string;
 }) {
   return (
-    <section className={styles.routeState} aria-labelledby="connect-provider-heading">
-      <h1 id="connect-provider-heading">{heading}</h1>
-      <p>{body}</p>
+    <TaskState
+      body={body}
+      busy={busy}
+      className={styles.taskState}
+      focusHeading={focusHeading}
+      heading={heading}
+      headingID="connect-provider-heading"
+    >
       {children}
-    </section>
+    </TaskState>
   );
 }

@@ -19,6 +19,12 @@ recovery context without a progress indicator or additional server state.
 Pre-action and terminal explanatory evidence uses the shared `Notice`
 treatment.
 
+Completion and server-reported unusable-link replacements use the shared
+`TaskState` hierarchy and persistent polite announcement. A replacement caused
+by submission focuses its heading because it removes the invoking form. A link
+that is already missing during initial render presents the same bounded state
+without taking focus.
+
 The completion action accepts only the declared HTTP 204 response and owns the
 mapping from concealed token failure, password rejection, rate limiting, and
 unknown or transport failure into semantic results. Presentation never receives
