@@ -6,12 +6,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./app/App";
-import { bootstrapHostedPage, type HostedPageBootstrap } from "./app/bootstrap";
 import {
   defaultDocumentDescriptor,
   synchronizeDocument,
 } from "./app/document";
 import { FatalErrorBoundary } from "./app/FatalErrorBoundary";
+import {
+  bootstrapHostedPage,
+  type HostedPageBootstrap,
+} from "./app/HostedRoutes";
 import { redactedRootErrorOptions } from "./app/rootErrors";
 
 const root = document.getElementById("root");

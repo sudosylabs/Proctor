@@ -22,3 +22,21 @@ combined result to the lifecycle.
 
 The same directory owns root route and document orchestration. Those concerns
 must not absorb feature presentation or credentials after sanitized bootstrap.
+
+## Hosted route descriptors
+
+`HostedRoutes.tsx` is the single authored, exhaustive counterpart to the
+generated `routes.ts` membership catalog. Every generated hosted route must
+declare exactly one localized document-title key, fragment policy, purpose-
+specific bootstrap projection, and page renderer. The descriptor map is typed
+over the generated route union, so a newly generated route fails compilation
+until its authored behavior exists; the completeness test independently checks
+the runtime key set.
+
+Fragment credentials are captured and the complete fragment is removed from
+history before React renders. The bootstrap union preserves distinct Invitation
+claim, password-reset token, email-verification token, and Desktop browser-proof
+types; it never exposes a general token field. Credential-free routes remove
+unexpected fragments without interpreting them, login recognizes only its
+exact bounded failure notice, Desktop query evidence remains length-bounded,
+and unknown paths return no bootstrap or fallback page.
