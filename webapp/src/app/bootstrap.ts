@@ -8,7 +8,12 @@ import {
 
 export type HostedPageCredential =
   | { kind: "invitation_claim"; value: string }
-  | { kind: "desktop_browser_proof"; value: string }
+  | {
+      kind: "desktop_browser_proof";
+      handle?: string;
+      state?: string;
+      value: string;
+    }
   | { kind: "password_reset_token"; value: string }
   | { kind: "email_verification_token"; value: string };
 
@@ -65,5 +70,26 @@ export function bootstrapHostedPage(
   if (value === undefined) {
     return { route };
   }
+  if (route === "/authorize/desktop") {
+    const url = new URL(location.href);
+    const handle = boundedParameter(url.searchParams.get("request"));
+    const state = boundedParameter(url.searchParams.get("state"));
+    return {
+      route,
+      credential: {
+        kind: "desktop_browser_proof",
+        value,
+        ...(handle === undefined ? {} : { handle }),
+        ...(state === undefined ? {} : { state }),
+      },
+    };
+  }
   return { route, credential: { kind: expected.kind, value } };
+}
+
+function boundedParameter(value: string | null): string | undefined {
+  if (value === null || value === "" || value.length > 128) {
+    return undefined;
+  }
+  return value;
 }

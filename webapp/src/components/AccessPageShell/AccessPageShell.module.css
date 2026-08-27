@@ -59,6 +59,15 @@
     max-inline-size: 44rem;
   }
 
+  .single .layout {
+    justify-items: center;
+  }
+
+  .single .main {
+    inline-size: 100%;
+    max-inline-size: 48rem;
+  }
+
   @supports (min-block-size: 100dvb) {
     .shell {
       min-block-size: 100dvb;

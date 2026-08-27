@@ -1,0 +1,87 @@
+@layer components {
+  .page,
+  .routeState,
+  .headingGroup,
+  .form {
+    display: flex;
+    min-inline-size: 0;
+    flex-direction: column;
+  }
+
+  .page,
+  .routeState {
+    gap: var(--proctor-space-6);
+    inline-size: 100%;
+    max-inline-size: 52rem;
+  }
+
+  .headingGroup {
+    gap: var(--proctor-space-3);
+  }
+
+  .headingGroup h2,
+  .routeState h1 {
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-heading-large);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-heading-large);
+    letter-spacing: var(--proctor-letter-spacing-heading);
+    text-wrap: balance;
+  }
+
+  .headingGroup p,
+  .routeState > p:not(.stateLabel) {
+    max-inline-size: 54ch;
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+
+  .stateLabel {
+    color: var(--proctor-color-foreground-link);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .form {
+    gap: var(--proctor-space-5);
+  }
+
+  .nameFields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--proctor-space-5);
+  }
+
+  .actionRow,
+  .sessionActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-3) var(--proctor-space-5);
+    align-items: center;
+  }
+
+  .signInLink {
+    display: inline-flex;
+    min-block-size: var(--proctor-control-size-default);
+    align-items: center;
+    align-self: flex-start;
+    font-weight: var(--proctor-font-weight-semibold);
+  }
+
+  @media (max-width: 30rem) {
+    .actionRow,
+    .sessionActions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .actionRow button,
+    .sessionActions button {
+      inline-size: 100%;
+    }
+  }
+}

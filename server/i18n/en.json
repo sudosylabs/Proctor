@@ -1720,12 +1720,528 @@
     "translation": "Try again"
   },
   {
+    "id": "webapp.connect_provider.connect",
+    "translation": "Connect {{.Provider}}"
+  },
+  {
+    "id": "webapp.connect_provider.connecting",
+    "translation": "Connecting provider…"
+  },
+  {
+    "id": "webapp.connect_provider.context.body",
+    "translation": "Connect an external identity without replacing your current password."
+  },
+  {
+    "id": "webapp.connect_provider.context.eyebrow",
+    "translation": "Account security"
+  },
+  {
+    "id": "webapp.connect_provider.context.heading",
+    "translation": "Add another sign-in method"
+  },
+  {
+    "id": "webapp.connect_provider.context.note",
+    "translation": "Provider email is never used to merge accounts."
+  },
+  {
+    "id": "webapp.connect_provider.document_title",
+    "translation": "Connect a provider · Proctor"
+  },
+  {
+    "id": "webapp.connect_provider.empty.body",
+    "translation": "This installation currently has no external provider available to connect."
+  },
+  {
+    "id": "webapp.connect_provider.empty.heading",
+    "translation": "No provider is available"
+  },
+  {
+    "id": "webapp.connect_provider.error.reauthentication",
+    "translation": "This connection requires a recent strong sign-in. Sign in again, then return to this page."
+  },
+  {
+    "id": "webapp.connect_provider.error.unavailable",
+    "translation": "Proctor couldn’t start this provider connection. Try again."
+  },
+  {
+    "id": "webapp.connect_provider.evidence",
+    "translation": "Your password and Proctor profile stay unchanged."
+  },
+  {
+    "id": "webapp.connect_provider.group",
+    "translation": "Available external providers"
+  },
+  {
+    "id": "webapp.connect_provider.heading",
+    "translation": "Connect a provider"
+  },
+  {
+    "id": "webapp.connect_provider.lede",
+    "translation": "Choose the provider you want to connect to this Proctor account."
+  },
+  {
+    "id": "webapp.connect_provider.loading.body",
+    "translation": "Proctor is checking this User and the providers currently available."
+  },
+  {
+    "id": "webapp.connect_provider.loading.heading",
+    "translation": "Checking connection options"
+  },
+  {
+    "id": "webapp.connect_provider.no_session.body",
+    "translation": "Sign in with an existing method before connecting another provider."
+  },
+  {
+    "id": "webapp.connect_provider.no_session.heading",
+    "translation": "Sign in to connect a provider"
+  },
+  {
+    "id": "webapp.connect_provider.no_session.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.connect_provider.return",
+    "translation": "Return to sign-in status"
+  },
+  {
+    "id": "webapp.connect_provider.skip_to_main",
+    "translation": "Skip to provider connection"
+  },
+  {
+    "id": "webapp.connect_provider.type.cas",
+    "translation": "CAS"
+  },
+  {
+    "id": "webapp.connect_provider.type.external",
+    "translation": "External provider"
+  },
+  {
+    "id": "webapp.connect_provider.type.oidc",
+    "translation": "OpenID Connect"
+  },
+  {
+    "id": "webapp.connect_provider.unavailable.body",
+    "translation": "Proctor couldn’t load this User’s provider connection options."
+  },
+  {
+    "id": "webapp.connect_provider.unavailable.heading",
+    "translation": "Provider connection is unavailable"
+  },
+  {
+    "id": "webapp.connect_provider.unavailable.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.desktop_authorization.account",
+    "translation": "Account"
+  },
+  {
+    "id": "webapp.desktop_authorization.approve",
+    "translation": "Continue to desktop"
+  },
+  {
+    "id": "webapp.desktop_authorization.approved.body",
+    "translation": "This browser is returning the approved request to Proctor Desktop."
+  },
+  {
+    "id": "webapp.desktop_authorization.approved.heading",
+    "translation": "Returning to Proctor Desktop"
+  },
+  {
+    "id": "webapp.desktop_authorization.approved.label",
+    "translation": "Request approved"
+  },
+  {
+    "id": "webapp.desktop_authorization.approving",
+    "translation": "Approving request…"
+  },
+  {
+    "id": "webapp.desktop_authorization.cancel",
+    "translation": "Cancel request"
+  },
+  {
+    "id": "webapp.desktop_authorization.cancelled.body",
+    "translation": "This Desktop request can no longer be approved. You can close this page."
+  },
+  {
+    "id": "webapp.desktop_authorization.cancelled.heading",
+    "translation": "The request was cancelled"
+  },
+  {
+    "id": "webapp.desktop_authorization.cancelled.label",
+    "translation": "Request cancelled"
+  },
+  {
+    "id": "webapp.desktop_authorization.cancelling",
+    "translation": "Cancelling request…"
+  },
+  {
+    "id": "webapp.desktop_authorization.caution",
+    "translation": "Only continue if you started this request in Proctor Desktop."
+  },
+  {
+    "id": "webapp.desktop_authorization.checking.body",
+    "translation": "Proctor is checking this browser Session and the installation that received the request."
+  },
+  {
+    "id": "webapp.desktop_authorization.checking.heading",
+    "translation": "Checking this request"
+  },
+  {
+    "id": "webapp.desktop_authorization.details",
+    "translation": "Authorization details"
+  },
+  {
+    "id": "webapp.desktop_authorization.document_title",
+    "translation": "Continue in Proctor Desktop · Proctor"
+  },
+  {
+    "id": "webapp.desktop_authorization.error.session",
+    "translation": "This browser Session can’t approve the request. Sign in again and retry."
+  },
+  {
+    "id": "webapp.desktop_authorization.error.unavailable",
+    "translation": "Proctor couldn’t complete this Desktop request. Try again."
+  },
+  {
+    "id": "webapp.desktop_authorization.expiry",
+    "translation": "This approval is single-use and expires shortly."
+  },
+  {
+    "id": "webapp.desktop_authorization.heading",
+    "translation": "Continue in Proctor Desktop"
+  },
+  {
+    "id": "webapp.desktop_authorization.installation",
+    "translation": "Installation"
+  },
+  {
+    "id": "webapp.desktop_authorization.invalid.body",
+    "translation": "It may have expired, been cancelled, or already been used. Start another request from Proctor Desktop."
+  },
+  {
+    "id": "webapp.desktop_authorization.invalid.heading",
+    "translation": "This Desktop request can’t be used"
+  },
+  {
+    "id": "webapp.desktop_authorization.invalid.label",
+    "translation": "Request unavailable"
+  },
+  {
+    "id": "webapp.desktop_authorization.label",
+    "translation": "Desktop authorization"
+  },
+  {
+    "id": "webapp.desktop_authorization.lede",
+    "translation": "Proctor Desktop requested access to this account."
+  },
+  {
+    "id": "webapp.desktop_authorization.no_session.body",
+    "translation": "Open sign in in another tab, then return here and check the browser Session again."
+  },
+  {
+    "id": "webapp.desktop_authorization.no_session.heading",
+    "translation": "Sign in before continuing"
+  },
+  {
+    "id": "webapp.desktop_authorization.no_session.retry",
+    "translation": "Check again"
+  },
+  {
+    "id": "webapp.desktop_authorization.no_session.sign_in",
+    "translation": "Open sign in"
+  },
+  {
+    "id": "webapp.desktop_authorization.request",
+    "translation": "Request"
+  },
+  {
+    "id": "webapp.desktop_authorization.request_value",
+    "translation": "Proctor Desktop"
+  },
+  {
+    "id": "webapp.desktop_authorization.return_to_sign_in",
+    "translation": "Return to sign in"
+  },
+  {
+    "id": "webapp.desktop_authorization.skip_to_main",
+    "translation": "Skip to Desktop authorization"
+  },
+  {
+    "id": "webapp.desktop_authorization.unavailable.body",
+    "translation": "Proctor couldn’t confirm this browser Session or installation."
+  },
+  {
+    "id": "webapp.desktop_authorization.unavailable.heading",
+    "translation": "The request can’t be checked"
+  },
+  {
+    "id": "webapp.desktop_authorization.unavailable.retry",
+    "translation": "Try again"
+  },
+  {
+    "id": "webapp.forgot_password.accepted.body",
+    "translation": "If an eligible local account exists, Proctor will send a password-reset message."
+  },
+  {
+    "id": "webapp.forgot_password.accepted.heading",
+    "translation": "Check your email"
+  },
+  {
+    "id": "webapp.forgot_password.accepted.label",
+    "translation": "Request accepted"
+  },
+  {
+    "id": "webapp.forgot_password.accepted.note",
+    "translation": "Use the newest reset message. Earlier links stop working when another request is accepted."
+  },
+  {
+    "id": "webapp.forgot_password.context.body",
+    "translation": "Request a single-use link for your local Proctor account."
+  },
+  {
+    "id": "webapp.forgot_password.context.eyebrow",
+    "translation": "Account recovery"
+  },
+  {
+    "id": "webapp.forgot_password.context.heading",
+    "translation": "Reset your password"
+  },
+  {
+    "id": "webapp.forgot_password.context.note",
+    "translation": "If an eligible local account exists, we’ll send a reset link."
+  },
+  {
+    "id": "webapp.forgot_password.document_title",
+    "translation": "Reset your password · Proctor"
+  },
+  {
+    "id": "webapp.forgot_password.form.email",
+    "translation": "Email address"
+  },
+  {
+    "id": "webapp.forgot_password.form.error.email_invalid",
+    "translation": "Enter a valid email address."
+  },
+  {
+    "id": "webapp.forgot_password.form.error.email_required",
+    "translation": "Enter the email address linked to your account."
+  },
+  {
+    "id": "webapp.forgot_password.form.error.rate_limited",
+    "translation": "Too many reset requests were made. Try again later."
+  },
+  {
+    "id": "webapp.forgot_password.form.error.unavailable",
+    "translation": "Proctor couldn’t accept the reset request. Try again."
+  },
+  {
+    "id": "webapp.forgot_password.form.submit",
+    "translation": "Send reset link"
+  },
+  {
+    "id": "webapp.forgot_password.form.submitting",
+    "translation": "Sending reset link…"
+  },
+  {
+    "id": "webapp.forgot_password.heading",
+    "translation": "Request reset link"
+  },
+  {
+    "id": "webapp.forgot_password.lede",
+    "translation": "Enter the email address linked to your local account."
+  },
+  {
+    "id": "webapp.forgot_password.sign_in",
+    "translation": "Return to sign in"
+  },
+  {
+    "id": "webapp.forgot_password.skip_to_main",
+    "translation": "Skip to password recovery"
+  },
+  {
     "id": "webapp.form.password_hide",
     "translation": "Hide password"
   },
   {
     "id": "webapp.form.password_show",
     "translation": "Show password"
+  },
+  {
+    "id": "webapp.join.accepted.body",
+    "translation": "The Invitation package was applied in one transaction. You can continue to sign in."
+  },
+  {
+    "id": "webapp.join.accepted.heading",
+    "translation": "Your Invitation is accepted"
+  },
+  {
+    "id": "webapp.join.accepted.label",
+    "translation": "Invitation accepted"
+  },
+  {
+    "id": "webapp.join.context.body_account",
+    "translation": "Create the local account that will receive this Invitation."
+  },
+  {
+    "id": "webapp.join.context.body_session",
+    "translation": "Use your current Proctor User to receive this Invitation."
+  },
+  {
+    "id": "webapp.join.context.eyebrow",
+    "translation": "Invitation"
+  },
+  {
+    "id": "webapp.join.context.heading",
+    "translation": "Join {{.Institution}}"
+  },
+  {
+    "id": "webapp.join.context.heading_fallback",
+    "translation": "Join your Institution"
+  },
+  {
+    "id": "webapp.join.context.note_account",
+    "translation": "Acceptance creates your User and applies the Invitation package in one transaction."
+  },
+  {
+    "id": "webapp.join.context.note_session",
+    "translation": "Acceptance applies the Invitation package only to the current User."
+  },
+  {
+    "id": "webapp.join.document_title",
+    "translation": "Accept Invitation · Proctor"
+  },
+  {
+    "id": "webapp.join.form.error.details_invalid",
+    "translation": "Those account details or this Invitation can’t be accepted. Review the form or ask the inviter for a current link."
+  },
+  {
+    "id": "webapp.join.form.error.password_invalid",
+    "translation": "That password doesn’t meet this installation’s requirements."
+  },
+  {
+    "id": "webapp.join.form.error.password_required",
+    "translation": "Enter a password."
+  },
+  {
+    "id": "webapp.join.form.error.rate_limited",
+    "translation": "Too many Invitation attempts were made. Try again later."
+  },
+  {
+    "id": "webapp.join.form.error.unavailable",
+    "translation": "Proctor couldn’t accept this Invitation. No account or Invitation changes were applied. Try again."
+  },
+  {
+    "id": "webapp.join.form.error.username_required",
+    "translation": "Enter a username."
+  },
+  {
+    "id": "webapp.join.form.first_name",
+    "translation": "First name (optional)"
+  },
+  {
+    "id": "webapp.join.form.last_name",
+    "translation": "Last name (optional)"
+  },
+  {
+    "id": "webapp.join.form.password",
+    "translation": "Password"
+  },
+  {
+    "id": "webapp.join.form.password_help",
+    "translation": "Use a unique, policy-compliant password."
+  },
+  {
+    "id": "webapp.join.form.submit",
+    "translation": "Accept invitation"
+  },
+  {
+    "id": "webapp.join.form.submitting",
+    "translation": "Accepting invitation…"
+  },
+  {
+    "id": "webapp.join.form.username",
+    "translation": "Username"
+  },
+  {
+    "id": "webapp.join.heading",
+    "translation": "Create your invited account"
+  },
+  {
+    "id": "webapp.join.invalid.body",
+    "translation": "It may have expired, been replaced, been revoked, or already been accepted. Ask the inviter for a current link."
+  },
+  {
+    "id": "webapp.join.invalid.heading",
+    "translation": "This Invitation can’t be used"
+  },
+  {
+    "id": "webapp.join.invalid.label",
+    "translation": "Invitation unavailable"
+  },
+  {
+    "id": "webapp.join.lede",
+    "translation": "Set the details you’ll use to sign in."
+  },
+  {
+    "id": "webapp.join.loading.body",
+    "translation": "Proctor is checking the one-time Invitation and its acceptance requirements."
+  },
+  {
+    "id": "webapp.join.loading.heading",
+    "translation": "Checking your Invitation"
+  },
+  {
+    "id": "webapp.join.session.error.sign_in",
+    "translation": "This browser needs an active Session. Open sign in in another tab, then try acceptance again here."
+  },
+  {
+    "id": "webapp.join.session.error.unavailable",
+    "translation": "Proctor couldn’t apply this Invitation to the current User. Try again."
+  },
+  {
+    "id": "webapp.join.session.heading",
+    "translation": "Accept with this account"
+  },
+  {
+    "id": "webapp.join.session.lede",
+    "translation": "Apply this Invitation package to the User signed in to this browser."
+  },
+  {
+    "id": "webapp.join.session.open_sign_in",
+    "translation": "Open sign in"
+  },
+  {
+    "id": "webapp.join.session.submit",
+    "translation": "Accept invitation"
+  },
+  {
+    "id": "webapp.join.session.submitting",
+    "translation": "Accepting invitation…"
+  },
+  {
+    "id": "webapp.join.sign_in",
+    "translation": "Return to sign in"
+  },
+  {
+    "id": "webapp.join.skip_to_main",
+    "translation": "Skip to Invitation acceptance"
+  },
+  {
+    "id": "webapp.join.unavailable.body",
+    "translation": "Proctor couldn’t check this Invitation. Try the link again."
+  },
+  {
+    "id": "webapp.join.unavailable.heading",
+    "translation": "The Invitation can’t be checked"
+  },
+  {
+    "id": "webapp.join.unavailable.label",
+    "translation": "Invitation check unavailable"
+  },
+  {
+    "id": "webapp.join.unavailable.retry",
+    "translation": "Try again"
   },
   {
     "id": "webapp.login.discovery_failure.body",
@@ -2102,6 +2618,118 @@
   {
     "id": "webapp.register.unavailable.heading",
     "translation": "Registration is unavailable"
+  },
+  {
+    "id": "webapp.reset_password.complete.body",
+    "translation": "Your new password is ready to use."
+  },
+  {
+    "id": "webapp.reset_password.complete.heading",
+    "translation": "Your password was changed"
+  },
+  {
+    "id": "webapp.reset_password.complete.label",
+    "translation": "Password changed"
+  },
+  {
+    "id": "webapp.reset_password.complete.note",
+    "translation": "Existing Sessions for this account were signed out."
+  },
+  {
+    "id": "webapp.reset_password.context.body",
+    "translation": "Use the single-use link from your most recent password reset message."
+  },
+  {
+    "id": "webapp.reset_password.context.eyebrow",
+    "translation": "Account recovery"
+  },
+  {
+    "id": "webapp.reset_password.context.heading",
+    "translation": "Choose a new password"
+  },
+  {
+    "id": "webapp.reset_password.document_title",
+    "translation": "Set a new password · Proctor"
+  },
+  {
+    "id": "webapp.reset_password.form.confirmation",
+    "translation": "Confirm new password"
+  },
+  {
+    "id": "webapp.reset_password.form.error.confirmation_required",
+    "translation": "Confirm the new password."
+  },
+  {
+    "id": "webapp.reset_password.form.error.mismatch",
+    "translation": "The two passwords don’t match."
+  },
+  {
+    "id": "webapp.reset_password.form.error.password_invalid",
+    "translation": "That password doesn’t meet this installation’s requirements."
+  },
+  {
+    "id": "webapp.reset_password.form.error.password_required",
+    "translation": "Enter a new password."
+  },
+  {
+    "id": "webapp.reset_password.form.error.rate_limited",
+    "translation": "Too many reset attempts were made. Try again later."
+  },
+  {
+    "id": "webapp.reset_password.form.error.unavailable",
+    "translation": "Proctor couldn’t change the password. Try again."
+  },
+  {
+    "id": "webapp.reset_password.form.password",
+    "translation": "New password"
+  },
+  {
+    "id": "webapp.reset_password.form.password_help",
+    "translation": "Use a unique, policy-compliant password."
+  },
+  {
+    "id": "webapp.reset_password.form.session_note",
+    "translation": "Changing the password signs out existing Sessions for this account."
+  },
+  {
+    "id": "webapp.reset_password.form.submit",
+    "translation": "Set new password"
+  },
+  {
+    "id": "webapp.reset_password.form.submitting",
+    "translation": "Setting new password…"
+  },
+  {
+    "id": "webapp.reset_password.heading",
+    "translation": "Set a new password"
+  },
+  {
+    "id": "webapp.reset_password.invalid.body",
+    "translation": "It may have expired, already been used, or been replaced by a newer reset request."
+  },
+  {
+    "id": "webapp.reset_password.invalid.heading",
+    "translation": "This reset link can’t be used"
+  },
+  {
+    "id": "webapp.reset_password.invalid.label",
+    "translation": "Reset link unavailable"
+  },
+  {
+    "id": "webapp.reset_password.invalid.note",
+    "translation": "Request another password-reset message to receive a current link."
+  },
+  {
+    "id": "webapp.reset_password.lede",
+    "translation": "Enter and confirm the password you want to use."
+  },
+  {
+    "id": "webapp.reset_password.sign_in",
+    "translation": "Return to sign in"
+  },
+  {
+    "id": "webapp.reset_password.skip_to_main",
+    "translation": "Skip to new password"
   },
   {
     "id": "webapp.setup.already_initialized.body",

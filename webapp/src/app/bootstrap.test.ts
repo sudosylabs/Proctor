@@ -122,7 +122,36 @@ describe("hosted page bootstrap", () => {
     ]);
     expect(bootstrap).toEqual({
       route: "/authorize/desktop",
-      credential: { kind: "desktop_browser_proof", value: "secret" },
+      credential: {
+        kind: "desktop_browser_proof",
+        handle: "handle",
+        state: "state",
+        value: "secret",
+      },
+    });
+  });
+
+  it("bounds Desktop request parameters before passing them to the page", () => {
+    const oversizedState = "s".repeat(129);
+    const bootstrap = bootstrapHostedPage(
+      {
+        href: `https://proctor.example/authorize/desktop?request=handle&state=${oversizedState}#proof=secret`,
+        hash: "#proof=secret",
+        pathname: "/authorize/desktop",
+      },
+      {
+        state: null,
+        replaceState: () => undefined,
+      },
+    );
+
+    expect(bootstrap).toEqual({
+      route: "/authorize/desktop",
+      credential: {
+        kind: "desktop_browser_proof",
+        handle: "handle",
+        value: "secret",
+      },
     });
   });
 

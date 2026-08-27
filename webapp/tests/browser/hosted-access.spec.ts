@@ -52,6 +52,28 @@ async function mockSetupStatus(page: Page, initialized = false) {
   });
 }
 
+async function mockCurrentUser(page: Page) {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "user-1",
+        username: "student.one",
+        display_name: "Student One",
+      }),
+    });
+  });
+}
+
+async function mockProviders(page: Page) {
+  await page.route("**/api/v1/auth/providers", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(defaultDiscovery.providers),
+    });
+  });
+}
+
 async function submissionGeometry(page: Page, firstControl: string) {
   return page.evaluate((selector) => {
     const control = document.querySelector<HTMLElement>(selector)!;
@@ -563,6 +585,325 @@ test("Session confirmation distinguishes 401 from a retryable failure", async ({
   );
   expect(attempt).toBe(2);
 });
+
+test("password recovery keeps its accepted response generic", async ({ page }) => {
+  await page.route("**/api/v1/auth/password-reset/request", async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      email: "student.one@example.edu",
+    });
+    await route.fulfill({ status: 202 });
+  });
+  await page.goto("/account/forgot-password");
+
+  await expect(page).toHaveTitle("Reset your password · Proctor");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Reset your password" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Request reset link" }),
+  ).toBeVisible();
+  await page.getByLabel("Email address").fill("student.one@example.edu");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Check your email" }),
+  ).toBeVisible();
+  await expect(page.getByText("Request accepted")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("student.one@example.edu");
+});
+
+test("password reset consumes only the sanitized fragment credential", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/password-reset/complete", async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      token: "private-reset-token",
+      password: "new-private-password",
+    });
+    await route.fulfill({ status: 204 });
+  });
+  await page.goto("/account/reset-password#token=private-reset-token");
+
+  await expect(page).toHaveURL(`${canonicalOrigin}/account/reset-password`);
+  await expect(page).toHaveTitle("Set a new password · Proctor");
+  await page.locator("#new-password").fill("new-private-password");
+  await page.locator("#confirm-new-password").fill("new-private-password");
+  await page.getByRole("button", { name: "Set new password" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Your password was changed" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("private-reset-token");
+  await expect(page.locator("body")).not.toContainText("new-private-password");
+});
+
+test("Invitation acceptance exchanges the claim before account creation", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await page.route("**/api/v1/auth/browser/invitations", async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      claim: "private-invitation-claim",
+    });
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handle: "private-browser-handle",
+        purpose: "student_class",
+        requirement: "account",
+        expires_at: Date.now() + 300_000,
+      }),
+    });
+  });
+  await page.route("**/api/v1/auth/browser/invitations/accept", async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      handle: "private-browser-handle",
+      first_name: "Ada",
+      last_name: "Okafor",
+      username: "ada.okafor",
+      password: "private-invitation-password",
+    });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ invitation_id: "invitation-1", user_id: "user-1" }),
+    });
+  });
+  await page.goto("/join#token=private-invitation-claim");
+
+  await expect(page).toHaveURL(`${canonicalOrigin}/join`);
+  await expect(page.getByText("Join Northbridge Institute")).toBeVisible();
+  const firstNameBox = await page
+    .locator("#invitation-first-name")
+    .boundingBox();
+  const lastNameBox = await page.locator("#invitation-last-name").boundingBox();
+  expect(firstNameBox).not.toBeNull();
+  expect(lastNameBox).not.toBeNull();
+  expect(lastNameBox!.y).toBeGreaterThanOrEqual(
+    firstNameBox!.y + firstNameBox!.height,
+  );
+  await page.getByLabel("First name (optional)").fill("Ada");
+  await page.getByLabel("Last name (optional)").fill("Okafor");
+  await page.getByLabel("Username").fill("ada.okafor");
+  await page.locator("#invitation-password").fill("private-invitation-password");
+  await page.getByRole("button", { name: "Accept invitation" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Your Invitation is accepted" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("private-invitation-claim");
+  await expect(page.locator("body")).not.toContainText("private-browser-handle");
+  await expect(page.locator("body")).not.toContainText(
+    "private-invitation-password",
+  );
+});
+
+test("Desktop authorization approves the exact sanitized request", async ({
+  page,
+}) => {
+  await mockDiscovery(page);
+  await mockCurrentUser(page);
+  await page.route(
+    "**/api/v1/auth/desktop/authorizations/approve",
+    async (route) => {
+      expect(await route.request().postDataJSON()).toEqual({
+        handle: "desktop-handle",
+        browser_proof: "private-browser-proof",
+        state: "desktop-state",
+      });
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          redirect_url: `${canonicalOrigin}/authorization/complete`,
+          expires_at: Date.now() + 60_000,
+        }),
+      });
+    },
+  );
+  await page.goto(
+    "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+  );
+
+  await expect(page).toHaveURL(
+    `${canonicalOrigin}/authorize/desktop?request=desktop-handle&state=desktop-state`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Continue in Proctor Desktop" }),
+  ).toBeVisible();
+  await expect(page.getByText("Northbridge Institute")).toBeVisible();
+  await expect(page.getByText("student.one")).toBeVisible();
+  await page.getByRole("button", { name: "Continue to desktop" }).click();
+
+  await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);
+  await expect(
+    page.getByRole("heading", { name: "You’re signed in" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("private-browser-proof");
+});
+
+test("provider connection requires an explicit provider selection action", async ({
+  page,
+}) => {
+  await mockCurrentUser(page);
+  await mockProviders(page);
+  await page.route(
+    "**/api/v1/authentication-methods/providers/university-oidc/connect",
+    async (route) => {
+      expect(await route.request().postDataJSON()).toEqual({
+        return_to: "/authorization/complete",
+      });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          redirect_url: `${canonicalOrigin}/authorization/complete`,
+          expires_at: Date.now() + 300_000,
+        }),
+      });
+    },
+  );
+  await page.goto("/account/connect-provider");
+
+  await expect(page).toHaveTitle("Connect a provider · Proctor");
+  await expect(page.getByText("University SSO", { exact: true })).toBeVisible();
+  await expect(page.getByText("OpenID Connect")).toBeVisible();
+  await page.getByRole("button", { name: "Connect University SSO" }).click();
+
+  await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);
+  await expect(
+    page.getByRole("heading", { name: "You’re signed in" }),
+  ).toBeVisible();
+});
+
+for (const pageCase of [
+  {
+    route: "/account/reset-password",
+    heading: "This reset link can’t be used",
+  },
+  { route: "/join", heading: "This Invitation can’t be used" },
+  {
+    route: "/authorize/desktop",
+    heading: "This desktop request can’t be used",
+  },
+] as const) {
+  test(`${pageCase.route} rejects a missing one-time credential`, async ({
+    page,
+  }) => {
+    await page.goto(pageCase.route);
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: pageCase.heading }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Return to sign in" })).toBeVisible();
+  });
+}
+
+test("provider connection presents a signed-out state without shifting into a chooser", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/users/me", async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "/problems/authentication-required",
+        title: "Authentication required",
+        status: 401,
+        code: "authentication.required",
+      }),
+    });
+  });
+  await page.goto("/account/connect-provider");
+
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Sign in to connect a provider",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+    "href",
+    "/login",
+  );
+  await expect(page.getByRole("radio")).toHaveCount(0);
+});
+
+for (const pageCase of [
+  { route: "/account/forgot-password", heading: "Reset your password" },
+  {
+    route: "/account/reset-password#token=private-reset-token",
+    heading: "Choose a new password",
+  },
+  {
+    route: "/join#token=private-invitation-claim",
+    heading: "Join Northbridge Institute",
+  },
+  {
+    route:
+      "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+    heading: "Continue in Proctor Desktop",
+  },
+  {
+    route: "/account/connect-provider",
+    heading: "Add another sign-in method",
+  },
+] as const) {
+  test(`${pageCase.route} follows dark mode and stays one-dimensional when narrow`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+
+    if (pageCase.route.startsWith("/join")) {
+      await mockDiscovery(page);
+      await page.route("**/api/v1/auth/browser/invitations", async (route) => {
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({
+            handle: "private-browser-handle",
+            purpose: "student_class",
+            requirement: "account",
+            expires_at: Date.now() + 300_000,
+          }),
+        });
+      });
+    } else if (pageCase.route.startsWith("/authorize/desktop")) {
+      await mockDiscovery(page);
+      await mockCurrentUser(page);
+    } else if (pageCase.route === "/account/connect-provider") {
+      await mockCurrentUser(page);
+      await mockProviders(page);
+    }
+
+    await page.goto(pageCase.route);
+    await expect(
+      page.getByRole("heading", { level: 1, name: pageCase.heading }),
+    ).toBeVisible();
+    await expect(page.locator("aside")).toHaveCount(0);
+    await expect(page.locator("main ol")).toHaveCount(0);
+    await expect(page.locator("[data-proctor-notice]").first()).toBeVisible();
+    await expect(page.locator("[data-proctor-evidence-note]")).toHaveCount(0);
+
+    const theme = await page.evaluate(() => ({
+      canvas: getComputedStyle(document.documentElement).backgroundColor,
+      body: getComputedStyle(document.body).backgroundColor,
+      colorScheme: getComputedStyle(document.documentElement).colorScheme,
+    }));
+    expect(theme.body).toBe(theme.canvas);
+    expect(theme.colorScheme).toBe("dark");
+
+    await page.evaluate(() => {
+      document.body.style.zoom = "2";
+    });
+    const overflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+}
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`login follows the ${colorScheme} system theme`, async ({ page }) => {

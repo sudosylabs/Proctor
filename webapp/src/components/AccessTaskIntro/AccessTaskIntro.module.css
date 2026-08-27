@@ -1,0 +1,34 @@
+@layer components {
+  .intro {
+    display: flex;
+    min-inline-size: 0;
+    flex-direction: column;
+    gap: var(--proctor-space-4);
+  }
+
+  .eyebrow {
+    color: var(--proctor-color-foreground-link);
+    font-size: var(--proctor-font-size-label);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-label);
+    letter-spacing: var(--proctor-letter-spacing-label);
+    text-transform: uppercase;
+  }
+
+  .intro h1 {
+    max-inline-size: 24ch;
+    font-family: var(--proctor-font-family-display);
+    font-size: var(--proctor-font-size-display);
+    font-weight: var(--proctor-font-weight-semibold);
+    line-height: var(--proctor-line-height-display);
+    letter-spacing: var(--proctor-letter-spacing-display);
+    text-wrap: balance;
+  }
+
+  .body {
+    max-inline-size: 58ch;
+    color: var(--proctor-color-foreground-muted);
+    font-size: var(--proctor-font-size-body-large);
+    line-height: var(--proctor-line-height-body-large);
+  }
+}

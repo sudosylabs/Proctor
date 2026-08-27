@@ -10,7 +10,7 @@ export interface AccessPageShellProps {
   children: ReactNode;
   mainSize?: "content" | "form";
   skipLabel: string;
-  variant: "split" | "status";
+  variant: "single" | "split" | "status";
 }
 
 export function AccessPageShell({
