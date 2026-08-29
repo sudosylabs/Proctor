@@ -122,7 +122,7 @@ func TestExamSittingCorrectionHTTPAppliesCompleteOrderedManifestAndKeepsReasonPr
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
 	first, second := model.NewExamResourceID(), model.NewExamResourceID()
 	stageID := model.NewExamCorrectionResourceStageID()
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","instructions_markdown":"","reason":"Fix misleading reference","resources":[{"resource_id":"%s","display_name":"New reference","description_markdown":"**Corrected**","stage_id":"%s"},{"resource_id":"%s","display_name":"Existing reference","description_markdown":""}]}`,
+	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","instructions_markdown":"","candidate_summary":"A reference was corrected.","acknowledgement_required":true,"reason":"Fix misleading reference","resources":[{"resource_id":"%s","display_name":"New reference","description_markdown":"**Corrected**","stage_id":"%s"},{"resource_id":"%s","display_name":"Existing reference","description_markdown":""}]}`,
 		fake.baseRevisionID, first, stageID, second)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
@@ -136,6 +136,7 @@ func TestExamSittingCorrectionHTTPAppliesCompleteOrderedManifestAndKeepsReasonPr
 	command := fake.apply
 	if command.ExamID != fake.examID || command.SittingID != fake.sittingID || command.ExpectedSittingRevision != 7 ||
 		command.ExpectedCurrentRevisionID != fake.baseRevisionID || !command.Instructions.Present || command.Instructions.Markdown != "" ||
+		command.CandidateSummary != "A reference was corrected." || !command.AcknowledgementRequired ||
 		command.PrivateReason != "Fix misleading reference" || command.IdempotencyKey != "apply-correction-once" || len(command.Resources) != 2 ||
 		command.Resources[0].ResourceID != first || command.Resources[0].StageID != stageID || command.Resources[1].ResourceID != second || command.Resources[1].StageID.IsValid() {
 		t.Fatalf("command=%#v", command)
@@ -158,7 +159,7 @@ func TestExamSittingCorrectionHTTPRejectsPaddedPrivateReasonBeforeApplication(t 
 	logger, _ := newTestLogger(t)
 	fake := newExamSittingCorrectionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","reason":" padded ","resources":[]}`, fake.baseRevisionID)
+	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","candidate_summary":"A correction was made.","acknowledgement_required":false,"reason":" padded ","resources":[]}`, fake.baseRevisionID)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -175,7 +176,7 @@ func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *te
 	logger, _ := newTestLogger(t)
 	fake := newExamSittingCorrectionHTTPFake()
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingCorrectionResource(fake))
-	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","reason":"Resource-only correction","resources":[]}`, fake.baseRevisionID)
+	body := fmt.Sprintf(`{"expected_sitting_revision":7,"expected_current_revision_id":"%s","candidate_summary":"The resource list was corrected.","acknowledgement_required":false,"reason":"Resource-only correction","resources":[]}`, fake.baseRevisionID)
 	request := httptest.NewRequest(http.MethodPost, examSittingCorrectionBasePath(fake)+"/corrections", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Content-Type", "application/json")
@@ -189,7 +190,7 @@ func TestExamSittingCorrectionHTTPOmittedInstructionsPreservesCurrentValue(t *te
 
 func TestApplyExamSittingCorrectionRequestIsClosedDuplicateFreeAndPresenceAware(t *testing.T) {
 	t.Parallel()
-	valid := `{"expected_sitting_revision":4,"expected_current_revision_id":"revision","instructions_markdown":"","reason":"Correct a misleading reference","resources":[]}`
+	valid := `{"expected_sitting_revision":4,"expected_current_revision_id":"revision","instructions_markdown":"","candidate_summary":"A misleading reference was corrected.","acknowledgement_required":true,"reason":"Correct a misleading reference","resources":[]}`
 	var body applyExamSittingCorrectionRequest
 	if err := json.Unmarshal([]byte(valid), &body); err != nil {
 		t.Fatalf("decode valid body: %v", err)

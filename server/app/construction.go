@@ -45,6 +45,7 @@ type identityConstruction struct {
 	mail                              *appmail.Composer
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
+	desktopRegistrations              *desktopRegistrationService
 	browserInvitations                *browserInvitationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
@@ -61,6 +62,7 @@ type accessAcademicConstruction struct {
 	authorization        *accessControlService
 	capabilities         accessPolicyCapabilitySource
 	accessPolicies       *accessPolicyService
+	desktopCompatibility *desktopCompatibilityService
 	academicUnits        *academicUnitQueryService
 	academicUnitCommands *academicUnitCommandService
 	institutions         *institutionService
@@ -166,6 +168,7 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 	if err != nil {
 		return applicationFoundation{}, err
 	}
+	realtime.attempts = deps.Store.ExamAttempt()
 	audit, err := newAuditService(deps.Store.Audit(), deps.Store.Institution(), deps.NodeID)
 	if err != nil {
 		return applicationFoundation{}, err
@@ -199,6 +202,7 @@ func assembleApplication(
 	return &App{
 		authentication:                    identity.authentication,
 		desktopAuthorization:              identity.desktopAuthorization,
+		desktopRegistrations:              identity.desktopRegistrations,
 		browserInvitations:                identity.browserInvitations,
 		selfSessions:                      identity.selfSessions,
 		externalAuthentication:            identity.externalAuthentication,
@@ -211,6 +215,7 @@ func assembleApplication(
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,
 		accessPolicies:                    access.accessPolicies,
+		desktopCompatibility:              access.desktopCompatibility,
 		academicUnits:                     access.academicUnits,
 		academicUnitCommands:              access.academicUnitCommands,
 		institutions:                      access.institutions,

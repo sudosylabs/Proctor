@@ -44,7 +44,8 @@ func (service *Service) ListAutomaticSealTargets(ctx context.Context, sittingID 
 func validAutomaticSealTarget(target store.ExamSubmissionAutomaticSealTarget, sittingID model.ExamSittingID) bool {
 	return target.ExamID.IsValid() && target.SittingID == sittingID && target.ClassID.IsValid() &&
 		target.AcademicUnitID.IsValid() && target.CandidateUserID.IsValid() && target.AttemptID.IsValid() &&
-		target.WorkspaceID.IsValid() && target.ParticipationID.IsValid() && target.Generation > 0 && target.ConnectionID.IsValid()
+		target.WorkspaceID.IsValid() && target.CurrentRevisionID.IsValid() && target.ParticipationID.IsValid() &&
+		target.Generation > 0 && target.ConnectionID.IsValid()
 }
 
 func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall,
@@ -80,7 +81,7 @@ func (service *Service) SealForSittingClose(ctx context.Context, call SystemCall
 	if !preparation.Replayed {
 		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
 			CandidateUserID: target.CandidateUserID, ExamID: target.ExamID, SittingID: target.SittingID,
-			SubmissionID: proposed, SealedAt: at, Automatic: true,
+			SubmissionID: proposed, SealedAt: at, Provenance: model.ExamSubmissionSittingClosed,
 		})
 		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
 			if prepareErr == nil {
@@ -113,7 +114,8 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 	target store.ExamSubmissionAutomaticSealTarget, proposed model.SubmissionID,
 ) (AutomaticSubmissionResult, error) {
 	if stored == nil || stored.Receipt.State != model.ExamAttemptSubmitted || stored.Receipt.AttemptID != target.AttemptID ||
-		!stored.Receipt.SubmissionID.IsValid() || stored.Receipt.WorkspaceCursor < 0 ||
+		stored.Receipt.ExamRevisionID != target.CurrentRevisionID || !stored.Receipt.SubmissionID.IsValid() ||
+		stored.Receipt.WorkspaceCursor < 0 ||
 		!validWorkspaceSHA256(stored.Receipt.ManifestDigest) || stored.Receipt.SubmittedAt.IsZero() ||
 		stored.ExamID != target.ExamID || stored.SittingID != target.SittingID || stored.ClassID != target.ClassID ||
 		stored.CandidateUserID != target.CandidateUserID || stored.ParticipationID != target.ParticipationID ||
@@ -122,7 +124,8 @@ func projectAutomaticSubmissionResult(stored *store.ExamSubmissionAutomaticSealR
 		return AutomaticSubmissionResult{}, unavailable(errors.New("inconsistent automatic Submission result"))
 	}
 	return AutomaticSubmissionResult{SubmissionResult: SubmissionResult{Receipt: stored.Receipt, ExamID: stored.ExamID,
-		SittingID: stored.SittingID, ClassID: stored.ClassID, CandidateUserID: stored.CandidateUserID,
+		Provenance: model.ExamSubmissionSittingClosed,
+		SittingID:  stored.SittingID, ClassID: stored.ClassID, CandidateUserID: stored.CandidateUserID,
 		ParticipationID: stored.ParticipationID, Generation: stored.Generation, ConnectionID: stored.ConnectionID,
 		Replayed: stored.Replayed}, ConnectionClosed: stored.ConnectionClosed}, nil
 }

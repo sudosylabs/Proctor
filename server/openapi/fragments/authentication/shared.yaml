@@ -1,4 +1,8 @@
 components:
+  headers:
+    DPoPNonce:
+      description: Server-issued nonce required by every accepted Desktop DPoP proof.
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
   parameters:
     ProviderID:
       name: provider_id
@@ -86,6 +90,21 @@ components:
             - desktop
             - cli
             - web
+        desktop_registration_id:
+          $ref: '#/components/schemas/ID'
+        desktop_release:
+          type: string
+        desktop_build_id:
+          type: string
+        desktop_platform:
+          type: string
+          enum: [darwin, win32, linux]
+        desktop_architecture:
+          type: string
+          enum: [arm64, x64]
+        desktop_realtime_protocol:
+          type: integer
+          minimum: 1
         device_id:
           type: string
         device_name:
@@ -120,6 +139,8 @@ components:
             - administrator_all_sessions
             - administrator_session
             - authentication_audit_failed
+            - desktop_authorization_failed
+            - desktop_registration_revoked
             - external_identity_unlinked
             - inactive_user
             - password_removed
@@ -135,11 +156,15 @@ components:
       type: object
       additionalProperties: false
       required:
+        - token_type
         - access_token
         - refresh_token
         - access_expires_at
         - refresh_expires_at
       properties:
+        token_type:
+          type: string
+          enum: [Bearer, DPoP]
         access_token:
           type: string
         refresh_token:

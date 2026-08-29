@@ -48,6 +48,7 @@ type Params struct {
 	ClassMemberId           string
 	PersonalAccessTokenId   string
 	SessionID               string
+	DesktopRegistrationID   string
 	ExternalIdentityID      string
 	InvitationID            string
 	OnboardingImportID      string
@@ -90,6 +91,7 @@ func ParamsFromRequest(request *http.Request) Params {
 		ClassMemberId:           strings.TrimSpace(variables["class_member_id"]),
 		PersonalAccessTokenId:   strings.TrimSpace(variables["personal_access_token_id"]),
 		SessionID:               strings.TrimSpace(variables["session_id"]),
+		DesktopRegistrationID:   strings.TrimSpace(variables["desktop_registration_id"]),
 		ExternalIdentityID:      strings.TrimSpace(variables["external_identity_id"]),
 		InvitationID:            strings.TrimSpace(variables["invitation_id"]),
 		OnboardingImportID:      strings.TrimSpace(variables["onboarding_import_id"]),
@@ -172,6 +174,18 @@ func (p Params) RequirePersonalAccessTokenId() (string, error) {
 
 func (p Params) RequireSessionId() (string, error) {
 	return requirePathId("session_id", p.SessionID)
+}
+
+func (p Params) RequireDesktopRegistrationId() (model.DesktopRegistrationID, error) {
+	value, err := requirePathId("desktop_registration_id", p.DesktopRegistrationID)
+	if err != nil {
+		return "", err
+	}
+	id := model.DesktopRegistrationID(value)
+	if !id.IsValid() {
+		return "", invalidRequestError("desktop_registration_id", nil)
+	}
+	return id, nil
 }
 
 func RequestParams(ctx context.Context) (Params, bool) {

@@ -103,6 +103,7 @@ type examSittingUseCases interface {
 	Schedule(context.Context, examsitting.Call, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
 	Get(context.Context, examsitting.Call, model.ExamID, model.ExamSittingID) (store.ExamSittingSnapshot, error)
 	AuthorizeView(context.Context, examsitting.Call, model.ExamSittingID) error
+	AuthorizeBrowserActivityView(context.Context, examsitting.Call, model.ExamSittingID) (model.AcademicUnitID, bool, error)
 	AuthorizeSubmissionView(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) error
 	AuthorizeSubmissionReview(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
 	AuthorizeSubmissionRelease(context.Context, examsitting.Call, model.ExamID, model.SubmissionID) (bool, error)
@@ -310,8 +311,15 @@ func (adapter examSittingSystemAuditAdapter) Fail(ctx context.Context, id, code 
 }
 
 type examSittingRealtimeEffects struct {
-	realtime  *realtimeService
-	execution *appexecution.Service
+	realtime    *realtimeService
+	execution   *appexecution.Service
+	collections examCollectionInvalidationEffects
+}
+
+func (effects examSittingRealtimeEffects) publishBoardInvalidation(ctx context.Context, examID model.ExamID,
+	sittingID model.ExamSittingID,
+) error {
+	return effects.collections.SittingBoardChanged(ctx, examID, sittingID)
 }
 
 func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
@@ -321,7 +329,11 @@ func (effects examSittingRealtimeEffects) Scheduled(ctx context.Context, examID 
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return errors.Join(
+		effects.realtime.Publish(ctx, event),
+		effects.publishBoardInvalidation(ctx, examID, sittingID),
+		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+	)
 }
 
 func (effects examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
@@ -331,7 +343,11 @@ func (effects examSittingRealtimeEffects) ScheduleUpdated(ctx context.Context, e
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return errors.Join(
+		effects.realtime.Publish(ctx, event),
+		effects.publishBoardInvalidation(ctx, examID, sittingID),
+		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+	)
 }
 
 func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
@@ -341,7 +357,11 @@ func (effects examSittingRealtimeEffects) Canceled(ctx context.Context, examID m
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return errors.Join(
+		effects.realtime.Publish(ctx, event),
+		effects.publishBoardInvalidation(ctx, examID, sittingID),
+		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
+	)
 }
 
 func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, examID model.ExamID, sittingID model.ExamSittingID,
@@ -371,6 +391,8 @@ func (effects examSittingRealtimeEffects) LifecycleChanged(ctx context.Context, 
 	return errors.Join(
 		effects.realtime.Publish(ctx, managerEvent),
 		effects.realtime.Publish(ctx, candidateEvent),
+		effects.publishBoardInvalidation(ctx, examID, sittingID),
+		effects.collections.CandidateActivityChangedForSitting(ctx, sittingID),
 		executionErr,
 	)
 }

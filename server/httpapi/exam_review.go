@@ -249,18 +249,23 @@ type examIntegrityEvidenceListResponse struct {
 }
 
 type examIntegrityDiscrepancyResponse struct {
-	ID                   string `json:"id"`
-	ExamAttemptID        string `json:"exam_attempt_id"`
-	ParticipationID      string `json:"participation_id"`
-	Generation           int64  `json:"generation"`
-	Kind                 string `json:"kind"`
-	SchemaVersion        int    `json:"schema_version"`
-	SignalID             string `json:"focus_loss_signal_id"`
-	Sequence             int64  `json:"sequence"`
-	DurationMilliseconds int64  `json:"duration_milliseconds"`
-	Source               string `json:"source,omitempty"`
-	MissingBefore        int64  `json:"missing_before"`
-	ReceivedAt           string `json:"received_at"`
+	ID                     string `json:"id"`
+	ExamAttemptID          string `json:"exam_attempt_id"`
+	ParticipationID        string `json:"participation_id"`
+	Generation             int64  `json:"generation"`
+	Kind                   string `json:"kind"`
+	SchemaVersion          int    `json:"schema_version"`
+	SignalID               string `json:"focus_loss_signal_id,omitempty"`
+	Sequence               *int64 `json:"sequence,omitempty"`
+	DurationMilliseconds   *int64 `json:"duration_milliseconds,omitempty"`
+	Source                 string `json:"source,omitempty"`
+	MissingBefore          *int64 `json:"missing_before,omitempty"`
+	CorrectionRevisionID   string `json:"correction_revision_id,omitempty"`
+	BrowserSourceSessionID string `json:"browser_activity_source_session_id,omitempty"`
+	FinalSequence          *int64 `json:"final_sequence,omitempty"`
+	GapReason              string `json:"gap_reason,omitempty"`
+	UnresolvedCount        *int64 `json:"unresolved_count,omitempty"`
+	ReceivedAt             string `json:"received_at"`
 }
 
 type examIntegrityDiscrepancyListResponse struct {
@@ -421,12 +426,21 @@ func (module examIntegrityReviewHTTPModule) listDiscrepancies(request operationR
 	}
 	response := examIntegrityDiscrepancyListResponse{Items: make([]examIntegrityDiscrepancyResponse, 0, len(page.Items))}
 	for _, item := range page.Items {
-		response.Items = append(response.Items, examIntegrityDiscrepancyResponse{ID: item.ID.String(),
+		projected := examIntegrityDiscrepancyResponse{ID: item.ID.String(),
 			ExamAttemptID: item.AttemptID.String(), ParticipationID: item.ParticipationID.String(),
 			Generation: item.Generation, Kind: string(item.Kind), SchemaVersion: item.SchemaVersion,
-			SignalID: item.SignalID.String(), Sequence: item.Sequence, DurationMilliseconds: item.DurationMilliseconds,
-			Source: string(item.Source), MissingBefore: item.MissingBefore,
-			ReceivedAt: model.TimeUTC(item.ReceivedAt).Format(time.RFC3339Nano)})
+			SignalID: item.SignalID.String(), Source: string(item.Source),
+			CorrectionRevisionID:   item.CorrectionRevisionID.String(),
+			BrowserSourceSessionID: string(item.BrowserSourceSessionID), FinalSequence: item.FinalSequence,
+			GapReason: item.GapReason, ReceivedAt: model.TimeUTC(item.ReceivedAt).Format(time.RFC3339Nano)}
+		if item.Kind == model.IntegrityDiscrepancyLateFocusLoss {
+			sequence, duration, missing := item.Sequence, item.DurationMilliseconds, item.MissingBefore
+			projected.Sequence, projected.DurationMilliseconds, projected.MissingBefore = &sequence, &duration, &missing
+		} else {
+			unresolved := item.UnresolvedCount
+			projected.UnresolvedCount = &unresolved
+		}
+		response.Items = append(response.Items, projected)
 	}
 	if page.HasMore {
 		if len(page.Items) == 0 {

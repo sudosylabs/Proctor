@@ -43,8 +43,14 @@ type hookStore struct {
 	closeErr     error
 }
 
-func (s *hookStore) Institution() store.InstitutionStore       { return hookInstitutionStore{} }
-func (s *hookStore) AccessPolicy() store.AccessPolicyStore     { return hookAccessPolicyStore{} }
+func (s *hookStore) Institution() store.InstitutionStore   { return hookInstitutionStore{} }
+func (s *hookStore) AccessPolicy() store.AccessPolicyStore { return hookAccessPolicyStore{} }
+func (s *hookStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
+	return hookDesktopCompatibilityPolicyStore{}
+}
+func (s *hookStore) DesktopRegistration() store.DesktopRegistrationStore {
+	return hookDesktopRegistrationStore{}
+}
 func (s *hookStore) AcademicUnit() store.AcademicUnitStore     { return hookAcademicUnitStore{} }
 func (s *hookStore) Programme() store.ProgrammeStore           { return nil }
 func (s *hookStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
@@ -133,6 +139,10 @@ func (s *hookStore) AcademicUnitMember() store.AcademicUnitMemberStore {
 
 type hookInvitationStore struct{ store.InvitationStore }
 type hookOnboardingImportStore struct{ store.OnboardingImportStore }
+type hookDesktopCompatibilityPolicyStore struct {
+	store.DesktopCompatibilityPolicyStore
+}
+type hookDesktopRegistrationStore struct{ store.DesktopRegistrationStore }
 
 type hookServingNodeLeaseStore struct{}
 

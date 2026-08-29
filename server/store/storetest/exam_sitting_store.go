@@ -59,6 +59,22 @@ func TestExamSittingStore(t *testing.T, ss store.Store) {
 		Notice:                    classMemberPreparedMail(t, membership, model.MailTemplateAcademicClassEnrolled, membership.CreatedAt),
 		AuditEventID:              membershipAudit.ID.String(), AuditAt: model.GetMillis()})
 	requireNoError(t, err)
+	candidateInvalidations, err := ss.ExamSitting().ListCandidateInvalidationTargetsBySitting(
+		ctx, sitting.ID, model.UserID(""), 200,
+	)
+	requireNoError(t, err)
+	if len(candidateInvalidations) != 1 || candidateInvalidations[0] != candidate.ID {
+		t.Fatalf("ListCandidateInvalidationTargetsBySitting()=%#v", candidateInvalidations)
+	}
+	boardInvalidations, err := ss.ExamSitting().ListInvalidationTargetsByExam(
+		ctx, fixture.examID, model.ExamSittingID(""), 200,
+	)
+	requireNoError(t, err)
+	if len(boardInvalidations) != 1 || boardInvalidations[0] != (store.ExamSittingInvalidationTarget{
+		ExamID: fixture.examID, SittingID: sitting.ID,
+	}) {
+		t.Fatalf("ListInvalidationTargetsByExam()=%#v", boardInvalidations)
+	}
 	mailPage, err := ss.ExamSitting().ListMailRecipients(ctx, store.ExamSittingMailRecipientPageRequest{
 		OccurrenceID: scheduleMail.Occurrence.ID, Limit: model.SittingMailExpansionPageSize})
 	requireNoError(t, err)

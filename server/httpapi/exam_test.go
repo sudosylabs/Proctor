@@ -458,6 +458,7 @@ type examHTTPApplication struct {
 	edit                      application.EditExamDraftTextCommand
 	configureFocusLoss        application.ConfigureExamDraftFocusLossCommand
 	configureExecutionProfile application.ConfigureExamDraftExecutionProfileCommand
+	configureBrowserPolicy    application.ConfigureExamDraftBrowserPolicyCommand
 	executionImages           []application.ExamExecutionImage
 	list                      application.ListExamsQuery
 	catalog                   application.ExamCatalogPage
@@ -523,6 +524,11 @@ func (a *examHTTPApplication) ConfigureExamDraftFocusLoss(_ context.Context, _ a
 
 func (a *examHTTPApplication) ConfigureExamDraftExecutionProfile(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftExecutionProfileCommand) (application.ExamView, error) {
 	a.configureExecutionProfile = command
+	return a.view, nil
+}
+
+func (a *examHTTPApplication) ConfigureExamDraftBrowserPolicy(_ context.Context, _ application.Invocation, command application.ConfigureExamDraftBrowserPolicyCommand) (application.ExamView, error) {
+	a.configureBrowserPolicy = command
 	return a.view, nil
 }
 

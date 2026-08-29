@@ -149,6 +149,7 @@ func TestAccessAndOnboardingDecoratedLayerConformance(t *testing.T) {
 		{"AccessPolicy", true, nil, func(t *testing.T, decorated store.Store) {
 			storetest.TestAccessPolicyStore(t, decorated)
 		}},
+		{"DesktopCompatibilityPolicy", true, nil, storetest.TestDesktopCompatibilityPolicyStore},
 		{"CommandOutcome", false, nil, storetest.TestCommandOutcomeStore},
 	}
 
@@ -186,6 +187,7 @@ func runLayerConformance(
 		{"ExamAttempt", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamAttemptStore(t, decorated)
 		}},
+		{"BrowserActivity", storetest.TestBrowserActivityStore},
 		{"ExecutionGrant", storetest.TestExecutionGrantStore},
 		{"ExamAttemptWorkspace", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamAttemptWorkspaceStore(t, decorated, decorated.ExamAttemptWorkspace(),
@@ -239,12 +241,13 @@ func runLayerConformance(
 		{"AccessPolicy", func(t *testing.T, decorated store.Store) {
 			storetest.TestAccessPolicyStore(t, decorated)
 		}},
+		{"DesktopCompatibilityPolicy", storetest.TestDesktopCompatibilityPolicyStore},
 		{"CommandOutcome", storetest.TestCommandOutcomeStore},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			switch test.name {
-			case "Installation", "AccessPolicy":
+			case "Installation", "AccessPolicy", "DesktopCompatibilityPolicy":
 				resetPristineTestStore(t, sqlStore)
 			case "PasswordCredential":
 				resetPristineTestStore(t, sqlStore)
@@ -399,6 +402,10 @@ func TestExamAttemptStore(t *testing.T) {
 	probe := examAttemptSQLProbe(t, persistence)
 	probe.ConcurrentExamAttempt = peerPersistence.ExamAttempt()
 	storetest.TestExamAttemptStore(t, persistence, probe)
+}
+
+func TestBrowserActivityStore(t *testing.T) {
+	StoreTest(t, storetest.TestBrowserActivityStore)
 }
 
 func TestExecutionGrantStore(t *testing.T) {
@@ -1607,6 +1614,18 @@ func TestAuditStoreAcceptsGranularAcademicResources(t *testing.T) {
 
 func TestInstallationStore(t *testing.T) {
 	PristineStoreTest(t, storetest.TestInstallationStore)
+}
+
+func TestDesktopCompatibilityPolicyStore(t *testing.T) {
+	PristineStoreTest(t, storetest.TestDesktopCompatibilityPolicyStore)
+}
+
+func TestSessionRevocationAttemptFence(t *testing.T) {
+	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestSessionRevocationAttemptFence)
+}
+
+func TestSessionExpiryAttemptFence(t *testing.T) {
+	StoreTestWithAuthenticationPolicy(t, nil, storetest.TestSessionExpiryAttemptFence)
 }
 
 func TestAdministratorRecoveryStore(t *testing.T) {

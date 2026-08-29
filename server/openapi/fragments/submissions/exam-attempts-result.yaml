@@ -19,8 +19,13 @@ paths:
         - resource.not_found
         - exam.integrity_review.invalid
         - exam.integrity_review.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -33,6 +38,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     StudentExamResultOK:

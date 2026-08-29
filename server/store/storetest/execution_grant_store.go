@@ -18,11 +18,13 @@ func TestExecutionGrantStore(t *testing.T, ss store.Store) {
 	fixture := newExamAttemptFixture(t, ctx, ss)
 	input := &store.ExamAttemptConnect{
 		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
 		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
 	}
+	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "execution-grant-attempt", "execution-grant-attempt"))
 	requireNoError(t, err)

@@ -1,0 +1,89 @@
+paths:
+  /api/v1/users/me/desktop-registrations:
+    get:
+      operationId: listDesktopRegistrations
+      summary: List the current User's Desktop Registrations
+      description: Returns only bounded registration presentation and compatibility metadata; public keys, thumbprints, proofs, and Session identities are never exposed.
+      tags: [Authentication]
+      x-proctor-auth: session_required
+      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      responses:
+        "200": {$ref: '#/components/responses/DesktopRegistrationListOK'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/users/me/desktop-registrations/{desktop_registration_id}:
+    delete:
+      operationId: revokeDesktopRegistration
+      summary: Irreversibly revoke one Desktop Registration
+      description: Requires strong recent interactive authentication and atomically revokes the registration and all bound Session credential families.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request DELETE \
+              --url 'https://proctor.example.edu/api/v1/users/me/desktop-registrations/<desktop-registration-id>' \
+              --cookie 'PROCTOR_ACCESS=<session-cookie>' \
+              --header 'X-Proctor-CSRF-Token: <csrf-proof>'
+      tags: [Authentication]
+      parameters:
+        - $ref: '#/components/parameters/DesktopRegistrationID'
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.strong_required, authentication.reauthentication_required, request.invalid, resource.not_found, audit.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        "204": {$ref: '#/components/responses/SensitiveNoContent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    DesktopRegistrationID:
+      name: desktop_registration_id
+      in: path
+      required: true
+      description: Exact Desktop Registration identity from the current User's private registration list.
+      schema: {$ref: '#/components/schemas/ID'}
+  responses:
+    DesktopRegistrationListOK:
+      description: Current User's Desktop Registration security history
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DesktopRegistrationListResponse'}
+  schemas:
+    DesktopRegistrationListResponse:
+      type: array
+      items: {$ref: '#/components/schemas/DesktopRegistrationResponse'}
+    DesktopRegistrationResponse:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, desktop_release, desktop_build_id, platform, architecture, realtime_protocol, created_at, last_used_at, status, current]
+      properties:
+        id: {$ref: '#/components/schemas/ID'}
+        display_name: {type: string, maxLength: 128}
+        desktop_release: {type: string, maxLength: 64}
+        desktop_build_id: {type: string, maxLength: 128}
+        platform: {type: string, enum: [darwin, win32, linux]}
+        architecture: {type: string, enum: [arm64, x64]}
+        realtime_protocol: {type: integer, minimum: 1}
+        created_at: {type: integer, format: int64}
+        last_used_at: {type: integer, format: int64}
+        status: {type: string, enum: [active, revoked]}
+        current: {type: boolean}

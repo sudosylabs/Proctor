@@ -21,8 +21,13 @@ paths:
         - administration.unavailable
         - invitation.query.invalid
         - invitation.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: purpose
@@ -131,8 +136,13 @@ paths:
         - resource.not_found
         - administration.unavailable
         - invitation.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -262,8 +272,13 @@ paths:
         - authentication.rate_limit_unavailable
         - invitation.invalid
         - invitation.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -311,8 +326,13 @@ paths:
         - authentication.rate_limit_unavailable
         - invitation.invalid
         - invitation.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:

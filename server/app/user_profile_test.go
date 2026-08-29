@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,10 +16,13 @@ import (
 )
 
 type userProfileStoreFake struct {
-	events      *[]string
-	current     *model.User
-	updateInput *store.UserProfileUpdate
-	listOptions store.UserListOptions
+	events              *[]string
+	current             *model.User
+	currentContext      *store.CurrentUserContext
+	currentContextError error
+	currentContextLimit int
+	updateInput         *store.UserProfileUpdate
+	listOptions         store.UserListOptions
 }
 
 func (s *userProfileStoreFake) Get(context.Context, string) (*model.User, error) {
@@ -28,6 +33,16 @@ func (s *userProfileStoreFake) List(_ context.Context, options store.UserListOpt
 	*s.events = append(*s.events, "list-users")
 	s.listOptions = options
 	return nil, nil
+}
+func (s *userProfileStoreFake) GetCurrentContext(_ context.Context, _ model.UserID, limit int) (*store.CurrentUserContext, error) {
+	s.currentContextLimit = limit
+	if s.currentContextError != nil {
+		return nil, s.currentContextError
+	}
+	if s.currentContext == nil {
+		return nil, errors.New("current context is not configured")
+	}
+	return s.currentContext, nil
 }
 func (s *userProfileStoreFake) UpdateProfileWithAudit(_ context.Context, input *store.UserProfileUpdate) (*model.User, error) {
 	*s.events = append(*s.events, "store-update")
@@ -44,6 +59,71 @@ type userProfileAuthorizerFake struct {
 	fullRead    bool
 	readErr     error
 	writeErr    error
+}
+
+func TestCurrentUserContextReturnsBoundedNavigationProjection(t *testing.T) {
+	t.Parallel()
+	userID := model.NewUserID()
+	attempt := &store.CurrentUserAttemptSelector{
+		AttemptID: model.NewExamAttemptID(), SittingID: model.NewExamSittingID(), State: model.ExamAttemptSuspended,
+	}
+	persisted := &store.CurrentUserContext{
+		UserID: userID, Username: "student", DisplayName: "Student",
+		AvailableProductAreas: []store.CurrentUserProductArea{
+			store.CurrentUserProductAreaAccount, store.CurrentUserProductAreaSettings, store.CurrentUserProductAreaStudentActivity,
+		},
+		ManagementScopes: []store.CurrentUserManagementScope{{
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewAcademicUnitID().String(), DisplayName: "Engineering",
+		}},
+		UnresolvedAttempt: attempt,
+	}
+	persistence := &userProfileStoreFake{events: &[]string{}, currentContext: persisted}
+	application := &App{userProfiles: &userProfileService{users: persistence}}
+	principal := userSettingsSessionPrincipal(time.Now())
+	principal.UserID = userID
+	principal.ClientType = model.SessionClientDesktop
+	principal.DesktopRegistrationID = model.NewDesktopRegistrationID()
+	principal.DPoPKeyThumbprint = strings.Repeat("A", 43)
+	principal.RegisteredDesktopKey = true
+	principal.DesktopRelease = "1.0.0"
+	principal.DesktopBuildID = "context-test"
+	principal.DesktopPlatform = model.DesktopPlatformDarwin
+	principal.DesktopArchitecture = model.DesktopArchitectureARM64
+	principal.DesktopRealtimeProtocol = 1
+
+	got, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistence.currentContextLimit != 21 || got.UserID != userID || got.ProfilePictureReference != "/api/v1/users/"+userID.String()+"/profile-picture" ||
+		!got.SessionManagementAvailable || got.CurrentDesktopRegistrationID != principal.DesktopRegistrationID || got.UnresolvedAttempt == nil ||
+		got.UnresolvedAttempt.AttemptID != attempt.AttemptID || len(got.ManagementScopes) != 1 || len(got.AvailableProductAreas) != 3 {
+		t.Fatalf("GetCurrentUserContext() = %#v", got)
+	}
+	got.AvailableProductAreas[0] = store.CurrentUserProductAreaAdministration
+	got.ManagementScopes[0].DisplayName = "changed"
+	got.UnresolvedAttempt.State = model.ExamAttemptActive
+	if persisted.AvailableProductAreas[0] != store.CurrentUserProductAreaAccount || persisted.ManagementScopes[0].DisplayName != "Engineering" ||
+		persisted.UnresolvedAttempt.State != model.ExamAttemptSuspended {
+		t.Fatal("GetCurrentUserContext mutated its persistence projection")
+	}
+}
+
+func TestCurrentUserContextRejectsPersonalAccessTokensWithoutReading(t *testing.T) {
+	t.Parallel()
+	persistence := &userProfileStoreFake{events: &[]string{}}
+	application := &App{userProfiles: &userProfileService{users: persistence}}
+	principal := model.Principal{
+		UserID: model.NewUserID(), CredentialID: model.PrincipalCredentialID(model.NewPersonalAccessTokenID()),
+		CredentialType: model.CredentialPersonalAccessToken, AuthenticationMethod: "personal_access_token",
+		ClientType: model.SessionClientCLI, CredentialScopes: []string{string(model.ActionUserView)},
+	}
+	if _, err := application.GetCurrentUserContext(context.Background(), NewInvocation(principal, model.RequestMetadata{})); !Is(err, "authentication.invalid_token") {
+		t.Fatalf("GetCurrentUserContext() error = %v", err)
+	}
+	if persistence.currentContextLimit != 0 {
+		t.Fatalf("unauthorized request reached persistence with limit %d", persistence.currentContextLimit)
+	}
 }
 
 func (a *userProfileAuthorizerFake) AuthorizeSearch(context.Context, Invocation) (store.UserVisibilityScope, error) {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
 		func() string { value := generated[next]; next++; return value },
 		func() time.Time { return at },
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -42,11 +44,12 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 	state := model.NewCredentialToken()
 	challenge := model.NewCredentialToken()
 	callback := "http://127.0.0.1:49152/" + model.NewCredentialToken()
-	result, err := service.Start(context.Background(), StartDesktopAuthorizationCommand{
+	command := StartDesktopAuthorizationCommand{
 		CallbackURL: callback, State: state, CodeChallenge: challenge,
-		AuthenticationMethod: "password",
-		DeviceID:             "desktop-1", DeviceName: "Exam laptop",
-	})
+		DeviceID: "desktop-1", DeviceName: "Exam laptop",
+	}
+	setTestDesktopAuthorizationBuild(t, &command)
+	result, err := service.Start(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +61,6 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 		persistence.created.StateHash != model.HashToken(state) ||
 		persistence.created.CallbackURL != callback ||
 		persistence.created.CodeChallenge != challenge ||
-		persistence.created.ExpectedAuthenticationMethod != "password" ||
-		persistence.created.ExpectedProviderID != "" ||
 		persistence.created.Lifetime != 5*time.Minute {
 		t.Fatalf("created transaction = %#v", persistence.created)
 	}
@@ -83,6 +84,43 @@ func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 	}
 }
 
+func TestDesktopAuthorizationStartRejectsMaintenanceBeforePersistence(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	persistence := &desktopAuthorizationStoreFake{}
+	identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })
+	identity.compatibility = desktopAuthorizationCompatibilityFake{result: DesktopCompatibilityResult{
+		Availability:  model.DesktopAvailabilityMaintenance,
+		Compatibility: DesktopCompatibilityCompatible,
+	}}
+	service, err := newDesktopAuthorizationService(
+		persistence,
+		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+		desktopAuthorizationAccessPolicyFake{enabled: true},
+		&accessPolicyCapabilitiesFake{},
+		desktopAuthorizationAuditorFake{},
+		&desktopAuthorizationAttemptLimiterFake{},
+		testDesktopSessionPolicy(),
+		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
+		model.NewCredentialToken,
+		func() time.Time { return at },
+		identity,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := StartDesktopAuthorizationCommand{
+		CallbackURL:   "http://127.0.0.1:49152/" + model.NewCredentialToken(),
+		State:         model.NewCredentialToken(),
+		CodeChallenge: model.NewCredentialToken(),
+	}
+	setTestDesktopAuthorizationBuild(t, &command)
+	result, err := service.Start(context.Background(), command)
+	if result != nil || !Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
+		t.Fatalf("Start() = %#v, %v; persisted=%#v", result, err, persistence.created)
+	}
+}
+
 func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *testing.T) {
 	t.Parallel()
 	persistence := &desktopAuthorizationStoreFake{}
@@ -93,14 +131,17 @@ func TestDesktopAuthorizationStartRejectsEqualGeneratedProofsBeforeStore(t *test
 		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
 		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, func() string { return credential }, time.Now,
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Start(context.Background(), StartDesktopAuthorizationCommand{
+	command := StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
-		CodeChallenge: model.NewCredentialToken(), AuthenticationMethod: "password",
-	})
+		CodeChallenge: model.NewCredentialToken(),
+	}
+	setTestDesktopAuthorizationBuild(t, &command)
+	_, err = service.Start(context.Background(), command)
 	if !Is(err, "authentication.desktop_authorization.unavailable") || persistence.created != nil {
 		t.Fatalf("Start() error=%v persisted=%#v", err, persistence.created)
 	}
@@ -116,6 +157,7 @@ func TestDesktopAuthorizationLoopbackHTTPIssuerRequiresExplicitDevelopmentPolicy
 			desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
 			desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 			policy, model.NewCredentialToken, time.Now,
+			testDesktopAuthorizationIdentity(t, policy.Issuer, time.Now),
 		)
 		return err
 	}
@@ -145,11 +187,12 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
 		func() string { value := generated[0]; generated = generated[1:]; return value }, func() time.Time { return at },
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handle, proof, state := model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken()
+	binding, state := model.NewCredentialToken(), model.NewCredentialToken()
 	callback := "http://[::1]:49152/" + model.NewCredentialToken()
 	principal := model.Principal{UserID: model.NewUserID(), SessionID: model.NewSessionID(),
 		CredentialID: model.PrincipalCredentialID(model.NewId()), CredentialType: model.CredentialSessionAccess,
@@ -159,34 +202,34 @@ func TestDesktopAuthorizationApprovalAndExchangeArePurposeBound(t *testing.T) {
 		AuthenticatedAt: at.Add(-time.Minute), MFACompletedAt: model.OptionalTimeFrom(at)}
 	persistence.issueResult = &store.DesktopAuthorizationCodeIssued{CallbackURL: callback, CodeExpiresAt: at.Add(time.Minute)}
 	approved, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
-		ApproveDesktopAuthorizationCommand{Handle: handle, BrowserProof: proof, State: state})
+		ApproveDesktopAuthorizationCommand{Binding: binding, State: state})
 	if err != nil {
 		t.Fatal(err)
 	}
 	redirect, _ := url.Parse(approved.RedirectURL)
 	if redirect.Scheme != "http" || redirect.Host != "[::1]:49152" || redirect.Query().Get("code") != code ||
 		redirect.Query().Get("state") != state || persistence.issued == nil ||
-		persistence.issued.AuthenticationProviderID != "campus" || persistence.issued.MFACompletedAt != at.UnixMilli() ||
+		persistence.issued.BindingHash != model.HashToken(binding) ||
 		persistence.issued.CodeLifetime != time.Minute {
 		t.Fatalf("approval = %#v input=%#v", approved, persistence.issued)
 	}
-	session := &model.Session{
-		UserID: principal.UserID, ClientType: model.SessionClientDesktop, AuthenticationMethod: "password",
-		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: at, LastActivityAt: at,
-		IdleExpiresAt: at.Add(30 * time.Minute), ExpiresAt: at.Add(2 * time.Hour),
-	}
-	session.PrepareCreate(model.NewSessionID(), at)
+	exchangeCommand := testDesktopAuthorizationExchangeCommand(
+		t, service, at, code, state, "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "",
+	)
+	session, registration := testDesktopAuthorizationExchangeResult(t, exchangeCommand, principal.UserID, at)
 	persistence.exchangeResult = &store.DesktopAuthorizationExchangeResult{
-		Session: session, AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
+		Session: session, Registration: registration,
+		AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
 	}
 	exchanged, err := service.Exchange(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{}),
-		ExchangeDesktopAuthorizationCommand{Code: code, State: state, CodeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"})
+		exchangeCommand)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if persistence.exchanged == nil || persistence.exchanged.CodeChallenge != "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM" ||
 		persistence.exchanged.AccessLifetime != 5*time.Minute || persistence.exchanged.RefreshLifetime != time.Hour ||
 		persistence.exchanged.IdleLifetime != 30*time.Minute || persistence.exchanged.AbsoluteLifetime != 2*time.Hour ||
+		persistence.exchanged.DesktopCompatibilityPolicyRevision != 1 ||
 		exchanged.Tokens.AccessToken != access || exchanged.Tokens.RefreshToken != refresh {
 		t.Fatalf("exchange = %#v input=%#v", exchanged, persistence.exchanged)
 	}
@@ -205,6 +248,7 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		&desktopAuthorizationAttemptLimiterFake{},
 		testDesktopSessionPolicy(), DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
 		model.NewCredentialToken, func() time.Time { return at },
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -214,17 +258,56 @@ func TestDesktopAuthorizationTerminalStoreRejectionCompletesFailureAudit(t *test
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 	_, err = service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
-		ApproveDesktopAuthorizationCommand{Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), State: model.NewCredentialToken()})
+		ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 	if !Is(err, "authentication.desktop_authorization.rejected") || auditor.failureCode != "authentication.desktop_authorization.rejected" || auditor.auditID == "" {
 		t.Fatalf("Approve() error=%v failure audit=%q/%q", err, auditor.auditID, auditor.failureCode)
 	}
 	persistence.issueErr = nil
 	persistence.exchangeErr = errors.New("database unavailable")
-	_, err = service.Exchange(context.Background(), Invocation{}, ExchangeDesktopAuthorizationCommand{
-		Code: model.NewCredentialToken(), State: model.NewCredentialToken(), CodeVerifier: model.NewCredentialToken(),
-	})
+	exchangeCommand := testDesktopAuthorizationExchangeCommand(
+		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
+	)
+	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
 	if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 		t.Fatalf("Exchange() error=%v failure audit=%q", err, auditor.failureCode)
+	}
+}
+
+func TestDesktopAuthorizationExchangeFailsClosedWhenSessionNonceCannotBeStored(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	persistence := &desktopAuthorizationStoreFake{}
+	identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at })
+	service, err := newDesktopAuthorizationService(
+		persistence,
+		desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+		desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
+		desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
+		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
+		func() time.Time { return at }, identity,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := testDesktopAuthorizationExchangeCommand(
+		t, service, at, model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken(), "",
+	)
+	session, registration := testDesktopAuthorizationExchangeResult(t, command, model.NewUserID(), at)
+	persistence.exchangeResult = &store.DesktopAuthorizationExchangeResult{
+		Session: session, Registration: registration,
+		AccessExpiresAt: at.Add(5 * time.Minute), RefreshExpiresAt: at.Add(time.Hour),
+	}
+	identity.dpop.cache.(*dpopCacheFake).setAlwaysErr = errors.New("shared nonce cache unavailable")
+
+	result, err := service.Exchange(context.Background(), Invocation{}, command)
+	if result != nil || !Is(err, "authentication.dpop.unavailable") {
+		t.Fatalf("Exchange() = %#v, %v; want no credential response", result, err)
+	}
+	sessions := identity.authentication.sessions.(*desktopAuthorizationSessionStoreStub)
+	if sessions.revokedID != session.ID.String() || sessions.revokedUserID != session.UserID.String() ||
+		sessions.reason != model.SessionRevocationDesktopAuthorizationFailed {
+		t.Fatalf("compensating revocation = %#v", sessions)
 	}
 }
 
@@ -241,14 +324,17 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 				desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
 				desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, func() time.Time { return at },
+				testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = service.Start(context.Background(), StartDesktopAuthorizationCommand{
+			command := StartDesktopAuthorizationCommand{
 				CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
-				CodeChallenge: model.NewCredentialToken(), AuthenticationMethod: "password",
-			})
+				CodeChallenge: model.NewCredentialToken(),
+			}
+			setTestDesktopAuthorizationBuild(t, &command)
+			_, err = service.Start(context.Background(), command)
 			if !Is(err, "authentication.desktop_authorization.unavailable") {
 				t.Fatalf("Start error = %v", err)
 			}
@@ -262,6 +348,7 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			audit, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
 			DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken,
 			func() time.Time { return at },
+			testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -274,10 +361,12 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			ID: model.NewBrowserAuthenticationTransactionID(), ExpiresAt: at.Add(time.Minute),
 		}}
 		service := newService(persistence, desktopAuthorizationAuditorFake{})
-		_, err := service.Start(context.Background(), StartDesktopAuthorizationCommand{
+		command := StartDesktopAuthorizationCommand{
 			CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: model.NewCredentialToken(),
-			CodeChallenge: model.NewCredentialToken(), AuthenticationMethod: "password",
-		})
+			CodeChallenge: model.NewCredentialToken(),
+		}
+		setTestDesktopAuthorizationBuild(t, &command)
+		_, err := service.Start(context.Background(), command)
 		if !Is(err, "authentication.desktop_authorization.unavailable") {
 			t.Fatalf("Start error = %v", err)
 		}
@@ -293,26 +382,27 @@ func TestDesktopAuthorizationMalformedStoreFactsFailClosed(t *testing.T) {
 			CallbackURL: "https://not-loopback.example/", CodeExpiresAt: at.Add(time.Minute),
 		}}, auditor)
 		_, err := service.Approve(context.Background(), NewInvocation(principal, model.RequestMetadata{}),
-			ApproveDesktopAuthorizationCommand{Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), State: model.NewCredentialToken()})
+			ApproveDesktopAuthorizationCommand{Binding: model.NewCredentialToken(), State: model.NewCredentialToken()})
 		if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Approve error/audit = %v/%q", err, auditor.failureCode)
 		}
 	})
 
 	t.Run("exchange expiries", func(t *testing.T) {
-		session := &model.Session{UserID: model.NewUserID(), ClientType: model.SessionClientDesktop,
-			AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-			AuthenticatedAt: at, LastActivityAt: at, IdleExpiresAt: at.Add(30 * time.Minute), ExpiresAt: at.Add(2 * time.Hour)}
-		session.PrepareCreate(model.NewSessionID(), at)
 		auditor := &recordingDesktopAuthorizationAuditor{}
-		service := newService(&desktopAuthorizationStoreFake{exchangeResult: &store.DesktopAuthorizationExchangeResult{
-			Session: session, AccessExpiresAt: at.Add(testDesktopSessionPolicy().AccessTTL + time.Second),
+		persistence := &desktopAuthorizationStoreFake{}
+		service := newService(persistence, auditor)
+		exchangeCommand := testDesktopAuthorizationExchangeCommand(
+			t, service, at, model.NewCredentialToken(), model.NewCredentialToken(),
+			"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "",
+		)
+		session, registration := testDesktopAuthorizationExchangeResult(t, exchangeCommand, model.NewUserID(), at)
+		persistence.exchangeResult = &store.DesktopAuthorizationExchangeResult{
+			Session: session, Registration: registration,
+			AccessExpiresAt:  at.Add(testDesktopSessionPolicy().AccessTTL + time.Second),
 			RefreshExpiresAt: at.Add(time.Hour),
-		}}, auditor)
-		_, err := service.Exchange(context.Background(), Invocation{}, ExchangeDesktopAuthorizationCommand{
-			Code: model.NewCredentialToken(), State: model.NewCredentialToken(),
-			CodeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-		})
+		}
+		_, err := service.Exchange(context.Background(), Invocation{}, exchangeCommand)
 		if !Is(err, "authentication.desktop_authorization.unavailable") || auditor.failureCode != "authentication.desktop_authorization.unavailable" {
 			t.Fatalf("Exchange error/audit = %v/%q", err, auditor.failureCode)
 		}
@@ -334,15 +424,18 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 		auditor, limiter, testDesktopSessionPolicy(),
 		DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"},
 		model.NewCredentialToken, func() time.Time { return at },
+		testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", func() time.Time { return at }),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	state := model.NewCredentialToken()
-	_, err = service.Start(context.Background(), StartDesktopAuthorizationCommand{
+	command := StartDesktopAuthorizationCommand{
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), State: state,
-		CodeChallenge: model.NewCredentialToken(), AuthenticationMethod: "password", Source: "192.0.2.10:5000",
-	})
+		CodeChallenge: model.NewCredentialToken(), Source: "192.0.2.10:5000",
+	}
+	setTestDesktopAuthorizationBuild(t, &command)
+	_, err = service.Start(context.Background(), command)
 	if !Is(err, "authentication.rate_limited") || persistence.created != nil || auditor.prepareExchange != 0 || auditor.prepareIssue != 0 {
 		t.Fatalf("Start() error=%v persisted=%#v audit prepares=%d/%d", err, persistence.created, auditor.prepareIssue, auditor.prepareExchange)
 	}
@@ -351,9 +444,10 @@ func TestDesktopAuthorizationPublicAttemptLimitsPrecedePersistenceAndAudit(t *te
 	}
 
 	code := model.NewCredentialToken()
-	_, err = service.Exchange(context.Background(), Invocation{}, ExchangeDesktopAuthorizationCommand{
-		Code: code, State: model.NewCredentialToken(), CodeVerifier: model.NewCredentialToken(), Source: "192.0.2.10:5001",
-	})
+	exchangeCommand := testDesktopAuthorizationExchangeCommand(
+		t, service, at, code, model.NewCredentialToken(), model.NewCredentialToken(), "192.0.2.10:5001",
+	)
+	_, err = service.Exchange(context.Background(), Invocation{}, exchangeCommand)
 	if !Is(err, "authentication.rate_limited") || persistence.exchanged != nil || auditor.prepareExchange != 0 {
 		t.Fatalf("Exchange() error=%v persisted=%#v exchange audits=%d", err, persistence.exchanged, auditor.prepareExchange)
 	}
@@ -401,6 +495,8 @@ type desktopAuthorizationStoreFake struct {
 	exchangeResult  *store.DesktopAuthorizationExchangeResult
 	issueErr        error
 	exchangeErr     error
+	contextResult   *store.DesktopAuthorizationContext
+	authorizationID model.BrowserAuthenticationTransactionID
 }
 
 func (s *desktopAuthorizationStoreFake) CreateDesktopAuthorization(
@@ -422,12 +518,40 @@ func (s *desktopAuthorizationStoreFake) CreateDesktopAuthorization(
 	return &store.DesktopAuthorizationCreated{ID: cloned.ID, ExpiresAt: expiresAt}, nil
 }
 
+func (s *desktopAuthorizationStoreFake) BindDesktopAuthorization(context.Context, *store.DesktopAuthorizationBinding) (*store.DesktopAuthorizationBound, error) {
+	return &store.DesktopAuthorizationBound{ExpiresAt: time.Now().Add(time.Minute)}, nil
+}
+
+func (s *desktopAuthorizationStoreFake) GetDesktopAuthorizationContext(context.Context, string) (*store.DesktopAuthorizationContext, error) {
+	if s.contextResult != nil {
+		return s.contextResult, nil
+	}
+	return &store.DesktopAuthorizationContext{ID: model.NewBrowserAuthenticationTransactionID(),
+		State: model.BrowserAuthenticationStateAuthenticated, UserID: model.NewUserID(), ExpiresAt: time.Now().Add(time.Minute)}, nil
+}
+
+func (s *desktopAuthorizationStoreFake) AuthenticateDesktopAuthorization(context.Context, *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
+	return &store.DesktopAuthorizationAuthenticationResult{}, nil
+}
+
+func (s *desktopAuthorizationStoreFake) ResetDesktopAuthorizationAccount(context.Context, *store.DesktopAuthorizationAccountReset) error {
+	return nil
+}
+
 func (s *desktopAuthorizationStoreFake) IssueCode(_ context.Context, input *store.DesktopAuthorizationCodeIssue) (*store.DesktopAuthorizationCodeIssued, error) {
 	s.issued = input
 	return s.issueResult, s.issueErr
 }
 func (s *desktopAuthorizationStoreFake) Cancel(context.Context, *store.DesktopAuthorizationCancellation) error {
 	return nil
+}
+func (s *desktopAuthorizationStoreFake) ResolveDesktopAuthorizationExchange(context.Context,
+	*store.DesktopAuthorizationExchangeProof,
+) (model.BrowserAuthenticationTransactionID, error) {
+	if s.authorizationID.IsZero() {
+		s.authorizationID = model.NewBrowserAuthenticationTransactionID()
+	}
+	return s.authorizationID, nil
 }
 func (s *desktopAuthorizationStoreFake) Exchange(_ context.Context, input *store.DesktopAuthorizationExchange) (*store.DesktopAuthorizationExchangeResult, error) {
 	s.exchanged = input
@@ -452,9 +576,13 @@ func (p desktopAuthorizationAccessPolicyFake) AllowsDesktopAuthorization(context
 	return p.enabled, p.err
 }
 
+func (p desktopAuthorizationAccessPolicyFake) AllowsLocalLogin(context.Context) (bool, error) {
+	return p.enabled, p.err
+}
+
 type desktopAuthorizationAuditorFake struct{}
 
-func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error) {
+func (desktopAuthorizationAuditorFake) PrepareIssue(context.Context, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
 func (desktopAuthorizationAuditorFake) PrepareExchange(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error) {
@@ -469,7 +597,7 @@ type recordingDesktopAuthorizationAuditor struct {
 	prepareIssue, prepareExchange int
 }
 
-func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(context.Context, Invocation, model.InstitutionID) (*model.AuditEvent, error) {
+func (a *recordingDesktopAuthorizationAuditor) PrepareIssue(context.Context, model.UserID, model.InstitutionID) (*model.AuditEvent, error) {
 	a.prepareIssue++
 	return &model.AuditEvent{ID: model.NewAuditEventID()}, nil
 }
@@ -494,4 +622,145 @@ type desktopAuthorizationAttemptLimiterFake struct {
 func (f *desktopAuthorizationAttemptLimiterFake) Check(_ context.Context, operation desktopAuthorizationAttemptOperation, identity, source string) error {
 	f.operation, f.identity, f.source = operation, identity, source
 	return f.err
+}
+
+type desktopAuthorizationCompatibilityFake struct {
+	result DesktopCompatibilityResult
+	err    error
+}
+
+func (f desktopAuthorizationCompatibilityFake) Evaluate(context.Context, DesktopCompatibilityQuery) (DesktopCompatibilityResult, error) {
+	if f.err != nil {
+		return DesktopCompatibilityResult{}, f.err
+	}
+	if f.result.Availability == "" {
+		return DesktopCompatibilityResult{Availability: model.DesktopAvailabilityReady, Compatibility: DesktopCompatibilityCompatible, PolicyRevision: 1}, nil
+	}
+	return f.result, nil
+}
+
+type desktopAuthorizationUserStoreStub struct{ store.UserStore }
+
+type desktopAuthorizationSessionStoreStub struct {
+	store.SessionStore
+	revokedID     string
+	revokedUserID string
+	reason        model.SessionRevocationReason
+}
+
+func (stub *desktopAuthorizationSessionStoreStub) Revoke(_ context.Context, sessionID, userID string, _ int64,
+	reason model.SessionRevocationReason,
+) ([]string, error) {
+	stub.revokedID, stub.revokedUserID, stub.reason = sessionID, userID, reason
+	return []string{model.HashToken("revoked-access")}, nil
+}
+
+func testDesktopAuthorizationIdentity(
+	t *testing.T,
+	origin string,
+	now func() time.Time,
+) desktopAuthorizationIdentityDependencies {
+	t.Helper()
+	if !strings.HasPrefix(origin, "https://") {
+		origin = "https://proctor.example.edu"
+	}
+	security, err := newDPoPSecurity(newDPoPCacheFake(), dpopPolicy{
+		Origin: origin, NonceLifetime: 5 * time.Minute, ProofLifetime: 5 * time.Minute,
+		ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return desktopAuthorizationIdentityDependencies{
+		users: desktopAuthorizationUserStoreStub{}, authentication: &authenticationService{
+			sessions: &desktopAuthorizationSessionStoreStub{}, securityEffects: discardAuthenticationSecurityEffects{},
+		},
+		compatibility: desktopAuthorizationCompatibilityFake{}, dpop: security,
+	}
+}
+
+func setTestDesktopAuthorizationBuild(t *testing.T, command *StartDesktopAuthorizationCommand) {
+	t.Helper()
+	_, command.PublicJWK = testDPoPKey(t)
+	command.DesktopRelease = "0.1.0"
+	command.DesktopBuildID = "test-build"
+	command.Platform = model.DesktopPlatformDarwin
+	command.Architecture = model.DesktopArchitectureARM64
+	command.RealtimeProtocol = 1
+}
+
+func testDesktopAuthorizationExchangeCommand(
+	t *testing.T,
+	service *desktopAuthorizationService,
+	at time.Time,
+	code string,
+	state string,
+	verifier string,
+	source string,
+) ExchangeDesktopAuthorizationCommand {
+	t.Helper()
+	privateKey, publicJWK := testDPoPKey(t)
+	thumbprint, err := publicJWK.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizationID, err := service.transactions.ResolveDesktopAuthorizationExchange(context.Background(),
+		&store.DesktopAuthorizationExchangeProof{CodeHash: model.HashToken(code)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := dpopBinding{
+		Kind: dpopBindingAuthorization, AuthorizationID: authorizationID,
+		KeyThumbprint: thumbprint, Origin: service.dpop.policy.Origin,
+	}
+	nonce, err := service.dpop.IssueNonce(context.Background(), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := signDPoPProof(t, privateKey, publicJWK, map[string]any{
+		"jti": model.NewCredentialToken(), "htm": "POST",
+		"htu": service.dpop.policy.Origin + "/api/v1/auth/desktop/token",
+		"iat": at.Unix(), "nonce": nonce,
+	})
+	return ExchangeDesktopAuthorizationCommand{
+		Code: code, State: state, CodeVerifier: verifier, Source: source,
+		DPoPProof: proof, PublicJWK: publicJWK,
+		DesktopRelease: "0.1.0", DesktopBuildID: "test-build",
+		Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64,
+		RealtimeProtocol: 1,
+	}
+}
+
+func testDesktopAuthorizationExchangeResult(
+	t *testing.T,
+	command ExchangeDesktopAuthorizationCommand,
+	userID model.UserID,
+	at time.Time,
+) (*model.Session, *model.DesktopRegistration) {
+	t.Helper()
+	thumbprint, err := command.PublicJWK.Thumbprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registrationID := model.NewDesktopRegistrationID()
+	registration := &model.DesktopRegistration{
+		UserID: userID, InstitutionID: model.NewInstitutionID(), PublicJWK: command.PublicJWK,
+		KeyThumbprint: thumbprint, DisplayName: "Exam laptop",
+		DesktopRelease: command.DesktopRelease, DesktopBuildID: command.DesktopBuildID,
+		Platform: command.Platform, Architecture: command.Architecture,
+		RealtimeProtocol: command.RealtimeProtocol,
+	}
+	registration.PrepareCreate(registrationID, at)
+	session := &model.Session{
+		UserID: userID, ClientType: model.SessionClientDesktop,
+		DesktopRegistrationID: registrationID, DPoPKeyThumbprint: thumbprint,
+		DesktopRelease: command.DesktopRelease, DesktopBuildID: command.DesktopBuildID,
+		DesktopPlatform: command.Platform, DesktopArchitecture: command.Architecture,
+		DesktopRealtimeProtocol: command.RealtimeProtocol,
+		AuthenticationMethod:    "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: at, LastActivityAt: at,
+		IdleExpiresAt: at.Add(30 * time.Minute), ExpiresAt: at.Add(2 * time.Hour),
+	}
+	session.PrepareCreate(model.NewSessionID(), at)
+	return session, registration
 }

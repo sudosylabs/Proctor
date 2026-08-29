@@ -102,6 +102,9 @@ func NewUserID() UserID { return UserID(NewId()) }
 // NewSessionID returns a freshly generated session identifier.
 func NewSessionID() SessionID { return SessionID(NewId()) }
 
+// NewDesktopRegistrationID returns a freshly generated desktop-registration identifier.
+func NewDesktopRegistrationID() DesktopRegistrationID { return DesktopRegistrationID(NewId()) }
+
 // NewSessionCredentialID returns a freshly generated session-credential identifier.
 func NewSessionCredentialID() SessionCredentialID { return SessionCredentialID(NewId()) }
 
@@ -325,6 +328,11 @@ func ParseSessionID(value string) (SessionID, error) {
 	return parseID[SessionID](value, "session_id")
 }
 
+// ParseDesktopRegistrationID validates and converts the shared identifier representation.
+func ParseDesktopRegistrationID(value string) (DesktopRegistrationID, error) {
+	return parseID[DesktopRegistrationID](value, "desktop_registration_id")
+}
+
 // ParseSessionCredentialID validates and converts the shared identifier representation.
 func ParseSessionCredentialID(value string) (SessionCredentialID, error) {
 	return parseID[SessionCredentialID](value, "session_credential_id")
@@ -528,6 +536,9 @@ func (id UserID) IsZero() bool { return id == "" }
 // IsZero reports whether the session is the empty zero value.
 func (id SessionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the desktop-registration is the empty zero value.
+func (id DesktopRegistrationID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the session-credential is the empty zero value.
 func (id SessionCredentialID) IsZero() bool { return id == "" }
 
@@ -686,6 +697,9 @@ func (id UserID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the session is a canonical non-zero ID.
 func (id SessionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the desktop-registration is a canonical non-zero ID.
+func (id DesktopRegistrationID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the session-credential is a canonical non-zero ID.
 func (id SessionCredentialID) IsValid() bool { return IsValidId(string(id)) }
@@ -846,6 +860,9 @@ func (id UserID) String() string { return string(id) }
 // String returns the session wire/database representation.
 func (id SessionID) String() string { return string(id) }
 
+// String returns the desktop-registration wire/database representation.
+func (id DesktopRegistrationID) String() string { return string(id) }
+
 // String returns the session-credential wire/database representation.
 func (id SessionCredentialID) String() string { return string(id) }
 
@@ -1004,6 +1021,9 @@ func (id UserID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the session as its canonical string.
 func (id SessionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the desktop-registration as its canonical string.
+func (id DesktopRegistrationID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the session-credential as its canonical string.
 func (id SessionCredentialID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -1226,6 +1246,11 @@ func (id *SessionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseSessionID)
 }
 
+// UnmarshalText decodes and validates the desktop-registration when non-empty.
+func (id *DesktopRegistrationID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseDesktopRegistrationID)
+}
+
 // UnmarshalText decodes and validates the session-credential when non-empty.
 func (id *SessionCredentialID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseSessionCredentialID)
@@ -1428,6 +1453,9 @@ func (id UserID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
 // MarshalJSON encodes the session as a JSON string.
 func (id SessionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the desktop-registration as a JSON string.
+func (id DesktopRegistrationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
 // MarshalJSON encodes the session-credential as a JSON string.
 func (id SessionCredentialID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
@@ -1648,6 +1676,11 @@ func (id *UserID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the session.
 func (id *SessionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseSessionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the desktop-registration.
+func (id *DesktopRegistrationID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseDesktopRegistrationID)
 }
 
 // UnmarshalJSON decodes a JSON string into the session-credential.

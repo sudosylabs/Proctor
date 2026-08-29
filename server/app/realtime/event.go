@@ -41,6 +41,61 @@ type userSettingsChangedData struct {
 	ChangedAt     int64  `json:"changed_at"`
 }
 
+type collectionInvalidationData struct {
+	SchemaVersion int `json:"schema_version"`
+}
+
+type sittingBoardInvalidationData struct {
+	SchemaVersion int    `json:"schema_version"`
+	ExamID        string `json:"exam_id"`
+	ExamSittingID string `json:"exam_sitting_id"`
+}
+
+// NewCandidateExamActivityChangedEvent constructs the payload-minimal
+// collection invalidation sent only to the affected candidate. The public
+// payload deliberately carries no selector because the delivery envelope
+// already owns the exact User target.
+func NewCandidateExamActivityChangedEvent(candidateID model.UserID) (RealtimeEvent, error) {
+	if !candidateID.IsValid() {
+		return RealtimeEvent{}, errors.New("candidate Exam activity invalidation requires a valid User identity")
+	}
+	data, err := json.Marshal(collectionInvalidationData{SchemaVersion: 1})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode candidate Exam activity invalidation: %w", err)
+	}
+	return RealtimeEvent{Name: "candidate.exam_activity.changed", UserID: candidateID.String(), Data: data}, nil
+}
+
+// NewCurrentUserContextChangedEvent constructs a content-free refetch signal
+// for the affected User's bounded navigation projection.
+func NewCurrentUserContextChangedEvent(userID model.UserID) (RealtimeEvent, error) {
+	if !userID.IsValid() {
+		return RealtimeEvent{}, errors.New("current User context invalidation requires a valid User identity")
+	}
+	data, err := json.Marshal(collectionInvalidationData{SchemaVersion: 1})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode current User context invalidation: %w", err)
+	}
+	return RealtimeEvent{Name: "current_user.context.changed", UserID: userID.String(), Data: data}, nil
+}
+
+// NewManagerSittingBoardChangedEvent constructs a selector-only invalidation
+// for currently authorized Exam Sitting viewers. Candidate and Attempt
+// identities never enter its public payload.
+func NewManagerSittingBoardChangedEvent(examID model.ExamID, sittingID model.ExamSittingID) (RealtimeEvent, error) {
+	if !examID.IsValid() || !sittingID.IsValid() {
+		return RealtimeEvent{}, errors.New("manager Sitting board invalidation requires valid Exam and Sitting identities")
+	}
+	data, err := json.Marshal(sittingBoardInvalidationData{
+		SchemaVersion: 1, ExamID: examID.String(), ExamSittingID: sittingID.String(),
+	})
+	if err != nil {
+		return RealtimeEvent{}, fmt.Errorf("encode manager Sitting board invalidation: %w", err)
+	}
+	return RealtimeEvent{Name: "manager.sitting_board.changed", Action: model.ActionExamSittingView,
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, Data: data}, nil
+}
+
 // NewUserSettingsChangedEvent constructs the content-free refetch hint sent to
 // the owning User's live sessions after a durable settings replacement. The
 // source document and all client/session details deliberately remain absent.
@@ -208,6 +263,7 @@ type managerExamAttemptSubmittedData struct {
 	CandidateID     string `json:"candidate_user_id"`
 	SubmissionID    string `json:"submission_id"`
 	State           string `json:"state"`
+	Provenance      string `json:"provenance"`
 	WorkspaceCursor int64  `json:"workspace_cursor"`
 	ManifestDigest  string `json:"manifest_digest"`
 	SubmittedAt     string `json:"submitted_at"`
@@ -218,6 +274,7 @@ type candidateExamAttemptSubmittedData struct {
 	ExamAttemptID   string `json:"exam_attempt_id"`
 	SubmissionID    string `json:"submission_id"`
 	State           string `json:"state"`
+	Provenance      string `json:"provenance"`
 	WorkspaceCursor int64  `json:"workspace_cursor"`
 	ManifestDigest  string `json:"manifest_digest"`
 	SubmittedAt     string `json:"submitted_at"`
@@ -338,15 +395,15 @@ func newManagerExamIntegrityReviewEvent(name string, fact ExamIntegrityReviewEve
 
 func NewExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, submissionID model.SubmissionID, workspaceCursor int64, manifestDigest string,
-	submittedAt time.Time,
+	provenance model.ExamSubmissionProvenance, submittedAt time.Time,
 ) (RealtimeEvent, error) {
 	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !submissionID.IsValid() ||
-		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || submittedAt.IsZero() {
+		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || !provenance.IsValid() || submittedAt.IsZero() {
 		return RealtimeEvent{}, errors.New("manager Exam Attempt submitted event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(managerExamAttemptSubmittedData{ExamSittingID: sittingID.String(),
 		ExamAttemptID: attemptID.String(), CandidateID: candidateID.String(), SubmissionID: submissionID.String(),
-		State: string(model.ExamAttemptSubmitted), WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
+		State: string(model.ExamAttemptSubmitted), Provenance: string(provenance), WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
 		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
 	if err != nil {
 		return RealtimeEvent{}, err
@@ -357,14 +414,15 @@ func NewExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model
 
 func NewCandidateExamAttemptSubmittedEvent(sittingID model.ExamSittingID, attemptID model.ExamAttemptID,
 	candidateID model.UserID, submissionID model.SubmissionID, workspaceCursor int64, manifestDigest string,
-	submittedAt time.Time,
+	provenance model.ExamSubmissionProvenance, submittedAt time.Time,
 ) (RealtimeEvent, error) {
 	if !sittingID.IsValid() || !attemptID.IsValid() || !candidateID.IsValid() || !submissionID.IsValid() ||
-		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || submittedAt.IsZero() {
+		workspaceCursor < 0 || !validEventSHA256(manifestDigest) || !provenance.IsValid() || submittedAt.IsZero() {
 		return RealtimeEvent{}, errors.New("candidate Exam Attempt submitted event requires valid bounded metadata")
 	}
 	data, err := json.Marshal(candidateExamAttemptSubmittedData{ExamSittingID: sittingID.String(),
 		ExamAttemptID: attemptID.String(), SubmissionID: submissionID.String(), State: string(model.ExamAttemptSubmitted),
+		Provenance:      string(provenance),
 		WorkspaceCursor: workspaceCursor, ManifestDigest: manifestDigest,
 		SubmittedAt: model.TimeUTC(submittedAt).Format(time.RFC3339Nano)})
 	if err != nil {

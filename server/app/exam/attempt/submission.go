@@ -13,14 +13,17 @@ import (
 )
 
 type SubmitCommand struct {
-	Access                  WorkspaceMutationAccess
-	ExpectedWorkspaceCursor int64
-	FinalFocusLossSequence  int64
-	IdempotencyKey          string
+	Access                    WorkspaceMutationAccess
+	ExpectedCurrentRevisionID model.ExamRevisionID
+	ExpectedWorkspaceCursor   int64
+	FinalFocusLossSequence    int64
+	BrowserActivity           model.BrowserActivitySubmission
+	IdempotencyKey            string
 }
 
 type SubmissionResult struct {
 	Receipt         store.ExamSubmissionReceipt
+	Provenance      model.ExamSubmissionProvenance
 	ExamID          model.ExamID
 	SittingID       model.ExamSittingID
 	ClassID         model.ClassID
@@ -210,7 +213,7 @@ func (service *Service) resolveManagedSubmission(ctx context.Context, call Call,
 
 func validSubmissionAuthorization(value *store.ExamSubmissionAuthorization, submissionID model.SubmissionID) bool {
 	return value != nil && value.SubmissionID == submissionID && value.ExamID.IsValid() && value.SittingID.IsValid() &&
-		value.AttemptID.IsValid() && value.AcademicUnitID.IsValid()
+		value.AttemptID.IsValid() && value.CandidateUserID.IsValid() && value.AcademicUnitID.IsValid()
 }
 
 func (service *Service) Submit(ctx context.Context, call Call, command SubmitCommand) (SubmissionResult, error) {
@@ -218,11 +221,12 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	if command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 {
+	if !command.ExpectedCurrentRevisionID.IsValid() || command.ExpectedWorkspaceCursor < 0 || command.FinalFocusLossSequence < 0 ||
+		command.BrowserActivity.ValidateClient() != nil {
 		return SubmissionResult{}, invalid("submission")
 	}
 	idempotency, err := prepareSubmissionIdempotency(call, command.IdempotencyKey, workspaceAccess.AttemptID,
-		command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence)
+		command.ExpectedCurrentRevisionID, command.ExpectedWorkspaceCursor, command.FinalFocusLossSequence, command.BrowserActivity)
 	if err != nil {
 		return SubmissionResult{}, err
 	}
@@ -230,7 +234,8 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 		ParticipationID: workspaceAccess.ParticipationID, Generation: workspaceAccess.Generation,
 		ConnectionID: workspaceAccess.ConnectionID, CandidateUserID: workspaceAccess.CandidateUserID,
 		SessionID: workspaceAccess.SessionID, ContinuityCredentialHash: workspaceAccess.ContinuityCredentialHash,
-		ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, FinalFocusLossSequence: command.FinalFocusLossSequence}
+		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID, ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor,
+		FinalFocusLossSequence: command.FinalFocusLossSequence, BrowserActivity: command.BrowserActivity.Clone()}
 	target, err := service.deps.Submissions.ResolveSealTarget(ctx, access)
 	if err != nil {
 		return SubmissionResult{}, mapStore(err)
@@ -255,7 +260,7 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 	if !target.Replayed {
 		preparedMail, prepareErr := service.deps.Mail.PrepareSubmissionReceipt(ctx, SubmissionMailPreparation{
 			CandidateUserID: target.CandidateUserID, ExamID: target.ExamID, SittingID: target.SittingID,
-			SubmissionID: submissionID, SealedAt: at,
+			SubmissionID: submissionID, SealedAt: at, Provenance: model.ExamSubmissionCandidateSubmitted,
 		})
 		if prepareErr != nil || preparedMail == nil || preparedMail.Notice == nil || preparedMail.ExpectedRecipientRevision < 1 {
 			if prepareErr == nil {
@@ -285,7 +290,8 @@ func (service *Service) Submit(ctx context.Context, call Call, command SubmitCom
 
 func validSubmissionTarget(target *store.ExamSubmissionSealTarget, access store.ExamSubmissionSealAccess) bool {
 	return target != nil && target.ExamID.IsValid() && target.SittingID.IsValid() && target.ClassID.IsValid() &&
-		target.CandidateUserID == access.CandidateUserID && target.WorkspaceID.IsValid() && !target.SealAt.IsZero()
+		target.CandidateUserID == access.CandidateUserID && target.WorkspaceID.IsValid() &&
+		target.CurrentRevisionID == access.ExpectedCurrentRevisionID && !target.SealAt.IsZero()
 }
 
 func projectSubmissionResult(stored *store.ExamSubmissionSealResult, target *store.ExamSubmissionSealTarget,
@@ -293,6 +299,7 @@ func projectSubmissionResult(stored *store.ExamSubmissionSealResult, target *sto
 ) (SubmissionResult, error) {
 	if stored == nil || !stored.Receipt.SubmissionID.IsValid() || stored.Receipt.AttemptID != access.AttemptID ||
 		stored.Receipt.State != model.ExamAttemptSubmitted || stored.Receipt.WorkspaceCursor != access.ExpectedWorkspaceCursor ||
+		stored.Receipt.ExamRevisionID != access.ExpectedCurrentRevisionID ||
 		!validWorkspaceSHA256(stored.Receipt.ManifestDigest) || stored.Receipt.SubmittedAt.IsZero() ||
 		stored.ExamID != target.ExamID || stored.SittingID != target.SittingID || stored.ClassID != target.ClassID ||
 		stored.CandidateUserID != target.CandidateUserID || stored.ParticipationID != access.ParticipationID ||
@@ -300,7 +307,8 @@ func projectSubmissionResult(stored *store.ExamSubmissionSealResult, target *sto
 		(!stored.Replayed && stored.Receipt.SubmissionID != proposedID) {
 		return SubmissionResult{}, unavailable(errors.New("inconsistent Submission seal result"))
 	}
-	return SubmissionResult{Receipt: stored.Receipt, ExamID: stored.ExamID, SittingID: stored.SittingID,
+	return SubmissionResult{Receipt: stored.Receipt, Provenance: model.ExamSubmissionCandidateSubmitted,
+		ExamID: stored.ExamID, SittingID: stored.SittingID,
 		ClassID: stored.ClassID, CandidateUserID: stored.CandidateUserID, ParticipationID: stored.ParticipationID,
 		Generation: stored.Generation, ConnectionID: stored.ConnectionID, Replayed: stored.Replayed}, nil
 }

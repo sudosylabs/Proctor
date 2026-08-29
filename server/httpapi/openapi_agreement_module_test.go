@@ -65,6 +65,7 @@ type openAPISchemaShape struct {
 	Properties           map[string]json.RawMessage `json:"properties"`
 	Items                *openAPISchemaShape        `json:"items"`
 	AdditionalProperties json.RawMessage            `json:"additionalProperties"`
+	OneOf                []openAPISchemaShape       `json:"oneOf"`
 }
 
 type openAPIResponse struct {
@@ -294,8 +295,9 @@ func evaluateOpenAPIAgreement(
 		}
 		violations = evaluateOpenAPIRequestAgreement(violations, document, key, contract)
 		violations = evaluateOpenAPISuccessAgreement(violations, document, key, contract)
-		violations = compareStringSet(violations, key, "runtime error codes", route.ErrorCodes, contract.PublicErrorCodes)
-		violations = compareStringSet(violations, key, "document error codes", operation.ErrorCodes, contract.PublicErrorCodes)
+		expectedErrorCodes := routeErrorCodes(contract.Auth, contract.PublicErrorCodes)
+		violations = compareStringSet(violations, key, "runtime error codes", route.ErrorCodes, expectedErrorCodes)
+		violations = compareStringSet(violations, key, "document error codes", operation.ErrorCodes, expectedErrorCodes)
 		violations = evaluateOpenAPIProblemAgreement(violations, document, key, operation)
 	}
 
@@ -471,10 +473,10 @@ func securityForAuth(auth AuthRequirement, method string) ([]map[string][]string
 	case AuthPublic:
 		return []map[string][]string{}, nil
 	case AuthRefreshCredentialRequired:
-		return []map[string][]string{{"refreshBearerAuth": {}}, {"refreshCookie": {}, "csrfToken": {}}}, nil
+		return []map[string][]string{{"refreshBearerAuth": {}}, {"refreshDPoPAuth": {}}, {"refreshCookie": {}, "csrfToken": {}}}, nil
 	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
 		AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
-		security := []map[string][]string{{"bearerAuth": {}}}
+		security := []map[string][]string{{"bearerAuth": {}}, {"dpopAuth": {}}}
 		if method == http.MethodGet {
 			return append(security, map[string][]string{"sessionCookie": {}}), nil
 		}

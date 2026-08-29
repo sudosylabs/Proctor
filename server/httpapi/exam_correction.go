@@ -50,6 +50,9 @@ type applyExamSittingCorrectionRequest struct {
 	ExpectedSittingRevision   int64                                  `json:"expected_sitting_revision"`
 	ExpectedCurrentRevisionID string                                 `json:"expected_current_revision_id"`
 	InstructionsMarkdown      Optional[string]                       `json:"instructions_markdown"`
+	BrowserPolicy             Optional[browserPolicyDocument]        `json:"browser_policy"`
+	CandidateSummary          string                                 `json:"candidate_summary"`
+	AcknowledgementRequired   bool                                   `json:"acknowledgement_required"`
 	Reason                    string                                 `json:"reason"`
 	Resources                 []examSittingCorrectionResourceRequest `json:"resources"`
 }
@@ -86,8 +89,17 @@ func (body *applyExamSittingCorrectionRequest) UnmarshalJSON(encoded []byte) err
 	if !exists || bytes.Equal(bytes.TrimSpace(resources), []byte("null")) {
 		return errors.New("resources is required and must be an array")
 	}
+	if _, exists = members["candidate_summary"]; !exists {
+		return errors.New("candidate_summary is required")
+	}
+	if _, exists = members["acknowledgement_required"]; !exists {
+		return errors.New("acknowledgement_required is required")
+	}
 	if decoded.InstructionsMarkdown.IsNull() {
 		return errors.New("instructions_markdown must be a string when present")
+	}
+	if decoded.BrowserPolicy.IsNull() {
+		return errors.New("browser_policy must be an object when present")
 	}
 	if len(decoded.Resources) > 10 {
 		return errors.New("resources exceeds the maximum of 10")
@@ -261,9 +273,17 @@ func (module examSittingCorrectionHTTPModule) apply(request operationRequest) (o
 	if value := body.InstructionsMarkdown.ValuePointer(); value != nil {
 		instructions.Markdown = *value
 	}
+	browserPolicy := application.ExamSittingCorrectionBrowserPolicy{Present: body.BrowserPolicy.IsSet()}
+	if document := body.BrowserPolicy.ValuePointer(); document != nil {
+		browserPolicy.Policy, err = document.model()
+		if err != nil {
+			return operationResult{}, invalidRequestError("browser_policy", err)
+		}
+	}
 	result, err := module.application.ApplyExamSittingCorrection(request.context, request.invocation(), application.ApplyExamSittingCorrectionCommand{
 		ExamID: examID, SittingID: sittingID, ExpectedSittingRevision: body.ExpectedSittingRevision,
-		ExpectedCurrentRevisionID: currentRevisionID, Instructions: instructions, Resources: manifest,
+		ExpectedCurrentRevisionID: currentRevisionID, Instructions: instructions, BrowserPolicy: browserPolicy, Resources: manifest,
+		CandidateSummary: body.CandidateSummary, AcknowledgementRequired: body.AcknowledgementRequired,
 		PrivateReason: body.Reason, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {

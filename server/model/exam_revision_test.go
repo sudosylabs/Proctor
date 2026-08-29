@@ -140,8 +140,9 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 	replacement := resource
 	replacement.FileRevisionID, replacement.RenditionID = NewFileRevisionID(), NewFileRenditionID()
 	replacement.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixed")))
-	corrected, err := NewLiveCorrectionExamRevision(base, NewExamRevisionID(), 4, "Fixed **instructions**",
-		[]ExamRevisionResource{replacement}, NewUserID(), at)
+	corrected, err := NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 4,
+		InstructionsMarkdown: "Fixed **instructions**", Resources: []ExamRevisionResource{replacement},
+		CandidateSummary: "The instructions and reference were corrected.", PublishedByUserID: NewUserID(), PublishedAt: at})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestNewLiveCorrectionExamRevisionChangesOnlyCorrectableMaterial(t *testing.
 
 func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T) {
 	t.Parallel()
-	if _, err := NewLiveCorrectionExamRevision(nil, NewExamRevisionID(), 2, "", nil, NewUserID(), time.Now().UTC()); err == nil {
+	if _, err := NewLiveCorrectionExamRevision(nil, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: 2}); err == nil {
 		t.Fatal("nil base was accepted")
 	}
 	policy, _ := NewExamRevisionPolicy(DefaultExamPolicySet())
@@ -172,7 +173,8 @@ func TestNewLiveCorrectionExamRevisionRejectsInvalidBaseOrOrdering(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = NewLiveCorrectionExamRevision(base, NewExamRevisionID(), base.Number, "", nil, NewUserID(), time.Now().UTC()); err == nil {
+	if _, err = NewLiveCorrectionExamRevision(base, LiveCorrectionExamRevisionSpecification{ID: NewExamRevisionID(), Number: base.Number,
+		CandidateSummary: "Correction.", PublishedByUserID: NewUserID(), PublishedAt: time.Now().UTC()}); err == nil {
 		t.Fatal("non-increasing Revision number was accepted")
 	}
 }

@@ -1,4 +1,68 @@
 paths:
+  /api/v1/exam-attempts/{exam_attempt_id}/corrections/{exam_revision_id}/acknowledgement:
+    parameters:
+      - $ref: '#/components/parameters/ExamAttemptID'
+      - $ref: '#/components/parameters/ExamRevisionID'
+    put:
+      operationId: acknowledgeExamAttemptCorrection
+      summary: Acknowledge one required live correction for an active Attempt
+      description: >-
+        Records the candidate's acknowledgement of the oldest pending required correction after rechecking the current Revision, active Participation generation, registered-key Session, continuity credential, and open Attempt Connection. Exact replay returns the retained acknowledgement without repeating mutation effects.
+      tags:
+        - Submissions
+      x-proctor-auth: session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.revision_conflict
+        - exam.attempt.correction_conflict
+        - exam.attempt.state_conflict
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.connection_closed
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateAttemptCredential'
+        - $ref: '#/components/parameters/CandidateAttemptConnectionID'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/AcknowledgeExamCorrection'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamCorrectionAcknowledged'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exam-attempts/{exam_attempt_id}/submissions:
     parameters:
       - $ref: '#/components/parameters/ExamAttemptID'
@@ -20,7 +84,7 @@ paths:
               --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
               --header 'Idempotency-Key: docs-submit-001' \
               --header 'Content-Type: application/json' \
-              --data '{"participation_id":"<participation-id>","generation":2,"expected_workspace_cursor":18,"final_focus_loss_sequence":3}'
+              --data '{"participation_id":"<participation-id>","generation":2,"expected_current_revision_id":"<revision-id>","expected_workspace_cursor":18,"final_focus_loss_sequence":3,"browser_activity":{"state":"not_applicable"}}'
       x-proctor-auth: session_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -43,9 +107,17 @@ paths:
         - idempotency.in_progress
         - exam.attempt.workspace.cursor_conflict
         - exam.attempt.focus_loss_conflict
+        - exam.attempt.revision_conflict
+        - exam.attempt.correction_conflict
+        - exam.attempt.browser_activity_conflict
         - exam.attempt.connection_lost
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -69,8 +141,21 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
+    AcknowledgeExamCorrection:
+      description: Exact active Participation fence and current Revision observed while acknowledging the path-selected oldest required correction.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcknowledgeExamCorrectionRequest'
+          example:
+            participation_id: ybndrfg8ejkmcpqxot1uwisza4
+            generation: 2
+            expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza5
     SubmitExamAttempt:
       required: true
       content:
@@ -80,11 +165,23 @@ components:
           example:
             participation_id: ybndrfg8ejkmcpqxot1uwisza4
             generation: 2
+            expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza5
             expected_workspace_cursor: 18
             final_focus_loss_sequence: 3
+            browser_activity:
+              state: not_applicable
       description: >-
         The active Participation generation and final acknowledged client positions required to atomically seal the Attempt Workspace as a Submission.
   responses:
+    ExamCorrectionAcknowledged:
+      description: Retained acknowledgement for the exact required correction
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcknowledgeExamCorrectionResponse'
     ExamSubmissionReceiptCreated:
       description: Candidate-safe retained receipt for a committed Submission or its exact replay
       headers:
@@ -101,8 +198,10 @@ components:
       required:
         - participation_id
         - generation
+        - expected_current_revision_id
         - expected_workspace_cursor
         - final_focus_loss_sequence
+        - browser_activity
       properties:
         participation_id:
           $ref: '#/components/schemas/ID'
@@ -112,6 +211,9 @@ components:
           format: int64
           minimum: 1
           description: The active Participation connection generation.
+        expected_current_revision_id:
+          $ref: '#/components/schemas/ID'
+          description: The current Exam Sitting Revision displayed by the client.
         expected_workspace_cursor:
           type: integer
           format: int64
@@ -122,6 +224,97 @@ components:
           format: int64
           minimum: 0
           description: The final focus-loss sequence observed by the client; zero is valid.
+        browser_activity:
+          $ref: '#/components/schemas/BrowserActivitySubmission'
+    BrowserActivitySubmission:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [not_applicable, complete, gapped]
+        source_session_id:
+          type: string
+          format: uuid
+        final_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          enum: [spool_overflow, spool_corrupt, spool_key_unavailable, delivery_incomplete]
+      oneOf:
+        - $ref: '#/components/schemas/BrowserActivitySubmissionNotApplicable'
+        - $ref: '#/components/schemas/BrowserActivitySubmissionComplete'
+        - $ref: '#/components/schemas/BrowserActivitySubmissionGapped'
+    BrowserActivitySubmissionNotApplicable:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          const: not_applicable
+    BrowserActivitySubmissionComplete:
+      type: object
+      additionalProperties: false
+      required: [state, source_session_id, final_sequence]
+      properties:
+        state:
+          type: string
+          const: complete
+        source_session_id:
+          type: string
+          format: uuid
+        final_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+    BrowserActivitySubmissionGapped:
+      type: object
+      additionalProperties: false
+      required: [state, source_session_id, reason]
+      properties:
+        state:
+          type: string
+          const: gapped
+        source_session_id:
+          type: string
+          format: uuid
+        final_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          enum: [spool_overflow, spool_corrupt, spool_key_unavailable, delivery_incomplete]
+    AcknowledgeExamCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required: [participation_id, generation, expected_current_revision_id]
+      properties:
+        participation_id:
+          $ref: '#/components/schemas/ID'
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        expected_current_revision_id:
+          $ref: '#/components/schemas/ID'
+    AcknowledgeExamCorrectionResponse:
+      type: object
+      additionalProperties: false
+      required: [revision_id, acknowledgement_state, acknowledged_at]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/ID'
+        acknowledgement_state:
+          type: string
+          const: acknowledged
+        acknowledged_at:
+          type: string
+          format: date-time
     ExamSubmissionReceiptResponse:
       description: Candidate-safe retained receipt for an atomically sealed Submission.
       type: object
@@ -129,6 +322,7 @@ components:
       required:
         - submission_id
         - exam_attempt_id
+        - exam_revision_id
         - state
         - workspace_cursor
         - manifest_digest
@@ -137,6 +331,8 @@ components:
         submission_id:
           $ref: '#/components/schemas/ID'
         exam_attempt_id:
+          $ref: '#/components/schemas/ID'
+        exam_revision_id:
           $ref: '#/components/schemas/ID'
         state:
           type: string

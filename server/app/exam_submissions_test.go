@@ -18,17 +18,20 @@ func TestSubmitExamAttemptBuildsSemanticFingerprintAndReturnsOnlySafeReceipt(t *
 	access := examattempt.WorkspaceMutationAccess{CandidateAccess: examattempt.CandidateAccess{
 		AttemptID: model.NewExamAttemptID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredential: model.NewCredentialToken()}, ParticipationID: model.NewAttemptParticipationID(), Generation: 2}
-	receipt := store.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: access.AttemptID,
+	revisionID := model.NewExamRevisionID()
+	receipt := store.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: access.AttemptID, ExamRevisionID: revisionID,
 		State: model.ExamAttemptSubmitted, WorkspaceCursor: 8, ManifestDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 	fake := &examSubmissionFacadeFake{submitResult: examattempt.SubmissionResult{Receipt: receipt}}
 	application := &App{examAttempts: fake}
-	command := SubmitExamAttemptCommand{Access: access, ExpectedWorkspaceCursor: 8,
-		FinalFocusLossSequence: 5, IdempotencyKey: "submit-once"}
+	command := SubmitExamAttemptCommand{Access: access, ExpectedCurrentRevisionID: revisionID, ExpectedWorkspaceCursor: 8,
+		FinalFocusLossSequence: 5, BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		IdempotencyKey: "submit-once"}
 	got, err := application.SubmitExamAttempt(context.Background(), NewInvocation(examAttemptPrincipal(), model.RequestMetadata{}), command)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != receipt || len(fake.submits) != 1 || fake.submits[0].ExpectedWorkspaceCursor != 8 ||
+	if got != receipt || len(fake.submits) != 1 || fake.submits[0].ExpectedCurrentRevisionID != revisionID ||
+		fake.submits[0].ExpectedWorkspaceCursor != 8 || fake.submits[0].BrowserActivity.State != model.BrowserActivitySubmissionNotApplicable ||
 		fake.submits[0].FinalFocusLossSequence != 5 || fake.submits[0].IdempotencyKey != "submit-once" {
 		t.Fatalf("receipt=%#v submits=%#v", got, fake.submits)
 	}

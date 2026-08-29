@@ -18,41 +18,44 @@ import (
 type Action string
 
 const (
-	ActionInstitutionManage         Action = "institution.manage"
-	ActionRoleManage                Action = "role.manage"
-	ActionAuditView                 Action = "audit.view"
-	ActionAcademicAuditView         Action = "academic_audit.view"
-	ActionUserView                  Action = "user.view"
-	ActionUserManage                Action = "user.manage"
-	ActionUserProfilePictureManage  Action = "user.profile_picture.manage"
-	ActionSessionView               Action = "session.view"
-	ActionSessionManage             Action = "session.manage"
-	ActionJobView                   Action = "job.view"
-	ActionJobManage                 Action = "job.manage"
-	ActionMailView                  Action = "mail.view"
-	ActionMailManage                Action = "mail.manage"
-	ActionMailRekey                 Action = "mail.rekey"
-	ActionExamCreate                Action = "exam.create"
-	ActionExamCreateOverride        Action = "exam.create.override"
-	ActionExamView                  Action = "exam.view"
-	ActionExamViewOverride          Action = "exam.view.override"
-	ActionExamManage                Action = "exam.manage"
-	ActionExamManageOverride        Action = "exam.manage.override"
-	ActionExamPublish               Action = "exam.publish"
-	ActionExamPublishOverride       Action = "exam.publish.override"
-	ActionExamSittingCreate         Action = "exam.sitting.create"
-	ActionExamSittingCreateOverride Action = "exam.sitting.create.override"
-	ActionExamSittingView           Action = "exam.sitting.view"
-	ActionExamSittingViewOverride   Action = "exam.sitting.view.override"
-	ActionExamSittingManage         Action = "exam.sitting.manage"
-	ActionExamSittingManageOverride Action = "exam.sitting.manage.override"
-	ActionExamSittingParticipate    Action = "exam.sitting.participate"
-	ActionSubmissionView            Action = "submission.view"
-	ActionSubmissionViewOverride    Action = "submission.view.override"
-	ActionSubmissionReview          Action = "submission.review"
-	ActionSubmissionReviewOverride  Action = "submission.review.override"
-	ActionSubmissionRelease         Action = "submission.release"
-	ActionSubmissionReleaseOverride Action = "submission.release.override"
+	ActionInstitutionManage                      Action = "institution.manage"
+	ActionRoleManage                             Action = "role.manage"
+	ActionAuditView                              Action = "audit.view"
+	ActionAcademicAuditView                      Action = "academic_audit.view"
+	ActionUserView                               Action = "user.view"
+	ActionUserManage                             Action = "user.manage"
+	ActionUserProfilePictureManage               Action = "user.profile_picture.manage"
+	ActionSessionView                            Action = "session.view"
+	ActionSessionManage                          Action = "session.manage"
+	ActionDesktopRegistrationRevoke              Action = "desktop_registration.revoke"
+	ActionJobView                                Action = "job.view"
+	ActionJobManage                              Action = "job.manage"
+	ActionMailView                               Action = "mail.view"
+	ActionMailManage                             Action = "mail.manage"
+	ActionMailRekey                              Action = "mail.rekey"
+	ActionExamCreate                             Action = "exam.create"
+	ActionExamCreateOverride                     Action = "exam.create.override"
+	ActionExamView                               Action = "exam.view"
+	ActionExamViewOverride                       Action = "exam.view.override"
+	ActionExamManage                             Action = "exam.manage"
+	ActionExamManageOverride                     Action = "exam.manage.override"
+	ActionExamPublish                            Action = "exam.publish"
+	ActionExamPublishOverride                    Action = "exam.publish.override"
+	ActionExamSittingCreate                      Action = "exam.sitting.create"
+	ActionExamSittingCreateOverride              Action = "exam.sitting.create.override"
+	ActionExamSittingView                        Action = "exam.sitting.view"
+	ActionExamSittingViewOverride                Action = "exam.sitting.view.override"
+	ActionExamSittingManage                      Action = "exam.sitting.manage"
+	ActionExamSittingManageOverride              Action = "exam.sitting.manage.override"
+	ActionExamSittingParticipate                 Action = "exam.sitting.participate"
+	ActionExamAttemptBrowserActivityView         Action = "exam.attempt.browser_activity.view"
+	ActionExamAttemptBrowserActivityViewOverride Action = "exam.attempt.browser_activity.view.override"
+	ActionSubmissionView                         Action = "submission.view"
+	ActionSubmissionViewOverride                 Action = "submission.view.override"
+	ActionSubmissionReview                       Action = "submission.review"
+	ActionSubmissionReviewOverride               Action = "submission.review.override"
+	ActionSubmissionRelease                      Action = "submission.release"
+	ActionSubmissionReleaseOverride              Action = "submission.release.override"
 
 	ActionAcademicUnitView          Action = "academic_unit.view"
 	ActionAcademicUnitManage        Action = "academic_unit.manage"
@@ -71,17 +74,18 @@ const (
 	ActionClassMembersManage        Action = "class.members.manage"
 	ActionAcademicProgressionManage Action = "academic.progression.manage"
 
-	ActionAccessPolicyView       Action = "access_policy.view"
-	ActionAccessPolicyManage     Action = "access_policy.manage"
-	ActionInvitationView         Action = "invitation.view"
-	ActionInvitationCreate       Action = "invitation.create"
-	ActionInvitationManage       Action = "invitation.manage"
-	ActionOnboardingBatchView    Action = "onboarding_batch.view"
-	ActionOnboardingBatchManage  Action = "onboarding_batch.manage"
-	ActionExternalIdentityManage Action = "external_identity.manage"
-	ActionRoleView               Action = "role.view"
-	ActionRoleBindingView        Action = "role_binding.view"
-	ActionRoleBindingManage      Action = "role_binding.manage"
+	ActionAccessPolicyView                 Action = "access_policy.view"
+	ActionAccessPolicyManage               Action = "access_policy.manage"
+	ActionDesktopCompatibilityPolicyManage Action = "desktop_compatibility_policy.manage"
+	ActionInvitationView                   Action = "invitation.view"
+	ActionInvitationCreate                 Action = "invitation.create"
+	ActionInvitationManage                 Action = "invitation.manage"
+	ActionOnboardingBatchView              Action = "onboarding_batch.view"
+	ActionOnboardingBatchManage            Action = "onboarding_batch.manage"
+	ActionExternalIdentityManage           Action = "external_identity.manage"
+	ActionRoleView                         Action = "role.view"
+	ActionRoleBindingView                  Action = "role_binding.view"
+	ActionRoleBindingManage                Action = "role_binding.manage"
 )
 
 // ResourceType identifies an authorization target.
@@ -124,6 +128,9 @@ type ActionDefinition struct {
 	// PersonalAccessTokenForbidden keeps sensitive administration behind an
 	// interactive Session even though the action remains grantable to Roles.
 	PersonalAccessTokenForbidden bool
+	// SystemAdministratorOnly keeps an action exclusively in the protected
+	// built-in Role. It cannot be delegated through custom Roles or PAT scopes.
+	SystemAdministratorOnly bool
 }
 
 // AcceptsResource reports whether the action may authorize the actual target
@@ -199,6 +206,10 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionSessionManage: {
 		Action: ActionSessionManage, ResourceType: ResourceUser,
 		InheritInstitutionScope: true,
+	},
+	ActionDesktopRegistrationRevoke: {
+		Action: ActionDesktopRegistrationRevoke, ResourceType: ResourceUser,
+		RelationshipOnly: true, PersonalAccessTokenForbidden: true,
 	},
 	ActionJobView: {
 		Action: ActionJobView, ResourceType: ResourceInstitution,
@@ -279,6 +290,14 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionExamSittingParticipate: {
 		Action: ActionExamSittingParticipate, ResourceType: ResourceExamSitting,
 		RelationshipOnly: true,
+	},
+	ActionExamAttemptBrowserActivityView: {
+		Action: ActionExamAttemptBrowserActivityView, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
+	},
+	ActionExamAttemptBrowserActivityViewOverride: {
+		Action: ActionExamAttemptBrowserActivityViewOverride, ResourceType: ResourceExamSitting,
+		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
 	ActionSubmissionView: {
 		Action: ActionSubmissionView, ResourceType: ResourceSubmission,
@@ -380,6 +399,11 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionAccessPolicyManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
 	},
+	ActionDesktopCompatibilityPolicyManage: {
+		Action: ActionDesktopCompatibilityPolicyManage, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+		SystemAdministratorOnly: true,
+	},
 	ActionInvitationView: {
 		Action: ActionInvitationView, ResourceType: ResourceInstitution,
 		CompatibleResourceTypes: []ResourceType{ResourceAcademicUnit, ResourceClass},
@@ -416,10 +440,9 @@ func DefinitionForAction(action Action) (ActionDefinition, bool) {
 	return definition, ok
 }
 
-// AllActions returns every role-grantable action currently recognized by the
-// authorization evaluator in stable order. Relationship-only capabilities are
-// deliberately excluded. Installation bootstrap uses this closed registry to
-// construct the protected system-administrator role.
+// AllActions returns every action carried by the protected system-administrator
+// Role in stable order. Relationship-only capabilities are deliberately
+// excluded; system-administrator-only actions are deliberately included.
 func AllActions() []string {
 	actions := make([]string, 0, len(actionDefinitions))
 	for action, definition := range actionDefinitions {
@@ -432,6 +455,14 @@ func AllActions() []string {
 	return actions
 }
 
+// IsSystemAdministratorAction reports whether an action belongs to the
+// protected built-in Role. This includes non-delegable system-administrator-
+// only actions and excludes relationship-only capabilities.
+func IsSystemAdministratorAction(action string) bool {
+	definition, ok := actionDefinitions[Action(action)]
+	return ok && !definition.RelationshipOnly
+}
+
 func IsKnownAction(action string) bool {
 	_, ok := actionDefinitions[Action(action)]
 	return ok
@@ -442,14 +473,15 @@ func IsKnownAction(action string) bool {
 // strict protocol registries while never becoming transferable permission.
 func IsGrantableAction(action string) bool {
 	definition, ok := actionDefinitions[Action(action)]
-	return ok && !definition.RelationshipOnly
+	return ok && !definition.RelationshipOnly && !definition.SystemAdministratorOnly
 }
 
 // IsPersonalAccessTokenAction reports whether a registered role-grantable
 // action may also appear in a PAT credential ceiling.
 func IsPersonalAccessTokenAction(action string) bool {
 	definition, ok := actionDefinitions[Action(action)]
-	return ok && !definition.RelationshipOnly && !definition.PersonalAccessTokenForbidden
+	return ok && !definition.RelationshipOnly && !definition.SystemAdministratorOnly &&
+		!definition.PersonalAccessTokenForbidden
 }
 
 // Validate checks that the resource identifies a supported authorization target.

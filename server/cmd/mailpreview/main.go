@@ -106,7 +106,8 @@ func run(args []string, stderr io.Writer) error {
 			}
 			request.Presentation = details
 			request.ActionURL = ""
-		case model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionAutomaticallySealed:
+		case model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionManagerEnded,
+			model.MailTemplateExamSubmissionAutomaticallySealed:
 			request.Presentation = appmail.SubmissionReceiptDetails{
 				ExamTitle: "Representative programming exam", SittingID: model.ExamSittingID(strings.Repeat("y", model.IdLength)),
 				SubmissionID: model.SubmissionID(strings.Repeat("b", model.IdLength)),

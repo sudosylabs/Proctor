@@ -22,8 +22,13 @@ paths:
         - resource.not_found
         - session.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: include_revoked
@@ -46,6 +51,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/{user_id}/sessions/revoke-all:
     parameters:
       - $ref: '#/components/parameters/UserID'
@@ -78,8 +85,13 @@ paths:
         - resource.not_found
         - session.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -95,6 +107,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/{user_id}/sessions/{session_id}:
     parameters:
       - $ref: '#/components/parameters/UserID'
@@ -128,8 +142,13 @@ paths:
         - resource.not_found
         - session.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -145,6 +164,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/sessions:
     get:
       operationId: listCurrentUserSessions
@@ -159,9 +180,14 @@ paths:
         - authentication.invalid_token
         - authentication.credential_ambiguous
         - authentication.internal
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -172,6 +198,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/sessions/revoke:
     post:
       operationId: revokeCurrentUserSession
@@ -190,9 +218,14 @@ paths:
         - session.id.invalid
         - session.not_found
         - authentication.internal
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -210,6 +243,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/sessions/revoke-all:
     post:
       operationId: revokeAllCurrentUserSessions
@@ -232,9 +267,14 @@ paths:
         - authentication.credential_ambiguous
         - authentication.csrf.invalid
         - authentication.internal
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -248,6 +288,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     SessionID:
@@ -318,6 +360,21 @@ components:
           $ref: '#/components/schemas/ID'
         client_type:
           type: string
+        desktop_registration_id:
+          $ref: '#/components/schemas/ID'
+        desktop_release:
+          type: string
+        desktop_build_id:
+          type: string
+        desktop_platform:
+          type: string
+          enum: [darwin, win32, linux]
+        desktop_architecture:
+          type: string
+          enum: [arm64, x64]
+        desktop_realtime_protocol:
+          type: integer
+          minimum: 1
         device_id:
           type: string
         device_name:
@@ -352,6 +409,8 @@ components:
             - administrator_all_sessions
             - administrator_session
             - authentication_audit_failed
+            - desktop_authorization_failed
+            - desktop_registration_revoked
             - external_identity_unlinked
             - inactive_user
             - password_removed

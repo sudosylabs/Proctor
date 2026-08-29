@@ -22,6 +22,8 @@ type ExamAttemptWorkspaceMutationAccess struct {
 	Generation               int64
 	CandidateUserID          model.UserID
 	SessionID                model.SessionID
+	DesktopRegistrationID    model.DesktopRegistrationID
+	DPoPKeyThumbprint        string
 	ConnectionID             model.AttemptConnectionID
 	ContinuityCredentialHash string
 }

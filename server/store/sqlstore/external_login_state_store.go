@@ -27,22 +27,23 @@ type SQLExternalLoginStateStore struct {
 }
 
 type externalLoginStateRow struct {
-	ID           string         `db:"id"`
-	CreatedAt    time.Time      `db:"created_at"`
-	UpdatedAt    time.Time      `db:"updated_at"`
-	Provider     string         `db:"provider"`
-	Purpose      string         `db:"purpose"`
-	TargetUserID sql.NullString `db:"target_user_id"`
-	InvitationID sql.NullString `db:"invitation_id"`
-	AuditEventID sql.NullString `db:"audit_event_id"`
-	StateHash    string         `db:"state_hash"`
-	BindingHash  string         `db:"binding_hash"`
-	ReturnTo     string         `db:"return_to"`
-	ClientType   string         `db:"client_type"`
-	DeviceID     string         `db:"device_id"`
-	DeviceName   string         `db:"device_name"`
-	ExpiresAt    time.Time      `db:"expires_at"`
-	ConsumedAt   sql.NullTime   `db:"consumed_at"`
+	ID                                 string         `db:"id"`
+	CreatedAt                          time.Time      `db:"created_at"`
+	UpdatedAt                          time.Time      `db:"updated_at"`
+	Provider                           string         `db:"provider"`
+	Purpose                            string         `db:"purpose"`
+	TargetUserID                       sql.NullString `db:"target_user_id"`
+	InvitationID                       sql.NullString `db:"invitation_id"`
+	BrowserAuthenticationTransactionID sql.NullString `db:"browser_authentication_transaction_id"`
+	AuditEventID                       sql.NullString `db:"audit_event_id"`
+	StateHash                          string         `db:"state_hash"`
+	BindingHash                        string         `db:"binding_hash"`
+	ReturnTo                           string         `db:"return_to"`
+	ClientType                         string         `db:"client_type"`
+	DeviceID                           string         `db:"device_id"`
+	DeviceName                         string         `db:"device_name"`
+	ExpiresAt                          time.Time      `db:"expires_at"`
+	ConsumedAt                         sql.NullTime   `db:"consumed_at"`
 }
 
 func externalLoginStateSliceColumns() []string {
@@ -54,6 +55,7 @@ func externalLoginStateSliceColumns() []string {
 		"external_login_states.purpose",
 		"external_login_states.target_user_id",
 		"external_login_states.invitation_id",
+		"external_login_states.browser_authentication_transaction_id",
 		"external_login_states.audit_event_id",
 		"external_login_states.state_hash",
 		"external_login_states.binding_hash",
@@ -149,11 +151,11 @@ func (s SQLExternalLoginStateStore) save(
 		row := newExternalLoginStateRow(&candidate)
 		if _, err := tx.NamedExec(ctx, `
 			INSERT INTO external_login_states (
-				id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, audit_event_id, state_hash, binding_hash,
+				id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
 				return_to, client_type, device_id, device_name, expires_at,
 				consumed_at
 			) VALUES (
-				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :invitation_id, :audit_event_id, :state_hash, :binding_hash,
+				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :invitation_id, :browser_authentication_transaction_id, :audit_event_id, :state_hash, :binding_hash,
 				:return_to, :client_type, :device_id, :device_name, :expires_at,
 				:consumed_at
 			)`, &row); err != nil {
@@ -197,7 +199,7 @@ func (s SQLExternalLoginStateStore) Consume(
 		   AND consumed_at IS NULL
 		   AND created_at <= consumed.at
 		   AND expires_at > consumed.at
-		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, audit_event_id, state_hash, binding_hash,
+		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
 		          return_to, client_type, device_id, device_name, expires_at,
 		          consumed_at`,
 		provider,
@@ -261,22 +263,23 @@ func newExternalLoginStateRow(
 	state *model.ExternalLoginState,
 ) externalLoginStateRow {
 	return externalLoginStateRow{
-		ID:           state.ID.String(),
-		CreatedAt:    UTCTime(state.CreatedAt),
-		UpdatedAt:    UTCTime(state.UpdatedAt),
-		Provider:     state.Provider,
-		Purpose:      string(state.Purpose),
-		TargetUserID: sql.NullString{String: state.TargetUserID.String(), Valid: !state.TargetUserID.IsZero()},
-		InvitationID: sql.NullString{String: state.InvitationID.String(), Valid: !state.InvitationID.IsZero()},
-		AuditEventID: sql.NullString{String: state.AuditEventID, Valid: state.AuditEventID != ""},
-		StateHash:    state.StateHash,
-		BindingHash:  state.BindingHash,
-		ReturnTo:     state.ReturnTo,
-		ClientType:   string(state.ClientType),
-		DeviceID:     state.DeviceID,
-		DeviceName:   state.DeviceName,
-		ExpiresAt:    UTCTime(state.ExpiresAt),
-		ConsumedAt:   NullTimeFromOptional(state.ConsumedAt),
+		ID:                                 state.ID.String(),
+		CreatedAt:                          UTCTime(state.CreatedAt),
+		UpdatedAt:                          UTCTime(state.UpdatedAt),
+		Provider:                           state.Provider,
+		Purpose:                            string(state.Purpose),
+		TargetUserID:                       sql.NullString{String: state.TargetUserID.String(), Valid: !state.TargetUserID.IsZero()},
+		InvitationID:                       sql.NullString{String: state.InvitationID.String(), Valid: !state.InvitationID.IsZero()},
+		BrowserAuthenticationTransactionID: sql.NullString{String: state.BrowserAuthenticationTransactionID.String(), Valid: !state.BrowserAuthenticationTransactionID.IsZero()},
+		AuditEventID:                       sql.NullString{String: state.AuditEventID, Valid: state.AuditEventID != ""},
+		StateHash:                          state.StateHash,
+		BindingHash:                        state.BindingHash,
+		ReturnTo:                           state.ReturnTo,
+		ClientType:                         string(state.ClientType),
+		DeviceID:                           state.DeviceID,
+		DeviceName:                         state.DeviceName,
+		ExpiresAt:                          UTCTime(state.ExpiresAt),
+		ConsumedAt:                         NullTimeFromOptional(state.ConsumedAt),
 	}
 }
 
@@ -311,6 +314,11 @@ func (row externalLoginStateRow) model() (*model.ExternalLoginState, error) {
 		return nil, err
 	}
 	value.InvitationID = invitationID
+	browserTransactionID, err := parseNullablePersistedID("external_login_state", "browser_authentication_transaction_id", row.BrowserAuthenticationTransactionID, model.ParseBrowserAuthenticationTransactionID)
+	if err != nil {
+		return nil, err
+	}
+	value.BrowserAuthenticationTransactionID = browserTransactionID
 	if err := validatePersistedModel("external_login_state", value); err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestRealtimePublishRequiresClusterFanout(t *testing.T) {
@@ -36,6 +37,57 @@ func TestRealtimePublishMapsInvalidPublication(t *testing.T) {
 	if err == nil || !Is(err, "websocket.request.invalid") {
 		t.Fatalf("Publish() error = %v, want websocket.request.invalid", err)
 	}
+}
+
+func TestSessionRevocationPublishesAttemptProjectionInvalidations(t *testing.T) {
+	t.Parallel()
+	candidateID := model.NewUserID()
+	sessionID := model.NewSessionID()
+	target := store.ExamAttemptInvalidationTarget{
+		CandidateUserID: candidateID,
+		ExamID:          model.NewExamID(),
+		SittingID:       model.NewExamSittingID(),
+	}
+	attempts := &sessionRevocationAttemptProjectionFake{targets: []store.ExamAttemptInvalidationTarget{target}}
+	service := newTestRealtimeService(t, noopAuthenticationCache{})
+	service.attempts = attempts
+	sink := &recordingRealtimeSink{}
+	if err := service.SetSink(sink); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetClusterFanout(&recordingRealtimeCluster{}); err != nil {
+		t.Fatal(err)
+	}
+
+	service.SessionsRevoked(
+		context.Background(), candidateID.String(), []string{sessionID.String()}, nil,
+	)
+	if attempts.candidateID != candidateID || len(attempts.sessionIDs) != 1 || attempts.sessionIDs[0] != sessionID {
+		t.Fatalf("attempt invalidation query = candidate %q sessions %#v", attempts.candidateID, attempts.sessionIDs)
+	}
+	if len(sink.events) != 3 || sink.events[0].Name != "candidate.exam_activity.changed" ||
+		sink.events[0].UserID != candidateID.String() || sink.events[1].Name != "manager.sitting_board.changed" ||
+		sink.events[1].Resource.ID != target.SittingID.String() || sink.events[2].Name != "current_user.context.changed" ||
+		sink.events[2].UserID != candidateID.String() {
+		t.Fatalf("published invalidations = %#v", sink.events)
+	}
+}
+
+type sessionRevocationAttemptProjectionFake struct {
+	candidateID model.UserID
+	sessionIDs  []model.SessionID
+	targets     []store.ExamAttemptInvalidationTarget
+	err         error
+}
+
+func (f *sessionRevocationAttemptProjectionFake) ListSessionRevocationInvalidationTargets(
+	_ context.Context,
+	candidateID model.UserID,
+	sessionIDs []model.SessionID,
+) ([]store.ExamAttemptInvalidationTarget, error) {
+	f.candidateID = candidateID
+	f.sessionIDs = append([]model.SessionID(nil), sessionIDs...)
+	return append([]store.ExamAttemptInvalidationTarget(nil), f.targets...), f.err
 }
 
 type noopAuthenticationCache struct{}

@@ -532,8 +532,13 @@ func newIntegrityReviewFixtureWithFinalSequence(t *testing.T, ctx context.Contex
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 		Generation: connected.Participation.Generation, ConnectionID: connected.Connection.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
-		ContinuityCredentialHash: access.ContinuityCredentialHash, ExpectedWorkspaceCursor: connected.Workspace.Cursor,
-		FinalFocusLossSequence: finalSequence,
+		ContinuityCredentialHash:  access.ContinuityCredentialHash,
+		ExpectedCurrentRevisionID: fixture.sitting.ExamRevisionID,
+		ExpectedWorkspaceCursor:   connected.Workspace.Cursor,
+		FinalFocusLossSequence:    finalSequence,
+		BrowserActivity: model.BrowserActivitySubmission{
+			State: model.BrowserActivitySubmissionNotApplicable,
+		},
 	}
 	sealTarget, err := ss.ExamSubmission().ResolveSealTarget(ctx, sealAccess)
 	requireNoError(t, err)

@@ -199,6 +199,9 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 	if err := lockRoleBindingGrantTuple(ctx, tx, candidate); err != nil {
 		return err
 	}
+	if err := guardRoleBindingExamCandidateConflict(ctx, tx, candidate); err != nil {
+		return err
+	}
 	if err := validateRoleBindingReferences(ctx, tx, candidate); err != nil {
 		return err
 	}
@@ -238,6 +241,54 @@ func insertRoleBinding(ctx context.Context, tx *sqlxTxWrapper, candidate *model.
 			"save role binding: %w",
 			translateError("role_binding", candidate.ID.String(), err),
 		)
+	}
+	return nil
+}
+
+// guardRoleBindingExamCandidateConflict closes the grant/admission race on the
+// same candidate-scoped lock used by Attempt admission and Exam management.
+// A historical binding that has already ended cannot confer authority and is
+// therefore outside the fence.
+func guardRoleBindingExamCandidateConflict(ctx context.Context, tx *sqlxTxWrapper, candidate *model.RoleBinding) error {
+	lockKey := "proctor:exam-attempt-admission:" + candidate.UserID.String()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
+		return fmt.Errorf("lock Role Binding candidate fence: %w", err)
+	}
+	var conflicts bool
+	err := tx.Get(ctx, &conflicts, `WITH RECURSIVE input AS (
+		SELECT ?::timestamptz AS end_at
+	), unresolved AS (
+		SELECT attempt.exam_id,exam.academic_unit_id
+		FROM exam_attempts attempt JOIN exams exam ON exam.id=attempt.exam_id
+		WHERE attempt.candidate_user_id=? AND attempt.state IN ('ready','active','suspended')
+	), covered_units(root_id,id) AS (
+		SELECT academic_unit_id,academic_unit_id FROM unresolved
+		UNION
+		SELECT child.root_id,parent.parent_id FROM covered_units child
+		JOIN academic_units parent ON parent.id=child.id AND parent.parent_id IS NOT NULL AND parent.archived_at IS NULL
+	)
+	SELECT EXISTS (
+		SELECT 1 FROM roles role CROSS JOIN input binding
+		WHERE role.id=? AND role.archived_at IS NULL
+		AND (binding.end_at IS NULL OR binding.end_at>statement_timestamp()) AND (
+			(role.name=? AND ?=ANY(role.permissions) AND ?='institution' AND EXISTS (SELECT 1 FROM unresolved))
+			OR (
+				?=ANY(role.permissions) AND (?='institution' OR (?='academic_unit' AND ? IN (SELECT id FROM covered_units)))
+				AND EXISTS (SELECT 1 FROM unresolved attempt
+					JOIN exam_managers manager ON manager.exam_id=attempt.exam_id AND manager.user_id=?
+					JOIN academic_unit_members member ON member.academic_unit_id=attempt.academic_unit_id AND member.user_id=?
+					WHERE member.archived_at IS NULL AND member.start_at<=statement_timestamp()
+					AND (member.end_at IS NULL OR member.end_at>statement_timestamp()))
+			)
+		)
+	)`, NullTimeFromOptional(candidate.EndsAt), candidate.UserID.String(), candidate.RoleID.String(), model.SystemAdministratorRoleName,
+		string(model.ActionExamManageOverride), candidate.ScopeType, string(model.ActionExamManage), candidate.ScopeType,
+		candidate.ScopeType, candidate.ScopeID, candidate.UserID.String(), candidate.UserID.String())
+	if err != nil {
+		return fmt.Errorf("inspect Role Binding Exam candidate conflict: %w", err)
+	}
+	if conflicts {
+		return store.NewErrConflict("role_binding", "role_binding_candidate_conflict", nil)
 	}
 	return nil
 }

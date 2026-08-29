@@ -4,6 +4,7 @@
 package attempt
 
 import (
+	"encoding/json"
 	"errors"
 
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
@@ -44,11 +45,22 @@ func prepareWorkspaceMutationIdempotency(call Call, key string, attemptID model.
 
 func prepareConnectIdempotency(call Call, command ConnectCommand) (*store.CommandIdempotency, error) {
 	principal := call.Principal()
+	var proposal json.RawMessage
+	if command.InitialConfiguration != nil {
+		canonical, err := command.InitialConfiguration.CanonicalAdmission()
+		if err != nil {
+			return nil, &Fault{Code: "request.invalid", Cause: err}
+		}
+		proposal = canonical
+	}
 	return prepareIdempotency(call, store.ExamAttemptConnectOperation, command.IdempotencyKey, struct {
-		SittingID                string `json:"exam_sitting_id"`
-		SessionID                string `json:"session_id"`
-		ContinuityCredentialHash string `json:"continuity_credential_hash"`
-	}{command.SittingID.String(), principal.SessionID.String(), model.HashToken(command.ContinuityCredential)})
+		SittingID                string          `json:"exam_sitting_id"`
+		SessionID                string          `json:"session_id"`
+		ContinuityCredentialHash string          `json:"continuity_credential_hash"`
+		SupportedManifests       []string        `json:"supported_attempt_configuration_manifests"`
+		InitialConfiguration     json.RawMessage `json:"initial_configuration"`
+	}{command.SittingID.String(), principal.SessionID.String(), model.HashToken(command.ContinuityCredential),
+		append([]string(nil), command.SupportedConfigurationManifests...), proposal})
 }
 
 func prepareReallowIdempotency(call Call, command ReallowCommand) (*store.CommandIdempotency, error) {
@@ -62,12 +74,35 @@ func prepareReallowIdempotency(call Call, command ReallowCommand) (*store.Comman
 	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(), command.SuspensionID.String(), command.ExpectedAttemptRevision, command.PrivateReason})
 }
 
+func prepareManagerEndIdempotency(call Call, command ManagerEndCommand) (*store.CommandIdempotency, error) {
+	return prepareIdempotency(call, store.ExamSubmissionManagerEndOperation, command.IdempotencyKey, struct {
+		ExamID                  string `json:"exam_id"`
+		SittingID               string `json:"exam_sitting_id"`
+		AttemptID               string `json:"exam_attempt_id"`
+		ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+		PrivateReason           string `json:"private_reason"`
+	}{command.ExamID.String(), command.SittingID.String(), command.AttemptID.String(),
+		command.ExpectedAttemptRevision, command.PrivateReason})
+}
+
 func prepareSubmissionIdempotency(call Call, key string, attemptID model.ExamAttemptID,
-	expectedWorkspaceCursor, finalFocusLossSequence int64,
+	expectedCurrentRevisionID model.ExamRevisionID, expectedWorkspaceCursor, finalFocusLossSequence int64,
+	browserActivity model.BrowserActivitySubmission,
 ) (*store.CommandIdempotency, error) {
+	var finalSequence *int64
+	if browserActivity.FinalSequence != nil {
+		sequence := *browserActivity.FinalSequence
+		finalSequence = &sequence
+	}
 	return prepareIdempotency(call, store.ExamSubmissionSealOperation, key, struct {
-		AttemptID              string `json:"exam_attempt_id"`
-		WorkspaceCursor        int64  `json:"expected_workspace_cursor"`
-		FinalFocusLossSequence int64  `json:"final_focus_loss_sequence"`
-	}{attemptID.String(), expectedWorkspaceCursor, finalFocusLossSequence})
+		AttemptID                 string                                   `json:"exam_attempt_id"`
+		ExpectedCurrentRevisionID string                                   `json:"expected_current_revision_id"`
+		WorkspaceCursor           int64                                    `json:"expected_workspace_cursor"`
+		FinalFocusLossSequence    int64                                    `json:"final_focus_loss_sequence"`
+		BrowserActivityState      model.BrowserActivitySubmissionState     `json:"browser_activity_state"`
+		BrowserSourceSessionID    string                                   `json:"browser_source_session_id"`
+		BrowserFinalSequence      *int64                                   `json:"browser_final_sequence"`
+		BrowserGapReason          model.BrowserActivitySubmissionGapReason `json:"browser_gap_reason"`
+	}{attemptID.String(), expectedCurrentRevisionID.String(), expectedWorkspaceCursor, finalFocusLossSequence,
+		browserActivity.State, string(browserActivity.SourceSessionID), finalSequence, browserActivity.GapReason})
 }

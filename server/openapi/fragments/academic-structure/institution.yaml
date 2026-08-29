@@ -18,8 +18,13 @@ paths:
         - authorization.unavailable
         - resource.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -34,6 +39,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     patch:
       operationId: updateInstitution
       summary: Update the installation Institution
@@ -57,8 +64,13 @@ paths:
         - institution.invalid
         - institution.conflict
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -78,6 +90,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     UpdateInstitution:

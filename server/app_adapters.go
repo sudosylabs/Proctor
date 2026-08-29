@@ -63,6 +63,7 @@ func applicationDependencies(
 		Registry:                externalProviderRegistryAdapter{registry: capabilities.externalAuthentication},
 		FileContent:             content,
 		ExecutionHosts:          capabilities.executionHosts,
+		DesktopBuildCatalog:     verifiedDesktopBuildCatalog(),
 		NodeID:                  capabilities.nodeID,
 		PublicURL:               cfg.Server.PublicURL,
 		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),

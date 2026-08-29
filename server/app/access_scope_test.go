@@ -391,7 +391,7 @@ func TestAccessScopeResolverMapsSubmissionToOwningAcademicUnit(t *testing.T) {
 		&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{},
 		&accessExamSubmissionStoreFake{authorization: &store.ExamSubmissionAuthorization{
 			SubmissionID: submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
-			AttemptID: model.NewExamAttemptID(), AcademicUnitID: unitID,
+			AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(), AcademicUnitID: unitID,
 		}},
 		&accessAcademicPeriodStoreFake{},
 	)

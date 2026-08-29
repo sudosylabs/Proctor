@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	applicationidempotency "github.com/sudosylabs/proctor/server/app/idempotency"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -42,6 +43,14 @@ func prepareStageIdempotency(call Call, command StageResourceContentCommand) (*s
 }
 
 func prepareApplyIdempotency(call Call, command ApplyCommand) (*store.CommandIdempotency, error) {
+	var browserPolicy string
+	if command.BrowserPolicy.Present {
+		encoded, err := model.EncodeBrowserPolicy(command.BrowserPolicy.Policy)
+		if err != nil {
+			return nil, &Fault{Code: "request.invalid", Cause: err}
+		}
+		browserPolicy = string(encoded)
+	}
 	resources := make([]struct {
 		ResourceID          string `json:"resource_id"`
 		DisplayName         string `json:"display_name"`
@@ -61,7 +70,11 @@ func prepareApplyIdempotency(call Call, command ApplyCommand) (*store.CommandIde
 		ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
 		InstructionsPresent       bool   `json:"instructions_present"`
 		InstructionsMarkdown      string `json:"instructions_markdown"`
+		BrowserPolicyPresent      bool   `json:"browser_policy_present"`
+		BrowserPolicy             string `json:"browser_policy"`
 		Resources                 any    `json:"resources"`
+		CandidateSummary          string `json:"candidate_summary"`
+		AcknowledgementRequired   bool   `json:"acknowledgement_required"`
 		PrivateReason             string `json:"private_reason"`
-	}{command.ExamID.String(), command.SittingID.String(), command.ExpectedSittingRevision, command.ExpectedCurrentRevisionID.String(), command.Instructions.Present, command.Instructions.Markdown, resources, command.PrivateReason})
+	}{command.ExamID.String(), command.SittingID.String(), command.ExpectedSittingRevision, command.ExpectedCurrentRevisionID.String(), command.Instructions.Present, command.Instructions.Markdown, command.BrowserPolicy.Present, browserPolicy, resources, command.CandidateSummary, command.AcknowledgementRequired, command.PrivateReason})
 }

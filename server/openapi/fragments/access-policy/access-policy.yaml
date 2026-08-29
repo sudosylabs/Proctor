@@ -17,8 +17,13 @@ paths:
         - authorization.request.invalid
         - authorization.unavailable
         - access_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -72,8 +77,13 @@ paths:
         - access_policy.revision_conflict
         - access_policy.blocked
         - access_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -119,8 +129,13 @@ paths:
         - access_policy.invalid
         - access_policy.revision_conflict
         - access_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:

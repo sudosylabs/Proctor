@@ -16,10 +16,13 @@ import (
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type userProfileHTTPApplication struct {
 	result             *model.User
+	contextResult      *application.CurrentUserContextView
+	contextCalls       int
 	values             []*model.User
 	searchQuery        application.SearchUsersQuery
 	updateCommand      application.UpdateUserProfileCommand
@@ -29,6 +32,17 @@ type userProfileHTTPApplication struct {
 	removeCommand      application.RemoveProfilePictureCommand
 	pictureQuery       application.GetProfilePictureQuery
 	pictureContent     *application.ProfilePictureContent
+}
+
+func (a *userProfileHTTPApplication) GetCurrentUserContext(context.Context, application.Invocation) (*application.CurrentUserContextView, error) {
+	a.contextCalls++
+	return a.contextResult, nil
+}
+
+func (a *userProfileHTTPApplication) ListCandidateExamActivity(context.Context, application.Invocation,
+	application.ListCandidateExamActivityQuery,
+) (application.CandidateExamActivityPage, error) {
+	return application.CandidateExamActivityPage{}, nil
 }
 
 func (a *userProfileHTTPApplication) ChangeUserEmail(_ context.Context, _ application.Invocation, command application.ChangeUserEmailCommand) (*application.UserEmailState, error) {
@@ -190,6 +204,46 @@ func (a *userProfileHTTPApplication) RemoveProfilePicture(_ context.Context, _ a
 func (a *userProfileHTTPApplication) GetProfilePicture(_ context.Context, _ application.Invocation, query application.GetProfilePictureQuery) (*application.ProfilePictureContent, error) {
 	a.pictureQuery = query
 	return a.pictureContent, nil
+}
+
+func TestCurrentUserContextHTTPReturnsClosedNoStoreDTO(t *testing.T) {
+	t.Parallel()
+	logger, _ := newTestLogger(t)
+	userID := model.NewUserID()
+	profiles := &userProfileHTTPApplication{contextResult: &application.CurrentUserContextView{
+		UserID: userID, Username: "student", DisplayName: "Student",
+		ProfilePictureReference: "/api/v1/users/" + userID.String() + "/profile-picture",
+		AvailableProductAreas: []store.CurrentUserProductArea{
+			store.CurrentUserProductAreaAccount, store.CurrentUserProductAreaSettings,
+		},
+		ManagementScopes: []store.CurrentUserManagementScope{{
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: model.NewAcademicUnitID().String(), DisplayName: "Engineering",
+		}},
+		SessionManagementAvailable: true,
+	}}
+	session := model.Principal{UserID: userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		ClientType: model.SessionClientWeb, AuthenticatedAt: time.Now()}
+	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: session}, userProfileResource(profiles))
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me/context", nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || profiles.contextCalls != 1 {
+		t.Fatalf("context response = %d cache=%q calls=%d: %s", response.Code, response.Header().Get("Cache-Control"), profiles.contextCalls, response.Body.String())
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"user", "no_current_affiliation", "no_assigned_access", "available_product_areas", "management_scopes", "management_scopes_has_more", "unresolved_attempt", "session_management_available", "current_desktop_registration_id"} {
+		if _, exists := body[required]; !exists {
+			t.Fatalf("context response omitted %q: %s", required, response.Body.String())
+		}
+	}
+	if string(body["unresolved_attempt"]) != "null" || string(body["current_desktop_registration_id"]) != "null" {
+		t.Fatalf("absent selectors must be explicit null: %s", response.Body.String())
+	}
 }
 
 func TestUserProfileHTTPUsesAllowlistedDTOAndRouteID(t *testing.T) {

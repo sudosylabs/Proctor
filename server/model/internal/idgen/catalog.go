@@ -44,6 +44,7 @@ var entityIDs = []idSpec{
 	{typeName: "StarterWorkspaceObjectID", fieldName: "starter_workspace_object_id", constructorSubject: "starter-workspace-object"},
 	{typeName: "UserID", fieldName: "user_id", constructorSubject: "user"},
 	{typeName: "SessionID", fieldName: "session_id", constructorSubject: "session"},
+	{typeName: "DesktopRegistrationID", fieldName: "desktop_registration_id", constructorSubject: "desktop-registration"},
 	{typeName: "SessionCredentialID", fieldName: "session_credential_id", constructorSubject: "session-credential"},
 	{typeName: "RoleID", fieldName: "role_id", constructorSubject: "role"},
 	{typeName: "RoleBindingID", fieldName: "role_binding_id", constructorSubject: "role-binding"},

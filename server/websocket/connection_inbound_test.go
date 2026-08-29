@@ -27,26 +27,32 @@ type inboundAuthorizationCall struct {
 }
 
 type inboundTestApplication struct {
-	mu              sync.Mutex
-	authorizeErr    error
-	validationErr   error
-	connectErr      error
-	connectResult   app.ExamAttemptConnection
-	connectCalls    []app.ConnectExamAttemptCommand
-	renewErr        error
-	renewResult     app.ExamAttemptParticipationRenewal
-	renewCalls      []app.RenewExamAttemptParticipationCommand
-	focusLossErr    error
-	focusLossResult app.ExamAttemptFocusLossEvaluation
-	focusLossCalls  []app.EvaluateExamAttemptFocusLossCommand
-	closeCalls      []app.CloseExamAttemptConnectionCommand
-	closeContextErr error
-	closePrincipal  model.Principal
-	closeMetadata   model.RequestMetadata
-	terminal        app.CandidateExamTerminal
-	terminalCommand app.OpenCandidateExamTerminalCommand
-	authorizations  []inboundAuthorizationCall
-	validations     []model.Principal
+	mu                  sync.Mutex
+	authorizeErr        error
+	validationErr       error
+	connectErr          error
+	connectResult       app.ExamAttemptConnection
+	connectCalls        []app.ConnectExamAttemptCommand
+	renewErr            error
+	renewResult         app.ExamAttemptParticipationRenewal
+	renewCalls          []app.RenewExamAttemptParticipationCommand
+	focusLossErr        error
+	focusLossResult     app.ExamAttemptFocusLossEvaluation
+	focusLossCalls      []app.EvaluateExamAttemptFocusLossCommand
+	browserStartErr     error
+	browserStartResult  app.BrowserActivityAcknowledgement
+	browserStartCalls   []app.StartBrowserActivityCommand
+	browserAppendErr    error
+	browserAppendResult app.BrowserActivityAcknowledgement
+	browserAppendCalls  []app.AppendBrowserActivityCommand
+	closeCalls          []app.CloseExamAttemptConnectionCommand
+	closeContextErr     error
+	closePrincipal      model.Principal
+	closeMetadata       model.RequestMetadata
+	terminal            app.CandidateExamTerminal
+	terminalCommand     app.OpenCandidateExamTerminalCommand
+	authorizations      []inboundAuthorizationCall
+	validations         []model.Principal
 }
 
 func (a *inboundTestApplication) RenewExamAttemptParticipation(_ context.Context, _ app.Invocation, command app.RenewExamAttemptParticipationCommand) (app.ExamAttemptParticipationRenewal, error) {
@@ -70,6 +76,24 @@ func (a *inboundTestApplication) ConnectExamAttempt(_ context.Context, _ app.Inv
 	defer a.mu.Unlock()
 	a.connectCalls = append(a.connectCalls, command)
 	return a.connectResult, a.connectErr
+}
+
+func (a *inboundTestApplication) StartExamAttemptBrowserActivity(_ context.Context, _ app.Invocation,
+	command app.StartBrowserActivityCommand,
+) (app.BrowserActivityAcknowledgement, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.browserStartCalls = append(a.browserStartCalls, command)
+	return a.browserStartResult, a.browserStartErr
+}
+
+func (a *inboundTestApplication) AppendExamAttemptBrowserActivity(_ context.Context, _ app.Invocation,
+	command app.AppendBrowserActivityCommand,
+) (app.BrowserActivityAcknowledgement, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.browserAppendCalls = append(a.browserAppendCalls, command)
+	return a.browserAppendResult, a.browserAppendErr
 }
 
 func (a *inboundTestApplication) OpenCandidateExamTerminal(_ context.Context, _ app.Invocation, command app.OpenCandidateExamTerminalCommand) (app.CandidateExamTerminal, error) {
@@ -457,12 +481,11 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 	runtime.principal.UserID = attempt.CandidateUserID
 	runtime.principal.SessionID = connection.SessionID
 	credential := model.NewCredentialToken()
-	runtime.handleRequest(context.Background(), requestWithData(t, 30, "exam_attempt.connect", examAttemptConnectRequest{
-		ExamSittingID: sittingID.String(), IdempotencyKey: "admit-once", ContinuityCredential: credential,
-	}))
+	connectRequest := validExamAttemptConnectRequest(t, sittingID, "admit-once", credential)
+	runtime.handleRequest(context.Background(), requestWithData(t, 30, "exam_attempt.connect", connectRequest))
 	response := nextInboundResponse(t, runtime)
 	if response.Status != "ok" || response.Error != nil {
-		t.Fatalf("connect response = %#v", response)
+		t.Fatalf("connect response = %#v error=%+v", response, response.Error)
 	}
 	var body examAttemptConnectResponse
 	if err = json.Unmarshal(response.Data, &body); err != nil {
@@ -490,9 +513,7 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 		calls[0].ContinuityCredential != credential {
 		t.Fatalf("connect calls = %#v", calls)
 	}
-	runtime.handleRequest(context.Background(), requestWithData(t, 31, "exam_attempt.connect", examAttemptConnectRequest{
-		ExamSittingID: sittingID.String(), IdempotencyKey: "admit-once", ContinuityCredential: credential,
-	}))
+	runtime.handleRequest(context.Background(), requestWithData(t, 31, "exam_attempt.connect", connectRequest))
 	response = nextInboundResponse(t, runtime)
 	if response.Status != "ok" || response.Error != nil {
 		t.Fatalf("exact connect replay response = %#v", response)
@@ -504,10 +525,8 @@ func TestConnectionRuntimeConnectsExamAttemptAndOwnsCandidateSubscription(t *tes
 		t.Fatalf("protected candidate unsubscribe = %#v, subscribed = %t", response, runtime.hasSubscription(candidate))
 	}
 
-	runtime.handleRequest(context.Background(), requestWithData(t, 33, "exam_attempt.connect", examAttemptConnectRequest{
-		ExamSittingID: model.NewExamSittingID().String(), IdempotencyKey: "another-admission",
-		ContinuityCredential: model.NewCredentialToken(),
-	}))
+	runtime.handleRequest(context.Background(), requestWithData(t, 33, "exam_attempt.connect",
+		validExamAttemptConnectRequest(t, model.NewExamSittingID(), "another-admission", model.NewCredentialToken())))
 	response = nextInboundResponse(t, runtime)
 	if response.Status != "error" || response.Error == nil || response.Error.Code != "exam.attempt.already_connected" {
 		t.Fatalf("second binding response = %#v", response)
@@ -584,9 +603,8 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
 	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
-	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptConnectAction, examAttemptConnectRequest{
-		ExamSittingID: sittingID.String(), IdempotencyKey: "connect", ContinuityCredential: credential,
-	}))
+	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptConnectAction,
+		validExamAttemptConnectRequest(t, sittingID, "connect", credential)))
 	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
 		t.Fatalf("connect response = %#v", response)
 	}
@@ -627,6 +645,182 @@ func TestConnectionRuntimeRenewsBoundParticipationWithoutTreatingPingAsRenewal(t
 		calls[0].ConnectionID != connectionID || calls[0].Generation != 4 || calls[0].Sequence != 1 ||
 		calls[0].ContinuityCredential != credential {
 		t.Fatalf("renew calls = %#v", calls)
+	}
+}
+
+func TestConnectionRuntimeBrowserActivityUsesAttemptBindingAndClosedWireContracts(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 29, 10, 0, 0, 0, time.UTC)
+	attemptID, sittingID, classID := model.NewExamAttemptID(), model.NewExamSittingID(), model.NewClassID()
+	participationID, connectionID := model.NewAttemptParticipationID(), model.NewAttemptConnectionID()
+	sourceID := model.BrowserSourceSessionID("018f47a0-6e53-4cc4-9d0b-97c9b6d98011")
+	credential := model.NewCredentialToken()
+	application := &inboundTestApplication{
+		browserStartResult: app.BrowserActivityAcknowledgement{SourceSessionID: sourceID, MissingRanges: []model.BrowserActivityMissingRange{}, ServerTime: at},
+		browserAppendResult: app.BrowserActivityAcknowledgement{SourceSessionID: sourceID, HighestContiguous: 1, HighestSeen: 4,
+			MissingRanges: []model.BrowserActivityMissingRange{{First: 2, Last: 3}}, ServerTime: at.Add(time.Second)},
+	}
+	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
+	runtime.attempt = &examAttemptBinding{attemptID: attemptID, sittingID: sittingID, classID: classID,
+		connectionID: connectionID, participationID: participationID, generation: 2}
+
+	start := examAttemptBrowserStartRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 2,
+		ContinuityCredential: credential, ParticipationID: participationID.String(), SourceSessionID: string(sourceID)}
+	runtime.handleRequest(context.Background(), requestWithData(t, 40, examAttemptBrowserStartAction, start))
+	response := nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("Browser Activity start response = %#v", response)
+	}
+	var startAck examAttemptBrowserAcknowledgementResponse
+	if err := json.Unmarshal(response.Data, &startAck); err != nil {
+		t.Fatal(err)
+	}
+	if startAck.SourceSessionID != string(sourceID) || startAck.HighestContiguous != 0 || startAck.HighestSeen != 0 ||
+		startAck.MissingRanges == nil || startAck.ServerTime != at.Format(time.RFC3339Nano) {
+		t.Fatalf("Browser Activity start acknowledgement = %#v", startAck)
+	}
+	if strings.Contains(string(response.Data), credential) {
+		t.Fatalf("Browser Activity start exposed continuity credential: %s", response.Data)
+	}
+
+	eventDocument, err := json.Marshal(examAttemptBrowserEventRequest{Sequence: 1, Kind: string(model.BrowserActivityOpened),
+		PolicyRevisionID: model.NewExamRevisionID().String(), ClientOccurredAt: at.Format(time.RFC3339Nano),
+		Location: json.RawMessage("null"), MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage("null")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendRequest := examAttemptBrowserAppendRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 2,
+		ContinuityCredential: credential, ParticipationID: participationID.String(), SourceSessionID: string(sourceID),
+		Events: []json.RawMessage{eventDocument}}
+	runtime.handleRequest(context.Background(), requestWithData(t, 41, examAttemptBrowserAppendAction, appendRequest))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "ok" || response.Error != nil {
+		t.Fatalf("Browser Activity append response = %#v", response)
+	}
+	var appendAck examAttemptBrowserAcknowledgementResponse
+	if err = json.Unmarshal(response.Data, &appendAck); err != nil {
+		t.Fatal(err)
+	}
+	if appendAck.HighestContiguous != 1 || appendAck.HighestSeen != 4 || len(appendAck.MissingRanges) != 1 ||
+		appendAck.MissingRanges[0] != (browserActivityMissingRangeResponse{First: 2, Last: 3}) {
+		t.Fatalf("Browser Activity append acknowledgement = %#v", appendAck)
+	}
+
+	application.mu.Lock()
+	startCalls := append([]app.StartBrowserActivityCommand(nil), application.browserStartCalls...)
+	appendCalls := append([]app.AppendBrowserActivityCommand(nil), application.browserAppendCalls...)
+	application.mu.Unlock()
+	if len(startCalls) != 1 || startCalls[0].AttemptID != attemptID || startCalls[0].ConnectionID != connectionID ||
+		startCalls[0].ParticipationID != participationID || startCalls[0].Generation != 2 ||
+		startCalls[0].ContinuityCredential != credential || startCalls[0].SourceSessionID != sourceID {
+		t.Fatalf("Browser Activity start calls = %#v", startCalls)
+	}
+	if len(appendCalls) != 1 || appendCalls[0].AttemptID != attemptID || appendCalls[0].ConnectionID != connectionID ||
+		appendCalls[0].ParticipationID != participationID || appendCalls[0].Generation != 2 ||
+		appendCalls[0].ContinuityCredential != credential || appendCalls[0].SourceSessionID != sourceID ||
+		len(appendCalls[0].Events) != 1 || appendCalls[0].Events[0].Kind != model.BrowserActivityOpened {
+		t.Fatalf("Browser Activity append calls = %#v", appendCalls)
+	}
+
+	stale := appendRequest
+	stale.Generation = 3
+	runtime.handleRequest(context.Background(), requestWithData(t, 42, examAttemptBrowserAppendAction, stale))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "error" || response.Error == nil || response.Error.Code != "exam.attempt.connection_closed" {
+		t.Fatalf("stale Browser Activity append response = %#v", response)
+	}
+
+	application.mu.Lock()
+	application.browserAppendErr = app.NewError("browser_activity.gap_too_large")
+	application.mu.Unlock()
+	runtime.handleRequest(context.Background(), requestWithData(t, 43, examAttemptBrowserAppendAction, appendRequest))
+	response = nextInboundResponse(t, runtime)
+	if response.Status != "error" || response.Error == nil || response.Error.Code != "browser_activity.gap_too_large" ||
+		response.Error.Message != "Browser activity could not be accepted." {
+		t.Fatalf("failed Browser Activity append response = %#v", response)
+	}
+}
+
+func TestDecodeBrowserActivityAppendAcceptsSafeBlockedLocations(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 29, 10, 0, 0, 0, time.UTC)
+	revisionID := model.NewExamRevisionID().String()
+	blocked := []examAttemptBrowserEventRequest{
+		{Sequence: 1, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
+			ClientOccurredAt: at.Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"http","host":"example.edu","path":"/outside"}`),
+			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
+		{Sequence: 2, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
+			ClientOccurredAt: at.Add(time.Millisecond).Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"file","host":"","path":""}`),
+			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"scheme_not_allowed"`)},
+		{Sequence: 3, Kind: string(model.BrowserActivityBlockedNavigation), PolicyRevisionID: revisionID,
+			ClientOccurredAt: at.Add(2 * time.Millisecond).Format(time.RFC3339Nano), Location: json.RawMessage(`{"scheme":"","host":"","path":""}`),
+			MatchedRuleID: json.RawMessage("null"), BlockReason: json.RawMessage(`"invalid_url"`)},
+	}
+	documents := make([]json.RawMessage, len(blocked))
+	for index := range blocked {
+		encoded, err := json.Marshal(blocked[index])
+		if err != nil {
+			t.Fatal(err)
+		}
+		documents[index] = encoded
+	}
+	request := examAttemptBrowserAppendRequest{SchemaVersion: model.BrowserActivitySchemaVersion, Generation: 1,
+		ContinuityCredential: model.NewCredentialToken(), ParticipationID: model.NewAttemptParticipationID().String(),
+		SourceSessionID: "018f47a0-6e53-4cc4-9d0b-97c9b6d98011", Events: documents}
+	encoded, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, events, err := decodeExamAttemptBrowserAppendRequest(encoded)
+	if err != nil || len(events) != 3 || events[0].Location == nil || events[0].Location.Scheme != "http" ||
+		events[1].Location == nil || events[1].Location.Scheme != "file" || events[2].Location == nil ||
+		*events[2].Location != (model.BrowserLocation{}) {
+		t.Fatalf("decodeExamAttemptBrowserAppendRequest() events = %#v, error = %v", events, err)
+	}
+
+	unsafe := blocked[1]
+	unsafe.Location = json.RawMessage(`{"scheme":"javascript","host":"","path":"/alert(secret)"}`)
+	unsafeDocument, err := json.Marshal(unsafe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Events = []json.RawMessage{unsafeDocument}
+	encoded, err = json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = decodeExamAttemptBrowserAppendRequest(encoded); err == nil {
+		t.Fatal("decodeExamAttemptBrowserAppendRequest() accepted a retained hostless-scheme payload")
+	}
+
+	invalidLocations := []struct {
+		eventIndex int
+		location   json.RawMessage
+	}{
+		{2, json.RawMessage(`{}`)},
+		{2, json.RawMessage(`{"scheme":"file"}`)},
+		{2, json.RawMessage(`{"scheme":"","host":""}`)},
+		{2, json.RawMessage(`{"scheme":null,"host":"","path":""}`)},
+		{0, json.RawMessage(`{"scheme":"http","host":"example.edu","port":null,"path":"/"}`)},
+		{0, json.RawMessage(`{"scheme":"http","host":"example.edu","port":"","path":"/"}`)},
+	}
+	for _, test := range invalidLocations {
+		incomplete := blocked[test.eventIndex]
+		incomplete.Location = test.location
+		incompleteDocument, marshalErr := json.Marshal(incomplete)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		request.Events = []json.RawMessage{incompleteDocument}
+		encoded, marshalErr = json.Marshal(request)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if _, _, err = decodeExamAttemptBrowserAppendRequest(encoded); err == nil {
+			t.Fatalf("decodeExamAttemptBrowserAppendRequest() accepted incomplete location %s", test.location)
+		}
 	}
 }
 
@@ -688,9 +882,8 @@ func TestConnectionRuntimeSubmitsBoundFocusLossAndClearsPolicySuspendedBinding(t
 	runtime := newInboundRuntime(application, newInboundTestSocket(), newRuntimeTestClock(at))
 	runtime.principal.UserID, runtime.principal.SessionID = attempt.CandidateUserID, connection.SessionID
 	credential := model.NewCredentialToken()
-	runtime.handleRequest(context.Background(), requestWithData(t, 60, examAttemptConnectAction, examAttemptConnectRequest{
-		ExamSittingID: sittingID.String(), IdempotencyKey: "connect", ContinuityCredential: credential,
-	}))
+	runtime.handleRequest(context.Background(), requestWithData(t, 60, examAttemptConnectAction,
+		validExamAttemptConnectRequest(t, sittingID, "connect", credential)))
 	if response := nextInboundResponse(t, runtime); response.Status != "ok" {
 		t.Fatalf("connect response=%#v", response)
 	}
@@ -1049,3 +1242,22 @@ func TestConnectionRuntimeJoinsSimultaneousInboundTermination(t *testing.T) {
 
 var _ Application = (*inboundTestApplication)(nil)
 var _ connectionSocket = (*inboundTestSocket)(nil)
+
+func validExamAttemptConnectRequest(t *testing.T, sittingID model.ExamSittingID, key, credential string) examAttemptConnectRequest {
+	t.Helper()
+	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
+	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest,
+		model.NewUserSettingsRevision(), "sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
+			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
+			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
+			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
+			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
+			CandidateCommandBindings: []model.AttemptCommandBinding{},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return examAttemptConnectRequest{ExamSittingID: sittingID.String(), IdempotencyKey: key,
+		ContinuityCredential: credential, SupportedAttemptConfigurationManifests: []string{manifest},
+		InitialConfiguration: &configuration}
+}

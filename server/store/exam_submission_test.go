@@ -18,8 +18,9 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 	access := ExamSubmissionSealAccess{
 		AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(), Generation: 3,
 		ConnectionID: model.NewAttemptConnectionID(), CandidateUserID: model.NewUserID(), SessionID: model.NewSessionID(),
-		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), ExpectedWorkspaceCursor: 41,
-		FinalFocusLossSequence: 9,
+		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()), ExpectedCurrentRevisionID: model.NewExamRevisionID(),
+		ExpectedWorkspaceCursor: 41, FinalFocusLossSequence: 9,
+		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
 	}
 	command := ExamSubmissionSeal{
 		SubmissionID: model.NewSubmissionID(), Access: access,
@@ -28,9 +29,11 @@ func TestExamSubmissionStoreOwnsAtomicCandidateSealAndExactReplaySelector(t *tes
 	target := ExamSubmissionSealTarget{
 		ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), ClassID: model.NewClassID(),
 		CandidateUserID: access.CandidateUserID, WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		CurrentRevisionID: access.ExpectedCurrentRevisionID,
 	}
 	receipt := ExamSubmissionReceipt{
-		SubmissionID: command.SubmissionID, AttemptID: access.AttemptID, State: model.ExamAttemptSubmitted,
+		SubmissionID: command.SubmissionID, AttemptID: access.AttemptID, ExamRevisionID: access.ExpectedCurrentRevisionID,
+		State:           model.ExamAttemptSubmitted,
 		WorkspaceCursor: 41, ManifestDigest: strings.Repeat("a", 64), SubmittedAt: time.Unix(100, 0).UTC(),
 	}
 	result := ExamSubmissionSealResult{
@@ -59,7 +62,7 @@ func TestExamSubmissionManagerReadsSeparateAuthorizationManifestAndContentSelect
 	entryID := model.NewAttemptWorkspaceEntryID()
 	authorization := ExamSubmissionAuthorization{
 		SubmissionID: submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
-		AttemptID: model.NewExamAttemptID(), AcademicUnitID: model.NewAcademicUnitID(),
+		AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID(),
 	}
 	item := ExamSubmissionManifestItem{
 		EntryID: entryID, Kind: model.StarterWorkspaceEntryFile, Path: "cmd/main.go",

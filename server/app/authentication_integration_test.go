@@ -96,6 +96,89 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	}
 }
 
+func TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket(t *testing.T) {
+	dataSource := requireAuthenticationDatabase(t)
+	persistence := openAuthenticationStore(t, dataSource)
+	seedInitialAuthenticationAccessPolicy(t, persistence)
+	helper := testlib.Setup(t, testlib.WithStore(persistence))
+	ctx := context.Background()
+
+	login := func(identity string) (*model.Session, *model.AuthenticationTokens) {
+		t.Helper()
+		user, err := helper.App.CreateLocalUser(ctx, &model.User{
+			Username: identity, Email: identity + "@example.edu",
+		}, "correct horse battery staple")
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := helper.App.Login(ctx, application.Invocation{}, application.LoginCommand{
+			LoginID: user.Username, Password: "correct horse battery staple",
+			ClientType: model.SessionClientCLI, Source: "127.0.0.1:1",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result.Session, result.Tokens
+	}
+	expire := func(sessionID model.SessionID, accessToken string) {
+		t.Helper()
+		if _, err := persistence.GetMaster().Exec(ctx, `UPDATE sessions
+			SET last_activity_at=created_at, idle_expires_at=created_at+interval '1 millisecond'
+			WHERE id=?`, sessionID.String()); err != nil {
+			t.Fatal(err)
+		}
+		// The test shortens an already-cached deadline out of band. Production
+		// deadline changes flow through the application and its invalidation
+		// effects, so mirror that invalidation before exercising the read path.
+		if err := helper.Cache.Delete(ctx, "authentication/access/"+model.HashToken(accessToken)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertExpired := func(sessionID model.SessionID) {
+		t.Helper()
+		session, err := persistence.Session().Get(ctx, sessionID.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !session.RevokedAt.Valid || session.RevocationReason != model.SessionRevocationExpired {
+			t.Fatalf("expired Session = %#v", session)
+		}
+	}
+
+	httpSession, httpTokens := login("expiry-http")
+	expire(httpSession.ID, httpTokens.AccessToken)
+	response := performJSONRequest(
+		helper.Handler(), http.MethodGet, "/api/v1/users/me", nil, httpTokens.AccessToken,
+	)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expired HTTP access status = %d: %s", response.Code, response.Body.String())
+	}
+	assertProblemCode(t, response, "authentication.invalid_token")
+	assertExpired(httpSession.ID)
+
+	refreshSession, refreshTokens := login("expiry-refresh")
+	expire(refreshSession.ID, refreshTokens.AccessToken)
+	response = performJSONRequest(
+		helper.Handler(), http.MethodPost, "/api/v1/auth/refresh", nil, refreshTokens.RefreshToken,
+	)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expired refresh status = %d: %s", response.Code, response.Body.String())
+	}
+	assertProblemCode(t, response, "authentication.invalid_token")
+	assertExpired(refreshSession.ID)
+
+	websocketSession, websocketTokens := login("expiry-websocket")
+	principal, err := helper.App.AuthenticateAccess(ctx, websocketTokens.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expire(websocketSession.ID, websocketTokens.AccessToken)
+	if err = helper.App.ValidateWebSocketPrincipal(ctx, *principal); !application.Is(err, "authentication.invalid_token") {
+		t.Fatalf("expired WebSocket principal error = %v", err)
+	}
+	assertExpired(websocketSession.ID)
+}
+
 func TestPersonalAccessTokenIntegration(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {

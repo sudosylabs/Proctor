@@ -878,6 +878,25 @@ func (f *authoringStoreFake) UpdateDraftExecutionProfile(_ context.Context, inpu
 	}
 	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
 }
+func (f *authoringStoreFake) UpdateDraftBrowserPolicy(_ context.Context, input *store.ExamDraftBrowserPolicyUpdate, command *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	*f.order = append(*f.order, "store.update_browser_policy")
+	f.idempotency = command
+	if f.err != nil {
+		return nil, f.err
+	}
+	snapshot, err := f.Get(context.Background(), input.ExamID, input.ActorUserID)
+	*f.order = (*f.order)[:len(*f.order)-1]
+	if err != nil {
+		return nil, err
+	}
+	if f.replayed {
+		return &store.ExamAuthoringCommandResult{Value: snapshot, Replayed: true}, nil
+	}
+	if _, err = snapshot.Draft.ApplyBrowserPolicy(input.Policy, model.TimeFromMillis(input.UpdatedAt)); err != nil {
+		return nil, err
+	}
+	return &store.ExamAuthoringCommandResult{Value: snapshot}, nil
+}
 func (f *authoringStoreFake) Access(_ context.Context, examID model.ExamID, _ model.UserID) (*store.ExamAccessSnapshot, error) {
 	*f.order = append(*f.order, "store.access")
 	if f.err != nil {

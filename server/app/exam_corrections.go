@@ -50,6 +50,11 @@ type ExamSittingCorrectionInstructions struct {
 	Markdown string
 }
 
+type ExamSittingCorrectionBrowserPolicy struct {
+	Present bool
+	Policy  model.BrowserPolicy
+}
+
 type ExamSittingCorrectionResourceManifestItem struct {
 	ResourceID          model.ExamResourceID
 	DisplayName         string
@@ -63,7 +68,10 @@ type ApplyExamSittingCorrectionCommand struct {
 	ExpectedSittingRevision   int64
 	ExpectedCurrentRevisionID model.ExamRevisionID
 	Instructions              ExamSittingCorrectionInstructions
+	BrowserPolicy             ExamSittingCorrectionBrowserPolicy
 	Resources                 []ExamSittingCorrectionResourceManifestItem
+	CandidateSummary          string
+	AcknowledgementRequired   bool
 	PrivateReason             string
 	IdempotencyKey            string
 }
@@ -104,7 +112,9 @@ func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocat
 	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), examcorrection.ApplyCommand{
 		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedSittingRevision: command.ExpectedSittingRevision,
 		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID, Instructions: examcorrection.OptionalInstructions{Present: command.Instructions.Present, Markdown: command.Instructions.Markdown},
-		Resources: childResources, PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
+		BrowserPolicy: examcorrection.OptionalBrowserPolicy{Present: command.BrowserPolicy.Present, Policy: command.BrowserPolicy.Policy},
+		Resources:     childResources, CandidateSummary: command.CandidateSummary, AcknowledgementRequired: command.AcknowledgementRequired,
+		PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamSittingCorrectionResult{}, examCorrectionError(err, true)
@@ -151,7 +161,13 @@ func (a examCorrectionAuditAdapter) Fail(ctx context.Context, id, code string) e
 	return a.audit.Fail(ctx, id, code)
 }
 
-type examCorrectionRealtimeEffects struct{ realtime *realtimeService }
+type examCorrectionRealtimeEffects struct {
+	realtime    *realtimeService
+	collections examCollectionInvalidationEffects
+	execution   interface {
+		ReleaseSitting(context.Context, model.ExamSittingID) error
+	}
+}
 
 func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result examcorrection.Result) error {
 	managerEvent, err := apprealtime.NewExamSittingContentCorrectedEvent(result.ExamID, result.SittingID, result.PreviousRevisionID, result.RevisionID, result.SittingRevision, result.EffectiveAt)
@@ -162,9 +178,16 @@ func (e examCorrectionRealtimeEffects) Corrected(ctx context.Context, result exa
 	if err != nil {
 		return err
 	}
+	var executionErr error
+	if result.AcknowledgementRequired && e.execution != nil {
+		executionErr = e.execution.ReleaseSitting(ctx, result.SittingID)
+	}
 	return errors.Join(
 		e.realtime.Publish(ctx, managerEvent),
 		e.realtime.Publish(ctx, candidateEvent),
+		e.collections.SittingBoardChanged(ctx, result.ExamID, result.SittingID),
+		e.collections.CandidateActivityChangedForSitting(ctx, result.SittingID),
+		executionErr,
 	)
 }
 func (e examCorrectionRealtimeEffects) Report(ctx context.Context, operation string, err error) {

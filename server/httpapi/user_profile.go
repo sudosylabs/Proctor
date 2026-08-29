@@ -5,10 +5,12 @@ package httpapi
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -52,6 +54,94 @@ type userEmailStateResponse struct {
 	EmailVerified bool   `json:"email_verified"`
 }
 
+type currentUserContextResponse struct {
+	User                         currentUserContextUserResponse       `json:"user"`
+	NoCurrentAffiliation         bool                                 `json:"no_current_affiliation"`
+	NoAssignedAccess             bool                                 `json:"no_assigned_access"`
+	AvailableProductAreas        []application.CurrentUserProductArea `json:"available_product_areas"`
+	ManagementScopes             []currentUserContextScopeResponse    `json:"management_scopes"`
+	ManagementScopesHasMore      bool                                 `json:"management_scopes_has_more"`
+	UnresolvedAttempt            *currentUserContextAttemptResponse   `json:"unresolved_attempt"`
+	SessionManagementAvailable   bool                                 `json:"session_management_available"`
+	CurrentDesktopRegistrationID *string                              `json:"current_desktop_registration_id"`
+}
+
+type currentUserContextScopeResponse struct {
+	ScopeType   string `json:"scope_type"`
+	ScopeID     string `json:"scope_id"`
+	DisplayName string `json:"display_name"`
+}
+
+type currentUserContextAttemptResponse struct {
+	ID        string                 `json:"id"`
+	SittingID string                 `json:"exam_sitting_id"`
+	State     model.ExamAttemptState `json:"state"`
+}
+
+type currentUserContextUserResponse struct {
+	ID                      string `json:"id"`
+	Username                string `json:"username"`
+	DisplayName             string `json:"display_name"`
+	ProfilePictureReference string `json:"profile_picture_reference"`
+}
+
+const (
+	candidateExamActivityCursorVersion = 1
+	candidateExamActivityCursorKind    = "candidate_exam_activity"
+)
+
+type candidateExamActivityCursor struct {
+	Version          int    `json:"version"`
+	Kind             string `json:"kind"`
+	ScheduledStartAt string `json:"scheduled_start_at"`
+	ExamSittingID    string `json:"exam_sitting_id"`
+}
+
+type candidateExamActivityResponse struct {
+	ServerTime string                              `json:"server_time"`
+	Items      []candidateExamActivityItemResponse `json:"items"`
+	NextCursor string                              `json:"next_cursor,omitempty"`
+}
+
+type candidateExamActivityItemResponse struct {
+	ExamID            string                                   `json:"exam_id"`
+	ExamSittingID     string                                   `json:"exam_sitting_id"`
+	Title             string                                   `json:"title"`
+	AcademicUnit      candidateExamActivityRelationResponse    `json:"academic_unit"`
+	Class             candidateExamActivityRelationResponse    `json:"class"`
+	ScheduledStartAt  string                                   `json:"scheduled_start_at"`
+	ScheduledEndAt    string                                   `json:"scheduled_end_at"`
+	SittingState      model.ExamSittingState                   `json:"sitting_state"`
+	SittingReasonCode *string                                  `json:"sitting_reason_code"`
+	ActivityState     application.CandidateExamActivityState   `json:"activity_state"`
+	AccessState       application.CandidateExamAccessState     `json:"access_state"`
+	AllowedActions    []application.CandidateExamAllowedAction `json:"allowed_actions"`
+	Attempt           *candidateExamActivityAttemptResponse    `json:"attempt"`
+	Submission        *candidateExamActivitySubmissionResponse `json:"submission"`
+	Result            *candidateExamActivityResultResponse     `json:"result"`
+}
+
+type candidateExamActivityRelationResponse struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
+type candidateExamActivityAttemptResponse struct {
+	ID                   string                 `json:"id"`
+	State                model.ExamAttemptState `json:"state"`
+	SuspensionReasonCode *string                `json:"suspension_reason_code"`
+}
+
+type candidateExamActivitySubmissionResponse struct {
+	ID          string                         `json:"id"`
+	SubmittedAt string                         `json:"submitted_at"`
+	Provenance  model.ExamSubmissionProvenance `json:"provenance"`
+}
+
+type candidateExamActivityResultResponse struct {
+	ReleasedAt string `json:"released_at"`
+}
+
 type userProfileResourceModule struct {
 	profiles UserProfileApplication
 }
@@ -65,6 +155,10 @@ func userProfileResource(profiles UserProfileApplication) resource {
 		"user-profiles",
 		principalRoute(http.MethodGet, apiPath(literal("users")), userProfileReadCodes("request.invalid", "user.invalid"), module.search),
 		principalRoute(http.MethodGet, apiPath(literal("users"), literal("me")), userProfileReadCodes("resource.not_found"), module.current),
+		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("context")),
+			currentUserContextSessionCodes("administration.unavailable"), module.context),
+		sessionRoute(http.MethodGet, apiPath(literal("users"), literal("me"), literal("exam-activity")),
+			currentUserContextSessionCodes("request.invalid", "exam.attempt.unavailable"), module.examActivity),
 		principalRoute(http.MethodGet, user, userProfileReadCodes("request.invalid", "resource.not_found"), module.get),
 		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
 		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
@@ -73,6 +167,122 @@ func userProfileResource(profiles UserProfileApplication) resource {
 		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
 		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
 	)
+}
+
+func (module userProfileResourceModule) examActivity(request operationRequest) (operationResult, error) {
+	query := application.ListCandidateExamActivityQuery{Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 || limit > 200 {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+		query.Limit = limit
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, err := decodeOpaqueCursor(raw, candidateExamActivityCursorSpec())
+		if err != nil {
+			return operationResult{}, invalidRequestError("cursor", err)
+		}
+		query.BeforeScheduledStart, _ = time.Parse(time.RFC3339Nano, cursor.ScheduledStartAt)
+		query.BeforeSittingID = model.ExamSittingID(cursor.ExamSittingID)
+	}
+	page, err := module.profiles.ListCandidateExamActivity(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := candidateExamActivityResponse{ServerTime: model.TimeUTC(page.ServerTime).Format(time.RFC3339Nano),
+		Items: make([]candidateExamActivityItemResponse, 0, len(page.Items))}
+	for _, item := range page.Items {
+		mapped := candidateExamActivityItemResponse{ExamID: item.ExamID.String(), ExamSittingID: item.SittingID.String(), Title: item.Title,
+			AcademicUnit:     candidateExamActivityRelationResponse{ID: item.AcademicUnitID.String(), DisplayName: item.AcademicUnitDisplayName},
+			Class:            candidateExamActivityRelationResponse{ID: item.ClassID.String(), DisplayName: item.ClassDisplayName},
+			ScheduledStartAt: model.TimeUTC(item.ScheduledStartAt).Format(time.RFC3339Nano),
+			ScheduledEndAt:   model.TimeUTC(item.ScheduledEndAt).Format(time.RFC3339Nano), SittingState: item.SittingState,
+			ActivityState: item.ActivityState, AccessState: item.AccessState,
+			AllowedActions: append([]application.CandidateExamAllowedAction(nil), item.AllowedActions...)}
+		if item.SittingReasonCode != "" {
+			value := item.SittingReasonCode
+			mapped.SittingReasonCode = &value
+		}
+		if item.Attempt != nil {
+			mapped.Attempt = &candidateExamActivityAttemptResponse{ID: item.Attempt.ID.String(), State: item.Attempt.State}
+			if item.Attempt.SuspensionReasonCode != "" {
+				value := string(item.Attempt.SuspensionReasonCode)
+				mapped.Attempt.SuspensionReasonCode = &value
+			}
+		}
+		if item.Submission != nil {
+			mapped.Submission = &candidateExamActivitySubmissionResponse{ID: item.Submission.ID.String(),
+				SubmittedAt: model.TimeUTC(item.Submission.SubmittedAt).Format(time.RFC3339Nano), Provenance: item.Submission.Provenance}
+		}
+		if item.Result != nil {
+			mapped.Result = &candidateExamActivityResultResponse{ReleasedAt: model.TimeUTC(item.Result.ReleasedAt).Format(time.RFC3339Nano)}
+		}
+		response.Items = append(response.Items, mapped)
+	}
+	if page.HasMore {
+		if len(page.Items) == 0 {
+			return operationResult{}, application.NewError("exam.attempt.unavailable")
+		}
+		last := page.Items[len(page.Items)-1]
+		response.NextCursor, err = encodeOpaqueCursor(candidateExamActivityCursor{
+			Kind: candidateExamActivityCursorKind, ScheduledStartAt: model.TimeUTC(last.ScheduledStartAt).Format(time.RFC3339Nano),
+			ExamSittingID: last.SittingID.String(),
+		}, candidateExamActivityCursorSpec())
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func candidateExamActivityCursorSpec() opaqueCursorSpec[candidateExamActivityCursor] {
+	return opaqueCursorSpec[candidateExamActivityCursor]{label: "candidate Exam activity",
+		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: candidateExamActivityCursorVersion,
+		members:        []string{"version", "kind", "scheduled_start_at", "exam_sitting_id"},
+		version:        func(cursor candidateExamActivityCursor) int { return cursor.Version },
+		setVersion:     func(cursor *candidateExamActivityCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == candidateExamActivityCursorVersion },
+		validate: func(cursor candidateExamActivityCursor) error {
+			at, err := time.Parse(time.RFC3339Nano, cursor.ScheduledStartAt)
+			if cursor.Kind != candidateExamActivityCursorKind || err != nil || at.IsZero() ||
+				!model.ExamSittingID(cursor.ExamSittingID).IsValid() {
+				return errors.New("invalid candidate Exam activity keyset")
+			}
+			return nil
+		}}
+}
+
+func currentUserContextSessionCodes(extra ...string) []string {
+	return append([]string{"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous"}, extra...)
+}
+
+func (module userProfileResourceModule) context(request operationRequest) (operationResult, error) {
+	view, err := module.profiles.GetCurrentUserContext(request.context, request.invocation())
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := currentUserContextResponse{User: currentUserContextUserResponse{ID: view.UserID.String(), Username: view.Username,
+		DisplayName: view.DisplayName, ProfilePictureReference: view.ProfilePictureReference},
+		NoCurrentAffiliation: view.NoCurrentAffiliation, NoAssignedAccess: view.NoAssignedAccess,
+		AvailableProductAreas:   append([]application.CurrentUserProductArea(nil), view.AvailableProductAreas...),
+		ManagementScopesHasMore: view.ManagementScopesHasMore, SessionManagementAvailable: view.SessionManagementAvailable,
+		ManagementScopes: make([]currentUserContextScopeResponse, 0, len(view.ManagementScopes))}
+	for _, scope := range view.ManagementScopes {
+		response.ManagementScopes = append(response.ManagementScopes, currentUserContextScopeResponse{
+			ScopeType: string(scope.ScopeType), ScopeID: scope.ScopeID, DisplayName: scope.DisplayName,
+		})
+	}
+	if view.UnresolvedAttempt != nil {
+		response.UnresolvedAttempt = &currentUserContextAttemptResponse{ID: view.UnresolvedAttempt.AttemptID.String(),
+			SittingID: view.UnresolvedAttempt.SittingID.String(), State: view.UnresolvedAttempt.State}
+	}
+	if view.CurrentDesktopRegistrationID.IsValid() {
+		id := view.CurrentDesktopRegistrationID.String()
+		response.CurrentDesktopRegistrationID = &id
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
 func (module userProfileResourceModule) changeEmail(request operationRequest) (operationResult, error) {

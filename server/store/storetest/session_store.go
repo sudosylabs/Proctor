@@ -22,6 +22,7 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("SaveResolveAndList", func(t *testing.T) { testSessionSaveResolveAndList(t, ss) })
 	t.Run("MaximumActive", func(t *testing.T) { testSessionMaximumActive(t, ss) })
 	t.Run("UpdateActivity", func(t *testing.T) { testSessionUpdateActivity(t, ss) })
+	t.Run("EnforceExpiry", func(t *testing.T) { testSessionEnforceExpiry(t, ss) })
 	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
 	t.Run("RevokeWithAudit", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
@@ -30,10 +31,57 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 		testSessionDisabledMailRecordsTerminalAdministrativeNotice(t, ss)
 	})
 	t.Run("RotateAndDetectReplay", func(t *testing.T) { testSessionRotateAndDetectReplay(t, ss) })
+	t.Run("RotateEnforcesSessionExpiry", func(t *testing.T) { testSessionRotateEnforcesSessionExpiry(t, ss) })
 	t.Run("ConcurrentRefreshReplay", func(t *testing.T) { testSessionConcurrentRefreshReplay(t, ss) })
 	t.Run("ConcurrentRefreshAndRevokeAll", func(t *testing.T) {
 		testSessionConcurrentRefreshAndRevokeAll(t, ss)
 	})
+}
+
+func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	active, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	beforeExpiry, err := ss.Session().EnforceExpiry(
+		ctx,
+		active.ID.String(),
+		user.ID.String(),
+		model.MillisFromTime(active.IdleExpiresAt.Add(-time.Millisecond)),
+	)
+	requireNoError(t, err)
+	if beforeExpiry.Expired || beforeExpiry.Session == nil || beforeExpiry.Session.ID != active.ID ||
+		beforeExpiry.Session.RevokedAt.Valid || len(beforeExpiry.TokenHashes) != 0 {
+		t.Fatalf("EnforceExpiry(before deadline) = %#v", beforeExpiry)
+	}
+
+	expired, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	at := model.MillisFromTime(expired.IdleExpiresAt.Add(time.Second))
+	result, err := ss.Session().EnforceExpiry(
+		ctx,
+		expired.ID.String(),
+		user.ID.String(),
+		at,
+	)
+	requireNoError(t, err)
+	if !result.Expired || result.Session == nil || result.Session.RevokedAt.Millis() != at ||
+		result.Session.RevocationReason != model.SessionRevocationExpired || len(result.TokenHashes) != 2 {
+		t.Fatalf("EnforceExpiry(deadline) = %#v", result)
+	}
+	for _, token := range []struct {
+		raw  string
+		kind model.SessionCredentialKind
+	}{{raw.access, model.SessionCredentialAccess}, {raw.refresh, model.SessionCredentialRefresh}} {
+		credential, resolved, resolveErr := ss.SessionCredential().GetSessionByTokenHash(
+			ctx, model.HashToken(token.raw), token.kind,
+		)
+		requireNoError(t, resolveErr)
+		if credential.RevokedAt.Millis() != at || resolved.RevokedAt.Millis() != at {
+			t.Fatalf("expired credential/session = %#v / %#v", credential, resolved)
+		}
+	}
+	if _, err = ss.Session().EnforceExpiry(ctx, expired.ID.String(), user.ID.String(), at+1); !store.IsNotFound(err) {
+		t.Fatalf("repeated EnforceExpiry() error = %v", err)
+	}
 }
 
 func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
@@ -386,6 +434,35 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 	}
 }
 
+func testSessionRotateEnforcesSessionExpiry(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
+	at := model.MillisFromTime(session.IdleExpiresAt.Add(time.Second))
+	rotation, err := ss.SessionCredential().RotateRefresh(
+		ctx,
+		model.HashToken(raw.refresh),
+		&model.SessionCredential{
+			TokenHash: model.HashToken(model.NewCredentialToken()),
+			ExpiresAt: model.TimeFromMillis(at + int64((15*time.Minute)/time.Millisecond)),
+		},
+		&model.SessionCredential{
+			TokenHash: model.HashToken(model.NewCredentialToken()),
+			ExpiresAt: session.ExpiresAt,
+		},
+		at,
+		model.MillisFromTime(session.ExpiresAt),
+	)
+	requireNoError(t, err)
+	if !rotation.Expired || rotation.ReplayDetected || rotation.Session == nil ||
+		rotation.Session.RevokedAt.Millis() != at ||
+		rotation.Session.RevocationReason != model.SessionRevocationExpired ||
+		rotation.AccessCredential != nil || rotation.RefreshCredential != nil ||
+		len(rotation.RevokedAccessHashes) != 2 {
+		t.Fatalf("RotateRefresh(expired Session) = %#v", rotation)
+	}
+}
+
 func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
@@ -524,7 +601,7 @@ func newSession(userID string) (*model.Session, []*model.SessionCredential, rawS
 	absolute := now.Add(30 * 24 * time.Hour)
 	session := &model.Session{
 		UserID:                 model.UserID(userID),
-		ClientType:             model.SessionClientDesktop,
+		ClientType:             model.SessionClientWeb,
 		DeviceID:               "test-device",
 		DeviceName:             "Test Device",
 		AuthenticationMethod:   "password",

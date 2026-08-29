@@ -332,6 +332,7 @@ func workspaceMutationSelector(call Call, access WorkspaceMutationAccess) (store
 	}
 	return store.ExamAttemptWorkspaceMutationAccess{AttemptID: read.AttemptID, ParticipationID: access.ParticipationID,
 		Generation: access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
+		DesktopRegistrationID: read.DesktopRegistrationID, DPoPKeyThumbprint: read.DPoPKeyThumbprint,
 		ConnectionID: read.ConnectionID, ContinuityCredentialHash: read.ContinuityCredentialHash}, nil
 }
 

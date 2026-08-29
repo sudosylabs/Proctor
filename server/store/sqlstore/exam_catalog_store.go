@@ -17,15 +17,26 @@ import (
 )
 
 type examSummaryRow struct {
-	ID             string       `db:"id"`
-	AcademicUnitID string       `db:"academic_unit_id"`
-	CreatorUserID  string       `db:"creator_user_id"`
-	OwnerUserID    string       `db:"owner_user_id"`
-	Title          string       `db:"title"`
-	UpdatedAt      time.Time    `db:"updated_at"`
-	ArchivedAt     sql.NullTime `db:"archived_at"`
-	Revision       int64        `db:"revision"`
-	ManagerCount   int          `db:"manager_count"`
+	ID                      string         `db:"id"`
+	AcademicUnitID          string         `db:"academic_unit_id"`
+	AcademicUnitDisplayName string         `db:"academic_unit_display_name"`
+	CreatorUserID           string         `db:"creator_user_id"`
+	OwnerUserID             string         `db:"owner_user_id"`
+	Title                   string         `db:"title"`
+	UpdatedAt               time.Time      `db:"updated_at"`
+	ArchivedAt              sql.NullTime   `db:"archived_at"`
+	Revision                int64          `db:"revision"`
+	ManagerCount            int            `db:"manager_count"`
+	SittingCount            int            `db:"sitting_count"`
+	MatchingSittingCount    int            `db:"matching_sitting_count"`
+	SittingID               sql.NullString `db:"sitting_id"`
+	SittingExamRevisionID   sql.NullString `db:"sitting_exam_revision_id"`
+	SittingClassID          sql.NullString `db:"sitting_class_id"`
+	SittingClassDisplayName sql.NullString `db:"sitting_class_display_name"`
+	SittingScheduledStartAt sql.NullTime   `db:"sitting_scheduled_start_at"`
+	SittingScheduledEndAt   sql.NullTime   `db:"sitting_scheduled_end_at"`
+	SittingState            sql.NullString `db:"sitting_state"`
+	SittingRevision         sql.NullInt64  `db:"sitting_revision"`
 }
 
 type examCatalogReader interface {
@@ -59,20 +70,59 @@ func (s SQLExamAuthoringStore) List(ctx context.Context, options store.ExamListO
 func examCatalogQuery(options store.ExamListOptions) (string, []any) {
 	ordinaryRoots := append([]string(nil), options.Visibility.OrdinaryAcademicUnitRootIDs...)
 	overrideRoots := append([]string(nil), options.Visibility.OverrideAcademicUnitRootIDs...)
+	hasSittingFilters := len(options.SittingStates) > 0 || !options.EndsAfter.IsZero()
 	query := `WITH RECURSIVE ordinary_units AS (
 		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
 		UNION ALL SELECT child.id FROM academic_units child JOIN ordinary_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
 	), override_units AS (
 		SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
 		UNION ALL SELECT child.id FROM academic_units child JOIN override_units parent ON child.parent_id = parent.id WHERE child.archived_at IS NULL
-	)
-	SELECT e.id, e.academic_unit_id, e.creator_user_id, e.owner_user_id, d.title,
+	), eligible_sittings AS (
+		SELECT s.* FROM exam_sittings s WHERE TRUE`
+	args := []any{pq.Array(ordinaryRoots), pq.Array(overrideRoots)}
+	if len(options.SittingStates) > 0 {
+		states := make([]string, len(options.SittingStates))
+		for index, state := range options.SittingStates {
+			states[index] = string(state)
+		}
+		query += ` AND s.state=ANY(?)`
+		args = append(args, pq.Array(states))
+	}
+	if !options.EndsAfter.IsZero() {
+		query += ` AND s.scheduled_end_at>? AND s.scheduled_start_at<?`
+		args = append(args, model.TimeUTC(options.EndsAfter), model.TimeUTC(options.StartsBefore))
+	}
+	query += `)
+	SELECT e.id, e.academic_unit_id, au.display_name AS academic_unit_display_name,
+		e.creator_user_id, e.owner_user_id, d.title,
 		e.updated_at, e.archived_at, e.revision,
-		(SELECT COUNT(*) FROM exam_managers counted WHERE counted.exam_id = e.id) AS manager_count
-	FROM exams e JOIN exam_drafts d ON d.exam_id = e.id
+		(SELECT COUNT(*) FROM exam_managers counted WHERE counted.exam_id=e.id) AS manager_count,
+		(SELECT COUNT(*) FROM exam_sittings counted WHERE counted.exam_id=e.id) AS sitting_count,
+		(SELECT COUNT(*) FROM eligible_sittings counted WHERE counted.exam_id=e.id) AS matching_sitting_count,
+		selected.id AS sitting_id, selected.exam_revision_id AS sitting_exam_revision_id,
+		selected.class_id AS sitting_class_id, selected.class_display_name AS sitting_class_display_name,
+		selected.scheduled_start_at AS sitting_scheduled_start_at, selected.scheduled_end_at AS sitting_scheduled_end_at,
+		selected.state AS sitting_state, selected.revision AS sitting_revision
+	FROM exams e JOIN exam_drafts d ON d.exam_id=e.id JOIN academic_units au ON au.id=e.academic_unit_id
+	LEFT JOIN LATERAL (
+		SELECT s.id,s.exam_revision_id,s.class_id,c.display_name AS class_display_name,
+			s.scheduled_start_at,s.scheduled_end_at,s.state,s.revision
+		FROM eligible_sittings s JOIN classes c ON c.id=s.class_id WHERE s.exam_id=e.id
+		ORDER BY CASE s.state WHEN 'paused' THEN 1 WHEN 'closing' THEN 2 WHEN 'open' THEN 3
+			WHEN 'scheduled' THEN 4 ELSE 5 END,
+			CASE WHEN s.state IN ('paused','closing','open') THEN s.scheduled_end_at END ASC,
+			CASE WHEN s.state IN ('paused','closing','open') THEN s.scheduled_start_at END ASC,
+			CASE WHEN s.state='scheduled' THEN s.scheduled_start_at END ASC,
+			CASE WHEN s.state IN ('closed','canceled') THEN s.scheduled_end_at END DESC,
+			CASE WHEN s.state IN ('closed','canceled') THEN s.id END DESC,
+			s.id ASC LIMIT 1
+	) selected ON TRUE
 	WHERE (? = '' OR e.academic_unit_id = ?)
 	`
-	args := []any{pq.Array(ordinaryRoots), pq.Array(overrideRoots), options.AcademicUnitID.String(), options.AcademicUnitID.String()}
+	args = append(args, options.AcademicUnitID.String(), options.AcademicUnitID.String())
+	if hasSittingFilters {
+		query += ` AND EXISTS (SELECT 1 FROM eligible_sittings matching WHERE matching.exam_id=e.id)`
+	}
 	switch options.ArchiveFilter {
 	case store.ExamArchiveActive:
 		query += ` AND e.archived_at IS NULL`
@@ -177,6 +227,20 @@ func validateExamListOptions(options store.ExamListOptions) error {
 	if !options.AcademicUnitID.IsZero() && !options.AcademicUnitID.IsValid() {
 		return store.NewErrInvalidInput("exam", "academic_unit_id", nil)
 	}
+	if options.EndsAfter.IsZero() != options.StartsBefore.IsZero() ||
+		(!options.EndsAfter.IsZero() && !options.EndsAfter.Before(options.StartsBefore)) {
+		return store.NewErrInvalidInput("exam", "sitting_interval", nil)
+	}
+	seenStates := make(map[model.ExamSittingState]struct{}, len(options.SittingStates))
+	for _, state := range options.SittingStates {
+		if !state.IsValid() {
+			return store.NewErrInvalidInput("exam", "sitting_state", nil)
+		}
+		if _, exists := seenStates[state]; exists {
+			return store.NewErrInvalidInput("exam", "sitting_state", nil)
+		}
+		seenStates[state] = struct{}{}
+	}
 	return nil
 }
 
@@ -247,11 +311,45 @@ func (r examSummaryRow) model() (store.ExamSummary, error) {
 	if err != nil {
 		return store.ExamSummary{}, invalidPersistedState("exam", "owner_user_id", err)
 	}
-	if r.Title == "" || r.UpdatedAt.IsZero() || r.Revision < 1 || r.ManagerCount < 1 {
+	if r.Title == "" || r.AcademicUnitDisplayName == "" || r.UpdatedAt.IsZero() || r.Revision < 1 || r.ManagerCount < 1 ||
+		r.SittingCount < 0 || r.MatchingSittingCount < 0 || r.MatchingSittingCount > r.SittingCount {
 		return store.ExamSummary{}, invalidPersistedState("exam", "summary", errors.New("invalid Exam summary"))
 	}
-	return store.ExamSummary{ID: id, AcademicUnitID: unitID, CreatorUserID: creatorID, OwnerUserID: ownerID,
-		Title: r.Title, UpdatedAt: model.TimeUTC(r.UpdatedAt), ArchivedAt: OptionalTimeFromNullTime(r.ArchivedAt), Revision: r.Revision, ManagerCount: r.ManagerCount}, nil
+	result := store.ExamSummary{ID: id, AcademicUnitID: unitID, AcademicUnitDisplayName: r.AcademicUnitDisplayName,
+		CreatorUserID: creatorID, OwnerUserID: ownerID, Title: r.Title, UpdatedAt: model.TimeUTC(r.UpdatedAt),
+		ArchivedAt: OptionalTimeFromNullTime(r.ArchivedAt), Revision: r.Revision, ManagerCount: r.ManagerCount,
+		SittingCount: r.SittingCount, MatchingSittingCount: r.MatchingSittingCount}
+	if r.SittingID.Valid {
+		if !r.SittingExamRevisionID.Valid || !r.SittingClassID.Valid || !r.SittingClassDisplayName.Valid ||
+			!r.SittingScheduledStartAt.Valid || !r.SittingScheduledEndAt.Valid || !r.SittingState.Valid || !r.SittingRevision.Valid {
+			return store.ExamSummary{}, invalidPersistedState("exam", "sitting_summary", errors.New("partial Sitting summary"))
+		}
+		sittingID, parseErr := model.ParseExamSittingID(r.SittingID.String)
+		if parseErr != nil {
+			return store.ExamSummary{}, invalidPersistedState("exam", "sitting_id", parseErr)
+		}
+		revisionID, parseErr := model.ParseExamRevisionID(r.SittingExamRevisionID.String)
+		if parseErr != nil {
+			return store.ExamSummary{}, invalidPersistedState("exam", "sitting_exam_revision_id", parseErr)
+		}
+		classID, parseErr := model.ParseClassID(r.SittingClassID.String)
+		state := model.ExamSittingState(r.SittingState.String)
+		if parseErr != nil {
+			return store.ExamSummary{}, invalidPersistedState("exam", "sitting_class_id", parseErr)
+		}
+		if !state.IsValid() || r.SittingClassDisplayName.String == "" || r.SittingRevision.Int64 < 1 ||
+			!r.SittingScheduledEndAt.Time.After(r.SittingScheduledStartAt.Time) {
+			return store.ExamSummary{}, invalidPersistedState("exam", "sitting_summary", errors.New("invalid Sitting summary"))
+		}
+		result.SittingSummary = &store.ExamCatalogSittingSummary{ID: sittingID, ExamRevisionID: revisionID,
+			ClassID: classID, ClassDisplayName: r.SittingClassDisplayName.String,
+			ScheduledStartAt: model.TimeUTC(r.SittingScheduledStartAt.Time), ScheduledEndAt: model.TimeUTC(r.SittingScheduledEndAt.Time),
+			State: state, Revision: r.SittingRevision.Int64}
+	} else if r.SittingExamRevisionID.Valid || r.SittingClassID.Valid || r.SittingClassDisplayName.Valid ||
+		r.SittingScheduledStartAt.Valid || r.SittingScheduledEndAt.Valid || r.SittingState.Valid || r.SittingRevision.Valid {
+		return store.ExamSummary{}, invalidPersistedState("exam", "sitting_summary", errors.New("orphan Sitting summary fields"))
+	}
+	return result, nil
 }
 
 func examAccessRowFromModel(exam *model.Exam) examAccessRow {

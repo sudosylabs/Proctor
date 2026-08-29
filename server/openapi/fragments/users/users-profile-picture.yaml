@@ -30,8 +30,13 @@ paths:
         - request.invalid
         - resource.not_found
         - profile_picture.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: size
@@ -66,6 +71,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     put:
       operationId: uploadUserProfilePicture
       summary: Upload and normalize a custom profile picture
@@ -99,8 +106,13 @@ paths:
         - profile_picture.invalid
         - profile_picture.unavailable
         - user.conflict
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -142,6 +154,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       operationId: removeUserProfilePicture
       summary: Remove the custom profile picture and return to the retained default
@@ -172,8 +186,13 @@ paths:
         - resource.not_found
         - profile_picture.unavailable
         - user.conflict
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -198,6 +217,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     ProfilePictureOK:

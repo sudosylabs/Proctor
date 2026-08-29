@@ -32,8 +32,13 @@ paths:
         - mail.test.rate_limited
         - mail.conflict
         - mail.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -51,6 +56,8 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     MailDeliveryAccepted:

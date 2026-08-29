@@ -24,9 +24,14 @@ paths:
         - authentication.rate_limit_unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:

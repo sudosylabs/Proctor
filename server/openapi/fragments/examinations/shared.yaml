@@ -113,6 +113,7 @@ components:
         - instructions_markdown
         - policy
         - execution_profile
+        - browser_policy
         - capacity
         - updated_at
         - revision
@@ -130,6 +131,8 @@ components:
           $ref: '#/components/schemas/ExamPolicySet'
         execution_profile:
           $ref: '#/components/schemas/ExecutionProfile'
+        browser_policy:
+          $ref: '#/components/schemas/BrowserPolicy'
         capacity:
           $ref: '#/components/schemas/ExamCapacityPolicy'
         base_revision_id:
@@ -163,6 +166,68 @@ components:
           enum:
             - none
             - allowlist
+    BrowserPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - enabled
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        enabled:
+          type: boolean
+        start_rule_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BrowserPolicyRule'
+      oneOf:
+        - properties:
+            enabled:
+              const: false
+        - required:
+            - start_rule_id
+            - rules
+          properties:
+            enabled:
+              const: true
+    BrowserPolicyRule:
+      type: object
+      additionalProperties: false
+      required:
+        - rule_id
+        - origin
+        - path_prefix
+        - host_match
+        - allow_redirects
+        - blocked_navigation_outcome
+      properties:
+        rule_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        origin:
+          type: string
+          format: uri
+          pattern: '^https://'
+        path_prefix:
+          type: string
+          pattern: '^/'
+        host_match:
+          type: string
+          enum: [exact, exact_and_subdomains]
+        allow_redirects:
+          type: boolean
+        blocked_navigation_outcome:
+          type: string
+          const: record
     ExamPolicySet:
       type: object
       additionalProperties: false

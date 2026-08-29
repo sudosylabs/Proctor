@@ -1,4 +1,71 @@
 paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/end:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+    post:
+      operationId: endExamAttemptByManager
+      summary: End and seal one unfinished Exam Attempt
+      tags:
+        - Submissions
+      description: >-
+        An authorized current Exam Manager atomically seals the last acknowledged Workspace state and ends one active, ready, or suspended Attempt. The private reason is retained for audit and is never returned to the candidate. At or after the Sitting deadline, scheduled closure owns terminal provenance.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.revision_conflict
+        - exam.attempt.state_conflict
+        - exam.attempt.sitting_unavailable
+        - exam.attempt.management_authority_conflict
+        - exam.attempt.conflict
+        - exam.attempt.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/EndExamAttemptByManager'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSubmissionReceiptOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -26,8 +93,13 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -42,6 +114,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/manifest:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -68,8 +142,13 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: limit
@@ -100,6 +179,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   ? /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/submissions/{submission_id}/files/{attempt_workspace_entry_id}/content
   : parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -128,8 +209,13 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: If-None-Match
@@ -153,8 +239,30 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
+  requestBodies:
+    EndExamAttemptByManager:
+      description: Exact Attempt revision and private bounded manager reason for sealing one unfinished Attempt before scheduled closure owns it.
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EndExamAttemptByManagerRequest'
+          example:
+            expected_attempt_revision: 7
+            reason: Candidate requested an early end after completing the exam.
   responses:
+    ExamSubmissionReceiptOK:
+      description: Candidate-safe retained receipt for the manager-ended Submission or its exact replay
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSubmissionReceiptResponse'
     ExamSubmissionManagerOK:
       description: Protected immutable Submission header for an authorized current Exam Manager
       headers:
@@ -212,6 +320,20 @@ components:
             type: string
             const: nosniff
   schemas:
+    EndExamAttemptByManagerRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_attempt_revision, reason]
+      properties:
+        expected_attempt_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Trimmed private manager reason; never exposed to the candidate.
     ExamSubmissionManagerResponse:
       description: Manager-safe immutable Submission header without Workspace bytes or integrity evidence.
       type: object
@@ -221,6 +343,7 @@ components:
         - exam_id
         - exam_sitting_id
         - exam_attempt_id
+        - exam_revision_id
         - workspace_id
         - manifest_schema_version
         - workspace_cursor
@@ -240,6 +363,9 @@ components:
           $ref: '#/components/schemas/ID'
         exam_attempt_id:
           $ref: '#/components/schemas/ID'
+        exam_revision_id:
+          $ref: '#/components/schemas/ID'
+          description: Exact Exam Sitting Revision governing the atomic Submission commit.
         workspace_id:
           $ref: '#/components/schemas/ID'
         manifest_schema_version:

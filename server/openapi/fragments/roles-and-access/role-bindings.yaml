@@ -18,8 +18,13 @@ paths:
         - authorization.unavailable
         - request.invalid
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: user_id
@@ -48,6 +53,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       operationId: createRoleBinding
       summary: Create a Role Binding
@@ -74,8 +81,13 @@ paths:
         - role_binding.conflict
         - role_binding.system_admin_requires_institution_scope
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -95,6 +107,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/role-bindings/{role_binding_id}:
     parameters:
       - $ref: '#/components/parameters/RoleBindingID'
@@ -130,8 +144,13 @@ paths:
         - role_binding.conflict
         - role_binding.last_system_admin
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -149,6 +168,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     RoleBindingID:

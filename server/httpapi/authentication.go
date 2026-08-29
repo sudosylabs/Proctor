@@ -30,6 +30,7 @@ type credentialSource string
 const (
 	credentialSourceBearer credentialSource = "bearer"
 	credentialSourceCookie credentialSource = "cookie"
+	credentialSourceDPoP   credentialSource = "dpop"
 )
 
 type requestCredential struct {
@@ -77,27 +78,34 @@ type authenticationResponse struct {
 }
 
 type sessionResponse struct {
-	ID                     string `json:"id"`
-	CreateAt               int64  `json:"create_at"`
-	UpdateAt               int64  `json:"update_at"`
-	DeleteAt               int64  `json:"delete_at"`
-	UserID                 string `json:"user_id"`
-	ClientType             string `json:"client_type"`
-	DeviceID               string `json:"device_id,omitempty"`
-	DeviceName             string `json:"device_name,omitempty"`
-	AuthenticationMethod   string `json:"authentication_method"`
-	AuthenticationStrength string `json:"authentication_strength"`
-	AuthenticatedAt        int64  `json:"authenticated_at"`
-	MFACompletedAt         int64  `json:"mfa_completed_at,omitempty"`
-	LastActivityAt         int64  `json:"last_activity_at"`
-	IdleExpiresAt          int64  `json:"idle_expires_at"`
-	ExpiresAt              int64  `json:"expires_at"`
-	RevokedAt              int64  `json:"revoked_at,omitempty"`
-	RevocationReasonCode   string `json:"revocation_reason_code,omitempty"`
-	RevocationReason       string `json:"revocation_reason,omitempty"`
+	ID                      string `json:"id"`
+	CreateAt                int64  `json:"create_at"`
+	UpdateAt                int64  `json:"update_at"`
+	DeleteAt                int64  `json:"delete_at"`
+	UserID                  string `json:"user_id"`
+	ClientType              string `json:"client_type"`
+	DesktopRegistrationID   string `json:"desktop_registration_id,omitempty"`
+	DesktopRelease          string `json:"desktop_release,omitempty"`
+	DesktopBuildID          string `json:"desktop_build_id,omitempty"`
+	DesktopPlatform         string `json:"desktop_platform,omitempty"`
+	DesktopArchitecture     string `json:"desktop_architecture,omitempty"`
+	DesktopRealtimeProtocol int    `json:"desktop_realtime_protocol,omitempty"`
+	DeviceID                string `json:"device_id,omitempty"`
+	DeviceName              string `json:"device_name,omitempty"`
+	AuthenticationMethod    string `json:"authentication_method"`
+	AuthenticationStrength  string `json:"authentication_strength"`
+	AuthenticatedAt         int64  `json:"authenticated_at"`
+	MFACompletedAt          int64  `json:"mfa_completed_at,omitempty"`
+	LastActivityAt          int64  `json:"last_activity_at"`
+	IdleExpiresAt           int64  `json:"idle_expires_at"`
+	ExpiresAt               int64  `json:"expires_at"`
+	RevokedAt               int64  `json:"revoked_at,omitempty"`
+	RevocationReasonCode    string `json:"revocation_reason_code,omitempty"`
+	RevocationReason        string `json:"revocation_reason,omitempty"`
 }
 
 type authenticationTokensResponse struct {
+	TokenType        string `json:"token_type"`
 	AccessToken      string `json:"access_token"`
 	RefreshToken     string `json:"refresh_token"`
 	AccessExpiresAt  int64  `json:"access_expires_at"`
@@ -109,24 +117,28 @@ func sessionResponseFromModel(request *http.Request, session *model.Session) *se
 		return nil
 	}
 	return &sessionResponse{
-		ID:                     session.ID.String(),
-		CreateAt:               model.MillisFromTime(session.CreatedAt),
-		UpdateAt:               model.MillisFromTime(session.UpdatedAt),
-		DeleteAt:               session.ArchivedAt.Millis(),
-		UserID:                 session.UserID.String(),
-		ClientType:             string(session.ClientType),
-		DeviceID:               session.DeviceID,
-		DeviceName:             session.DeviceName,
-		AuthenticationMethod:   session.AuthenticationMethod,
-		AuthenticationStrength: string(session.AuthenticationStrength),
-		AuthenticatedAt:        model.MillisFromTime(session.AuthenticatedAt),
-		MFACompletedAt:         session.MFACompletedAt.Millis(),
-		LastActivityAt:         model.MillisFromTime(session.LastActivityAt),
-		IdleExpiresAt:          model.MillisFromTime(session.IdleExpiresAt),
-		ExpiresAt:              model.MillisFromTime(session.ExpiresAt),
-		RevokedAt:              session.RevokedAt.Millis(),
-		RevocationReasonCode:   string(session.RevocationReason),
-		RevocationReason:       localizedSessionRevocationReason(request, session.RevocationReason),
+		ID:                    session.ID.String(),
+		CreateAt:              model.MillisFromTime(session.CreatedAt),
+		UpdateAt:              model.MillisFromTime(session.UpdatedAt),
+		DeleteAt:              session.ArchivedAt.Millis(),
+		UserID:                session.UserID.String(),
+		ClientType:            string(session.ClientType),
+		DesktopRegistrationID: session.DesktopRegistrationID.String(),
+		DesktopRelease:        session.DesktopRelease, DesktopBuildID: session.DesktopBuildID,
+		DesktopPlatform: string(session.DesktopPlatform), DesktopArchitecture: string(session.DesktopArchitecture),
+		DesktopRealtimeProtocol: session.DesktopRealtimeProtocol,
+		DeviceID:                session.DeviceID,
+		DeviceName:              session.DeviceName,
+		AuthenticationMethod:    session.AuthenticationMethod,
+		AuthenticationStrength:  string(session.AuthenticationStrength),
+		AuthenticatedAt:         model.MillisFromTime(session.AuthenticatedAt),
+		MFACompletedAt:          session.MFACompletedAt.Millis(),
+		LastActivityAt:          model.MillisFromTime(session.LastActivityAt),
+		IdleExpiresAt:           model.MillisFromTime(session.IdleExpiresAt),
+		ExpiresAt:               model.MillisFromTime(session.ExpiresAt),
+		RevokedAt:               session.RevokedAt.Millis(),
+		RevocationReasonCode:    string(session.RevocationReason),
+		RevocationReason:        localizedSessionRevocationReason(request, session.RevocationReason),
 	}
 }
 
@@ -166,6 +178,10 @@ func sessionRevocationReasonPresentation(reason model.SessionRevocationReason) s
 		return "Authentication audit completion failed."
 	case model.SessionRevocationAccessPolicyChanged:
 		return "The authentication access policy changed."
+	case model.SessionRevocationDesktopRegistration:
+		return "The Desktop Registration was revoked."
+	case model.SessionRevocationAttemptSessionLock:
+		return "Signed out when an exam attempt became active."
 	default:
 		return ""
 	}
@@ -176,6 +192,7 @@ func authenticationTokensResponseFromModel(tokens *model.AuthenticationTokens) *
 		return nil
 	}
 	return &authenticationTokensResponse{
+		TokenType:        tokens.TokenType,
 		AccessToken:      tokens.AccessToken,
 		RefreshToken:     tokens.RefreshToken,
 		AccessExpiresAt:  model.MillisFromTime(tokens.AccessExpiresAt),
@@ -306,7 +323,7 @@ func authenticationLoginErrorCodes() []string {
 		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid",
 		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code",
 		"authentication.mfa.unavailable",
-		"authentication.sessions.maximum_reached", "authentication.rate_limited",
+		"authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited",
 		"authentication.rate_limit_unavailable", "authentication.internal",
 	}
 }
@@ -315,6 +332,8 @@ func authenticationRefreshErrorCodes() []string {
 	return []string{
 		"authentication.required", "authentication.invalid_token", "authentication.credential_ambiguous",
 		"authentication.csrf.invalid", "authentication.session.invalid", "authentication.internal",
+		"authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce",
+		"authentication.dpop.unavailable",
 	}
 }
 
@@ -361,16 +380,30 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 	if !ok {
 		return operationResult{}, authenticationRequiredError()
 	}
+	command := application.RefreshSessionCommand{RefreshToken: credential.token}
+	if credential.source == credentialSourceDPoP {
+		proof, proofErr := requestDPoPProof(request.request)
+		if proofErr != nil {
+			return operationResult{}, errorWithHeaders(proofErr, dpopErrorHeaders(proofErr))
+		}
+		command.DPoP = &application.DPoPRequestProof{
+			Proof: proof, Method: request.request.Method, Path: request.request.URL.EscapedPath(),
+		}
+	}
 	session, tokens, err := module.authentication.RefreshSession(
 		request.context,
 		application.NewInvocation(model.Principal{}, request.metadata),
-		application.RefreshSessionCommand{RefreshToken: credential.token},
+		command,
 	)
 	if err != nil {
-		if credential.source == credentialSourceCookie {
-			return operationResult{}, errorWithHeaders(err, captureResponseHeaders(module.cookies.clear))
+		headers := http.Header{}
+		if command.DPoP != nil {
+			headers = dpopErrorHeaders(err)
 		}
-		return operationResult{}, err
+		if credential.source == credentialSourceCookie {
+			headers = combineResponseHeaders(headers, captureResponseHeaders(module.cookies.clear))
+		}
+		return operationResult{}, errorWithHeaders(err, headers)
 	}
 	response := authenticationResponseFromRefresh(request.request, session, tokens)
 	headers := http.Header{"Cache-Control": {"no-store"}}
@@ -381,6 +414,15 @@ func (module authenticationResourceModule) refresh(request operationRequest) (op
 		}))
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(headers), nil
+}
+
+func dpopErrorHeaders(err error) http.Header {
+	headers := http.Header{"WWW-Authenticate": {`DPoP error="invalid_dpop_proof"`}}
+	if nonce, ok := application.DPoPChallengeNonce(err); ok {
+		headers.Set("DPoP-Nonce", nonce)
+		headers.Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+	}
+	return headers
 }
 
 func (module authenticationResourceModule) logout(request operationRequest) (operationResult, error) {
@@ -471,7 +513,7 @@ func requestCredentialFrom(
 	request *http.Request,
 	cookieName string,
 ) (requestCredential, error) {
-	bearer, hasBearer, appErr := optionalBearerCredential(request)
+	token, source, hasAuthorization, appErr := optionalAuthorizationCredential(request)
 	if appErr != nil {
 		return requestCredential{}, appErr
 	}
@@ -479,11 +521,11 @@ func requestCredentialFrom(
 	if appErr != nil {
 		return requestCredential{}, appErr
 	}
-	if hasBearer && cookie != "" {
+	if hasAuthorization && cookie != "" {
 		return requestCredential{}, ambiguousCredentialError()
 	}
-	if hasBearer {
-		return requestCredential{token: bearer, source: credentialSourceBearer}, nil
+	if hasAuthorization {
+		return requestCredential{token: token, source: source}, nil
 	}
 	if cookie != "" {
 		return requestCredential{token: cookie, source: credentialSourceCookie}, nil
@@ -492,18 +534,36 @@ func requestCredentialFrom(
 }
 
 func optionalBearerCredential(request *http.Request) (string, bool, error) {
+	token, source, ok, err := optionalAuthorizationCredential(request)
+	if err != nil || !ok {
+		return token, ok, err
+	}
+	if source != credentialSourceBearer {
+		return "", false, authenticationRequiredError()
+	}
+	return token, true, nil
+}
+
+func optionalAuthorizationCredential(request *http.Request) (string, credentialSource, bool, error) {
 	values := request.Header.Values("Authorization")
 	if len(values) == 0 {
-		return "", false, nil
+		return "", "", false, nil
 	}
 	if len(values) != 1 {
-		return "", false, authenticationRequiredError()
+		return "", "", false, authenticationRequiredError()
 	}
 	parts := strings.Fields(values[0])
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
-		return "", false, authenticationRequiredError()
+	if len(parts) != 2 || parts[1] == "" {
+		return "", "", false, authenticationRequiredError()
 	}
-	return parts[1], true, nil
+	switch {
+	case strings.EqualFold(parts[0], "Bearer"):
+		return parts[1], credentialSourceBearer, true, nil
+	case parts[0] == "DPoP":
+		return parts[1], credentialSourceDPoP, true, nil
+	default:
+		return "", "", false, authenticationRequiredError()
+	}
 }
 
 func singleCookieValue(

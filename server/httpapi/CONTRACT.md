@@ -22,8 +22,12 @@ Use the Academic Unit slice as the conceptual pattern for later capabilities:
   code to a declared HTTP response, and return RFC 9457 Problem Details;
 - add an agreement test that compares registered route/auth metadata, DTO JSON
   fields, success schemas, and public errors with OpenAPI;
-- preserve characterized v1 behavior. Contract changes are additive unless a
-  new API version and migration path are introduced.
+- preserve characterized behavior deliberately. Before the first supported
+  release, the current `/api/v1` contract may change in place when the server,
+  generated contract, and compatible clients are activated together; no
+  parallel version is created solely for pre-release compatibility. After the
+  first supported release, established meanings evolve additively unless an
+  explicit compatibility decision introduces another version and migration.
 
 ## API reference data
 
@@ -98,6 +102,40 @@ never returns provider admission rules, local-invitation credential policy,
 mail capability, secrets, redirect URIs, claim rules, or recipient data. The
 response is `no-store`.
 
+`GET /api/v1/system/ping` separately owns product availability and
+request-specific Desktop compatibility. It requires bounded Desktop release,
+build ID, platform, architecture, and positive realtime-protocol selectors.
+Every well-formed request returns `200` and `Cache-Control: no-store`, including
+temporary unavailability, revoked or unknown builds, release/protocol mismatch,
+and syntactically valid unsupported targets. Missing, duplicated, unknown, or
+malformed selectors return `request.invalid`. The response carries one RFC 3339
+server time, stable availability and compatibility reason codes, applicable
+release/protocol bounds, and the optional bounded administrator message. It
+never repeats origin, Institution, provider, Access Policy, build provenance,
+or updater destinations owned elsewhere. `GET /api/v1/system/version` remains
+limited to server build provenance.
+
+Each server release owns an immutable bounded catalog of verified Desktop build
+tuples: release, build ID, target, realtime protocol, Attempt Configuration
+manifest fingerprint, and signed capability-matrix identity. The production
+catalog remains empty until matching signed Desktop artifacts are coordinated
+for activation. Compatibility is the intersection of that catalog and the
+Institution's revisioned Desktop Compatibility Policy; policy may set a minimum
+release, revoke at most 256 build IDs, and publish one bounded plain-text
+administrator message, but it cannot authorize an unknown build. Evaluation has
+no request-time dependency on central distribution and never returns an update
+URL.
+
+`GET /api/v1/desktop-compatibility-policy` requires `access_policy.view`.
+Complete replacement at `PUT /api/v1/desktop-compatibility-policy` is reserved
+to the protected system-administrator Role and requires an interactive strong,
+recently authenticated Session, exact positive `expected_revision`, and
+`Idempotency-Key`. PostgreSQL rechecks current system-administrator status in
+the same transaction that commits the revision, retained idempotent outcome,
+and successful audit. Audits retain only the minimum release, revoked-build
+count, and whether a message is set; revoked build identities and message text
+do not enter ordinary audit payloads.
+
 `GET /api/v1/auth/providers` applies the same current-policy selection to the
 live configured provider catalog. Configured but policy-disabled providers are
 omitted; a policy read failure fails closed with `authentication.internal`
@@ -122,28 +160,62 @@ not create an ordinary Web Session or leave a relationship-free User behind.
 ## Desktop browser authorization
 
 `POST /api/v1/auth/desktop/authorizations`,
-`POST /api/v1/auth/desktop/authorizations/cancel`, and
+`POST /api/v1/auth/desktop/authorizations/bind`, the hosted-journey context and
+authentication operations, approval or cancellation, and
 `POST /api/v1/auth/desktop/token` are public native-client protocol operations.
-`POST /api/v1/auth/desktop/authorizations/approve` requires an authenticated
-Web Session and the normal session-mutation CSRF proof. Every response is
-`Cache-Control: no-store`.
+Only `POST /api/v1/auth/desktop/authorizations/authenticate/session` requires a
+Web Session and normal session-mutation CSRF proof. Every response is
+`Cache-Control: no-store`; the other hosted operations require the scoped
+Desktop authorization browser cookie.
 
 Start accepts only an exact IP-literal loopback callback, high-entropy state,
-an S256 challenge, and one configured policy-enabled authentication path. The
-returned hosted authorization URL carries the transaction handle and state in
-its query and a separate browser proof in its fragment. Approval returns an
-exact loopback redirect whose query contains only the short-lived one-use code
-and state. Exchange accepts code, state, and verifier, atomically consumes the
-code, and returns the ordinary Desktop Session access/refresh response. Invalid,
-expired, cancelled, mixed-up, or replayed proofs use bounded public errors and
-never reveal which proof or policy check failed.
+and an S256 challenge. The returned hosted authorization URL carries the
+transaction handle and state in its query and a separate one-use browser proof
+in its fragment. The hosted bootstrap removes the fragment and handle from
+history before binding them once to a host-only, HttpOnly, SameSite=Lax cookie
+scoped to the Desktop authorization route family. Subsequent context,
+authentication, account reset, approval, and cancellation operations accept
+only that cookie plus the exact state where terminal intent requires it.
+
+The same-tab hosted journey may bind an existing Web Session as an identity
+proof, validate a local password specifically for the transaction, or navigate
+through a purpose-bound external-provider state. Local and provider paths do
+not create a Web Session. Provider return resumes at
+`/authorize/desktop?state=...` through the browser binding cookie. The User
+must confirm the safe account/device projection and explicitly approve; “Use
+another account” clears only the transaction authentication and returns to
+method selection.
+
+Approval returns an exact loopback redirect whose query contains only the
+short-lived one-use code and state. Start also accepts one strict ES256 P-256
+public JWK and returns a DPoP nonce. Exchange accepts code, state, verifier,
+the same public JWK, exact Desktop build selectors, and a nonce-bound DPoP
+proof. It repeats compatibility, atomically consumes the code, creates or
+refreshes the User's Desktop Registration for that public-key thumbprint,
+binds the Desktop Session to it, and returns `DPoP` access and refresh
+credentials plus a Session-bound nonce. Invalid, expired, cancelled, mixed-up,
+replayed, or key-mismatched proofs use bounded public errors and never reveal
+which proof or policy check failed.
+
+Every Desktop access-token request carries `Authorization: DPoP ...` and one
+`DPoP` header whose proof covers the exact canonical public method and target,
+access-token hash, issued time, unique proof identity, and current server
+nonce. Refresh uses the same registered key and a refresh-specific proof.
+Nonce challenges return only a replacement `DPoP-Nonce`; shared bounded replay
+state prevents accepted proof reuse across nodes. Bearer presentation of a
+Desktop credential is invalid. Private keys, proof JWTs, nonces, public-key
+coordinates, and thumbprints never enter response bodies, Problem Details,
+ordinary logs, or audits.
 
 Start and exchange share the private authentication-attempt accounting but use
 separate domain-qualified transaction and source counters. Accounting precedes
 Start persistence and exchange audit preparation or persistence and fails
-closed when its disposable backend is unavailable. Exchange rechecks that the
-resolved User is active in the same PostgreSQL transaction that consumes the
-code and creates the Session.
+closed when its disposable backend is unavailable. Resolving an account
+acquires the per-User Session lock and terminally denies the transaction when
+that User has an active Attempt. Exchange acquires the same lock and repeats
+that check in the transaction that would consume the code and create the
+Session. Ordinary login and Attempt activation share this lock, so no
+interleaving can issue a new Session after an Attempt becomes active.
 
 Ordinary external-provider login defaults to a Web Session and rejects an
 explicit Desktop client at initiation and callback. Desktop Sessions are
@@ -172,6 +244,15 @@ The packaged runtime implements `/authorize/desktop`; the Desktop UI remains a
 separate client concern. The hosted page consumes this protocol without adding
 provider tokens, Session credentials, or raw proofs to rendered content,
 storage, logs, or audit data.
+
+`GET /api/v1/users/me/desktop-registrations` requires an interactive Session
+and returns a private no-store list of only that User's bounded device/build
+metadata, lifecycle state, and current-registration marker. It omits the JWK
+and thumbprint. `DELETE
+/api/v1/users/me/desktop-registrations/{desktop_registration_id}` requires
+strong recent Session authentication and atomically revokes the Registration,
+all of its live Sessions and credentials, and the audit. The irreversible
+record remains visible as revoked; security effects publish only after commit.
 
 ## Authentication-method lifecycle
 
@@ -861,10 +942,15 @@ candidates use Attempt-scoped protected delivery routes:
 
 | Method and path | Authentication | Success |
 | --- | --- | --- |
+| `GET /api/v1/users/me/exam-activity` | interactive candidate Session | bounded self-scoped navigation page |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/candidate-statuses` | principal plus current Sitting-view authorization | bounded manager-safe candidate-status page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts` | principal plus current management authorization | bounded manager-safe Attempt page |
 | `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}` | principal plus current management authorization | exact manager-safe Attempt |
+| `GET /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity` | principal plus dedicated current Browser Activity authorization | bounded privacy-minimized activity page |
+| `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/end` | principal plus current management authorization and required idempotency key | candidate-safe manager-ended Submission receipt |
 | `POST /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow` | principal plus current management authorization and required idempotency key | exact suspension re-allowed |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/presentation` | Session plus Attempt credential and Connection | current instructions/resource metadata |
+| `PUT /api/v1/exam-attempts/{exam_attempt_id}/corrections/{exam_revision_id}/acknowledgement` | bound registered-key Desktop Session plus Attempt credential and Connection; required idempotency | retained correction acknowledgement |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace` | Session plus Attempt credential and Connection | bounded logical Workspace page |
 | `GET /api/v1/exam-attempts/{exam_attempt_id}/workspace/changes` | Session plus Attempt credential and Connection | bounded journal page or explicit full-refresh signal |
 | `POST /api/v1/exam-attempts/{exam_attempt_id}/workspace/directories` | Session plus Attempt credential and Connection; required idempotency | acknowledged directory and Cursor |
@@ -893,7 +979,10 @@ Every candidate route requires exactly one
 URL-safe base64 continuity credential and one
 `X-Proctor-Attempt-Connection-ID` header. The application hashes the credential
 immediately; the Store also binds candidate reads to the authenticated Session
-ID and durable open Connection. Neither header is accepted from a URL, echoed,
+ID and durable open Connection. An active Attempt is bound to the exact
+registered-key Desktop Session owned by its current Participation, so these
+requests also require that Session's valid DPoP access credential and proof.
+Neither Attempt header is accepted from a URL, echoed,
 logged, included in Problem Details, or persisted in raw form. Missing,
 duplicate, whitespace-altered, or malformed values are invalid requests.
 Every Workspace mutation also carries the non-secret `participation_id` and
@@ -912,15 +1001,36 @@ Attempt returns its stable safe `exam.attempt.*` conflict (`409`); dependency
 failure is `exam.attempt.unavailable` (`500`). No error distinguishes which
 sensitive selector failed.
 
+Correction acknowledgement uses strict JSON containing the current
+`participation_id`, `generation`, and `expected_current_revision_id`. The path
+Revision must be the oldest pending required correction. A pending required
+notice blocks Workspace mutations, terminal use, governed navigation, and
+voluntary Submission, but acknowledgement and integrity delivery remain
+available while the Sitting is paused. Exact replay repeats current
+authorization and audit checks and returns `200` without another mutation.
+
 Submission repeats `participation_id` and `generation`, and requires the
-expected acknowledged Workspace Cursor plus the client's final Focus Loss
-sequence; zero is a valid sequence. It rechecks current Class membership and
-all active continuity selectors inside the named atomic Store operation. Both
-an initial commit and its exact replay return `201`, but replay suppresses
-post-commit realtime and unbind effects. The candidate receipt contains only
-Submission and Attempt identities, `submitted` state, Workspace Cursor,
-manifest digest, and server submission time. Candidates have no Submission
-browse or content route.
+expected current Exam Revision, acknowledged Workspace Cursor, client's final
+Focus Loss sequence, and a closed Browser Activity terminal object; zero is a
+valid Focus Loss sequence. Browser Activity is exactly `not_applicable`,
+`complete` with the current source UUID and final sequence, or `gapped` with a
+closed client reason. A truthful gap records discrepancy provenance but does
+not block sealing. The operation rechecks current Class membership, absence of
+pending correction acknowledgements, and all active continuity selectors
+inside the named atomic Store operation. Both an initial commit and its exact
+replay return `201`; replay repeats current authorization/audit but suppresses
+duplicate mutation, realtime, and unbind effects. The candidate receipt
+contains only Submission and Attempt identities, `submitted` state, governing
+Revision, provenance, Workspace Cursor, manifest digest, and server submission
+time. Candidates have no Submission browse or content route.
+
+The manager `end` command requires strict JSON with the expected Attempt
+revision and a private trimmed reason plus `Idempotency-Key`. Before the
+Sitting deadline it may seal a Ready, Active, or Suspended Attempt and returns
+the same candidate-safe receipt with `manager_ended_attempt` provenance. At or
+after the deadline, scheduled Sitting closure owns `sitting_closed`
+provenance. Neither response, mail, realtime event, nor ordinary audit value
+contains the private reason.
 
 Manager reads authorize the canonical Submission identity before testing the
 nested Exam, Sitting, and Attempt ownership path, so a mismatch is concealed
@@ -939,6 +1049,16 @@ distinct opaque versioned keyset cursors. JSON is `no-store`. Candidate binary
 content is inline, `private, no-store`, `nosniff`, and conditionally readable
 with a strong ETag; it has no `Content-Disposition`, public URL, object key, or
 download/export contract.
+
+Candidate Exam Activity and manager candidate-status collections likewise
+default to 50, accept at most 200, and use opaque versioned keyset cursors.
+Exam Activity is self-scoped and exposes only safe lifecycle/access state,
+allowed navigation action, and candidate-safe Submission provenance. The
+candidate-status board returns one common `server_time` and derives presence
+from the authoritative Participation lease; it never projects a Session,
+Registration, credential, Connection, evidence, private reason, or Review
+decision. Manager Browser Activity uses a separate no-store keyset ordered by
+receipt time, source, and sequence with the same 50/200 bounds.
 
 Manager Submission JSON is `no-store`. Submission file content has the same
 `private, no-store`, `nosniff`, strong-ETag, no-`Content-Disposition` contract.
@@ -975,12 +1095,35 @@ identity so an authoritative refetch can drive exact re-allow after missed
 realtime delivery. Candidate
 presentation exposes the admission Revision only as provenance while title,
 instructions, resources, and resource content resolve from the Sitting's
-current Revision. Its single Focus Loss field is the required
+current Revision. It also returns the immutable Attempt Configuration, a
+bounded derived runtime-capability projection, the current governed Browser
+Policy when enabled, and the ordered live-correction notices with their
+Attempt-owned acknowledgement states. Runtime capability fields explain
+whether Workspace mutation, Submission, terminal, and Browser interaction are
+currently available; they do not replace authorization at each operation.
+The presentation's single Focus Loss field is the required
 `focus_loss_collection_enabled` boolean telling the trusted client whether to
 collect and transmit observations; minimum duration, incident count, window,
 outcome, and raw policy never enter the candidate projection. Workspace pages
 expose logical entries and content versions, never starter/Attempt object
 identities or VFS keys.
+
+Browser Activity starts and appends through the authenticated Attempt
+WebSocket actions `exam_attempt.browser_activity.start` and
+`exam_attempt.browser_activity.append`. One Participation may own at most 16
+sequential UUIDv4 sources; reset declares the exact predecessor and one closed
+reason. Append batches contain 1 to 64 events and at most 256 KiB. The server
+returns the source, highest contiguous and seen sequences, no more than 32
+missing ranges, truncation state, and authoritative time. Events contain only
+their sequence/kind/policy Revision/client time, a reason-minimized location,
+and an applicable rule or block reason. Successful navigation and HTTPS policy
+failures retain a canonical HTTPS host, optional non-default port, and path. A
+blocked HTTP navigation retains those canonical network fields with scheme
+`http`; other disallowed schemes retain only their lowercase scheme with empty
+host and path; and `invalid_url` uses empty scheme, host, and path values.
+Query, fragment, credentials, local paths, scheme payloads, title, referrer,
+headers, page content, cookies, DOM, and download bodies are outside the wire
+contract.
 
 Re-allow requires the exact active Suspension identity, expected Attempt
 revision, and a trimmed private manager reason. The reason is retained only in

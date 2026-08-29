@@ -71,50 +71,52 @@ func (s Settings) validate() error {
 // Keeping this registry separate from SQLStore mirrors Mattermost's composition
 // flow and makes future store decorators possible without changing callers.
 type SQLStoreStores struct {
-	institution           store.InstitutionStore
-	academicUnit          store.AcademicUnitStore
-	programme             store.ProgrammeStore
-	programmeLevel        store.ProgrammeLevelStore
-	academicPeriod        store.AcademicPeriodStore
-	examAuthoring         store.ExamAuthoringStore
-	examRevision          store.ExamRevisionStore
-	examSitting           store.ExamSittingStore
-	examAttempt           store.ExamAttemptStore
-	executionGrant        store.ExecutionGrantStore
-	examAttemptWorkspace  store.ExamAttemptWorkspaceStore
-	examSubmission        store.ExamSubmissionStore
-	examIntegrityReview   store.ExamIntegrityReviewStore
-	examResource          store.ExamResourceStore
-	examCorrection        store.ExamCorrectionStore
-	examStarterWorkspace  store.ExamStarterWorkspaceStore
-	class                 store.ClassStore
-	user                  store.UserStore
-	userSettings          store.UserSettingsStore
-	file                  store.FileStore
-	job                   store.JobStore
-	mail                  store.MailStore
-	externalIdentity      store.ExternalIdentityStore
-	externalLoginState    store.ExternalLoginStateStore
-	browserAuthentication store.BrowserAuthenticationStore
-	userToken             store.UserTokenStore
-	invitation            store.InvitationStore
-	onboardingImport      store.OnboardingImportStore
-	personalAccessToken   store.PersonalAccessTokenStore
-	mfa                   store.MFAStore
-	affiliation           store.AffiliationStore
-	academicUnitMember    store.AcademicUnitMemberStore
-	classMember           store.ClassMemberStore
-	passwordCredential    store.PasswordCredentialStore
-	session               store.SessionStore
-	sessionCredential     store.SessionCredentialStore
-	role                  store.RoleStore
-	roleBinding           store.RoleBindingStore
-	audit                 store.AuditStore
-	installation          store.InstallationStore
-	accessPolicy          store.AccessPolicyStore
-	clusterDiscovery      store.ClusterDiscoveryStore
-	servingNodeLease      store.ServingNodeLeaseStore
-	commandOutcome        store.CommandOutcomeStore
+	institution                store.InstitutionStore
+	academicUnit               store.AcademicUnitStore
+	programme                  store.ProgrammeStore
+	programmeLevel             store.ProgrammeLevelStore
+	academicPeriod             store.AcademicPeriodStore
+	examAuthoring              store.ExamAuthoringStore
+	examRevision               store.ExamRevisionStore
+	examSitting                store.ExamSittingStore
+	examAttempt                store.ExamAttemptStore
+	executionGrant             store.ExecutionGrantStore
+	examAttemptWorkspace       store.ExamAttemptWorkspaceStore
+	examSubmission             store.ExamSubmissionStore
+	examIntegrityReview        store.ExamIntegrityReviewStore
+	examResource               store.ExamResourceStore
+	examCorrection             store.ExamCorrectionStore
+	examStarterWorkspace       store.ExamStarterWorkspaceStore
+	class                      store.ClassStore
+	user                       store.UserStore
+	userSettings               store.UserSettingsStore
+	file                       store.FileStore
+	job                        store.JobStore
+	mail                       store.MailStore
+	externalIdentity           store.ExternalIdentityStore
+	externalLoginState         store.ExternalLoginStateStore
+	browserAuthentication      store.BrowserAuthenticationStore
+	desktopRegistration        store.DesktopRegistrationStore
+	userToken                  store.UserTokenStore
+	invitation                 store.InvitationStore
+	onboardingImport           store.OnboardingImportStore
+	personalAccessToken        store.PersonalAccessTokenStore
+	mfa                        store.MFAStore
+	affiliation                store.AffiliationStore
+	academicUnitMember         store.AcademicUnitMemberStore
+	classMember                store.ClassMemberStore
+	passwordCredential         store.PasswordCredentialStore
+	session                    store.SessionStore
+	sessionCredential          store.SessionCredentialStore
+	role                       store.RoleStore
+	roleBinding                store.RoleBindingStore
+	audit                      store.AuditStore
+	installation               store.InstallationStore
+	accessPolicy               store.AccessPolicyStore
+	desktopCompatibilityPolicy store.DesktopCompatibilityPolicyStore
+	clusterDiscovery           store.ClusterDiscoveryStore
+	servingNodeLease           store.ServingNodeLeaseStore
+	commandOutcome             store.CommandOutcomeStore
 }
 
 // SQLStore owns PostgreSQL connections and all concrete model stores.
@@ -176,6 +178,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.externalIdentity = newSQLExternalIdentityStore(sqlStore)
 	sqlStore.stores.externalLoginState = newSQLExternalLoginStateStore(sqlStore)
 	sqlStore.stores.browserAuthentication = newSQLBrowserAuthenticationStore(sqlStore)
+	sqlStore.stores.desktopRegistration = newSQLDesktopRegistrationStore(sqlStore)
 	sqlStore.stores.userToken = newSQLUserTokenStore(sqlStore)
 	sqlStore.stores.invitation = newSQLInvitationStore(sqlStore)
 	sqlStore.stores.onboardingImport = newSQLOnboardingImportStore(sqlStore)
@@ -192,6 +195,7 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.audit = newSQLAuditStore(sqlStore)
 	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
 	sqlStore.stores.accessPolicy = newSQLAccessPolicyStore(sqlStore)
+	sqlStore.stores.desktopCompatibilityPolicy = newSQLDesktopCompatibilityPolicyStore(sqlStore)
 	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
 	sqlStore.stores.servingNodeLease = newSQLServingNodeLeaseStore(sqlStore)
 	sqlStore.stores.commandOutcome = newSQLCommandOutcomeStore(sqlStore)
@@ -307,6 +311,10 @@ func (ss *SQLStore) BrowserAuthentication() store.BrowserAuthenticationStore {
 	return ss.stores.browserAuthentication
 }
 
+func (ss *SQLStore) DesktopRegistration() store.DesktopRegistrationStore {
+	return ss.stores.desktopRegistration
+}
+
 func (ss *SQLStore) UserToken() store.UserTokenStore {
 	return ss.stores.userToken
 }
@@ -369,6 +377,10 @@ func (ss *SQLStore) Installation() store.InstallationStore {
 
 func (ss *SQLStore) AccessPolicy() store.AccessPolicyStore {
 	return ss.stores.accessPolicy
+}
+
+func (ss *SQLStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
+	return ss.stores.desktopCompatibilityPolicy
 }
 
 func (ss *SQLStore) ClusterDiscovery() store.ClusterDiscoveryStore {

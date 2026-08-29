@@ -26,19 +26,23 @@ const (
 type SessionRevocationReason string
 
 const (
-	SessionRevocationUserLogout                SessionRevocationReason = "user_logout"
-	SessionRevocationUserSession               SessionRevocationReason = "user_session"
-	SessionRevocationUserAllSessions           SessionRevocationReason = "user_all_sessions"
-	SessionRevocationAdministratorSession      SessionRevocationReason = "administrator_session"
-	SessionRevocationAdministratorAllSessions  SessionRevocationReason = "administrator_all_sessions"
-	SessionRevocationAccountDisabled           SessionRevocationReason = "account_disabled"
-	SessionRevocationPasswordRemoved           SessionRevocationReason = "password_removed"
-	SessionRevocationExternalIdentityUnlinked  SessionRevocationReason = "external_identity_unlinked"
-	SessionRevocationPasswordReset             SessionRevocationReason = "password_reset"
-	SessionRevocationRefreshReplay             SessionRevocationReason = "refresh_replay"
-	SessionRevocationInactiveUser              SessionRevocationReason = "inactive_user"
-	SessionRevocationAuthenticationAuditFailed SessionRevocationReason = "authentication_audit_failed"
-	SessionRevocationAccessPolicyChanged       SessionRevocationReason = "access_policy_changed"
+	SessionRevocationUserLogout                 SessionRevocationReason = "user_logout"
+	SessionRevocationUserSession                SessionRevocationReason = "user_session"
+	SessionRevocationUserAllSessions            SessionRevocationReason = "user_all_sessions"
+	SessionRevocationAdministratorSession       SessionRevocationReason = "administrator_session"
+	SessionRevocationAdministratorAllSessions   SessionRevocationReason = "administrator_all_sessions"
+	SessionRevocationAccountDisabled            SessionRevocationReason = "account_disabled"
+	SessionRevocationPasswordRemoved            SessionRevocationReason = "password_removed"
+	SessionRevocationExternalIdentityUnlinked   SessionRevocationReason = "external_identity_unlinked"
+	SessionRevocationPasswordReset              SessionRevocationReason = "password_reset"
+	SessionRevocationRefreshReplay              SessionRevocationReason = "refresh_replay"
+	SessionRevocationInactiveUser               SessionRevocationReason = "inactive_user"
+	SessionRevocationAuthenticationAuditFailed  SessionRevocationReason = "authentication_audit_failed"
+	SessionRevocationDesktopAuthorizationFailed SessionRevocationReason = "desktop_authorization_failed"
+	SessionRevocationAccessPolicyChanged        SessionRevocationReason = "access_policy_changed"
+	SessionRevocationDesktopRegistration        SessionRevocationReason = "desktop_registration_revoked"
+	SessionRevocationAttemptSessionLock         SessionRevocationReason = "exam_attempt_session_lock"
+	SessionRevocationExpired                    SessionRevocationReason = "expired"
 )
 
 func (reason SessionRevocationReason) IsValid() bool {
@@ -55,7 +59,11 @@ func (reason SessionRevocationReason) IsValid() bool {
 		SessionRevocationRefreshReplay,
 		SessionRevocationInactiveUser,
 		SessionRevocationAuthenticationAuditFailed,
-		SessionRevocationAccessPolicyChanged:
+		SessionRevocationDesktopAuthorizationFailed,
+		SessionRevocationAccessPolicyChanged,
+		SessionRevocationDesktopRegistration,
+		SessionRevocationAttemptSessionLock,
+		SessionRevocationExpired:
 		return true
 	default:
 		return false
@@ -70,6 +78,10 @@ func AllSessionRevocationReasons() []SessionRevocationReason {
 		SessionRevocationAdministratorAllSessions,
 		SessionRevocationAdministratorSession,
 		SessionRevocationAuthenticationAuditFailed,
+		SessionRevocationDesktopAuthorizationFailed,
+		SessionRevocationDesktopRegistration,
+		SessionRevocationAttemptSessionLock,
+		SessionRevocationExpired,
 		SessionRevocationExternalIdentityUnlinked,
 		SessionRevocationInactiveUser,
 		SessionRevocationPasswordRemoved,
@@ -113,6 +125,13 @@ type Session struct {
 	ArchivedAt               OptionalTime
 	UserID                   UserID
 	ClientType               SessionClientType
+	DesktopRegistrationID    DesktopRegistrationID
+	DPoPKeyThumbprint        string
+	DesktopRelease           string
+	DesktopBuildID           string
+	DesktopPlatform          DesktopPlatform
+	DesktopArchitecture      DesktopArchitecture
+	DesktopRealtimeProtocol  int
 	DeviceID                 string
 	DeviceName               string
 	AuthenticationMethod     string
@@ -198,6 +217,16 @@ func (s *Session) Validate() error {
 	}
 	if !s.ClientType.IsValid() {
 		return invalidModelError(where, "session", "client_type", "has an unknown value", details)
+	}
+	if s.ClientType == SessionClientDesktop {
+		if !s.DesktopRegistrationID.IsValid() || !IsValidDPoPKeyThumbprint(s.DPoPKeyThumbprint) ||
+			!IsValidDesktopRelease(s.DesktopRelease) || !IsValidDesktopBuildID(s.DesktopBuildID) ||
+			!s.DesktopPlatform.IsValid() || !s.DesktopArchitecture.IsValid() || s.DesktopRealtimeProtocol < 1 {
+			return invalidModelError(where, "session", "desktop_registration", "is required and valid for a Desktop Session", details)
+		}
+	} else if !s.DesktopRegistrationID.IsZero() || s.DPoPKeyThumbprint != "" || s.DesktopRelease != "" ||
+		s.DesktopBuildID != "" || s.DesktopPlatform != "" || s.DesktopArchitecture != "" || s.DesktopRealtimeProtocol != 0 {
+		return invalidModelError(where, "session", "desktop_registration", "must be empty for a non-Desktop Session", details)
 	}
 	if len(s.DeviceID) > SessionDeviceIdMaxLength {
 		return invalidModelError(where, "session", "device_id", "is too long", details)
@@ -332,6 +361,7 @@ func (s *Session) Auditable() map[string]any {
 		"archived_at":                s.ArchivedAt.Millis(),
 		"user_id":                    s.UserID.String(),
 		"client_type":                s.ClientType,
+		"desktop_registration_id":    s.DesktopRegistrationID.String(),
 		"device_id":                  s.DeviceID,
 		"authentication_method":      s.AuthenticationMethod,
 		"authentication_provider_id": s.AuthenticationProviderID,

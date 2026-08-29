@@ -33,6 +33,63 @@ type ExamAttemptWorkspaceMutationResult = examattempt.WorkspaceMutationResult
 type CandidateExamWorkspaceJournalPage = examattempt.WorkspaceJournalPage
 type CandidateExamTerminal = appexecution.Terminal
 type CandidateExamTerminalWindow = appexecution.Window
+type CandidateExamActivityPage = examattempt.CandidateActivityPage
+type SittingCandidateStatusesPage = examattempt.SittingCandidateStatusesPage
+type SittingCandidatePresenceState = store.SittingCandidatePresenceState
+type CandidateRuntimeCapabilities = store.CandidateRuntimeCapabilities
+type CandidateBrowserPolicy = store.CandidateBrowserPolicy
+type BrowserActivityAcknowledgement = model.BrowserActivityAcknowledgement
+type BrowserActivityRecord = store.BrowserActivityRecord
+
+type StartBrowserActivityCommand = examattempt.StartBrowserActivityCommand
+type AppendBrowserActivityCommand = examattempt.AppendBrowserActivityCommand
+type ListBrowserActivityQuery = examattempt.BrowserActivityPageQuery
+type BrowserActivityPage = examattempt.BrowserActivityPage
+type AcknowledgeExamCorrectionCommand = examattempt.AcknowledgeCorrectionCommand
+type ExamCorrectionAcknowledgementResult = examattempt.CorrectionAcknowledgementResult
+type EndExamAttemptByManagerCommand = examattempt.ManagerEndCommand
+
+func (a *App) StartExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command StartBrowserActivityCommand) (BrowserActivityAcknowledgement, error) {
+	result, err := a.examAttempts.StartBrowserActivity(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return BrowserActivityAcknowledgement{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) AppendExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, command AppendBrowserActivityCommand) (BrowserActivityAcknowledgement, error) {
+	result, err := a.examAttempts.AppendBrowserActivity(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return BrowserActivityAcknowledgement{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) ListExamAttemptBrowserActivity(ctx context.Context, invocation Invocation, query ListBrowserActivityQuery) (BrowserActivityPage, error) {
+	page, err := a.examAttempts.ListBrowserActivity(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return BrowserActivityPage{}, examAttemptError(err, true)
+	}
+	return page, nil
+}
+
+func (a *App) AcknowledgeExamAttemptCorrection(ctx context.Context, invocation Invocation, command AcknowledgeExamCorrectionCommand) (ExamCorrectionAcknowledgementResult, error) {
+	result, err := a.examAttempts.AcknowledgeCorrection(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return ExamCorrectionAcknowledgementResult{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+func (a *App) EndExamAttemptByManager(ctx context.Context, invocation Invocation,
+	command EndExamAttemptByManagerCommand,
+) (ExamSubmissionReceipt, error) {
+	result, err := a.examAttempts.EndByManager(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
+	if err != nil {
+		return ExamSubmissionReceipt{}, examAttemptError(err, true)
+	}
+	return result.Receipt, nil
+}
 
 type OpenCandidateExamTerminalCommand struct {
 	Access          CandidateExamAttemptAccess
@@ -44,9 +101,11 @@ type OpenCandidateExamTerminalCommand struct {
 }
 
 type ConnectExamAttemptCommand struct {
-	SittingID            model.ExamSittingID
-	ContinuityCredential string
-	IdempotencyKey       string
+	SittingID                       model.ExamSittingID
+	ContinuityCredential            string
+	SupportedConfigurationManifests []string
+	InitialConfiguration            *model.AttemptConfiguration
+	IdempotencyKey                  string
 }
 
 type CloseExamAttemptConnectionCommand = examattempt.CloseConnectionCommand
@@ -175,6 +234,13 @@ type examAttemptUseCases interface {
 	OpenWorkspaceFile(context.Context, examattempt.Call, examattempt.CandidateAccess, model.AttemptWorkspaceEntryID) (*examattempt.OpenedContent, error)
 	GetManaged(context.Context, examattempt.Call, examattempt.GetManagedAttemptQuery) (*store.ExamAttemptManagerSnapshot, error)
 	ListManaged(context.Context, examattempt.Call, examattempt.ListManagedAttemptsQuery) (examattempt.ManagedAttemptPage, error)
+	ListCandidateActivity(context.Context, examattempt.Call, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error)
+	ListSittingCandidateStatuses(context.Context, examattempt.Call, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error)
+	StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
+	AppendBrowserActivity(context.Context, examattempt.Call, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error)
+	ListBrowserActivity(context.Context, examattempt.Call, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error)
+	AcknowledgeCorrection(context.Context, examattempt.Call, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error)
+	EndByManager(context.Context, examattempt.Call, examattempt.ManagerEndCommand) (examattempt.SubmissionResult, error)
 	Submit(context.Context, examattempt.Call, examattempt.SubmitCommand) (examattempt.SubmissionResult, error)
 	GetSubmission(context.Context, examattempt.Call, examattempt.GetSubmissionQuery) (*examattempt.ManagedSubmission, error)
 	ListSubmissionManifest(context.Context, examattempt.Call, examattempt.ListSubmissionManifestQuery) (examattempt.SubmissionManifestPage, error)
@@ -295,7 +361,10 @@ func (a *App) EvaluateExamAttemptFocusLoss(ctx context.Context, invocation Invoc
 func (a *App) ConnectExamAttempt(ctx context.Context, invocation Invocation, command ConnectExamAttemptCommand) (response ExamAttemptConnection, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "connect", resultErr) }()
 	result, err := a.examAttempts.Connect(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), examattempt.ConnectCommand{
-		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential, IdempotencyKey: command.IdempotencyKey,
+		SittingID: command.SittingID, ContinuityCredential: command.ContinuityCredential,
+		SupportedConfigurationManifests: append([]string(nil), command.SupportedConfigurationManifests...),
+		InitialConfiguration:            command.InitialConfiguration,
+		IdempotencyKey:                  command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamAttemptConnection{}, examAttemptError(err, true)
@@ -375,6 +444,32 @@ func (a *App) ListExamAttempts(ctx context.Context, invocation Invocation, query
 	return ExamAttemptManagerPage{Items: result.Items, HasMore: result.HasMore}, nil
 }
 
+type ListCandidateExamActivityQuery = examattempt.CandidateActivityQuery
+
+func (a *App) ListCandidateExamActivity(ctx context.Context, invocation Invocation,
+	query ListCandidateExamActivityQuery,
+) (CandidateExamActivityPage, error) {
+	result, err := a.examAttempts.ListCandidateActivity(ctx,
+		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return CandidateExamActivityPage{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
+type ListSittingCandidateStatusesQuery = examattempt.SittingCandidateStatusesQuery
+
+func (a *App) ListSittingCandidateStatuses(ctx context.Context, invocation Invocation,
+	query ListSittingCandidateStatusesQuery,
+) (SittingCandidateStatusesPage, error) {
+	result, err := a.examAttempts.ListSittingCandidateStatuses(ctx,
+		examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()), query)
+	if err != nil {
+		return SittingCandidateStatusesPage{}, examAttemptError(err, true)
+	}
+	return result, nil
+}
+
 func examAttemptError(err error, conceal bool) error {
 	if err == nil {
 		return nil
@@ -402,6 +497,12 @@ func examAttemptError(err error, conceal bool) error {
 type examAttemptManagerAuthorizationAdapter struct {
 	sittings    examSittingUseCases
 	submissions store.ExamSubmissionStore
+	audit       examAttemptAuthorizationDecisionAudit
+}
+
+type examAttemptAuthorizationDecisionAudit interface {
+	RecordAuthorizationDecision(context.Context, model.Principal, model.Action, model.Resource,
+		model.RoleScopeType, string, model.RequestMetadata, bool) error
 }
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) error {
@@ -409,13 +510,33 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingView(ctx c
 }
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSittingManage(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (bool, error) {
-	return adapter.sittings.AuthorizeManage(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+	override, err := adapter.sittings.AuthorizeManage(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+	if err == nil {
+		return override, nil
+	}
+	var fault *examsitting.Fault
+	if errors.As(err, &fault) {
+		return false, &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
+	}
+	return false, err
+}
+
+func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeBrowserActivityView(ctx context.Context, call examattempt.Call, sittingID model.ExamSittingID) (model.AcademicUnitID, bool, error) {
+	unitID, override, err := adapter.sittings.AuthorizeBrowserActivityView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()), sittingID)
+	if err == nil {
+		return unitID, override, nil
+	}
+	var fault *examsitting.Fault
+	if errors.As(err, &fault) {
+		return "", false, &examattempt.Fault{Code: fault.Code, SafeFields: fault.SafeFields, Cause: err}
+	}
+	return "", false, err
 }
 
 func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ctx context.Context, call examattempt.Call,
 	submissionID model.SubmissionID,
 ) error {
-	if adapter.submissions == nil || !submissionID.IsValid() {
+	if adapter.submissions == nil || adapter.audit == nil || !submissionID.IsValid() {
 		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization dependencies are invalid")}
 	}
 	authorization, err := adapter.submissions.Resolve(ctx, submissionID)
@@ -426,8 +547,17 @@ func (adapter examAttemptManagerAuthorizationAdapter) AuthorizeSubmissionView(ct
 		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: err}
 	}
 	if authorization == nil || authorization.SubmissionID != submissionID || !authorization.ExamID.IsValid() ||
-		!authorization.SittingID.IsValid() || !authorization.AttemptID.IsValid() || !authorization.AcademicUnitID.IsValid() {
+		!authorization.SittingID.IsValid() || !authorization.AttemptID.IsValid() || !authorization.CandidateUserID.IsValid() ||
+		!authorization.AcademicUnitID.IsValid() {
 		return &examattempt.Fault{Code: "exam.attempt.unavailable", Cause: errors.New("Submission authorization projection is incomplete")}
+	}
+	if authorization.CandidateUserID == call.Principal().UserID {
+		if err = adapter.audit.RecordAuthorizationDecision(ctx, call.Principal(), model.ActionSubmissionView,
+			model.Resource{Type: model.ResourceSubmission, ID: authorization.SubmissionID.String()},
+			model.RoleScopeAcademicUnit, authorization.AcademicUnitID.String(), call.RequestMetadata(), false); err != nil {
+			return err
+		}
+		return &examattempt.Fault{Code: "exam.attempt.not_found"}
 	}
 	return adapter.sittings.AuthorizeSubmissionView(ctx, examsitting.NewCall(call.Principal(), call.RequestMetadata()),
 		authorization.ExamID, submissionID)
@@ -442,6 +572,25 @@ func (adapter examAttemptAuditAdapter) Begin(ctx context.Context, call examattem
 		scopeType, scopeID, operation, value, nil)
 }
 
+func (adapter examAttemptAuditAdapter) Prepare(_ context.Context, call examattempt.Call, action model.Action,
+	resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, value map[string]any,
+) (*model.AuditEvent, error) {
+	return adapter.audit.audit.prepareCriticalActionAtScope(call.Principal(), action, resource, scopeType, scopeID,
+		call.RequestMetadata(), map[string]any{"operation": operation, "value": value}, nil)
+}
+
+func (adapter examAttemptAuditAdapter) RecordAuthorizationDecision(ctx context.Context, call examattempt.Call,
+	action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string, allowed bool,
+) error {
+	return adapter.audit.audit.RecordAuthorizationDecision(ctx, call.Principal(), action, resource, scopeType, scopeID,
+		call.RequestMetadata(), allowed)
+}
+
+func (adapter examAttemptAuditAdapter) Complete(ctx context.Context, auditID string, value map[string]any) error {
+	_, err := adapter.audit.audit.CompleteCriticalAction(ctx, auditID, model.AuditStatusSuccess, "", value)
+	return err
+}
+
 func (adapter examAttemptAuditAdapter) Fail(ctx context.Context, id, code string) error {
 	return adapter.audit.Fail(ctx, id, code)
 }
@@ -454,13 +603,47 @@ type examAttemptRealtimeEffects struct {
 	}
 }
 
+func (effects examAttemptRealtimeEffects) publishCandidateActivityInvalidation(ctx context.Context,
+	candidateID model.UserID,
+) error {
+	event, err := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
+	if err != nil {
+		return err
+	}
+	return effects.realtime.Publish(ctx, event)
+}
+
+func (effects examAttemptRealtimeEffects) publishSittingBoardInvalidation(ctx context.Context,
+	examID model.ExamID, sittingID model.ExamSittingID,
+) error {
+	event, err := apprealtime.NewManagerSittingBoardChangedEvent(examID, sittingID)
+	if err != nil {
+		return err
+	}
+	return effects.realtime.Publish(ctx, event)
+}
+
+func (effects examAttemptRealtimeEffects) publishOperationalInvalidations(ctx context.Context,
+	examID model.ExamID, sittingID model.ExamSittingID, candidateID model.UserID,
+) error {
+	return errors.Join(
+		effects.publishCandidateActivityInvalidation(ctx, candidateID),
+		effects.publishSittingBoardInvalidation(ctx, examID, sittingID),
+		effects.realtime.InvalidateCurrentUserContext(ctx, candidateID),
+	)
+}
+
 func (effects examAttemptRealtimeEffects) ConnectionOpened(ctx context.Context, result examattempt.ConnectionResult) error {
+	if len(result.RevokedSessionIDs) > 0 || len(result.RevokedAccessTokenDigests) > 0 {
+		effects.realtime.SessionsRevoked(ctx, result.Attempt.CandidateUserID.String(), result.RevokedSessionIDs, result.RevokedAccessTokenDigests)
+	}
 	event, err := apprealtime.NewExamAttemptConnectionOpenedEvent(result.Attempt.SittingID,
 		result.Attempt.ID, result.Attempt.CandidateUserID, result.Connection.ID, result.Connection.OpenedAt)
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return errors.Join(effects.realtime.Publish(ctx, event), effects.publishOperationalInvalidations(ctx,
+		result.Attempt.ExamID, result.Attempt.SittingID, result.Attempt.CandidateUserID))
 }
 
 func (effects examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, result examattempt.ConnectionClosedResult) error {
@@ -469,7 +652,18 @@ func (effects examAttemptRealtimeEffects) ConnectionClosed(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return effects.realtime.Publish(ctx, event)
+	return errors.Join(effects.realtime.Publish(ctx, event),
+		effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
+}
+
+func (effects examAttemptRealtimeEffects) ParticipationRenewed(ctx context.Context, result examattempt.ParticipationRenewal) error {
+	return effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID)
+}
+
+func (effects examAttemptRealtimeEffects) BrowserActivityGapChanged(ctx context.Context, examID model.ExamID,
+	sittingID model.ExamSittingID,
+) error {
+	return effects.publishSittingBoardInvalidation(ctx, examID, sittingID)
 }
 
 func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Context, result examattempt.ParticipationExpiry) error {
@@ -488,7 +682,8 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 		if effects.execution != nil {
 			executionErr = effects.execution.Release(ctx, result.Attempt.ID)
 		}
-		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent), executionErr)
+		return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+			effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID), executionErr)
 	}
 	connectionEvent, err := apprealtime.NewExamAttemptConnectionClosedEvent(result.SittingID, result.Attempt.ID,
 		result.CandidateUserID, result.Connection.ID, result.Connection.CloseReason, result.Connection.ClosedAt.Time)
@@ -500,7 +695,8 @@ func (effects examAttemptRealtimeEffects) ParticipationExpired(ctx context.Conte
 		executionErr = effects.execution.Release(ctx, result.Attempt.ID)
 	}
 	return errors.Join(effects.realtime.Publish(ctx, connectionEvent), effects.realtime.Publish(ctx, managerEvent),
-		effects.realtime.Publish(ctx, candidateEvent), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID), executionErr)
+		effects.realtime.Publish(ctx, candidateEvent), effects.publishOperationalInvalidations(ctx, result.ExamID,
+			result.SittingID, result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.Connection.ID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, result examattempt.ReallowResult) error {
@@ -514,7 +710,8 @@ func (effects examAttemptRealtimeEffects) AttemptReallowed(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent))
+	return errors.Join(effects.realtime.Publish(ctx, managerEvent), effects.realtime.Publish(ctx, candidateEvent),
+		effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID, result.CandidateUserID))
 }
 
 func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, result examattempt.WorkspaceMutationResult) error {
@@ -537,7 +734,8 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 		if err != nil {
 			return err
 		}
-		return effects.realtime.Publish(ctx, event)
+		return errors.Join(effects.realtime.Publish(ctx, event),
+			effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
 	}
 	events := make([]apprealtime.RealtimeEvent, 0, 5)
 	if result.ConnectionClosed {
@@ -583,6 +781,12 @@ func (effects examAttemptRealtimeEffects) FocusLossEvaluated(ctx context.Context
 	for _, event := range events {
 		joined = errors.Join(joined, effects.realtime.Publish(ctx, event))
 	}
+	if result.GapDetected || result.FlagCreated || result.SuspensionCreated {
+		joined = errors.Join(joined, effects.publishSittingBoardInvalidation(ctx, result.ExamID, result.SittingID))
+	}
+	if result.SuspensionCreated {
+		joined = errors.Join(joined, effects.publishCandidateActivityInvalidation(ctx, result.CandidateUserID))
+	}
 	if result.SuspensionCreated && effects.execution != nil {
 		joined = errors.Join(joined, effects.execution.Release(ctx, result.AttemptID))
 	}
@@ -601,7 +805,8 @@ func (effects examAttemptRealtimeEffects) AttemptSubmitted(ctx context.Context, 
 	if effects.execution != nil {
 		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
 	}
-	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
+	return errors.Join(publishErr, effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID,
+		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx context.Context,
@@ -609,13 +814,13 @@ func (effects examAttemptRealtimeEffects) publishExamAttemptSubmittedFacts(ctx c
 ) (publishErr, constructionErr error) {
 	managerEvent, err := apprealtime.NewExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
-		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
+		result.Receipt.ManifestDigest, result.Provenance, result.Receipt.SubmittedAt)
 	if err != nil {
 		return nil, err
 	}
 	candidateEvent, err := apprealtime.NewCandidateExamAttemptSubmittedEvent(result.SittingID, result.Receipt.AttemptID,
 		result.CandidateUserID, result.Receipt.SubmissionID, result.Receipt.WorkspaceCursor,
-		result.Receipt.ManifestDigest, result.Receipt.SubmittedAt)
+		result.Receipt.ManifestDigest, result.Provenance, result.Receipt.SubmittedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -640,7 +845,8 @@ func (effects examAttemptRealtimeEffects) AttemptSealedForSittingClose(ctx conte
 	if effects.execution != nil {
 		executionErr = effects.execution.Release(ctx, result.Receipt.AttemptID)
 	}
-	return errors.Join(publishErr, effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
+	return errors.Join(publishErr, effects.publishOperationalInvalidations(ctx, result.ExamID, result.SittingID,
+		result.CandidateUserID), effects.realtime.UnbindExamAttemptConnection(ctx, result.ConnectionID), executionErr)
 }
 
 func (effects examAttemptRealtimeEffects) Report(ctx context.Context, operation string, err error) {

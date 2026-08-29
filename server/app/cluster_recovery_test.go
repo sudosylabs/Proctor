@@ -238,9 +238,9 @@ func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 				continue
 			}
 			user := storeFake.users[session.UserID.String()]
+			session.ExpiresAt = fixedNow.Add(-time.Minute)
+			session.IdleExpiresAt = fixedNow.Add(-time.Minute)
 			expiredSession := *session
-			expiredSession.ExpiresAt = fixedNow.Add(-time.Minute)
-			expiredSession.IdleExpiresAt = fixedNow.Add(-time.Minute)
 			resolved := &cachedAuthentication{
 				Credential: credential,
 				Session:    &expiredSession,

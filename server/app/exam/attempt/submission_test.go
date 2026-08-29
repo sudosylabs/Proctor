@@ -24,14 +24,16 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	credential := model.NewCredentialToken()
 	participationID := model.NewAttemptParticipationID()
 	workspaceID := model.NewExamAttemptWorkspaceID()
+	revisionID := model.NewExamRevisionID()
+	browserActivity := model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}
 	submissionID := model.NewSubmissionID()
 	f.submissionID = submissionID
 	digest := strings.Repeat("d", 64)
 	f.submissions.target = &store.ExamSubmissionSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
-		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID}
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: workspaceID, CurrentRevisionID: revisionID}
 	f.submissions.target.SealAt = f.at
 	f.submissions.sealResult = &store.ExamSubmissionSealResult{Receipt: store.ExamSubmissionReceipt{
-		SubmissionID: submissionID, AttemptID: f.attemptID, State: model.ExamAttemptSubmitted,
+		SubmissionID: submissionID, AttemptID: f.attemptID, ExamRevisionID: revisionID, State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 11, ManifestDigest: digest, SubmittedAt: f.at}, ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, ClassID: f.sitting.ClassID, CandidateUserID: f.userID,
 		ParticipationID: participationID, Generation: 3, ConnectionID: f.connectionID}
@@ -39,7 +41,8 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	result, err := f.service.Submit(context.Background(), f.call, SubmitCommand{
 		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{AttemptID: f.attemptID,
 			ConnectionID: f.connectionID, ContinuityCredential: credential}, ParticipationID: participationID, Generation: 3},
-		ExpectedWorkspaceCursor: 11, FinalFocusLossSequence: 7, IdempotencyKey: "test-key",
+		ExpectedCurrentRevisionID: revisionID, ExpectedWorkspaceCursor: 11, FinalFocusLossSequence: 7,
+		BrowserActivity: browserActivity, IdempotencyKey: "test-key",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +51,8 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	access := f.submissions.resolvedAccess
 	if access.AttemptID != f.attemptID || access.ParticipationID != participationID || access.Generation != 3 ||
 		access.ConnectionID != f.connectionID || access.CandidateUserID != principal.UserID || access.SessionID != principal.SessionID ||
-		access.ContinuityCredentialHash != model.HashToken(credential) || access.ExpectedWorkspaceCursor != 11 ||
+		access.ContinuityCredentialHash != model.HashToken(credential) || access.ExpectedCurrentRevisionID != revisionID ||
+		access.ExpectedWorkspaceCursor != 11 || access.BrowserActivity.State != model.BrowserActivitySubmissionNotApplicable ||
 		access.FinalFocusLossSequence != 7 || f.submissions.seal == nil || !f.submissions.seal.SubmissionID.IsValid() ||
 		!model.IsValidId(f.submissions.seal.AuditEventID) || result.Receipt.SubmissionID != submissionID || f.effects.submitted != 1 {
 		t.Fatalf("access=%#v seal=%#v result=%#v effects=%#v", access, f.submissions.seal, result, f.effects)
@@ -62,14 +66,14 @@ func TestSubmitSealsExactAcknowledgedStateBeforePublishingEffects(t *testing.T) 
 	if len(f.audit.values) != 1 || f.audit.values["exam_attempt_id"] != f.attemptID.String() {
 		t.Fatalf("Submission audit fields=%#v", f.audit.values)
 	}
-	wantIdempotency, prepareErr := prepareSubmissionIdempotency(f.call, "test-key", f.attemptID, 11, 7)
+	wantIdempotency, prepareErr := prepareSubmissionIdempotency(f.call, "test-key", f.attemptID, revisionID, 11, 7, browserActivity)
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
 	}
 	assertStoreBoundaryCommand(t, f.submissions.idempotency, wantIdempotency)
 	if f.mail.request.CandidateUserID != f.userID || f.mail.request.ExamID != f.sitting.ExamID ||
 		f.mail.request.SittingID != f.sitting.ID || f.mail.request.SubmissionID != submissionID ||
-		!f.mail.request.SealedAt.Equal(f.at) || f.mail.request.Automatic || f.submissions.seal.Notice == nil ||
+		!f.mail.request.SealedAt.Equal(f.at) || f.mail.request.Provenance != model.ExamSubmissionCandidateSubmitted || f.submissions.seal.Notice == nil ||
 		f.submissions.seal.ExpectedRecipientRevision != 2 || f.submissions.seal.AuditAt != model.MillisFromTime(f.at) {
 		t.Fatalf("mail request=%#v seal=%#v", f.mail.request, f.submissions.seal)
 	}
@@ -83,18 +87,22 @@ func TestSubmitReplayReturnsRetainedReceiptAndSuppressesEffects(t *testing.T) {
 
 	f := newFixture(t)
 	proposedID, retainedID := model.NewSubmissionID(), model.NewSubmissionID()
+	revisionID := model.NewExamRevisionID()
+	browserActivity := model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable}
 	f.submissionID = proposedID
 	access := validWorkspaceMutationAccess(f)
 	f.submissions.target = &store.ExamSubmissionSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
-		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: model.NewExamAttemptWorkspaceID(), Replayed: true, SealAt: f.at}
+		ClassID: f.sitting.ClassID, CandidateUserID: f.userID, WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		CurrentRevisionID: revisionID, Replayed: true, SealAt: f.at}
 	f.submissions.sealResult = &store.ExamSubmissionSealResult{Receipt: store.ExamSubmissionReceipt{SubmissionID: retainedID,
-		AttemptID: f.attemptID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 0,
+		AttemptID: f.attemptID, ExamRevisionID: revisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 0,
 		ManifestDigest: strings.Repeat("e", 64), SubmittedAt: f.at}, ExamID: f.sitting.ExamID,
 		SittingID: f.sitting.ID, ClassID: f.sitting.ClassID, CandidateUserID: f.userID,
 		ParticipationID: access.ParticipationID, Generation: access.Generation, ConnectionID: access.ConnectionID, Replayed: true}
 
 	result, err := f.service.Submit(context.Background(), f.call, SubmitCommand{Access: access,
-		ExpectedWorkspaceCursor: 0, FinalFocusLossSequence: 0, IdempotencyKey: "test-key"})
+		ExpectedCurrentRevisionID: revisionID, ExpectedWorkspaceCursor: 0, FinalFocusLossSequence: 0,
+		BrowserActivity: browserActivity, IdempotencyKey: "test-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,14 +118,16 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 	f := newFixture(t)
 	target := store.ExamSubmissionAutomaticSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
 		ClassID: f.sitting.ClassID, AcademicUnitID: model.NewAcademicUnitID(), CandidateUserID: f.userID,
-		AttemptID: f.attemptID, WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
-		Generation: 2, ConnectionID: f.connectionID}
+		AttemptID: f.attemptID, WorkspaceID: model.NewExamAttemptWorkspaceID(), CurrentRevisionID: model.NewExamRevisionID(),
+		ParticipationID: model.NewAttemptParticipationID(),
+		Generation:      2, ConnectionID: f.connectionID}
 	retained := model.NewSubmissionID()
 	f.submissionID = retained
 	f.submissions.automaticTargets = []store.ExamSubmissionAutomaticSealTarget{target}
 	f.submissions.automaticResult = &store.ExamSubmissionAutomaticSealResult{ExamSubmissionSealResult: store.ExamSubmissionSealResult{
 		Receipt: store.ExamSubmissionReceipt{SubmissionID: retained, AttemptID: target.AttemptID,
-			State: model.ExamAttemptSubmitted, WorkspaceCursor: 4, ManifestDigest: strings.Repeat("a", 64), SubmittedAt: f.at},
+			ExamRevisionID: target.CurrentRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 4,
+			ManifestDigest: strings.Repeat("a", 64), SubmittedAt: f.at},
 		ExamID: target.ExamID, SittingID: target.SittingID, ClassID: target.ClassID, CandidateUserID: target.CandidateUserID,
 		ParticipationID: target.ParticipationID, Generation: target.Generation, ConnectionID: target.ConnectionID},
 		ConnectionClosed: true}
@@ -131,7 +141,7 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 		f.submissions.automaticInput == nil || f.submissions.automaticInput.Target != target {
 		t.Fatalf("result=%#v input=%#v effects=%d err=%v", result, f.submissions.automaticInput, f.effects.submitted, err)
 	}
-	if !f.mail.request.Automatic || f.mail.request.SubmissionID != retained || !f.mail.request.SealedAt.Equal(f.at) ||
+	if f.mail.request.Provenance != model.ExamSubmissionSittingClosed || f.mail.request.SubmissionID != retained || !f.mail.request.SealedAt.Equal(f.at) ||
 		f.submissions.automaticInput.AuditAt != model.MillisFromTime(f.at) || f.submissions.automaticInput.Notice == nil ||
 		f.submissions.automaticInput.ExpectedRecipientRevision != 2 {
 		t.Fatalf("automatic mail request=%#v input=%#v", f.mail.request, f.submissions.automaticInput)
@@ -150,13 +160,108 @@ func TestAutomaticSealUsesBoundedSystemAuditAndPublishesOnlyFreshResult(t *testi
 	}
 }
 
+func TestManagerEndSealsWithPrivateReasonOutsideCandidateReceipt(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	managerID := useManagerCall(f)
+	f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 4, "")
+	target := store.ExamSubmissionAutomaticSealTarget{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		ClassID: f.sitting.ClassID, AcademicUnitID: model.NewAcademicUnitID(), CandidateUserID: f.userID,
+		AttemptID: f.attemptID, WorkspaceID: model.NewExamAttemptWorkspaceID(), CurrentRevisionID: model.NewExamRevisionID(),
+		ParticipationID: model.NewAttemptParticipationID(), Generation: 2, ConnectionID: f.connectionID}
+	submissionID := model.NewSubmissionID()
+	f.submissionID = submissionID
+	f.submissions.managerPreparation = &store.ExamSubmissionManagerEndPreparation{Target: target,
+		ExpectedAttemptRevision: 4, SealAt: f.at}
+	f.submissions.managerResult = &store.ExamSubmissionManagerEndResult{ExamSubmissionSealResult: store.ExamSubmissionSealResult{
+		Receipt: store.ExamSubmissionReceipt{SubmissionID: submissionID, AttemptID: target.AttemptID,
+			ExamRevisionID: target.CurrentRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 8,
+			ManifestDigest: strings.Repeat("f", 64), SubmittedAt: f.at}, ExamID: target.ExamID, SittingID: target.SittingID,
+		ClassID: target.ClassID, CandidateUserID: target.CandidateUserID, ParticipationID: target.ParticipationID,
+		Generation: target.Generation, ConnectionID: target.ConnectionID}, ConnectionClosed: true}
+	privateReason := "candidate requested an assisted early end"
+	result, err := f.service.EndByManager(context.Background(), f.call, ManagerEndCommand{ExamID: target.ExamID,
+		SittingID: target.SittingID, AttemptID: target.AttemptID, ExpectedAttemptRevision: 4,
+		PrivateReason: privateReason, IdempotencyKey: "manager-end-once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Provenance != model.ExamSubmissionManagerEndedAttempt || result.Receipt.SubmissionID != submissionID ||
+		f.effects.submitted != 1 || f.submissions.managerInput == nil ||
+		f.submissions.managerInput.Request.PrivateReason != privateReason ||
+		f.submissions.managerInput.Request.ActorUserID != managerID ||
+		f.mail.request.Provenance != model.ExamSubmissionManagerEndedAttempt {
+		t.Fatalf("result=%#v input=%#v mail=%#v effects=%d", result, f.submissions.managerInput, f.mail.request, f.effects.submitted)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", f.audit.values), privateReason) {
+		t.Fatalf("private reason entered ordinary audit fields: %#v", f.audit.values)
+	}
+	wantIdempotency, prepareErr := prepareManagerEndIdempotency(f.call, ManagerEndCommand{ExamID: target.ExamID,
+		SittingID: target.SittingID, AttemptID: target.AttemptID, ExpectedAttemptRevision: 4,
+		PrivateReason: privateReason, IdempotencyKey: "manager-end-once"})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.submissions.idempotency, wantIdempotency)
+}
+
+func TestManagerEndConcealsSelfAccessAndFailsClosedOnAuditFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		auditErr error
+	}{
+		{name: "records concealed denial"},
+		{name: "audit failure fails closed", auditErr: errors.New("audit unavailable")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.persistence.attempt, _ = managerAttemptFixture(t, f, model.ExamAttemptActive, 4, "")
+			f.audit.failErr = test.auditErr
+			privateReason := "manager must never end their own Attempt"
+			_, err := f.service.EndByManager(context.Background(), f.call, ManagerEndCommand{
+				ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID,
+				ExpectedAttemptRevision: 4, PrivateReason: privateReason, IdempotencyKey: "self-manager-end",
+			})
+			if test.auditErr != nil {
+				if !errors.Is(err, test.auditErr) {
+					t.Fatalf("EndByManager(audit failure) error = %v", err)
+				}
+			} else {
+				var fault *Fault
+				if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" {
+					t.Fatalf("EndByManager(self) error = %v", err)
+				}
+			}
+			if f.audit.action != model.ActionExamSittingManage ||
+				f.audit.resource != (model.Resource{Type: model.ResourceExamSitting, ID: f.sitting.ID.String()}) ||
+				f.audit.scopeType != model.RoleScopeClass || f.audit.scopeID != f.sitting.ClassID.String() ||
+				f.audit.operation != store.ExamSubmissionManagerEndOperation ||
+				f.audit.failedCode != "exam.attempt.not_found" ||
+				f.audit.values["exam_id"] != f.sitting.ExamID.String() ||
+				f.audit.values["exam_sitting_id"] != f.sitting.ID.String() ||
+				f.audit.values["exam_attempt_id"] != f.attemptID.String() ||
+				f.audit.values["expected_attempt_revision"] != int64(4) {
+				t.Fatalf("self-denial audit = %#v", f.audit)
+			}
+			if strings.Contains(fmt.Sprintf("%#v", f.audit.values), privateReason) ||
+				f.submissions.managerPreparation != nil || f.submissions.managerInput != nil ||
+				f.mail.request.SubmissionID.IsValid() || f.effects.submitted != 0 {
+				t.Fatalf("self-denial leaked or mutated: audit=%#v submissions=%#v mail=%#v effects=%d",
+					f.audit.values, f.submissions, f.mail.request, f.effects.submitted)
+			}
+		})
+	}
+}
+
 func TestManagedSubmissionNestedOwnershipMismatchIsConcealed(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t)
 	submissionID := model.NewSubmissionID()
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submissionID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	_, err := f.service.GetSubmission(context.Background(), f.call, GetSubmissionQuery{ExamID: model.NewExamID(),
 		SittingID: f.sitting.ID, AttemptID: f.attemptID, SubmissionID: submissionID})
 	var fault *Fault
@@ -173,7 +278,7 @@ func TestOpenSubmissionFileAuthorizesThenStreamsRetainedStarterBytes(t *testing.
 	submission := submissionFixture(t, f, 5)
 	entryID, version, starterID := model.NewAttemptWorkspaceEntryID(), model.NewWorkspaceContentVersion(), model.NewStarterWorkspaceObjectID()
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submission.ID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	f.submissions.file = &store.ExamSubmissionFileSelector{Entry: store.ExamSubmissionManifestItem{EntryID: entryID,
 		Kind: model.StarterWorkspaceEntryFile, Path: "main.go", ContentVersion: version, MediaType: "text/x-go",
 		SizeBytes: 4, SHA256: strings.Repeat("a", 64)}, StorageOrigin: model.AttemptWorkspaceStorageStarter,
@@ -200,7 +305,7 @@ func TestOpenSubmissionFileStreamsRetainedAttemptOriginBytes(t *testing.T) {
 	submission := submissionFixture(t, f, 5)
 	entryID, version, objectID := model.NewAttemptWorkspaceEntryID(), model.NewWorkspaceContentVersion(), model.NewAttemptWorkspaceObjectID()
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submission.ID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	f.submissions.file = &store.ExamSubmissionFileSelector{Entry: store.ExamSubmissionManifestItem{EntryID: entryID,
 		Kind: model.StarterWorkspaceEntryFile, Path: "answer.txt", ContentVersion: version, MediaType: "text/plain",
 		SizeBytes: 4, SHA256: strings.Repeat("b", 64)}, StorageOrigin: model.AttemptWorkspaceStorageAttempt,
@@ -228,7 +333,7 @@ func TestOpenSubmissionFileFailsClosedOnRetainedSelectorMismatch(t *testing.T) {
 	submission := submissionFixture(t, f, 5)
 	entryID := model.NewAttemptWorkspaceEntryID()
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submission.ID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	f.submissions.file = &store.ExamSubmissionFileSelector{Entry: store.ExamSubmissionManifestItem{
 		EntryID: model.NewAttemptWorkspaceEntryID(), Kind: model.StarterWorkspaceEntryFile, Path: "answer.txt",
 		ContentVersion: model.NewWorkspaceContentVersion(), MediaType: "text/plain", SizeBytes: 4,
@@ -251,7 +356,7 @@ func TestListSubmissionManifestReturnsBoundedEntryIDKeysetAfterAuthorization(t *
 	f := newFixture(t)
 	submission := submissionFixture(t, f, 5)
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submission.ID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	ids := []model.AttemptWorkspaceEntryID{model.NewAttemptWorkspaceEntryID(), model.NewAttemptWorkspaceEntryID(), model.NewAttemptWorkspaceEntryID()}
 	slices.SortFunc(ids, func(left, right model.AttemptWorkspaceEntryID) int {
 		return strings.Compare(left.String(), right.String())
@@ -282,7 +387,7 @@ func TestGetSubmissionAuthorizesCanonicalResourceBeforeProtectedRead(t *testing.
 	f := newFixture(t)
 	submission := submissionFixture(t, f, 5)
 	f.submissions.authorization = &store.ExamSubmissionAuthorization{SubmissionID: submission.ID,
-		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, AcademicUnitID: model.NewAcademicUnitID()}
+		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID()}
 	f.submissions.submission = submission
 
 	got, err := f.service.GetSubmission(context.Background(), f.call, GetSubmissionQuery{ExamID: f.sitting.ExamID,
@@ -306,8 +411,9 @@ func submissionFixture(t *testing.T, f *fixture, cursor int64) *model.ExamSubmis
 		t.Fatal(err)
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: model.NewSubmissionID(),
-		AttemptID: f.attemptID, WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest,
-		SubmittedAt: f.at.Add(time.Minute)})
+		AttemptID: f.attemptID, ExamRevisionID: model.NewExamRevisionID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest,
+		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: f.at.Add(time.Minute)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,22 +421,26 @@ func submissionFixture(t *testing.T, f *fixture, cursor int64) *model.ExamSubmis
 }
 
 type submissionStoreFake struct {
-	f                *fixture
-	resolvedAccess   store.ExamSubmissionSealAccess
-	target           *store.ExamSubmissionSealTarget
-	seal             *store.ExamSubmissionSeal
-	sealResult       *store.ExamSubmissionSealResult
-	err              error
-	authorization    *store.ExamSubmissionAuthorization
-	submission       *model.ExamSubmission
-	manifest         *store.ExamSubmissionManifestPage
-	manifestOptions  store.ExamSubmissionManifestListOptions
-	file             *store.ExamSubmissionFileSelector
-	automaticTargets []store.ExamSubmissionAutomaticSealTarget
-	automaticOptions store.ExamSubmissionAutomaticSealListOptions
-	automaticInput   *store.ExamSubmissionAutomaticSeal
-	automaticResult  *store.ExamSubmissionAutomaticSealResult
-	idempotency      *store.CommandIdempotency
+	f                  *fixture
+	resolvedAccess     store.ExamSubmissionSealAccess
+	target             *store.ExamSubmissionSealTarget
+	seal               *store.ExamSubmissionSeal
+	sealResult         *store.ExamSubmissionSealResult
+	err                error
+	authorization      *store.ExamSubmissionAuthorization
+	submission         *model.ExamSubmission
+	manifest           *store.ExamSubmissionManifestPage
+	manifestOptions    store.ExamSubmissionManifestListOptions
+	file               *store.ExamSubmissionFileSelector
+	automaticTargets   []store.ExamSubmissionAutomaticSealTarget
+	automaticOptions   store.ExamSubmissionAutomaticSealListOptions
+	automaticInput     *store.ExamSubmissionAutomaticSeal
+	automaticResult    *store.ExamSubmissionAutomaticSealResult
+	managerRequest     store.ExamSubmissionManagerEndRequest
+	managerPreparation *store.ExamSubmissionManagerEndPreparation
+	managerInput       *store.ExamSubmissionManagerEnd
+	managerResult      *store.ExamSubmissionManagerEndResult
+	idempotency        *store.CommandIdempotency
 }
 
 type submissionMailFake struct {
@@ -357,6 +467,18 @@ func (fake *submissionStoreFake) ListAutomaticSealTargets(_ context.Context, opt
 func (fake *submissionStoreFake) PrepareAutomaticSeal(context.Context, store.ExamSubmissionAutomaticSealTarget) (*store.ExamSubmissionAutomaticSealPreparation, error) {
 	return &store.ExamSubmissionAutomaticSealPreparation{Replayed: fake.automaticResult != nil && fake.automaticResult.Replayed,
 		SealAt: fake.f.at}, fake.err
+}
+
+func (fake *submissionStoreFake) PrepareManagerEnd(_ context.Context, request store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
+	fake.managerRequest = request
+	return fake.managerPreparation, fake.err
+}
+
+func (fake *submissionStoreFake) EndByManager(_ context.Context, input *store.ExamSubmissionManagerEnd,
+	idempotency *store.CommandIdempotency,
+) (*store.ExamSubmissionManagerEndResult, error) {
+	fake.managerInput, fake.idempotency = input, idempotency
+	return fake.managerResult, fake.err
 }
 
 func (fake *submissionStoreFake) SealForSittingClose(_ context.Context, input *store.ExamSubmissionAutomaticSeal) (*store.ExamSubmissionAutomaticSealResult, error) {

@@ -489,7 +489,7 @@ func (s *Service) convergeGrant(ctx context.Context, grantID model.ExecutionGran
 		if grant.LifecyclePending {
 			return s.releaseGrant(ctx, grant)
 		}
-		if convergence.AttemptState != model.ExamAttemptActive ||
+		if convergence.AttemptState != model.ExamAttemptActive || convergence.AcknowledgementRequired ||
 			(convergence.SittingState != model.ExamSittingOpen && convergence.SittingState != model.ExamSittingPaused) ||
 			grant.State != model.ExecutionGrantReady {
 			return s.releaseGrant(ctx, grant)
@@ -595,6 +595,15 @@ func (s *Service) open(ctx context.Context, attemptID model.ExamAttemptID) (Envi
 		return nil, nil, fmt.Errorf("read execution placement: %w", err)
 	}
 	if grant.State != model.ExecutionGrantReady {
+		return nil, nil, ErrUnavailable
+	}
+	convergence, err := s.grants.CurrentForReconciliation(ctx, grant.ID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read execution interaction fence: %w", err)
+	}
+	if convergence == nil || convergence.Grant == nil || convergence.Grant.ID != grant.ID ||
+		convergence.AttemptState != model.ExamAttemptActive || convergence.SittingState != model.ExamSittingOpen ||
+		convergence.AcknowledgementRequired {
 		return nil, nil, ErrUnavailable
 	}
 	environment, err := s.hosts.Ensure(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})

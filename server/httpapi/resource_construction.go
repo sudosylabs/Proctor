@@ -14,6 +14,7 @@ type resourceApplications struct {
 	authentication         authenticationEntryApplication
 	authenticationMethods  authenticationMethodApplication
 	desktopAuthorization   DesktopAuthorization
+	desktopRegistrations   DesktopRegistrations
 	externalAuthentication externalAuthenticationEntryApplication
 	browserInvitations     BrowserInvitationApplication
 
@@ -51,6 +52,7 @@ type resourceApplications struct {
 	roles                         RoleApplication
 	roleBindings                  RoleBindingApplication
 	accessPolicy                  AccessPolicyApplication
+	desktopCompatibility          DesktopCompatibilityApplication
 
 	audit     AuditListingApplication
 	jobs      JobOperationsApplication
@@ -70,6 +72,7 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 	var authentication authenticationEntryApplication = application
 	var authenticationMethods authenticationMethodApplication = application
 	var desktopAuthorization DesktopAuthorization = application
+	var desktopRegistrations DesktopRegistrations = application
 	var externalAuthentication externalAuthenticationEntryApplication = application
 	var sessions Sessions = application
 	var mfa MFA = application
@@ -83,6 +86,7 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 	var examAttempts ExamAttemptApplication = application
 	var examIntegrityReviews ExamIntegrityReviewApplication = application
 	var jobs JobOperationsApplication = application
+	var desktopCompatibility DesktopCompatibilityApplication = application
 
 	required := []struct {
 		missing bool
@@ -123,8 +127,9 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 		authenticator:  authenticator,
 		authentication: authentication, authenticationMethods: authenticationMethods,
 		desktopAuthorization: desktopAuthorization, externalAuthentication: externalAuthentication,
-		browserInvitations: options.BrowserInvitations,
-		userProfiles:       options.UserProfiles, userSettings: options.UserSettings,
+		desktopRegistrations: desktopRegistrations,
+		browserInvitations:   options.BrowserInvitations,
+		userProfiles:         options.UserProfiles, userSettings: options.UserSettings,
 		accountStates: options.AccountStates, sessionAdministration: options.SessionAdministrations,
 		sessions: sessions, mfa: mfa, personalAccessTokens: personalAccessTokens,
 		institutions: options.Institutions, academicUnits: options.AcademicUnits,
@@ -140,6 +145,7 @@ func resolveResourceApplications(options Options) (resourceApplications, error) 
 		studentProgressions:           options.StudentProgressions,
 		academicAdministrationBatches: options.AcademicAdministrationBatches,
 		roles:                         options.Roles, roleBindings: options.RoleBindings, accessPolicy: options.AccessPolicy,
-		audit: options.AuditListings, jobs: jobs, mail: options.Mail, bootstrap: options.Bootstrap,
+		desktopCompatibility: desktopCompatibility,
+		audit:                options.AuditListings, jobs: jobs, mail: options.Mail, bootstrap: options.Bootstrap,
 	}, nil
 }

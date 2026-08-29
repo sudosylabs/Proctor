@@ -23,8 +23,13 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -39,6 +44,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/draft/starter-workspace/directories:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -75,8 +82,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -98,6 +110,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/draft/starter-workspace/files:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -147,8 +161,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -180,6 +199,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -218,8 +239,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -241,6 +267,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     delete:
       operationId: removeExamDraftStarterWorkspaceEntry
       summary: Remove one file or empty directory from a Starter Workspace
@@ -272,8 +300,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -295,6 +328,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/draft/starter-workspace/files/{starter_workspace_entry_id}/content:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -320,8 +355,13 @@ paths:
         - exam.starter_workspace.invalid
         - exam.starter_workspace.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: If-None-Match
@@ -345,6 +385,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     put:
       operationId: replaceExamDraftStarterWorkspaceFileContent
       summary: Replace one Starter Workspace file's content
@@ -390,8 +432,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -423,6 +470,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     StarterWorkspaceEntryID:

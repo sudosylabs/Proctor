@@ -24,8 +24,13 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: state
@@ -68,6 +73,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -94,8 +101,13 @@ paths:
         - exam.attempt.invalid
         - exam.attempt.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -110,6 +122,73 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+      - $ref: '#/components/parameters/ExamAttemptID'
+    get:
+      operationId: listExamAttemptBrowserActivity
+      summary: List privacy-minimized Browser Activity for one managed Attempt
+      description: >-
+        Returns a no-store keyset page of minimized top-level browser navigation records after resolving the exact nested Attempt and checking the dedicated Browser Activity view authority. Session, Connection, Desktop Registration, credentials, page content, and private Review state are excluded.
+      tags:
+        - Attempts and workspaces
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of minimized Browser Activity records to return in this keyset page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from it.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/BrowserActivityListOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -117,11 +196,11 @@ paths:
       - $ref: '#/components/parameters/ExamAttemptID'
     post:
       operationId: reallowExamAttempt
-      summary: Re-allow one exact active Exam Attempt suspension
+      summary: Re-allow one exact suspended Exam Attempt
       tags:
         - Attempts and workspaces
       description: >-
-        Closes only the identified active suspension episode. It preserves integrity evidence and creates no continuity credential or Participation.
+        Closes only the identified active suspension episode and moves the Attempt to ready. It preserves integrity evidence and creates no continuity credential, Participation, Session binding, or Connection; the candidate must rejoin through full admission validation.
       x-proctor-auth: principal_required
       x-proctor-idempotency: required
       x-proctor-error-codes:
@@ -147,8 +226,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -170,6 +254,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     ReallowExamAttempt:
@@ -184,6 +270,15 @@ components:
             expected_attempt_revision: 4
             reason: Candidate identity was reverified by the invigilator.
   responses:
+    BrowserActivityListOK:
+      description: Bounded privacy-minimized Browser Activity page
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BrowserActivityListResponse'
     ExamAttemptManagerOK:
       description: Bounded manager-safe Exam Attempt state
       headers:
@@ -214,9 +309,88 @@ components:
           schema:
             $ref: '#/components/schemas/ExamAttemptReallowResponse'
   schemas:
+    BrowserActivityListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/BrowserActivityItemResponse'
+        next_cursor:
+          type: string
+    BrowserActivityItemResponse:
+      type: object
+      additionalProperties: false
+      required: [source_session_id, generation, sequence, kind, policy_revision_id, client_occurred_at, location, matched_rule_id, block_reason, received_at]
+      properties:
+        source_session_id:
+          type: string
+          format: uuid
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        kind:
+          type: string
+          enum: [browser_opened, browser_closed, top_level_navigation, top_level_redirect, blocked_top_level_navigation]
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        client_occurred_at:
+          type: string
+          format: date-time
+        location:
+          description: >-
+            Reason-minimized navigation location. Successful navigation and HTTPS policy failures use a canonical HTTPS
+            host, optional non-default port, and path. A blocked HTTP navigation uses the same canonical network fields
+            with scheme `http`. Other disallowed schemes retain only their lowercase scheme while host and path are empty.
+            An `invalid_url` block uses empty scheme, host, and path values. Query, fragment, user information, local paths,
+            and scheme payloads are never retained.
+          type:
+            - object
+            - "null"
+          additionalProperties: false
+          required: [scheme, host, path]
+          properties:
+            scheme:
+              type: string
+              maxLength: 32
+              pattern: '^$|^[a-z][a-z0-9+.-]{0,31}$'
+            host:
+              type: string
+            port:
+              type: string
+              pattern: '^[0-9]{1,5}$'
+            path:
+              type: string
+        matched_rule_id:
+          type:
+            - string
+            - "null"
+        block_reason:
+          type:
+            - string
+            - "null"
+          enum:
+            - scheme_not_allowed
+            - origin_not_allowed
+            - path_not_allowed
+            - redirect_not_allowed
+            - invalid_url
+            - null
+        received_at:
+          type: string
+          format: date-time
     ExamAttemptState:
       type: string
       enum:
+        - ready
         - active
         - suspended
         - submitted

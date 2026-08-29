@@ -5,6 +5,8 @@ package storetest
 
 import (
 	"context"
+	"crypto/elliptic"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"sync"
@@ -43,7 +45,6 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 				value.CallbackURL = "https://attacker.example/callback"
 			}},
 			{name: "PKCE challenge", mutate: func(value *store.DesktopAuthorizationCreation) { value.CodeChallenge = "short" }},
-			{name: "authentication path", mutate: func(value *store.DesktopAuthorizationCreation) { value.ExpectedAuthenticationMethod = "unknown" }},
 			{name: "device ID", mutate: func(value *store.DesktopAuthorizationCreation) {
 				value.DeviceID = strings.Repeat("x", model.SessionDeviceIdMaxLength+1)
 			}},
@@ -100,6 +101,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if saved.ID != transaction.ID || saved.ExpiresAt.IsZero() {
 		t.Fatalf("Create() = %#v", saved)
 	}
+	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state, user.ID)
 
 	expiredCreatedAt := now.Add(-10 * time.Minute)
 	expiredPending, expiredHandle, expiredProof, expiredState, _ := newDesktopAuthorizationTransaction(expiredCreatedAt, institution.ID)
@@ -155,14 +157,21 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 
 	code := model.NewCredentialToken()
 	issueInput := &store.DesktopAuthorizationCodeIssue{
-		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof), StateHash: model.HashToken(state),
-		UserID: user.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: now.UnixMilli(), CodeHash: model.HashToken(code), CodeLifetime: 45 * time.Second,
+		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
+		CodeHash: model.HashToken(code), ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		AuditEventID: model.NewAuditEventID().String(), AuditAt: model.GetMillis(),
 	}
 	if _, rollbackErr := ss.BrowserAuthentication().IssueCode(ctx, issueInput); rollbackErr == nil {
 		t.Fatal("IssueCode() succeeded without its durable audit attempt")
+	}
+	switchedUser := saveUser(t, ctx, ss)
+	switchAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, switchedUser.ID, "issue-account-switch")
+	switchInput := *issueInput
+	switchInput.ExpectedUserID = switchedUser.ID
+	switchInput.AuditEventID = switchAudit.ID.String()
+	if _, switchErr := ss.BrowserAuthentication().IssueCode(ctx, &switchInput); !store.IsNotFound(switchErr) {
+		t.Fatalf("IssueCode(account switch) error = %v, want not found", switchErr)
 	}
 	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "issue")
 	issueInput.AuditEventID, issueInput.AuditAt = issueAudit.ID.String(), model.GetMillis()
@@ -176,9 +185,8 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		t.Fatalf("IssueCode() = %#v", issued)
 	}
 	if _, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
-		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof), StateHash: model.HashToken(state),
-		UserID: user.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: now.UnixMilli(), CodeHash: model.HashToken(model.NewCredentialToken()), CodeLifetime: 30 * time.Second,
+		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state),
+		CodeHash: model.HashToken(model.NewCredentialToken()), ExpectedUserID: user.ID, CodeLifetime: 30 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
 	}); !store.IsNotFound(err) {
 		t.Fatalf("IssueCode(replay) error = %v", err)
@@ -186,6 +194,16 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 
 	exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "exchange")
 	exchange := desktopAuthorizationExchange(now, code, state, verifier, exchangeAudit)
+	stalePolicyExchange := *exchange
+	stalePolicyExchange.DesktopCompatibilityPolicyRevision++
+	if _, staleErr := ss.BrowserAuthentication().Exchange(ctx, &stalePolicyExchange); staleErr == nil {
+		t.Fatal("Exchange() accepted a stale Desktop Compatibility Policy revision")
+	} else {
+		var conflict *store.ErrConflict
+		if !errors.As(staleErr, &conflict) || conflict.Constraint != "desktop_compatibility_policy_revision" {
+			t.Fatalf("Exchange(stale Desktop Compatibility Policy) error = %v", staleErr)
+		}
+	}
 	rollbackExchange := *exchange
 	rollbackExchange.AuditEventID = model.NewAuditEventID().String()
 	if _, rollbackErr := ss.BrowserAuthentication().Exchange(ctx, &rollbackExchange); rollbackErr == nil {
@@ -268,12 +286,12 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	disabledTransaction, disabledHandle, disabledProof, disabledState, disabledVerifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, disabledTransaction)
 	requireNoError(t, err)
+	disabledBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), disabledHandle, disabledProof, disabledState, disabledUser.ID)
 	disabledCode := model.NewCredentialToken()
 	disabledIssueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "issue-disabled-user")
 	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
-		HandleHash: model.HashToken(disabledHandle), BrowserProofHash: model.HashToken(disabledProof), StateHash: model.HashToken(disabledState),
-		UserID: disabledUser.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: model.GetMillis(), CodeHash: model.HashToken(disabledCode), CodeLifetime: 45 * time.Second,
+		BindingHash: model.HashToken(disabledBinding), StateHash: model.HashToken(disabledState),
+		CodeHash: model.HashToken(disabledCode), ExpectedUserID: disabledUser.ID, CodeLifetime: 45 * time.Second,
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 		AuditEventID: disabledIssueAudit.ID.String(), AuditAt: model.GetMillis(),
 	})
@@ -291,22 +309,15 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	rejectedIssue, rejectedHandle, rejectedProof, rejectedState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, rejectedIssue)
 	requireNoError(t, err)
-	rejectedIssueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "issue-disabled-user-after-disable")
-	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
-		HandleHash: model.HashToken(rejectedHandle), BrowserProofHash: model.HashToken(rejectedProof), StateHash: model.HashToken(rejectedState),
-		UserID: disabledUser.ID, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		AuthenticatedAt: model.GetMillis(), CodeHash: model.HashToken(model.NewCredentialToken()),
-		CodeLifetime: 45 * time.Second,
-		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
-		AuditEventID: rejectedIssueAudit.ID.String(), AuditAt: model.GetMillis(),
+	rejectedBinding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), rejectedHandle, rejectedProof, rejectedState)
+	_, err = ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
+		BindingHash: model.HashToken(rejectedBinding), UserID: disabledUser.ID,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: model.GetMillis(),
+		Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})
 	if !store.IsNotFound(err) {
-		t.Fatalf("IssueCode(disabled user) error = %v, want not found", err)
-	}
-	rejectedIssueAuditAfter, getErr := ss.Audit().Get(ctx, rejectedIssueAudit.ID.String())
-	requireNoError(t, getErr)
-	if rejectedIssueAuditAfter.Status != model.AuditStatusAttempt {
-		t.Fatalf("disabled-user IssueCode completed audit: %#v", rejectedIssueAuditAfter)
+		t.Fatalf("AuthenticateDesktopAuthorization(disabled user) error = %v, want not found", err)
 	}
 	disabledExchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "exchange-disabled-user")
 	_, err = ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), disabledCode, disabledState, disabledVerifier, disabledExchangeAudit))
@@ -327,12 +338,79 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	cancelled, cancelHandle, cancelProof, cancelState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, cancelled)
 	requireNoError(t, err)
-	err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState)})
+	cancelBinding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), cancelHandle, cancelProof, cancelState)
+	err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{BindingHash: model.HashToken(cancelBinding), StateHash: model.HashToken(cancelState)})
 	requireNoError(t, err)
-	err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{HandleHash: model.HashToken(cancelHandle), BrowserProofHash: model.HashToken(cancelProof), StateHash: model.HashToken(cancelState)})
+	err = ss.BrowserAuthentication().Cancel(ctx, &store.DesktopAuthorizationCancellation{BindingHash: model.HashToken(cancelBinding), StateHash: model.HashToken(cancelState)})
 	if !store.IsNotFound(err) {
 		t.Fatalf("Cancel(replay) error = %v", err)
 	}
+
+	t.Run("ActiveAttemptFencesAuthenticationAndExchange", func(t *testing.T) {
+		fixture := newExamAttemptFixture(t, ctx, ss)
+		issuedTransaction, issuedHandle, issuedProof, issuedState, issuedVerifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
+		_, createErr := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, issuedTransaction)
+		requireNoError(t, createErr)
+		issuedBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(),
+			issuedHandle, issuedProof, issuedState, fixture.candidate.ID)
+		issuedCode := model.NewCredentialToken()
+		issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, fixture.candidate.ID, "issue-before-attempt")
+		_, issueErr := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+			BindingHash: model.HashToken(issuedBinding), StateHash: model.HashToken(issuedState),
+			CodeHash: model.HashToken(issuedCode), ExpectedUserID: fixture.candidate.ID, CodeLifetime: 45 * time.Second,
+			Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+			AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+		})
+		requireNoError(t, issueErr)
+
+		pending, pendingHandle, pendingProof, pendingState, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
+		_, createErr = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, pending)
+		requireNoError(t, createErr)
+		pendingBinding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), pendingHandle, pendingProof, pendingState)
+
+		continuity := model.HashToken(model.NewCredentialToken())
+		connect := &store.ExamAttemptConnect{
+			SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+			DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
+			AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+			ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
+			ContinuityCredentialHash: continuity,
+			AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+		}
+		prepareExamAttemptConnect(t, ctx, ss, connect)
+		_, connectErr := ss.ExamAttempt().Connect(ctx, connect,
+			examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "desktop-lock", "desktop-lock"))
+		requireNoError(t, connectErr)
+
+		authenticated, authenticationErr := ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx,
+			&store.DesktopAuthorizationAuthentication{
+				BindingHash: model.HashToken(pendingBinding), UserID: fixture.candidate.ID,
+				AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+				AuthenticatedAt: model.GetMillis(),
+				Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+			})
+		requireNoError(t, authenticationErr)
+		if authenticated == nil || !authenticated.Denied {
+			t.Fatalf("AuthenticateDesktopAuthorization(active Attempt) = %#v", authenticated)
+		}
+		if _, contextErr := ss.BrowserAuthentication().GetDesktopAuthorizationContext(ctx, model.HashToken(pendingBinding)); !store.IsNotFound(contextErr) {
+			t.Fatalf("GetDesktopAuthorizationContext(denied) error = %v", contextErr)
+		}
+
+		exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, fixture.candidate.ID, "exchange-during-attempt")
+		denied, exchangeErr := ss.BrowserAuthentication().Exchange(ctx,
+			desktopAuthorizationExchange(model.NowUTC(), issuedCode, issuedState, issuedVerifier, exchangeAudit))
+		requireNoError(t, exchangeErr)
+		if denied == nil || !denied.Denied || denied.Session != nil {
+			t.Fatalf("Exchange(active Attempt) = %#v", denied)
+		}
+		completedAudit, auditErr := ss.Audit().Get(ctx, exchangeAudit.ID.String())
+		requireNoError(t, auditErr)
+		if completedAudit.Status != model.AuditStatusFail ||
+			completedAudit.ErrorCode != "authentication.desktop_authorization.account_session_locked" {
+			t.Fatalf("Exchange(active Attempt) audit = %#v", completedAudit)
+		}
+	})
 }
 
 func isInvalidInput(err error) bool {
@@ -340,25 +418,75 @@ func isInvalidInput(err error) bool {
 	return errors.As(err, &target)
 }
 
+func bindDesktopAuthorization(t *testing.T, ctx context.Context, persistence store.BrowserAuthenticationStore, handle, proof, state string) string {
+	t.Helper()
+	binding := model.NewCredentialToken()
+	bound, err := persistence.BindDesktopAuthorization(ctx, &store.DesktopAuthorizationBinding{
+		HandleHash: model.HashToken(handle), BrowserProofHash: model.HashToken(proof),
+		StateHash: model.HashToken(state), BindingHash: model.HashToken(binding),
+	})
+	requireNoError(t, err)
+	if bound == nil || bound.ExpiresAt.IsZero() {
+		t.Fatalf("BindDesktopAuthorization() = %#v", bound)
+	}
+	return binding
+}
+
+func bindAndAuthenticateDesktopAuthorization(t *testing.T, ctx context.Context, persistence store.BrowserAuthenticationStore,
+	handle, proof, state string, userID model.UserID,
+) string {
+	t.Helper()
+	binding := bindDesktopAuthorization(t, ctx, persistence, handle, proof, state)
+	result, err := persistence.AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
+		BindingHash: model.HashToken(binding), UserID: userID, AuthenticationMethod: "password",
+		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+	})
+	requireNoError(t, err)
+	if result == nil || result.Denied {
+		t.Fatalf("AuthenticateDesktopAuthorization() = %#v", result)
+	}
+	return binding
+}
+
 func newDesktopAuthorizationTransaction(_ time.Time, institutionID model.InstitutionID) (*store.DesktopAuthorizationCreation, string, string, string, string) {
 	handle, proof, state := model.NewCredentialToken(), model.NewCredentialToken(), model.NewCredentialToken()
 	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	publicJWK, thumbprint := storetestDesktopAuthorizationKey()
 	t := &store.DesktopAuthorizationCreation{ID: model.NewBrowserAuthenticationTransactionID(),
 		InstitutionID: institutionID, Issuer: "https://proctor.example.edu", HandleHash: model.HashToken(handle),
 		BrowserProofHash: model.HashToken(proof), StateHash: model.HashToken(state),
 		CallbackURL: "http://127.0.0.1:49152/" + model.NewCredentialToken(), CodeChallenge: model.PKCES256Challenge(verifier),
-		ExpectedAuthenticationMethod: "password", DeviceID: "desktop-1", DeviceName: "Test Desktop",
+		DeviceID: "desktop-1", DeviceName: "Test Desktop", ProposedPublicJWK: publicJWK, ProposedKeyThumbprint: thumbprint,
+		DesktopRelease: "1.0.0", DesktopBuildID: "storetest", DesktopPlatform: model.DesktopPlatformDarwin,
+		DesktopArchitecture: model.DesktopArchitectureARM64, DesktopRealtimeProtocol: 1,
 		Lifetime: model.BrowserAuthenticationTransactionLifetime}
 	return t, handle, proof, state, verifier
 }
 
 func desktopAuthorizationExchange(at time.Time, code, state, verifier string, audit *model.AuditEvent) *store.DesktopAuthorizationExchange {
+	publicJWK, thumbprint := storetestDesktopAuthorizationKey()
 	return &store.DesktopAuthorizationExchange{CodeHash: model.HashToken(code), StateHash: model.HashToken(state),
 		CodeChallenge: model.PKCES256Challenge(verifier), Issuer: "https://proctor.example.edu",
-		AccessTokenHash: model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
+		ExpectedPublicJWK: publicJWK, ExpectedKeyThumbprint: thumbprint, DesktopRelease: "1.0.0", DesktopBuildID: "storetest",
+		DesktopPlatform: model.DesktopPlatformDarwin, DesktopArchitecture: model.DesktopArchitectureARM64, DesktopRealtimeProtocol: 1,
+		DesktopCompatibilityPolicyRevision: 1,
+		AccessTokenHash:                    model.HashToken(model.NewCredentialToken()), RefreshTokenHash: model.HashToken(model.NewCredentialToken()),
 		AccessLifetime: 5 * time.Minute, RefreshLifetime: time.Hour, IdleLifetime: 30 * time.Minute, AbsoluteLifetime: time.Hour,
 		MaximumActive: 10,
 		Capabilities:  store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}}, AuditEventID: audit.ID.String(), AuditAt: model.GetMillis()}
+}
+
+func storetestDesktopAuthorizationKey() (model.DesktopPublicJWK, string) {
+	curve := elliptic.P256().Params()
+	publicJWK := model.DesktopPublicJWK{Kty: "EC", Crv: "P-256",
+		X: base64.RawURLEncoding.EncodeToString(curve.Gx.FillBytes(make([]byte, 32))),
+		Y: base64.RawURLEncoding.EncodeToString(curve.Gy.FillBytes(make([]byte, 32)))}
+	thumbprint, err := publicJWK.Thumbprint()
+	if err != nil {
+		panic(err)
+	}
+	return publicJWK, thumbprint
 }
 
 func saveDesktopAuthorizationAudit(t *testing.T, ctx context.Context, ss store.Store, institutionID model.InstitutionID, userID model.UserID, operation string) *model.AuditEvent {

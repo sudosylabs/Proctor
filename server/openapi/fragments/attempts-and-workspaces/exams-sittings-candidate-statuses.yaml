@@ -1,0 +1,210 @@
+paths:
+  /api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/candidate-statuses:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - $ref: '#/components/parameters/ExamSittingID'
+    get:
+      operationId: listExamSittingCandidateStatuses
+      summary: List the minimized candidate-status board for one Exam Sitting
+      tags:
+        - Attempts and workspaces
+      description: >-
+        Returns one bounded row per authoritative Sitting candidate after current exam.sitting.view authorization. Presence is derived from the authoritative Participation lease at server_time. The projection excludes Sessions, credentials, connections, evidence, private reasons, and Review decisions.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.attempt.invalid
+        - exam.attempt.unavailable
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of candidate-status rows to return from the live Sitting projection.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque live-view keyset cursor over ascending candidate User identity.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamSittingCandidateStatusesOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    ExamSittingCandidateStatusesOK:
+      description: Minimized live candidate-status board
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamSittingCandidateStatusesResponse'
+  schemas:
+    SittingCandidatePresenceState:
+      type: string
+      enum: [not_started, ready, connected, reconnecting, lease_expired, suspended, submitted]
+    SittingCandidateIdentityResponse:
+      type: object
+      additionalProperties: false
+      required: [user_id, username, display_name]
+      properties:
+        user_id:
+          $ref: '#/components/schemas/ID'
+        username:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+    SittingCandidateSubmissionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, submitted_at, provenance]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        submitted_at:
+          type: string
+          format: date-time
+        provenance:
+          $ref: '#/components/schemas/ExamSubmissionProvenance'
+    SittingCandidateAttemptResponse:
+      type: object
+      additionalProperties: false
+      required: [id, state, revision, created_at, updated_at, submission]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        state:
+          type: string
+          enum: [ready, active, suspended, submitted]
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        submission:
+          oneOf:
+            - $ref: '#/components/schemas/SittingCandidateSubmissionResponse'
+            - type: "null"
+    SittingCandidatePresenceResponse:
+      type: object
+      additionalProperties: false
+      required: [state, last_lease_renewed_at, lease_expires_at]
+      properties:
+        state:
+          $ref: '#/components/schemas/SittingCandidatePresenceState'
+        last_lease_renewed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lease_expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    SittingCandidateSuspensionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, candidate_reason, reallow_available]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        candidate_reason:
+          type: string
+          enum: [secure_connectivity_lost, focus_policy_review_required]
+        reallow_available:
+          type: boolean
+    SittingCandidateStatusItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - candidate
+        - current_class_membership
+        - attempt
+        - presence
+        - suspension
+        - integrity_attention_count
+      properties:
+        candidate:
+          $ref: '#/components/schemas/SittingCandidateIdentityResponse'
+        current_class_membership:
+          type: boolean
+        attempt:
+          oneOf:
+            - $ref: '#/components/schemas/SittingCandidateAttemptResponse'
+            - type: "null"
+        presence:
+          $ref: '#/components/schemas/SittingCandidatePresenceResponse'
+        suspension:
+          oneOf:
+            - $ref: '#/components/schemas/SittingCandidateSuspensionResponse'
+            - type: "null"
+        integrity_attention_count:
+          type: integer
+          format: int64
+          minimum: 0
+    ExamSittingCandidateStatusesResponse:
+      type: object
+      additionalProperties: false
+      required: [server_time, exam_id, exam_sitting_id, sitting_state, sitting_revision, items]
+      properties:
+        server_time:
+          type: string
+          format: date-time
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        sitting_state:
+          $ref: '#/components/schemas/ExamSittingState'
+        sitting_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SittingCandidateStatusItemResponse'
+        next_cursor:
+          type: string

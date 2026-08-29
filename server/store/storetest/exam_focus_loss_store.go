@@ -127,10 +127,12 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
 		connected, access := connectFocusLossFixture(t, ctx, ss, fixture, "focus-disabled")
 		presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID,
-			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, ConnectionID: connected.Connection.ID,
+			CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+			DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
+			ConnectionID:             connected.Connection.ID,
 			ContinuityCredentialHash: access.ContinuityCredentialHash})
 		requireNoError(t, err)
-		if presentation.FocusLossCollectionEnabled {
+		if presentation.RuntimeCapabilities.FocusLossCollectionEnabled {
 			t.Fatal("disabled Focus Loss policy told the candidate to collect signals")
 		}
 		first := recordFocusLoss(t, ctx, ss, fixture, access, 1, model.FocusLossMaximumDurationMilliseconds, model.FocusLossSourceWindowBlur)
@@ -245,7 +247,7 @@ func testExamAttemptFocusLossPolicies(t *testing.T, ctx context.Context, ss stor
 		reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, reallow,
 			examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "focus-reallow", "focus-reallow"))
 		requireNoError(t, err)
-		if !reallowed.FocusLossWindowReset || reallowed.Attempt.State != model.ExamAttemptActive || reallowed.Attempt.Revision != 3 {
+		if !reallowed.FocusLossWindowReset || reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Attempt.Revision != 3 {
 			t.Fatalf("ReallowAttempt(Focus Loss) = %#v", reallowed)
 		}
 		persisted := probe.FocusLossPersistence(t, ctx, connected.Attempt.ID, connected.Participation.Generation)
@@ -425,9 +427,11 @@ func connectFocusLossFixture(t *testing.T, ctx context.Context, ss store.Store, 
 	t.Helper()
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	input := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, input)
 	connected, err := ss.ExamAttempt().Connect(ctx, input, examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, key, key))
 	requireNoError(t, err)
 	return connected, store.ExamAttemptFocusLossAccess{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,

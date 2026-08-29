@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -24,9 +25,10 @@ func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentMan
 	sittings := &submissionAuthorizationSittingFake{}
 	adapter := examAttemptManagerAuthorizationAdapter{
 		sittings: sittings,
+		audit:    &submissionAuthorizationAuditFake{},
 		submissions: &submissionAuthorizationStoreFake{authorization: &store.ExamSubmissionAuthorization{
 			SubmissionID: submissionID, ExamID: examID, SittingID: model.NewExamSittingID(),
-			AttemptID: model.NewExamAttemptID(), AcademicUnitID: model.NewAcademicUnitID(),
+			AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(), AcademicUnitID: model.NewAcademicUnitID(),
 		}},
 	}
 	principal := examAttemptPrincipal()
@@ -39,6 +41,64 @@ func TestExamAttemptSubmissionAuthorizationResolvesCanonicalExamBeforeCurrentMan
 		t.Fatalf("authorization call = exam %s submission %s principal %s", sittings.examID,
 			sittings.submissionID, sittings.call.Principal().UserID)
 	}
+}
+
+type submissionAuthorizationAuditFake struct {
+	principal model.Principal
+	action    model.Action
+	resource  model.Resource
+	scopeType model.RoleScopeType
+	scopeID   string
+	metadata  model.RequestMetadata
+	allowed   bool
+	err       error
+}
+
+func (fake *submissionAuthorizationAuditFake) RecordAuthorizationDecision(_ context.Context, principal model.Principal,
+	action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID string,
+	metadata model.RequestMetadata, allowed bool,
+) error {
+	fake.principal, fake.action, fake.resource = principal, action, resource
+	fake.scopeType, fake.scopeID, fake.metadata, fake.allowed = scopeType, scopeID, metadata, allowed
+	return fake.err
+}
+
+func TestExamAttemptSubmissionAuthorizationAuditsSelfDenialFailClosed(t *testing.T) {
+	t.Parallel()
+	principal := examAttemptPrincipal()
+	submissionID, unitID := model.NewSubmissionID(), model.NewAcademicUnitID()
+	authorization := &store.ExamSubmissionAuthorization{
+		SubmissionID: submissionID, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		AttemptID: model.NewExamAttemptID(), CandidateUserID: principal.UserID, AcademicUnitID: unitID,
+	}
+	metadata := model.RequestMetadata{RequestID: "self-submission-view"}
+	t.Run("records denial before concealment", func(t *testing.T) {
+		t.Parallel()
+		audit := &submissionAuthorizationAuditFake{}
+		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
+			submissions: &submissionAuthorizationStoreFake{authorization: authorization}, audit: audit}
+		err := adapter.AuthorizeSubmissionView(context.Background(), examattempt.NewCall(principal, metadata), submissionID)
+		var fault *examattempt.Fault
+		if !errors.As(err, &fault) || fault.Code != "exam.attempt.not_found" {
+			t.Fatalf("AuthorizeSubmissionView() error = %v, want concealed not found", err)
+		}
+		if audit.principal.UserID != principal.UserID || audit.action != model.ActionSubmissionView ||
+			audit.resource != (model.Resource{Type: model.ResourceSubmission, ID: submissionID.String()}) ||
+			audit.scopeType != model.RoleScopeAcademicUnit || audit.scopeID != unitID.String() ||
+			audit.metadata.RequestID != metadata.RequestID || audit.allowed {
+			t.Fatalf("denied authorization audit = %#v", audit)
+		}
+	})
+	t.Run("audit failure fails closed", func(t *testing.T) {
+		t.Parallel()
+		auditErr := errors.New("audit unavailable")
+		adapter := examAttemptManagerAuthorizationAdapter{sittings: &submissionAuthorizationSittingFake{},
+			submissions: &submissionAuthorizationStoreFake{authorization: authorization},
+			audit:       &submissionAuthorizationAuditFake{err: auditErr}}
+		if err := adapter.AuthorizeSubmissionView(context.Background(), examattempt.NewCall(principal, metadata), submissionID); !errors.Is(err, auditErr) {
+			t.Fatalf("AuthorizeSubmissionView() error = %v, want audit failure", err)
+		}
+	})
 }
 
 type submissionAuthorizationStoreFake struct {
@@ -209,7 +269,7 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
-	result := examattempt.ParticipationExpiry{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at), CloseReason: model.AttemptConnectionCloseLeaseExpired},
@@ -223,10 +283,11 @@ func TestParticipationExpiryEffectPublishesCloseManagerSuspensionAndCandidateSus
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 3 || events[0].Name != "exam_attempt_connection_closed" || events[0].Action != model.ActionExamSittingView ||
+	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" || events[0].Action != model.ActionExamSittingView ||
 		events[1].Name != "exam_attempt_suspended" || events[1].Action != model.ActionExamSittingView ||
 		events[2].Name != "exam_attempt_access_suspended" || events[2].Action != model.ActionExamSittingParticipate ||
-		events[2].UserID != result.CandidateUserID.String() {
+		events[2].UserID != result.CandidateUserID.String() || events[3].Name != "candidate.exam_activity.changed" ||
+		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "current_user.context.changed" {
 		t.Fatalf("events = %#v", events)
 	}
 	for _, event := range events {
@@ -255,7 +316,7 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 		SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(), State: model.ExamAttemptSubmitted,
 		WorkspaceCursor: 13, ManifestDigest: strings.Repeat("d", 64),
 		SubmittedAt: time.Date(2026, time.August, 21, 11, 0, 0, 0, time.UTC),
-	}, SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+	}, Provenance: model.ExamSubmissionCandidateSubmitted, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		ConnectionID: model.NewAttemptConnectionID()}
 
 	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSubmitted(context.Background(), result); err != nil {
@@ -265,8 +326,10 @@ func TestSubmissionEffectPublishesSafeManagerAndCandidateFactsThenUnbindsExactCo
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	if len(events) != 2 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
+	if len(events) != 5 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
 		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
+		events[2].Name != "candidate.exam_activity.changed" || events[3].Name != "manager.sitting_board.changed" ||
+		events[4].Name != "current_user.context.changed" ||
 		len(unbound) != 1 || unbound[0] != result.ConnectionID {
 		t.Fatalf("events=%#v unbound=%#v", events, unbound)
 	}
@@ -294,7 +357,8 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 		Receipt: store.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: model.NewExamAttemptID(),
 			State: model.ExamAttemptSubmitted, WorkspaceCursor: 21, ManifestDigest: strings.Repeat("e", 64),
 			SubmittedAt: time.Date(2026, time.August, 22, 11, 0, 0, 0, time.UTC)},
-		SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), ConnectionID: model.NewAttemptConnectionID()},
+		Provenance: model.ExamSubmissionSittingClosed, ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		CandidateUserID: model.NewUserID(), ConnectionID: model.NewAttemptConnectionID()},
 		ConnectionClosed: true}
 	if err := (examAttemptRealtimeEffects{realtime: realtime}).AttemptSealedForSittingClose(context.Background(), result); err != nil {
 		t.Fatal(err)
@@ -303,9 +367,11 @@ func TestAutomaticSubmissionEffectPublishesSittingClosedFactsAndUnbindsExactConn
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	unbound := append([]model.AttemptConnectionID(nil), sink.attemptUnbinds...)
 	sink.mu.Unlock()
-	if len(events) != 3 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
+	if len(events) != 6 || events[0].Name != "exam_attempt_submitted" || events[0].UserID != "" ||
 		events[1].Name != "exam_attempt_submitted" || events[1].UserID != result.CandidateUserID.String() ||
-		events[2].Name != "exam_attempt_connection_closed" || len(unbound) != 1 || unbound[0] != result.ConnectionID {
+		events[2].Name != "exam_attempt_connection_closed" || events[3].Name != "candidate.exam_activity.changed" ||
+		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "current_user.context.changed" ||
+		len(unbound) != 1 || unbound[0] != result.ConnectionID {
 		t.Fatalf("events=%#v unbound=%#v", events, unbound)
 	}
 	if encoded := string(events[2].Data); !strings.Contains(encoded, `"close_reason":"sitting_closed"`) {
@@ -332,7 +398,7 @@ func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWar
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 20, 10, 0, 0, 0, time.UTC)
-	result := examattempt.FocusLossEvaluation{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndWarn,
 		Flag: model.IntegrityFlag{ID: model.NewIntegrityFlagID()}, RetainedEvidenceCount: 3,
 		FlagCreated: true, ManagerNotificationRequired: true, CandidateWarningCreated: true}
@@ -342,8 +408,9 @@ func TestFocusLossWarningEffectPublishesBoundedManagerFlagAndNeutralCandidateWar
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 2 || events[0].Name != "exam_attempt_integrity_flagged" ||
-		events[1].Name != "exam_attempt_focus_warning" || events[1].UserID != result.CandidateUserID.String() {
+	if len(events) != 3 || events[0].Name != "exam_attempt_integrity_flagged" ||
+		events[1].Name != "exam_attempt_focus_warning" || events[1].UserID != result.CandidateUserID.String() ||
+		events[2].Name != "manager.sitting_board.changed" {
 		t.Fatalf("events=%#v", events)
 	}
 	for _, event := range events {
@@ -367,7 +434,7 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 	}
 	at := time.Date(2026, time.August, 20, 10, 5, 0, 0, time.UTC)
 	flagID := model.NewIntegrityFlagID()
-	result := examattempt.FocusLossEvaluation{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
+	result := examattempt.FocusLossEvaluation{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(),
 		AttemptID: model.NewExamAttemptID(), ReceivedAt: at, PolicyOutcome: model.IntegrityOutcomeFlagAndSuspend,
 		Flag: model.IntegrityFlag{ID: flagID}, RetainedEvidenceCount: 3, FlagCreated: true,
 		ManagerNotificationRequired: true, ConnectionClosed: true,
@@ -387,9 +454,10 @@ func TestFocusLossSuspensionEffectPublishesCloseFlagAndSeparatedSuspensions(t *t
 	execution.mu.Lock()
 	released := append([]model.ExamAttemptID(nil), execution.released...)
 	execution.mu.Unlock()
-	if len(events) != 4 || events[0].Name != "exam_attempt_connection_closed" ||
+	if len(events) != 6 || events[0].Name != "exam_attempt_connection_closed" ||
 		events[1].Name != "exam_attempt_integrity_flagged" || events[2].Name != "exam_attempt_suspended" ||
 		events[3].Name != "exam_attempt_access_suspended" || events[3].UserID != result.CandidateUserID.String() ||
+		events[4].Name != "manager.sitting_board.changed" || events[5].Name != "candidate.exam_activity.changed" ||
 		len(released) != 1 || released[0] != result.AttemptID || len(unbound) != 1 || unbound[0] != result.Connection.ID {
 		t.Fatalf("events=%#v released=%#v unbound=%#v", events, released, unbound)
 	}
@@ -416,7 +484,7 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 		t.Fatal(err)
 	}
 	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
-	result := examattempt.ParticipationExpiry{SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
+	result := examattempt.ParticipationExpiry{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), CandidateUserID: model.NewUserID(), DatabaseTime: at,
 		Attempt: model.ExamAttempt{ID: model.NewExamAttemptID(), Revision: 2},
 		Connection: store.ExamAttemptManagerConnection{ID: model.NewAttemptConnectionID(), State: model.AttemptConnectionClosed,
 			OpenedAt: at.Add(-time.Minute), ClosedAt: model.OptionalTimeFrom(at.Add(-time.Second)), CloseReason: model.AttemptConnectionCloseTransport},
@@ -429,7 +497,9 @@ func TestParticipationExpiryEffectOmitsDuplicateCloseAfterTransportTeardown(t *t
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 2 || events[0].Name != "exam_attempt_suspended" || events[1].Name != "exam_attempt_access_suspended" {
+	if len(events) != 5 || events[0].Name != "exam_attempt_suspended" || events[1].Name != "exam_attempt_access_suspended" ||
+		events[2].Name != "candidate.exam_activity.changed" || events[3].Name != "manager.sitting_board.changed" ||
+		events[4].Name != "current_user.context.changed" {
 		t.Fatalf("events = %#v", events)
 	}
 }
@@ -541,8 +611,34 @@ func (fake *examAttemptUseCasesFake) ListManaged(context.Context, examattempt.Ca
 	return examattempt.ManagedAttemptPage{}, fake.err
 }
 
+func (fake *examAttemptUseCasesFake) ListCandidateActivity(context.Context, examattempt.Call, examattempt.CandidateActivityQuery) (examattempt.CandidateActivityPage, error) {
+	return examattempt.CandidateActivityPage{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) ListSittingCandidateStatuses(context.Context, examattempt.Call, examattempt.SittingCandidateStatusesQuery) (examattempt.SittingCandidateStatusesPage, error) {
+	return examattempt.SittingCandidateStatusesPage{}, fake.err
+}
+func (fake *examAttemptUseCasesFake) StartBrowserActivity(context.Context, examattempt.Call, examattempt.StartBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
+	return model.BrowserActivityAcknowledgement{}, fake.err
+}
+func (fake *examAttemptUseCasesFake) AppendBrowserActivity(context.Context, examattempt.Call, examattempt.AppendBrowserActivityCommand) (model.BrowserActivityAcknowledgement, error) {
+	return model.BrowserActivityAcknowledgement{}, fake.err
+}
+func (fake *examAttemptUseCasesFake) ListBrowserActivity(context.Context, examattempt.Call, examattempt.BrowserActivityPageQuery) (examattempt.BrowserActivityPage, error) {
+	return examattempt.BrowserActivityPage{}, fake.err
+}
+func (fake *examAttemptUseCasesFake) AcknowledgeCorrection(context.Context, examattempt.Call, examattempt.AcknowledgeCorrectionCommand) (examattempt.CorrectionAcknowledgementResult, error) {
+	return examattempt.CorrectionAcknowledgementResult{}, fake.err
+}
+
 func (fake *examAttemptUseCasesFake) Submit(context.Context, examattempt.Call,
 	examattempt.SubmitCommand,
+) (examattempt.SubmissionResult, error) {
+	return examattempt.SubmissionResult{}, fake.err
+}
+
+func (fake *examAttemptUseCasesFake) EndByManager(context.Context, examattempt.Call,
+	examattempt.ManagerEndCommand,
 ) (examattempt.SubmissionResult, error) {
 	return examattempt.SubmissionResult{}, fake.err
 }

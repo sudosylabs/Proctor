@@ -24,6 +24,7 @@ type executionImageCatalog interface {
 type App struct {
 	authentication                    *authenticationService
 	desktopAuthorization              *desktopAuthorizationService
+	desktopRegistrations              *desktopRegistrationService
 	browserInvitations                *browserInvitationService
 	selfSessions                      *selfSessionService
 	externalAuthentication            *externalAuthenticationService
@@ -34,6 +35,7 @@ type App struct {
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 	authorization                     *accessControlService
 	accessPolicies                    *accessPolicyService
+	desktopCompatibility              *desktopCompatibilityService
 	academicUnits                     *academicUnitQueryService
 	academicUnitCommands              *academicUnitCommandService
 	institutions                      *institutionService
@@ -107,7 +109,7 @@ func New(deps Dependencies) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	identity, err := constructIdentity(deps, foundation, access.authorization, access.capabilities)
+	identity, err := constructIdentity(deps, foundation, access.authorization, access.capabilities, access.desktopCompatibility)
 	if err != nil {
 		return nil, err
 	}

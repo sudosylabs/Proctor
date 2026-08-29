@@ -224,8 +224,13 @@ func TestExamSittingLifecycleEffectPublishesOnlySafeBoundedMetadata(t *testing.T
 		t.Fatal(err)
 	}
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
+	candidateID := model.NewUserID()
+	collections := examCollectionInvalidationEffects{
+		sittings: &examCollectionInvalidationStoreFake{candidateIDs: []model.UserID{candidateID}},
+		realtime: realtime,
+	}
 	at := time.Date(2026, time.August, 16, 9, 0, 0, 0, time.UTC)
-	err := (examSittingRealtimeEffects{realtime: realtime}).LifecycleChanged(context.Background(), examID, sittingID,
+	err := (examSittingRealtimeEffects{realtime: realtime, collections: collections}).LifecycleChanged(context.Background(), examID, sittingID,
 		model.ExamSittingPaused, 4, store.ExamSittingTransitionManagerPaused, at.Add(2*time.Hour), at)
 	if err != nil {
 		t.Fatal(err)
@@ -233,14 +238,40 @@ func TestExamSittingLifecycleEffectPublishesOnlySafeBoundedMetadata(t *testing.T
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 2 || events[0].Name != "exam_sitting_lifecycle_changed" ||
+	if len(events) != 4 || events[0].Name != "exam_sitting_lifecycle_changed" ||
 		events[0].Action != model.ActionExamSittingView ||
 		events[1].Name != "exam_sitting_lifecycle_changed" ||
 		events[1].Action != model.ActionExamSittingParticipate ||
 		string(events[0].Data) != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-16T11:00:00Z","changed_at":"2026-08-16T09:00:00Z"}` ||
-		string(events[1].Data) != string(events[0].Data) {
+		string(events[1].Data) != string(events[0].Data) || events[2].Name != "manager.sitting_board.changed" ||
+		events[2].Action != model.ActionExamSittingView || string(events[2].Data) !=
+		`{"schema_version":1,"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`"}` ||
+		events[3].Name != "candidate.exam_activity.changed" || events[3].UserID != candidateID.String() {
 		t.Fatalf("events = %#v", events)
 	}
+}
+
+type examCollectionInvalidationStoreFake struct {
+	candidateIDs []model.UserID
+	targets      []store.ExamSittingInvalidationTarget
+}
+
+func (f *examCollectionInvalidationStoreFake) ListInvalidationTargetsByExam(
+	context.Context,
+	model.ExamID,
+	model.ExamSittingID,
+	int,
+) ([]store.ExamSittingInvalidationTarget, error) {
+	return append([]store.ExamSittingInvalidationTarget(nil), f.targets...), nil
+}
+
+func (f *examCollectionInvalidationStoreFake) ListCandidateInvalidationTargetsBySitting(
+	context.Context,
+	model.ExamSittingID,
+	model.UserID,
+	int,
+) ([]model.UserID, error) {
+	return append([]model.UserID(nil), f.candidateIDs...), nil
 }
 
 type examSittingUseCasesFake struct {

@@ -113,6 +113,9 @@ type UserID string
 // SessionID identifies a server-side session.
 type SessionID string
 
+// DesktopRegistrationID identifies one User-and-Institution DPoP key registration.
+type DesktopRegistrationID string
+
 // SessionCredentialID identifies a hashed access or refresh credential.
 type SessionCredentialID string
 

@@ -25,6 +25,7 @@ paths:
         - authentication.mfa.invalid_code
         - authentication.mfa.unavailable
         - authentication.sessions.maximum_reached
+        - authentication.desktop_authorization.account_session_locked
         - authentication.rate_limited
         - authentication.rate_limit_unavailable
         - authentication.internal

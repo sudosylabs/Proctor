@@ -49,8 +49,21 @@ func constructAccessAndAcademics(
 	if err != nil {
 		return accessAcademicConstruction{}, err
 	}
+	desktopCompatibility, err := newDesktopCompatibilityService(
+		deps.Store.DesktopCompatibilityPolicy(),
+		deps.Store.Institution(),
+		academicAuthorization,
+		mutationAuditAdapter{audit: foundation.audit},
+		deps.DesktopBuildCatalog,
+		deps.RecentAuthenticationTTL,
+		time.Now,
+	)
+	if err != nil {
+		return accessAcademicConstruction{}, err
+	}
 	return accessAcademicConstruction{
 		authorization: authorization, capabilities: capabilities, accessPolicies: accessPolicies,
+		desktopCompatibility: desktopCompatibility,
 		academicUnits: newAcademicUnitQueryService(
 			deps.Store.AcademicUnit(), academicAuthorization,
 		),
@@ -83,15 +96,18 @@ func constructAccessAndAcademics(
 		),
 		affiliations: newAffiliationService(
 			deps.Store.Affiliation(), deps.Store.ClassMember(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, time.Now, model.NewId,
+			academicAuthorization, mutationAuditAdapter{audit: foundation.audit},
+			affiliationRealtimeEffects{realtime: foundation.realtime}, time.Now, model.NewId,
 		),
 		academicUnitMembers: newAcademicUnitMemberService(
 			deps.Store.AcademicUnitMember(), deps.Store.User(), academicAuthorization,
-			mutationAuditAdapter{audit: foundation.audit}, foundation.mail, time.Now, model.NewId,
+			mutationAuditAdapter{audit: foundation.audit}, foundation.mail, foundation.realtime, time.Now, model.NewId,
 		),
 		classMembers: newClassMemberService(
 			deps.Store.ClassMember(), deps.Store.Class(), deps.Store.User(),
-			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail, time.Now, model.NewId,
+			academicAuthorization, mutationAuditAdapter{audit: foundation.audit}, foundation.mail,
+			classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime},
+			time.Now, model.NewId,
 		),
 	}, nil
 }

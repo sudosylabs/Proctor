@@ -1000,6 +1000,50 @@
     "translation": "UTC"
   },
   {
+    "id": "mail.exam.submission_manager_ended.body",
+    "translation": "An exam manager ended your attempt and Proctor preserved its last acknowledged state. This message does not claim misconduct or a voluntary submission. Keep it as a receipt."
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.footer",
+    "translation": "This automated message was sent by your Proctor installation. Please do not reply."
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.heading",
+    "translation": "Examination attempt ended"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.preheader",
+    "translation": "Proctor preserved the acknowledged state of your exam attempt."
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.subject",
+    "translation": "Your examination attempt was ended and sealed"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.exam_label",
+    "translation": "Exam"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.sealed_at_label",
+    "translation": "Ended and sealed at"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.sitting_id_label",
+    "translation": "Sitting receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.submission_id_label",
+    "translation": "Submission receipt ID"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.timezone_label",
+    "translation": "Timezone"
+  },
+  {
+    "id": "mail.exam.submission_manager_ended.submission_receipt.timezone_utc",
+    "translation": "UTC"
+  },
+  {
     "id": "mail.exam.submission_received.body",
     "translation": "Proctor received and sealed your voluntary examination submission. Keep this message as a receipt."
   },
@@ -1624,6 +1668,22 @@
     "translation": "Authentication audit completion failed."
   },
   {
+    "id": "session.revocation.desktop_authorization_failed",
+    "translation": "Desktop authorization could not be completed."
+  },
+  {
+    "id": "session.revocation.desktop_registration_revoked",
+    "translation": "The Desktop Registration was revoked."
+  },
+  {
+    "id": "session.revocation.exam_attempt_session_lock",
+    "translation": "Signed out when an exam attempt became active."
+  },
+  {
+    "id": "session.revocation.expired",
+    "translation": "Expired."
+  },
+  {
     "id": "session.revocation.external_identity_unlinked",
     "translation": "The external identity was unlinked."
   },
@@ -1856,6 +1916,14 @@
     "translation": "Approving request…"
   },
   {
+    "id": "webapp.desktop_authorization.authentication.body",
+    "translation": "Choose an account here. This signs in only for this Desktop request and does not create a browser Session."
+  },
+  {
+    "id": "webapp.desktop_authorization.authentication.heading",
+    "translation": "Sign in to continue in Proctor Desktop"
+  },
+  {
     "id": "webapp.desktop_authorization.cancel",
     "translation": "Cancel request"
   },
@@ -1896,10 +1964,6 @@
     "translation": "Continue in Proctor Desktop · Proctor"
   },
   {
-    "id": "webapp.desktop_authorization.error.session",
-    "translation": "This browser Session can’t approve the request. Sign in again and retry."
-  },
-  {
     "id": "webapp.desktop_authorization.error.unavailable",
     "translation": "Proctor couldn’t complete this Desktop request. Try again."
   },
@@ -1936,20 +2000,24 @@
     "translation": "Proctor Desktop requested access to this account."
   },
   {
-    "id": "webapp.desktop_authorization.no_session.body",
-    "translation": "Open sign in in another tab, then return here and check the browser Session again."
+    "id": "webapp.desktop_authorization.locked.body",
+    "translation": "This account is already taking an Exam. Continue using the Desktop Session that owns that Attempt."
   },
   {
-    "id": "webapp.desktop_authorization.no_session.heading",
-    "translation": "Sign in before continuing"
+    "id": "webapp.desktop_authorization.locked.heading",
+    "translation": "This account is already active in an Exam"
   },
   {
-    "id": "webapp.desktop_authorization.no_session.retry",
-    "translation": "Check again"
+    "id": "webapp.desktop_authorization.locked.label",
+    "translation": "Account unavailable"
   },
   {
-    "id": "webapp.desktop_authorization.no_session.sign_in",
-    "translation": "Open sign in"
+    "id": "webapp.desktop_authorization.provider.continue",
+    "translation": "Continue with {{.Provider}}"
+  },
+  {
+    "id": "webapp.desktop_authorization.provider.group",
+    "translation": "External sign-in methods"
   },
   {
     "id": "webapp.desktop_authorization.request",
@@ -1958,6 +2026,10 @@
   {
     "id": "webapp.desktop_authorization.request_value",
     "translation": "Proctor Desktop"
+  },
+  {
+    "id": "webapp.desktop_authorization.resetting",
+    "translation": "Changing account…"
   },
   {
     "id": "webapp.desktop_authorization.return_to_sign_in",
@@ -1978,6 +2050,10 @@
   {
     "id": "webapp.desktop_authorization.unavailable.retry",
     "translation": "Try again"
+  },
+  {
+    "id": "webapp.desktop_authorization.use_another_account",
+    "translation": "Use another account"
   },
   {
     "id": "webapp.forgot_password.accepted.body",
@@ -3062,6 +3138,14 @@
   {
     "id": "websocket.error.action.unknown",
     "translation": "Unknown WebSocket action."
+  },
+  {
+    "id": "websocket.error.exam_attempt.browser_activity.failed",
+    "translation": "Browser activity could not be accepted."
+  },
+  {
+    "id": "websocket.error.exam_attempt.browser_activity.invalid",
+    "translation": "Invalid browser activity record."
   },
   {
     "id": "websocket.error.exam_attempt.connection.already_established",

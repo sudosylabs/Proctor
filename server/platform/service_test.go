@@ -40,6 +40,7 @@ func (testStore) Job() store.JobStore                                     { retu
 func (testStore) Mail() store.MailStore                                   { return nil }
 func (testStore) ExecutionGrant() store.ExecutionGrantStore               { return nil }
 func (testStore) BrowserAuthentication() store.BrowserAuthenticationStore { return nil }
+func (testStore) DesktopRegistration() store.DesktopRegistrationStore     { return nil }
 func (testStore) Invitation() store.InvitationStore                       { return nil }
 func (testStore) OnboardingImport() store.OnboardingImportStore           { return nil }
 func (testStore) UserSettings() store.UserSettingsStore {
@@ -417,8 +418,11 @@ func TestAcceptRejectsClosedConfigurationListenerRegistration(t *testing.T) {
 	}
 }
 
-func (testStore) Institution() store.InstitutionStore                   { return nil }
-func (testStore) AccessPolicy() store.AccessPolicyStore                 { return nil }
+func (testStore) Institution() store.InstitutionStore   { return nil }
+func (testStore) AccessPolicy() store.AccessPolicyStore { return nil }
+func (testStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
+	return nil
+}
 func (testStore) AcademicUnit() store.AcademicUnitStore                 { return nil }
 func (testStore) Programme() store.ProgrammeStore                       { return nil }
 func (testStore) ProgrammeLevel() store.ProgrammeLevelStore             { return nil }

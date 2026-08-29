@@ -15,94 +15,98 @@ import (
 )
 
 type timedStores struct {
-	accessPolicy              store.AccessPolicyStore
-	accessPolicyOnce          sync.Once
-	browserAuthentication     store.BrowserAuthenticationStore
-	browserAuthenticationOnce sync.Once
-	clusterDiscovery          store.ClusterDiscoveryStore
-	clusterDiscoveryOnce      sync.Once
-	examAttempt               store.ExamAttemptStore
-	examAttemptOnce           sync.Once
-	examAttemptWorkspace      store.ExamAttemptWorkspaceStore
-	examAttemptWorkspaceOnce  sync.Once
-	examCorrection            store.ExamCorrectionStore
-	examCorrectionOnce        sync.Once
-	examIntegrityReview       store.ExamIntegrityReviewStore
-	examIntegrityReviewOnce   sync.Once
-	examResource              store.ExamResourceStore
-	examResourceOnce          sync.Once
-	examRevision              store.ExamRevisionStore
-	examRevisionOnce          sync.Once
-	examSitting               store.ExamSittingStore
-	examSittingOnce           sync.Once
-	examStarterWorkspace      store.ExamStarterWorkspaceStore
-	examStarterWorkspaceOnce  sync.Once
-	examSubmission            store.ExamSubmissionStore
-	examSubmissionOnce        sync.Once
-	executionGrant            store.ExecutionGrantStore
-	executionGrantOnce        sync.Once
-	servingNodeLease          store.ServingNodeLeaseStore
-	servingNodeLeaseOnce      sync.Once
-	examAuthoring             store.ExamAuthoringStore
-	examAuthoringOnce         sync.Once
-	commandOutcome            store.CommandOutcomeStore
-	commandOutcomeOnce        sync.Once
-	mail                      store.MailStore
-	mailOnce                  sync.Once
-	job                       store.JobStore
-	jobOnce                   sync.Once
-	file                      store.FileStore
-	fileOnce                  sync.Once
-	institution               store.InstitutionStore
-	institutionOnce           sync.Once
-	academicUnit              store.AcademicUnitStore
-	academicUnitOnce          sync.Once
-	programme                 store.ProgrammeStore
-	programmeOnce             sync.Once
-	programmeLevel            store.ProgrammeLevelStore
-	programmeLevelOnce        sync.Once
-	academicPeriod            store.AcademicPeriodStore
-	academicPeriodOnce        sync.Once
-	class                     store.ClassStore
-	classOnce                 sync.Once
-	user                      store.UserStore
-	userOnce                  sync.Once
-	userSettings              store.UserSettingsStore
-	userSettingsOnce          sync.Once
-	externalIdentity          store.ExternalIdentityStore
-	externalIdentityOnce      sync.Once
-	externalLoginState        store.ExternalLoginStateStore
-	externalLoginStateOnce    sync.Once
-	userToken                 store.UserTokenStore
-	userTokenOnce             sync.Once
-	invitation                store.InvitationStore
-	invitationOnce            sync.Once
-	onboardingImport          store.OnboardingImportStore
-	onboardingImportOnce      sync.Once
-	personalAccessToken       store.PersonalAccessTokenStore
-	personalAccessTokenOnce   sync.Once
-	mfa                       store.MFAStore
-	mfaOnce                   sync.Once
-	affiliation               store.AffiliationStore
-	affiliationOnce           sync.Once
-	academicUnitMember        store.AcademicUnitMemberStore
-	academicUnitMemberOnce    sync.Once
-	classMember               store.ClassMemberStore
-	classMemberOnce           sync.Once
-	passwordCredential        store.PasswordCredentialStore
-	passwordCredentialOnce    sync.Once
-	session                   store.SessionStore
-	sessionOnce               sync.Once
-	sessionCredential         store.SessionCredentialStore
-	sessionCredentialOnce     sync.Once
-	role                      store.RoleStore
-	roleOnce                  sync.Once
-	roleBinding               store.RoleBindingStore
-	roleBindingOnce           sync.Once
-	audit                     store.AuditStore
-	auditOnce                 sync.Once
-	installation              store.InstallationStore
-	installationOnce          sync.Once
+	accessPolicy                   store.AccessPolicyStore
+	accessPolicyOnce               sync.Once
+	browserAuthentication          store.BrowserAuthenticationStore
+	browserAuthenticationOnce      sync.Once
+	clusterDiscovery               store.ClusterDiscoveryStore
+	clusterDiscoveryOnce           sync.Once
+	desktopCompatibilityPolicy     store.DesktopCompatibilityPolicyStore
+	desktopCompatibilityPolicyOnce sync.Once
+	examAttempt                    store.ExamAttemptStore
+	examAttemptOnce                sync.Once
+	examAttemptWorkspace           store.ExamAttemptWorkspaceStore
+	examAttemptWorkspaceOnce       sync.Once
+	examCorrection                 store.ExamCorrectionStore
+	examCorrectionOnce             sync.Once
+	examIntegrityReview            store.ExamIntegrityReviewStore
+	examIntegrityReviewOnce        sync.Once
+	examResource                   store.ExamResourceStore
+	examResourceOnce               sync.Once
+	examRevision                   store.ExamRevisionStore
+	examRevisionOnce               sync.Once
+	examSitting                    store.ExamSittingStore
+	examSittingOnce                sync.Once
+	examStarterWorkspace           store.ExamStarterWorkspaceStore
+	examStarterWorkspaceOnce       sync.Once
+	examSubmission                 store.ExamSubmissionStore
+	examSubmissionOnce             sync.Once
+	executionGrant                 store.ExecutionGrantStore
+	executionGrantOnce             sync.Once
+	servingNodeLease               store.ServingNodeLeaseStore
+	servingNodeLeaseOnce           sync.Once
+	examAuthoring                  store.ExamAuthoringStore
+	examAuthoringOnce              sync.Once
+	commandOutcome                 store.CommandOutcomeStore
+	commandOutcomeOnce             sync.Once
+	mail                           store.MailStore
+	mailOnce                       sync.Once
+	job                            store.JobStore
+	jobOnce                        sync.Once
+	file                           store.FileStore
+	fileOnce                       sync.Once
+	institution                    store.InstitutionStore
+	institutionOnce                sync.Once
+	academicUnit                   store.AcademicUnitStore
+	academicUnitOnce               sync.Once
+	programme                      store.ProgrammeStore
+	programmeOnce                  sync.Once
+	programmeLevel                 store.ProgrammeLevelStore
+	programmeLevelOnce             sync.Once
+	academicPeriod                 store.AcademicPeriodStore
+	academicPeriodOnce             sync.Once
+	class                          store.ClassStore
+	classOnce                      sync.Once
+	user                           store.UserStore
+	userOnce                       sync.Once
+	userSettings                   store.UserSettingsStore
+	userSettingsOnce               sync.Once
+	externalIdentity               store.ExternalIdentityStore
+	externalIdentityOnce           sync.Once
+	externalLoginState             store.ExternalLoginStateStore
+	externalLoginStateOnce         sync.Once
+	userToken                      store.UserTokenStore
+	userTokenOnce                  sync.Once
+	invitation                     store.InvitationStore
+	invitationOnce                 sync.Once
+	onboardingImport               store.OnboardingImportStore
+	onboardingImportOnce           sync.Once
+	personalAccessToken            store.PersonalAccessTokenStore
+	personalAccessTokenOnce        sync.Once
+	mfa                            store.MFAStore
+	mfaOnce                        sync.Once
+	affiliation                    store.AffiliationStore
+	affiliationOnce                sync.Once
+	academicUnitMember             store.AcademicUnitMemberStore
+	academicUnitMemberOnce         sync.Once
+	classMember                    store.ClassMemberStore
+	classMemberOnce                sync.Once
+	passwordCredential             store.PasswordCredentialStore
+	passwordCredentialOnce         sync.Once
+	session                        store.SessionStore
+	sessionOnce                    sync.Once
+	desktopRegistration            store.DesktopRegistrationStore
+	desktopRegistrationOnce        sync.Once
+	sessionCredential              store.SessionCredentialStore
+	sessionCredentialOnce          sync.Once
+	role                           store.RoleStore
+	roleOnce                       sync.Once
+	roleBinding                    store.RoleBindingStore
+	roleBindingOnce                sync.Once
+	audit                          store.AuditStore
+	auditOnce                      sync.Once
+	installation                   store.InstallationStore
+	installationOnce               sync.Once
 }
 
 type timedAccessPolicyStore struct {
@@ -118,6 +122,11 @@ type timedBrowserAuthenticationStore struct {
 type timedClusterDiscoveryStore struct {
 	layer *Layer
 	next  store.ClusterDiscoveryStore
+}
+
+type timedDesktopCompatibilityPolicyStore struct {
+	layer *Layer
+	next  store.DesktopCompatibilityPolicyStore
 }
 
 type timedExamAttemptStore struct {
@@ -298,6 +307,11 @@ type timedPasswordCredentialStore struct {
 type timedSessionStore struct {
 	layer *Layer
 	next  store.SessionStore
+}
+
+type timedDesktopRegistrationStore struct {
+	layer *Layer
+	next  store.DesktopRegistrationStore
 }
 
 type timedSessionCredentialStore struct {
@@ -575,6 +589,16 @@ func (l *Layer) BrowserAuthentication() store.BrowserAuthenticationStore {
 	return l.stores.browserAuthentication
 }
 
+func (l *Layer) DesktopRegistration() store.DesktopRegistrationStore {
+	l.stores.desktopRegistrationOnce.Do(func() {
+		next := l.next.DesktopRegistration()
+		if next != nil {
+			l.stores.desktopRegistration = &timedDesktopRegistrationStore{layer: l, next: next}
+		}
+	})
+	return l.stores.desktopRegistration
+}
+
 func (l *Layer) UserToken() store.UserTokenStore {
 	l.stores.userTokenOnce.Do(func() {
 		next := l.next.UserToken()
@@ -735,6 +759,16 @@ func (l *Layer) AccessPolicy() store.AccessPolicyStore {
 	return l.stores.accessPolicy
 }
 
+func (l *Layer) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
+	l.stores.desktopCompatibilityPolicyOnce.Do(func() {
+		next := l.next.DesktopCompatibilityPolicy()
+		if next != nil {
+			l.stores.desktopCompatibilityPolicy = &timedDesktopCompatibilityPolicyStore{layer: l, next: next}
+		}
+	})
+	return l.stores.desktopCompatibilityPolicy
+}
+
 func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	l.stores.clusterDiscoveryOnce.Do(func() {
 		next := l.next.ClusterDiscovery()
@@ -819,6 +853,30 @@ func (s *timedBrowserAuthenticationStore) CreateDesktopAuthorization(arg0 contex
 	})
 }
 
+func (s *timedBrowserAuthenticationStore) BindDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationBinding) (*store.DesktopAuthorizationBound, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodBindDesktopAuthorization), func() (*store.DesktopAuthorizationBound, error) {
+		return s.next.BindDesktopAuthorization(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) GetDesktopAuthorizationContext(arg0 context.Context, arg1 string) (*store.DesktopAuthorizationContext, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodGetDesktopAuthorizationContext), func() (*store.DesktopAuthorizationContext, error) {
+		return s.next.GetDesktopAuthorizationContext(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) AuthenticateDesktopAuthorization(arg0 context.Context, arg1 *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodAuthenticateDesktopAuthorization), func() (*store.DesktopAuthorizationAuthenticationResult, error) {
+		return s.next.AuthenticateDesktopAuthorization(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) ResetDesktopAuthorizationAccount(arg0 context.Context, arg1 *store.DesktopAuthorizationAccountReset) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodResetDesktopAuthorizationAccount), func() error {
+		return s.next.ResetDesktopAuthorizationAccount(arg0, arg1)
+	})
+}
+
 func (s *timedBrowserAuthenticationStore) CreateInvitation(arg0 context.Context, arg1 *store.BrowserInvitationTransactionCreation) (*store.BrowserInvitationCreated, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodCreateInvitation), func() (*store.BrowserInvitationCreated, error) {
 		return s.next.CreateInvitation(arg0, arg1)
@@ -840,6 +898,12 @@ func (s *timedBrowserAuthenticationStore) IssueCode(arg0 context.Context, arg1 *
 func (s *timedBrowserAuthenticationStore) Cancel(arg0 context.Context, arg1 *store.DesktopAuthorizationCancellation) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateBrowserAuthentication, methodCancel), func() error {
 		return s.next.Cancel(arg0, arg1)
+	})
+}
+
+func (s *timedBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(arg0 context.Context, arg1 *store.DesktopAuthorizationExchangeProof) (model.BrowserAuthenticationTransactionID, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateBrowserAuthentication, methodResolveDesktopAuthorizationExchange), func() (model.BrowserAuthenticationTransactionID, error) {
+		return s.next.ResolveDesktopAuthorizationExchange(arg0, arg1)
 	})
 }
 
@@ -879,9 +943,27 @@ func (s *timedClusterDiscoveryStore) DeleteExpired(arg0 context.Context, arg1 in
 	})
 }
 
+func (s *timedDesktopCompatibilityPolicyStore) Get(arg0 context.Context) (*model.DesktopCompatibilityPolicy, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodGet), func() (*model.DesktopCompatibilityPolicy, error) {
+		return s.next.Get(arg0)
+	})
+}
+
+func (s *timedDesktopCompatibilityPolicyStore) Replace(arg0 context.Context, arg1 *store.DesktopCompatibilityPolicyReplacement, arg2 *store.CommandIdempotency) (*store.DesktopCompatibilityPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopCompatibilityPolicy, methodReplace), func() (*store.DesktopCompatibilityPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamAttemptStore) Connect(arg0 context.Context, arg1 *store.ExamAttemptConnect, arg2 *store.CommandIdempotency) (*store.ExamAttemptConnectResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodConnect), func() (*store.ExamAttemptConnectResult, error) {
 		return s.next.Connect(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptStore) ListSessionRevocationInvalidationTargets(arg0 context.Context, arg1 model.UserID, arg2 []model.SessionID) ([]store.ExamAttemptInvalidationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListSessionRevocationInvalidationTargets), func() ([]store.ExamAttemptInvalidationTarget, error) {
+		return s.next.ListSessionRevocationInvalidationTargets(arg0, arg1, arg2)
 	})
 }
 
@@ -957,9 +1039,51 @@ func (s *timedExamAttemptStore) List(arg0 context.Context, arg1 store.ExamAttemp
 	})
 }
 
+func (s *timedExamAttemptStore) ListCandidateActivity(arg0 context.Context, arg1 store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListCandidateActivity), func() (*store.CandidateExamActivityPage, error) {
+		return s.next.ListCandidateActivity(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) ListSittingCandidateStatuses(arg0 context.Context, arg1 store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListSittingCandidateStatuses), func() (*store.SittingCandidateStatusPage, error) {
+		return s.next.ListSittingCandidateStatuses(arg0, arg1)
+	})
+}
+
 func (s *timedExamAttemptStore) GetCandidatePresentation(arg0 context.Context, arg1 store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodGetCandidatePresentation), func() (*store.CandidateExamPresentation, error) {
 		return s.next.GetCandidatePresentation(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) StartBrowserActivity(arg0 context.Context, arg1 *store.BrowserActivitySourceStart) (*model.BrowserActivityAcknowledgement, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodStartBrowserActivity), func() (*model.BrowserActivityAcknowledgement, error) {
+		return s.next.StartBrowserActivity(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) AppendBrowserActivity(arg0 context.Context, arg1 *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAppendBrowserActivity), func() (*model.BrowserActivityAcknowledgement, error) {
+		return s.next.AppendBrowserActivity(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) ResolveCorrectionAcknowledgementTarget(arg0 context.Context, arg1 store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodResolveCorrectionAcknowledgementTarget), func() (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+		return s.next.ResolveCorrectionAcknowledgementTarget(arg0, arg1)
+	})
+}
+
+func (s *timedExamAttemptStore) AcknowledgeCorrection(arg0 context.Context, arg1 *store.ExamAttemptCorrectionAcknowledgement, arg2 *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodAcknowledgeCorrection), func() (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+		return s.next.AcknowledgeCorrection(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAttemptStore) ListBrowserActivity(arg0 context.Context, arg1 store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAttempt, methodListBrowserActivity), func() ([]store.BrowserActivityRecord, error) {
+		return s.next.ListBrowserActivity(arg0, arg1)
 	})
 }
 
@@ -1203,6 +1327,24 @@ func (s *timedExamSittingStore) List(arg0 context.Context, arg1 store.ExamSittin
 	})
 }
 
+func (s *timedExamSittingStore) ListInvalidationTargetsByClass(arg0 context.Context, arg1 model.ClassID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByClass), func() ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByClass(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamSittingStore) ListInvalidationTargetsByExam(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID, arg3 int) ([]store.ExamSittingInvalidationTarget, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListInvalidationTargetsByExam), func() ([]store.ExamSittingInvalidationTarget, error) {
+		return s.next.ListInvalidationTargetsByExam(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedExamSittingStore) ListCandidateInvalidationTargetsBySitting(arg0 context.Context, arg1 model.ExamSittingID, arg2 model.UserID, arg3 int) ([]model.UserID, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListCandidateInvalidationTargetsBySitting), func() ([]model.UserID, error) {
+		return s.next.ListCandidateInvalidationTargetsBySitting(arg0, arg1, arg2, arg3)
+	})
+}
+
 func (s *timedExamSittingStore) ListLifecycleDue(arg0 context.Context, arg1 store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSitting, methodListLifecycleDue), func() ([]store.ExamSittingLifecycleDue, error) {
 		return s.next.ListLifecycleDue(arg0, arg1)
@@ -1395,6 +1537,18 @@ func (s *timedExamSubmissionStore) Seal(arg0 context.Context, arg1 *store.ExamSu
 	})
 }
 
+func (s *timedExamSubmissionStore) PrepareManagerEnd(arg0 context.Context, arg1 store.ExamSubmissionManagerEndRequest) (*store.ExamSubmissionManagerEndPreparation, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodPrepareManagerEnd), func() (*store.ExamSubmissionManagerEndPreparation, error) {
+		return s.next.PrepareManagerEnd(arg0, arg1)
+	})
+}
+
+func (s *timedExamSubmissionStore) EndByManager(arg0 context.Context, arg1 *store.ExamSubmissionManagerEnd, arg2 *store.CommandIdempotency) (*store.ExamSubmissionManagerEndResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodEndByManager), func() (*store.ExamSubmissionManagerEndResult, error) {
+		return s.next.EndByManager(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedExamSubmissionStore) ListAutomaticSealTargets(arg0 context.Context, arg1 store.ExamSubmissionAutomaticSealListOptions) ([]store.ExamSubmissionAutomaticSealTarget, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamSubmission, methodListAutomaticSealTargets), func() ([]store.ExamSubmissionAutomaticSealTarget, error) {
 		return s.next.ListAutomaticSealTargets(arg0, arg1)
@@ -1560,6 +1714,12 @@ func (s *timedExamAuthoringStore) UpdateDraftFocusLoss(arg0 context.Context, arg
 func (s *timedExamAuthoringStore) UpdateDraftExecutionProfile(arg0 context.Context, arg1 *store.ExamDraftExecutionProfileUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftExecutionProfile), func() (*store.ExamAuthoringCommandResult, error) {
 		return s.next.UpdateDraftExecutionProfile(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamAuthoringStore) UpdateDraftBrowserPolicy(arg0 context.Context, arg1 *store.ExamDraftBrowserPolicyUpdate, arg2 *store.CommandIdempotency) (*store.ExamAuthoringCommandResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamAuthoring, methodUpdateDraftBrowserPolicy), func() (*store.ExamAuthoringCommandResult, error) {
+		return s.next.UpdateDraftBrowserPolicy(arg0, arg1, arg2)
 	})
 }
 
@@ -2289,6 +2449,12 @@ func (s *timedUserStore) List(arg0 context.Context, arg1 store.UserListOptions) 
 	})
 }
 
+func (s *timedUserStore) GetCurrentContext(arg0 context.Context, arg1 model.UserID, arg2 int) (*store.CurrentUserContext, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodGetCurrentContext), func() (*store.CurrentUserContext, error) {
+		return s.next.GetCurrentContext(arg0, arg1, arg2)
+	})
+}
+
 func (s *timedUserStore) MatchVisibility(arg0 context.Context, arg1 string, arg2 store.UserVisibilityScope) (store.UserVisibilityMatch, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateUser, methodMatchVisibility), func() (store.UserVisibilityMatch, error) {
 		return s.next.MatchVisibility(arg0, arg1, arg2)
@@ -2961,6 +3127,12 @@ func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 string, ar
 	})
 }
 
+func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 string, arg2 string, arg3 int64) (*store.SessionExpiryEnforcementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodEnforceExpiry), func() (*store.SessionExpiryEnforcementResult, error) {
+		return s.next.EnforceExpiry(arg0, arg1, arg2, arg3)
+	})
+}
+
 func (s *timedSessionStore) Revoke(arg0 context.Context, arg1 string, arg2 string, arg3 int64, arg4 model.SessionRevocationReason) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevoke), func() ([]string, error) {
 		return s.next.Revoke(arg0, arg1, arg2, arg3, arg4)
@@ -2982,6 +3154,24 @@ func (s *timedSessionStore) RevokeAllForUser(arg0 context.Context, arg1 string, 
 func (s *timedSessionStore) RevokeAllForUserWithAudit(arg0 context.Context, arg1 *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodRevokeAllForUserWithAudit), func() (*store.UserSessionsRevocationResult, error) {
 		return s.next.RevokeAllForUserWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) Get(arg0 context.Context, arg1 string) (*model.DesktopRegistration, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodGet), func() (*model.DesktopRegistration, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) ListByUser(arg0 context.Context, arg1 string) ([]*model.DesktopRegistration, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodListByUser), func() ([]*model.DesktopRegistration, error) {
+		return s.next.ListByUser(arg0, arg1)
+	})
+}
+
+func (s *timedDesktopRegistrationStore) RevokeWithAudit(arg0 context.Context, arg1 *store.DesktopRegistrationRevocation) (*store.DesktopRegistrationRevocationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateDesktopRegistration, methodRevokeWithAudit), func() (*store.DesktopRegistrationRevocationResult, error) {
+		return s.next.RevokeWithAudit(arg0, arg1)
 	})
 }
 
@@ -3172,49 +3362,51 @@ func (s *timedInstallationStore) ReconcileAdministratorRecovery(arg0 context.Con
 }
 
 var (
-	_ store.Store                      = (*Layer)(nil)
-	_ store.AccessPolicyStore          = (*timedAccessPolicyStore)(nil)
-	_ store.BrowserAuthenticationStore = (*timedBrowserAuthenticationStore)(nil)
-	_ store.ClusterDiscoveryStore      = (*timedClusterDiscoveryStore)(nil)
-	_ store.ExamAttemptStore           = (*timedExamAttemptStore)(nil)
-	_ store.ExamAttemptWorkspaceStore  = (*timedExamAttemptWorkspaceStore)(nil)
-	_ store.ExamCorrectionStore        = (*timedExamCorrectionStore)(nil)
-	_ store.ExamIntegrityReviewStore   = (*timedExamIntegrityReviewStore)(nil)
-	_ store.ExamResourceStore          = (*timedExamResourceStore)(nil)
-	_ store.ExamRevisionStore          = (*timedExamRevisionStore)(nil)
-	_ store.ExamSittingStore           = (*timedExamSittingStore)(nil)
-	_ store.ExamStarterWorkspaceStore  = (*timedExamStarterWorkspaceStore)(nil)
-	_ store.ExamSubmissionStore        = (*timedExamSubmissionStore)(nil)
-	_ store.ExecutionGrantStore        = (*timedExecutionGrantStore)(nil)
-	_ store.ServingNodeLeaseStore      = (*timedServingNodeLeaseStore)(nil)
-	_ store.ExamAuthoringStore         = (*timedExamAuthoringStore)(nil)
-	_ store.CommandOutcomeStore        = (*timedCommandOutcomeStore)(nil)
-	_ store.MailStore                  = (*timedMailStore)(nil)
-	_ store.JobStore                   = (*timedJobStore)(nil)
-	_ store.FileStore                  = (*timedFileStore)(nil)
-	_ store.InstitutionStore           = (*timedInstitutionStore)(nil)
-	_ store.AcademicUnitStore          = (*timedAcademicUnitStore)(nil)
-	_ store.ProgrammeStore             = (*timedProgrammeStore)(nil)
-	_ store.ProgrammeLevelStore        = (*timedProgrammeLevelStore)(nil)
-	_ store.AcademicPeriodStore        = (*timedAcademicPeriodStore)(nil)
-	_ store.ClassStore                 = (*timedClassStore)(nil)
-	_ store.UserStore                  = (*timedUserStore)(nil)
-	_ store.UserSettingsStore          = (*timedUserSettingsStore)(nil)
-	_ store.ExternalIdentityStore      = (*timedExternalIdentityStore)(nil)
-	_ store.ExternalLoginStateStore    = (*timedExternalLoginStateStore)(nil)
-	_ store.UserTokenStore             = (*timedUserTokenStore)(nil)
-	_ store.InvitationStore            = (*timedInvitationStore)(nil)
-	_ store.OnboardingImportStore      = (*timedOnboardingImportStore)(nil)
-	_ store.PersonalAccessTokenStore   = (*timedPersonalAccessTokenStore)(nil)
-	_ store.MFAStore                   = (*timedMFAStore)(nil)
-	_ store.AffiliationStore           = (*timedAffiliationStore)(nil)
-	_ store.AcademicUnitMemberStore    = (*timedAcademicUnitMemberStore)(nil)
-	_ store.ClassMemberStore           = (*timedClassMemberStore)(nil)
-	_ store.PasswordCredentialStore    = (*timedPasswordCredentialStore)(nil)
-	_ store.SessionStore               = (*timedSessionStore)(nil)
-	_ store.SessionCredentialStore     = (*timedSessionCredentialStore)(nil)
-	_ store.RoleStore                  = (*timedRoleStore)(nil)
-	_ store.RoleBindingStore           = (*timedRoleBindingStore)(nil)
-	_ store.AuditStore                 = (*timedAuditStore)(nil)
-	_ store.InstallationStore          = (*timedInstallationStore)(nil)
+	_ store.Store                           = (*Layer)(nil)
+	_ store.AccessPolicyStore               = (*timedAccessPolicyStore)(nil)
+	_ store.BrowserAuthenticationStore      = (*timedBrowserAuthenticationStore)(nil)
+	_ store.ClusterDiscoveryStore           = (*timedClusterDiscoveryStore)(nil)
+	_ store.DesktopCompatibilityPolicyStore = (*timedDesktopCompatibilityPolicyStore)(nil)
+	_ store.ExamAttemptStore                = (*timedExamAttemptStore)(nil)
+	_ store.ExamAttemptWorkspaceStore       = (*timedExamAttemptWorkspaceStore)(nil)
+	_ store.ExamCorrectionStore             = (*timedExamCorrectionStore)(nil)
+	_ store.ExamIntegrityReviewStore        = (*timedExamIntegrityReviewStore)(nil)
+	_ store.ExamResourceStore               = (*timedExamResourceStore)(nil)
+	_ store.ExamRevisionStore               = (*timedExamRevisionStore)(nil)
+	_ store.ExamSittingStore                = (*timedExamSittingStore)(nil)
+	_ store.ExamStarterWorkspaceStore       = (*timedExamStarterWorkspaceStore)(nil)
+	_ store.ExamSubmissionStore             = (*timedExamSubmissionStore)(nil)
+	_ store.ExecutionGrantStore             = (*timedExecutionGrantStore)(nil)
+	_ store.ServingNodeLeaseStore           = (*timedServingNodeLeaseStore)(nil)
+	_ store.ExamAuthoringStore              = (*timedExamAuthoringStore)(nil)
+	_ store.CommandOutcomeStore             = (*timedCommandOutcomeStore)(nil)
+	_ store.MailStore                       = (*timedMailStore)(nil)
+	_ store.JobStore                        = (*timedJobStore)(nil)
+	_ store.FileStore                       = (*timedFileStore)(nil)
+	_ store.InstitutionStore                = (*timedInstitutionStore)(nil)
+	_ store.AcademicUnitStore               = (*timedAcademicUnitStore)(nil)
+	_ store.ProgrammeStore                  = (*timedProgrammeStore)(nil)
+	_ store.ProgrammeLevelStore             = (*timedProgrammeLevelStore)(nil)
+	_ store.AcademicPeriodStore             = (*timedAcademicPeriodStore)(nil)
+	_ store.ClassStore                      = (*timedClassStore)(nil)
+	_ store.UserStore                       = (*timedUserStore)(nil)
+	_ store.UserSettingsStore               = (*timedUserSettingsStore)(nil)
+	_ store.ExternalIdentityStore           = (*timedExternalIdentityStore)(nil)
+	_ store.ExternalLoginStateStore         = (*timedExternalLoginStateStore)(nil)
+	_ store.UserTokenStore                  = (*timedUserTokenStore)(nil)
+	_ store.InvitationStore                 = (*timedInvitationStore)(nil)
+	_ store.OnboardingImportStore           = (*timedOnboardingImportStore)(nil)
+	_ store.PersonalAccessTokenStore        = (*timedPersonalAccessTokenStore)(nil)
+	_ store.MFAStore                        = (*timedMFAStore)(nil)
+	_ store.AffiliationStore                = (*timedAffiliationStore)(nil)
+	_ store.AcademicUnitMemberStore         = (*timedAcademicUnitMemberStore)(nil)
+	_ store.ClassMemberStore                = (*timedClassMemberStore)(nil)
+	_ store.PasswordCredentialStore         = (*timedPasswordCredentialStore)(nil)
+	_ store.SessionStore                    = (*timedSessionStore)(nil)
+	_ store.DesktopRegistrationStore        = (*timedDesktopRegistrationStore)(nil)
+	_ store.SessionCredentialStore          = (*timedSessionCredentialStore)(nil)
+	_ store.RoleStore                       = (*timedRoleStore)(nil)
+	_ store.RoleBindingStore                = (*timedRoleBindingStore)(nil)
+	_ store.AuditStore                      = (*timedAuditStore)(nil)
+	_ store.InstallationStore               = (*timedInstallationStore)(nil)
 )

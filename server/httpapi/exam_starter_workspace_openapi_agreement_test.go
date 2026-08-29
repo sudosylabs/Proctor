@@ -85,7 +85,7 @@ func assertWorkspaceContentVersionOpenAPI(t *testing.T, document openAPIDocument
 	var raw struct {
 		Components struct {
 			Schemas map[string]struct {
-				Type    string `json:"type"`
+				Type    any    `json:"type"`
 				Pattern string `json:"pattern"`
 			} `json:"schemas"`
 		} `json:"components"`

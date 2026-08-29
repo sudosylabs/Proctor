@@ -126,6 +126,7 @@ type ExamDraft struct {
 	InstructionsMarkdown string
 	Policy               ExamPolicySet
 	ExecutionProfile     ExecutionProfile
+	BrowserPolicy        BrowserPolicy
 	BaseRevisionID       ExamRevisionID
 	UpdatedAt            time.Time
 	Revision             int64
@@ -134,7 +135,7 @@ type ExamDraft struct {
 func NewExamDraft(examID ExamID, title, instructionsMarkdown string, policy ExamPolicySet, at time.Time) (*ExamDraft, error) {
 	draft := &ExamDraft{
 		ExamID: examID, Title: strings.TrimSpace(title),
-		InstructionsMarkdown: instructionsMarkdown, Policy: policy, ExecutionProfile: DefaultExecutionProfile(),
+		InstructionsMarkdown: instructionsMarkdown, Policy: policy, ExecutionProfile: DefaultExecutionProfile(), BrowserPolicy: DisabledBrowserPolicy(),
 		UpdatedAt: TimeUTC(at), Revision: 1,
 	}
 	if err := draft.Validate(); err != nil {
@@ -173,7 +174,54 @@ func (d *ExamDraft) Validate() error {
 	if err := d.ExecutionProfile.Validate(); err != nil {
 		return fmt.Errorf("%s: execution profile: %w", where, err)
 	}
+	browserPolicy := d.BrowserPolicy
+	if browserPolicy.SchemaVersion == 0 {
+		browserPolicy = DisabledBrowserPolicy()
+	}
+	if err := browserPolicy.Validate(); err != nil {
+		return fmt.Errorf("%s: browser policy: %w", where, err)
+	}
 	return nil
+}
+
+// ApplyBrowserPolicy replaces the complete authored browser enforcement value.
+// Rules are canonicalized before comparison so authored order and URL spelling
+// cannot manufacture a Draft change.
+func (d *ExamDraft) ApplyBrowserPolicy(policy BrowserPolicy, at time.Time) (bool, error) {
+	if d == nil {
+		return false, invalidModelError("ExamDraft.ApplyBrowserPolicy", "exam_draft", "value", "is required", "")
+	}
+	canonical, err := NewBrowserPolicy(policy.Enabled, policy.StartRuleID, policy.Rules)
+	if err != nil {
+		return false, err
+	}
+	currentPolicy := d.BrowserPolicy
+	if currentPolicy.SchemaVersion == 0 {
+		currentPolicy = DisabledBrowserPolicy()
+	}
+	current, err := EncodeBrowserPolicy(currentPolicy)
+	if err != nil {
+		return false, err
+	}
+	proposed, err := EncodeBrowserPolicy(canonical)
+	if err != nil {
+		return false, err
+	}
+	if string(current) == string(proposed) {
+		return false, nil
+	}
+	candidate := *d
+	candidate.BrowserPolicy = canonical
+	candidate.Revision++
+	candidate.UpdatedAt = TimeUTC(at)
+	if candidate.UpdatedAt.Before(d.UpdatedAt) {
+		candidate.UpdatedAt = d.UpdatedAt
+	}
+	if err = candidate.Validate(); err != nil {
+		return false, err
+	}
+	*d = candidate
+	return true, nil
 }
 
 // ApplyExecutionProfile replaces the complete authored terminal choice. A

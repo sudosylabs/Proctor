@@ -576,8 +576,10 @@ func upgradeSessionAuthentication(
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		   AND idle_expires_at > ? AND expires_at > ?
 		 RETURNING id, created_at, updated_at, archived_at, user_id, client_type,
+		           desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+		           desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		           device_id, device_name, authentication_method, authentication_provider_id,
-		           authentication_strength, authenticated_at, mfa_completed_at,
+		           external_identity_id, authentication_strength, authenticated_at, mfa_completed_at,
 		           last_activity_at, idle_expires_at, expires_at, revoked_at,
 		           revocation_reason`,
 		at, at, sessionID, userID, at, at,

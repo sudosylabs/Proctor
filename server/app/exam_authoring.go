@@ -55,6 +55,13 @@ type ConfigureExamDraftExecutionProfileCommand struct {
 	IdempotencyKey        string
 }
 
+type ConfigureExamDraftBrowserPolicyCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	Policy                model.BrowserPolicy
+	IdempotencyKey        string
+}
+
 type ExamExecutionImage struct {
 	ID       string
 	Networks []model.ExecutionNetwork
@@ -66,6 +73,7 @@ type examUseCases interface {
 	EditDraftText(context.Context, examengine.Call, examengine.EditDraftTextCommand) (examengine.View, error)
 	ConfigureDraftFocusLoss(context.Context, examengine.Call, examengine.ConfigureDraftFocusLossCommand) (examengine.View, error)
 	ConfigureDraftExecutionProfile(context.Context, examengine.Call, examengine.ConfigureDraftExecutionProfileCommand) (examengine.View, error)
+	ConfigureDraftBrowserPolicy(context.Context, examengine.Call, examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error)
 	List(context.Context, examengine.Call, examengine.ListQuery) (examengine.CatalogPage, error)
 	Archive(context.Context, examengine.Call, examengine.ArchiveCommand) (model.Exam, error)
 	ListManagers(context.Context, examengine.Call, examengine.ListManagersQuery) (examengine.ManagerPage, error)
@@ -122,6 +130,17 @@ func (a *App) ConfigureExamDraftExecutionProfile(ctx context.Context, invocation
 	view, err := a.exams.ConfigureDraftExecutionProfile(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftExecutionProfileCommand{
 		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
 		Profile: model.ExecutionProfile{Enabled: command.Enabled, Image: command.Image, Network: command.Network}, IdempotencyKey: command.IdempotencyKey,
+	})
+	if err != nil {
+		return ExamView{}, examError(err, true)
+	}
+	return view, nil
+}
+
+func (a *App) ConfigureExamDraftBrowserPolicy(ctx context.Context, invocation Invocation, command ConfigureExamDraftBrowserPolicyCommand) (ExamView, error) {
+	view, err := a.exams.ConfigureDraftBrowserPolicy(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ConfigureDraftBrowserPolicyCommand{
+		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision,
+		Policy: command.Policy.Clone(), IdempotencyKey: command.IdempotencyKey,
 	})
 	if err != nil {
 		return ExamView{}, examError(err, true)
@@ -254,7 +273,10 @@ func (a examAuditAdapter) Fail(ctx context.Context, id, code string) error {
 	return a.audit.Fail(ctx, id, code)
 }
 
-type examRealtimeEffects struct{ realtime *realtimeService }
+type examRealtimeEffects struct {
+	realtime    *realtimeService
+	collections examCollectionInvalidationEffects
+}
 
 func (e examRealtimeEffects) Created(ctx context.Context, examID model.ExamID) error {
 	event, err := apprealtime.NewExamCreatedEvent(examID)
@@ -275,13 +297,14 @@ func (e examRealtimeEffects) Archived(ctx context.Context, examID model.ExamID, 
 	if err != nil {
 		return err
 	}
-	return e.realtime.Publish(ctx, event)
+	return errors.Join(e.realtime.Publish(ctx, event), e.collections.ExamArchived(ctx, examID))
 }
 func (e examRealtimeEffects) ManagerChanged(ctx context.Context, examID model.ExamID, userID model.UserID, present bool, revision int64, changedAt time.Time) error {
 	event, err := apprealtime.NewExamManagerChangedEvent(examID, userID, present, revision, changedAt)
 	if err != nil {
 		return err
 	}
+	e.realtime.InvalidateAuthorization(ctx, userID.String())
 	return e.realtime.Publish(ctx, event)
 }
 func (e examRealtimeEffects) OwnerTransferred(ctx context.Context, examID model.ExamID, ownerID model.UserID, revision int64, changedAt time.Time) error {

@@ -96,6 +96,9 @@ func (s SQLInstallationStore) Bootstrap(
 		if err := insertInitialAccessPolicy(ctx, tx, prepared.AccessPolicy); err != nil {
 			return nil, err
 		}
+		if err := insertInitialDesktopCompatibilityPolicy(ctx, tx, prepared.DesktopCompatibilityPolicy); err != nil {
+			return nil, err
+		}
 		if err := insertInstallationAudit(ctx, tx, prepared.auditEvent); err != nil {
 			return nil, err
 		}
@@ -228,7 +231,7 @@ func validateSystemAdministratorRoleReconciliation(input *store.SystemAdministra
 	}
 	seen := make(map[string]struct{}, len(input.RequiredPermissions))
 	for _, permission := range input.RequiredPermissions {
-		if !model.IsGrantableAction(permission) {
+		if !model.IsSystemAdministratorAction(permission) {
 			return store.NewErrInvalidInput("role", "required_permission", permission)
 		}
 		if _, exists := seen[permission]; exists {
@@ -348,6 +351,7 @@ func prepareInstallationBootstrap(
 		return nil, err
 	}
 	accessPolicy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
+	desktopCompatibilityPolicy := model.NewInitialDesktopCompatibilityPolicy(institution.ID, at)
 	event := input.AuditEvent.Clone()
 	event.ID = ""
 	event.CreatedAt = time.Time{}
@@ -361,11 +365,12 @@ func prepareInstallationBootstrap(
 	event.ScopeID = institution.ID.String()
 	event.Status = model.AuditStatusSuccess
 	parameters, appErr := model.EncodeAuditData(map[string]any{
-		"institution":   institution.Auditable(),
-		"administrator": administrator.Auditable(),
-		"role":          role.Auditable(),
-		"role_binding":  binding.Auditable(),
-		"access_policy": accessPolicy.Auditable(),
+		"institution":                  institution.Auditable(),
+		"administrator":                administrator.Auditable(),
+		"role":                         role.Auditable(),
+		"role_binding":                 binding.Auditable(),
+		"access_policy":                accessPolicy.Auditable(),
+		"desktop_compatibility_policy": desktopCompatibilityPolicy.Auditable(),
 	})
 	if appErr != nil {
 		return nil, appErr
@@ -384,6 +389,7 @@ func prepareInstallationBootstrap(
 		InstallationBootstrapResult: &model.InstallationBootstrapResult{
 			State: state, Institution: institution, Administrator: &administrator,
 			Role: role, RoleBinding: &binding, AccessPolicy: accessPolicy,
+			DesktopCompatibilityPolicy: desktopCompatibilityPolicy,
 		},
 		credential:               credential,
 		auditEvent:               event,
@@ -431,6 +437,37 @@ func insertInitialAccessPolicy(
 	return nil
 }
 
+func insertInitialDesktopCompatibilityPolicy(
+	ctx context.Context,
+	executor sqlxExecutor,
+	policy *model.DesktopCompatibilityPolicy,
+) error {
+	if policy == nil || policy.Validate() != nil || policy.Revision != 1 ||
+		policy.MinimumDesktopRelease != "" || len(policy.RevokedDesktopBuildIDs) != 0 ||
+		policy.AdministratorMessage != "" || policy.Availability != model.DesktopAvailabilityReady || policy.RetryAt.Valid {
+		return store.NewErrInvalidInput("desktop_compatibility_policy", "initial", nil)
+	}
+	revokedBuildIDs, err := json.Marshal(policy.RevokedDesktopBuildIDs)
+	if err != nil {
+		return store.NewErrInvalidInput("desktop_compatibility_policy", "revoked_build_ids", nil).Wrap(err)
+	}
+	if _, err := executor.Exec(ctx, `
+		INSERT INTO desktop_compatibility_policies (
+			singleton, institution_id, revision, minimum_desktop_release,
+			revoked_desktop_build_ids, administrator_message, availability, retry_at, created_at, updated_at
+		) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		policy.InstitutionID.String(), policy.Revision, policy.MinimumDesktopRelease,
+		revokedBuildIDs, policy.AdministratorMessage, policy.Availability, policy.RetryAt.Ptr(), policy.CreatedAt, policy.UpdatedAt,
+	); err != nil {
+		return fmt.Errorf("save initial desktop compatibility policy: %w", translateError(
+			"desktop_compatibility_policy",
+			policy.InstitutionID.String(),
+			err,
+		))
+	}
+	return nil
+}
+
 func replayInstallationBootstrap(
 	ctx context.Context,
 	executor sqlxExecutor,
@@ -463,13 +500,14 @@ func replayInstallationBootstrap(
 func validateRetainedBootstrapResult(result *model.InstallationBootstrapResult, row installationStateRow) error {
 	if result == nil || result.State == nil || result.Institution == nil ||
 		result.Administrator == nil || result.Role == nil || result.RoleBinding == nil ||
-		result.AccessPolicy == nil || result.State.Validate() != nil ||
+		result.AccessPolicy == nil || result.DesktopCompatibilityPolicy == nil || result.State.Validate() != nil ||
 		result.Institution.Validate() != nil || result.Administrator.Validate() != nil ||
 		result.Role.Validate() != nil || result.RoleBinding.Validate() != nil ||
-		result.AccessPolicy.Validate() != nil ||
+		result.AccessPolicy.Validate() != nil || result.DesktopCompatibilityPolicy.Validate() != nil ||
 		result.State.InstitutionID.String() != row.InstitutionID ||
 		result.State.AdministratorUserID.String() != row.AdministratorUserID ||
-		result.AccessPolicy.ID.String() != row.AccessPolicyID {
+		result.AccessPolicy.ID.String() != row.AccessPolicyID ||
+		result.DesktopCompatibilityPolicy.InstitutionID != result.State.InstitutionID {
 		return store.NewErrConflict("installation", "retained_bootstrap_result_invalid", nil)
 	}
 	return nil
@@ -483,7 +521,8 @@ func installationIsPristine(ctx context.Context, executor sqlxExecutor) (bool, e
 		    OR EXISTS (SELECT 1 FROM users)
 		    OR EXISTS (SELECT 1 FROM roles)
 		    OR EXISTS (SELECT 1 FROM role_bindings)
-		    OR EXISTS (SELECT 1 FROM access_policies)`); err != nil {
+		    OR EXISTS (SELECT 1 FROM access_policies)
+		    OR EXISTS (SELECT 1 FROM desktop_compatibility_policies)`); err != nil {
 		return false, fmt.Errorf("check installation state: %w", err)
 	}
 	return !present, nil

@@ -103,6 +103,10 @@ type OptionalInstructions struct {
 	Present  bool
 	Markdown string
 }
+type OptionalBrowserPolicy struct {
+	Present bool
+	Policy  model.BrowserPolicy
+}
 type ResourceManifestItem struct {
 	ResourceID          model.ExamResourceID
 	DisplayName         string
@@ -115,20 +119,24 @@ type ApplyCommand struct {
 	ExpectedSittingRevision   int64
 	ExpectedCurrentRevisionID model.ExamRevisionID
 	Instructions              OptionalInstructions
+	BrowserPolicy             OptionalBrowserPolicy
 	Resources                 []ResourceManifestItem
+	CandidateSummary          string
+	AcknowledgementRequired   bool
 	PrivateReason             string
 	IdempotencyKey            string
 }
 type Result struct {
-	ExamID             model.ExamID
-	SittingID          model.ExamSittingID
-	PreviousRevisionID model.ExamRevisionID
-	RevisionID         model.ExamRevisionID
-	RevisionNumber     int64
-	SittingState       model.ExamSittingState
-	SittingRevision    int64
-	EffectiveAt        time.Time
-	Replayed           bool
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	PreviousRevisionID      model.ExamRevisionID
+	RevisionID              model.ExamRevisionID
+	RevisionNumber          int64
+	SittingState            model.ExamSittingState
+	SittingRevision         int64
+	EffectiveAt             time.Time
+	AcknowledgementRequired bool
+	Replayed                bool
 }
 
 type Service struct {
@@ -290,7 +298,7 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 		return Result{}, err
 	}
 	at := model.TimeUTC(s.now())
-	value := map[string]any{"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "expected_sitting_revision": c.ExpectedSittingRevision, "expected_current_revision_id": c.ExpectedCurrentRevisionID.String(), "instructions_present": c.Instructions.Present, "resource_count": len(c.Resources)}
+	value := map[string]any{"exam_id": c.ExamID.String(), "exam_sitting_id": c.SittingID.String(), "expected_sitting_revision": c.ExpectedSittingRevision, "expected_current_revision_id": c.ExpectedCurrentRevisionID.String(), "instructions_present": c.Instructions.Present, "browser_policy_present": c.BrowserPolicy.Present, "resource_count": len(c.Resources), "acknowledgement_required": c.AcknowledgementRequired}
 	auditID, err := s.auditor.Begin(ctx, call, auth.action, model.Resource{Type: model.ResourceExamSitting, ID: c.SittingID.String()}, model.RoleScopeAcademicUnit, auth.academicUnitID.String(), "exam_sitting_content_correct", value, nil)
 	if err != nil {
 		return Result{}, err
@@ -300,11 +308,16 @@ func (s *Service) Apply(ctx context.Context, call Call, c ApplyCommand) (Result,
 		v := c.Instructions.Markdown
 		instructions = &v
 	}
+	var browserPolicy *model.BrowserPolicy
+	if c.BrowserPolicy.Present {
+		value := c.BrowserPolicy.Policy.Clone()
+		browserPolicy = &value
+	}
 	resources := make([]store.ExamCorrectionResourceManifestItem, len(c.Resources))
 	for i, r := range c.Resources {
 		resources[i] = store.ExamCorrectionResourceManifestItem{ResourceID: r.ResourceID, DisplayName: strings.TrimSpace(r.DisplayName), DescriptionMarkdown: r.DescriptionMarkdown, StageID: r.StageID}
 	}
-	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, Resources: resources, PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
+	stored, err := s.persistence.Apply(ctx, &store.ExamCorrectionApplication{RevisionID: s.newExamRevisionID(), ExamID: c.ExamID, SittingID: c.SittingID, CurrentRevisionID: c.ExpectedCurrentRevisionID, ExpectedSittingRevision: c.ExpectedSittingRevision, ActorUserID: call.Principal().UserID, ManagerOverride: auth.override, InstructionsMarkdown: instructions, BrowserPolicy: browserPolicy, Resources: resources, CandidateSummary: c.CandidateSummary, AcknowledgementRequired: c.AcknowledgementRequired, PrivateReason: c.PrivateReason, AppliedAt: at, AuditEventID: auditID, AuditAt: model.MillisFromTime(at)}, idempotency)
 	if err != nil {
 		return Result{}, s.failAudit(ctx, auditID, err)
 	}
@@ -329,6 +342,12 @@ func validateApply(c ApplyCommand) error {
 	}
 	if c.Instructions.Present && (!utf8.ValidString(c.Instructions.Markdown) || len(c.Instructions.Markdown) > model.ExamInstructionsMarkdownMaxBytes) {
 		return invalid("instructions_markdown")
+	}
+	if !c.BrowserPolicy.Present && c.BrowserPolicy.Policy.SchemaVersion != 0 || c.BrowserPolicy.Present && c.BrowserPolicy.Policy.Validate() != nil {
+		return invalid("browser_policy")
+	}
+	if _, err := model.NewCandidateCorrectionNotice(c.CandidateSummary, []model.ExamCorrectionChangedArea{model.ExamCorrectionChangedInstructions}, c.AcknowledgementRequired); err != nil {
+		return invalid("candidate_summary")
 	}
 	resourceIDs := map[model.ExamResourceID]struct{}{}
 	stageIDs := map[model.ExamCorrectionResourceStageID]struct{}{}
@@ -417,7 +436,10 @@ func projectResult(stored *store.ExamCorrectionResult, c ApplyCommand) (Result, 
 		stored.EffectiveAt.IsZero() || !model.TimeUTC(stored.EffectiveAt).Equal(model.TimeUTC(stored.Revision.PublishedAt)) {
 		return Result{}, unavailable(errors.New("inconsistent correction outcome"))
 	}
-	return Result{ExamID: c.ExamID, SittingID: c.SittingID, PreviousRevisionID: stored.PreviousRevisionID, RevisionID: stored.Revision.ID, RevisionNumber: stored.Revision.Number, SittingState: s.State, SittingRevision: s.Revision, EffectiveAt: model.TimeUTC(stored.EffectiveAt), Replayed: stored.Replayed}, nil
+	return Result{ExamID: c.ExamID, SittingID: c.SittingID, PreviousRevisionID: stored.PreviousRevisionID,
+		RevisionID: stored.Revision.ID, RevisionNumber: stored.Revision.Number, SittingState: s.State,
+		SittingRevision: s.Revision, EffectiveAt: model.TimeUTC(stored.EffectiveAt),
+		AcknowledgementRequired: c.AcknowledgementRequired, Replayed: stored.Replayed}, nil
 }
 func invalid(field string) error {
 	return &Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": field}}
@@ -456,6 +478,7 @@ func mapStore(err error) error {
 			"exam_sitting_deadline_reached":     "exam.sitting.deadline_reached",
 			"exam_correction_base_revision":     "exam.sitting.revision_conflict",
 			"exam_correction_no_changes":        "exam.sitting.correction.no_changes",
+			"exam_correction_limit":             "exam.sitting.correction.limit",
 			"exam_correction_resource_limit":    "exam.resource.limit",
 			"exam_correction_resource_manifest": "exam.sitting.correction.manifest_invalid",
 			"exam_correction_resource_stage":    "exam.sitting.correction.stage_invalid",

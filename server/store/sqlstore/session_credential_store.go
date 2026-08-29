@@ -182,6 +182,8 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		var lockedSessionRow sessionRow
 		if err := tx.Get(ctx, &lockedSessionRow, `
 		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
@@ -210,7 +212,31 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 				ReplayDetected:      true,
 			}, nil
 		}
-		if current.IsExpiredAt(nowTime) || session.IsExpiredAt(nowTime) {
+		if session.RevokedAt.Valid {
+			return nil, store.NewErrConflict("session_credential", "session_credentials_inactive", nil)
+		}
+		if !nowTime.Before(session.IdleExpiresAt) || !nowTime.Before(session.ExpiresAt) {
+			hashes, revokeErr := revokeOneUserSession(
+				ctx,
+				tx,
+				session.ID.String(),
+				session.UserID.String(),
+				now,
+				model.SessionRevocationExpired,
+			)
+			if revokeErr != nil {
+				return nil, revokeErr
+			}
+			if session.UpdatedAt.Before(nowTime) {
+				session.UpdatedAt = nowTime
+			}
+			session.RevokedAt = model.OptionalTimeFrom(nowTime)
+			session.RevocationReason = model.SessionRevocationExpired
+			return &store.SessionRotation{
+				Session: session, RevokedAccessHashes: hashes, Expired: true,
+			}, nil
+		}
+		if current.IsExpiredAt(nowTime) {
 			return nil, store.NewErrConflict("session_credential", "session_credentials_inactive", nil)
 		}
 

@@ -106,7 +106,10 @@ type ExamCorrectionApplication struct {
 	ActorUserID             model.UserID
 	ManagerOverride         bool
 	InstructionsMarkdown    *string
+	BrowserPolicy           *model.BrowserPolicy
 	Resources               []ExamCorrectionResourceManifestItem
+	CandidateSummary        string
+	AcknowledgementRequired bool
 	PrivateReason           string
 	AppliedAt               time.Time
 	AuditEventID            string

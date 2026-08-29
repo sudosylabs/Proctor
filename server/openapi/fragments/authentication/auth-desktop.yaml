@@ -3,302 +3,419 @@ paths:
     post:
       operationId: startDesktopAuthorization
       summary: Create a purpose-bound Desktop browser authorization transaction
-      description: >-
-        Starts a short-lived browser handoff for a Desktop client, binding the callback, opaque state, selected authentication method, device presentation, and S256 PKCE challenge. No Session is created until the browser approves the transaction and the Desktop client exchanges the one-use code.
-      tags:
-        - Authentication
+      description: Starts the current protocol-1 system-browser handoff and pins its exact loopback callback, state, S256 PKCE challenge, and bounded device presentation. Authentication is selected only inside the hosted journey.
+      tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes:
-        - request.invalid
-        - authentication.rate_limited
-        - authentication.rate_limit_unavailable
-        - authentication.desktop_authorization.invalid
-        - authentication.desktop_authorization.disabled
-        - authentication.desktop_authorization.rejected
-        - authentication.desktop_authorization.unavailable
+      x-proctor-error-codes: [request.invalid, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.desktop_authorization.invalid, authentication.desktop_authorization.disabled, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.incompatible, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security: []
-      requestBody:
-        $ref: '#/components/requestBodies/DesktopAuthorizationStart'
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationStart'}
       responses:
-        "201":
-          $ref: '#/components/responses/DesktopAuthorizationStarted'
-        "400":
-          $ref: '#/components/responses/BadRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "409":
-          $ref: '#/components/responses/Conflict'
-        "429":
-          $ref: '#/components/responses/TooManyRequests'
-        "500":
-          $ref: '#/components/responses/InternalError'
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
-  /api/v1/auth/desktop/authorizations/approve:
+        "201": {$ref: '#/components/responses/DesktopAuthorizationStarted'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "429": {$ref: '#/components/responses/TooManyRequests'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/bind:
     post:
-      operationId: approveDesktopAuthorization
-      summary: Approve a Desktop transaction with the current browser Session
-      description: >-
-        Uses the current interactive browser Session to approve the exact pending Desktop transaction identified by its handle, browser proof, and state. Approval issues a short-lived one-use code without exposing browser credentials to the Desktop client.
-      tags:
-        - Authentication
+      operationId: bindDesktopAuthorizationBrowser
+      summary: Exchange the one-time fragment proof for an HttpOnly browser binding
+      description: Exchanges the handle, fragment-delivered browser proof, and pinned state exactly once for a host-only HttpOnly binding cookie, then returns no credential material to rendered content.
+      tags: [Authentication]
+      x-proctor-auth: public
+      x-proctor-error-codes: &desktopBrowserErrors [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked]
+      x-proctor-idempotency: none
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationProof'}
+      responses:
+        "204": {$ref: '#/components/responses/SensitiveNoContent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/context:
+    get:
+      operationId: getDesktopAuthorizationContext
+      summary: Read the safe current hosted-journey context
+      description: Resolves the scoped binding cookie and returns only the safe device, authentication-choice, expiry, and confirmed-account presentation needed by the current hosted page.
+      tags: [Authentication]
+      x-proctor-auth: public
+      x-proctor-error-codes: *desktopBrowserErrors
+      x-proctor-idempotency: none
+      security: []
+      responses:
+        "200": {$ref: '#/components/responses/DesktopAuthorizationContextOK'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/authenticate/session:
+    post:
+      operationId: authenticateDesktopAuthorizationWithSession
+      summary: Bind the current Web Session identity without approving the Desktop
+      description: Uses the current interactive Web Session only as account proof for the browser-bound Desktop transaction; it neither approves the request nor issues another Session.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/auth/desktop/authorizations/authenticate/session' \
+              --cookie 'PROCTOR_ACCESS=<session-cookie>; PROCTOR_DESKTOP_AUTH=<binding-cookie>' \
+              --header 'X-Proctor-CSRF-Token: <csrf-proof>'
+      tags: [Authentication]
       x-proctor-auth: session_required
-      x-proctor-error-codes:
-        - authentication.required
-        - authentication.invalid_token
-        - authentication.credential_ambiguous
-        - authentication.csrf.invalid
-        - request.invalid
-        - authentication.desktop_authorization.invalid
-        - authentication.desktop_authorization.rejected
-        - authentication.desktop_authorization.unavailable
-        - audit.unavailable
+      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, authentication.csrf.invalid, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
-      requestBody:
-        $ref: '#/components/requestBodies/DesktopAuthorizationProof'
       responses:
-        "200":
-          $ref: '#/components/responses/DesktopAuthorizationApproved'
-        "400":
-          $ref: '#/components/responses/BadRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "409":
-          $ref: '#/components/responses/Conflict'
-        "500":
-          $ref: '#/components/responses/InternalError'
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
+        "200": {$ref: '#/components/responses/DesktopAuthorizationContextOK'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/authenticate/password:
+    post:
+      operationId: authenticateDesktopAuthorizationWithPassword
+      summary: Prove a local account for only this Desktop transaction
+      description: Validates local credentials and any required MFA code only for the browser-bound Desktop transaction, without creating a Web Session or approving the Desktop request.
+      tags: [Authentication]
+      x-proctor-auth: public
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.invalid_credentials, authentication.mfa.required, authentication.mfa.invalid_code, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-idempotency: none
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationLocalAuthentication'}
+      responses:
+        "200": {$ref: '#/components/responses/DesktopAuthorizationContextOK'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "429": {$ref: '#/components/responses/TooManyRequests'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/authenticate/providers/{provider_id}/login:
+    get:
+      operationId: beginDesktopAuthorizationExternalAuthentication
+      summary: Begin provider authentication bound to this Desktop transaction
+      description: Creates a purpose-bound external-provider state for the exact browser-bound Desktop transaction and redirects without creating an ordinary Web login transaction.
+      tags: [Authentication]
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - name: state
+          in: query
+          required: true
+          description: The exact opaque state pinned by the Desktop when it created this transaction.
+          schema: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+      x-proctor-auth: public
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.external.provider_not_found, authentication.external.request.invalid, authentication.external.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-idempotency: none
+      security: []
+      responses:
+        "303": {$ref: '#/components/responses/ExternalAuthenticationRedirect'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "429": {$ref: '#/components/responses/TooManyRequests'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "502": {$ref: '#/components/responses/BadGateway'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/account/reset:
+    post:
+      operationId: resetDesktopAuthorizationAccount
+      summary: Return the same hosted transaction to account selection
+      description: Removes only the authenticated-account proof from the browser-bound transaction so the same tab can select another method without changing the pinned Desktop request.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request POST \
+              --url 'https://proctor.example.edu/api/v1/auth/desktop/authorizations/account/reset' \
+              --cookie 'PROCTOR_DESKTOP_AUTH=<binding-cookie>'
+      tags: [Authentication]
+      x-proctor-auth: public
+      x-proctor-error-codes: *desktopBrowserErrors
+      x-proctor-idempotency: none
+      security: []
+      responses:
+        "204": {$ref: '#/components/responses/SensitiveNoContent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
+  /api/v1/auth/desktop/authorizations/approve:
+    post:
+      operationId: approveDesktopAuthorization
+      summary: Explicitly approve the authenticated Desktop transaction
+      description: Requires the browser-bound transaction's confirmed account and exact pinned state, then issues one short-lived loopback code without exposing Session credentials to the browser.
+      tags: [Authentication]
+      x-proctor-auth: public
+      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, audit.unavailable]
+      x-proctor-idempotency: none
+      security: []
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationState'}
+      responses:
+        "200": {$ref: '#/components/responses/DesktopAuthorizationApproved'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/auth/desktop/authorizations/cancel:
     post:
       operationId: cancelDesktopAuthorization
-      summary: Cancel one pending Desktop browser authorization transaction
-      description: >-
-        Cancels the exact pending Desktop transaction after validating its handle, browser proof, and state. Cancellation is terminal and prevents a later approval or token exchange for that transaction.
-      tags:
-        - Authentication
+      summary: Terminally cancel the browser-bound Desktop transaction
+      description: Validates the binding cookie and exact pinned state before terminally cancelling the transaction and destroying every remaining browser and code proof.
+      tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes:
-        - request.invalid
-        - authentication.desktop_authorization.invalid
-        - authentication.desktop_authorization.rejected
-        - authentication.desktop_authorization.unavailable
+      x-proctor-error-codes: *desktopBrowserErrors
       x-proctor-idempotency: none
       security: []
-      requestBody:
-        $ref: '#/components/requestBodies/DesktopAuthorizationProof'
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationState'}
       responses:
-        "204":
-          $ref: '#/components/responses/SensitiveNoContent'
-        "400":
-          $ref: '#/components/responses/BadRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "409":
-          $ref: '#/components/responses/Conflict'
-        "500":
-          $ref: '#/components/responses/InternalError'
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
+        "204": {$ref: '#/components/responses/SensitiveNoContent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1/auth/desktop/token:
     post:
       operationId: exchangeDesktopAuthorizationCode
-      summary: Atomically exchange one Desktop code and S256 verifier for an ordinary Desktop Session
-      description: >-
-        Consumes the one-use Desktop authorization code only when the opaque state and PKCE verifier match the original transaction. A successful exchange creates an ordinary bounded Desktop Session; replay or mismatched proof is rejected.
-      tags:
-        - Authentication
+      summary: Exchange one Desktop code and S256 verifier for a Desktop Session
+      description: Atomically consumes the code only when state and PKCE match and no active Attempt currently owns the account Session lock.
+      tags: [Authentication]
+      parameters:
+        - $ref: '#/components/parameters/DPoPProof'
       x-proctor-auth: public
-      x-proctor-error-codes:
-        - request.invalid
-        - authentication.rate_limited
-        - authentication.rate_limit_unavailable
-        - authentication.desktop_authorization.invalid
-        - authentication.desktop_authorization.rejected
-        - authentication.desktop_authorization.unavailable
-        - authentication.sessions.maximum_reached
-        - audit.unavailable
+      x-proctor-error-codes: [request.invalid, authentication.rate_limited, authentication.rate_limit_unavailable, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.incompatible, authentication.desktop_authorization.account_session_locked, authentication.sessions.maximum_reached, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable, audit.unavailable]
       x-proctor-idempotency: none
       security: []
-      requestBody:
-        $ref: '#/components/requestBodies/DesktopAuthorizationExchange'
+      requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationExchange'}
       responses:
-        "200":
-          $ref: '#/components/responses/AuthenticationOK'
-        "400":
-          $ref: '#/components/responses/BadRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "409":
-          $ref: '#/components/responses/Conflict'
-        "429":
-          $ref: '#/components/responses/TooManyRequests'
-        "500":
-          $ref: '#/components/responses/InternalError'
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
+        "200": {$ref: '#/components/responses/DesktopAuthenticationOK'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "429": {$ref: '#/components/responses/TooManyRequests'}
+        "500": {$ref: '#/components/responses/InternalError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
 components:
+  parameters:
+    DPoPProof:
+      name: DPoP
+      in: header
+      required: true
+      description: A fresh RFC 9449 ES256 proof JWT made by the public JWK bound to this authorization.
+      schema: {type: string, maxLength: 8192}
   requestBodies:
     DesktopAuthorizationStart:
+      description: Exact loopback, PKCE, public-key, device, and verified Desktop build declarations to pin to the new transaction.
       required: true
-      description: Declares the trusted loopback callback, anti-forgery state, S256 PKCE challenge, authentication method, and optional device presentation for the Desktop handoff.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/DesktopAuthorizationStartRequest'
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationStartRequest'}
           example:
-            callback_url: http://127.0.0.1:49152/callback
-            state: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-            code_challenge: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
-            authentication_method: password
-            device_id: exam-laptop-01
+            callback_url: http://127.0.0.1:49152/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+            state: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            code_challenge: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+            device_id: exam-laptop
             device_name: Exam laptop
+            public_jwk:
+              kty: EC
+              crv: P-256
+              x: DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+              y: EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+            desktop_release: 1.0.0
+            desktop_build_id: darwin-arm64-1.0.0
+            platform: darwin
+            architecture: arm64
+            realtime_protocol: 1
     DesktopAuthorizationProof:
+      description: One-use handle, fragment proof, and pinned state presented by the hosted browser before it stores a scoped binding cookie.
       required: true
-      description: Proves possession of the browser-facing transaction values before approving or cancelling the exact pending Desktop handoff.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/DesktopAuthorizationProofRequest'
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationProofRequest'}
           example:
             handle: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
             browser_proof: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
             state: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-    DesktopAuthorizationExchange:
+    DesktopAuthorizationState:
+      description: Exact opaque state already pinned to the browser-bound Desktop transaction.
       required: true
-      description: Supplies the one-use authorization code, original state, and PKCE verifier required to create the Desktop Session.
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/DesktopAuthorizationExchangeRequest'
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationStateRequest'}
+          example:
+            state: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    DesktopAuthorizationLocalAuthentication:
+      description: Local account proof scoped to the bound Desktop transaction; an MFA code is supplied only after the server requires it.
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationLocalAuthenticationRequest'}
+          example:
+            login_id: candidate@example.edu
+            password: synthetic-local-password
+            mfa_code: "123456"
+    DesktopAuthorizationExchange:
+      description: One-use code, pinned state, S256 verifier, identical public key, and exact verified Desktop build declarations for Session issuance.
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationExchangeRequest'}
           example:
             code: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-            state: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-            code_verifier: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            state: BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+            code_verifier: CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+            public_jwk:
+              kty: EC
+              crv: P-256
+              x: DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+              y: EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+            desktop_release: 1.0.0
+            desktop_build_id: darwin-arm64-1.0.0
+            platform: darwin
+            architecture: arm64
+            realtime_protocol: 1
   responses:
     DesktopAuthorizationStarted:
       description: Desktop browser authorization transaction created
       headers:
-        Cache-Control:
-          $ref: '#/components/headers/NoStore'
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        DPoP-Nonce: {$ref: '#/components/headers/DPoPNonce'}
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/DesktopAuthorizationStartResponse'
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationStartResponse'}
+    DesktopAuthenticationOK:
+      description: DPoP-bound Desktop Session created
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        DPoP-Nonce: {$ref: '#/components/headers/DPoPNonce'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/AuthenticationResponse'}
+    DesktopAuthorizationContextOK:
+      description: Safe current hosted Desktop authorization context
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationContextResponse'}
     DesktopAuthorizationApproved:
       description: One-use Desktop code issued
       headers:
-        Cache-Control:
-          $ref: '#/components/headers/NoStore'
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
       content:
         application/json:
-          schema:
-            $ref: '#/components/schemas/DesktopAuthorizationApprovalResponse'
+          schema: {$ref: '#/components/schemas/DesktopAuthorizationApprovalResponse'}
   schemas:
     DesktopAuthorizationStartRequest:
       type: object
       additionalProperties: false
-      required:
-        - callback_url
-        - state
-        - code_challenge
-        - authentication_method
+      required: [callback_url, state, code_challenge, public_jwk, desktop_release, desktop_build_id, platform, architecture, realtime_protocol]
       properties:
-        callback_url:
-          type: string
-          format: uri
-        state:
-          type: string
-          minLength: 43
-          maxLength: 128
-        code_challenge:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
-        authentication_method:
-          type: string
-          minLength: 1
-          maxLength: 64
-        provider_id:
-          type: string
-          maxLength: 64
-        device_id:
-          type: string
-          maxLength: 128
-        device_name:
-          type: string
-          maxLength: 128
+        callback_url: {type: string, format: uri}
+        state: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        code_challenge: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        device_id: {type: string, maxLength: 128}
+        device_name: {type: string, maxLength: 128}
+        public_jwk: {$ref: '#/components/schemas/DesktopPublicJWK'}
+        desktop_release: {type: string, maxLength: 64}
+        desktop_build_id: {type: string, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'}
+        platform: {type: string, enum: [darwin, win32, linux]}
+        architecture: {type: string, enum: [arm64, x64]}
+        realtime_protocol: {type: integer, minimum: 1}
     DesktopAuthorizationProofRequest:
       type: object
       additionalProperties: false
-      required:
-        - handle
-        - browser_proof
-        - state
+      required: [handle, browser_proof, state]
       properties:
-        handle:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
-        browser_proof:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
-        state:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
+        handle: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        browser_proof: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        state: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+    DesktopAuthorizationStateRequest:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+    DesktopAuthorizationLocalAuthenticationRequest:
+      type: object
+      additionalProperties: false
+      required: [login_id, password]
+      properties:
+        login_id: {type: string, maxLength: 254}
+        password: {type: string, format: password, maxLength: 1024}
+        mfa_code: {type: string, maxLength: 128}
     DesktopAuthorizationExchangeRequest:
       type: object
       additionalProperties: false
-      required:
-        - code
-        - state
-        - code_verifier
+      required: [code, state, code_verifier, public_jwk, desktop_release, desktop_build_id, platform, architecture, realtime_protocol]
       properties:
-        code:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
-        state:
-          type: string
-          pattern: ^[A-Za-z0-9_-]{43}$
-        code_verifier:
-          type: string
-          minLength: 43
-          maxLength: 128
-          pattern: ^[A-Za-z0-9._~-]+$
+        code: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        state: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        code_verifier: {type: string, minLength: 43, maxLength: 128, pattern: '^[A-Za-z0-9._~-]+$'}
+        public_jwk: {$ref: '#/components/schemas/DesktopPublicJWK'}
+        desktop_release: {type: string, maxLength: 64}
+        desktop_build_id: {type: string, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'}
+        platform: {type: string, enum: [darwin, win32, linux]}
+        architecture: {type: string, enum: [arm64, x64]}
+        realtime_protocol: {type: integer, minimum: 1}
+    DesktopPublicJWK:
+      type: object
+      additionalProperties: false
+      required: [kty, crv, x, y]
+      properties:
+        kty: {type: string, const: EC}
+        crv: {type: string, const: P-256}
+        x: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
+        y: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
     DesktopAuthorizationStartResponse:
       type: object
       additionalProperties: false
-      required:
-        - authorization_url
-        - expires_at
+      required: [authorization_url, expires_at]
       properties:
-        authorization_url:
-          type: string
-          format: uri
-        expires_at:
-          type: integer
-          format: int64
+        authorization_url: {type: string, format: uri}
+        expires_at: {type: integer, format: int64}
+    DesktopAuthorizationAccountResponse:
+      type: object
+      additionalProperties: false
+      required: [id, username, display_name]
+      properties:
+        id: {type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'}
+        username: {type: string}
+        display_name: {type: string}
+    DesktopAuthorizationContextResponse:
+      type: object
+      additionalProperties: false
+      required: [state, local_login_enabled, external_providers, device_name, expires_at]
+      properties:
+        state: {type: string, enum: [bound, authenticated]}
+        account: {$ref: '#/components/schemas/DesktopAuthorizationAccountResponse'}
+        local_login_enabled: {type: boolean}
+        external_providers:
+          type: array
+          maxItems: 64
+          items: {$ref: '#/components/schemas/ExternalAuthenticationProviderResponse'}
+        device_name: {type: string, maxLength: 128}
+        expires_at: {type: integer, format: int64}
     DesktopAuthorizationApprovalResponse:
       type: object
       additionalProperties: false
-      required:
-        - redirect_url
-        - expires_at
+      required: [redirect_url, expires_at]
       properties:
-        redirect_url:
-          type: string
-          format: uri
-        expires_at:
-          type: integer
-          format: int64
+        redirect_url: {type: string, format: uri}
+        expires_at: {type: integer, format: int64}

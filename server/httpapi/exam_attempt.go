@@ -19,12 +19,60 @@ import (
 )
 
 const (
-	candidateAttemptCredentialHeader = "X-Proctor-Attempt-Credential"
-	candidateAttemptConnectionHeader = "X-Proctor-Attempt-Connection-ID"
-	examAttemptManagerCursorVersion  = 1
-	candidateWorkspaceCursorVersion  = 1
-	submissionManifestCursorVersion  = 1
+	candidateAttemptCredentialHeader    = "X-Proctor-Attempt-Credential"
+	candidateAttemptConnectionHeader    = "X-Proctor-Attempt-Connection-ID"
+	examAttemptManagerCursorVersion     = 1
+	browserActivityCursorVersion        = 1
+	candidateWorkspaceCursorVersion     = 1
+	submissionManifestCursorVersion     = 1
+	sittingCandidateStatusCursorVersion = 1
+	sittingCandidateStatusCursorKind    = "sitting_candidate_status"
 )
+
+type browserActivityCursor struct {
+	ReceivedAt      time.Time
+	SourceSessionID model.BrowserSourceSessionID
+	Sequence        int64
+}
+
+type browserActivityCursorWire struct {
+	Version         int    `json:"version"`
+	ReceivedAt      string `json:"received_at"`
+	SourceSessionID string `json:"source_session_id"`
+	Sequence        int64  `json:"sequence"`
+}
+
+func encodeBrowserActivityCursor(cursor browserActivityCursor) (string, error) {
+	return encodeOpaqueCursor(browserActivityCursorWire{
+		ReceivedAt: model.TimeUTC(cursor.ReceivedAt).Format(time.RFC3339Nano), SourceSessionID: string(cursor.SourceSessionID), Sequence: cursor.Sequence,
+	}, browserActivityCursorSpec())
+}
+
+func decodeBrowserActivityCursor(raw string) (browserActivityCursor, error) {
+	wire, err := decodeOpaqueCursor(raw, browserActivityCursorSpec())
+	if err != nil {
+		return browserActivityCursor{}, err
+	}
+	receivedAt, _ := time.Parse(time.RFC3339Nano, wire.ReceivedAt)
+	return browserActivityCursor{ReceivedAt: model.TimeUTC(receivedAt), SourceSessionID: model.BrowserSourceSessionID(wire.SourceSessionID), Sequence: wire.Sequence}, nil
+}
+
+func browserActivityCursorSpec() opaqueCursorSpec[browserActivityCursorWire] {
+	return opaqueCursorSpec[browserActivityCursorWire]{
+		label: "Browser Activity", maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: browserActivityCursorVersion,
+		members:        []string{"version", "received_at", "source_session_id", "sequence"},
+		version:        func(cursor browserActivityCursorWire) int { return cursor.Version },
+		setVersion:     func(cursor *browserActivityCursorWire, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == browserActivityCursorVersion },
+		validate: func(cursor browserActivityCursorWire) error {
+			receivedAt, err := time.Parse(time.RFC3339Nano, cursor.ReceivedAt)
+			if err != nil || receivedAt.IsZero() || !model.BrowserSourceSessionID(cursor.SourceSessionID).IsValid() || cursor.Sequence < 1 {
+				return errors.New("invalid Browser Activity keyset")
+			}
+			return nil
+		},
+	}
+}
 
 type candidateAttemptHeaderAccess struct {
 	ConnectionID         model.AttemptConnectionID
@@ -178,6 +226,10 @@ func candidateWorkspaceCursorSpec() opaqueCursorSpec[candidateWorkspaceCursorWir
 type ExamAttemptApplication interface {
 	GetExamAttempt(context.Context, application.Invocation, application.GetExamAttemptQuery) (application.ExamAttemptManagerView, error)
 	ListExamAttempts(context.Context, application.Invocation, application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error)
+	ListSittingCandidateStatuses(context.Context, application.Invocation, application.ListSittingCandidateStatusesQuery) (application.SittingCandidateStatusesPage, error)
+	ListExamAttemptBrowserActivity(context.Context, application.Invocation, application.ListBrowserActivityQuery) (application.BrowserActivityPage, error)
+	AcknowledgeExamAttemptCorrection(context.Context, application.Invocation, application.AcknowledgeExamCorrectionCommand) (application.ExamCorrectionAcknowledgementResult, error)
+	EndExamAttemptByManager(context.Context, application.Invocation, application.EndExamAttemptByManagerCommand) (application.ExamSubmissionReceipt, error)
 	GetCandidateExamPresentation(context.Context, application.Invocation, application.CandidateExamAttemptAccess) (application.CandidateExamPresentation, error)
 	ListCandidateExamWorkspace(context.Context, application.Invocation, application.ListCandidateExamWorkspaceQuery) (application.CandidateExamWorkspacePage, error)
 	ListCandidateExamWorkspaceJournal(context.Context, application.Invocation, application.ListCandidateExamWorkspaceJournalQuery) (application.CandidateExamWorkspaceJournalPage, error)
@@ -193,6 +245,64 @@ type ExamAttemptApplication interface {
 	GetExamSubmission(context.Context, application.Invocation, application.GetExamSubmissionQuery) (application.ExamSubmissionManagerView, error)
 	ListExamSubmissionManifest(context.Context, application.Invocation, application.ListExamSubmissionManifestQuery) (application.ExamSubmissionManifestPage, error)
 	OpenExamSubmissionFile(context.Context, application.Invocation, application.OpenExamSubmissionFileQuery) (application.OpenedExamAttemptContent, error)
+}
+
+type sittingCandidateStatusCursor struct {
+	Version         int    `json:"version"`
+	Kind            string `json:"kind"`
+	CandidateUserID string `json:"candidate_user_id"`
+}
+
+type sittingCandidateStatusListResponse struct {
+	ServerTime      string                               `json:"server_time"`
+	ExamID          string                               `json:"exam_id"`
+	ExamSittingID   string                               `json:"exam_sitting_id"`
+	SittingState    model.ExamSittingState               `json:"sitting_state"`
+	SittingRevision int64                                `json:"sitting_revision"`
+	Items           []sittingCandidateStatusItemResponse `json:"items"`
+	NextCursor      string                               `json:"next_cursor,omitempty"`
+}
+
+type sittingCandidateStatusItemResponse struct {
+	Candidate               sittingCandidateIdentityResponse    `json:"candidate"`
+	CurrentClassMembership  bool                                `json:"current_class_membership"`
+	Attempt                 *sittingCandidateAttemptResponse    `json:"attempt"`
+	Presence                sittingCandidatePresenceResponse    `json:"presence"`
+	Suspension              *sittingCandidateSuspensionResponse `json:"suspension"`
+	IntegrityAttentionCount int64                               `json:"integrity_attention_count"`
+}
+
+type sittingCandidateIdentityResponse struct {
+	UserID      string `json:"user_id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
+type sittingCandidateAttemptResponse struct {
+	ID         string                              `json:"id"`
+	State      model.ExamAttemptState              `json:"state"`
+	Revision   int64                               `json:"revision"`
+	CreatedAt  string                              `json:"created_at"`
+	UpdatedAt  string                              `json:"updated_at"`
+	Submission *sittingCandidateSubmissionResponse `json:"submission"`
+}
+
+type sittingCandidateSubmissionResponse struct {
+	ID          string                         `json:"id"`
+	SubmittedAt string                         `json:"submitted_at"`
+	Provenance  model.ExamSubmissionProvenance `json:"provenance"`
+}
+
+type sittingCandidatePresenceResponse struct {
+	State              application.SittingCandidatePresenceState `json:"state"`
+	LastLeaseRenewedAt *string                                   `json:"last_lease_renewed_at"`
+	LeaseExpiresAt     *string                                   `json:"lease_expires_at"`
+}
+
+type sittingCandidateSuspensionResponse struct {
+	ID               string                                 `json:"id"`
+	CandidateReason  model.AttemptSuspensionCandidateReason `json:"candidate_reason"`
+	ReallowAvailable bool                                   `json:"reallow_available"`
 }
 
 type examAttemptHTTPModule struct{ application ExamAttemptApplication }
@@ -259,6 +369,31 @@ type examAttemptManagerListResponse struct {
 	NextCursor string                       `json:"next_cursor,omitempty"`
 }
 
+type browserActivityListResponse struct {
+	Items      []browserActivityItemResponse `json:"items"`
+	NextCursor string                        `json:"next_cursor,omitempty"`
+}
+
+type browserActivityItemResponse struct {
+	SourceSessionID string                            `json:"source_session_id"`
+	Generation      int64                             `json:"generation"`
+	Sequence        int64                             `json:"sequence"`
+	Kind            model.BrowserActivityKind         `json:"kind"`
+	PolicyRevision  string                            `json:"policy_revision_id"`
+	ClientOccurred  string                            `json:"client_occurred_at"`
+	Location        *browserActivityLocationResponse  `json:"location"`
+	MatchedRuleID   *string                           `json:"matched_rule_id"`
+	BlockReason     *model.BrowserActivityBlockReason `json:"block_reason"`
+	ReceivedAt      string                            `json:"received_at"`
+}
+
+type browserActivityLocationResponse struct {
+	Scheme string `json:"scheme"`
+	Host   string `json:"host"`
+	Port   string `json:"port,omitempty"`
+	Path   string `json:"path"`
+}
+
 type reallowExamAttemptRequest struct {
 	SuspensionID            string `json:"suspension_id"`
 	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
@@ -277,15 +412,81 @@ type examAttemptReallowResponse struct {
 }
 
 type candidateExamPresentationResponse struct {
-	AttemptID                  string                          `json:"attempt_id"`
-	SittingID                  string                          `json:"exam_sitting_id"`
-	AdmissionRevisionID        string                          `json:"admission_revision_id"`
-	CurrentRevisionID          string                          `json:"current_revision_id"`
-	Title                      string                          `json:"title"`
-	InstructionsMarkdown       string                          `json:"instructions_markdown"`
-	FocusLossCollectionEnabled bool                            `json:"focus_loss_collection_enabled"`
-	Capacity                   examCapacityPolicyResponse      `json:"capacity"`
-	Resources                  []candidateExamResourceResponse `json:"resources"`
+	AttemptID                    string                               `json:"attempt_id"`
+	SittingID                    string                               `json:"exam_sitting_id"`
+	Title                        string                               `json:"title"`
+	InstructionsMarkdown         string                               `json:"instructions_markdown"`
+	CandidateRuntimeCapabilities candidateRuntimeCapabilitiesResponse `json:"candidate_runtime_capabilities"`
+	BrowserPolicy                *candidateBrowserPolicyResponse      `json:"browser_policy"`
+	LiveCorrections              []candidateLiveCorrectionResponse    `json:"live_corrections"`
+	Resources                    []candidateExamResourceResponse      `json:"resources"`
+}
+
+type candidateLiveCorrectionResponse struct {
+	RevisionID              string                               `json:"revision_id"`
+	RevisionNumber          int64                                `json:"revision_number"`
+	EffectiveAt             string                               `json:"effective_at"`
+	Summary                 string                               `json:"summary"`
+	ChangedAreas            []model.ExamCorrectionChangedArea    `json:"changed_areas"`
+	AcknowledgementRequired bool                                 `json:"acknowledgement_required"`
+	AcknowledgementState    model.CorrectionAcknowledgementState `json:"acknowledgement_state"`
+	AcknowledgedAt          *string                              `json:"acknowledged_at"`
+}
+
+type candidateBrowserPolicyResponse struct {
+	SchemaVersion    int                                  `json:"schema_version"`
+	Enabled          bool                                 `json:"enabled"`
+	StartRuleID      string                               `json:"start_rule_id"`
+	Rules            []candidateBrowserPolicyRuleResponse `json:"rules"`
+	PolicyRevisionID string                               `json:"policy_revision_id"`
+	PolicyDigest     string                               `json:"policy_digest"`
+}
+
+type candidateBrowserPolicyRuleResponse struct {
+	RuleID                   string `json:"rule_id"`
+	Origin                   string `json:"origin"`
+	PathPrefix               string `json:"path_prefix"`
+	HostMatch                string `json:"host_match"`
+	AllowRedirects           bool   `json:"allow_redirects"`
+	BlockedNavigationOutcome string `json:"blocked_navigation_outcome"`
+}
+
+type candidateRuntimeCapabilitiesResponse struct {
+	SchemaVersion              int                                   `json:"schema_version"`
+	ServerTime                 string                                `json:"server_time"`
+	InteractionState           string                                `json:"interaction_state"`
+	AttemptConfiguration       candidateAttemptConfigurationResponse `json:"attempt_configuration"`
+	FocusLossCollectionEnabled bool                                  `json:"focus_loss_collection_enabled"`
+	WorkspaceMutationAllowed   bool                                  `json:"workspace_mutation_allowed"`
+	SubmissionAllowed          bool                                  `json:"submission_allowed"`
+	Terminal                   candidateTerminalCapabilityResponse   `json:"terminal"`
+	Browser                    candidateBrowserCapabilityResponse    `json:"browser"`
+	ExamRevision               candidateExamRevisionResponse         `json:"exam_revision"`
+	Departure                  candidateDepartureResponse            `json:"departure"`
+}
+
+type candidateAttemptConfigurationResponse struct {
+	SchemaVersion       int                                   `json:"schema_version"`
+	ManifestFingerprint string                                `json:"manifest_fingerprint"`
+	Preferences         model.AttemptConfigurationPreferences `json:"preferences"`
+	Digest              string                                `json:"digest"`
+}
+type candidateTerminalCapabilityResponse struct {
+	State string `json:"state"`
+}
+type candidateBrowserCapabilityResponse struct {
+	State            string `json:"state"`
+	PolicyRevisionID string `json:"policy_revision_id,omitempty"`
+	PolicyDigest     string `json:"policy_digest,omitempty"`
+}
+type candidateExamRevisionResponse struct {
+	AdmissionRevisionID     string `json:"admission_revision_id"`
+	CurrentRevisionID       string `json:"current_revision_id"`
+	AcknowledgementRequired bool   `json:"acknowledgement_required"`
+}
+type candidateDepartureResponse struct {
+	Allowed bool   `json:"allowed"`
+	Reason  string `json:"reason"`
 }
 
 type candidateExamResourceResponse struct {
@@ -368,15 +569,93 @@ type candidateWorkspaceMutationResponse struct {
 }
 
 type submitExamAttemptRequest struct {
-	ParticipationID         string `json:"participation_id"`
-	Generation              int64  `json:"generation"`
-	ExpectedWorkspaceCursor int64  `json:"expected_workspace_cursor"`
-	FinalFocusLossSequence  int64  `json:"final_focus_loss_sequence"`
+	ParticipationID           string                           `json:"participation_id"`
+	Generation                int64                            `json:"generation"`
+	ExpectedCurrentRevisionID string                           `json:"expected_current_revision_id"`
+	ExpectedWorkspaceCursor   int64                            `json:"expected_workspace_cursor"`
+	FinalFocusLossSequence    int64                            `json:"final_focus_loss_sequence"`
+	BrowserActivity           browserActivitySubmissionRequest `json:"browser_activity"`
+}
+
+type browserActivitySubmissionRequest struct {
+	State           string `json:"state"`
+	SourceSessionID string `json:"source_session_id,omitempty"`
+	FinalSequence   *int64 `json:"final_sequence,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+}
+
+func (body *browserActivitySubmissionRequest) UnmarshalJSON(encoded []byte) error {
+	type wire browserActivitySubmissionRequest
+	var decoded wire
+	if err := rejectDuplicateTopLevelJSONMembers(encoded); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &members); err != nil {
+		return err
+	}
+	hasSource := members["source_session_id"] != nil
+	hasFinal := members["final_sequence"] != nil
+	hasReason := members["reason"] != nil
+	if hasFinal && decoded.FinalSequence == nil {
+		return errors.New("browser_activity.final_sequence must be an integer when present")
+	}
+	switch model.BrowserActivitySubmissionState(decoded.State) {
+	case model.BrowserActivitySubmissionNotApplicable:
+		if len(members) != 1 || hasSource || hasFinal || hasReason {
+			return errors.New("not_applicable browser_activity must contain only state")
+		}
+	case model.BrowserActivitySubmissionComplete:
+		if len(members) != 3 || !hasSource || !hasFinal || hasReason {
+			return errors.New("complete browser_activity requires source_session_id and final_sequence")
+		}
+	case model.BrowserActivitySubmissionGapped:
+		if !hasSource || !hasReason || len(members) < 3 || len(members) > 4 {
+			return errors.New("gapped browser_activity requires source_session_id and reason")
+		}
+	default:
+		return errors.New("invalid browser_activity state")
+	}
+	*body = browserActivitySubmissionRequest(decoded)
+	return nil
+}
+
+func (body browserActivitySubmissionRequest) model() (model.BrowserActivitySubmission, error) {
+	value := model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionState(body.State),
+		SourceSessionID: model.BrowserSourceSessionID(body.SourceSessionID), FinalSequence: body.FinalSequence,
+		GapReason: model.BrowserActivitySubmissionGapReason(body.Reason)}
+	if err := value.ValidateClient(); err != nil {
+		return model.BrowserActivitySubmission{}, err
+	}
+	return value, nil
+}
+
+type acknowledgeExamCorrectionRequest struct {
+	ParticipationID           string `json:"participation_id"`
+	Generation                int64  `json:"generation"`
+	ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
+}
+
+type acknowledgeExamCorrectionResponse struct {
+	RevisionID           string `json:"revision_id"`
+	AcknowledgementState string `json:"acknowledgement_state"`
+	AcknowledgedAt       string `json:"acknowledged_at"`
+}
+
+type endExamAttemptByManagerRequest struct {
+	ExpectedAttemptRevision int64  `json:"expected_attempt_revision"`
+	Reason                  string `json:"reason"`
 }
 
 type examSubmissionReceiptResponse struct {
 	SubmissionID    string `json:"submission_id"`
 	ExamAttemptID   string `json:"exam_attempt_id"`
+	ExamRevisionID  string `json:"exam_revision_id"`
 	State           string `json:"state"`
 	WorkspaceCursor int64  `json:"workspace_cursor"`
 	ManifestDigest  string `json:"manifest_digest"`
@@ -388,6 +667,7 @@ type examSubmissionManagerResponse struct {
 	ExamID                   string `json:"exam_id"`
 	ExamSittingID            string `json:"exam_sitting_id"`
 	ExamAttemptID            string `json:"exam_attempt_id"`
+	ExamRevisionID           string `json:"exam_revision_id"`
 	WorkspaceID              string `json:"workspace_id"`
 	ManifestSchemaVersion    int    `json:"manifest_schema_version"`
 	WorkspaceCursor          int64  `json:"workspace_cursor"`
@@ -441,6 +721,9 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	module := examAttemptHTTPModule{application: application}
 	managerCollection := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("attempts"))
 	managerMember := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("attempts"), canonicalID("exam_attempt_id"))
+	managerBrowserActivity := appendRoutePath(managerMember, literal("browser-activity"))
+	managerEnd := appendRoutePath(managerMember, literal("end"))
+	candidateStatuses := apiPath(literal("exams"), canonicalID("exam_id"), literal("sittings"), canonicalID("exam_sitting_id"), literal("candidate-statuses"))
 	candidate := apiPath(literal("exam-attempts"), canonicalID("exam_attempt_id"))
 	presentation := appendRoutePath(candidate, literal("presentation"))
 	workspace := appendRoutePath(candidate, literal("workspace"))
@@ -451,6 +734,7 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	resourceContent := appendRoutePath(candidate, literal("resources"), canonicalID("exam_resource_id"), literal("content"))
 	workspaceContent := appendRoutePath(candidate, literal("workspace"), literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
 	candidateSubmissions := appendRoutePath(candidate, literal("submissions"))
+	correctionAcknowledgement := appendRoutePath(candidate, literal("corrections"), canonicalID("exam_revision_id"), literal("acknowledgement"))
 	managerSubmission := appendRoutePath(managerMember, literal("submissions"), canonicalID("submission_id"))
 	managerSubmissionManifest := appendRoutePath(managerSubmission, literal("manifest"))
 	managerSubmissionContent := appendRoutePath(managerSubmission, literal("files"), canonicalID("attempt_workspace_entry_id"), literal("content"))
@@ -460,6 +744,11 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		"exam.attempt.revision_conflict", "exam.attempt.suspension_conflict", "exam.attempt.state_conflict",
 		"exam.attempt.sitting_unavailable", "exam.attempt.conflict", "exam.attempt.unavailable",
 		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
+	managerEndErrors := academicMutationErrorCodes("request.invalid", "resource.not_found",
+		"exam.attempt.invalid", "exam.attempt.revision_conflict", "exam.attempt.state_conflict",
+		"exam.attempt.sitting_unavailable", "exam.attempt.management_authority_conflict", "exam.attempt.conflict",
+		"exam.attempt.unavailable", "idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict",
+		"idempotency.in_progress")
 	candidateErrors := personalAccessTokenSessionCodes("request.invalid", "resource.not_found", "exam.attempt.invalid",
 		"exam.attempt.sitting_unavailable", "exam.attempt.state_conflict", "exam.attempt.unavailable")
 	directoryMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict",
@@ -473,10 +762,18 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	deleteMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
 	submissionErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
+		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.browser_activity_conflict",
 		"exam.attempt.connection_lost")
+	correctionAcknowledgementErrors := personalAccessTokenSessionMutationCodes("audit.unavailable", "request.invalid", "resource.not_found", "exam.attempt.invalid",
+		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.state_conflict",
+		"exam.attempt.sitting_unavailable", "exam.attempt.connection_closed", "exam.attempt.unavailable",
+		"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress")
 	return newResource("exam-attempts",
 		principalRoute(http.MethodGet, managerCollection, managerErrors, module.listManaged),
+		principalRoute(http.MethodGet, candidateStatuses, managerErrors, module.listCandidateStatuses),
 		principalRoute(http.MethodGet, managerMember, managerErrors, module.getManaged),
+		principalRoute(http.MethodGet, managerBrowserActivity, managerErrors, module.listBrowserActivity),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managerEnd, managerEndErrors, module.endByManager),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, reallow, reallowErrors, module.reallow),
 		sessionRoute(http.MethodGet, presentation, candidateErrors, module.presentation),
 		sessionRoute(http.MethodGet, workspace, candidateErrors, module.workspace),
@@ -491,11 +788,164 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 		protocolRoute("candidate-exam-resource-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, resourceContent, candidateErrors, module.openResource),
 		protocolRoute("candidate-exam-workspace-content", RouteProtocolBinaryDownload, AuthSessionRequired, http.MethodGet, workspaceContent, candidateErrors, module.openWorkspaceFile),
 		idempotentSessionRoute(IdempotencyRequired, http.MethodPost, candidateSubmissions, submissionErrors, module.submit),
+		idempotentSessionRoute(IdempotencyRequired, http.MethodPut, correctionAcknowledgement, correctionAcknowledgementErrors, module.acknowledgeCorrection),
 		principalRoute(http.MethodGet, managerSubmission, managerErrors, module.getSubmission),
 		principalRoute(http.MethodGet, managerSubmissionManifest, managerErrors, module.listSubmissionManifest),
 		protocolRoute("exam-submission-file-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet,
 			managerSubmissionContent, managerErrors, module.openSubmissionFile),
 	)
+}
+
+func (module examAttemptHTTPModule) endByManager(request operationRequest) (operationResult, error) {
+	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	var body endExamAttemptByManagerRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "endExamAttemptByManager"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedAttemptRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_attempt_revision", errors.New("must be positive"))
+	}
+	receipt, err := module.application.EndExamAttemptByManager(request.context, request.invocation(),
+		application.EndExamAttemptByManagerCommand{ExamID: examID, SittingID: sittingID, AttemptID: attemptID,
+			ExpectedAttemptRevision: body.ExpectedAttemptRevision, PrivateReason: body.Reason,
+			IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := examSubmissionReceiptResponse{SubmissionID: receipt.SubmissionID.String(),
+		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
+		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
+		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) acknowledgeCorrection(request operationRequest) (operationResult, error) {
+	access, err := candidateAccess(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	rawRevisionID, err := request.params.RequireExamRevisionId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	correctionRevisionID, err := model.ParseExamRevisionID(rawRevisionID)
+	if err != nil {
+		return operationResult{}, invalidRequestError("exam_revision_id", err)
+	}
+	var body acknowledgeExamCorrectionRequest
+	if err = decodeCandidateWorkspaceJSON(request, &body, "acknowledgeExamCorrection"); err != nil {
+		return operationResult{}, err
+	}
+	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
+		ParticipationID: body.ParticipationID, Generation: body.Generation})
+	if err != nil {
+		return operationResult{}, err
+	}
+	currentRevisionID, err := model.ParseExamRevisionID(body.ExpectedCurrentRevisionID)
+	if err != nil {
+		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
+	}
+	result, err := module.application.AcknowledgeExamAttemptCorrection(request.context, request.invocation(), application.AcknowledgeExamCorrectionCommand{
+		Access: mutationAccess, CorrectionRevisionID: correctionRevisionID, ExpectedCurrentRevisionID: currentRevisionID,
+		IdempotencyKey: request.idempotencyKey})
+	if err != nil {
+		return operationResult{}, err
+	}
+	if !result.AcknowledgedAt.Valid {
+		return operationResult{}, application.NewError("exam.attempt.unavailable")
+	}
+	return jsonResult(http.StatusOK, acknowledgeExamCorrectionResponse{RevisionID: result.CorrectionRevisionID.String(),
+		AcknowledgementState: string(model.CorrectionAcknowledgementAcknowledged),
+		AcknowledgedAt:       model.TimeUTC(result.AcknowledgedAt.Time).Format(time.RFC3339Nano)}).withHeaders(noStoreHeaders()), nil
+}
+
+func (module examAttemptHTTPModule) listCandidateStatuses(request operationRequest) (operationResult, error) {
+	examID, sittingID, err := managedExamAttemptScope(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListSittingCandidateStatusesQuery{ExamID: examID, SittingID: sittingID, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > 200 {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, decodeErr := decodeOpaqueCursor(raw, sittingCandidateStatusCursorSpec())
+		if decodeErr != nil {
+			return operationResult{}, invalidRequestError("cursor", decodeErr)
+		}
+		query.AfterCandidateUserID = model.UserID(cursor.CandidateUserID)
+	}
+	page, err := module.application.ListSittingCandidateStatuses(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := sittingCandidateStatusListResponse{ServerTime: model.TimeUTC(page.ServerTime).Format(time.RFC3339Nano),
+		ExamID: page.ExamID.String(), ExamSittingID: page.SittingID.String(), SittingState: page.SittingState,
+		SittingRevision: page.SittingRevision, Items: make([]sittingCandidateStatusItemResponse, 0, len(page.Items))}
+	for _, item := range page.Items {
+		mapped := sittingCandidateStatusItemResponse{Candidate: sittingCandidateIdentityResponse{UserID: item.Candidate.UserID.String(),
+			Username: item.Candidate.Username, DisplayName: item.Candidate.DisplayName},
+			CurrentClassMembership:  item.CurrentClassMembership,
+			Presence:                sittingCandidatePresenceResponse{State: item.Presence.State},
+			IntegrityAttentionCount: item.IntegrityAttentionCount}
+		if item.Presence.LastLeaseRenewedAt.Valid {
+			value := model.TimeUTC(item.Presence.LastLeaseRenewedAt.Time).Format(time.RFC3339Nano)
+			mapped.Presence.LastLeaseRenewedAt = &value
+		}
+		if item.Presence.LeaseExpiresAt.Valid {
+			value := model.TimeUTC(item.Presence.LeaseExpiresAt.Time).Format(time.RFC3339Nano)
+			mapped.Presence.LeaseExpiresAt = &value
+		}
+		if item.Attempt != nil {
+			mapped.Attempt = &sittingCandidateAttemptResponse{ID: item.Attempt.ID.String(), State: item.Attempt.State,
+				Revision: item.Attempt.Revision, CreatedAt: model.TimeUTC(item.Attempt.CreatedAt).Format(time.RFC3339Nano),
+				UpdatedAt: model.TimeUTC(item.Attempt.UpdatedAt).Format(time.RFC3339Nano)}
+			if item.Attempt.Submission != nil {
+				mapped.Attempt.Submission = &sittingCandidateSubmissionResponse{ID: item.Attempt.Submission.ID.String(),
+					SubmittedAt: model.TimeUTC(item.Attempt.Submission.SubmittedAt).Format(time.RFC3339Nano),
+					Provenance:  item.Attempt.Submission.Provenance}
+			}
+		}
+		if item.Suspension != nil {
+			mapped.Suspension = &sittingCandidateSuspensionResponse{ID: item.Suspension.ID.String(),
+				CandidateReason: item.Suspension.CandidateReason, ReallowAvailable: item.Suspension.ReallowAvailable}
+		}
+		response.Items = append(response.Items, mapped)
+	}
+	if page.HasMore {
+		if len(page.Items) == 0 {
+			return operationResult{}, application.NewError("exam.attempt.unavailable")
+		}
+		response.NextCursor, err = encodeOpaqueCursor(sittingCandidateStatusCursor{
+			Kind: sittingCandidateStatusCursorKind, CandidateUserID: page.Items[len(page.Items)-1].Candidate.UserID.String(),
+		}, sittingCandidateStatusCursorSpec())
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func sittingCandidateStatusCursorSpec() opaqueCursorSpec[sittingCandidateStatusCursor] {
+	return opaqueCursorSpec[sittingCandidateStatusCursor]{label: "Sitting candidate status",
+		maximumEncodedLength: defaultOpaqueCursorMaximumEncodedLength, currentVersion: sittingCandidateStatusCursorVersion,
+		members:        []string{"version", "kind", "candidate_user_id"},
+		version:        func(cursor sittingCandidateStatusCursor) int { return cursor.Version },
+		setVersion:     func(cursor *sittingCandidateStatusCursor, version int) { cursor.Version = version },
+		acceptsVersion: func(version int) bool { return version == sittingCandidateStatusCursorVersion },
+		validate: func(cursor sittingCandidateStatusCursor) error {
+			if cursor.Kind != sittingCandidateStatusCursorKind || !model.UserID(cursor.CandidateUserID).IsValid() {
+				return errors.New("invalid Sitting candidate-status keyset")
+			}
+			return nil
+		}}
 }
 
 func candidateWorkspaceMutationErrors(specific ...string) []string {
@@ -574,7 +1024,7 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 	for _, raw := range values["state"] {
 		state := model.ExamAttemptState(raw)
 		switch state {
-		case model.ExamAttemptActive, model.ExamAttemptSuspended, model.ExamAttemptSubmitted:
+		case model.ExamAttemptReady, model.ExamAttemptActive, model.ExamAttemptSuspended, model.ExamAttemptSubmitted:
 		default:
 			return operationResult{}, invalidRequestError("state", errors.New("is not supported"))
 		}
@@ -616,6 +1066,56 @@ func (module examAttemptHTTPModule) listManaged(request operationRequest) (opera
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
+func (module examAttemptHTTPModule) listBrowserActivity(request operationRequest) (operationResult, error) {
+	examID, sittingID, attemptID, err := managedExamAttemptIDs(request)
+	if err != nil {
+		return operationResult{}, err
+	}
+	query := application.ListBrowserActivityQuery{ExamID: examID, SittingID: sittingID, AttemptID: attemptID, Limit: 50}
+	values := request.request.URL.Query()
+	if raw := values.Get("limit"); raw != "" {
+		query.Limit, err = strconv.Atoi(raw)
+		if err != nil || query.Limit < 1 || query.Limit > 200 {
+			return operationResult{}, invalidRequestError("limit", errors.New("must be between 1 and 200"))
+		}
+	}
+	if raw := values.Get("cursor"); raw != "" {
+		cursor, decodeErr := decodeBrowserActivityCursor(raw)
+		if decodeErr != nil {
+			return operationResult{}, invalidRequestError("cursor", decodeErr)
+		}
+		query.AfterReceivedAt, query.AfterSourceID, query.AfterSequence = cursor.ReceivedAt, cursor.SourceSessionID, cursor.Sequence
+	}
+	page, err := module.application.ListExamAttemptBrowserActivity(request.context, request.invocation(), query)
+	if err != nil {
+		return operationResult{}, err
+	}
+	response := browserActivityListResponse{Items: make([]browserActivityItemResponse, 0, len(page.Items))}
+	for _, record := range page.Items {
+		event := record.Event
+		item := browserActivityItemResponse{SourceSessionID: string(record.SourceSessionID), Generation: record.Generation,
+			Sequence: event.Sequence, Kind: event.Kind, PolicyRevision: event.PolicyRevisionID.String(),
+			ClientOccurred: model.TimeUTC(event.ClientOccurredAt).Format(time.RFC3339Nano), MatchedRuleID: event.MatchedRuleID,
+			BlockReason: event.BlockReason, ReceivedAt: model.TimeUTC(event.ReceivedAt).Format(time.RFC3339Nano)}
+		if event.Location != nil {
+			item.Location = &browserActivityLocationResponse{Scheme: event.Location.Scheme, Host: event.Location.Host, Port: event.Location.Port, Path: event.Location.Path}
+		}
+		response.Items = append(response.Items, item)
+	}
+	if page.HasMore {
+		if len(page.Items) == 0 {
+			return operationResult{}, errors.New("Browser Activity application returned an invalid page")
+		}
+		last := page.Items[len(page.Items)-1]
+		response.NextCursor, err = encodeBrowserActivityCursor(browserActivityCursor{ReceivedAt: last.Event.ReceivedAt,
+			SourceSessionID: last.SourceSessionID, Sequence: last.Event.Sequence})
+		if err != nil {
+			return operationResult{}, application.NewError("exam.attempt.unavailable").Wrap(err)
+		}
+	}
+	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
 func (module examAttemptHTTPModule) presentation(request operationRequest) (operationResult, error) {
 	access, err := candidateAccess(request)
 	if err != nil {
@@ -625,16 +1125,66 @@ func (module examAttemptHTTPModule) presentation(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
-	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(),
-		AdmissionRevisionID: view.AdmissionRevisionID.String(), CurrentRevisionID: view.CurrentRevisionID.String(), Title: view.Title,
-		InstructionsMarkdown: view.InstructionsMarkdown, FocusLossCollectionEnabled: view.FocusLossCollectionEnabled,
-		Capacity:  examCapacityPolicyResponseFromModel(view.Capacity),
-		Resources: make([]candidateExamResourceResponse, 0, len(view.Resources))}
+	response := candidateExamPresentationResponse{AttemptID: view.AttemptID.String(), SittingID: view.SittingID.String(), Title: view.Title,
+		InstructionsMarkdown:         view.InstructionsMarkdown,
+		CandidateRuntimeCapabilities: candidateRuntimeCapabilitiesFromStore(view.RuntimeCapabilities),
+		BrowserPolicy:                candidateBrowserPolicyFromStore(view.BrowserPolicy),
+		LiveCorrections:              candidateLiveCorrectionsFromModel(view.LiveCorrections),
+		Resources:                    make([]candidateExamResourceResponse, 0, len(view.Resources))}
 	for _, resource := range view.Resources {
 		response.Resources = append(response.Resources, candidateExamResourceResponse{ID: resource.ResourceID.String(), DisplayName: resource.DisplayName,
 			DescriptionMarkdown: resource.DescriptionMarkdown, Position: resource.Position, MediaType: string(resource.MediaType), Size: resource.SizeBytes, SHA256: resource.SHA256})
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
+}
+
+func candidateLiveCorrectionsFromModel(values []model.CandidateLiveCorrection) []candidateLiveCorrectionResponse {
+	result := make([]candidateLiveCorrectionResponse, len(values))
+	for index, value := range values {
+		item := candidateLiveCorrectionResponse{RevisionID: value.RevisionID.String(), RevisionNumber: value.RevisionNumber,
+			EffectiveAt: model.TimeUTC(value.EffectiveAt).Format(time.RFC3339Nano), Summary: value.Summary,
+			ChangedAreas:            append([]model.ExamCorrectionChangedArea(nil), value.ChangedAreas...),
+			AcknowledgementRequired: value.AcknowledgementRequired, AcknowledgementState: value.AcknowledgementState}
+		if value.AcknowledgedAt.Valid {
+			at := model.TimeUTC(value.AcknowledgedAt.Time).Format(time.RFC3339Nano)
+			item.AcknowledgedAt = &at
+		}
+		result[index] = item
+	}
+	return result
+}
+
+func candidateBrowserPolicyFromStore(value *application.CandidateBrowserPolicy) *candidateBrowserPolicyResponse {
+	if value == nil {
+		return nil
+	}
+	response := &candidateBrowserPolicyResponse{SchemaVersion: value.Policy.SchemaVersion, Enabled: true,
+		StartRuleID: value.Policy.StartRuleID, PolicyRevisionID: value.PolicyRevisionID.String(), PolicyDigest: value.PolicyDigest,
+		Rules: make([]candidateBrowserPolicyRuleResponse, len(value.Policy.Rules))}
+	for index, rule := range value.Policy.Rules {
+		response.Rules[index] = candidateBrowserPolicyRuleResponse{RuleID: rule.RuleID, Origin: rule.Origin, PathPrefix: rule.PathPrefix,
+			HostMatch: string(rule.HostMatch), AllowRedirects: rule.AllowRedirects, BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome)}
+	}
+	return response
+}
+
+func candidateRuntimeCapabilitiesFromStore(value application.CandidateRuntimeCapabilities) candidateRuntimeCapabilitiesResponse {
+	browser := candidateBrowserCapabilityResponse{State: string(value.Browser.State)}
+	if value.Browser.PolicyRevisionID.IsValid() {
+		browser.PolicyRevisionID = value.Browser.PolicyRevisionID.String()
+		browser.PolicyDigest = value.Browser.PolicyDigest
+	}
+	return candidateRuntimeCapabilitiesResponse{SchemaVersion: value.SchemaVersion,
+		ServerTime: value.ServerTime.Format(time.RFC3339Nano), InteractionState: string(value.InteractionState),
+		AttemptConfiguration: candidateAttemptConfigurationResponse{SchemaVersion: value.AttemptConfiguration.SchemaVersion,
+			ManifestFingerprint: value.AttemptConfiguration.ManifestFingerprint,
+			Preferences:         value.AttemptConfiguration.Preferences, Digest: value.AttemptConfiguration.Digest},
+		FocusLossCollectionEnabled: value.FocusLossCollectionEnabled,
+		WorkspaceMutationAllowed:   value.WorkspaceMutationAllowed, SubmissionAllowed: value.SubmissionAllowed,
+		Terminal: candidateTerminalCapabilityResponse{State: string(value.Terminal.State)}, Browser: browser,
+		ExamRevision: candidateExamRevisionResponse{AdmissionRevisionID: value.ExamRevision.AdmissionRevisionID.String(),
+			CurrentRevisionID: value.ExamRevision.CurrentRevisionID.String(), AcknowledgementRequired: value.ExamRevision.AcknowledgementRequired},
+		Departure: candidateDepartureResponse{Allowed: value.Departure.Allowed, Reason: value.Departure.Reason}}
 }
 
 func (module examAttemptHTTPModule) workspace(request operationRequest) (operationResult, error) {
@@ -754,19 +1304,29 @@ func (module examAttemptHTTPModule) submit(request operationRequest) (operationR
 	if body.ExpectedWorkspaceCursor < 0 || body.FinalFocusLossSequence < 0 {
 		return operationResult{}, invalidRequestError("submission_sequence", errors.New("Workspace Cursor and Focus Loss sequence must be nonnegative"))
 	}
+	revisionID, err := model.ParseExamRevisionID(body.ExpectedCurrentRevisionID)
+	if err != nil {
+		return operationResult{}, invalidRequestError("expected_current_revision_id", err)
+	}
+	browserActivity, err := body.BrowserActivity.model()
+	if err != nil {
+		return operationResult{}, invalidRequestError("browser_activity", err)
+	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{
 		ParticipationID: body.ParticipationID, Generation: body.Generation})
 	if err != nil {
 		return operationResult{}, err
 	}
 	receipt, err := module.application.SubmitExamAttempt(request.context, request.invocation(),
-		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor,
-			FinalFocusLossSequence: body.FinalFocusLossSequence, IdempotencyKey: request.idempotencyKey})
+		application.SubmitExamAttemptCommand{Access: mutationAccess, ExpectedCurrentRevisionID: revisionID,
+			ExpectedWorkspaceCursor: body.ExpectedWorkspaceCursor, FinalFocusLossSequence: body.FinalFocusLossSequence,
+			BrowserActivity: browserActivity, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}
 	response := examSubmissionReceiptResponse{SubmissionID: receipt.SubmissionID.String(),
-		ExamAttemptID: receipt.AttemptID.String(), State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
+		ExamAttemptID: receipt.AttemptID.String(), ExamRevisionID: receipt.ExamRevisionID.String(),
+		State: string(receipt.State), WorkspaceCursor: receipt.WorkspaceCursor,
 		ManifestDigest: receipt.ManifestDigest, SubmittedAt: model.TimeUTC(receipt.SubmittedAt).Format(time.RFC3339Nano)}
 	return jsonResult(http.StatusCreated, response).withHeaders(noStoreHeaders()), nil
 }
@@ -783,8 +1343,9 @@ func (module examAttemptHTTPModule) getSubmission(request operationRequest) (ope
 	submission := view.Submission
 	response := examSubmissionManagerResponse{SubmissionID: submission.ID.String(), ExamID: view.Authorization.ExamID.String(),
 		ExamSittingID: view.Authorization.SittingID.String(), ExamAttemptID: submission.AttemptID.String(),
-		WorkspaceID: submission.WorkspaceID.String(), ManifestSchemaVersion: submission.ManifestSchemaVersion,
-		WorkspaceCursor: submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
+		ExamRevisionID: submission.ExamRevisionID.String(), WorkspaceID: submission.WorkspaceID.String(),
+		ManifestSchemaVersion: submission.ManifestSchemaVersion,
+		WorkspaceCursor:       submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
 		ManifestEntryCount: submission.ManifestEntryCount, ManifestTotalFileBytes: submission.ManifestTotalFileBytes,
 		FinalFocusLossSequence: submission.FinalFocusLossSequence, IntegrityState: string(submission.IntegrityState),
 		UnresolvedIntegrityCount: submission.UnresolvedIntegrityCount,

@@ -32,7 +32,7 @@ func TestExamSittingCorrectionOpenAPIAgreesWithRuntime(t *testing.T) {
 		Schemas: []openAPIAgreementSchema{
 			{Name: "ExamSittingCorrectionResourceStageMetadata", DTO: reflect.TypeOf(examSittingCorrectionStageMetadata{}), Required: []string{"base_revision_id", "target_kind", "media_type", "size", "sha256"}},
 			{Name: "ExamSittingCorrectionResourceStageResponse", DTO: reflect.TypeOf(examSittingCorrectionStageResponse{}), Required: []string{"stage_id", "resource_id", "media_type", "size", "sha256", "expires_at"}},
-			{Name: "ApplyExamSittingCorrectionRequest", DTO: reflect.TypeOf(applyExamSittingCorrectionRequest{}), Required: []string{"expected_sitting_revision", "expected_current_revision_id", "reason", "resources"}, NonNullable: []string{"instructions_markdown"}},
+			{Name: "ApplyExamSittingCorrectionRequest", DTO: reflect.TypeOf(applyExamSittingCorrectionRequest{}), Required: []string{"expected_sitting_revision", "expected_current_revision_id", "candidate_summary", "acknowledgement_required", "reason", "resources"}, NonNullable: []string{"instructions_markdown", "browser_policy"}},
 			{Name: "ExamSittingCorrectionResourceRequest", DTO: reflect.TypeOf(examSittingCorrectionResourceRequest{}), Required: []string{"resource_id", "display_name", "description_markdown"}},
 			{Name: "ExamSittingCorrectionResponse", DTO: reflect.TypeOf(examSittingCorrectionResponse{}), Required: []string{"exam_id", "exam_sitting_id", "previous_revision_id", "revision_id", "revision_number", "sitting_revision", "sitting_state", "effective_at"}},
 		},

@@ -20,11 +20,15 @@ type ExamAttemptState string
 const (
 	ExamAttemptActive    ExamAttemptState = "active"
 	ExamAttemptSuspended ExamAttemptState = "suspended"
+	ExamAttemptReady     ExamAttemptState = "ready"
 	ExamAttemptSubmitted ExamAttemptState = "submitted"
 )
 
 func (state ExamAttemptState) AllowsCandidateConnection() bool { return state == ExamAttemptActive }
 func (state ExamAttemptState) IsTerminal() bool                { return state == ExamAttemptSubmitted }
+func (state ExamAttemptState) IsUnresolved() bool {
+	return state == ExamAttemptReady || state == ExamAttemptActive || state == ExamAttemptSuspended
+}
 
 // ExamAttempt is one candidate's stable work identity for one Sitting. Its
 // admission Revision remains pinned for the complete Attempt lifetime.
@@ -58,7 +62,7 @@ func (attempt *ExamAttempt) Validate() error {
 		return fmt.Errorf("model: invalid Exam Attempt")
 	}
 	switch attempt.State {
-	case ExamAttemptActive, ExamAttemptSuspended:
+	case ExamAttemptReady, ExamAttemptActive, ExamAttemptSuspended:
 		if attempt.SubmittedAt.Valid {
 			return fmt.Errorf("model: non-submitted Exam Attempt has submitted_at")
 		}
@@ -90,11 +94,29 @@ func (attempt *ExamAttempt) Suspend(at time.Time) error {
 	return nil
 }
 
-// Reallow closes the blocking effect of the current Suspension. It does not
-// create a Participation or continuity credential.
+// Reallow closes the blocking effect of the current Suspension and moves the
+// Attempt to ready. A later secure admission creates a new Participation and
+// is the only transition that can make the Attempt active again.
 func (attempt *ExamAttempt) Reallow(at time.Time) error {
 	if attempt == nil || attempt.State != ExamAttemptSuspended {
 		return fmt.Errorf("model: Exam Attempt cannot be re-allowed")
+	}
+	candidate := *attempt
+	candidate.State = ExamAttemptReady
+	candidate.UpdatedAt = TimeUTC(at)
+	candidate.Revision++
+	if err := candidate.Validate(); err != nil {
+		return err
+	}
+	*attempt = candidate
+	return nil
+}
+
+// Activate admits a ready Attempt after all candidate, Sitting, Session,
+// registered-key, compatibility, and posture checks have succeeded.
+func (attempt *ExamAttempt) Activate(at time.Time) error {
+	if attempt == nil || attempt.State != ExamAttemptReady {
+		return fmt.Errorf("model: Exam Attempt cannot activate")
 	}
 	candidate := *attempt
 	candidate.State = ExamAttemptActive
@@ -122,13 +144,14 @@ const (
 	AttemptParticipationEndPolicySuspended AttemptParticipationEndReason = "policy_suspended"
 	AttemptParticipationEndKicked          AttemptParticipationEndReason = "kicked"
 	AttemptParticipationEndSubmitted       AttemptParticipationEndReason = "submitted"
+	AttemptParticipationEndManagerEnded    AttemptParticipationEndReason = "manager_ended"
 	AttemptParticipationEndSittingClosed   AttemptParticipationEndReason = "sitting_closed"
 )
 
 func (reason AttemptParticipationEndReason) isValid() bool {
 	switch reason {
 	case AttemptParticipationEndInterrupted, AttemptParticipationEndLeaseExpired, AttemptParticipationEndPolicySuspended, AttemptParticipationEndKicked,
-		AttemptParticipationEndSubmitted, AttemptParticipationEndSittingClosed:
+		AttemptParticipationEndSubmitted, AttemptParticipationEndManagerEnded, AttemptParticipationEndSittingClosed:
 		return true
 	default:
 		return false
@@ -140,6 +163,7 @@ func (reason AttemptParticipationEndReason) isValid() bool {
 type AttemptParticipation struct {
 	ID                       AttemptParticipationID
 	AttemptID                ExamAttemptID
+	SessionID                SessionID
 	State                    AttemptParticipationState
 	Generation               int64
 	RenewalSequence          int64
@@ -151,9 +175,9 @@ type AttemptParticipation struct {
 	EndReason                AttemptParticipationEndReason
 }
 
-func NewAttemptParticipation(id AttemptParticipationID, attemptID ExamAttemptID, generation int64, credentialHash string, startedAt time.Time) (*AttemptParticipation, error) {
+func NewAttemptParticipation(id AttemptParticipationID, attemptID ExamAttemptID, sessionID SessionID, generation int64, credentialHash string, startedAt time.Time) (*AttemptParticipation, error) {
 	startedAt = TimeUTC(startedAt)
-	participation := &AttemptParticipation{ID: id, AttemptID: attemptID, State: AttemptParticipationActive,
+	participation := &AttemptParticipation{ID: id, AttemptID: attemptID, SessionID: sessionID, State: AttemptParticipationActive,
 		Generation: generation, ContinuityCredentialHash: credentialHash, StartedAt: startedAt,
 		UpdatedAt: startedAt, LeaseExpiresAt: startedAt.Add(AttemptParticipationInitialLease)}
 	if err := participation.Validate(); err != nil {
@@ -163,7 +187,7 @@ func NewAttemptParticipation(id AttemptParticipationID, attemptID ExamAttemptID,
 }
 
 func (participation *AttemptParticipation) Validate() error {
-	if participation == nil || !participation.ID.IsValid() || !participation.AttemptID.IsValid() || participation.Generation < 1 ||
+	if participation == nil || !participation.ID.IsValid() || !participation.AttemptID.IsValid() || !participation.SessionID.IsValid() || participation.Generation < 1 ||
 		participation.RenewalSequence < 0 || !IsValidTokenHash(participation.ContinuityCredentialHash) ||
 		participation.ContinuityCredentialHash != strings.ToLower(participation.ContinuityCredentialHash) ||
 		participation.StartedAt.IsZero() || participation.UpdatedAt.IsZero() || participation.UpdatedAt.Before(participation.StartedAt) ||
@@ -250,6 +274,7 @@ const (
 	AttemptConnectionClosePolicySuspended AttemptConnectionCloseReason = "policy_suspended"
 	AttemptConnectionCloseKicked          AttemptConnectionCloseReason = "kicked"
 	AttemptConnectionCloseSubmitted       AttemptConnectionCloseReason = "submitted"
+	AttemptConnectionCloseManagerEnded    AttemptConnectionCloseReason = "manager_ended"
 	AttemptConnectionCloseSittingClosed   AttemptConnectionCloseReason = "sitting_closed"
 )
 
@@ -258,7 +283,7 @@ const (
 func (reason AttemptConnectionCloseReason) IsValid() bool {
 	switch reason {
 	case AttemptConnectionCloseTransport, AttemptConnectionCloseInterrupted, AttemptConnectionCloseLeaseExpired, AttemptConnectionClosePolicySuspended,
-		AttemptConnectionCloseKicked, AttemptConnectionCloseSubmitted, AttemptConnectionCloseSittingClosed:
+		AttemptConnectionCloseKicked, AttemptConnectionCloseSubmitted, AttemptConnectionCloseManagerEnded, AttemptConnectionCloseSittingClosed:
 		return true
 	default:
 		return false
@@ -451,6 +476,10 @@ const (
 	AttemptSuspensionCandidateReasonFocusLossPolicy      AttemptSuspensionCandidateReason = "focus_policy_review_required"
 	AttemptSuspensionPrivateReasonMaximumRunes                                            = 1000
 )
+
+func (reason AttemptSuspensionCandidateReason) IsValid() bool {
+	return reason == AttemptSuspensionCandidateReasonSecureContinuityLost || reason == AttemptSuspensionCandidateReasonFocusLossPolicy
+}
 
 // AttemptSuspension is one append-preserving blocking episode. PrivateReason
 // is manager-only and must never enter ordinary logs, audit data, or realtime.

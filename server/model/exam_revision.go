@@ -135,6 +135,7 @@ type ExamRevisionSpecification struct {
 	InstructionsMarkdown string
 	Policy               ExamRevisionPolicy
 	ExecutionProfile     ExecutionProfile
+	BrowserPolicy        BrowserPolicy
 	Capacity             ExamCapacityPolicy
 	Resources            []ExamRevisionResource
 	StarterWorkspace     []ExamRevisionStarterWorkspaceEntry
@@ -142,6 +143,7 @@ type ExamRevisionSpecification struct {
 	PublishedAt          time.Time
 	BaseRevisionID       ExamRevisionID
 	Kind                 ExamRevisionPublicationKind
+	CandidateCorrection  *CandidateCorrectionNotice
 }
 
 // ExamRevision is one immutable published generation. Its aggregate digests
@@ -158,6 +160,8 @@ type ExamRevision struct {
 	PolicyDigest           string
 	ExecutionProfile       ExecutionProfile
 	ExecutionProfileDigest string
+	BrowserPolicy          BrowserPolicy
+	BrowserPolicyDigest    string
 	Capacity               ExamCapacityPolicy
 	Resources              []ExamRevisionResource
 	StarterWorkspace       []ExamRevisionStarterWorkspaceEntry
@@ -167,6 +171,7 @@ type ExamRevision struct {
 	PublishedAt            time.Time
 	BaseRevisionID         ExamRevisionID
 	Kind                   ExamRevisionPublicationKind
+	CandidateCorrection    *CandidateCorrectionNotice
 }
 
 func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
@@ -179,11 +184,13 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 		Title: spec.Title, InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy: cloneExamRevisionPolicy(spec.Policy), PolicyDigest: spec.Policy.SHA256,
 		ExecutionProfile:  profile,
+		BrowserPolicy:     spec.BrowserPolicy.Clone(),
 		Capacity:          spec.Capacity,
 		Resources:         append([]ExamRevisionResource(nil), spec.Resources...),
 		StarterWorkspace:  append([]ExamRevisionStarterWorkspaceEntry(nil), spec.StarterWorkspace...),
 		PublishedByUserID: spec.PublishedByUserID, PublishedAt: TimeUTC(spec.PublishedAt),
 		BaseRevisionID: spec.BaseRevisionID, Kind: spec.Kind,
+		CandidateCorrection: spec.CandidateCorrection.Clone(),
 	}
 	slices.SortFunc(revision.StarterWorkspace, func(left, right ExamRevisionStarterWorkspaceEntry) int {
 		if order := strings.Compare(left.Path, right.Path); order != 0 {
@@ -193,6 +200,13 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 	})
 	var err error
 	revision.ExecutionProfileDigest, err = ExecutionProfileDigest(revision.ExecutionProfile)
+	if err != nil {
+		return nil, err
+	}
+	if revision.BrowserPolicy.SchemaVersion == 0 {
+		revision.BrowserPolicy = DisabledBrowserPolicy()
+	}
+	revision.BrowserPolicyDigest, err = BrowserPolicyDigest(revision.BrowserPolicy)
 	if err != nil {
 		return nil, err
 	}
@@ -212,30 +226,78 @@ func NewExamRevision(spec ExamRevisionSpecification) (*ExamRevision, error) {
 // already published Revision. Only candidate-visible instructions and the
 // complete ordered resource manifest may change; policy and Starter Workspace
 // remain pinned byte-for-byte to the base Revision.
-func NewLiveCorrectionExamRevision(base *ExamRevision, id ExamRevisionID, number int64, instructionsMarkdown string, resources []ExamRevisionResource, publishedBy UserID, at time.Time) (*ExamRevision, error) {
+type LiveCorrectionExamRevisionSpecification struct {
+	ID                      ExamRevisionID
+	Number                  int64
+	InstructionsMarkdown    string
+	Resources               []ExamRevisionResource
+	BrowserPolicy           BrowserPolicy
+	CandidateSummary        string
+	AcknowledgementRequired bool
+	PublishedByUserID       UserID
+	PublishedAt             time.Time
+}
+
+func NewLiveCorrectionExamRevision(base *ExamRevision, spec LiveCorrectionExamRevisionSpecification) (*ExamRevision, error) {
 	if base == nil {
 		return nil, errors.New("model: live correction requires a base Exam Revision")
 	}
-	if err := base.Validate(); err != nil || number <= base.Number {
+	if err := base.Validate(); err != nil || spec.Number <= base.Number {
 		return nil, errors.New("model: invalid live correction base or number")
 	}
+	browserPolicy := spec.BrowserPolicy.Clone()
+	if browserPolicy.SchemaVersion == 0 {
+		browserPolicy = base.BrowserPolicy.Clone()
+	}
+	changedAreas, err := CandidateCorrectionChangedAreas(base, spec.InstructionsMarkdown, spec.Resources, browserPolicy)
+	if err != nil {
+		return nil, err
+	}
+	notice, err := NewCandidateCorrectionNotice(spec.CandidateSummary, changedAreas, spec.AcknowledgementRequired)
+	if err != nil {
+		return nil, err
+	}
 	return NewExamRevision(ExamRevisionSpecification{
-		ID:                   id,
+		ID:                   spec.ID,
 		ExamID:               base.ExamID,
-		Number:               number,
+		Number:               spec.Number,
 		SourceDraftRevision:  base.SourceDraftRevision,
 		Title:                base.Title,
-		InstructionsMarkdown: instructionsMarkdown,
+		InstructionsMarkdown: spec.InstructionsMarkdown,
 		Policy:               cloneExamRevisionPolicy(base.Policy),
 		ExecutionProfile:     base.ExecutionProfile,
+		BrowserPolicy:        browserPolicy,
 		Capacity:             base.Capacity,
-		Resources:            append([]ExamRevisionResource(nil), resources...),
+		Resources:            append([]ExamRevisionResource(nil), spec.Resources...),
 		StarterWorkspace:     append([]ExamRevisionStarterWorkspaceEntry(nil), base.StarterWorkspace...),
-		PublishedByUserID:    publishedBy,
-		PublishedAt:          at,
+		PublishedByUserID:    spec.PublishedByUserID,
+		PublishedAt:          spec.PublishedAt,
 		BaseRevisionID:       base.ID,
 		Kind:                 ExamRevisionPublicationLiveCorrection,
+		CandidateCorrection:  notice,
 	})
+}
+
+func CandidateCorrectionChangedAreas(base *ExamRevision, instructionsMarkdown string, resources []ExamRevisionResource, browserPolicy BrowserPolicy) ([]ExamCorrectionChangedArea, error) {
+	if base == nil || base.Validate() != nil {
+		return nil, errors.New("model: invalid live correction base")
+	}
+	changedAreas := make([]ExamCorrectionChangedArea, 0, 3)
+	if base.InstructionsMarkdown != instructionsMarkdown {
+		changedAreas = append(changedAreas, ExamCorrectionChangedInstructions)
+	}
+	if !sameExamRevisionResources(base.Resources, resources) {
+		changedAreas = append(changedAreas, ExamCorrectionChangedResources)
+	}
+	browserDigest, err := BrowserPolicyDigest(browserPolicy)
+	if err != nil {
+		return nil, err
+	}
+	if browserDigest != base.BrowserPolicyDigest {
+		changedAreas = append(changedAreas, ExamCorrectionChangedBrowserPolicy)
+	}
+	slices.SortFunc(changedAreas, func(left, right ExamCorrectionChangedArea) int { return strings.Compare(string(left), string(right)) })
+	return changedAreas, nil
 }
 
 func (revision *ExamRevision) Validate() error {
@@ -244,8 +306,15 @@ func (revision *ExamRevision) Validate() error {
 		!revision.Kind.IsValid() || !revision.BaseRevisionID.IsZero() && (!revision.BaseRevisionID.IsValid() || revision.BaseRevisionID == revision.ID) {
 		return errors.New("model: invalid Exam Revision metadata")
 	}
+	if revision.Kind == ExamRevisionPublicationLiveCorrection {
+		if !revision.BaseRevisionID.IsValid() || revision.CandidateCorrection.Validate() != nil {
+			return errors.New("model: live correction Revision requires Candidate Correction Notice")
+		}
+	} else if revision.CandidateCorrection != nil {
+		return errors.New("model: standard Revision cannot contain Candidate Correction Notice")
+	}
 	draft := &ExamDraft{ExamID: revision.ExamID, Title: revision.Title, InstructionsMarkdown: revision.InstructionsMarkdown,
-		Policy: DefaultExamPolicySet(), ExecutionProfile: revision.ExecutionProfile,
+		Policy: DefaultExamPolicySet(), ExecutionProfile: revision.ExecutionProfile, BrowserPolicy: revision.BrowserPolicy.Clone(),
 		UpdatedAt: revision.PublishedAt, Revision: revision.SourceDraftRevision}
 	if err := draft.Validate(); err != nil {
 		return fmt.Errorf("model: invalid Exam Revision authored text: %w", err)
@@ -259,6 +328,10 @@ func (revision *ExamRevision) Validate() error {
 	profileDigest, err := ExecutionProfileDigest(revision.ExecutionProfile)
 	if err != nil || revision.ExecutionProfileDigest != profileDigest {
 		return errors.New("model: invalid Exam Revision Execution Profile")
+	}
+	browserDigest, err := BrowserPolicyDigest(revision.BrowserPolicy)
+	if err != nil || revision.BrowserPolicyDigest != browserDigest {
+		return errors.New("model: invalid Exam Revision Browser Policy")
 	}
 	if err := validateExamRevisionResources(revision.Resources, revision.Capacity); err != nil {
 		return err
@@ -279,6 +352,8 @@ func (revision *ExamRevision) Clone() *ExamRevision {
 	}
 	clone := *revision
 	clone.Policy = cloneExamRevisionPolicy(revision.Policy)
+	clone.BrowserPolicy = revision.BrowserPolicy.Clone()
+	clone.CandidateCorrection = revision.CandidateCorrection.Clone()
 	clone.Resources = append([]ExamRevisionResource(nil), revision.Resources...)
 	clone.StarterWorkspace = append([]ExamRevisionStarterWorkspaceEntry(nil), revision.StarterWorkspace...)
 	return &clone
@@ -289,11 +364,26 @@ func (revision *ExamRevision) Clone() *ExamRevision {
 // generation identities are deliberately excluded: replacing bytes with the
 // same verified media, size, and digest is not a candidate-visible change.
 func SameExamRevisionCandidatePresentation(left, right *ExamRevision) bool {
-	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || left.Capacity != right.Capacity || len(left.Resources) != len(right.Resources) {
+	if left == nil || right == nil || left.InstructionsMarkdown != right.InstructionsMarkdown || left.Capacity != right.Capacity ||
+		left.BrowserPolicyDigest != right.BrowserPolicyDigest || len(left.Resources) != len(right.Resources) {
 		return false
 	}
 	for index := range left.Resources {
 		l, r := left.Resources[index], right.Resources[index]
+		if l.ResourceID != r.ResourceID || l.DisplayName != r.DisplayName || l.DescriptionMarkdown != r.DescriptionMarkdown ||
+			l.Position != r.Position || l.MediaType != r.MediaType || l.SizeBytes != r.SizeBytes || l.SHA256 != r.SHA256 {
+			return false
+		}
+	}
+	return true
+}
+
+func sameExamRevisionResources(left, right []ExamRevisionResource) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		l, r := left[index], right[index]
 		if l.ResourceID != r.ResourceID || l.DisplayName != r.DisplayName || l.DescriptionMarkdown != r.DescriptionMarkdown ||
 			l.Position != r.Position || l.MediaType != r.MediaType || l.SizeBytes != r.SizeBytes || l.SHA256 != r.SHA256 {
 			return false
@@ -396,8 +486,18 @@ type examRevisionWorkspaceWire struct {
 	SHA256         string                    `json:"sha256"`
 }
 
+type candidateCorrectionNoticeWire struct {
+	Summary                 string                      `json:"summary"`
+	ChangedAreas            []ExamCorrectionChangedArea `json:"changed_areas"`
+	AcknowledgementRequired bool                        `json:"acknowledgement_required"`
+}
+
 func (revision *ExamRevision) computeDigests() (string, string, error) {
 	profile, err := EncodeExecutionProfile(revision.ExecutionProfile)
+	if err != nil {
+		return "", "", err
+	}
+	browserPolicy, err := EncodeBrowserPolicy(revision.BrowserPolicy)
 	if err != nil {
 		return "", "", err
 	}
@@ -419,25 +519,37 @@ func (revision *ExamRevision) computeDigests() (string, string, error) {
 	workspaceSum := sha256.Sum256(workspaceBytes)
 	workspaceDigest := hex.EncodeToString(workspaceSum[:])
 	contentBytes, err := json.Marshal(struct {
-		SchemaVersion          int                         `json:"schema_version"`
-		Title                  string                      `json:"title"`
-		InstructionsMarkdown   string                      `json:"instructions_markdown"`
-		PolicySchemaVersion    int                         `json:"policy_schema_version"`
-		Policy                 json.RawMessage             `json:"policy"`
-		ExecutionProfile       json.RawMessage             `json:"execution_profile"`
-		ExecutionProfileDigest string                      `json:"execution_profile_digest"`
-		Capacity               ExamCapacityPolicy          `json:"capacity"`
-		Resources              []examRevisionResourceWire  `json:"resources"`
-		StarterWorkspaceDigest string                      `json:"starter_workspace_digest"`
-		StarterWorkspace       []examRevisionWorkspaceWire `json:"starter_workspace"`
+		SchemaVersion          int                            `json:"schema_version"`
+		Title                  string                         `json:"title"`
+		InstructionsMarkdown   string                         `json:"instructions_markdown"`
+		PolicySchemaVersion    int                            `json:"policy_schema_version"`
+		Policy                 json.RawMessage                `json:"policy"`
+		ExecutionProfile       json.RawMessage                `json:"execution_profile"`
+		ExecutionProfileDigest string                         `json:"execution_profile_digest"`
+		BrowserPolicy          json.RawMessage                `json:"browser_policy"`
+		BrowserPolicyDigest    string                         `json:"browser_policy_digest"`
+		Capacity               ExamCapacityPolicy             `json:"capacity"`
+		Resources              []examRevisionResourceWire     `json:"resources"`
+		StarterWorkspaceDigest string                         `json:"starter_workspace_digest"`
+		StarterWorkspace       []examRevisionWorkspaceWire    `json:"starter_workspace"`
+		CandidateCorrection    *candidateCorrectionNoticeWire `json:"candidate_correction"`
 	}{ExamRevisionSnapshotSchemaVersion, revision.Title, revision.InstructionsMarkdown, revision.Policy.SchemaVersion,
-		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest, revision.Capacity,
-		resources, workspaceDigest, workspace})
+		json.RawMessage(revision.Policy.Bytes), json.RawMessage(profile), revision.ExecutionProfileDigest,
+		json.RawMessage(browserPolicy), revision.BrowserPolicyDigest, revision.Capacity,
+		resources, workspaceDigest, workspace, candidateCorrectionNoticeWireFromModel(revision.CandidateCorrection)})
 	if err != nil {
 		return "", "", err
 	}
 	contentSum := sha256.Sum256(contentBytes)
 	return workspaceDigest, hex.EncodeToString(contentSum[:]), nil
+}
+
+func candidateCorrectionNoticeWireFromModel(notice *CandidateCorrectionNotice) *candidateCorrectionNoticeWire {
+	if notice == nil {
+		return nil
+	}
+	return &candidateCorrectionNoticeWire{Summary: notice.Summary, ChangedAreas: slices.Clone(notice.ChangedAreas),
+		AcknowledgementRequired: notice.AcknowledgementRequired}
 }
 
 func cloneExamRevisionPolicy(policy ExamRevisionPolicy) ExamRevisionPolicy {

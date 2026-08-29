@@ -17,6 +17,7 @@ import (
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type examAttemptTerminalUseCases interface {
@@ -82,6 +83,13 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 	if !profile.Enabled {
 		return nil, NewError("exam.attempt.terminal_disabled")
 	}
+	switch presentation.RuntimeCapabilities.Terminal.State {
+	case store.CandidateTerminalAvailable, store.CandidateTerminalTemporarilyUnavailable:
+	case store.CandidateTerminalDisabled:
+		return nil, NewError("exam.attempt.terminal_disabled")
+	default:
+		return nil, NewError("exam.attempt.terminal_unavailable")
+	}
 	auditID, err := service.audit.Begin(ctx, invocation, presentation, command)
 	if err != nil {
 		return nil, err
@@ -123,6 +131,22 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 	}
 	watchCtx, cancel := context.WithCancel(ctx)
 	wrapped := &candidateExamTerminal{terminal: terminal, cancel: cancel, observation: observation}
+	call := examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata())
+	wrapped.validate = func(validateCtx context.Context) error {
+		current, validateErr := service.attempts.GetPresentation(validateCtx, call, command.Access)
+		if validateErr != nil {
+			return examAttemptError(validateErr, true)
+		}
+		if current.AttemptID != presentation.AttemptID || current.SittingID != command.SittingID ||
+			current.ClassID != command.ClassID || current.RuntimeCapabilities.Terminal.State != store.CandidateTerminalAvailable {
+			return NewError("exam.attempt.terminal_unavailable")
+		}
+		return nil
+	}
+	wrapped.onInvalid = func() {
+		service.releaseGrant(context.WithoutCancel(ctx), placement.GrantID)
+		wrapped.completeFailure()
+	}
 	go service.synchronizeWorkspace(watchCtx, invocation, command, placement.GrantID, observation, wrapped)
 	return wrapped, nil
 }
@@ -180,8 +204,10 @@ func (adapter examAttemptTerminalAuditAdapter) Complete(ctx context.Context, aud
 }
 
 type candidateExamTerminal struct {
-	terminal appexecution.Terminal
-	cancel   context.CancelFunc
+	terminal  appexecution.Terminal
+	cancel    context.CancelFunc
+	validate  func(context.Context) error
+	onInvalid func()
 
 	mu                 sync.Mutex
 	observation        appexecution.Observation
@@ -220,6 +246,11 @@ func (terminal *candidateExamTerminal) Write(buffer []byte) (int, error) {
 	if closed {
 		return 0, io.ErrClosedPipe
 	}
+	validationCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := terminal.validateInteraction(validationCtx); err != nil {
+		return 0, err
+	}
 	return terminal.terminal.Write(buffer)
 }
 func (terminal *candidateExamTerminal) Resize(ctx context.Context, window appexecution.Window) error {
@@ -232,7 +263,27 @@ func (terminal *candidateExamTerminal) Resize(ctx context.Context, window appexe
 	if closed {
 		return io.ErrClosedPipe
 	}
+	if err := terminal.validateInteraction(ctx); err != nil {
+		return err
+	}
 	return terminal.terminal.Resize(ctx, window)
+}
+
+func (terminal *candidateExamTerminal) validateInteraction(ctx context.Context) error {
+	if terminal.validate == nil {
+		return nil
+	}
+	if err := terminal.validate(ctx); err != nil {
+		if terminal.beginFailure(err) {
+			if terminal.onInvalid != nil {
+				go terminal.onInvalid()
+			} else {
+				terminal.completeFailure()
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 func (terminal *candidateExamTerminal) fail(err error) {

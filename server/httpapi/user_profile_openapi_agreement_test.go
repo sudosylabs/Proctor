@@ -17,6 +17,8 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 		switch path {
 		case model.APIURLSuffix + "/users",
 			model.APIURLSuffix + "/users/me",
+			model.APIURLSuffix + "/users/me/context",
+			model.APIURLSuffix + "/users/me/exam-activity",
 			model.APIURLSuffix + "/users/{user_id}",
 			model.APIURLSuffix + "/users/{user_id}/email",
 			model.APIURLSuffix + "/users/{user_id}/email/verify",
@@ -39,6 +41,16 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 				Key: "GET /api/v1/users/me", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
 				PublicErrorCodes: principalContractCodes("resource.not_found", "administration.unavailable"),
+			},
+			{
+				Key: "GET /api/v1/users/me/context", Auth: AuthSessionRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/CurrentUserContextOK", SuccessSchema: "CurrentUserContextResponse",
+				PublicErrorCodes: currentUserContextSessionCodes("administration.unavailable"),
+			},
+			{
+				Key: "GET /api/v1/users/me/exam-activity", Auth: AuthSessionRequired,
+				SuccessStatus: "200", SuccessRef: "#/components/responses/CandidateExamActivityOK", SuccessSchema: "CandidateExamActivityResponse",
+				PublicErrorCodes: currentUserContextSessionCodes("request.invalid", "exam.attempt.unavailable"),
 			},
 			{
 				Key: "GET /api/v1/users/{user_id}", Auth: AuthPrincipalRequired,
@@ -89,6 +101,25 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			},
 		},
 		Schemas: []openAPIAgreementSchema{
+			{Name: "CandidateExamActivityResponse", DTO: reflect.TypeOf(candidateExamActivityResponse{}), Required: []string{"server_time", "items"}, Nullable: []string{"items.sitting_reason_code", "items.attempt", "items.attempt.suspension_reason_code", "items.submission", "items.result"}},
+			{Name: "CandidateExamActivityItemResponse", DTO: reflect.TypeOf(candidateExamActivityItemResponse{}), Required: []string{"exam_id", "exam_sitting_id", "title", "academic_unit", "class", "scheduled_start_at", "scheduled_end_at", "sitting_state", "sitting_reason_code", "activity_state", "access_state", "allowed_actions", "attempt", "submission", "result"}, Nullable: []string{"sitting_reason_code", "attempt", "attempt.suspension_reason_code", "submission", "result"}},
+			{Name: "CandidateExamActivityRelationResponse", DTO: reflect.TypeOf(candidateExamActivityRelationResponse{}), Required: []string{"id", "display_name"}},
+			{Name: "CandidateExamActivityAttemptResponse", DTO: reflect.TypeOf(candidateExamActivityAttemptResponse{}), Required: []string{"id", "state", "suspension_reason_code"}, Nullable: []string{"suspension_reason_code"}},
+			{Name: "CandidateExamActivitySubmissionResponse", DTO: reflect.TypeOf(candidateExamActivitySubmissionResponse{}), Required: []string{"id", "submitted_at", "provenance"}},
+			{Name: "CandidateExamActivityResultResponse", DTO: reflect.TypeOf(candidateExamActivityResultResponse{}), Required: []string{"released_at"}},
+			{
+				Name: "CurrentUserContextResponse", DTO: reflect.TypeOf(currentUserContextResponse{}),
+				Required: []string{"user", "no_current_affiliation", "no_assigned_access", "available_product_areas", "management_scopes", "management_scopes_has_more", "unresolved_attempt", "session_management_available", "current_desktop_registration_id"},
+				Nullable: []string{"unresolved_attempt", "current_desktop_registration_id"},
+			},
+			{
+				Name: "CurrentUserContextIdentity", DTO: reflect.TypeOf(currentUserContextUserResponse{}),
+				Required: []string{"id", "username", "display_name", "profile_picture_reference"},
+			},
+			{
+				Name: "CurrentUserManagementScope", DTO: reflect.TypeOf(currentUserContextScopeResponse{}),
+				Required: []string{"scope_type", "scope_id", "display_name"},
+			},
 			{
 				Name: "UserProfileResponse", DTO: reflect.TypeOf(userProfileResponse{}),
 				Required: []string{"id", "create_at", "update_at", "delete_at", "username", "display_name", "first_name", "last_name", "profile_picture_url"},

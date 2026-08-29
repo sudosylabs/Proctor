@@ -24,13 +24,24 @@ const examSubmissionManifestDigestDomain = "proctor.exam_submission_manifest"
 
 type SubmissionIntegrityState string
 
+type ExamSubmissionProvenance string
+
 const (
 	SubmissionIntegritySettled SubmissionIntegrityState = "settled"
 	SubmissionIntegrityGapped  SubmissionIntegrityState = "gapped"
+
+	ExamSubmissionCandidateSubmitted  ExamSubmissionProvenance = "candidate_submitted"
+	ExamSubmissionManagerEndedAttempt ExamSubmissionProvenance = "manager_ended_attempt"
+	ExamSubmissionSittingClosed       ExamSubmissionProvenance = "sitting_closed"
 )
 
 func (state SubmissionIntegrityState) IsValid() bool {
 	return state == SubmissionIntegritySettled || state == SubmissionIntegrityGapped
+}
+
+func (provenance ExamSubmissionProvenance) IsValid() bool {
+	return provenance == ExamSubmissionCandidateSubmitted || provenance == ExamSubmissionManagerEndedAttempt ||
+		provenance == ExamSubmissionSittingClosed
 }
 
 // ExamSubmissionManifestEntry pins one acknowledged logical Workspace entry.
@@ -158,10 +169,13 @@ func (manifest ExamSubmissionManifest) Validate() error {
 type ExamSubmissionSpecification struct {
 	ID                       SubmissionID
 	AttemptID                ExamAttemptID
+	ExamRevisionID           ExamRevisionID
 	WorkspaceID              ExamAttemptWorkspaceID
 	Manifest                 ExamSubmissionManifest
 	FinalFocusLossSequence   int64
+	BrowserActivity          BrowserActivitySubmission
 	UnresolvedIntegrityCount int64
+	Provenance               ExamSubmissionProvenance
 	SubmittedAt              time.Time
 }
 
@@ -171,6 +185,7 @@ type ExamSubmissionSpecification struct {
 type ExamSubmission struct {
 	ID                       SubmissionID
 	AttemptID                ExamAttemptID
+	ExamRevisionID           ExamRevisionID
 	WorkspaceID              ExamAttemptWorkspaceID
 	ManifestSchemaVersion    int
 	WorkspaceCursor          int64
@@ -178,8 +193,10 @@ type ExamSubmission struct {
 	ManifestEntryCount       int
 	ManifestTotalFileBytes   int64
 	FinalFocusLossSequence   int64
+	BrowserActivity          BrowserActivitySubmission
 	IntegrityState           SubmissionIntegrityState
 	UnresolvedIntegrityCount int64
+	Provenance               ExamSubmissionProvenance
 	SubmittedAt              time.Time
 }
 
@@ -192,11 +209,13 @@ func NewExamSubmission(spec ExamSubmissionSpecification) (*ExamSubmission, error
 		state = SubmissionIntegrityGapped
 	}
 	submission := &ExamSubmission{
-		ID: spec.ID, AttemptID: spec.AttemptID, WorkspaceID: spec.WorkspaceID,
+		ID: spec.ID, AttemptID: spec.AttemptID, ExamRevisionID: spec.ExamRevisionID, WorkspaceID: spec.WorkspaceID,
 		ManifestSchemaVersion: spec.Manifest.SchemaVersion, WorkspaceCursor: spec.Manifest.WorkspaceCursor,
 		ManifestDigest: spec.Manifest.SHA256, ManifestEntryCount: spec.Manifest.EntryCount,
 		ManifestTotalFileBytes: spec.Manifest.TotalFileBytes, FinalFocusLossSequence: spec.FinalFocusLossSequence,
-		IntegrityState: state, UnresolvedIntegrityCount: spec.UnresolvedIntegrityCount, SubmittedAt: TimeUTC(spec.SubmittedAt),
+		BrowserActivity: spec.BrowserActivity.Clone(),
+		IntegrityState:  state, UnresolvedIntegrityCount: spec.UnresolvedIntegrityCount,
+		Provenance: spec.Provenance, SubmittedAt: TimeUTC(spec.SubmittedAt),
 	}
 	if err := submission.Validate(); err != nil {
 		return nil, err
@@ -205,13 +224,17 @@ func NewExamSubmission(spec ExamSubmissionSpecification) (*ExamSubmission, error
 }
 
 func (submission *ExamSubmission) Validate() error {
-	if submission == nil || !submission.ID.IsValid() || !submission.AttemptID.IsValid() || !submission.WorkspaceID.IsValid() ||
+	if submission == nil || !submission.ID.IsValid() || !submission.AttemptID.IsValid() || !submission.ExamRevisionID.IsValid() || !submission.WorkspaceID.IsValid() ||
 		submission.ManifestSchemaVersion != ExamSubmissionManifestSchemaVersion || submission.WorkspaceCursor < 0 ||
 		!validLowerSHA256(submission.ManifestDigest) || submission.ManifestEntryCount < 0 ||
 		submission.ManifestEntryCount > AttemptWorkspaceMaximumEntries || submission.ManifestTotalFileBytes < 0 ||
 		submission.ManifestTotalFileBytes > AttemptWorkspaceMaximumTotalBytes || submission.FinalFocusLossSequence < 0 ||
-		submission.UnresolvedIntegrityCount < 0 || submission.SubmittedAt.IsZero() || !submission.IntegrityState.IsValid() {
+		submission.UnresolvedIntegrityCount < 0 || submission.SubmittedAt.IsZero() || !submission.IntegrityState.IsValid() ||
+		!submission.Provenance.IsValid() {
 		return errors.New("model: invalid Exam Submission")
+	}
+	if err := submission.BrowserActivity.Validate(); err != nil {
+		return err
 	}
 	if submission.ManifestEntryCount == 0 && submission.ManifestTotalFileBytes != 0 {
 		return errors.New("model: empty Exam Submission manifest has content bytes")
@@ -265,7 +288,7 @@ func SealExamAttemptForSittingClose(attempt *ExamAttempt, participation *Attempt
 	if attempt == nil || participation == nil || connection == nil || attempt.Validate() != nil ||
 		participation.Validate() != nil || connection.Validate() != nil || participation.AttemptID != attempt.ID ||
 		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
-		(attempt.State != ExamAttemptActive && attempt.State != ExamAttemptSuspended) ||
+		(attempt.State != ExamAttemptActive && attempt.State != ExamAttemptReady && attempt.State != ExamAttemptSuspended) ||
 		(participation.State == AttemptParticipationEnded && connection.State != AttemptConnectionClosed) {
 		return errors.New("model: invalid automatic Exam Submission lifecycle aggregate")
 	}
@@ -288,6 +311,47 @@ func SealExamAttemptForSittingClose(attempt *ExamAttempt, participation *Attempt
 	}
 	if connectionCandidate.State == AttemptConnectionOpen {
 		if err := connectionCandidate.Close(AttemptConnectionCloseSittingClosed, at); err != nil {
+			return err
+		}
+	}
+	*attempt, *participation, *connection = attemptCandidate, participationCandidate, connectionCandidate
+	return nil
+}
+
+// EndExamAttemptByManager applies the coordinated terminal lifecycle for an
+// authorized manager decision. It preserves an already-ended continuity cause
+// for ready or suspended Attempts and gives still-live continuity records the
+// explicit manager-ended cause. It does not encode an integrity or academic
+// judgment.
+func EndExamAttemptByManager(attempt *ExamAttempt, participation *AttemptParticipation,
+	connection *AttemptConnection, at time.Time,
+) error {
+	if attempt == nil || participation == nil || connection == nil || attempt.Validate() != nil ||
+		participation.Validate() != nil || connection.Validate() != nil || participation.AttemptID != attempt.ID ||
+		connection.AttemptID != attempt.ID || connection.ParticipationID != participation.ID ||
+		!attempt.State.IsUnresolved() ||
+		(participation.State == AttemptParticipationEnded && connection.State != AttemptConnectionClosed) {
+		return errors.New("model: invalid manager-ended Exam Submission lifecycle aggregate")
+	}
+	at = TimeUTC(at)
+	if at.IsZero() || at.Before(attempt.UpdatedAt) || at.Before(participation.UpdatedAt) || at.Before(connection.OpenedAt) {
+		return errors.New("model: invalid manager-ended Exam Submission time")
+	}
+	attemptCandidate, participationCandidate, connectionCandidate := *attempt, *participation, *connection
+	attemptCandidate.State = ExamAttemptSubmitted
+	attemptCandidate.SubmittedAt = OptionalTimeFrom(at)
+	attemptCandidate.UpdatedAt = at
+	attemptCandidate.Revision++
+	if err := attemptCandidate.Validate(); err != nil {
+		return err
+	}
+	if participationCandidate.State == AttemptParticipationActive {
+		if err := participationCandidate.End(AttemptParticipationEndManagerEnded, at); err != nil {
+			return err
+		}
+	}
+	if connectionCandidate.State == AttemptConnectionOpen {
+		if err := connectionCandidate.Close(AttemptConnectionCloseManagerEnded, at); err != nil {
 			return err
 		}
 	}

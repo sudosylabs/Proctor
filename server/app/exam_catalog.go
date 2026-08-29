@@ -17,6 +17,9 @@ type ListExamsQuery struct {
 	AcademicUnitID  model.AcademicUnitID
 	Query           string
 	ArchiveFilter   ExamArchiveFilter
+	SittingStates   []model.ExamSittingState
+	EndsAfter       time.Time
+	StartsBefore    time.Time
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID
 	Limit           int
@@ -31,15 +34,19 @@ const (
 )
 
 type ExamSummary struct {
-	ID             model.ExamID
-	AcademicUnitID model.AcademicUnitID
-	CreatorUserID  model.UserID
-	OwnerUserID    model.UserID
-	Title          string
-	UpdatedAt      time.Time
-	ArchivedAt     model.OptionalTime
-	Revision       int64
-	ManagerCount   int
+	ID                      model.ExamID
+	AcademicUnitID          model.AcademicUnitID
+	AcademicUnitDisplayName string
+	CreatorUserID           model.UserID
+	OwnerUserID             model.UserID
+	Title                   string
+	UpdatedAt               time.Time
+	ArchivedAt              model.OptionalTime
+	Revision                int64
+	ManagerCount            int
+	SittingCount            int
+	MatchingSittingCount    int
+	SittingSummary          *store.ExamCatalogSittingSummary
 }
 
 type ExamCatalogPage struct{ Items []ExamSummary }
@@ -59,6 +66,7 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 	}
 	page, err := a.exams.List(ctx, examengine.NewCall(invocation.Principal(), invocation.RequestMetadata()), examengine.ListQuery{
 		AcademicUnitID: query.AcademicUnitID, Query: strings.TrimSpace(query.Query), ArchiveFilter: store.ExamArchiveFilter(query.ArchiveFilter),
+		SittingStates: append([]model.ExamSittingState(nil), query.SittingStates...), EndsAfter: query.EndsAfter, StartsBefore: query.StartsBefore,
 		BeforeUpdatedAt: query.BeforeUpdatedAt, BeforeExamID: query.BeforeExamID, Limit: query.Limit,
 	})
 	if err != nil {
@@ -67,8 +75,10 @@ func (a *App) ListExams(ctx context.Context, invocation Invocation, query ListEx
 	result := ExamCatalogPage{Items: make([]ExamSummary, 0, len(page.Items))}
 	for _, item := range page.Items {
 		result.Items = append(result.Items, ExamSummary{ID: item.ID, AcademicUnitID: item.AcademicUnitID,
-			CreatorUserID: item.CreatorUserID, OwnerUserID: item.OwnerUserID, Title: item.Title,
-			UpdatedAt: item.UpdatedAt, ArchivedAt: item.ArchivedAt, Revision: item.Revision, ManagerCount: item.ManagerCount})
+			AcademicUnitDisplayName: item.AcademicUnitDisplayName, CreatorUserID: item.CreatorUserID,
+			OwnerUserID: item.OwnerUserID, Title: item.Title, UpdatedAt: item.UpdatedAt, ArchivedAt: item.ArchivedAt,
+			Revision: item.Revision, ManagerCount: item.ManagerCount, SittingCount: item.SittingCount,
+			MatchingSittingCount: item.MatchingSittingCount, SittingSummary: item.SittingSummary})
 	}
 	return result, nil
 }

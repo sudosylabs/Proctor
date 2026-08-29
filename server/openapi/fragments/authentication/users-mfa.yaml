@@ -14,9 +14,14 @@ paths:
         - authentication.credential_ambiguous
         - authentication.mfa.disabled
         - authentication.mfa.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -57,9 +62,14 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -104,9 +114,14 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -152,9 +167,14 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -208,9 +228,14 @@ paths:
         - authentication.mfa.unavailable
         - authentication.internal
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -260,9 +285,14 @@ paths:
         - authentication.mfa.conflict
         - authentication.mfa.unavailable
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:

@@ -39,8 +39,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -62,6 +67,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     ApplyExamSittingCorrection:
@@ -75,6 +82,8 @@ components:
             expected_sitting_revision: 8
             expected_current_revision_id: ybndrfg8ejkmcpqxot1uwisza3
             instructions_markdown: Read the corrected resource before continuing.
+            candidate_summary: The formula sheet for Question 3 was corrected.
+            acknowledgement_required: true
             reason: Question 3 contained an incorrect constant.
             resources:
               - resource_id: ybndrfg8ejkmcpqxot1uwisza4
@@ -122,6 +131,8 @@ components:
       required:
         - expected_sitting_revision
         - expected_current_revision_id
+        - candidate_summary
+        - acknowledgement_required
         - reason
         - resources
       properties:
@@ -136,6 +147,16 @@ components:
           maxLength: 65536
           description: >-
             Omitted preserves current instructions. A present empty string clears them; null is invalid. Authored Markdown is limited to 65536 UTF-8 bytes.
+        browser_policy:
+          $ref: '#/components/schemas/BrowserPolicy'
+          description: Omitted preserves the current Browser Policy; a present object replaces it atomically with the other correction content.
+        candidate_summary:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Required trimmed candidate-facing plain text, limited to 500 Unicode scalar values and 2000 UTF-8 bytes with no control characters.
+        acknowledgement_required:
+          type: boolean
         reason:
           type: string
           minLength: 1

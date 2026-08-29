@@ -19,8 +19,13 @@ paths:
         - request.invalid
         - user.invalid
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: q
@@ -68,6 +73,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me:
     get:
       operationId: getCurrentUserProfile
@@ -87,8 +94,13 @@ paths:
         - authorization.unavailable
         - resource.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -103,6 +115,42 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/users/me/context:
+    get:
+      operationId: getCurrentUserContext
+      summary: Get the signed-in User's bounded product context
+      tags:
+        - Users
+      description: >-
+        Returns a credential-free navigation projection for the current interactive Session. It identifies available product areas, a bounded list of management scopes, and the current unresolved Attempt selector without exposing Roles, permissions, provider claims, Session credentials, or examination content. This response is not an authorization receipt and must never be cached.
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/CurrentUserContextOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/{user_id}:
     parameters:
       - $ref: '#/components/parameters/UserID'
@@ -125,8 +173,13 @@ paths:
         - request.invalid
         - resource.not_found
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -141,6 +194,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     patch:
       operationId: updateUserProfile
       summary: Administratively update a User profile
@@ -164,8 +219,13 @@ paths:
         - user.invalid
         - user.conflict
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -185,6 +245,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     UpdateUserProfile:
@@ -201,6 +263,15 @@ components:
             locale: en
             timezone: Europe/Paris
   responses:
+    CurrentUserContextOK:
+      description: Bounded current User product context
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CurrentUserContextResponse'
     UserProfileListOK:
       description: User profile collection
       content:
@@ -209,6 +280,106 @@ components:
             $ref: '#/components/schemas/UserProfileListResponse'
           example: []
   schemas:
+    CurrentUserContextResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+        - no_current_affiliation
+        - no_assigned_access
+        - available_product_areas
+        - management_scopes
+        - management_scopes_has_more
+        - unresolved_attempt
+        - session_management_available
+        - current_desktop_registration_id
+      properties:
+        user:
+          $ref: '#/components/schemas/CurrentUserContextIdentity'
+        no_current_affiliation:
+          type: boolean
+        no_assigned_access:
+          type: boolean
+        available_product_areas:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - account
+              - administration
+              - exam_management
+              - settings
+              - student_activity
+        management_scopes:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/CurrentUserManagementScope'
+        management_scopes_has_more:
+          type: boolean
+        unresolved_attempt:
+          type:
+            - object
+            - "null"
+          additionalProperties: false
+          required:
+            - id
+            - exam_sitting_id
+            - state
+          properties:
+            id:
+              $ref: '#/components/schemas/ID'
+            exam_sitting_id:
+              $ref: '#/components/schemas/ID'
+            state:
+              type: string
+              enum:
+                - ready
+                - active
+                - suspended
+        session_management_available:
+          type: boolean
+        current_desktop_registration_id:
+          type:
+            - string
+            - "null"
+          pattern: '^[a-z0-9]{26}$'
+    CurrentUserContextIdentity:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - username
+        - display_name
+        - profile_picture_reference
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        username:
+          type: string
+        display_name:
+          type: string
+        profile_picture_reference:
+          type: string
+    CurrentUserManagementScope:
+      type: object
+      additionalProperties: false
+      required:
+        - scope_type
+        - scope_id
+        - display_name
+      properties:
+        scope_type:
+          type: string
+          enum:
+            - institution
+            - academic_unit
+        scope_id:
+          $ref: '#/components/schemas/ID'
+        display_name:
+          type: string
     UserProfileListResponse:
       description: Visible User profiles ordered by canonical username and identity.
       type: array

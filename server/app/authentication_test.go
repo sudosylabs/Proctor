@@ -91,6 +91,22 @@ type authenticationStoreFake struct {
 	rotatedIdleExpiry   int64
 }
 
+type authenticationDesktopRegistrationLookupFake struct{}
+
+func (authenticationDesktopRegistrationLookupFake) Get(context.Context, string) (*model.DesktopRegistration, error) {
+	return nil, store.NewErrNotFound("desktop_registration", "")
+}
+
+func testAuthenticationDesktopDependencies(t *testing.T, cache authenticationCache) authenticationDesktopDependencies {
+	t.Helper()
+	dpop, err := newDPoPSecurity(cache, dpopPolicy{Origin: "https://proctor.test", NonceLifetime: 5 * time.Minute,
+		ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute, NewNonce: model.NewCredentialToken, Now: time.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticationDesktopDependencies{registrations: authenticationDesktopRegistrationLookupFake{}, dpop: dpop}
+}
+
 func (s *authenticationStoreFake) File() store.FileStore { return nil }
 func (s *authenticationStoreFake) Job() store.JobStore   { return nil }
 
@@ -143,6 +159,10 @@ func (s *authenticationStoreFake) ValidateSchema(context.Context) error         
 func (s *authenticationStoreFake) Close() error                                      { return nil }
 
 type authenticationUserStore struct{ root *authenticationStoreFake }
+
+func (s authenticationUserStore) GetCurrentContext(context.Context, model.UserID, int) (*store.CurrentUserContext, error) {
+	return nil, errors.New("current context is not implemented by authentication test store")
+}
 
 func (s authenticationUserStore) RegisterLocal(context.Context, *store.PublicLocalUserRegistration) (*store.PublicLocalUserRegistrationResult, error) {
 	return nil, errors.New("public registration is not implemented by authentication test store")
@@ -328,6 +348,31 @@ func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ strin
 	return hashes, nil
 }
 
+func (s authenticationSessionStore) EnforceExpiry(
+	_ context.Context,
+	sessionID string,
+	userID string,
+	atMillis int64,
+) (*store.SessionExpiryEnforcementResult, error) {
+	session, ok := s.root.sessions[sessionID]
+	if !ok || session.UserID.String() != userID || session.RevokedAt.Valid {
+		return nil, store.NewErrNotFound("session", sessionID)
+	}
+	at := model.TimeFromMillis(atMillis)
+	if !session.IsExpiredAt(at) {
+		cloned := *session
+		return &store.SessionExpiryEnforcementResult{Session: &cloned}, nil
+	}
+	hashes, err := s.Revoke(context.Background(), sessionID, userID, atMillis, model.SessionRevocationExpired)
+	if err != nil {
+		return nil, err
+	}
+	cloned := *session
+	return &store.SessionExpiryEnforcementResult{
+		Session: &cloned, TokenHashes: hashes, Expired: true,
+	}, nil
+}
+
 func (s authenticationSessionStore) Get(_ context.Context, id string) (*model.Session, error) {
 	session, ok := s.root.sessions[id]
 	if !ok {
@@ -359,6 +404,10 @@ func (s authenticationSessionCredentialStore) GetSessionByTokenHash(
 	tokenHash string,
 	kind model.SessionCredentialKind,
 ) (*model.SessionCredential, *model.Session, error) {
+	if kind == model.SessionCredentialRefresh && s.root.rotation != nil && s.root.rotation.Session != nil {
+		session := *s.root.rotation.Session
+		return &model.SessionCredential{Kind: kind, TokenHash: tokenHash}, &session, nil
+	}
 	if kind != model.SessionCredentialAccess {
 		return nil, nil, store.NewErrNotFound("session_credential", tokenHash)
 	}
@@ -489,6 +538,7 @@ func newTestAuthenticationServiceWithEffects(
 		&securityEffectsDiagnosticsFake{},
 		newCredential,
 		now,
+		testAuthenticationDesktopDependencies(t, cache),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -546,6 +596,138 @@ func TestAuthenticationValidatesLongLivedSessionPrincipal(t *testing.T) {
 	}
 }
 
+func TestAuthenticationExpiryEnforcementClosesEstablishedWebSocketSession(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	user := &model.User{ID: model.NewUserID()}
+	session := &model.Session{
+		ID: model.NewSessionID(), UserID: user.ID,
+		ExpiresAt: at.Add(time.Hour), IdleExpiresAt: at,
+	}
+	persistence := newAuthenticationStoreFake()
+	persistence.users[user.ID.String()] = user
+	persistence.sessions[session.ID.String()] = session
+	effects := &authenticationEffectsRecorder{}
+	service := newTestAuthenticationServiceWithEffects(
+		t, persistence, newAuthenticationCacheFake(), effects,
+		discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
+		model.NewCredentialToken, func() time.Time { return at },
+	)
+	principal := model.Principal{
+		UserID: user.ID, SessionID: session.ID,
+		CredentialID:         model.PrincipalCredentialID(model.NewSessionCredentialID()),
+		CredentialType:       model.CredentialSessionAccess,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: at.Add(-time.Minute), ClientType: model.SessionClientWeb,
+	}
+	if err := service.ValidatePrincipal(context.Background(), principal); !Is(err, "authentication.invalid_token") {
+		t.Fatalf("ValidatePrincipal(expired) error = %v", err)
+	}
+	if effects.last != "sessions" || !session.RevokedAt.Valid ||
+		session.RevocationReason != model.SessionRevocationExpired {
+		t.Fatalf("expiry effects=%q session=%#v", effects.last, session)
+	}
+}
+
+func TestAuthenticationExpiryEnforcementRejectsHTTPAccessAndRefresh(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	user := &model.User{ID: model.NewUserID()}
+	accessRaw := model.NewCredentialToken()
+	accessHash := model.HashToken(accessRaw)
+	accessSession := &model.Session{
+		ID: model.NewSessionID(), UserID: user.ID, ClientType: model.SessionClientWeb,
+		ExpiresAt: at.Add(time.Hour), IdleExpiresAt: at,
+	}
+	persistence := newAuthenticationStoreFake()
+	persistence.users[user.ID.String()] = user
+	persistence.sessions[accessSession.ID.String()] = accessSession
+	persistence.accessByHash[accessHash] = &model.SessionCredential{
+		ID: model.NewSessionCredentialID(), SessionID: accessSession.ID,
+		Kind: model.SessionCredentialAccess, TokenHash: accessHash, ExpiresAt: at.Add(time.Hour),
+	}
+	persistence.sessionByCredential[accessHash] = accessSession
+	effects := &authenticationEffectsRecorder{}
+	service := newTestAuthenticationServiceWithEffects(
+		t, persistence, newAuthenticationCacheFake(), effects,
+		discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
+		model.NewCredentialToken, func() time.Time { return at },
+	)
+	if principal, err := service.authenticateAccess(context.Background(), accessRaw); principal != nil ||
+		!Is(err, "authentication.invalid_token") {
+		t.Fatalf("authenticateAccess(expired) = %#v, %v", principal, err)
+	}
+	if effects.last != "sessions" || accessSession.RevocationReason != model.SessionRevocationExpired {
+		t.Fatalf("access expiry effects=%q session=%#v", effects.last, accessSession)
+	}
+
+	refreshSession := &model.Session{
+		ID: model.NewSessionID(), UserID: user.ID, ClientType: model.SessionClientWeb,
+		ExpiresAt: at.Add(time.Hour), IdleExpiresAt: at,
+	}
+	persistence.rotation = &store.SessionRotation{
+		Session: refreshSession, Expired: true,
+		RevokedAccessHashes: []string{model.HashToken(model.NewCredentialToken())},
+	}
+	effects.last = ""
+	if session, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{
+		RefreshToken: model.NewCredentialToken(),
+	}); session != nil || tokens != nil || !Is(err, "authentication.invalid_token") {
+		t.Fatalf("refresh(expired) = %#v, %#v, %v", session, tokens, err)
+	}
+	if effects.last != "sessions" {
+		t.Fatalf("refresh expiry effect = %q", effects.last)
+	}
+}
+
+func TestAuthenticationAuthoritativeIdleExtensionOverridesStaleExpiredCache(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	user := &model.User{ID: model.NewUserID()}
+	accessRaw := model.NewCredentialToken()
+	accessHash := model.HashToken(accessRaw)
+	authoritative := &model.Session{
+		ID: model.NewSessionID(), UserID: user.ID, ClientType: model.SessionClientWeb,
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: at.Add(-time.Hour), LastActivityAt: at.Add(-30 * time.Second),
+		IdleExpiresAt: at.Add(time.Hour), ExpiresAt: at.Add(24 * time.Hour),
+	}
+	credential := &model.SessionCredential{
+		ID: model.NewSessionCredentialID(), SessionID: authoritative.ID,
+		Kind: model.SessionCredentialAccess, TokenHash: accessHash, ExpiresAt: at.Add(time.Hour),
+	}
+	persistence := newAuthenticationStoreFake()
+	persistence.users[user.ID.String()] = user
+	persistence.sessions[authoritative.ID.String()] = authoritative
+	persistence.accessByHash[accessHash] = credential
+	persistence.sessionByCredential[accessHash] = authoritative
+	cache := newAuthenticationCacheFake()
+	service := newTestAuthenticationServiceWithPorts(
+		t, persistence, cache, discardAuthenticationMFAVerifier{}, discardAuthenticationPATResolver{},
+		model.NewCredentialToken, func() time.Time { return at },
+	)
+	stale := *authoritative
+	stale.IdleExpiresAt = at
+	service.cacheAuthentication(context.Background(), accessHash, &cachedAuthentication{
+		Credential: credential, Session: &stale, User: user,
+	}, at.Add(-time.Minute).UnixMilli())
+
+	principal, err := service.authenticateAccess(context.Background(), accessRaw)
+	if err != nil || principal == nil || principal.SessionID != authoritative.ID {
+		t.Fatalf("authenticateAccess(stale cached expiry) = %#v, %v", principal, err)
+	}
+	if authoritative.RevokedAt.Valid {
+		t.Fatalf("authoritatively extended Session was revoked: %#v", authoritative)
+	}
+	cached := service.cachedAuthentication(context.Background(), accessHash)
+	if cached == nil || cached.Session == nil || !cached.Session.IdleExpiresAt.Equal(authoritative.IdleExpiresAt) {
+		t.Fatalf("refreshed authentication cache = %#v", cached)
+	}
+}
+
 func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *testing.T) {
 	t.Parallel()
 
@@ -581,7 +763,7 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 				func() time.Time { return at },
 			)
 
-			_, tokens, err := service.refresh(context.Background(), presentedRefresh)
+			_, tokens, err := service.refresh(context.Background(), RefreshSessionCommand{RefreshToken: presentedRefresh})
 			if test.wantCode != "" {
 				if !Is(err, test.wantCode) {
 					t.Fatalf("refresh error = %v, want %s", err, test.wantCode)

@@ -43,6 +43,122 @@ type configureExamDraftExecutionProfileRequest struct {
 	Network               string `json:"network"`
 }
 
+type configureExamDraftBrowserPolicyRequest struct {
+	ExpectedDraftRevision int64                 `json:"expected_draft_revision"`
+	BrowserPolicy         browserPolicyDocument `json:"browser_policy"`
+}
+
+type browserPolicyDocument struct {
+	SchemaVersion int                         `json:"schema_version"`
+	Enabled       bool                        `json:"enabled"`
+	StartRuleID   string                      `json:"start_rule_id,omitempty"`
+	Rules         []browserPolicyRuleDocument `json:"rules,omitempty"`
+}
+
+type browserPolicyRuleDocument struct {
+	RuleID                   string `json:"rule_id"`
+	Origin                   string `json:"origin"`
+	PathPrefix               string `json:"path_prefix"`
+	HostMatch                string `json:"host_match"`
+	AllowRedirects           bool   `json:"allow_redirects"`
+	BlockedNavigationOutcome string `json:"blocked_navigation_outcome"`
+}
+
+func (document *browserPolicyDocument) UnmarshalJSON(encoded []byte) error {
+	if len(encoded) > model.BrowserPolicyMaximumBytes {
+		return errors.New("browser policy exceeds its encoded limit")
+	}
+	if err := rejectDuplicateJSONObjectMembers(encoded, "browser policy"); err != nil {
+		return err
+	}
+	type wire browserPolicyDocument
+	var decoded wire
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &members); err != nil {
+		return err
+	}
+	if members["schema_version"] == nil || members["enabled"] == nil ||
+		bytes.Equal(bytes.TrimSpace(members["schema_version"]), []byte("null")) ||
+		bytes.Equal(bytes.TrimSpace(members["enabled"]), []byte("null")) {
+		return errors.New("browser policy schema_version and enabled are required")
+	}
+	if decoded.Enabled {
+		if len(members) != 4 || members["start_rule_id"] == nil || members["rules"] == nil || decoded.Rules == nil {
+			return errors.New("enabled browser policy requires exactly start_rule_id and rules")
+		}
+	} else if len(members) != 2 {
+		return errors.New("disabled browser policy contains enabled fields")
+	}
+	*document = browserPolicyDocument(decoded)
+	return nil
+}
+
+func (document *browserPolicyRuleDocument) UnmarshalJSON(encoded []byte) error {
+	if err := rejectDuplicateJSONObjectMembers(encoded, "browser policy rule"); err != nil {
+		return err
+	}
+	type wire browserPolicyRuleDocument
+	var decoded wire
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &members); err != nil {
+		return err
+	}
+	for _, name := range []string{"rule_id", "origin", "path_prefix", "host_match", "allow_redirects", "blocked_navigation_outcome"} {
+		if members[name] == nil || bytes.Equal(bytes.TrimSpace(members[name]), []byte("null")) {
+			return errors.New("browser policy rule fields are required")
+		}
+	}
+	if len(members) != 6 {
+		return errors.New("browser policy rule contains an unknown field")
+	}
+	*document = browserPolicyRuleDocument(decoded)
+	return nil
+}
+
+func (document browserPolicyDocument) model() (model.BrowserPolicy, error) {
+	rules := make([]model.BrowserPolicyRule, len(document.Rules))
+	for index, rule := range document.Rules {
+		rules[index] = model.BrowserPolicyRule{RuleID: rule.RuleID, Origin: rule.Origin, PathPrefix: rule.PathPrefix,
+			HostMatch: model.BrowserPolicyHostMatch(rule.HostMatch), AllowRedirects: rule.AllowRedirects,
+			BlockedNavigationOutcome: model.BrowserPolicyBlockedNavigationOutcome(rule.BlockedNavigationOutcome)}
+	}
+	if !document.Enabled {
+		if document.SchemaVersion != model.BrowserPolicySchemaVersion {
+			return model.BrowserPolicy{}, errors.New("invalid disabled browser policy")
+		}
+		return model.DisabledBrowserPolicy(), nil
+	}
+	if document.SchemaVersion != model.BrowserPolicySchemaVersion {
+		return model.BrowserPolicy{}, errors.New("invalid enabled browser policy")
+	}
+	return model.NewBrowserPolicy(true, document.StartRuleID, rules)
+}
+
+func browserPolicyDocumentFromModel(policy model.BrowserPolicy) browserPolicyDocument {
+	document := browserPolicyDocument{SchemaVersion: policy.SchemaVersion, Enabled: policy.Enabled}
+	if !policy.Enabled {
+		return document
+	}
+	document.StartRuleID = policy.StartRuleID
+	document.Rules = make([]browserPolicyRuleDocument, len(policy.Rules))
+	for index, rule := range policy.Rules {
+		document.Rules[index] = browserPolicyRuleDocument{RuleID: rule.RuleID, Origin: rule.Origin,
+			PathPrefix: rule.PathPrefix, HostMatch: string(rule.HostMatch), AllowRedirects: rule.AllowRedirects,
+			BlockedNavigationOutcome: string(rule.BlockedNavigationOutcome)}
+	}
+	return document
+}
+
 func (r *configureExamDraftExecutionProfileRequest) UnmarshalJSON(data []byte) error {
 	if err := rejectDuplicateJSONObjectMembers(data, "execution profile"); err != nil {
 		return err
@@ -90,15 +206,30 @@ type examCatalogCursor struct {
 }
 
 type examSummaryResponse struct {
-	ID             string  `json:"id"`
-	AcademicUnitID string  `json:"academic_unit_id"`
-	CreatorUserID  string  `json:"creator_user_id"`
-	OwnerUserID    string  `json:"owner_user_id"`
-	Title          string  `json:"title"`
-	UpdatedAt      string  `json:"updated_at"`
-	ArchivedAt     *string `json:"archived_at"`
-	Revision       int64   `json:"revision"`
-	ManagerCount   int     `json:"manager_count"`
+	ID                      string                      `json:"id"`
+	AcademicUnitID          string                      `json:"academic_unit_id"`
+	AcademicUnitDisplayName string                      `json:"academic_unit_display_name"`
+	CreatorUserID           string                      `json:"creator_user_id"`
+	OwnerUserID             string                      `json:"owner_user_id"`
+	Title                   string                      `json:"title"`
+	UpdatedAt               string                      `json:"updated_at"`
+	ArchivedAt              *string                     `json:"archived_at"`
+	Revision                int64                       `json:"revision"`
+	ManagerCount            int                         `json:"manager_count"`
+	SittingCount            int                         `json:"sitting_count"`
+	MatchingSittingCount    int                         `json:"matching_sitting_count"`
+	SittingSummary          *examCatalogSittingResponse `json:"sitting_summary"`
+}
+
+type examCatalogSittingResponse struct {
+	ID               string                 `json:"id"`
+	ExamRevisionID   string                 `json:"exam_revision_id"`
+	ClassID          string                 `json:"class_id"`
+	ClassDisplayName string                 `json:"class_display_name"`
+	ScheduledStartAt string                 `json:"scheduled_start_at"`
+	ScheduledEndAt   string                 `json:"scheduled_end_at"`
+	State            model.ExamSittingState `json:"state"`
+	Revision         int64                  `json:"revision"`
 }
 
 type examListResponse struct {
@@ -211,6 +342,7 @@ type examDraftResponse struct {
 	InstructionsMarkdown string                     `json:"instructions_markdown"`
 	Policy               examPolicyResponse         `json:"policy"`
 	ExecutionProfile     executionProfileResponse   `json:"execution_profile"`
+	BrowserPolicy        browserPolicyDocument      `json:"browser_policy"`
 	Capacity             examCapacityPolicyResponse `json:"capacity"`
 	BaseRevisionID       string                     `json:"base_revision_id,omitempty"`
 	UpdatedAt            string                     `json:"updated_at"`
@@ -261,6 +393,7 @@ func examResource(exams ExamApplication) resource {
 	draft := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"))
 	focusLossPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("policies"), literal("focus-loss"))
 	executionProfile := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("execution-profile"))
+	browserPolicy := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("browser-policy"))
 	executionImages := apiPath(literal("exams"), canonicalID("exam_id"), literal("draft"), literal("execution-images"))
 	archive := apiPath(literal("exams"), canonicalID("exam_id"), literal("archive"))
 	managers := apiPath(literal("exams"), canonicalID("exam_id"), literal("managers"))
@@ -289,6 +422,11 @@ func examResource(exams ExamApplication) resource {
 			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.configureDraftExecutionProfile),
+		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, browserPolicy, academicMutationErrorCodes(
+			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived",
+			"exam.draft.revision_conflict", "exam.draft.no_changes", "exam.unavailable",
+			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
+		), module.configureDraftBrowserPolicy),
 		principalRoute(http.MethodGet, executionImages, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.unavailable"), module.listExecutionImages),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, archive, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict", "exam.unavailable",
@@ -297,7 +435,7 @@ func examResource(exams ExamApplication) resource {
 		principalRoute(http.MethodGet, managers, academicReadErrorCodes("request.invalid", "resource.not_found", "exam.invalid", "exam.unavailable"), module.listManagers),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPost, managers, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
-			"exam.manager.exists", "exam.manager.ineligible", "exam.unavailable",
+			"exam.manager.exists", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.addManager),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, manager, academicMutationErrorCodes(
@@ -307,7 +445,7 @@ func examResource(exams ExamApplication) resource {
 		), module.removeManager),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, owner, academicMutationErrorCodes(
 			"request.invalid", "resource.not_found", "exam.invalid", "exam.archived", "exam.revision_conflict",
-			"exam.manager.not_found", "exam.manager.ineligible", "exam.owner.no_changes", "exam.unavailable",
+			"exam.manager.not_found", "exam.manager.ineligible", "exam.manager.candidate_conflict", "exam.owner.no_changes", "exam.unavailable",
 			"idempotency.key_required", "idempotency.invalid_key", "idempotency.conflict", "idempotency.in_progress",
 		), module.transferOwner),
 	)
@@ -468,6 +606,35 @@ func (m examResourceModule) configureDraftExecutionProfile(request operationRequ
 	view, err := m.exams.ConfigureExamDraftExecutionProfile(request.context, request.invocation(), application.ConfigureExamDraftExecutionProfileCommand{
 		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Enabled: body.Enabled,
 		Image: body.Image, Network: model.ExecutionNetwork(body.Network), IdempotencyKey: request.idempotencyKey,
+	})
+	if err != nil {
+		return operationResult{}, err
+	}
+	return jsonResult(http.StatusOK, examResponseFromView(view)), nil
+}
+
+func (m examResourceModule) configureDraftBrowserPolicy(request operationRequest) (operationResult, error) {
+	raw, err := request.params.RequireExamId()
+	if err != nil {
+		return operationResult{}, err
+	}
+	examID, err := model.ParseExamID(raw)
+	if err != nil {
+		return operationResult{}, invalidRequestError("exam_id", err)
+	}
+	var body configureExamDraftBrowserPolicyRequest
+	if err = request.decodeJSON(&body, "configureExamDraftBrowserPolicy"); err != nil {
+		return operationResult{}, err
+	}
+	if body.ExpectedDraftRevision < 1 {
+		return operationResult{}, invalidRequestError("expected_draft_revision", errors.New("must be positive"))
+	}
+	policy, err := body.BrowserPolicy.model()
+	if err != nil {
+		return operationResult{}, invalidRequestError("browser_policy", err)
+	}
+	view, err := m.exams.ConfigureExamDraftBrowserPolicy(request.context, request.invocation(), application.ConfigureExamDraftBrowserPolicyCommand{
+		ExamID: examID, ExpectedDraftRevision: body.ExpectedDraftRevision, Policy: policy, IdempotencyKey: request.idempotencyKey,
 	})
 	if err != nil {
 		return operationResult{}, err
@@ -710,6 +877,34 @@ func examListQuery(request *http.Request) (application.ListExamsQuery, error) {
 	if raw := values.Get("archive_state"); raw != "" {
 		query.ArchiveFilter = application.ExamArchiveFilter(raw)
 	}
+	for _, raw := range values["sitting_state"] {
+		state := model.ExamSittingState(raw)
+		if !state.IsValid() {
+			return query, errors.New("invalid sitting_state")
+		}
+		for _, existing := range query.SittingStates {
+			if existing == state {
+				return query, errors.New("duplicate sitting_state")
+			}
+		}
+		query.SittingStates = append(query.SittingStates, state)
+	}
+	endsAfterRaw, startsBeforeRaw := values.Get("ends_after"), values.Get("starts_before")
+	if (endsAfterRaw == "") != (startsBeforeRaw == "") {
+		return query, errors.New("ends_after and starts_before must be supplied together")
+	}
+	if endsAfterRaw != "" {
+		var parseErr error
+		query.EndsAfter, parseErr = time.Parse(time.RFC3339, endsAfterRaw)
+		if parseErr != nil {
+			return query, errors.New("invalid ends_after")
+		}
+		query.StartsBefore, parseErr = time.Parse(time.RFC3339, startsBeforeRaw)
+		if parseErr != nil || !query.EndsAfter.Before(query.StartsBefore) {
+			return query, errors.New("invalid starts_before")
+		}
+		query.EndsAfter, query.StartsBefore = model.TimeUTC(query.EndsAfter), model.TimeUTC(query.StartsBefore)
+	}
 	switch query.ArchiveFilter {
 	case application.ExamArchiveActive, application.ExamArchiveArchived, application.ExamArchiveAll:
 	default:
@@ -768,10 +963,21 @@ func examSummaryResponseFromApplication(summary application.ExamSummary) examSum
 		formatted := model.TimeUTC(summary.ArchivedAt.Time).Format(time.RFC3339Nano)
 		archivedAt = &formatted
 	}
-	return examSummaryResponse{ID: summary.ID.String(), AcademicUnitID: summary.AcademicUnitID.String(),
-		CreatorUserID: summary.CreatorUserID.String(), OwnerUserID: summary.OwnerUserID.String(), Title: summary.Title,
+	response := examSummaryResponse{ID: summary.ID.String(), AcademicUnitID: summary.AcademicUnitID.String(),
+		AcademicUnitDisplayName: summary.AcademicUnitDisplayName,
+		CreatorUserID:           summary.CreatorUserID.String(), OwnerUserID: summary.OwnerUserID.String(), Title: summary.Title,
 		UpdatedAt: model.TimeUTC(summary.UpdatedAt).Format(time.RFC3339Nano), ArchivedAt: archivedAt,
-		Revision: summary.Revision, ManagerCount: summary.ManagerCount}
+		Revision: summary.Revision, ManagerCount: summary.ManagerCount, SittingCount: summary.SittingCount,
+		MatchingSittingCount: summary.MatchingSittingCount}
+	if summary.SittingSummary != nil {
+		response.SittingSummary = &examCatalogSittingResponse{ID: summary.SittingSummary.ID.String(),
+			ExamRevisionID: summary.SittingSummary.ExamRevisionID.String(), ClassID: summary.SittingSummary.ClassID.String(),
+			ClassDisplayName: summary.SittingSummary.ClassDisplayName,
+			ScheduledStartAt: model.TimeUTC(summary.SittingSummary.ScheduledStartAt).Format(time.RFC3339Nano),
+			ScheduledEndAt:   model.TimeUTC(summary.SittingSummary.ScheduledEndAt).Format(time.RFC3339Nano),
+			State:            summary.SittingSummary.State, Revision: summary.SittingSummary.Revision}
+	}
+	return response
 }
 
 func examIdentityResponseFromModel(exam model.Exam) examIdentityResponse {
@@ -789,6 +995,10 @@ func examIdentityResponseFromModel(exam model.Exam) examIdentityResponse {
 func examResponseFromView(view application.ExamView) examResponse {
 	policy := view.Draft.Policy
 	identity := examIdentityResponseFromModel(view.Exam)
+	browserPolicy := view.Draft.BrowserPolicy
+	if browserPolicy.SchemaVersion == 0 {
+		browserPolicy = model.DisabledBrowserPolicy()
+	}
 	return examResponse{
 		Exam: identity,
 		Draft: examDraftResponse{
@@ -803,6 +1013,7 @@ func examResponseFromView(view application.ExamView) examResponse {
 			},
 			ExecutionProfile: executionProfileResponse{Enabled: view.Draft.ExecutionProfile.Enabled,
 				Image: view.Draft.ExecutionProfile.Image, Network: string(view.Draft.ExecutionProfile.Network)},
+			BrowserPolicy:  browserPolicyDocumentFromModel(browserPolicy),
 			Capacity:       examCapacityPolicyResponseFromModel(view.Capacity),
 			BaseRevisionID: view.Draft.BaseRevisionID.String(), UpdatedAt: model.TimeUTC(view.Draft.UpdatedAt).Format(time.RFC3339Nano),
 			Revision: view.Draft.Revision, ResourceCount: view.ResourceCount, HasStarterWorkspace: view.HasStarterWorkspace,

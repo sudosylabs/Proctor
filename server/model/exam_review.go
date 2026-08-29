@@ -29,29 +29,62 @@ const (
 	SubmissionReviewMaximumDiscrepancies       = 200
 )
 
-// IntegrityDiscrepancyKind identifies a bounded record that arrived only
-// after the authoritative integrity collection had ended. A discrepancy is
-// never reinterpreted as evidence and never mutates the sealed Submission.
+// IntegrityDiscrepancyKind identifies a bounded uncertainty record associated
+// with a sealed Submission. A discrepancy is never reinterpreted as evidence
+// and never mutates the sealed Submission.
 type IntegrityDiscrepancyKind string
 
-const IntegrityDiscrepancyLateFocusLoss IntegrityDiscrepancyKind = "late_focus_loss"
+const (
+	IntegrityDiscrepancyLateFocusLoss                    IntegrityDiscrepancyKind = "late_focus_loss"
+	IntegrityDiscrepancyFocusLossGap                     IntegrityDiscrepancyKind = "focus_loss_gap"
+	IntegrityDiscrepancyBrowserActivityGap               IntegrityDiscrepancyKind = "browser_activity_gap"
+	IntegrityDiscrepancyCorrectionAcknowledgementMissing IntegrityDiscrepancyKind = "correction_acknowledgement_missing"
+)
+
+type IntegrityDiscrepancyFocusLossGapReason string
+
+const (
+	IntegrityDiscrepancyFocusLossSequenceGap                      IntegrityDiscrepancyFocusLossGapReason = "sequence_gap"
+	IntegrityDiscrepancyFocusLossSourceNotFinalized               IntegrityDiscrepancyFocusLossGapReason = "source_not_finalized"
+	IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized IntegrityDiscrepancyFocusLossGapReason = "sequence_gap_and_source_not_finalized"
+)
+
+func (reason IntegrityDiscrepancyFocusLossGapReason) IsValid() bool {
+	return reason == IntegrityDiscrepancyFocusLossSequenceGap ||
+		reason == IntegrityDiscrepancyFocusLossSourceNotFinalized ||
+		reason == IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized
+}
+
+type IntegrityDiscrepancyBrowserActivityGapReason string
+
+const IntegrityDiscrepancyBrowserActivityPriorSourceGap IntegrityDiscrepancyBrowserActivityGapReason = "prior_source_gap"
+
+func (reason IntegrityDiscrepancyBrowserActivityGapReason) IsValid() bool {
+	return reason == IntegrityDiscrepancyBrowserActivityPriorSourceGap ||
+		BrowserActivitySubmissionGapReason(reason).IsValid()
+}
 
 // IntegrityDiscrepancySpecification contains the complete immutable value for
 // one late record. ReceivedAt is authoritative database receipt time.
 type IntegrityDiscrepancySpecification struct {
-	ID                   IntegrityDiscrepancyID
-	SubmissionID         SubmissionID
-	AttemptID            ExamAttemptID
-	ParticipationID      AttemptParticipationID
-	Generation           int64
-	Kind                 IntegrityDiscrepancyKind
-	SchemaVersion        int
-	SignalID             FocusLossSignalID
-	Sequence             int64
-	DurationMilliseconds int64
-	Source               FocusLossSource
-	MissingBefore        int64
-	ReceivedAt           time.Time
+	ID                     IntegrityDiscrepancyID
+	SubmissionID           SubmissionID
+	AttemptID              ExamAttemptID
+	ParticipationID        AttemptParticipationID
+	Generation             int64
+	Kind                   IntegrityDiscrepancyKind
+	SchemaVersion          int
+	SignalID               FocusLossSignalID
+	Sequence               int64
+	DurationMilliseconds   int64
+	Source                 FocusLossSource
+	MissingBefore          int64
+	CorrectionRevisionID   ExamRevisionID
+	BrowserSourceSessionID BrowserSourceSessionID
+	FinalSequence          *int64
+	GapReason              string
+	UnresolvedCount        int64
+	ReceivedAt             time.Time
 }
 
 // IntegrityDiscrepancy is an immutable, bounded post-collection diagnostic.
@@ -62,6 +95,10 @@ type IntegrityDiscrepancy struct {
 
 func NewIntegrityDiscrepancy(specification IntegrityDiscrepancySpecification) (*IntegrityDiscrepancy, error) {
 	value := &IntegrityDiscrepancy{IntegrityDiscrepancySpecification: specification}
+	if value.FinalSequence != nil {
+		sequence := *value.FinalSequence
+		value.FinalSequence = &sequence
+	}
 	value.ReceivedAt = TimeUTC(value.ReceivedAt)
 	if err := value.Validate(); err != nil {
 		return nil, err
@@ -71,11 +108,39 @@ func NewIntegrityDiscrepancy(specification IntegrityDiscrepancySpecification) (*
 
 func (value *IntegrityDiscrepancy) Validate() error {
 	if value == nil || !value.ID.IsValid() || !value.SubmissionID.IsValid() || !value.AttemptID.IsValid() ||
-		!value.ParticipationID.IsValid() || value.Generation < 1 || value.Kind != IntegrityDiscrepancyLateFocusLoss ||
-		value.SchemaVersion != FocusLossSignalSchemaVersion || !value.SignalID.IsValid() || value.Sequence < 1 ||
-		value.DurationMilliseconds < 1 || value.DurationMilliseconds > FocusLossMaximumDurationMilliseconds ||
-		!value.Source.IsValid() || value.MissingBefore < 0 || value.ReceivedAt.IsZero() {
+		!value.ParticipationID.IsValid() || value.Generation < 1 || value.SchemaVersion != 1 || value.ReceivedAt.IsZero() {
 		return errors.New("model: invalid Integrity Discrepancy")
+	}
+	switch value.Kind {
+	case IntegrityDiscrepancyLateFocusLoss:
+		if !value.SignalID.IsValid() || value.Sequence < 1 || value.DurationMilliseconds < 1 ||
+			value.DurationMilliseconds > FocusLossMaximumDurationMilliseconds || !value.Source.IsValid() ||
+			value.MissingBefore < 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
+			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 0 {
+			return errors.New("model: invalid late Focus Loss Integrity Discrepancy")
+		}
+	case IntegrityDiscrepancyFocusLossGap:
+		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
+			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || value.BrowserSourceSessionID != "" ||
+			value.FinalSequence != nil || !IntegrityDiscrepancyFocusLossGapReason(value.GapReason).IsValid() ||
+			value.UnresolvedCount < 1 {
+			return errors.New("model: invalid Focus Loss gap Integrity Discrepancy")
+		}
+	case IntegrityDiscrepancyBrowserActivityGap:
+		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
+			value.MissingBefore != 0 || value.CorrectionRevisionID != "" || !value.BrowserSourceSessionID.IsValid() ||
+			value.FinalSequence != nil && *value.FinalSequence < 1 ||
+			!IntegrityDiscrepancyBrowserActivityGapReason(value.GapReason).IsValid() || value.UnresolvedCount < 1 {
+			return errors.New("model: invalid Browser Activity gap Integrity Discrepancy")
+		}
+	case IntegrityDiscrepancyCorrectionAcknowledgementMissing:
+		if value.SignalID != "" || value.Sequence != 0 || value.DurationMilliseconds != 0 || value.Source != "" ||
+			value.MissingBefore != 0 || !value.CorrectionRevisionID.IsValid() || value.BrowserSourceSessionID != "" ||
+			value.FinalSequence != nil || value.GapReason != "" || value.UnresolvedCount != 1 {
+			return errors.New("model: invalid correction acknowledgement Integrity Discrepancy")
+		}
+	default:
+		return errors.New("model: invalid Integrity Discrepancy kind")
 	}
 	return nil
 }

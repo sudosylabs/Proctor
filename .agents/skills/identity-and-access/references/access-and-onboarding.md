@@ -361,9 +361,10 @@ login retain generic Problem Details. This recovery needs no new durable
 transaction, result endpoint, Session rule, or persistence state.
 
 Invitation acceptance and desktop authentication do not create an unexpected
-persistent browser Session. An existing valid browser Session may approve a
-desktop transaction after an explicit account/device confirmation and any
-required recent or strong authentication.
+persistent browser Session. A Desktop transaction may use an existing valid
+Web Session as its account proof or authenticate locally or through a
+purpose-bound external-provider state. Every path still requires explicit
+account/device confirmation before approval.
 
 For local Invitation acceptance, the `/join` bootstrap removes the fragment
 credential before rendering and exposes it only as purpose-specific in-memory
@@ -427,15 +428,70 @@ does not invalidate another device or browser transaction. An ambiguous or
 replayed exchange creates no additional Session. Any node may continue the
 flow; PostgreSQL, not sticky routing or process memory, owns transaction state.
 
-The server protocol is exposed through four `no-store` operations:
-`POST /api/v1/auth/desktop/authorizations` starts the transaction,
-`POST /api/v1/auth/desktop/authorizations/approve` requires an existing Web
-Session and approves the pinned authentication path,
-`POST /api/v1/auth/desktop/authorizations/cancel` proves and cancels a pending
-transaction, and `POST /api/v1/auth/desktop/token` performs the one-use code
-exchange. The authorization URL names the implemented `/authorize/desktop`
-hosted page; implementing the Desktop client remains outside the server
-protocol slice.
+The current protocol remains in the `/api/v1` route family; there is no
+parallel v2 surface before release compatibility exists. Start returns a query
+handle and a separate fragment proof. The hosted bootstrap removes both from
+browser history before exchanging them once for a host-only, HttpOnly,
+SameSite=Lax cookie scoped to the Desktop authorization route family.
+Everything after bind uses that cookie, never the raw proof.
+
+The hosted journey remains in one tab. It first offers a current Web Session as
+an identity proof, then the current local and external authentication paths
+when another account is needed. Local password validation and the
+purpose-bound provider callback authenticate only the Desktop transaction and
+do not create a Web Session. Provider return resumes the same transaction from
+its scoped browser cookie. The safe account and device projection is then
+shown for explicit approval; resetting the account returns the same
+transaction to method selection.
+
+Approval and cancellation require the binding cookie and exact pinned state.
+Approval issues the one-use code and cancellation destroys all live proofs.
+`POST /api/v1/auth/desktop/token` performs the PKCE/state exchange. Account
+resolution and exchange both acquire the per-User Session lock and reject an
+active Attempt; ordinary Session issuance and Attempt activation use that same
+lock to close the race. The authorization URL names the implemented
+`/authorize/desktop` hosted page; implementing the Desktop client remains
+outside the server protocol slice.
+
+Desktop Authorization also binds a caller-generated ES256 P-256 public key to
+the transaction. Start validates and retains only that public JWK and its
+RFC 7638 thumbprint; exchange requires a nonce-bound DPoP proof made by the
+same key before consuming the authorization code. A successful exchange
+atomically creates or refreshes one User- and Institution-scoped Desktop
+Registration for the thumbprint, creates a Desktop Session bound to that
+Registration, and returns DPoP access and refresh credentials. A revoked key
+cannot be silently re-registered.
+
+Every use of a Desktop access credential requires a DPoP proof covering the
+canonical public request method and target URI, the access-token hash, the
+Session and Registration binding, and a server-issued nonce. Refresh rotation
+requires the same registered key and a refresh-specific proof without an
+access-token claim. Proof identifiers are single-use within their bounded
+lifetime through shared replay state; missing, stale, repeated, malformed, or
+misbound proofs fail closed and may return only a replacement nonce. Private
+key material never crosses the client boundary, and proofs, nonces, tokens,
+JWK coordinates, and thumbprints do not enter ordinary logs or audit data.
+
+An interactive Session may list only its User's Desktop Registrations through
+`GET /api/v1/users/me/desktop-registrations`. The no-store projection contains
+bounded device/build metadata, lifecycle times, status, and whether the
+request came from that Registration; it omits the public key and thumbprint.
+Revocation through the exact nested `DELETE` route requires strong recent
+authentication and atomically revokes the Registration, every live Session
+and credential bound to it, and the security audit before publishing Session
+revocation effects. Revocation is permanent security history.
+
+At most one unresolved Exam Attempt may hold the account's Session lock. Only
+a compatible, active, registered-key Desktop Session can activate a ready
+Attempt, and that exact Session is owned by the resulting Attempt
+Participation generation. Ordinary Session issuance, Desktop exchange,
+Attempt activation, Session revocation, and Participation termination all use
+the same per-User locking boundary. Brief transport reconnects may retain the
+current Participation and Session binding; suspension, lease expiry, manager
+termination, Sitting closure, or Submission ends it and releases the lock.
+Later admission creates a new Participation that may bind another active
+registered-key Desktop Session. Manager projections never expose the bound
+Session or Desktop Registration identity.
 
 Ordinary local or external browser login creates only a Web Session. Its
 legacy provider-login request defaults to Web and rejects an explicit Desktop

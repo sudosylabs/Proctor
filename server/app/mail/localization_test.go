@@ -19,8 +19,8 @@ func TestLocalizationDefinitionsMatchCatalog(t *testing.T) {
 	// Restrict this assertion to mail-owned definitions. The full cross-consumer
 	// exact-set check lives in ptool.
 	definitions := LocalizationDefinitions()
-	if len(definitions) != 338 {
-		t.Fatalf("mail localization definitions = %d, want 338", len(definitions))
+	if len(definitions) != 349 {
+		t.Fatalf("mail localization definitions = %d, want 349", len(definitions))
 	}
 	for _, definition := range definitions {
 		if _, err := localizer.Resolve(localization.EnglishLocale, definition.ID, nil); err != nil {

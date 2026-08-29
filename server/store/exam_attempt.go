@@ -5,17 +5,19 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 )
 
 const (
-	ExamAttemptConnectOperation              = "exam.attempt.connect.v1"
-	ExamAttemptExpireParticipationOperation  = "exam.attempt.expire_participation.v1"
-	ExamAttemptReallowOperation              = "exam.attempt.reallow.v1"
-	ExamAttemptFocusLossOperation            = "exam.attempt.focus_loss.record.v1"
-	ExamAttemptFocusLossDiscrepancyOperation = "exam.attempt.focus_loss.discrepancy.v1"
+	ExamAttemptConnectOperation                   = "exam.attempt.connect.v1"
+	ExamAttemptExpireParticipationOperation       = "exam.attempt.expire_participation.v1"
+	ExamAttemptReallowOperation                   = "exam.attempt.reallow.v1"
+	ExamAttemptFocusLossOperation                 = "exam.attempt.focus_loss.record.v1"
+	ExamAttemptFocusLossDiscrepancyOperation      = "exam.attempt.focus_loss.discrepancy.v1"
+	ExamAttemptCorrectionAcknowledgementOperation = "exam.attempt.correction.acknowledge.v1"
 )
 
 // ExamAttemptConnect carries proposed identities for an atomic first
@@ -25,34 +27,49 @@ const (
 // The raw continuity credential never crosses this boundary: the caller
 // validates the canonical 32-byte base64url value and supplies only its digest.
 type ExamAttemptConnect struct {
-	SittingID                model.ExamSittingID
-	CandidateUserID          model.UserID
-	SessionID                model.SessionID
-	AttemptID                model.ExamAttemptID
-	WorkspaceID              model.ExamAttemptWorkspaceID
-	ParticipationID          model.AttemptParticipationID
-	ConnectionID             model.AttemptConnectionID
-	ContinuityCredentialHash string
-	AuditEventID             string
-	AuditAt                  int64
+	SittingID                          model.ExamSittingID
+	CandidateUserID                    model.UserID
+	SessionID                          model.SessionID
+	DesktopRegistrationID              model.DesktopRegistrationID
+	DPoPKeyThumbprint                  string
+	AttemptID                          model.ExamAttemptID
+	WorkspaceID                        model.ExamAttemptWorkspaceID
+	ParticipationID                    model.AttemptParticipationID
+	ConnectionID                       model.AttemptConnectionID
+	ContinuityCredentialHash           string
+	SupportedConfigurationManifests    []string
+	InitialConfiguration               *model.AttemptConfiguration
+	DesktopBuild                       model.DesktopBuildTuple
+	DesktopCompatibilityPolicyRevision int64
+	AuditEventID                       string
+	AuditAt                            int64
 }
 
 // ExamAttemptConnectResult is the committed connection aggregate. Replayed
 // denotes an exact command replay; FirstAdmission denotes creation of the
 // stable Attempt and Workspace in this transaction.
 type ExamAttemptConnectResult struct {
-	Attempt        *model.ExamAttempt
-	Workspace      *model.ExamAttemptWorkspace
-	Participation  *ExamAttemptParticipationView
-	Connection     *model.AttemptConnection
-	ClassID        model.ClassID
-	FirstAdmission bool
+	Attempt             *model.ExamAttempt
+	Workspace           *model.ExamAttemptWorkspace
+	Participation       *ExamAttemptParticipationView
+	Connection          *model.AttemptConnection
+	ClassID             model.ClassID
+	Configuration       model.AttemptConfiguration
+	RuntimeCapabilities CandidateRuntimeCapabilities
+	BrowserPolicy       *CandidateBrowserPolicy
+	LiveCorrections     []model.CandidateLiveCorrection
+	FirstAdmission      bool
 	// ConnectionOpened is true only when this command committed a new durable
 	// Connection. It is false for exact replay and different-key convergence on
 	// an already-open same-Session Connection, so transient effects remain
 	// post-commit and non-duplicating.
 	ConnectionOpened bool
-	Replayed         bool
+	// RevokedSessionIDs and RevokedAccessTokenDigests are bounded post-commit
+	// invalidation selectors for other interactive Sessions fenced when this
+	// Attempt entered active. Personal Access Tokens are never included.
+	RevokedSessionIDs         []string
+	RevokedAccessTokenDigests []string
+	Replayed                  bool
 }
 
 // ExamAttemptParticipationView is safe for application results and command
@@ -81,6 +98,8 @@ type ExamAttemptParticipationRenewal struct {
 	ConnectionID             model.AttemptConnectionID
 	CandidateUserID          model.UserID
 	SessionID                model.SessionID
+	DesktopRegistrationID    model.DesktopRegistrationID
+	DPoPKeyThumbprint        string
 	Generation               int64
 	Sequence                 int64
 	ContinuityCredentialHash string
@@ -92,6 +111,9 @@ type ExamAttemptParticipationRenewal struct {
 // times without extending the lease.
 type ExamAttemptParticipationRenewalResult struct {
 	AttemptID        model.ExamAttemptID
+	ExamID           model.ExamID
+	SittingID        model.ExamSittingID
+	CandidateUserID  model.UserID
 	ParticipationID  model.AttemptParticipationID
 	Generation       int64
 	AcceptedSequence int64
@@ -345,6 +367,7 @@ type ExamAttemptConnectionClose struct {
 
 type ExamAttemptConnectionCloseResult struct {
 	AttemptID       model.ExamAttemptID
+	ExamID          model.ExamID
 	SittingID       model.ExamSittingID
 	CandidateUserID model.UserID
 	Connection      *model.AttemptConnection
@@ -360,8 +383,74 @@ type CandidateAttemptAccess struct {
 	AttemptID                model.ExamAttemptID
 	CandidateUserID          model.UserID
 	SessionID                model.SessionID
+	DesktopRegistrationID    model.DesktopRegistrationID
+	DPoPKeyThumbprint        string
 	ConnectionID             model.AttemptConnectionID
 	ContinuityCredentialHash string
+}
+
+type BrowserActivitySourceStart struct {
+	Access               CandidateAttemptAccess
+	ParticipationID      model.AttemptParticipationID
+	Generation           int64
+	SourceSessionID      model.BrowserSourceSessionID
+	PredecessorSessionID model.BrowserSourceSessionID
+	ResetReason          model.BrowserSourceResetReason
+}
+
+type BrowserActivityAppend struct {
+	Access          CandidateAttemptAccess
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	SourceSessionID model.BrowserSourceSessionID
+	Events          []model.BrowserActivityEvent
+}
+
+type BrowserActivityListOptions struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	AttemptID       model.ExamAttemptID
+	AfterReceivedAt time.Time
+	AfterSourceID   model.BrowserSourceSessionID
+	AfterSequence   int64
+	Limit           int
+}
+
+type BrowserActivityRecord struct {
+	AttemptID       model.ExamAttemptID
+	ParticipationID model.AttemptParticipationID
+	Generation      int64
+	SourceSessionID model.BrowserSourceSessionID
+	Event           model.BrowserActivityEvent
+}
+
+type ExamAttemptCorrectionAcknowledgement struct {
+	Access                    CandidateAttemptAccess
+	ParticipationID           model.AttemptParticipationID
+	Generation                int64
+	CorrectionRevisionID      model.ExamRevisionID
+	ExpectedCurrentRevisionID model.ExamRevisionID
+	AuditEvent                *model.AuditEvent
+}
+
+type ExamAttemptCorrectionAcknowledgementTarget struct {
+	AttemptID            model.ExamAttemptID
+	ExamID               model.ExamID
+	SittingID            model.ExamSittingID
+	ClassID              model.ClassID
+	CandidateUserID      model.UserID
+	CorrectionRevisionID model.ExamRevisionID
+	CurrentRevisionID    model.ExamRevisionID
+}
+
+type ExamAttemptCorrectionAcknowledgementResult struct {
+	AttemptID            model.ExamAttemptID
+	CorrectionRevisionID model.ExamRevisionID
+	CurrentRevisionID    model.ExamRevisionID
+	AcknowledgedAt       time.Time
+	MutationAuditEventID string
+	Duplicate            bool
+	Replayed             bool
 }
 
 // CandidateExamResource omits managed-file identities and storage selectors.
@@ -382,17 +471,137 @@ type CandidateExamPresentation struct {
 	AttemptID            model.ExamAttemptID
 	SittingID            model.ExamSittingID
 	ClassID              model.ClassID
-	AdmissionRevisionID  model.ExamRevisionID
-	CurrentRevisionID    model.ExamRevisionID
 	Title                string
 	InstructionsMarkdown string
-	ExecutionProfile     model.ExecutionProfile
-	Capacity             model.ExamCapacityPolicy
 	Resources            []CandidateExamResource
-	// FocusLossCollectionEnabled is the only Focus Loss policy detail exposed
-	// to candidates. It comes from the Sitting's current frozen Revision and
-	// tells the client whether it may collect and transmit Focus Loss signals.
+	RuntimeCapabilities  CandidateRuntimeCapabilities
+	BrowserPolicy        *CandidateBrowserPolicy
+	LiveCorrections      []model.CandidateLiveCorrection
+	// ExecutionProfile is retained only for the server-side terminal use case;
+	// HTTP and WebSocket candidate serializers must never expose it.
+	ExecutionProfile model.ExecutionProfile
+}
+
+type CandidateInteractionState string
+
+const (
+	CandidateInteractionInteractive   CandidateInteractionState = "interactive"
+	CandidateInteractionSittingPaused CandidateInteractionState = "sitting_paused"
+)
+
+type CandidateTerminalCapabilityState string
+
+const (
+	CandidateTerminalDisabled                CandidateTerminalCapabilityState = "disabled"
+	CandidateTerminalAvailable               CandidateTerminalCapabilityState = "available"
+	CandidateTerminalSittingPaused           CandidateTerminalCapabilityState = "sitting_paused"
+	CandidateTerminalAcknowledgementRequired CandidateTerminalCapabilityState = "acknowledgement_required"
+	CandidateTerminalTemporarilyUnavailable  CandidateTerminalCapabilityState = "temporarily_unavailable"
+)
+
+type CandidateBrowserCapabilityState string
+
+const (
+	CandidateBrowserDisabled                CandidateBrowserCapabilityState = "disabled"
+	CandidateBrowserAvailable               CandidateBrowserCapabilityState = "available"
+	CandidateBrowserSittingPaused           CandidateBrowserCapabilityState = "sitting_paused"
+	CandidateBrowserAcknowledgementRequired CandidateBrowserCapabilityState = "acknowledgement_required"
+)
+
+type CandidateAttemptConfiguration struct {
+	SchemaVersion       int
+	ManifestFingerprint string
+	Preferences         model.AttemptConfigurationPreferences
+	Digest              string
+}
+
+type CandidateTerminalCapability struct {
+	State CandidateTerminalCapabilityState
+}
+
+type CandidateBrowserCapability struct {
+	State            CandidateBrowserCapabilityState
+	PolicyRevisionID model.ExamRevisionID
+	PolicyDigest     string
+}
+
+// CandidateBrowserPolicy is the exact enabled enforcement value delivered
+// beside runtime capabilities. A disabled policy is represented by nil.
+type CandidateBrowserPolicy struct {
+	PolicyRevisionID model.ExamRevisionID
+	PolicyDigest     string
+	Policy           model.BrowserPolicy
+}
+
+type CandidateExamRevisionCapability struct {
+	AdmissionRevisionID     model.ExamRevisionID
+	CurrentRevisionID       model.ExamRevisionID
+	AcknowledgementRequired bool
+}
+
+type CandidateDepartureCapability struct {
+	Allowed bool
+	Reason  string
+}
+
+// CandidateRuntimeCapabilities is one authoritative active-runtime snapshot.
+// It deliberately contains no credential, placement, capacity, settings
+// provenance, or authored Browser Policy data.
+type CandidateRuntimeCapabilities struct {
+	SchemaVersion              int
+	ServerTime                 time.Time
+	InteractionState           CandidateInteractionState
+	AttemptConfiguration       CandidateAttemptConfiguration
 	FocusLossCollectionEnabled bool
+	WorkspaceMutationAllowed   bool
+	SubmissionAllowed          bool
+	Terminal                   CandidateTerminalCapability
+	Browser                    CandidateBrowserCapability
+	ExamRevision               CandidateExamRevisionCapability
+	Departure                  CandidateDepartureCapability
+}
+
+func (capabilities CandidateRuntimeCapabilities) Validate() error {
+	if capabilities.SchemaVersion != 1 || capabilities.ServerTime.IsZero() ||
+		(capabilities.InteractionState != CandidateInteractionInteractive && capabilities.InteractionState != CandidateInteractionSittingPaused) ||
+		capabilities.AttemptConfiguration.SchemaVersion != model.AttemptConfigurationSchemaVersion ||
+		capabilities.AttemptConfiguration.ManifestFingerprint != model.CurrentAttemptConfigurationManifestFingerprint() ||
+		capabilities.AttemptConfiguration.Preferences.Validate() != nil ||
+		!model.IsValidSHA256Fingerprint(capabilities.AttemptConfiguration.Digest) ||
+		!capabilities.ExamRevision.AdmissionRevisionID.IsValid() || !capabilities.ExamRevision.CurrentRevisionID.IsValid() ||
+		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
+		return errors.New("candidate runtime capabilities are invalid")
+	}
+	semantics, err := (model.AttemptConfiguration{SchemaVersion: capabilities.AttemptConfiguration.SchemaVersion,
+		ManifestFingerprint: capabilities.AttemptConfiguration.ManifestFingerprint,
+		Preferences:         capabilities.AttemptConfiguration.Preferences}).CanonicalSemantics()
+	if err != nil || model.SHA256Fingerprint(semantics) != capabilities.AttemptConfiguration.Digest {
+		return errors.New("candidate Attempt Configuration digest is invalid")
+	}
+	pausedOrFenced := capabilities.InteractionState == CandidateInteractionSittingPaused ||
+		capabilities.ExamRevision.AcknowledgementRequired
+	if capabilities.WorkspaceMutationAllowed == pausedOrFenced || capabilities.SubmissionAllowed == pausedOrFenced {
+		return errors.New("candidate mutation capabilities are inconsistent")
+	}
+	switch capabilities.Terminal.State {
+	case CandidateTerminalDisabled, CandidateTerminalAvailable, CandidateTerminalSittingPaused,
+		CandidateTerminalAcknowledgementRequired, CandidateTerminalTemporarilyUnavailable:
+	default:
+		return errors.New("candidate terminal capability is invalid")
+	}
+	switch capabilities.Browser.State {
+	case CandidateBrowserDisabled:
+		if !capabilities.Browser.PolicyRevisionID.IsZero() || capabilities.Browser.PolicyDigest != "" {
+			return errors.New("disabled candidate browser capability has policy metadata")
+		}
+	case CandidateBrowserAvailable, CandidateBrowserSittingPaused, CandidateBrowserAcknowledgementRequired:
+		if !capabilities.Browser.PolicyRevisionID.IsValid() || !model.IsValidSHA256Fingerprint(capabilities.Browser.PolicyDigest) {
+			return errors.New("enabled candidate browser capability lacks policy metadata")
+		}
+	default:
+		return errors.New("candidate browser capability is invalid")
+	}
+	return nil
 }
 
 // CandidateAttemptWorkspaceItem is safe logical metadata; it exposes neither
@@ -470,12 +679,176 @@ type ExamAttemptManagerSnapshot struct {
 // sort descending by (CreatedAt, AttemptID). Limit accepts at most 201 for one
 // manager-page look-ahead row.
 type ExamAttemptManagerListOptions struct {
+	ExamID                 model.ExamID
+	SittingID              model.ExamSittingID
+	ExcludeCandidateUserID model.UserID
+	States                 []model.ExamAttemptState
+	BeforeCreatedAt        time.Time
+	BeforeAttemptID        model.ExamAttemptID
+	Limit                  int
+}
+
+type CandidateExamActivityState string
+
+const (
+	CandidateExamActivityUpcoming         CandidateExamActivityState = "upcoming"
+	CandidateExamActivityAvailable        CandidateExamActivityState = "available"
+	CandidateExamActivityInProgress       CandidateExamActivityState = "in_progress"
+	CandidateExamActivitySubmitted        CandidateExamActivityState = "submitted"
+	CandidateExamActivityResultsAvailable CandidateExamActivityState = "results_available"
+	CandidateExamActivityPast             CandidateExamActivityState = "past"
+)
+
+type CandidateExamAccessState string
+
+const (
+	CandidateExamAccessNotOpen               CandidateExamAccessState = "not_open"
+	CandidateExamAccessJoinable              CandidateExamAccessState = "joinable"
+	CandidateExamAccessResumable             CandidateExamAccessState = "resumable"
+	CandidateExamAccessSittingPaused         CandidateExamAccessState = "sitting_paused"
+	CandidateExamAccessAwaitReallow          CandidateExamAccessState = "await_reallow"
+	CandidateExamAccessBlockedByOtherAttempt CandidateExamAccessState = "blocked_by_other_attempt"
+	CandidateExamAccessNotEligible           CandidateExamAccessState = "not_eligible"
+	CandidateExamAccessSubmitted             CandidateExamAccessState = "submitted"
+	CandidateExamAccessResultAvailable       CandidateExamAccessState = "result_available"
+	CandidateExamAccessEnded                 CandidateExamAccessState = "ended"
+)
+
+type CandidateExamAllowedAction string
+
+const (
+	CandidateExamActionEnter      CandidateExamAllowedAction = "enter"
+	CandidateExamActionResume     CandidateExamAllowedAction = "resume"
+	CandidateExamActionViewResult CandidateExamAllowedAction = "view_result"
+)
+
+type CandidateExamActivityListOptions struct {
+	CandidateUserID       model.UserID
+	DesktopSessionID      model.SessionID
+	DesktopRegistrationID model.DesktopRegistrationID
+	DPoPKeyThumbprint     string
+	BeforeScheduledStart  time.Time
+	BeforeSittingID       model.ExamSittingID
+	Limit                 int
+}
+
+type CandidateExamActivityAttempt struct {
+	ID                   model.ExamAttemptID
+	State                model.ExamAttemptState
+	SuspensionReasonCode model.AttemptSuspensionCandidateReason
+}
+
+type CandidateExamActivitySubmission struct {
+	ID          model.SubmissionID
+	SubmittedAt time.Time
+	Provenance  model.ExamSubmissionProvenance
+}
+
+type CandidateExamActivityResult struct{ ReleasedAt time.Time }
+
+type CandidateExamActivityItem struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	Title                   string
+	AcademicUnitID          model.AcademicUnitID
+	AcademicUnitDisplayName string
+	ClassID                 model.ClassID
+	ClassDisplayName        string
+	ScheduledStartAt        time.Time
+	ScheduledEndAt          time.Time
+	SittingState            model.ExamSittingState
+	SittingReasonCode       string
+	ActivityState           CandidateExamActivityState
+	AccessState             CandidateExamAccessState
+	AllowedActions          []CandidateExamAllowedAction
+	Attempt                 *CandidateExamActivityAttempt
+	Submission              *CandidateExamActivitySubmission
+	Result                  *CandidateExamActivityResult
+}
+
+type CandidateExamActivityPage struct {
+	ServerTime time.Time
+	Items      []CandidateExamActivityItem
+}
+
+type SittingCandidatePresenceState string
+
+const (
+	SittingCandidateNotStarted   SittingCandidatePresenceState = "not_started"
+	SittingCandidateReady        SittingCandidatePresenceState = "ready"
+	SittingCandidateConnected    SittingCandidatePresenceState = "connected"
+	SittingCandidateReconnecting SittingCandidatePresenceState = "reconnecting"
+	SittingCandidateLeaseExpired SittingCandidatePresenceState = "lease_expired"
+	SittingCandidateSuspended    SittingCandidatePresenceState = "suspended"
+	SittingCandidateSubmitted    SittingCandidatePresenceState = "submitted"
+)
+
+type SittingCandidateStatusListOptions struct {
+	ExamID                 model.ExamID
+	SittingID              model.ExamSittingID
+	ExcludeCandidateUserID model.UserID
+	AfterCandidateUserID   model.UserID
+	ReallowAuthorized      bool
+	Limit                  int
+}
+
+type SittingCandidateIdentity struct {
+	UserID      model.UserID
+	Username    string
+	DisplayName string
+}
+
+type SittingCandidateStatusSubmission struct {
+	ID          model.SubmissionID
+	SubmittedAt time.Time
+	Provenance  model.ExamSubmissionProvenance
+}
+
+type SittingCandidateStatusAttempt struct {
+	ID         model.ExamAttemptID
+	State      model.ExamAttemptState
+	Revision   int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	Submission *SittingCandidateStatusSubmission
+}
+
+type SittingCandidatePresence struct {
+	State              SittingCandidatePresenceState
+	LastLeaseRenewedAt model.OptionalTime
+	LeaseExpiresAt     model.OptionalTime
+}
+
+type SittingCandidateSuspension struct {
+	ID               model.AttemptSuspensionID
+	CandidateReason  model.AttemptSuspensionCandidateReason
+	ReallowAvailable bool
+}
+
+type SittingCandidateStatusItem struct {
+	Candidate               SittingCandidateIdentity
+	CurrentClassMembership  bool
+	Attempt                 *SittingCandidateStatusAttempt
+	Presence                SittingCandidatePresence
+	Suspension              *SittingCandidateSuspension
+	IntegrityAttentionCount int64
+}
+
+type SittingCandidateStatusPage struct {
+	ServerTime      time.Time
 	ExamID          model.ExamID
 	SittingID       model.ExamSittingID
-	States          []model.ExamAttemptState
-	BeforeCreatedAt time.Time
-	BeforeAttemptID model.ExamAttemptID
-	Limit           int
+	SittingState    model.ExamSittingState
+	SittingRevision int64
+	Items           []SittingCandidateStatusItem
+}
+
+// ExamAttemptInvalidationTarget is the minimal post-commit projection for an
+// Attempt suspended by Session revocation.
+type ExamAttemptInvalidationTarget struct {
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	CandidateUserID model.UserID
 }
 
 // ExamAttemptStore owns admission's deep atomic boundary: authoritative
@@ -486,6 +859,7 @@ type ExamAttemptManagerListOptions struct {
 // every fresh connection performs the same current eligibility checks.
 type ExamAttemptStore interface {
 	Connect(context.Context, *ExamAttemptConnect, *CommandIdempotency) (*ExamAttemptConnectResult, error)
+	ListSessionRevocationInvalidationTargets(context.Context, model.UserID, []model.SessionID) ([]ExamAttemptInvalidationTarget, error)
 	// RenewParticipation locks and validates the exact Attempt, active
 	// Participation generation, owning candidate, Session-bound open Connection,
 	// and credential digest. Sequence equal to the current accepted sequence is
@@ -562,6 +936,13 @@ type ExamAttemptStore interface {
 	CloseConnection(context.Context, *ExamAttemptConnectionClose) (*ExamAttemptConnectionCloseResult, error)
 	Get(context.Context, model.ExamID, model.ExamAttemptID) (*ExamAttemptManagerSnapshot, error)
 	List(context.Context, ExamAttemptManagerListOptions) ([]ExamAttemptManagerSnapshot, error)
+	ListCandidateActivity(context.Context, CandidateExamActivityListOptions) (*CandidateExamActivityPage, error)
+	ListSittingCandidateStatuses(context.Context, SittingCandidateStatusListOptions) (*SittingCandidateStatusPage, error)
 	GetCandidatePresentation(context.Context, CandidateAttemptAccess) (*CandidateExamPresentation, error)
+	StartBrowserActivity(context.Context, *BrowserActivitySourceStart) (*model.BrowserActivityAcknowledgement, error)
+	AppendBrowserActivity(context.Context, *BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error)
+	ResolveCorrectionAcknowledgementTarget(context.Context, ExamAttemptCorrectionAcknowledgement) (*ExamAttemptCorrectionAcknowledgementTarget, error)
+	AcknowledgeCorrection(context.Context, *ExamAttemptCorrectionAcknowledgement, *CommandIdempotency) (*ExamAttemptCorrectionAcknowledgementResult, error)
+	ListBrowserActivity(context.Context, BrowserActivityListOptions) ([]BrowserActivityRecord, error)
 	ResolveCandidateResource(context.Context, CandidateAttemptAccess, model.ExamResourceID) (*CandidateResourceContent, error)
 }

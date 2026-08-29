@@ -163,6 +163,127 @@ func (s sqlExamSittingStore) List(ctx context.Context, options store.ExamSitting
 	return items, nil
 }
 
+func (s sqlExamSittingStore) ListInvalidationTargetsByClass(
+	ctx context.Context,
+	classID model.ClassID,
+	afterSittingID model.ExamSittingID,
+	limit int,
+) ([]store.ExamSittingInvalidationTarget, error) {
+	if !classID.IsValid() || limit < 1 || limit > 201 {
+		return nil, store.NewErrInvalidInput("exam_sitting", "class_invalidation_targets", nil)
+	}
+	query := `SELECT exam_id,id FROM exam_sittings WHERE class_id=?`
+	args := []any{classID.String()}
+	if afterSittingID.IsValid() {
+		query += ` AND id>?`
+		args = append(args, afterSittingID.String())
+	}
+	query += ` ORDER BY id LIMIT ?`
+	args = append(args, limit)
+	var rows []struct {
+		ExamID    string `db:"exam_id"`
+		SittingID string `db:"id"`
+	}
+	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list Class Exam Sitting invalidation targets: %w", err)
+	}
+	targets := make([]store.ExamSittingInvalidationTarget, 0, len(rows))
+	for _, row := range rows {
+		examID, err := model.ParseExamID(row.ExamID)
+		if err != nil {
+			return nil, invalidPersistedState("exam_sitting", "exam_id", err)
+		}
+		sittingID, err := model.ParseExamSittingID(row.SittingID)
+		if err != nil {
+			return nil, invalidPersistedState("exam_sitting", "id", err)
+		}
+		targets = append(targets, store.ExamSittingInvalidationTarget{ExamID: examID, SittingID: sittingID})
+	}
+	return targets, nil
+}
+
+func (s sqlExamSittingStore) ListInvalidationTargetsByExam(
+	ctx context.Context,
+	examID model.ExamID,
+	afterSittingID model.ExamSittingID,
+	limit int,
+) ([]store.ExamSittingInvalidationTarget, error) {
+	if !examID.IsValid() || limit < 1 || limit > 201 {
+		return nil, store.NewErrInvalidInput("exam_sitting", "exam_invalidation_targets", nil)
+	}
+	query := `SELECT exam_id,id FROM exam_sittings WHERE exam_id=?`
+	args := []any{examID.String()}
+	if afterSittingID.IsValid() {
+		query += ` AND id>?`
+		args = append(args, afterSittingID.String())
+	}
+	query += ` ORDER BY id LIMIT ?`
+	args = append(args, limit)
+	var rows []struct {
+		ExamID    string `db:"exam_id"`
+		SittingID string `db:"id"`
+	}
+	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list Exam Sitting invalidation targets: %w", err)
+	}
+	targets := make([]store.ExamSittingInvalidationTarget, 0, len(rows))
+	for _, row := range rows {
+		rowExamID, err := model.ParseExamID(row.ExamID)
+		if err != nil || rowExamID != examID {
+			return nil, invalidPersistedState("exam_sitting", "exam_id", err)
+		}
+		sittingID, err := model.ParseExamSittingID(row.SittingID)
+		if err != nil {
+			return nil, invalidPersistedState("exam_sitting", "id", err)
+		}
+		targets = append(targets, store.ExamSittingInvalidationTarget{ExamID: rowExamID, SittingID: sittingID})
+	}
+	return targets, nil
+}
+
+func (s sqlExamSittingStore) ListCandidateInvalidationTargetsBySitting(
+	ctx context.Context,
+	sittingID model.ExamSittingID,
+	afterUserID model.UserID,
+	limit int,
+) ([]model.UserID, error) {
+	if !sittingID.IsValid() || limit < 1 || limit > 201 {
+		return nil, store.NewErrInvalidInput("exam_sitting", "candidate_invalidation_targets", nil)
+	}
+	query := `
+		WITH candidates AS (
+			SELECT member.user_id
+			  FROM exam_sittings sitting
+			  JOIN class_members member ON member.class_id=sitting.class_id
+			 WHERE sitting.id=?
+			UNION
+			SELECT attempt.candidate_user_id
+			  FROM exam_attempts attempt
+			 WHERE attempt.exam_sitting_id=?
+		)
+		SELECT user_id FROM candidates`
+	args := []any{sittingID.String(), sittingID.String()}
+	if afterUserID.IsValid() {
+		query += ` WHERE user_id>?`
+		args = append(args, afterUserID.String())
+	}
+	query += ` ORDER BY user_id LIMIT ?`
+	args = append(args, limit)
+	var rows []string
+	if err := s.GetMaster().Select(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("list candidate Exam activity invalidation targets: %w", err)
+	}
+	targets := make([]model.UserID, 0, len(rows))
+	for _, row := range rows {
+		userID, err := model.ParseUserID(row)
+		if err != nil {
+			return nil, invalidPersistedState("exam_sitting", "candidate_user_id", err)
+		}
+		targets = append(targets, userID)
+	}
+	return targets, nil
+}
+
 func (s sqlExamSittingStore) ListLifecycleDue(ctx context.Context, options store.ExamSittingLifecycleDueOptions) ([]store.ExamSittingLifecycleDue, error) {
 	if options.Limit < 1 || options.Limit > 201 || (options.AfterDueAt.IsZero() != options.AfterSittingID.IsZero()) {
 		return nil, store.NewErrInvalidInput("exam_sitting", "lifecycle_due_options", nil)

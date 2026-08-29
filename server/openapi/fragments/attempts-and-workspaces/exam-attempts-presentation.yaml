@@ -21,8 +21,13 @@ paths:
         - exam.attempt.sitting_unavailable
         - exam.attempt.state_conflict
         - exam.attempt.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/CandidateAttemptCredential'
@@ -40,6 +45,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     CandidateExamPresentationOK:
@@ -92,21 +99,16 @@ components:
       required:
         - attempt_id
         - exam_sitting_id
-        - admission_revision_id
-        - current_revision_id
         - title
         - instructions_markdown
-        - focus_loss_collection_enabled
-        - capacity
+        - candidate_runtime_capabilities
+        - browser_policy
+        - live_corrections
         - resources
       properties:
         attempt_id:
           $ref: '#/components/schemas/ID'
         exam_sitting_id:
-          $ref: '#/components/schemas/ID'
-        admission_revision_id:
-          $ref: '#/components/schemas/ID'
-        current_revision_id:
           $ref: '#/components/schemas/ID'
         title:
           type: string
@@ -115,13 +117,239 @@ components:
         instructions_markdown:
           type: string
           description: Current Sitting Revision instructions as bounded authored Markdown.
-        focus_loss_collection_enabled:
-          type: boolean
-          description: Whether the trusted client should collect and transmit bounded Focus Loss signals for this Sitting.
-        capacity:
-          $ref: '#/components/schemas/ExamCapacityPolicy'
+        candidate_runtime_capabilities:
+          $ref: '#/components/schemas/CandidateRuntimeCapabilities'
+        browser_policy:
+          oneOf:
+            - $ref: '#/components/schemas/CandidateBrowserPolicy'
+            - type: "null"
+        live_corrections:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/CandidateLiveCorrection'
         resources:
           type: array
           maxItems: 100
           items:
             $ref: '#/components/schemas/CandidateExamResourceResponse'
+    CandidateBrowserPolicy:
+      type: object
+      additionalProperties: false
+      required: [schema_version, enabled, start_rule_id, rules, policy_revision_id, policy_digest]
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        enabled:
+          type: boolean
+          const: true
+        start_rule_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/BrowserPolicyRule'
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        policy_digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+    CandidateLiveCorrection:
+      type: object
+      additionalProperties: false
+      required: [revision_id, revision_number, effective_at, summary, changed_areas, acknowledgement_required, acknowledgement_state, acknowledged_at]
+      properties:
+        revision_id:
+          $ref: '#/components/schemas/ID'
+        revision_number:
+          type: integer
+          format: int64
+          minimum: 1
+        effective_at:
+          type: string
+          format: date-time
+        summary:
+          type: string
+          minLength: 1
+          maxLength: 500
+        changed_areas:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum: [browser_policy, instructions, resources]
+        acknowledgement_required:
+          type: boolean
+        acknowledgement_state:
+          type: string
+          enum: [not_required, pending, acknowledged]
+        acknowledged_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+    CandidateRuntimeCapabilities:
+      type: object
+      additionalProperties: false
+      required: [schema_version, server_time, interaction_state, attempt_configuration, focus_loss_collection_enabled, workspace_mutation_allowed, submission_allowed, terminal, browser, exam_revision, departure]
+      properties:
+        schema_version:
+          type: integer
+          enum: [1]
+        server_time:
+          type: string
+          format: date-time
+        interaction_state:
+          type: string
+          enum: [interactive, sitting_paused]
+        attempt_configuration:
+          $ref: '#/components/schemas/CandidateAttemptConfiguration'
+        focus_loss_collection_enabled:
+          type: boolean
+        workspace_mutation_allowed:
+          type: boolean
+        submission_allowed:
+          type: boolean
+        terminal:
+          $ref: '#/components/schemas/CandidateTerminalCapability'
+        browser:
+          $ref: '#/components/schemas/CandidateBrowserCapability'
+        exam_revision:
+          $ref: '#/components/schemas/CandidateExamRevisionCapability'
+        departure:
+          $ref: '#/components/schemas/CandidateDepartureCapability'
+    CandidateAttemptConfiguration:
+      type: object
+      additionalProperties: false
+      required: [schema_version, manifest_fingerprint, preferences, digest]
+      properties:
+        schema_version:
+          type: integer
+          enum: [1]
+        manifest_fingerprint:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+        preferences:
+          $ref: '#/components/schemas/AttemptConfigurationPreferences'
+        digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+    AttemptConfigurationPreferences:
+      type: object
+      additionalProperties: false
+      required: [theme_mode, high_contrast_mode, ui_zoom_percent, editor_font_size_px, editor_line_height_percent, reduced_motion_mode, screen_reader_mode, announcement_detail, cursor_style, cursor_blinking, candidate_command_bindings]
+      properties:
+        theme_mode:
+          type: string
+          enum: [follow_system, light, dark]
+        high_contrast_mode:
+          type: string
+          enum: [auto, on, off]
+        ui_zoom_percent:
+          type: integer
+          minimum: 80
+          maximum: 200
+        editor_font_size_px:
+          type: integer
+          minimum: 12
+          maximum: 32
+        editor_line_height_percent:
+          type: integer
+          minimum: 120
+          maximum: 200
+        reduced_motion_mode:
+          type: string
+          enum: [auto, on, off]
+        screen_reader_mode:
+          type: string
+          enum: [auto, on, off]
+        announcement_detail:
+          type: string
+          enum: [standard, verbose]
+        cursor_style:
+          type: string
+          enum: [line, block, underline]
+        cursor_blinking:
+          type: string
+          enum: [blink, solid]
+        candidate_command_bindings:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/AttemptCommandBinding'
+    AttemptCommandBinding:
+      type: object
+      additionalProperties: false
+      required: [command_id, keybinding_id]
+      properties:
+        command_id:
+          type: string
+        keybinding_id:
+          type: string
+    CandidateTerminalCapability:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [disabled, available, sitting_paused, acknowledgement_required, temporarily_unavailable]
+    CandidateBrowserCapability:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [disabled, available, sitting_paused, acknowledgement_required]
+        policy_revision_id:
+          $ref: '#/components/schemas/ID'
+        policy_digest:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+      oneOf:
+        - type: object
+          properties:
+            state:
+              type: string
+              enum: [disabled]
+        - type: object
+          required: [state, policy_revision_id, policy_digest]
+          properties:
+            state:
+              type: string
+              enum: [available, sitting_paused, acknowledgement_required]
+            policy_revision_id:
+              $ref: '#/components/schemas/ID'
+            policy_digest:
+              type: string
+              pattern: '^sha256:[0-9a-f]{64}$'
+    CandidateExamRevisionCapability:
+      type: object
+      additionalProperties: false
+      required: [admission_revision_id, current_revision_id, acknowledgement_required]
+      properties:
+        admission_revision_id:
+          $ref: '#/components/schemas/ID'
+        current_revision_id:
+          $ref: '#/components/schemas/ID'
+        acknowledgement_required:
+          type: boolean
+    CandidateDepartureCapability:
+      type: object
+      additionalProperties: false
+      required: [allowed, reason]
+      properties:
+        allowed:
+          type: boolean
+          enum: [false]
+        reason:
+          type: string
+          enum: [attempt_in_progress]

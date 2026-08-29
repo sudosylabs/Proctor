@@ -18,6 +18,13 @@ type ExamSittingSnapshot struct {
 	AcademicUnitID model.AcademicUnitID
 }
 
+// ExamSittingInvalidationTarget is the minimal selector needed to invalidate
+// manager Sitting boards after a Class- or Exam-scoped change.
+type ExamSittingInvalidationTarget struct {
+	ExamID    model.ExamID
+	SittingID model.ExamSittingID
+}
+
 // ExamSittingListOptions defines the bounded Exam-scoped catalog query.
 // ClassID and States are optional filters. OverlapStartAt and OverlapEndAt are
 // either both zero or one nonempty half-open interval matched against the
@@ -292,6 +299,20 @@ type ExamSittingStore interface {
 	// (ScheduledStartAt, SittingID) order. Limit accepts at most 201 so the
 	// application can request one bounded look-ahead row for a public page of 200.
 	List(context.Context, ExamSittingListOptions) ([]ExamSittingSnapshot, error)
+	// ListInvalidationTargetsByClass returns at most Limit targets ordered by
+	// SittingID. AfterSittingID is the exclusive keyset cursor and Limit is
+	// bounded to 1..201.
+	ListInvalidationTargetsByClass(context.Context, model.ClassID, model.ExamSittingID, int) ([]ExamSittingInvalidationTarget, error)
+	// ListInvalidationTargetsByExam returns at most Limit Sitting selectors
+	// ordered by SittingID. AfterSittingID is the exclusive keyset cursor and
+	// Limit is bounded to 1..201.
+	ListInvalidationTargetsByExam(context.Context, model.ExamID, model.ExamSittingID, int) ([]ExamSittingInvalidationTarget, error)
+	// ListCandidateInvalidationTargetsBySitting returns every User whose
+	// candidate-activity collection can contain the Sitting, including
+	// historical Class Members and candidates with an Attempt. Results are
+	// distinct and ordered by UserID; AfterUserID is the exclusive keyset
+	// cursor and Limit is bounded to 1..201.
+	ListCandidateInvalidationTargetsBySitting(context.Context, model.ExamSittingID, model.UserID, int) ([]model.UserID, error)
 	ListLifecycleDue(context.Context, ExamSittingLifecycleDueOptions) ([]ExamSittingLifecycleDue, error)
 	Schedule(context.Context, *ExamSittingSchedule, *CommandIdempotency) (*ExamSittingCommandResult, error)
 	UpdateSchedule(context.Context, *ExamSittingScheduleUpdate, *CommandIdempotency) (*ExamSittingCommandResult, error)

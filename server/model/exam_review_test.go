@@ -155,3 +155,46 @@ func TestIntegrityDiscrepancyValidatesBoundedLateFocusLossRecord(t *testing.T) {
 		t.Fatal("IntegrityDiscrepancy accepted an oversized claim")
 	}
 }
+
+func TestIntegrityDiscrepancyValidatesTerminalUncertaintyKinds(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	base := IntegrityDiscrepancySpecification{ID: NewIntegrityDiscrepancyID(), SubmissionID: NewSubmissionID(),
+		AttemptID: NewExamAttemptID(), ParticipationID: NewAttemptParticipationID(), Generation: 3,
+		SchemaVersion: 1, ReceivedAt: at}
+	finalSequence := int64(9)
+	tests := []IntegrityDiscrepancySpecification{
+		func() IntegrityDiscrepancySpecification {
+			value := base
+			value.Kind, value.GapReason, value.UnresolvedCount = IntegrityDiscrepancyFocusLossGap,
+				string(IntegrityDiscrepancyFocusLossSequenceGapAndSourceNotFinalized), 4
+			return value
+		}(),
+		func() IntegrityDiscrepancySpecification {
+			value := base
+			value.ID, value.Kind = NewIntegrityDiscrepancyID(), IntegrityDiscrepancyBrowserActivityGap
+			value.BrowserSourceSessionID, value.FinalSequence = BrowserSourceSessionID("018f47a0-6e53-4cc4-9d0b-97c9b6d98011"), &finalSequence
+			value.GapReason, value.UnresolvedCount = string(BrowserActivityGapDeliveryIncomplete), 2
+			return value
+		}(),
+		func() IntegrityDiscrepancySpecification {
+			value := base
+			value.ID, value.Kind = NewIntegrityDiscrepancyID(), IntegrityDiscrepancyCorrectionAcknowledgementMissing
+			value.CorrectionRevisionID, value.UnresolvedCount = NewExamRevisionID(), 1
+			return value
+		}(),
+	}
+	for _, specification := range tests {
+		discrepancy, err := NewIntegrityDiscrepancy(specification)
+		if err != nil || discrepancy.Validate() != nil {
+			t.Fatalf("NewIntegrityDiscrepancy(%q) = %#v, %v", specification.Kind, discrepancy, err)
+		}
+	}
+
+	invalid := tests[2]
+	invalid.UnresolvedCount = 2
+	if _, err := NewIntegrityDiscrepancy(invalid); err == nil {
+		t.Fatal("missing correction acknowledgement accepted an aggregate count")
+	}
+}

@@ -16,9 +16,14 @@ paths:
         - authorization.request.invalid
         - authorization.unavailable
         - mail.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -31,6 +36,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     MailMetricsOK:

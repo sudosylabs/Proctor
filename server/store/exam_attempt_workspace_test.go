@@ -15,7 +15,8 @@ func TestExamAttemptWorkspaceMutationContractUsesSelectiveFencesAndSafeResults(t
 	t.Parallel()
 	access := ExamAttemptWorkspaceMutationAccess{AttemptID: model.NewExamAttemptID(),
 		ParticipationID: model.NewAttemptParticipationID(), Generation: 2, CandidateUserID: model.NewUserID(),
-		SessionID: model.NewSessionID(), ConnectionID: model.NewAttemptConnectionID(),
+		SessionID: model.NewSessionID(), DesktopRegistrationID: model.NewDesktopRegistrationID(),
+		DPoPKeyThumbprint: strings.Repeat("A", 43), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	entryID := model.NewAttemptWorkspaceEntryID()
 	workspaceID := model.NewExamAttemptWorkspaceID()
@@ -39,7 +40,8 @@ func TestExamAttemptWorkspaceMutationContractUsesSelectiveFencesAndSafeResults(t
 func TestCandidateWorkspaceRecoveryCursorsNeverCarryPaths(t *testing.T) {
 	t.Parallel()
 	access := CandidateAttemptAccess{AttemptID: model.NewExamAttemptID(), CandidateUserID: model.NewUserID(),
-		SessionID: model.NewSessionID(), ConnectionID: model.NewAttemptConnectionID(),
+		SessionID: model.NewSessionID(), DesktopRegistrationID: model.NewDesktopRegistrationID(),
+		DPoPKeyThumbprint: strings.Repeat("A", 43), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	initial := CandidateWorkspaceListOptions{Access: access, ExpectedCursor: -1, Limit: model.AttemptWorkspaceJournalReadMaximum}
 	manifest := CandidateWorkspaceListOptions{Access: access, ExpectedCursor: 41,
@@ -60,6 +62,7 @@ func TestExamAttemptWorkspaceMutationResolvesSafeAuditAndEffectScope(t *testing.
 	t.Parallel()
 	access := ExamAttemptWorkspaceMutationAccess{AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(),
 		Generation: 2, CandidateUserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		DesktopRegistrationID: model.NewDesktopRegistrationID(), DPoPKeyThumbprint: strings.Repeat("A", 43),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	target := ExamAttemptWorkspaceMutationTarget{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
 		ClassID: model.NewClassID(), CandidateUserID: access.CandidateUserID, WorkspaceID: model.NewExamAttemptWorkspaceID()}
@@ -81,6 +84,7 @@ func TestExamAttemptWorkspaceObjectContractSeparatesStagingFromCleanup(t *testin
 	t.Parallel()
 	access := ExamAttemptWorkspaceMutationAccess{AttemptID: model.NewExamAttemptID(), ParticipationID: model.NewAttemptParticipationID(),
 		Generation: 3, CandidateUserID: model.NewUserID(), SessionID: model.NewSessionID(),
+		DesktopRegistrationID: model.NewDesktopRegistrationID(), DPoPKeyThumbprint: strings.Repeat("A", 43),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken())}
 	objectID := model.NewAttemptWorkspaceObjectID()
 	reservation := ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: objectID}

@@ -4,6 +4,8 @@
 package model
 
 import (
+	"crypto/elliptic"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -51,20 +53,26 @@ func TestBrowserAuthenticationTransactionPinsDesktopAuthorizationRequest(t *test
 	t.Parallel()
 
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	publicJWK := testDesktopAuthorizationPublicJWK()
+	thumbprint, _ := publicJWK.Thumbprint()
 	transaction := &BrowserAuthenticationTransaction{
-		Purpose:                      BrowserAuthenticationPurposeDesktopAuthorization,
-		InstitutionID:                NewInstitutionID(),
-		Issuer:                       "https://proctor.example.edu",
-		HandleHash:                   HashToken(NewCredentialToken()),
-		BrowserProofHash:             HashToken(NewCredentialToken()),
-		StateHash:                    HashToken(NewCredentialToken()),
-		CallbackURL:                  "http://127.0.0.1:49152/" + NewCredentialToken(),
-		CodeChallenge:                NewCredentialToken(),
-		ExpectedAuthenticationMethod: "password",
-		ClientType:                   SessionClientDesktop,
-		DeviceID:                     "desktop-1",
-		DeviceName:                   "Exam laptop",
-		ExpiresAt:                    at.Add(5 * time.Minute),
+		Purpose:               BrowserAuthenticationPurposeDesktopAuthorization,
+		InstitutionID:         NewInstitutionID(),
+		Issuer:                "https://proctor.example.edu",
+		HandleHash:            HashToken(NewCredentialToken()),
+		BrowserProofHash:      HashToken(NewCredentialToken()),
+		StateHash:             HashToken(NewCredentialToken()),
+		CallbackURL:           "http://127.0.0.1:49152/" + NewCredentialToken(),
+		CodeChallenge:         NewCredentialToken(),
+		ClientType:            SessionClientDesktop,
+		DeviceID:              "desktop-1",
+		DeviceName:            "Exam laptop",
+		ProposedPublicJWK:     publicJWK,
+		ProposedKeyThumbprint: thumbprint,
+		DesktopRelease:        "0.1.0", DesktopBuildID: "test-build",
+		DesktopPlatform: DesktopPlatformDarwin, DesktopArchitecture: DesktopArchitectureARM64,
+		DesktopRealtimeProtocol: 1,
+		ExpiresAt:               at.Add(5 * time.Minute),
 	}
 	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
 	if err := transaction.Validate(); err != nil {
@@ -120,6 +128,14 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 
 	at := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	transaction := pendingDesktopAuthorizationTransaction(at)
+	prepareBoundTransactionFixture(transaction, at)
+	if err := transaction.Validate(); err != nil {
+		t.Fatalf("bound transaction: %v", err)
+	}
+	prepareAuthenticatedTransactionFixture(transaction, at, AuthenticationMultiFactor)
+	if err := transaction.Validate(); err != nil {
+		t.Fatalf("authenticated transaction: %v", err)
+	}
 	prepareCodeIssuedTransactionFixture(transaction, at, at.Add(30*time.Second), AuthenticationMultiFactor)
 	if err := transaction.Validate(); err != nil {
 		t.Fatalf("issued transaction: %v", err)
@@ -144,6 +160,16 @@ func TestBrowserAuthenticationTransactionTerminalStates(t *testing.T) {
 	if cancelled.HandleHash != "" || cancelled.BrowserProofHash != "" ||
 		cancelled.StateHash != "" || !cancelled.CancelledAt.Valid {
 		t.Fatalf("cancelled transaction retained secrets: %#v", cancelled)
+	}
+
+	denied := pendingDesktopAuthorizationTransaction(at)
+	prepareDeniedTransactionFixture(denied, at)
+	if err := denied.Validate(); err != nil {
+		t.Fatalf("denied transaction: %v", err)
+	}
+	if denied.HandleHash != "" || denied.BrowserProofHash != "" || denied.StateHash != "" ||
+		!denied.DeniedAt.Valid || denied.DenialReason != DesktopAuthorizationDenialActiveAttempt {
+		t.Fatalf("denied transaction retained secrets or lost reason: %#v", denied)
 	}
 }
 
@@ -206,31 +232,52 @@ func TestBrowserAuthenticationTransactionSupportsInvitationAcceptance(t *testing
 }
 
 func pendingDesktopAuthorizationTransaction(at time.Time) *BrowserAuthenticationTransaction {
+	publicJWK := testDesktopAuthorizationPublicJWK()
+	thumbprint, _ := publicJWK.Thumbprint()
 	transaction := &BrowserAuthenticationTransaction{
 		Purpose: BrowserAuthenticationPurposeDesktopAuthorization, InstitutionID: NewInstitutionID(),
 		Issuer: "https://proctor.example.edu", HandleHash: HashToken(NewCredentialToken()),
 		BrowserProofHash: HashToken(NewCredentialToken()), StateHash: HashToken(NewCredentialToken()),
 		CallbackURL: "http://127.0.0.1:49152/" + NewCredentialToken(), CodeChallenge: NewCredentialToken(),
-		ExpectedAuthenticationMethod: "oidc", ExpectedProviderID: "campus",
-		ClientType: SessionClientDesktop, ExpiresAt: at.Add(5 * time.Minute),
+		ClientType: SessionClientDesktop, ProposedPublicJWK: publicJWK, ProposedKeyThumbprint: thumbprint,
+		DesktopRelease: "0.1.0", DesktopBuildID: "test-build", DesktopPlatform: DesktopPlatformDarwin,
+		DesktopArchitecture: DesktopArchitectureARM64, DesktopRealtimeProtocol: 1,
+		ExpiresAt: at.Add(5 * time.Minute),
 	}
 	transaction.PrepareCreate(NewBrowserAuthenticationTransactionID(), at)
 	return transaction
 }
 
-func prepareCodeIssuedTransactionFixture(transaction *BrowserAuthenticationTransaction, at, codeExpiresAt time.Time, strength AuthenticationStrength) {
+func prepareBoundTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
 	transaction.UpdatedAt = at
-	transaction.State = BrowserAuthenticationStateCodeIssued
-	transaction.HandleHash, transaction.BrowserProofHash = "", ""
+	transaction.State = BrowserAuthenticationStateBound
+	transaction.HandleHash = ""
+	transaction.BrowserProofHash = HashToken(NewCredentialToken())
+}
+
+func prepareAuthenticatedTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time, strength AuthenticationStrength) {
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateAuthenticated
+	transaction.HandleHash = ""
 	transaction.UserID = NewUserID()
-	transaction.AuthenticationMethod = transaction.ExpectedAuthenticationMethod
-	transaction.AuthenticationProviderID = transaction.ExpectedProviderID
+	transaction.AuthenticationMethod = "oidc"
+	transaction.AuthenticationProviderID = "campus"
 	transaction.ExternalIdentityID = NewExternalIdentityID()
 	transaction.AuthenticationStrength = strength
 	transaction.AuthenticatedAt = OptionalTimeFrom(at.Add(-time.Minute))
 	if strength == AuthenticationMultiFactor {
 		transaction.MFACompletedAt = OptionalTimeFrom(at)
 	}
+}
+
+func prepareCodeIssuedTransactionFixture(transaction *BrowserAuthenticationTransaction, at, codeExpiresAt time.Time, strength AuthenticationStrength) {
+	if transaction.State != BrowserAuthenticationStateAuthenticated {
+		prepareBoundTransactionFixture(transaction, at)
+		prepareAuthenticatedTransactionFixture(transaction, at, strength)
+	}
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateCodeIssued
+	transaction.HandleHash, transaction.BrowserProofHash = "", ""
 	transaction.CodeHash = HashToken(NewCredentialToken())
 	transaction.CodeExpiresAt = OptionalTimeFrom(codeExpiresAt)
 }
@@ -240,6 +287,7 @@ func prepareExchangedTransactionFixture(transaction *BrowserAuthenticationTransa
 	transaction.State = BrowserAuthenticationStateExchanged
 	transaction.StateHash, transaction.CallbackURL, transaction.CodeChallenge, transaction.CodeHash = "", "", "", ""
 	transaction.CodeExpiresAt = OptionalTime{}
+	clearDesktopAuthorizationKeyFixture(transaction)
 	transaction.ExchangedAt = OptionalTimeFrom(at)
 }
 
@@ -248,7 +296,37 @@ func prepareCancelledTransactionFixture(transaction *BrowserAuthenticationTransa
 	transaction.State = BrowserAuthenticationStateCancelled
 	transaction.HandleHash, transaction.BrowserProofHash, transaction.StateHash = "", "", ""
 	transaction.CallbackURL, transaction.CodeChallenge = "", ""
+	clearDesktopAuthorizationKeyFixture(transaction)
 	transaction.CancelledAt = OptionalTimeFrom(at)
+}
+
+func prepareDeniedTransactionFixture(transaction *BrowserAuthenticationTransaction, at time.Time) {
+	transaction.UpdatedAt = at
+	transaction.State = BrowserAuthenticationStateDenied
+	transaction.HandleHash, transaction.BrowserProofHash, transaction.StateHash = "", "", ""
+	transaction.CallbackURL, transaction.CodeChallenge = "", ""
+	clearDesktopAuthorizationKeyFixture(transaction)
+	transaction.DeniedAt = OptionalTimeFrom(at)
+	transaction.DenialReason = DesktopAuthorizationDenialActiveAttempt
+}
+
+func testDesktopAuthorizationPublicJWK() DesktopPublicJWK {
+	curve := elliptic.P256().Params()
+	return DesktopPublicJWK{
+		Kty: "EC", Crv: "P-256",
+		X: base64.RawURLEncoding.EncodeToString(curve.Gx.FillBytes(make([]byte, 32))),
+		Y: base64.RawURLEncoding.EncodeToString(curve.Gy.FillBytes(make([]byte, 32))),
+	}
+}
+
+func clearDesktopAuthorizationKeyFixture(transaction *BrowserAuthenticationTransaction) {
+	transaction.ProposedPublicJWK = DesktopPublicJWK{}
+	transaction.ProposedKeyThumbprint = ""
+	transaction.DesktopRelease = ""
+	transaction.DesktopBuildID = ""
+	transaction.DesktopPlatform = ""
+	transaction.DesktopArchitecture = ""
+	transaction.DesktopRealtimeProtocol = 0
 }
 
 func prepareExpiredTransactionFixture(transaction *BrowserAuthenticationTransaction) {
@@ -262,5 +340,6 @@ func prepareExpiredTransactionFixture(transaction *BrowserAuthenticationTransact
 	transaction.InvitationClaimHash = ""
 	transaction.CallbackURL, transaction.CodeChallenge, transaction.CodeHash = "", "", ""
 	transaction.CodeExpiresAt = OptionalTime{}
+	clearDesktopAuthorizationKeyFixture(transaction)
 	transaction.ExpiredAt = OptionalTimeFrom(deadline)
 }

@@ -4,6 +4,7 @@
 package sqlstore
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -18,6 +19,10 @@ func TestSessionRowConversion(t *testing.T) {
 		ID: model.NewSessionID(), CreatedAt: now, UpdatedAt: now.Add(time.Millisecond),
 		ArchivedAt: model.OptionalTimeFrom(now.Add(2 * time.Millisecond)),
 		UserID:     model.NewUserID(), ClientType: model.SessionClientDesktop,
+		DesktopRegistrationID: model.NewDesktopRegistrationID(),
+		DPoPKeyThumbprint:     base64.RawURLEncoding.EncodeToString(make([]byte, 32)), DesktopRelease: "0.1.0",
+		DesktopBuildID: "test-build", DesktopPlatform: model.DesktopPlatformDarwin,
+		DesktopArchitecture: model.DesktopArchitectureARM64, DesktopRealtimeProtocol: 1,
 		DeviceID: "device", DeviceName: "Device", AuthenticationMethod: "oidc", AuthenticationProviderID: "0-campus.oidc",
 		ExternalIdentityID:     model.NewExternalIdentityID(),
 		AuthenticationStrength: model.AuthenticationSingleFactor,

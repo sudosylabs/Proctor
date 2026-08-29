@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +27,12 @@ type ExamAttemptSQLProbe struct {
 	AssertFocusLossSchema        func(*testing.T, context.Context)
 }
 
+type DesktopCompatibilityPolicySerializationProbe func(
+	*testing.T,
+	context.Context,
+	func() error,
+) error
+
 // FocusLossPersistenceProbe exposes bounded persistence totals that cannot be
 // observed through the candidate seam. It is used only by SQL conformance to
 // prove the evidence cap, overflow summary, bucket consumption, and diagnostic
@@ -36,18 +43,52 @@ type FocusLossPersistenceProbe struct {
 	DiagnosticCount          int64
 }
 
+func prepareExamAttemptConnect(t *testing.T, ctx context.Context, ss store.Store, input *store.ExamAttemptConnect) {
+	t.Helper()
+	if input == nil {
+		t.Fatal("Exam Attempt connect input is required")
+	}
+	session, err := ss.Session().Get(ctx, input.SessionID.String())
+	requireNoError(t, err)
+	settings, err := ss.UserSettings().Get(ctx, input.CandidateUserID)
+	requireNoError(t, err)
+	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
+	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest, settings.Revision,
+		"sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
+			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
+			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
+			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
+			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
+			CandidateCommandBindings: []model.AttemptCommandBinding{},
+		})
+	requireNoError(t, err)
+	input.SupportedConfigurationManifests = []string{manifest}
+	input.InitialConfiguration = &configuration
+	input.DesktopBuild = model.DesktopBuildTuple{DesktopRelease: session.DesktopRelease, DesktopBuildID: session.DesktopBuildID,
+		Platform: session.DesktopPlatform, Architecture: session.DesktopArchitecture, RealtimeProtocol: session.DesktopRealtimeProtocol,
+		AttemptConfigurationManifestFingerprint: manifest,
+		DesktopSettingsRegistryFingerprint:      configuration.SourceDesktopRegistryFingerprint,
+		CapabilityMatrixIdentity:                "storetest-matrix"}
+	policy, err := ss.DesktopCompatibilityPolicy().Get(ctx)
+	requireNoError(t, err)
+	input.DesktopCompatibilityPolicyRevision = policy.Revision
+}
+
 func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQLProbe) {
 	ctx := context.Background()
 	fixture := newExamAttemptFixture(t, ctx, ss)
+	alternateSession := saveRegisteredDesktopSession(t, ctx, ss, fixture.candidate.ID, fixture.institutionID)
 	ineligible := saveUser(t, ctx, ss)
-	ineligibleSession, _, _ := saveSession(t, ctx, ss, ineligible.ID.String(), 10)
+	ineligibleSession := saveRegisteredDesktopSession(t, ctx, ss, ineligible.ID, fixture.institutionID)
 	ineligibleFixture := fixture
 	ineligibleFixture.candidate, ineligibleFixture.session = ineligible, ineligibleSession
 	ineligibleInput := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: ineligible.ID,
-		SessionID: ineligibleSession.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		SessionID: ineligibleSession.ID, DesktopRegistrationID: ineligibleSession.DesktopRegistrationID,
+		DPoPKeyThumbprint: ineligibleSession.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
 		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, ineligibleFixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, ineligibleInput)
 	if _, err := ss.ExamAttempt().Connect(ctx, ineligibleInput,
 		examCommand(ineligible.ID, store.ExamAttemptConnectOperation, "attempt-ineligible", "attempt-ineligible")); !store.IsNotFound(err) {
 		t.Fatalf("Connect(without current membership) error = %v", err)
@@ -55,12 +96,50 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if _, err := ss.ExamAttempt().Get(ctx, fixture.examID, ineligibleInput.AttemptID); !store.IsNotFound(err) {
 		t.Fatalf("Get(ineligible proposed Attempt) error = %v", err)
 	}
+	configurationCandidate, configurationSession, configurationFixture := fixture.candidate, fixture.session, fixture
+	configurationInput := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: configurationCandidate.ID,
+		SessionID: configurationSession.ID, DesktopRegistrationID: configurationSession.DesktopRegistrationID,
+		DPoPKeyThumbprint: configurationSession.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, configurationFixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, configurationInput)
+	configurationInput.InitialConfiguration = nil
+	_, err := ss.ExamAttempt().Connect(ctx, configurationInput,
+		examCommand(configurationCandidate.ID, store.ExamAttemptConnectOperation, "attempt-config-missing", "attempt-config-missing"))
+	assertExamAttemptConflict(t, err, "attempt_configuration_required")
+	if _, err = ss.ExamAttempt().Get(ctx, fixture.examID, configurationInput.AttemptID); !store.IsNotFound(err) {
+		t.Fatalf("missing configuration created partial Attempt: %v", err)
+	}
+	prepareExamAttemptConnect(t, ctx, ss, configurationInput)
+	stale := configurationInput.InitialConfiguration.Clone()
+	stale.SourceUserSettingsRevision = model.NewUserSettingsRevision()
+	stale, err = model.NewAttemptConfiguration(stale.SchemaVersion, stale.ManifestFingerprint,
+		stale.SourceUserSettingsRevision, stale.SourceDesktopRegistryFingerprint, stale.Preferences)
+	requireNoError(t, err)
+	configurationInput.InitialConfiguration = &stale
+	configurationInput.AttemptID = model.NewExamAttemptID()
+	configurationInput.AuditEventID = saveExamAttemptAudit(t, ctx, ss, configurationFixture).ID.String()
+	_, err = ss.ExamAttempt().Connect(ctx, configurationInput,
+		examCommand(configurationCandidate.ID, store.ExamAttemptConnectOperation, "attempt-config-stale", "attempt-config-stale"))
+	assertExamAttemptConflict(t, err, "attempt_configuration_stale")
+	if _, err = ss.ExamAttempt().Get(ctx, fixture.examID, configurationInput.AttemptID); !store.IsNotFound(err) {
+		t.Fatalf("stale configuration created partial Attempt: %v", err)
+	}
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	input := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
-		SessionID: fixture.session.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash}
 	input.AuditEventID, input.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	stalePolicy := *input
+	stalePolicy.DesktopCompatibilityPolicyRevision++
+	stalePolicy.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	_, err = ss.ExamAttempt().Connect(ctx, &stalePolicy,
+		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-stale-desktop-policy", "attempt-stale-desktop-policy"))
+	assertExamAttemptConflict(t, err, "desktop_compatibility_policy_revision")
 	command := examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-connect", "attempt-connect")
 
 	connected, err := ss.ExamAttempt().Connect(ctx, input, command)
@@ -88,11 +167,15 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	testExamAttemptParticipationRenewal(t, ctx, ss, fixture, connected, credentialHash)
 
 	access := store.CandidateAttemptAccess{AttemptID: input.AttemptID, CandidateUserID: fixture.candidate.ID,
-		SessionID: fixture.session.ID, ConnectionID: input.ConnectionID, ContinuityCredentialHash: credentialHash}
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, ConnectionID: input.ConnectionID, ContinuityCredentialHash: credentialHash}
 	presentation, err := ss.ExamAttempt().GetCandidatePresentation(ctx, access)
 	requireNoError(t, err)
-	if presentation.AttemptID != input.AttemptID || presentation.AdmissionRevisionID != fixture.revisionID ||
-		presentation.CurrentRevisionID != fixture.revisionID || !presentation.FocusLossCollectionEnabled {
+	if presentation.AttemptID != input.AttemptID ||
+		presentation.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != fixture.revisionID ||
+		presentation.RuntimeCapabilities.ExamRevision.CurrentRevisionID != fixture.revisionID ||
+		!presentation.RuntimeCapabilities.FocusLossCollectionEnabled || connected.Configuration.Digest == "" ||
+		presentation.RuntimeCapabilities.AttemptConfiguration.Digest != connected.Configuration.Digest {
 		t.Fatalf("GetCandidatePresentation() = %#v", presentation)
 	}
 	pausedFocusInput := testExamAttemptFocusLoss(t, ctx, ss, fixture, connected, credentialHash, probes...)
@@ -166,13 +249,16 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 		convergedOpen.Participation.ID != connected.Participation.ID {
 		t.Fatalf("Connect(with matching open Connection) = %#v", convergedOpen)
 	}
-	alternateSession, _, _ := saveSession(t, ctx, ss, fixture.candidate.ID.String(), 10)
 	alternateSessionInput := openConnectionInput
 	alternateSessionInput.SessionID = alternateSession.ID
+	alternateSessionInput.DesktopRegistrationID = alternateSession.DesktopRegistrationID
+	alternateSessionInput.DPoPKeyThumbprint = alternateSession.DPoPKeyThumbprint
 	alternateSessionInput.AuditEventID, alternateSessionInput.AuditAt = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), model.GetMillis()
 	_, err = ss.ExamAttempt().Connect(ctx, &alternateSessionInput,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "attempt-open-other-session", "attempt-open-other-session"))
-	assertExamAttemptConflict(t, err, "attempt_connection_open")
+	if !store.IsNotFound(err) {
+		t.Fatalf("Connect(from Session revoked at active-entry) error = %v", err)
+	}
 	wrongSession := access
 	wrongSession.SessionID = model.NewSessionID()
 	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, wrongSession); !store.IsNotFound(err) {
@@ -184,10 +270,37 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	if manager.Attempt.ID != input.AttemptID || manager.LatestParticipation == nil || manager.CurrentConnection == nil {
 		t.Fatalf("Get() = %#v", manager)
 	}
-	listed, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: fixture.examID, SittingID: fixture.sitting.ID, Limit: 201})
+	listed, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
+		ExcludeCandidateUserID: fixture.manager.ID, Limit: 201})
 	requireNoError(t, err)
 	if len(listed) != 1 || listed[0].Attempt.ID != input.AttemptID {
 		t.Fatalf("List() = %#v", listed)
+	}
+	activity, err := ss.ExamAttempt().ListCandidateActivity(ctx, store.CandidateExamActivityListOptions{
+		CandidateUserID: fixture.candidate.ID, DesktopSessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
+		Limit: 50,
+	})
+	requireNoError(t, err)
+	if activity == nil || activity.ServerTime.IsZero() || len(activity.Items) != 1 ||
+		activity.Items[0].SittingID != fixture.sitting.ID || activity.Items[0].ActivityState != store.CandidateExamActivityInProgress ||
+		activity.Items[0].AccessState != store.CandidateExamAccessResumable || activity.Items[0].Attempt == nil ||
+		activity.Items[0].Attempt.ID != input.AttemptID || len(activity.Items[0].AllowedActions) != 1 ||
+		activity.Items[0].AllowedActions[0] != store.CandidateExamActionResume {
+		t.Fatalf("ListCandidateActivity() = %#v", activity)
+	}
+	statuses, err := ss.ExamAttempt().ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
+		ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID,
+		ReallowAuthorized: true, Limit: 50,
+	})
+	requireNoError(t, err)
+	if statuses == nil || statuses.ServerTime.IsZero() || statuses.ExamID != fixture.examID ||
+		statuses.SittingID != fixture.sitting.ID || statuses.SittingState != model.ExamSittingOpen ||
+		len(statuses.Items) != 1 || statuses.Items[0].Candidate.UserID != fixture.candidate.ID ||
+		statuses.Items[0].Attempt == nil || statuses.Items[0].Attempt.ID != input.AttemptID ||
+		statuses.Items[0].Presence.State != store.SittingCandidateConnected ||
+		!statuses.Items[0].Presence.LastLeaseRenewedAt.Valid || !statuses.Items[0].Presence.LeaseExpiresAt.Valid {
+		t.Fatalf("ListSittingCandidateStatuses() = %#v", statuses)
 	}
 	testConcurrentExamAttemptAdmission(t, ctx, ss, fixture)
 
@@ -343,6 +456,142 @@ func TestExamAttemptStore(t *testing.T, ss store.Store, probes ...ExamAttemptSQL
 	}
 }
 
+func TestExamAttemptCompatibilityPolicySerialization(
+	t *testing.T,
+	ss store.Store,
+	serialize DesktopCompatibilityPolicySerializationProbe,
+) {
+	t.Helper()
+	if serialize == nil {
+		t.Fatal("Desktop Compatibility Policy serialization probe is required")
+	}
+	ctx := context.Background()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	input := &store.ExamAttemptConnect{
+		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+	}
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	command := examCommand(
+		fixture.candidate.ID,
+		store.ExamAttemptConnectOperation,
+		"attempt-policy-serialization",
+		"attempt-policy-serialization",
+	)
+	var connected *store.ExamAttemptConnectResult
+	err := serialize(t, ctx, func() error {
+		var connectErr error
+		connected, connectErr = ss.ExamAttempt().Connect(ctx, input, command)
+		return connectErr
+	})
+	requireNoError(t, err)
+	if connected == nil || connected.Attempt == nil || connected.Attempt.ID != input.AttemptID {
+		t.Fatalf("serialized Connect() = %#v", connected)
+	}
+	policy, err := ss.DesktopCompatibilityPolicy().Get(ctx)
+	requireNoError(t, err)
+	if policy.Revision != input.DesktopCompatibilityPolicyRevision+1 {
+		t.Fatalf("serialized policy revision = %d, want %d", policy.Revision, input.DesktopCompatibilityPolicyRevision+1)
+	}
+}
+
+// TestSessionRevocationAttemptFence verifies the database-owned security
+// boundary shared by every Session revocation path.
+func TestSessionRevocationAttemptFence(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	credentialHash := model.HashToken(model.NewCredentialToken())
+	input := &store.ExamAttemptConnect{
+		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+	}
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	connected, err := ss.ExamAttempt().Connect(ctx, input,
+		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "session-fence-connect", "session-fence-connect"))
+	requireNoError(t, err)
+	if _, err = ss.Session().Revoke(ctx, fixture.session.ID.String(), fixture.candidate.ID.String(),
+		model.GetMillis(), model.SessionRevocationUserLogout); err != nil {
+		t.Fatal(err)
+	}
+	statuses, err := ss.ExamAttempt().ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
+		ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID,
+		ReallowAuthorized: true, Limit: 50,
+	})
+	requireNoError(t, err)
+	if len(statuses.Items) != 1 || statuses.Items[0].Attempt == nil ||
+		statuses.Items[0].Attempt.State != model.ExamAttemptSuspended || statuses.Items[0].Suspension == nil ||
+		statuses.Items[0].Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonSecureContinuityLost ||
+		!statuses.Items[0].Suspension.ReallowAvailable || statuses.Items[0].Presence.State != store.SittingCandidateSuspended {
+		t.Fatalf("Session revocation status = %#v", statuses)
+	}
+	reallowAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
+	reallowed, err := ss.ExamAttempt().ReallowAttempt(ctx, &store.ExamAttemptReallow{
+		ExamID: fixture.examID, SittingID: fixture.sitting.ID, AttemptID: connected.Attempt.ID,
+		SuspensionID: statuses.Items[0].Suspension.ID, ActorUserID: fixture.manager.ID,
+		ExpectedAttemptRevision: statuses.Items[0].Attempt.Revision,
+		PrivateReason:           "verified Session revocation recovery", ChangedAt: model.NowUTC(),
+		AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis(),
+	}, examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "session-fence-reallow", "session-fence-reallow"))
+	requireNoError(t, err)
+	if reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Suspension.State != model.AttemptSuspensionClosed {
+		t.Fatalf("Session revocation reallow = %#v", reallowed)
+	}
+}
+
+// TestSessionExpiryAttemptFence verifies that authoritative idle/absolute
+// expiry enforcement takes the same atomic Attempt fence as explicit Session
+// revocation.
+func TestSessionExpiryAttemptFence(t *testing.T, ss store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	fixture := newExamAttemptFixture(t, ctx, ss)
+	credentialHash := model.HashToken(model.NewCredentialToken())
+	input := &store.ExamAttemptConnect{
+		SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(),
+		WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
+		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis(),
+	}
+	prepareExamAttemptConnect(t, ctx, ss, input)
+	connected, err := ss.ExamAttempt().Connect(ctx, input,
+		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "session-expiry-fence-connect", "session-expiry-fence-connect"))
+	requireNoError(t, err)
+	expired, err := ss.Session().EnforceExpiry(
+		ctx,
+		fixture.session.ID.String(),
+		fixture.candidate.ID.String(),
+		model.MillisFromTime(fixture.session.IdleExpiresAt.Add(time.Second)),
+	)
+	requireNoError(t, err)
+	if expired == nil || !expired.Expired || expired.Session == nil ||
+		expired.Session.RevocationReason != model.SessionRevocationExpired {
+		t.Fatalf("EnforceExpiry() = %#v", expired)
+	}
+	statuses, err := ss.ExamAttempt().ListSittingCandidateStatuses(ctx, store.SittingCandidateStatusListOptions{
+		ExamID: fixture.examID, SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID,
+		ReallowAuthorized: true, Limit: 50,
+	})
+	requireNoError(t, err)
+	if len(statuses.Items) != 1 || statuses.Items[0].Attempt == nil ||
+		statuses.Items[0].Attempt.ID != connected.Attempt.ID ||
+		statuses.Items[0].Attempt.State != model.ExamAttemptSuspended || statuses.Items[0].Suspension == nil ||
+		statuses.Items[0].Suspension.CandidateReason != model.AttemptSuspensionCandidateReasonSecureContinuityLost ||
+		statuses.Items[0].Presence.State != store.SittingCandidateSuspended {
+		t.Fatalf("Session expiry status = %#v", statuses)
+	}
+}
+
 func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture, probe ExamAttemptSQLProbe) *store.ExamAttemptParticipationExpiryResult {
 	t.Helper()
 	candidate := saveUser(t, ctx, ss)
@@ -352,20 +601,23 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID,
 		StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
-	session, _, _ := saveSession(t, ctx, ss, candidate.ID.String(), 10)
+	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, fixture.institutionID)
 	expiryFixture := fixture
 	expiryFixture.candidate, expiryFixture.session = candidate, session
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-expiry-connect", "attempt-expiry-connect"))
 	requireNoError(t, err)
 	if probe.FenceRenewalPastDeadline != nil {
 		renewal := &store.ExamAttemptParticipationRenewal{AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID,
 			ConnectionID: connected.Connection.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+			DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 			Generation: connected.Participation.Generation, Sequence: 1, ContinuityCredentialHash: credentialHash}
 		renewErr := probe.FenceRenewalPastDeadline(t, ctx, connected.Participation.ID, func() error {
 			_, contenderErr := ss.ExamAttempt().RenewParticipation(ctx, renewal)
@@ -470,7 +722,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		t.Fatalf("Get(active Suspension) = %#v", managerSnapshot)
 	}
 	managerList, err := ss.ExamAttempt().List(ctx, store.ExamAttemptManagerListOptions{ExamID: fixture.examID,
-		SittingID: fixture.sitting.ID, Limit: 201})
+		SittingID: fixture.sitting.ID, ExcludeCandidateUserID: fixture.manager.ID, Limit: 201})
 	requireNoError(t, err)
 	foundActiveSuspension := false
 	for _, snapshot := range managerList {
@@ -500,6 +752,13 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		AttemptID: expired.Attempt.ID, SuspensionID: expired.Suspension.ID, ActorUserID: fixture.manager.ID,
 		ExpectedAttemptRevision: expired.Attempt.Revision, PrivateReason: "verified connectivity recovery",
 		ChangedAt: model.NowUTC(), AuditEventID: reallowAudit.ID.String(), AuditAt: model.GetMillis()}
+	selfReallow := *reallowInput
+	selfReallow.ActorUserID = expired.CandidateUserID
+	selfReallow.ManagerOverride = true
+	if selfResult, selfErr := ss.ExamAttempt().ReallowAttempt(ctx, &selfReallow,
+		examCommand(expired.CandidateUserID, store.ExamAttemptReallowOperation, "attempt-reallow-self", "attempt-reallow-self")); selfResult != nil || !store.IsNotFound(selfErr) {
+		t.Fatalf("ReallowAttempt(self) = %#v, %v; want concealed not found", selfResult, selfErr)
+	}
 	reallowCommand := examCommand(fixture.manager.ID, store.ExamAttemptReallowOperation, "attempt-reallow", "attempt-reallow")
 	competingAudit := saveExamAttemptReallowAudit(t, ctx, ss, fixture)
 	competingInput := *reallowInput
@@ -545,7 +804,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		reallowAudit, reallowInput, reallowCommand = competingAudit, &competingInput, competingCommand
 	}
 	if reallowed == nil || reallowed.Replayed || reallowed.Attempt == nil || reallowed.Suspension == nil ||
-		reallowed.Attempt.State != model.ExamAttemptActive || reallowed.Attempt.Revision != expired.Attempt.Revision+1 ||
+		reallowed.Attempt.State != model.ExamAttemptReady || reallowed.Attempt.Revision != expired.Attempt.Revision+1 ||
 		reallowed.Suspension.State != model.AttemptSuspensionClosed || !reallowed.Suspension.EndedAt.Valid ||
 		reallowed.Suspension.ReallowedByUserID != fixture.manager.ID || reallowed.CandidateUserID != candidate.ID {
 		t.Fatalf("ReallowAttempt() = %#v", reallowed)
@@ -592,9 +851,11 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 	assertExamAttemptConflict(t, err, "attempt_suspension_active")
 
 	nextConnect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 		ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: model.HashToken(model.NewCredentialToken()),
 		AuditEventID: saveExamAttemptAudit(t, ctx, ss, expiryFixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, nextConnect)
 	next, err := ss.ExamAttempt().Connect(ctx, nextConnect,
 		examCommand(candidate.ID, store.ExamAttemptConnectOperation, "attempt-next-generation", "attempt-next-generation"))
 	requireNoError(t, err)
@@ -611,6 +872,7 @@ func testExamAttemptParticipationExpiry(t *testing.T, ctx context.Context, ss st
 		}
 	}
 	access := store.CandidateAttemptAccess{AttemptID: connected.Attempt.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+		DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
 	if _, err = ss.ExamAttempt().GetCandidatePresentation(ctx, access); !store.IsNotFound(err) {
 		t.Fatalf("candidate access after expiry error = %v", err)
@@ -643,6 +905,7 @@ func testExamAttemptParticipationRenewal(t *testing.T, ctx context.Context, ss s
 	input := &store.ExamAttemptParticipationRenewal{
 		AttemptID: connected.Attempt.ID, ParticipationID: connected.Participation.ID, ConnectionID: connected.Connection.ID,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID, Generation: connected.Participation.Generation,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		Sequence: 1, ContinuityCredentialHash: credentialHash,
 	}
 	renewed, err := ss.ExamAttempt().RenewParticipation(ctx, input)
@@ -681,22 +944,35 @@ func testExamAttemptParticipationRenewal(t *testing.T, ctx context.Context, ss s
 }
 
 type examAttemptFixture struct {
-	candidate  *model.User
-	manager    *model.User
-	session    *model.Session
-	sitting    *model.ExamSitting
-	class      *model.Class
-	examID     model.ExamID
-	revisionID model.ExamRevisionID
-	unitID     model.AcademicUnitID
-	membership *model.ClassMember
+	candidate     *model.User
+	manager       *model.User
+	session       *model.Session
+	sitting       *model.ExamSitting
+	class         *model.Class
+	examID        model.ExamID
+	revisionID    model.ExamRevisionID
+	unitID        model.AcademicUnitID
+	institutionID model.InstitutionID
+	membership    *model.ClassMember
 }
 
 func newExamAttemptFixture(t *testing.T, ctx context.Context, ss store.Store) examAttemptFixture {
-	return newExamAttemptFixtureWithFocusLoss(t, ctx, ss, nil)
+	return newExamAttemptFixtureWithPolicies(t, ctx, ss, nil, nil)
 }
 
 func newExamAttemptFixtureWithFocusLoss(t *testing.T, ctx context.Context, ss store.Store, focus *model.FocusLossPolicy) examAttemptFixture {
+	return newExamAttemptFixtureWithPolicies(t, ctx, ss, focus, nil)
+}
+
+func newExamAttemptFixtureWithBrowserPolicy(t *testing.T, ctx context.Context, ss store.Store,
+	browser *model.BrowserPolicy,
+) examAttemptFixture {
+	return newExamAttemptFixtureWithPolicies(t, ctx, ss, nil, browser)
+}
+
+func newExamAttemptFixtureWithPolicies(t *testing.T, ctx context.Context, ss store.Store, focus *model.FocusLossPolicy,
+	browser *model.BrowserPolicy,
+) examAttemptFixture {
 	t.Helper()
 	unit, programme := saveProgrammeParents(t, ctx, ss, "attempt-unit")
 	level := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "attempt-level")
@@ -710,6 +986,20 @@ func newExamAttemptFixtureWithFocusLoss(t *testing.T, ctx context.Context, ss st
 		updated, updateErr := ss.ExamAuthoring().UpdateDraftFocusLoss(ctx,
 			newExamDraftFocusLossUpdate(t, ctx, ss, created.Value.Exam.ID, manager.ID, draftRevision, *focus, now.Add(time.Millisecond)),
 			examCommand(manager.ID, "exam.draft.focus_loss.configure.v1", "attempt-focus-policy", "attempt-focus-policy"))
+		requireNoError(t, updateErr)
+		draftRevision = updated.Value.Draft.Revision
+	}
+	if browser != nil {
+		audit, auditErr := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: manager.ID, Action: string(model.ActionExamManage),
+			Resource:  model.Resource{Type: model.ResourceExam, ID: created.Value.Exam.ID.String()},
+			ScopeType: model.RoleScopeAcademicUnit, ScopeID: programme.AcademicUnitID.String(),
+			Status: model.AuditStatusAttempt, NodeID: "test-node"})
+		requireNoError(t, auditErr)
+		updated, updateErr := ss.ExamAuthoring().UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{
+			ExamID: created.Value.Exam.ID, ActorUserID: manager.ID, ExpectedRevision: draftRevision,
+			Policy: browser.Clone(), UpdatedAt: model.MillisFromTime(now.Add(time.Millisecond)),
+			AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		}, examCommand(manager.ID, "exam.draft.browser_policy.configure.v1", "attempt-browser-policy", "attempt-browser-policy"))
 		requireNoError(t, updateErr)
 		draftRevision = updated.Value.Draft.Revision
 	}
@@ -748,9 +1038,35 @@ func newExamAttemptFixtureWithFocusLoss(t *testing.T, ctx context.Context, ss st
 	requireNoError(t, err)
 	enrollment, err := ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: class.ID, UserID: candidate.ID, StartsAt: now.Add(-time.Minute)})
 	requireNoError(t, err)
-	session, _, _ := saveSession(t, ctx, ss, candidate.ID.String(), 10)
+	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, unit.InstitutionID)
 	return examAttemptFixture{candidate: candidate, manager: manager, session: session, sitting: opened.Value.Sitting, class: class,
-		examID: created.Value.Exam.ID, revisionID: published.Revision.ID, unitID: programme.AcademicUnitID, membership: enrollment.Membership}
+		examID: created.Value.Exam.ID, revisionID: published.Revision.ID, unitID: programme.AcademicUnitID,
+		institutionID: unit.InstitutionID, membership: enrollment.Membership}
+}
+
+func saveRegisteredDesktopSession(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID, institutionID model.InstitutionID) *model.Session {
+	t.Helper()
+	now := model.NowUTC()
+	transaction, handle, proof, state, verifier := newDesktopAuthorizationTransaction(now, institutionID)
+	_, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
+	requireNoError(t, err)
+	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state, userID)
+	code := model.NewCredentialToken()
+	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institutionID, userID, "exam-attempt-session-issue")
+	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+		BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
+		ExpectedUserID: userID, CodeLifetime: 45 * time.Second, Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+		AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+	})
+	requireNoError(t, err)
+	exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institutionID, userID, "exam-attempt-session-exchange")
+	result, err := ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(now, code, state, verifier, exchangeAudit))
+	requireNoError(t, err)
+	if result == nil || result.Session == nil || result.Registration == nil ||
+		result.Session.DesktopRegistrationID != result.Registration.ID || result.Session.DPoPKeyThumbprint == "" {
+		t.Fatalf("Desktop Authorization exchange = %#v", result)
+	}
+	return result.Session
 }
 
 func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture) {
@@ -760,7 +1076,7 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 	requireNoError(t, err)
 	_, err = ss.ClassMember().Enroll(ctx, &model.ClassMember{ClassID: fixture.class.ID, UserID: candidate.ID, StartsAt: model.NowUTC().Add(-time.Minute)})
 	requireNoError(t, err)
-	session, _, _ := saveSession(t, ctx, ss, candidate.ID.String(), 10)
+	session := saveRegisteredDesktopSession(t, ctx, ss, candidate.ID, fixture.institutionID)
 	concurrentFixture := fixture
 	concurrentFixture.candidate, concurrentFixture.session = candidate, session
 	credentialHash := model.HashToken(model.NewCredentialToken())
@@ -768,9 +1084,11 @@ func testConcurrentExamAttemptAdmission(t *testing.T, ctx context.Context, ss st
 	commands := [2]*store.CommandIdempotency{}
 	for index := range inputs {
 		inputs[index] = &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: candidate.ID, SessionID: session.ID,
+			DesktopRegistrationID: session.DesktopRegistrationID, DPoPKeyThumbprint: session.DPoPKeyThumbprint,
 			AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), ParticipationID: model.NewAttemptParticipationID(),
 			ConnectionID: model.NewAttemptConnectionID(), ContinuityCredentialHash: credentialHash,
 			AuditEventID: saveExamAttemptAudit(t, ctx, ss, concurrentFixture).ID.String(), AuditAt: model.GetMillis()}
+		prepareExamAttemptConnect(t, ctx, ss, inputs[index])
 		commands[index] = examCommand(candidate.ID, store.ExamAttemptConnectOperation,
 			fmt.Sprintf("attempt-concurrent-%d", index), fmt.Sprintf("attempt-concurrent-%d", index))
 	}
@@ -824,8 +1142,13 @@ func assertExamAttemptConflict(t *testing.T, err error, constraint string) {
 
 func saveExamAttemptAudit(t *testing.T, ctx context.Context, ss store.Store, fixture examAttemptFixture) *model.AuditEvent {
 	t.Helper()
-	audit, err := ss.Audit().Save(ctx, &model.AuditEvent{ActorID: fixture.candidate.ID, Action: string(model.ActionExamSittingParticipate),
-		Resource: model.Resource{Type: model.ResourceExamSitting, ID: fixture.sitting.ID.String()}, ScopeType: model.RoleScopeClass, ScopeID: fixture.class.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"})
+	audit, err := ss.Audit().Save(ctx, newExamAttemptAudit(fixture))
 	requireNoError(t, err)
 	return audit
+}
+
+func newExamAttemptAudit(fixture examAttemptFixture) *model.AuditEvent {
+	return &model.AuditEvent{ActorID: fixture.candidate.ID, Action: string(model.ActionExamSittingParticipate),
+		Resource: model.Resource{Type: model.ResourceExamSitting, ID: fixture.sitting.ID.String()}, ScopeType: model.RoleScopeClass,
+		ScopeID: fixture.class.ID.String(), Status: model.AuditStatusAttempt, NodeID: "test-node"}
 }

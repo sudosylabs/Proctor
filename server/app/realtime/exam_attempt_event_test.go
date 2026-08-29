@@ -187,11 +187,13 @@ func TestExamAttemptSubmittedEventsSeparateManagerAndCandidateTargetsWithSafeRec
 	candidateID, submissionID := model.NewUserID(), model.NewSubmissionID()
 	digest := strings.Repeat("d", 64)
 	submittedAt := time.Date(2026, time.August, 21, 10, 15, 0, 123, time.UTC)
-	manager, err := NewExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest, submittedAt)
+	manager, err := NewExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest,
+		model.ExamSubmissionManagerEndedAttempt, submittedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := NewCandidateExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest, submittedAt)
+	candidate, err := NewCandidateExamAttemptSubmittedEvent(sittingID, attemptID, candidateID, submissionID, 9, digest,
+		model.ExamSubmissionManagerEndedAttempt, submittedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +212,9 @@ func TestExamAttemptSubmittedEventsSeparateManagerAndCandidateTargetsWithSafeRec
 	if err = json.Unmarshal(candidate.Data, &candidateData); err != nil {
 		t.Fatal(err)
 	}
-	if len(managerData) != 8 || managerData["candidate_user_id"] != candidateID.String() || len(candidateData) != 7 {
+	if len(managerData) != 9 || managerData["candidate_user_id"] != candidateID.String() ||
+		managerData["provenance"] != string(model.ExamSubmissionManagerEndedAttempt) || len(candidateData) != 8 ||
+		candidateData["provenance"] != string(model.ExamSubmissionManagerEndedAttempt) {
 		t.Fatalf("manager=%v candidate=%v", managerData, candidateData)
 	}
 	for _, event := range []RealtimeEvent{manager, candidate} {

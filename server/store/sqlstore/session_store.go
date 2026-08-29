@@ -33,6 +33,13 @@ type sessionRow struct {
 	ArchivedAt               sql.NullTime   `db:"archived_at"`
 	UserID                   string         `db:"user_id"`
 	ClientType               string         `db:"client_type"`
+	DesktopRegistrationID    sql.NullString `db:"desktop_registration_id"`
+	DPoPKeyThumbprint        sql.NullString `db:"dpop_key_thumbprint"`
+	DesktopRelease           sql.NullString `db:"desktop_release"`
+	DesktopBuildID           sql.NullString `db:"desktop_build_id"`
+	DesktopPlatform          sql.NullString `db:"desktop_platform"`
+	DesktopArchitecture      sql.NullString `db:"desktop_architecture"`
+	DesktopRealtimeProtocol  sql.NullInt64  `db:"desktop_realtime_protocol"`
 	DeviceID                 string         `db:"device_id"`
 	DeviceName               string         `db:"device_name"`
 	AuthenticationMethod     string         `db:"authentication_method"`
@@ -66,6 +73,13 @@ func sessionSliceColumns() []string {
 		"sessions.archived_at",
 		"sessions.user_id",
 		"sessions.client_type",
+		"sessions.desktop_registration_id",
+		"sessions.dpop_key_thumbprint",
+		"sessions.desktop_release",
+		"sessions.desktop_build_id",
+		"sessions.desktop_platform",
+		"sessions.desktop_architecture",
+		"sessions.desktop_realtime_protocol",
 		"sessions.device_id",
 		"sessions.device_name",
 		"sessions.authentication_method",
@@ -123,6 +137,13 @@ func (s SQLSessionStore) Save(
 		}
 		if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
 			return nil, err
+		}
+		var activeAttempt bool
+		if err := tx.Get(ctx, &activeAttempt, `SELECT EXISTS(SELECT 1 FROM exam_attempts WHERE candidate_user_id=? AND state='active')`, candidate.UserID.String()); err != nil {
+			return nil, fmt.Errorf("inspect active Attempt Session lock: %w", err)
+		}
+		if activeAttempt {
+			return nil, store.NewErrConflict("session", "active_attempt_session_lock", nil)
 		}
 		if err := requireExactExternalIdentity(ctx, tx, candidate.UserID, candidate.AuthenticationProviderID, candidate.ExternalIdentityID); err != nil {
 			return nil, err
@@ -226,12 +247,16 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO sessions (
 			id, created_at, updated_at, archived_at, user_id, client_type,
+			desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+			desktop_platform, desktop_architecture, desktop_realtime_protocol,
 			device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
 			authentication_strength, authenticated_at, mfa_completed_at,
 			last_activity_at, idle_expires_at, expires_at, revoked_at,
 			revocation_reason
 		) VALUES (
 			:id, :created_at, :updated_at, :archived_at, :user_id, :client_type,
+			:desktop_registration_id, :dpop_key_thumbprint, :desktop_release, :desktop_build_id,
+			:desktop_platform, :desktop_architecture, :desktop_realtime_protocol,
 			:device_id, :device_name, :authentication_method, :authentication_provider_id, :external_identity_id,
 			:authentication_strength, :authenticated_at, :mfa_completed_at,
 			:last_activity_at, :idle_expires_at, :expires_at, :revoked_at,
@@ -359,6 +384,58 @@ func (s SQLSessionStore) Revoke(
 	})
 }
 
+func (s SQLSessionStore) EnforceExpiry(
+	ctx context.Context,
+	id string,
+	userID string,
+	atMillis int64,
+) (*store.SessionExpiryEnforcementResult, error) {
+	if !model.IsValidId(id) || !model.IsValidId(userID) || atMillis <= 0 {
+		return nil, store.NewErrInvalidInput("session", "expiry", nil)
+	}
+	at := model.TimeFromMillis(atMillis)
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "session expiry enforcement", func(ctx context.Context, tx *sqlxTxWrapper) (*store.SessionExpiryEnforcementResult, error) {
+		if err := lockUserSessions(ctx, tx, userID); err != nil {
+			return nil, err
+		}
+		var row sessionRow
+		if err := tx.Get(ctx, &row, `
+		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
+		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
+		       authentication_strength, authenticated_at, mfa_completed_at,
+		       last_activity_at, idle_expires_at, expires_at, revoked_at,
+		       revocation_reason
+		  FROM sessions
+		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
+		 FOR UPDATE`, id, userID); err != nil {
+			return nil, translateError("session", id, err)
+		}
+		session, err := row.model()
+		if err != nil {
+			return nil, err
+		}
+		if !session.IsExpiredAt(at) {
+			return &store.SessionExpiryEnforcementResult{Session: session}, nil
+		}
+		hashes, err := revokeOneUserSession(
+			ctx, tx, id, userID, atMillis, model.SessionRevocationExpired,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if session.UpdatedAt.Before(at) {
+			session.UpdatedAt = at
+		}
+		session.RevokedAt = model.OptionalTimeFrom(at)
+		session.RevocationReason = model.SessionRevocationExpired
+		return &store.SessionExpiryEnforcementResult{
+			Session: session, TokenHashes: hashes, Expired: true,
+		}, nil
+	})
+}
+
 func (s SQLSessionStore) RevokeWithAudit(
 	ctx context.Context,
 	input *store.SessionRevocation,
@@ -387,6 +464,8 @@ func (s SQLSessionStore) RevokeWithAudit(
 		var row sessionRow
 		if err := tx.Get(ctx, &row, `
 		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
@@ -668,6 +747,8 @@ func revokeAllUserSessionsAt(
 	rows := []sessionRow{}
 	if err := executor.Select(ctx, &rows, `
 		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
+		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
 		       authentication_strength, authenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
@@ -783,6 +864,13 @@ func newSessionRow(session *model.Session) sessionRow {
 		ArchivedAt:               NullTimeFromOptional(session.ArchivedAt),
 		UserID:                   session.UserID.String(),
 		ClientType:               string(session.ClientType),
+		DesktopRegistrationID:    sql.NullString{String: session.DesktopRegistrationID.String(), Valid: !session.DesktopRegistrationID.IsZero()},
+		DPoPKeyThumbprint:        sql.NullString{String: session.DPoPKeyThumbprint, Valid: session.DPoPKeyThumbprint != ""},
+		DesktopRelease:           sql.NullString{String: session.DesktopRelease, Valid: session.DesktopRelease != ""},
+		DesktopBuildID:           sql.NullString{String: session.DesktopBuildID, Valid: session.DesktopBuildID != ""},
+		DesktopPlatform:          sql.NullString{String: string(session.DesktopPlatform), Valid: session.DesktopPlatform != ""},
+		DesktopArchitecture:      sql.NullString{String: string(session.DesktopArchitecture), Valid: session.DesktopArchitecture != ""},
+		DesktopRealtimeProtocol:  sql.NullInt64{Int64: int64(session.DesktopRealtimeProtocol), Valid: session.DesktopRealtimeProtocol > 0},
 		DeviceID:                 session.DeviceID,
 		DeviceName:               session.DeviceName,
 		AuthenticationMethod:     session.AuthenticationMethod,
@@ -815,6 +903,12 @@ func (row sessionRow) model() (*model.Session, error) {
 		ArchivedAt:               OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:                   userID,
 		ClientType:               model.SessionClientType(row.ClientType),
+		DPoPKeyThumbprint:        row.DPoPKeyThumbprint.String,
+		DesktopRelease:           row.DesktopRelease.String,
+		DesktopBuildID:           row.DesktopBuildID.String,
+		DesktopPlatform:          model.DesktopPlatform(row.DesktopPlatform.String),
+		DesktopArchitecture:      model.DesktopArchitecture(row.DesktopArchitecture.String),
+		DesktopRealtimeProtocol:  int(row.DesktopRealtimeProtocol.Int64),
 		DeviceID:                 row.DeviceID,
 		DeviceName:               row.DeviceName,
 		AuthenticationMethod:     row.AuthenticationMethod,
@@ -827,6 +921,12 @@ func (row sessionRow) model() (*model.Session, error) {
 		ExpiresAt:                row.ExpiresAt.UTC(),
 		RevokedAt:                OptionalTimeFromNullTime(row.RevokedAt),
 		RevocationReason:         model.SessionRevocationReason(row.RevocationReason),
+	}
+	if row.DesktopRegistrationID.Valid {
+		session.DesktopRegistrationID, err = model.ParseDesktopRegistrationID(row.DesktopRegistrationID.String)
+		if err != nil {
+			return nil, store.NewErrInvalidInput("session", "desktop_registration_id", row.DesktopRegistrationID.String)
+		}
 	}
 	if row.ExternalIdentityID.Valid {
 		session.ExternalIdentityID, err = model.ParseExternalIdentityID(row.ExternalIdentityID.String)

@@ -13,6 +13,11 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+type CurrentUserProductArea = store.CurrentUserProductArea
+type CandidateExamActivityState = store.CandidateExamActivityState
+type CandidateExamAccessState = store.CandidateExamAccessState
+type CandidateExamAllowedAction = store.CandidateExamAllowedAction
+
 type SearchUsersQuery struct {
 	Query           string
 	AfterUsername   string
@@ -38,7 +43,52 @@ type UpdateUserProfileCommand struct {
 type userProfileStore interface {
 	Get(context.Context, string) (*model.User, error)
 	List(context.Context, store.UserListOptions) ([]*model.User, error)
+	GetCurrentContext(context.Context, model.UserID, int) (*store.CurrentUserContext, error)
 	UpdateProfileWithAudit(context.Context, *store.UserProfileUpdate) (*model.User, error)
+}
+
+type CurrentUserContextView struct {
+	UserID                       model.UserID
+	Username                     string
+	DisplayName                  string
+	ProfilePictureReference      string
+	NoCurrentAffiliation         bool
+	NoAssignedAccess             bool
+	AvailableProductAreas        []store.CurrentUserProductArea
+	ManagementScopes             []store.CurrentUserManagementScope
+	ManagementScopesHasMore      bool
+	UnresolvedAttempt            *store.CurrentUserAttemptSelector
+	SessionManagementAvailable   bool
+	CurrentDesktopRegistrationID model.DesktopRegistrationID
+}
+
+func (a *App) GetCurrentUserContext(ctx context.Context, invocation Invocation) (*CurrentUserContextView, error) {
+	principal := invocation.Principal()
+	if principal.Validate() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return nil, NewError("authentication.invalid_token")
+	}
+	value, err := a.userProfiles.users.GetCurrentContext(ctx, principal.UserID, 21)
+	if err != nil {
+		return nil, userProfileError(err)
+	}
+	if value == nil || value.UserID != principal.UserID || value.Username == "" || value.DisplayName == "" ||
+		len(value.AvailableProductAreas) < 2 || len(value.ManagementScopes) > 20 {
+		return nil, NewError("administration.unavailable").Wrap(errors.New("current User context projection is incomplete"))
+	}
+	view := &CurrentUserContextView{UserID: value.UserID, Username: value.Username, DisplayName: value.DisplayName,
+		ProfilePictureReference: "/api/v1/users/" + value.UserID.String() + "/profile-picture",
+		NoCurrentAffiliation:    value.NoCurrentAffiliation, NoAssignedAccess: value.NoAssignedAccess,
+		AvailableProductAreas:   append([]store.CurrentUserProductArea(nil), value.AvailableProductAreas...),
+		ManagementScopes:        append([]store.CurrentUserManagementScope(nil), value.ManagementScopes...),
+		ManagementScopesHasMore: value.ManagementScopesHasMore, SessionManagementAvailable: true}
+	if value.UnresolvedAttempt != nil {
+		attempt := *value.UnresolvedAttempt
+		view.UnresolvedAttempt = &attempt
+	}
+	if principal.ClientType == model.SessionClientDesktop {
+		view.CurrentDesktopRegistrationID = principal.DesktopRegistrationID
+	}
+	return view, nil
 }
 
 type userProfileAuthorizer interface {

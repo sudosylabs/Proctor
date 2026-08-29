@@ -30,8 +30,13 @@ paths:
         - administration.unavailable
         - authentication.strong_required
         - authentication.reauthentication_required
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:

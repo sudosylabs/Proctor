@@ -71,6 +71,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		mfa:      discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
 		newCredential: model.NewCredentialToken,
 	}
+	desktop := testAuthenticationDesktopDependencies(t, cache)
 	construct := func(deps dependencies) error {
 		_, constructorErr := newAuthenticationService(
 			deps.users,
@@ -89,6 +90,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 			&securityEffectsDiagnosticsFake{},
 			deps.newCredential,
 			nil,
+			desktop,
 		)
 		return constructorErr
 	}

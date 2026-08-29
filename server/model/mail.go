@@ -60,7 +60,7 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 	case MailTemplateExamManagerAdded, MailTemplateExamManagerRemoved, MailTemplateExamOwnershipTransferredToYou,
 		MailTemplateExamOwnershipTransferredFromYou:
 		return MailOccurrenceExamManagement, true
-	case MailTemplateExamSubmissionReceived, MailTemplateExamSubmissionAutomaticallySealed:
+	case MailTemplateExamSubmissionReceived, MailTemplateExamSubmissionManagerEnded, MailTemplateExamSubmissionAutomaticallySealed:
 		return MailOccurrenceSubmissionReceipt, true
 	case MailTemplateExamResultReleased:
 		return MailOccurrenceResultRelease, true
@@ -112,6 +112,7 @@ const (
 	MailTemplateExamOwnershipTransferredToYou        MailTemplateKey = "exam.ownership_transferred_to_you"
 	MailTemplateExamOwnershipTransferredFromYou      MailTemplateKey = "exam.ownership_transferred_from_you"
 	MailTemplateExamSubmissionReceived               MailTemplateKey = "exam.submission_received"
+	MailTemplateExamSubmissionManagerEnded           MailTemplateKey = "exam.submission_manager_ended"
 	MailTemplateExamSubmissionAutomaticallySealed    MailTemplateKey = "exam.submission_automatically_sealed"
 	MailTemplateExamResultReleased                   MailTemplateKey = "exam.result_released"
 
@@ -182,6 +183,7 @@ var mailTemplateKeys = []MailTemplateKey{
 	MailTemplateExamOwnershipTransferredToYou,
 	MailTemplateExamOwnershipTransferredFromYou,
 	MailTemplateExamSubmissionReceived,
+	MailTemplateExamSubmissionManagerEnded,
 	MailTemplateExamSubmissionAutomaticallySealed,
 	MailTemplateExamResultReleased,
 }

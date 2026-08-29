@@ -6,7 +6,7 @@ paths:
       tags:
         - Examinations
       description: >-
-        Returns only Exams visible to the current principal, ordered by update time and identity for stable keyset pagination. Filters may narrow by owning Academic Unit, current Draft title, and archive state. Follow next_cursor exactly as returned; it is opaque and does not authorize access.
+        Returns one row per Exam visible to the current principal, ordered by update time and identity for stable keyset pagination. Sitting filters use same-Sitting existential semantics; when present, one Sitting must satisfy every state and schedule constraint. Follow next_cursor exactly as returned; it is opaque and does not authorize access.
       x-codeSamples:
         - lang: Shell
           source: |-
@@ -30,8 +30,13 @@ paths:
         - exam.invalid
         - exam.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: academic_unit_id
@@ -57,6 +62,32 @@ paths:
               - all
             default: active
           description: Select active Exams, archived Exams, or both.
+        - name: sitting_state
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 6
+            uniqueItems: true
+            items:
+              $ref: '#/components/schemas/ExamSittingState'
+          description: Repeated lifecycle-state filter. One same Sitting must also satisfy the optional schedule interval.
+        - name: ends_after
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive lower bound for Sitting scheduled end; must be supplied with starts_before.
+        - name: starts_before
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive upper bound for Sitting scheduled start; must be supplied with ends_after and be later than it.
         - name: limit
           in: query
           required: false
@@ -83,6 +114,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       operationId: createExam
       summary: Create an Exam and its initial Draft
@@ -121,8 +154,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -144,6 +182,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -167,8 +207,13 @@ paths:
         - resource.not_found
         - exam.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -183,6 +228,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     CreateExam:
@@ -251,6 +298,7 @@ components:
       required:
         - id
         - academic_unit_id
+        - academic_unit_display_name
         - creator_user_id
         - owner_user_id
         - title
@@ -258,11 +306,17 @@ components:
         - archived_at
         - revision
         - manager_count
+        - sitting_count
+        - matching_sitting_count
+        - sitting_summary
       properties:
         id:
           $ref: '#/components/schemas/ID'
         academic_unit_id:
           $ref: '#/components/schemas/ID'
+        academic_unit_display_name:
+          type: string
+          minLength: 1
         creator_user_id:
           $ref: '#/components/schemas/ID'
         owner_user_id:
@@ -286,3 +340,45 @@ components:
         manager_count:
           type: integer
           minimum: 1
+        sitting_count:
+          type: integer
+          minimum: 0
+        matching_sitting_count:
+          type: integer
+          minimum: 0
+        sitting_summary:
+          type:
+            - object
+            - "null"
+          additionalProperties: false
+          required:
+            - id
+            - exam_revision_id
+            - class_id
+            - class_display_name
+            - scheduled_start_at
+            - scheduled_end_at
+            - state
+            - revision
+          properties:
+            id:
+              $ref: '#/components/schemas/ID'
+            exam_revision_id:
+              $ref: '#/components/schemas/ID'
+            class_id:
+              $ref: '#/components/schemas/ID'
+            class_display_name:
+              type: string
+              minLength: 1
+            scheduled_start_at:
+              type: string
+              format: date-time
+            scheduled_end_at:
+              type: string
+              format: date-time
+            state:
+              $ref: '#/components/schemas/ExamSittingState'
+            revision:
+              type: integer
+              format: int64
+              minimum: 1

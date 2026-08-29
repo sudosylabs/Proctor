@@ -46,8 +46,13 @@ paths:
         - exam.attempt.workspace.entry_limit
         - exam.attempt.workspace.size_limit
         - exam.attempt.workspace.object_conflict
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -82,6 +87,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exam-attempts/{exam_attempt_id}/workspace/files/{attempt_workspace_entry_id}/content:
     parameters:
       - $ref: '#/components/parameters/ExamAttemptID'
@@ -115,8 +122,13 @@ paths:
         - exam.attempt.sitting_unavailable
         - exam.attempt.state_conflict
         - exam.attempt.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/CandidateAttemptCredential'
@@ -142,6 +154,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     put:
       operationId: replaceCandidateExamWorkspaceFile
       summary: Replace one exact Workspace file content state
@@ -186,8 +200,13 @@ paths:
         - exam.attempt.workspace.content_conflict
         - exam.attempt.workspace.size_limit
         - exam.attempt.workspace.object_conflict
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -221,6 +240,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   schemas:
     CandidateWorkspaceFileUploadMetadata:

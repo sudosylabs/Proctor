@@ -129,7 +129,8 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if replayed.State.InstitutionID != winner.State.InstitutionID ||
 		replayed.State.AdministratorUserID != winner.State.AdministratorUserID ||
-		replayed.AccessPolicy.ID != winner.AccessPolicy.ID {
+		replayed.AccessPolicy.ID != winner.AccessPolicy.ID ||
+		replayed.DesktopCompatibilityPolicy.InstitutionID != winner.DesktopCompatibilityPolicy.InstitutionID {
 		t.Fatalf("Bootstrap(exact replay) = %#v, want identities from %#v", replayed, winner)
 	}
 	if err := ss.User().UpdateLastLogin(ctx, winner.Administrator.ID.String(), winner.Administrator.CreatedAt.Add(time.Minute).UnixMilli()); err != nil {
@@ -154,6 +155,13 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 		!winner.AccessPolicy.InvitationLocalCredentialEnabled ||
 		!winner.AccessPolicy.DesktopAuthorizationEnabled ||
 		len(winner.AccessPolicy.ProviderAdmissions) != 0 ||
+		winner.DesktopCompatibilityPolicy == nil ||
+		winner.DesktopCompatibilityPolicy.Validate() != nil ||
+		winner.DesktopCompatibilityPolicy.InstitutionID != winner.Institution.ID ||
+		winner.DesktopCompatibilityPolicy.Revision != 1 ||
+		winner.DesktopCompatibilityPolicy.MinimumDesktopRelease != "" ||
+		len(winner.DesktopCompatibilityPolicy.RevokedDesktopBuildIDs) != 0 ||
+		winner.DesktopCompatibilityPolicy.AdministratorMessage != "" ||
 		winner.Institution.IsArchived() ||
 		winner.Administrator.ArchivedAt.Valid ||
 		winner.Administrator.EmailVerified ||
@@ -167,6 +175,11 @@ func TestInstallationStore(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	if *state != *winner.State {
 		t.Fatalf("Get() = %#v, want %#v", state, winner.State)
+	}
+	desktopPolicy, err := ss.DesktopCompatibilityPolicy().Get(ctx)
+	requireNoError(t, err)
+	if desktopPolicy.InstitutionID != winner.Institution.ID || desktopPolicy.Revision != 1 {
+		t.Fatalf("desktop compatibility policy = %#v", desktopPolicy)
 	}
 	credential, err := ss.PasswordCredential().GetByUser(ctx, winner.Administrator.ID.String())
 	requireNoError(t, err)

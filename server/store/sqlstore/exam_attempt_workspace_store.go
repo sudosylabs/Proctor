@@ -46,35 +46,38 @@ func (s *SQLExamAttemptWorkspaceStore) ResolveFile(ctx context.Context, access s
 }
 
 type attemptWorkspaceMutationTargetRow struct {
-	ExamID             string       `db:"exam_id"`
-	SittingID          string       `db:"exam_sitting_id"`
-	ClassID            string       `db:"class_id"`
-	CandidateID        string       `db:"candidate_user_id"`
-	WorkspaceID        string       `db:"workspace_id"`
-	AttemptState       string       `db:"attempt_state"`
-	SittingState       string       `db:"sitting_state"`
-	ScheduledEndAt     time.Time    `db:"scheduled_end_at"`
-	ParticipationState string       `db:"participation_state"`
-	Generation         int64        `db:"generation"`
-	CredentialHash     string       `db:"continuity_credential_hash"`
-	LeaseExpiresAt     time.Time    `db:"lease_expires_at"`
-	ConnectionState    string       `db:"connection_state"`
-	SessionArchivedAt  sql.NullTime `db:"session_archived_at"`
-	SessionRevokedAt   sql.NullTime `db:"session_revoked_at"`
-	SessionIdleExpiry  time.Time    `db:"session_idle_expires_at"`
-	SessionExpiry      time.Time    `db:"session_expires_at"`
-	UserArchivedAt     sql.NullTime `db:"user_archived_at"`
-	UserDisabledAt     sql.NullTime `db:"user_disabled_at"`
-	ClassArchived      sql.NullTime `db:"class_archived_at"`
-	LevelArchived      sql.NullTime `db:"level_archived_at"`
-	ProgrammeArchived  sql.NullTime `db:"programme_archived_at"`
-	UnitArchived       sql.NullTime `db:"unit_archived_at"`
-	PeriodArchived     sql.NullTime `db:"period_archived_at"`
+	ExamID              string       `db:"exam_id"`
+	SittingID           string       `db:"exam_sitting_id"`
+	ClassID             string       `db:"class_id"`
+	CandidateID         string       `db:"candidate_user_id"`
+	WorkspaceID         string       `db:"workspace_id"`
+	AdmissionRevisionID string       `db:"admission_revision_id"`
+	CurrentRevisionID   string       `db:"current_revision_id"`
+	AttemptState        string       `db:"attempt_state"`
+	SittingState        string       `db:"sitting_state"`
+	ScheduledEndAt      time.Time    `db:"scheduled_end_at"`
+	ParticipationState  string       `db:"participation_state"`
+	Generation          int64        `db:"generation"`
+	CredentialHash      string       `db:"continuity_credential_hash"`
+	LeaseExpiresAt      time.Time    `db:"lease_expires_at"`
+	ConnectionState     string       `db:"connection_state"`
+	SessionArchivedAt   sql.NullTime `db:"session_archived_at"`
+	SessionRevokedAt    sql.NullTime `db:"session_revoked_at"`
+	SessionIdleExpiry   time.Time    `db:"session_idle_expires_at"`
+	SessionExpiry       time.Time    `db:"session_expires_at"`
+	UserArchivedAt      sql.NullTime `db:"user_archived_at"`
+	UserDisabledAt      sql.NullTime `db:"user_disabled_at"`
+	ClassArchived       sql.NullTime `db:"class_archived_at"`
+	LevelArchived       sql.NullTime `db:"level_archived_at"`
+	ProgrammeArchived   sql.NullTime `db:"programme_archived_at"`
+	UnitArchived        sql.NullTime `db:"unit_archived_at"`
+	PeriodArchived      sql.NullTime `db:"period_archived_at"`
 }
 
 func validAttemptWorkspaceMutationAccess(access store.ExamAttemptWorkspaceMutationAccess) bool {
 	return access.AttemptID.IsValid() && access.ParticipationID.IsValid() && access.Generation > 0 &&
-		access.CandidateUserID.IsValid() && access.SessionID.IsValid() && access.ConnectionID.IsValid() &&
+		access.CandidateUserID.IsValid() && access.SessionID.IsValid() && access.DesktopRegistrationID.IsValid() &&
+		model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) && access.ConnectionID.IsValid() &&
 		model.IsValidTokenHash(access.ContinuityCredentialHash)
 }
 
@@ -97,6 +100,7 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 	}
 	var row attemptWorkspaceMutationTargetRow
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,w.id AS workspace_id,
+		a.admission_revision_id,s.exam_revision_id AS current_revision_id,
 		a.state AS attempt_state,s.state AS sitting_state,s.scheduled_end_at,
 		p.state AS participation_state,p.generation,p.continuity_credential_hash,p.lease_expires_at,
 		c.state AS connection_state,se.archived_at AS session_archived_at,se.revoked_at AS session_revoked_at,
@@ -110,6 +114,9 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		JOIN exam_attempt_participations p ON p.id=? AND p.exam_attempt_id=a.id
 		JOIN exam_attempt_connections c ON c.id=? AND c.exam_attempt_id=a.id AND c.participation_id=p.id
 		JOIN sessions se ON se.id=? AND se.user_id=a.candidate_user_id AND c.session_id=se.id
+			AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=?
+		JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
+			AND dr.revoked_at IS NULL AND dr.key_thumbprint=?
 		JOIN users u ON u.id=a.candidate_user_id
 		JOIN classes cl ON cl.id=s.class_id
 		JOIN programme_levels pl ON pl.id=cl.programme_level_id
@@ -119,6 +126,7 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		WHERE a.id=? AND a.candidate_user_id=?
 		FOR UPDATE OF a,p,c,w FOR SHARE OF s,se,u,cl,pl,pr,au,ap`,
 		access.ParticipationID.String(), access.ConnectionID.String(), access.SessionID.String(),
+		access.DesktopRegistrationID.String(), access.DPoPKeyThumbprint, access.DPoPKeyThumbprint,
 		access.AttemptID.String(), access.CandidateUserID.String())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -165,6 +173,14 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 	}
 	if row.AttemptState != string(model.ExamAttemptActive) {
 		return nil, time.Time{}, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+	}
+	pendingAcknowledgement, err := hasPendingCandidateCorrectionAcknowledgement(ctx, tx, access.AttemptID.String(),
+		row.SittingID, row.AdmissionRevisionID, row.CurrentRevisionID)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if pendingAcknowledgement {
+		return nil, time.Time{}, store.NewErrConflict("attempt_workspace", "exam_correction_acknowledgement_required", nil)
 	}
 	if row.SessionArchivedAt.Valid || row.SessionRevokedAt.Valid || !databaseNow.Before(row.SessionIdleExpiry) ||
 		!databaseNow.Before(row.SessionExpiry) || row.UserArchivedAt.Valid || row.UserDisabledAt.Valid ||

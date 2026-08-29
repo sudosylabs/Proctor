@@ -73,7 +73,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 	scheduledAudit := saveExamSittingAudit(t, ctx, ss, fixture.actor.ID, fixture.examID, fixture.unitID)
 	_, err = ss.ExamCorrection().Apply(ctx, &store.ExamCorrectionApplication{RevisionID: model.NewExamRevisionID(), ExamID: fixture.examID,
 		SittingID: scheduledOnly.ID, CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: scheduledOnly.Revision, ActorUserID: fixture.actor.ID,
-		InstructionsMarkdown: &forbiddenInstructions, PrivateReason: "Scheduled correction must fail", AppliedAt: model.NowUTC(),
+		InstructionsMarkdown: &forbiddenInstructions, CandidateSummary: "Scheduled correction control.", AcknowledgementRequired: true,
+		PrivateReason: "Scheduled correction must fail", AppliedAt: model.NowUTC(),
 		AuditEventID: scheduledAudit.ID.String(), AuditAt: model.GetMillis()},
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-scheduled", "correction-scheduled-command"))
 	requireExamSittingConflict(t, err, "exam_sitting_state")
@@ -135,6 +136,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		CurrentRevisionID: fixture.revisionID, ExpectedSittingRevision: live.Sitting.Revision, ActorUserID: fixture.actor.ID,
 		InstructionsMarkdown: &instructions, Resources: []store.ExamCorrectionResourceManifestItem{{ResourceID: reservation.ResourceID,
 			DisplayName: "Clarification", DescriptionMarkdown: "Read this **note**.", StageID: stage.ID}},
+		CandidateSummary: "Instructions and supporting material were corrected.", AcknowledgementRequired: true,
 		PrivateReason: "Correct misleading supporting material", AppliedAt: at.Add(3 * time.Second), AuditEventID: applyAudit.ID.String(), AuditAt: model.GetMillis()}
 	applyCommand := examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-apply", "correction-apply-command")
 	result, err := ss.ExamCorrection().Apply(ctx, application, applyCommand)
@@ -168,6 +170,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		CurrentRevisionID: result.Revision.ID, ExpectedSittingRevision: result.Sitting.Sitting.Revision, ActorUserID: fixture.actor.ID,
 		Resources: []store.ExamCorrectionResourceManifestItem{{ResourceID: snapshot.Resources[0].ResourceID,
 			DisplayName: snapshot.Resources[0].DisplayName, DescriptionMarkdown: snapshot.Resources[0].DescriptionMarkdown, StageID: replacementStage.ID}},
+		CandidateSummary: "Supporting material was checked.", AcknowledgementRequired: true,
 		PrivateReason: "Verify no-op replacement", AppliedAt: model.NowUTC(), AuditEventID: noChangeAudit.ID.String(), AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, noChange,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-no-change", "correction-no-change-command"))
@@ -204,7 +207,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		Resources: []store.ExamCorrectionResourceManifestItem{
 			{ResourceID: additionStage.ResourceID, DisplayName: "Second", DescriptionMarkdown: "new", StageID: additionStage.ID},
 			{ResourceID: snapshot.Resources[0].ResourceID, DisplayName: "Clarification renamed", DescriptionMarkdown: "updated", StageID: replacementStage.ID},
-		}, PrivateReason: "Correct and reorder resources", AppliedAt: model.NowUTC(), AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis()}
+		}, CandidateSummary: "Supporting materials were corrected and reordered.", AcknowledgementRequired: true,
+		PrivateReason: "Correct and reorder resources", AppliedAt: model.NowUTC(), AuditEventID: secondAudit.ID.String(), AuditAt: model.GetMillis()}
 	secondResult, err := ss.ExamCorrection().Apply(ctx, secondApply,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-second", "correction-second-command"))
 	requireNoError(t, err)
@@ -225,7 +229,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 				DescriptionMarkdown: secondSnapshot.Resources[0].DescriptionMarkdown, StageID: oversizedStage.ID},
 			{ResourceID: secondSnapshot.Resources[1].ResourceID, DisplayName: secondSnapshot.Resources[1].DisplayName,
 				DescriptionMarkdown: secondSnapshot.Resources[1].DescriptionMarkdown},
-		}, PrivateReason: "Reject oversized corrected resource", AppliedAt: model.NowUTC(),
+		}, CandidateSummary: "A supporting material correction was prepared.", AcknowledgementRequired: true,
+		PrivateReason: "Reject oversized corrected resource", AppliedAt: model.NowUTC(),
 		AuditEventID: oversizedAudit.ID.String(), AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, oversizedApply,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-oversized-apply", "correction-oversized-apply-command"))
@@ -242,7 +247,8 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 			{ResourceID: secondSnapshot.Resources[1].ResourceID, DisplayName: secondSnapshot.Resources[1].DisplayName,
 				DescriptionMarkdown: secondSnapshot.Resources[1].DescriptionMarkdown},
 			{ResourceID: overCountStage.ResourceID, DisplayName: "Third", StageID: overCountStage.ID},
-		}, PrivateReason: "Reject excessive corrected resources", AppliedAt: model.NowUTC(),
+		}, CandidateSummary: "Supporting material corrections were prepared.", AcknowledgementRequired: true,
+		PrivateReason: "Reject excessive corrected resources", AppliedAt: model.NowUTC(),
 		AuditEventID: overCountAudit.ID.String(), AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, overCountApply,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-over-count-apply", "correction-over-count-apply-command"))
@@ -255,6 +261,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		CurrentRevisionID: secondResult.Revision.ID, ExpectedSittingRevision: secondResult.Sitting.Sitting.Revision, ActorUserID: fixture.actor.ID,
 		Resources: []store.ExamCorrectionResourceManifestItem{{ResourceID: secondSnapshot.Resources[1].ResourceID,
 			DisplayName: secondSnapshot.Resources[1].DisplayName, DescriptionMarkdown: secondSnapshot.Resources[1].DescriptionMarkdown}},
+		CandidateSummary: "An unnecessary clarification was removed.", AcknowledgementRequired: true,
 		PrivateReason: "Remove unnecessary clarification", AppliedAt: model.NowUTC(), AuditEventID: removeAudit.ID.String(), AuditAt: model.GetMillis()}
 	removed, err := ss.ExamCorrection().Apply(ctx, removeApply,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-remove", "correction-remove-command"))
@@ -303,6 +310,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 		CurrentRevisionID: removed.Revision.ID, ExpectedSittingRevision: removed.Sitting.Sitting.Revision, ActorUserID: fixture.actor.ID,
 		InstructionsMarkdown: &rollbackInstructions, Resources: []store.ExamCorrectionResourceManifestItem{{ResourceID: removedSnapshot.Resources[0].ResourceID,
 			DisplayName: removedSnapshot.Resources[0].DisplayName, DescriptionMarkdown: removedSnapshot.Resources[0].DescriptionMarkdown}},
+		CandidateSummary: "A correction rollback was tested.", AcknowledgementRequired: true,
 		PrivateReason: "Exercise atomic rollback", AppliedAt: model.NowUTC(), AuditEventID: rollbackAudit.ID.String(), AuditAt: model.GetMillis()}
 	if _, rollbackErr := ss.ExamCorrection().Apply(ctx, rollback,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-rollback", "correction-rollback-command")); rollbackErr == nil {
@@ -334,6 +342,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 			CurrentRevisionID: current.Sitting.ExamRevisionID, ExpectedSittingRevision: current.Sitting.Revision, ActorUserID: fixture.actor.ID,
 			InstructionsMarkdown: &texts[index], Resources: []store.ExamCorrectionResourceManifestItem{{ResourceID: racedSnapshot.Resources[0].ResourceID,
 				DisplayName: racedSnapshot.Resources[0].DisplayName, DescriptionMarkdown: racedSnapshot.Resources[0].DescriptionMarkdown}},
+			CandidateSummary: "Concurrent correction notice.", AcknowledgementRequired: true,
 			PrivateReason: "Concurrent correction race", AppliedAt: model.NowUTC(), AuditEventID: auditAttempt.ID.String(), AuditAt: model.GetMillis()}
 		commands[index] = examCommand(fixture.actor.ID, "exam.correction.apply.v1", fmt.Sprintf("correction-race-%d", index), fmt.Sprintf("correction-race-command-%d", index))
 	}
@@ -375,6 +384,7 @@ func TestExamCorrectionStore(t *testing.T, ss store.Store, probe ExamCorrectionS
 			{ResourceID: winnerSnapshot.Resources[0].ResourceID, DisplayName: winnerSnapshot.Resources[0].DisplayName, DescriptionMarkdown: winnerSnapshot.Resources[0].DescriptionMarkdown},
 			{ResourceID: expiredStage.ResourceID, DisplayName: "Expired", StageID: expiredStage.ID},
 		},
+		CandidateSummary: "An additional supporting material was prepared.", AcknowledgementRequired: true,
 		PrivateReason: "Expired upload must not publish", AppliedAt: model.NowUTC(), AuditEventID: expiredAudit.ID.String(), AuditAt: model.GetMillis()}
 	_, err = ss.ExamCorrection().Apply(ctx, expiredApply,
 		examCommand(fixture.actor.ID, "exam.correction.apply.v1", "correction-expired", "correction-expired-command"))

@@ -19,6 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/filecontent"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/localization"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/websocket"
 	"github.com/sudosylabs/proctor/server/webui"
 )
@@ -82,7 +83,11 @@ type consumerConstructors struct {
 	jobs           func(*app.App) runtimeJobs
 }
 
-func defaultConsumerConstructors(snapshot config.Config, overrideWebappFiles fs.FS) (consumerConstructors, error) {
+func defaultConsumerConstructors(
+	snapshot config.Config,
+	overrideWebappFiles fs.FS,
+	overrideDesktopBuildCatalog []model.DesktopBuildTuple,
+) (consumerConstructors, error) {
 	catalogFiles, err := runtimeAssetDirectory("i18n")
 	if err != nil {
 		return consumerConstructors{}, fmt.Errorf("open localization catalogs: %w", err)
@@ -110,7 +115,11 @@ func defaultConsumerConstructors(snapshot config.Config, overrideWebappFiles fs.
 			return filecontent.New(capabilities.filesystem)
 		},
 		dependencies: func(capabilities constructionCapabilities, content app.FileContent) (app.Dependencies, error) {
-			return applicationDependencies(capabilities, snapshot, content, mailRenderer)
+			dependencies, err := applicationDependencies(capabilities, snapshot, content, mailRenderer)
+			if err == nil && overrideDesktopBuildCatalog != nil {
+				dependencies.DesktopBuildCatalog = append([]model.DesktopBuildTuple(nil), overrideDesktopBuildCatalog...)
+			}
+			return dependencies, err
 		},
 		application: app.New,
 		realtime: func(cluster borrowedCluster) (apprealtime.ClusterFanout, error) {
@@ -172,7 +181,11 @@ func composeNode(ctx context.Context, input compositionInput) (*compositionResul
 	}
 	logStartupInfrastructure(snapshot, capabilities.logger, capabilities.migration)
 
-	constructors, constructorsErr := defaultConsumerConstructors(snapshot, input.overrides.WebappFiles)
+	constructors, constructorsErr := defaultConsumerConstructors(
+		snapshot,
+		input.overrides.WebappFiles,
+		input.overrides.DesktopBuildCatalog,
+	)
 	if constructorsErr != nil {
 		return nil, errors.Join(constructorsErr, closeAcceptedRuntime(applicationPlatform, capabilities.metrics))
 	}

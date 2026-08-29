@@ -3,6 +3,8 @@
 
 package httpapi
 
+import "time"
+
 // productionResources is the single, visible and policy-free inventory of HTTP
 // resource modules. Preserve this order: it is part of route-catalog review.
 func productionResources(
@@ -13,12 +15,14 @@ func productionResources(
 	webSocket WebSocketTransport,
 ) []resource {
 	return []resource{
-		systemResource(health, buildInfo),
+		systemResourceWithApplication(health, buildInfo, applications.desktopCompatibility, time.Now),
 		bootstrapResource(applications.bootstrap),
 		accessPolicyResource(applications.accessPolicy),
+		desktopCompatibilityPolicyResource(applications.desktopCompatibility),
 		authenticationResource(applications.authentication, cookies),
 		authenticationMethodResource(applications.authenticationMethods, cookies),
-		desktopAuthorizationResource(applications.desktopAuthorization),
+		desktopAuthorizationResource(applications.desktopAuthorization, cookies),
+		desktopRegistrationResource(applications.desktopRegistrations),
 		externalAuthenticationResource(applications.externalAuthentication, cookies),
 		browserInvitationResource(applications.browserInvitations, cookies),
 		userProfileResource(applications.userProfiles),

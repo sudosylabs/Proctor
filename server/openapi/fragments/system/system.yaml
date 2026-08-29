@@ -1,4 +1,66 @@
 paths:
+  /api/v1/system/ping:
+    get:
+      operationId: pingSystem
+      summary: Check product availability and Desktop compatibility
+      tags:
+        - System
+      description: >-
+        Returns a request-specific, fail-closed compatibility result for one declared Proctor Desktop build. The declarations are consistency metadata rather than binary attestation. Every well-formed request returns 200, including unsupported builds and temporary unavailability; malformed selectors return Problem Details. The response deliberately omits Installation identity, authentication policy, providers, build provenance, and update destinations.
+      x-proctor-auth: public
+      x-proctor-error-codes:
+        - request.invalid
+      security: []
+      x-proctor-idempotency: none
+      parameters:
+        - name: desktop_release
+          in: query
+          required: true
+          description: Canonical semantic release declared by Proctor Desktop, without a leading v.
+          schema:
+            type: string
+            minLength: 5
+            maxLength: 64
+            pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+        - name: desktop_build_id
+          in: query
+          required: true
+          description: Canonical signed-build identity declared by Proctor Desktop.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+        - name: platform
+          in: query
+          required: true
+          description: Bounded target selector. Initially recognized targets use darwin, win32, or linux; another syntactically valid value receives unsupported_target.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 32
+            pattern: '^[a-z0-9][a-z0-9_-]{0,31}$'
+        - name: architecture
+          in: query
+          required: true
+          description: Bounded target selector. Initially recognized architectures use arm64 or x64; another syntactically valid value receives unsupported_target.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 32
+            pattern: '^[a-z0-9][a-z0-9_-]{0,31}$'
+        - name: realtime_protocol
+          in: query
+          required: true
+          description: Positive realtime protocol version declared by Proctor Desktop.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          $ref: '#/components/responses/SystemPingOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
   /api/v1/system/version:
     get:
       operationId: getSystemVersion
@@ -16,6 +78,22 @@ paths:
           $ref: '#/components/responses/BuildInfoOK'
 components:
   responses:
+    SystemPingOK:
+      description: Request-specific availability and Desktop compatibility result
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SystemPingResponse'
+          example:
+            schema_version: 1
+            server_time: '2026-08-28T10:11:12Z'
+            availability: ready
+            reason: ready
+            compatibility: unsupported_target
+            compatibility_reason: unsupported_target
     BuildInfoOK:
       description: Build information
       content:
@@ -23,6 +101,78 @@ components:
           schema:
             $ref: '#/components/schemas/BuildInfoResponse'
   schemas:
+    SystemPingResponse:
+      description: Safe product availability and compatibility projection for one declared Desktop build.
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - server_time
+        - availability
+        - reason
+        - compatibility
+        - compatibility_reason
+      properties:
+        schema_version:
+          type: integer
+          const: 1
+        server_time:
+          type: string
+          format: date-time
+          description: Authoritative serving-node time in RFC 3339 format.
+        availability:
+          type: string
+          enum:
+            - ready
+            - maintenance
+            - temporarily_unavailable
+        reason:
+          type: string
+          enum:
+            - ready
+            - maintenance
+            - temporarily_unavailable
+          description: Stable safe reason for the product availability state.
+        administrator_message:
+          type: string
+          maxLength: 500
+          description: Optional bounded plain-text Institution administrator message.
+        retry_at:
+          type: string
+          format: date-time
+          description: Optional later server-selected time at which Desktop may retry.
+        compatibility:
+          type: string
+          enum:
+            - compatible
+            - update_required
+            - server_incompatible
+            - unsupported_target
+        compatibility_reason:
+          type: string
+          enum:
+            - compatible
+            - release_too_old
+            - release_too_new
+            - realtime_protocol_too_old
+            - realtime_protocol_too_new
+            - build_revoked
+            - build_unrecognized
+            - unsupported_target
+            - compatibility_unavailable
+          description: Stable safe reason for the compatibility result.
+        minimum_desktop_release:
+          type: string
+          maxLength: 64
+        maximum_desktop_release:
+          type: string
+          maxLength: 64
+        minimum_realtime_protocol:
+          type: integer
+          minimum: 1
+        maximum_realtime_protocol:
+          type: integer
+          minimum: 1
     BuildInfoResponse:
       description: Public build provenance for the serving Proctor binary.
       type: object

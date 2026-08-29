@@ -20,9 +20,8 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	t.Parallel()
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
-	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
-	})
+	command := validConnectCommand(f, credential, "test-key")
+	result, err := f.service.Connect(context.Background(), f.call, command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +31,11 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	}
 	input := f.persistence.connect
 	if input == nil || input.ContinuityCredentialHash != model.HashToken(credential) ||
-		strings.Contains(input.ContinuityCredentialHash, credential) {
+		strings.Contains(input.ContinuityCredentialHash, credential) || input.InitialConfiguration == nil ||
+		input.InitialConfiguration.Digest != f.configuration.Digest || input.DesktopBuild != f.desktopBuild ||
+		input.DesktopCompatibilityPolicyRevision != 1 ||
+		len(input.SupportedConfigurationManifests) != 1 || result.Configuration.Digest != f.configuration.Digest ||
+		result.RuntimeCapabilities.AttemptConfiguration.Digest != f.configuration.Digest {
 		t.Fatalf("persistence credential = %#v", input)
 	}
 	if got := strings.Join(f.order, ","); got != "sitting,audit,connect,effect.open" {
@@ -46,9 +49,7 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	if f.audit.values["continuity_credential"] != nil || f.audit.values["credential_hash"] != nil {
 		t.Fatalf("credential entered audit = %#v", f.audit.values)
 	}
-	wantIdempotency, prepareErr := prepareConnectIdempotency(f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
-	})
+	wantIdempotency, prepareErr := prepareConnectIdempotency(f.call, command)
 	if prepareErr != nil {
 		t.Fatal(prepareErr)
 	}
@@ -56,6 +57,97 @@ func TestConnectDelegatesAtomicAdmissionAndPassesOnlyCredentialHash(t *testing.T
 	auditCapture := fmt.Sprintf("%#v", f.audit.values)
 	if strings.Contains(auditCapture, credential) || strings.Contains(auditCapture, model.HashToken(credential)) {
 		t.Fatalf("credential material entered audit = %s", auditCapture)
+	}
+}
+
+func TestAcknowledgeCorrectionUsesExactParticipationFenceAndSemanticIdempotency(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	credential := model.NewCredentialToken()
+	participationID := model.NewAttemptParticipationID()
+	correctionRevisionID := model.NewExamRevisionID()
+	currentRevisionID := model.NewExamRevisionID()
+	f.persistence.correctionAcknowledgementTarget = &store.ExamAttemptCorrectionAcknowledgementTarget{
+		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
+		CandidateUserID: f.userID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
+	}
+	f.persistence.correctionAcknowledgementResult = &store.ExamAttemptCorrectionAcknowledgementResult{
+		AttemptID: f.attemptID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
+		AcknowledgedAt: f.at,
+	}
+	command := AcknowledgeCorrectionCommand{
+		Access: WorkspaceMutationAccess{CandidateAccess: CandidateAccess{
+			AttemptID: f.attemptID, ConnectionID: f.connectionID, ContinuityCredential: credential,
+		}, ParticipationID: participationID, Generation: 4},
+		CorrectionRevisionID: correctionRevisionID, ExpectedCurrentRevisionID: currentRevisionID,
+		IdempotencyKey: "acknowledge-key",
+	}
+
+	result, err := f.service.AcknowledgeCorrection(context.Background(), f.call, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := f.persistence.correctionAcknowledgement
+	principal := f.call.Principal()
+	if input == nil || input.Access.AttemptID != f.attemptID || input.Access.CandidateUserID != principal.UserID ||
+		input.Access.SessionID != principal.SessionID || input.Access.ConnectionID != f.connectionID ||
+		input.Access.DesktopRegistrationID != principal.DesktopRegistrationID || input.Access.DPoPKeyThumbprint != principal.DPoPKeyThumbprint ||
+		input.Access.ContinuityCredentialHash != model.HashToken(credential) || input.ParticipationID != participationID ||
+		input.Generation != 4 || input.CorrectionRevisionID != correctionRevisionID ||
+		input.ExpectedCurrentRevisionID != currentRevisionID || input.AuditEvent == nil || !input.AuditEvent.ID.IsZero() ||
+		input.AuditEvent.Status != model.AuditStatusAttempt {
+		t.Fatalf("acknowledgement input = %#v", input)
+	}
+	if result.CorrectionRevisionID != correctionRevisionID || result.CurrentRevisionID != currentRevisionID ||
+		result.AcknowledgedAt.Time != f.at {
+		t.Fatalf("acknowledgement result = %#v", result)
+	}
+	wantIdempotency, prepareErr := prepareIdempotency(f.call, store.ExamAttemptCorrectionAcknowledgementOperation,
+		command.IdempotencyKey, struct {
+			AttemptID                 string `json:"exam_attempt_id"`
+			ParticipationID           string `json:"participation_id"`
+			Generation                int64  `json:"generation"`
+			CorrectionRevisionID      string `json:"correction_revision_id"`
+			ExpectedCurrentRevisionID string `json:"expected_current_revision_id"`
+		}{f.attemptID.String(), participationID.String(), 4, correctionRevisionID.String(), currentRevisionID.String()})
+	if prepareErr != nil {
+		t.Fatal(prepareErr)
+	}
+	assertStoreBoundaryCommand(t, f.persistence.idempotency, wantIdempotency)
+	if got := strings.Join(f.order, ","); got != "correction.acknowledgement.resolve,audit.authorization,audit.prepare,correction.acknowledgement.commit" {
+		t.Fatalf("order = %s", got)
+	}
+	auditCapture := fmt.Sprintf("%#v", f.audit.values)
+	if strings.Contains(auditCapture, credential) || strings.Contains(auditCapture, model.HashToken(credential)) ||
+		strings.Contains(auditCapture, participationID.String()) || strings.Contains(auditCapture, principal.SessionID.String()) ||
+		strings.Contains(auditCapture, f.connectionID.String()) {
+		t.Fatalf("private acknowledgement material entered audit: %s", auditCapture)
+	}
+}
+
+func TestAcknowledgeCorrectionReplayReturnsRetainedResultAfterFreshAuthorizationAudit(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	correctionRevisionID := model.NewExamRevisionID()
+	currentRevisionID := model.NewExamRevisionID()
+	f.persistence.correctionAcknowledgementTarget = &store.ExamAttemptCorrectionAcknowledgementTarget{
+		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
+		CandidateUserID: f.userID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
+	}
+	f.persistence.correctionAcknowledgementResult = &store.ExamAttemptCorrectionAcknowledgementResult{
+		AttemptID: f.attemptID, CorrectionRevisionID: correctionRevisionID, CurrentRevisionID: currentRevisionID,
+		AcknowledgedAt: f.at.Add(-time.Minute), Replayed: true,
+	}
+	command := AcknowledgeCorrectionCommand{Access: validWorkspaceMutationAccess(f), CorrectionRevisionID: correctionRevisionID,
+		ExpectedCurrentRevisionID: currentRevisionID, IdempotencyKey: "replay-key"}
+
+	result, err := f.service.AcknowledgeCorrection(context.Background(), f.call, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AcknowledgedAt.Time != f.at.Add(-time.Minute) || f.persistence.correctionAcknowledgementCalls != 1 ||
+		strings.Join(f.order, ",") != "correction.acknowledgement.resolve,audit.authorization,audit.prepare,correction.acknowledgement.commit" {
+		t.Fatalf("result=%#v calls=%d order=%v", result, f.persistence.correctionAcknowledgementCalls, f.order)
 	}
 }
 
@@ -367,7 +459,8 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 	participationID := model.NewAttemptParticipationID()
 	databaseNow := f.at.Add(5 * time.Second)
 	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{
-		AttemptID: f.attemptID, ParticipationID: participationID, Generation: 3, AcceptedSequence: 7,
+		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		CandidateUserID: f.call.Principal().UserID, ParticipationID: participationID, Generation: 3, AcceptedSequence: 7,
 		DatabaseTime: databaseNow, LeaseExpiresAt: databaseNow.Add(model.AttemptParticipationInitialLease),
 	}
 	result, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
@@ -382,9 +475,27 @@ func TestRenewParticipationBindsAuthenticatedConnectionAndPassesOnlyCredentialHa
 	if input == nil || input.AttemptID != f.attemptID || input.ParticipationID != participationID ||
 		input.ConnectionID != f.connectionID || input.CandidateUserID != principal.UserID || input.SessionID != principal.SessionID ||
 		input.Generation != 3 || input.Sequence != 7 || input.ContinuityCredentialHash != model.HashToken(credential) ||
-		result.AcceptedSequence != 7 || !result.DatabaseTime.Equal(databaseNow) ||
+		result.AcceptedSequence != 7 || !result.DatabaseTime.Equal(databaseNow) || f.effects.renewed != 1 ||
 		strings.Contains(fmt.Sprintf("%#v", result), credential) || strings.Contains(fmt.Sprintf("%#v", result), model.HashToken(credential)) {
 		t.Fatalf("renewal input/result = %#v / %#v", input, result)
+	}
+}
+
+func TestDuplicateParticipationRenewalPublishesNoEffect(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	participationID := model.NewAttemptParticipationID()
+	f.persistence.renewResult = &store.ExamAttemptParticipationRenewalResult{
+		AttemptID: f.attemptID, ExamID: f.sitting.ExamID, SittingID: f.sitting.ID,
+		CandidateUserID: f.call.Principal().UserID, ParticipationID: participationID, Generation: 2,
+		AcceptedSequence: 4, DatabaseTime: f.at, LeaseExpiresAt: f.at.Add(model.AttemptParticipationInitialLease), Duplicate: true,
+	}
+	_, err := f.service.RenewParticipation(context.Background(), f.call, RenewParticipationCommand{
+		AttemptID: f.attemptID, ParticipationID: participationID, ConnectionID: f.connectionID,
+		Generation: 2, Sequence: 4, ContinuityCredential: model.NewCredentialToken(),
+	})
+	if err != nil || f.effects.renewed != 0 {
+		t.Fatalf("error=%v renewal effects=%d", err, f.effects.renewed)
 	}
 }
 
@@ -566,7 +677,9 @@ func TestScanExpiredParticipationsFailsAuditAndPublishesNothingOnCommitFailure(t
 func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	managerID := useManagerCall(f)
 	suspensionID := model.NewAttemptSuspensionID()
+	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
 	f.persistence.reallowResult = reallowResultFixture(t, f, suspensionID, false)
 	reason := "manager verified secure connectivity"
 	result, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
@@ -578,9 +691,9 @@ func TestReallowRequiresExactSuspensionAndKeepsPrivateReasonOutOfEffects(t *test
 	}
 	input := f.persistence.reallow
 	if input == nil || input.SuspensionID != suspensionID || input.ExpectedAttemptRevision != 2 || input.PrivateReason != reason ||
-		input.ActorUserID != f.userID || input.ManagerOverride || result.Attempt.State != model.ExamAttemptActive ||
+		input.ActorUserID != managerID || input.ManagerOverride || result.Attempt.State != model.ExamAttemptReady ||
 		result.Suspension.State != model.AttemptSuspensionClosed || f.effects.reallowed != 1 ||
-		strings.Join(f.order, ",") != "manager.manage,sitting,audit,reallow,effect.reallow" {
+		strings.Join(f.order, ",") != "manager.get,manager.manage,sitting,audit,reallow,effect.reallow" {
 		t.Fatalf("result=%#v input=%#v effects=%#v order=%v", result, input, f.effects, f.order)
 	}
 	if f.audit.values["private_reason"] != nil || strings.Contains(fmt.Sprintf("%#v", result), reason) {
@@ -618,8 +731,10 @@ func TestReallowValidatesReasonBeforeAuthorization(t *testing.T) {
 func TestReallowReplaySuppressesEffectAndPropagatesAuthorizedOverride(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
+	useManagerCall(f)
 	f.managerOverride = true
 	suspensionID := model.NewAttemptSuspensionID()
+	f.persistence.attempt, f.persistence.managerSuspension = managerAttemptFixture(t, f, model.ExamAttemptSuspended, 2, suspensionID)
 	f.persistence.reallowResult = reallowResultFixture(t, f, suspensionID, true)
 	result, err := f.service.Reallow(context.Background(), f.call, ReallowCommand{
 		ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, AttemptID: f.attemptID, SuspensionID: suspensionID,
@@ -673,11 +788,12 @@ func reallowResultFixture(t *testing.T, f *fixture, suspensionID model.AttemptSu
 		t.Fatal(err)
 	}
 	attempt.UpdatedAt, attempt.Revision = f.at, 3
+	attempt.State = model.ExamAttemptReady
 	suspension := &store.ExamAttemptSuspensionView{ID: suspensionID, AttemptID: f.attemptID,
 		ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 2,
 		State: model.AttemptSuspensionClosed, Source: model.AttemptSuspensionSourcePolicy,
 		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: f.at.Add(-time.Minute),
-		EndedAt: model.OptionalTimeFrom(f.at), ReallowedByUserID: f.userID}
+		EndedAt: model.OptionalTimeFrom(f.at), ReallowedByUserID: f.call.Principal().UserID}
 	return &store.ExamAttemptReallowResult{ExamID: f.sitting.ExamID, SittingID: f.sitting.ID, ClassID: f.sitting.ClassID,
 		CandidateUserID: f.userID, Attempt: attempt, Suspension: suspension, Replayed: replayed}
 }
@@ -689,9 +805,7 @@ func TestConnectReplayAfterCorrectionAndPauseSuppressesTransientOpenEvent(t *tes
 	f.persistence.connectionOpened = false
 	f.sitting.State = model.ExamSittingPaused
 	f.sitting.ExamRevisionID = model.NewExamRevisionID()
-	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	result, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || !result.Replayed || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect" {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -701,9 +815,7 @@ func TestReconnectThatOpensANewConnectionPublishesOneOpenEffect(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
-	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	result, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || result.FirstAdmission || !result.ConnectionOpened || result.Replayed || f.effects.opened != 1 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -714,9 +826,7 @@ func TestDifferentKeyConvergenceOnExistingOpenConnectionPublishesNoEffect(t *tes
 	f := newFixture(t)
 	f.persistence.firstAdmission = false
 	f.persistence.connectionOpened = false
-	result, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	result, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	if err != nil || result.FirstAdmission || result.ConnectionOpened || result.Replayed || f.effects.opened != 0 {
 		t.Fatalf("result=%#v error=%v effects=%#v", result, err, f.effects)
 	}
@@ -727,9 +837,7 @@ func TestConnectReplayOfClosedConnectionRequiresNewKey(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.replayed = true
 	f.persistence.connectClosed = true
-	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -741,9 +849,7 @@ func TestConnectReplayOfEndedParticipationRequiresNewKey(t *testing.T) {
 	f := newFixture(t)
 	f.persistence.replayed = true
 	f.persistence.participationEnded = true
-	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_closed" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -754,9 +860,7 @@ func TestConnectRejectsAConnectionOutcomeBoundToAnotherSession(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectionSession = model.NewSessionID()
-	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.unavailable" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -767,9 +871,7 @@ func TestConnectFailureCompletesAuditAndPublishesNoEffect(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
-	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.sitting_unavailable" ||
 		f.audit.failedCode != fault.Code || f.effects.opened != 0 || strings.Join(f.order, ",") != "sitting,audit,connect,audit.fail" {
@@ -781,9 +883,7 @@ func TestExpiredReplayReturnsCandidateSafeConnectionLoss(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	f.persistence.connectErr = store.NewErrConflict("attempt_participation", "attempt_participation_expired", nil)
-	_, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-	})
+	_, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.attempt.connection_lost" || f.effects.opened != 0 {
 		t.Fatalf("error=%v effects=%#v", err, f.effects)
@@ -796,9 +896,9 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	credential := model.NewCredentialToken()
 	currentID := model.NewExamRevisionID()
 	f.persistence.presentation = &store.CandidateExamPresentation{
-		AttemptID: f.attemptID, SittingID: f.sitting.ID, AdmissionRevisionID: f.revision.ID, CurrentRevisionID: currentID,
-		FocusLossCollectionEnabled: true,
-		Title:                      "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
+		AttemptID: f.attemptID, SittingID: f.sitting.ID,
+		RuntimeCapabilities: runtimeCapabilitiesFixture(f, currentID),
+		Title:               "Algorithms", InstructionsMarkdown: "# Rules\nUse **Go**.\n<script>alert('x')</script>\n[bad](javascript:alert(1))\n![tracker](https://example.test/pixel.png)\n[handbook](https://example.test/handbook)",
 		Resources: []store.CandidateExamResource{{ResourceID: model.NewExamResourceID(), DisplayName: "Reference",
 			DescriptionMarkdown: "Read _carefully_. <iframe src=https://evil.test></iframe> [data](data:text/html,bad)", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 4, SHA256: strings.Repeat("a", 64)}},
 	}
@@ -808,7 +908,9 @@ func TestProtectedPresentationUsesCurrentRevisionAndSanitizesCandidateMarkdown(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AdmissionRevisionID != f.revision.ID || result.CurrentRevisionID != currentID || !result.FocusLossCollectionEnabled ||
+	if result.RuntimeCapabilities.ExamRevision.AdmissionRevisionID != f.revision.ID ||
+		result.RuntimeCapabilities.ExamRevision.CurrentRevisionID != currentID ||
+		!result.RuntimeCapabilities.FocusLossCollectionEnabled ||
 		!strings.Contains(result.InstructionsMarkdown, "# Rules") || !strings.Contains(result.InstructionsMarkdown, "**Go**") ||
 		!strings.Contains(result.InstructionsMarkdown, "[handbook](https://example.test/handbook)") ||
 		!strings.Contains(result.Resources[0].DescriptionMarkdown, "_carefully_") {
@@ -1016,9 +1118,7 @@ func TestTrustedCloseCommitsBeforeManagerEffectAndSuppressesNoop(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	credential := model.NewCredentialToken()
-	connected, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-		SittingID: f.sitting.ID, ContinuityCredential: credential, IdempotencyKey: "test-key",
-	})
+	connected, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, credential, "test-key"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1051,9 +1151,7 @@ func TestTrustedCloseStillFencesCandidateAndSessionOwnership(t *testing.T) {
 		func(principal *model.Principal) { principal.SessionID = model.NewSessionID() },
 	} {
 		f := newFixture(t)
-		connected, err := f.service.Connect(context.Background(), f.call, ConnectCommand{
-			SittingID: f.sitting.ID, ContinuityCredential: model.NewCredentialToken(), IdempotencyKey: "test-key",
-		})
+		connected, err := f.service.Connect(context.Background(), f.call, validConnectCommand(f, model.NewCredentialToken(), "test-key"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1107,6 +1205,8 @@ type fixture struct {
 	discrepancyID             model.IntegrityDiscrepancyID
 	submissionID              model.SubmissionID
 	submissionAuthorizationID model.SubmissionID
+	configuration             model.AttemptConfiguration
+	desktopBuild              model.DesktopBuildTuple
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -1129,10 +1229,28 @@ func newFixture(t *testing.T) *fixture {
 	f.systemAudit = &systemAuditFake{f: f}
 	f.effects = &effectsFake{f: f}
 	f.content = &contentFake{f: f}
+	f.desktopBuild = model.DesktopBuildTuple{DesktopRelease: "1.0.0", DesktopBuildID: "attempt-test",
+		Platform: model.DesktopPlatformDarwin, Architecture: model.DesktopArchitectureARM64, RealtimeProtocol: 1,
+		AttemptConfigurationManifestFingerprint: model.CurrentAttemptConfigurationManifestFingerprint(),
+		DesktopSettingsRegistryFingerprint:      "sha256:" + strings.Repeat("b", 64), CapabilityMatrixIdentity: "attempt-test-matrix"}
+	var configurationErr error
+	f.configuration, configurationErr = model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion,
+		f.desktopBuild.AttemptConfigurationManifestFingerprint, model.NewUserSettingsRevision(),
+		f.desktopBuild.DesktopSettingsRegistryFingerprint, model.AttemptConfigurationPreferences{
+			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
+			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
+			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
+			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
+			CandidateCommandBindings: []model.AttemptCommandBinding{},
+		})
+	if configurationErr != nil {
+		t.Fatal(configurationErr)
+	}
 	service, err := New(Dependencies{
 		Persistence: f.persistence, Workspace: f.workspace, Submissions: f.submissions, Sittings: &sittingFake{f: f}, Managers: &managerFake{f: f},
 		Auditor: f.audit, SystemAuditor: f.systemAudit, Effects: f.effects, EffectFailures: f.effects, Content: f.content, Mail: f.mail,
-		Now: func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
+		DesktopBuilds: &desktopBuildResolverFake{f: f},
+		Now:           func() time.Time { return f.at }, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: func() model.IntegrityFlagID {
 			if f.focusFlagID.IsValid() {
@@ -1168,8 +1286,69 @@ func newFixture(t *testing.T) *fixture {
 	f.service = service
 	f.call = NewCall(model.Principal{UserID: f.userID, SessionID: model.NewSessionID(), CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
-		ClientType: model.SessionClientDesktop, AuthenticatedAt: f.at}, model.RequestMetadata{RequestID: "attempt-test"})
+		ClientType: model.SessionClientDesktop, DesktopRegistrationID: model.NewDesktopRegistrationID(),
+		DPoPKeyThumbprint: strings.Repeat("A", 43), RegisteredDesktopKey: true,
+		DesktopRelease: "1.0.0", DesktopBuildID: "attempt-test", DesktopPlatform: model.DesktopPlatformDarwin,
+		DesktopArchitecture: model.DesktopArchitectureARM64, DesktopRealtimeProtocol: 1,
+		AuthenticatedAt: f.at}, model.RequestMetadata{RequestID: "attempt-test"})
 	return f
+}
+
+func validConnectCommand(f *fixture, credential, key string) ConnectCommand {
+	configuration := f.configuration.Clone()
+	return ConnectCommand{SittingID: f.sitting.ID, ContinuityCredential: credential,
+		SupportedConfigurationManifests: []string{model.CurrentAttemptConfigurationManifestFingerprint()},
+		InitialConfiguration:            &configuration, IdempotencyKey: key}
+}
+
+func useManagerCall(f *fixture) model.UserID {
+	principal := f.call.Principal()
+	principal.UserID = model.NewUserID()
+	f.call = NewCall(principal, f.call.RequestMetadata())
+	return principal.UserID
+}
+
+func managerAttemptFixture(t *testing.T, f *fixture, state model.ExamAttemptState, revision int64,
+	suspensionID model.AttemptSuspensionID,
+) (*model.ExamAttempt, *store.ExamAttemptSuspensionView) {
+	t.Helper()
+	attempt, err := model.NewExamAttempt(f.attemptID, f.sitting.ExamID, f.sitting.ID, f.userID, f.revision.ID,
+		f.at.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt.State, attempt.UpdatedAt, attempt.Revision = state, f.at, revision
+	if err = attempt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if state != model.ExamAttemptSuspended {
+		return attempt, nil
+	}
+	suspension := &store.ExamAttemptSuspensionView{ID: suspensionID, AttemptID: attempt.ID,
+		ParticipationID: model.NewAttemptParticipationID(), FlagID: model.NewIntegrityFlagID(), Generation: 1,
+		State: model.AttemptSuspensionActive, Source: model.AttemptSuspensionSourcePolicy,
+		CandidateReason: model.AttemptSuspensionCandidateReasonSecureContinuityLost, StartedAt: f.at.Add(-time.Minute)}
+	return attempt, suspension
+}
+
+func runtimeCapabilitiesFixture(f *fixture, currentRevisionID model.ExamRevisionID) store.CandidateRuntimeCapabilities {
+	configuration := f.configuration.Clone()
+	return store.CandidateRuntimeCapabilities{SchemaVersion: 1, ServerTime: f.at,
+		InteractionState: store.CandidateInteractionInteractive,
+		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
+			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: configuration.Preferences, Digest: configuration.Digest},
+		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
+		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled},
+		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
+		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: f.revision.ID,
+			CurrentRevisionID: currentRevisionID},
+		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"}}
+}
+
+type desktopBuildResolverFake struct{ f *fixture }
+
+func (fake *desktopBuildResolverFake) ResolveAttemptDesktopBuild(context.Context, model.Principal) (DesktopBuildResolution, error) {
+	return DesktopBuildResolution{Build: fake.f.desktopBuild, CompatibilityPolicyRevision: 1}, nil
 }
 
 type sittingFake struct{ f *fixture }
@@ -1194,11 +1373,21 @@ func (fake *managerFake) AuthorizeSubmissionView(_ context.Context, _ Call, subm
 	fake.f.submissionAuthorizationID = submissionID
 	return nil
 }
+func (fake *managerFake) AuthorizeBrowserActivityView(context.Context, Call, model.ExamSittingID) (model.AcademicUnitID, bool, error) {
+	fake.f.order = append(fake.f.order, "browser.authorize")
+	return model.NewAcademicUnitID(), fake.f.managerOverride, nil
+}
 
 type auditFake struct {
 	f          *fixture
 	values     map[string]any
 	failedCode string
+	action     model.Action
+	resource   model.Resource
+	scopeType  model.RoleScopeType
+	scopeID    string
+	operation  string
+	failErr    error
 }
 
 type systemAuditFake struct {
@@ -1218,25 +1407,51 @@ func (fake *systemAuditFake) Fail(_ context.Context, _ string, code string) erro
 	return nil
 }
 
-func (fake *auditFake) Begin(_ context.Context, _ Call, _ model.Action, _ model.Resource, _ model.RoleScopeType, _ string, _ string, values map[string]any) (string, error) {
+func (fake *auditFake) Begin(_ context.Context, _ Call, action model.Action, resource model.Resource, scopeType model.RoleScopeType, scopeID, operation string, values map[string]any) (string, error) {
 	fake.f.order = append(fake.f.order, "audit")
 	fake.values = values
+	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
 	return model.NewId(), nil
+}
+func (fake *auditFake) Prepare(_ context.Context, _ Call, action model.Action, resource model.Resource,
+	scopeType model.RoleScopeType, scopeID, operation string, values map[string]any,
+) (*model.AuditEvent, error) {
+	fake.f.order = append(fake.f.order, "audit.prepare")
+	fake.values = values
+	fake.action, fake.resource, fake.scopeType, fake.scopeID, fake.operation = action, resource, scopeType, scopeID, operation
+	return &model.AuditEvent{Action: string(action), Resource: resource, ScopeType: scopeType, ScopeID: scopeID,
+		Status: model.AuditStatusAttempt, NodeID: "test", Parameters: []byte(`{"operation":"` + operation + `"}`)}, nil
+}
+func (fake *auditFake) RecordAuthorizationDecision(_ context.Context, _ Call, _ model.Action, _ model.Resource,
+	_ model.RoleScopeType, _ string, _ bool,
+) error {
+	fake.f.order = append(fake.f.order, "audit.authorization")
+	return nil
 }
 func (fake *auditFake) Fail(_ context.Context, _ string, code string) error {
 	fake.f.order = append(fake.f.order, "audit.fail")
 	fake.failedCode = code
+	return fake.failErr
+}
+func (fake *auditFake) Complete(_ context.Context, _ string, _ map[string]any) error {
+	fake.f.order = append(fake.f.order, "audit.complete")
 	return nil
 }
 
 type effectsFake struct {
 	f                *fixture
 	opened, closed   int
+	renewed          int
 	expired          int
 	reallowed        int
 	workspaceChanged int
 	focusLoss        int
 	submitted        int
+}
+
+func (fake *effectsFake) BrowserActivityGapChanged(context.Context, model.ExamID, model.ExamSittingID) error {
+	fake.f.order = append(fake.f.order, "effect.browser_gap")
+	return nil
 }
 
 func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) error {
@@ -1247,6 +1462,11 @@ func (fake *effectsFake) ConnectionOpened(context.Context, ConnectionResult) err
 func (fake *effectsFake) ConnectionClosed(context.Context, ConnectionClosedResult) error {
 	fake.f.order = append(fake.f.order, "effect.close")
 	fake.closed++
+	return nil
+}
+func (fake *effectsFake) ParticipationRenewed(context.Context, ParticipationRenewal) error {
+	fake.f.order = append(fake.f.order, "effect.renew")
+	fake.renewed++
 	return nil
 }
 func (fake *effectsFake) ParticipationExpired(context.Context, ParticipationExpiry) error {
@@ -1309,47 +1529,53 @@ func (fake *contentFake) OpenStarterWorkspaceObject(_ context.Context, id model.
 }
 
 type attemptStoreFake struct {
-	f                  *fixture
-	connect            *store.ExamAttemptConnect
-	connectErr         error
-	replayed           bool
-	firstAdmission     bool
-	connectionOpened   bool
-	connectClosed      bool
-	participationEnded bool
-	connectionSession  model.SessionID
-	closeChanged       bool
-	attempt            *model.ExamAttempt
-	workspace          *model.ExamAttemptWorkspace
-	participation      *store.ExamAttemptParticipationView
-	connection         *model.AttemptConnection
-	presentation       *store.CandidateExamPresentation
-	candidateAccess    store.CandidateAttemptAccess
-	authorizedSession  model.SessionID
-	managerOptions     store.ExamAttemptManagerListOptions
-	managerRows        []store.ExamAttemptManagerSnapshot
-	renew              *store.ExamAttemptParticipationRenewal
-	renewResult        *store.ExamAttemptParticipationRenewalResult
-	renewErr           error
-	focusAccess        store.ExamAttemptFocusLossAccess
-	focusTarget        *store.ExamAttemptFocusLossTarget
-	focusSignal        *store.ExamAttemptFocusLossSignal
-	focusResult        *store.ExamAttemptFocusLossResult
-	focusErr           error
-	lateFocusTarget    *store.ExamAttemptFocusLossDiscrepancyTarget
-	lateFocusInput     *store.ExamAttemptFocusLossDiscrepancy
-	lateFocusResult    *store.ExamAttemptFocusLossDiscrepancyResult
-	lateFocusErr       error
-	expiryDue          []store.ExamAttemptParticipationExpiryDue
-	resolvedExpiry     *store.ExamAttemptParticipationExpiryDue
-	resolveExpiryErr   error
-	expireInput        *store.ExamAttemptParticipationExpiry
-	expireResult       *store.ExamAttemptParticipationExpiryResult
-	expireErr          error
-	reallow            *store.ExamAttemptReallow
-	reallowResult      *store.ExamAttemptReallowResult
-	reallowErr         error
-	idempotency        *store.CommandIdempotency
+	f                               *fixture
+	connect                         *store.ExamAttemptConnect
+	connectErr                      error
+	replayed                        bool
+	firstAdmission                  bool
+	connectionOpened                bool
+	connectClosed                   bool
+	participationEnded              bool
+	connectionSession               model.SessionID
+	closeChanged                    bool
+	attempt                         *model.ExamAttempt
+	workspace                       *model.ExamAttemptWorkspace
+	participation                   *store.ExamAttemptParticipationView
+	connection                      *model.AttemptConnection
+	presentation                    *store.CandidateExamPresentation
+	candidateAccess                 store.CandidateAttemptAccess
+	authorizedSession               model.SessionID
+	managerOptions                  store.ExamAttemptManagerListOptions
+	managerRows                     []store.ExamAttemptManagerSnapshot
+	managerSuspension               *store.ExamAttemptSuspensionView
+	renew                           *store.ExamAttemptParticipationRenewal
+	renewResult                     *store.ExamAttemptParticipationRenewalResult
+	renewErr                        error
+	focusAccess                     store.ExamAttemptFocusLossAccess
+	focusTarget                     *store.ExamAttemptFocusLossTarget
+	focusSignal                     *store.ExamAttemptFocusLossSignal
+	focusResult                     *store.ExamAttemptFocusLossResult
+	focusErr                        error
+	lateFocusTarget                 *store.ExamAttemptFocusLossDiscrepancyTarget
+	lateFocusInput                  *store.ExamAttemptFocusLossDiscrepancy
+	lateFocusResult                 *store.ExamAttemptFocusLossDiscrepancyResult
+	lateFocusErr                    error
+	expiryDue                       []store.ExamAttemptParticipationExpiryDue
+	resolvedExpiry                  *store.ExamAttemptParticipationExpiryDue
+	resolveExpiryErr                error
+	expireInput                     *store.ExamAttemptParticipationExpiry
+	expireResult                    *store.ExamAttemptParticipationExpiryResult
+	expireErr                       error
+	reallow                         *store.ExamAttemptReallow
+	reallowResult                   *store.ExamAttemptReallowResult
+	reallowErr                      error
+	correctionAcknowledgementTarget *store.ExamAttemptCorrectionAcknowledgementTarget
+	correctionAcknowledgement       *store.ExamAttemptCorrectionAcknowledgement
+	correctionAcknowledgementResult *store.ExamAttemptCorrectionAcknowledgementResult
+	correctionAcknowledgementErr    error
+	correctionAcknowledgementCalls  int
+	idempotency                     *store.CommandIdempotency
 }
 
 type attemptWorkspaceStoreFake struct {
@@ -1519,8 +1745,10 @@ func (fake *attemptStoreFake) Connect(_ context.Context, input *store.ExamAttemp
 			return nil, err
 		}
 	}
+	configuration := fake.f.configuration.Clone()
 	return &store.ExamAttemptConnectResult{Attempt: fake.attempt, Workspace: fake.workspace, Participation: fake.participation,
 		Connection: fake.connection, ClassID: fake.f.sitting.ClassID, FirstAdmission: fake.firstAdmission,
+		Configuration: configuration, RuntimeCapabilities: runtimeCapabilitiesFixture(fake.f, fake.f.sitting.ExamRevisionID),
 		ConnectionOpened: fake.connectionOpened, Replayed: fake.replayed}, nil
 }
 func (fake *attemptStoreFake) RenewParticipation(_ context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
@@ -1575,16 +1803,35 @@ func (fake *attemptStoreFake) CloseConnection(_ context.Context, input *store.Ex
 	if err := connection.Close(input.Reason, fake.f.at.Add(time.Second)); err != nil {
 		return nil, err
 	}
-	return &store.ExamAttemptConnectionCloseResult{AttemptID: fake.attempt.ID, SittingID: fake.connect.SittingID,
+	return &store.ExamAttemptConnectionCloseResult{AttemptID: fake.attempt.ID, ExamID: fake.attempt.ExamID, SittingID: fake.connect.SittingID,
 		CandidateUserID: fake.connect.CandidateUserID, Connection: &connection, Changed: fake.closeChanged}, nil
 }
-func (*attemptStoreFake) Get(context.Context, model.ExamID, model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
-	return nil, errors.New("not configured")
+func (fake *attemptStoreFake) Get(_ context.Context, examID model.ExamID, attemptID model.ExamAttemptID) (*store.ExamAttemptManagerSnapshot, error) {
+	fake.f.order = append(fake.f.order, "manager.get")
+	if fake.attempt == nil || fake.attempt.ExamID != examID || fake.attempt.ID != attemptID {
+		return nil, errors.New("not configured")
+	}
+	return &store.ExamAttemptManagerSnapshot{Attempt: fake.attempt, ActiveSuspension: fake.managerSuspension}, nil
 }
 func (fake *attemptStoreFake) List(_ context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
 	fake.f.order = append(fake.f.order, "manager.list")
 	fake.managerOptions = options
 	return fake.managerRows, nil
+}
+
+func (fake *attemptStoreFake) ListCandidateActivity(context.Context, store.CandidateExamActivityListOptions) (*store.CandidateExamActivityPage, error) {
+	return &store.CandidateExamActivityPage{ServerTime: model.NowUTC(), Items: []store.CandidateExamActivityItem{}}, nil
+}
+
+func (fake *attemptStoreFake) ListSittingCandidateStatuses(context.Context, store.SittingCandidateStatusListOptions) (*store.SittingCandidateStatusPage, error) {
+	return &store.SittingCandidateStatusPage{Items: []store.SittingCandidateStatusItem{}}, nil
+}
+func (*attemptStoreFake) ListSessionRevocationInvalidationTargets(
+	context.Context,
+	model.UserID,
+	[]model.SessionID,
+) ([]store.ExamAttemptInvalidationTarget, error) {
+	return nil, nil
 }
 func (fake *attemptStoreFake) GetCandidatePresentation(_ context.Context, access store.CandidateAttemptAccess) (*store.CandidateExamPresentation, error) {
 	fake.candidateAccess = access
@@ -1592,6 +1839,27 @@ func (fake *attemptStoreFake) GetCandidatePresentation(_ context.Context, access
 		return nil, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
 	}
 	return fake.presentation, nil
+}
+
+func (fake *attemptStoreFake) StartBrowserActivity(context.Context, *store.BrowserActivitySourceStart) (*model.BrowserActivityAcknowledgement, error) {
+	return nil, nil
+}
+func (fake *attemptStoreFake) AppendBrowserActivity(context.Context, *store.BrowserActivityAppend) (*model.BrowserActivityAcknowledgement, error) {
+	return nil, nil
+}
+func (fake *attemptStoreFake) ListBrowserActivity(context.Context, store.BrowserActivityListOptions) ([]store.BrowserActivityRecord, error) {
+	return nil, nil
+}
+func (fake *attemptStoreFake) ResolveCorrectionAcknowledgementTarget(_ context.Context, input store.ExamAttemptCorrectionAcknowledgement) (*store.ExamAttemptCorrectionAcknowledgementTarget, error) {
+	fake.f.order = append(fake.f.order, "correction.acknowledgement.resolve")
+	fake.correctionAcknowledgement = &input
+	return fake.correctionAcknowledgementTarget, fake.correctionAcknowledgementErr
+}
+func (fake *attemptStoreFake) AcknowledgeCorrection(_ context.Context, input *store.ExamAttemptCorrectionAcknowledgement, command *store.CommandIdempotency) (*store.ExamAttemptCorrectionAcknowledgementResult, error) {
+	fake.f.order = append(fake.f.order, "correction.acknowledgement.commit")
+	fake.correctionAcknowledgementCalls++
+	fake.correctionAcknowledgement, fake.idempotency = input, command
+	return fake.correctionAcknowledgementResult, fake.correctionAcknowledgementErr
 }
 func (*attemptStoreFake) ResolveCandidateResource(context.Context, store.CandidateAttemptAccess, model.ExamResourceID) (*store.CandidateResourceContent, error) {
 	return nil, errors.New("not configured")

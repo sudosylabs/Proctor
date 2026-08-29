@@ -375,16 +375,22 @@ type integrityDiscrepancyRow struct {
 	Kind                 string         `db:"kind"`
 	Generation           int64          `db:"generation"`
 	SchemaVersion        int            `db:"schema_version"`
-	SignalID             string         `db:"focus_loss_signal_id"`
-	Sequence             int64          `db:"sequence"`
-	DurationMilliseconds int64          `db:"duration_milliseconds"`
+	SignalID             sql.NullString `db:"focus_loss_signal_id"`
+	Sequence             sql.NullInt64  `db:"sequence"`
+	DurationMilliseconds sql.NullInt64  `db:"duration_milliseconds"`
 	Source               sql.NullString `db:"source"`
-	MissingBefore        int64          `db:"missing_before"`
+	MissingBefore        sql.NullInt64  `db:"missing_before"`
+	CorrectionRevisionID sql.NullString `db:"correction_revision_id"`
+	BrowserSourceID      sql.NullString `db:"browser_activity_source_session_id"`
+	FinalSequence        sql.NullInt64  `db:"final_sequence"`
+	GapReason            sql.NullString `db:"gap_reason"`
+	UnresolvedCount      sql.NullInt64  `db:"unresolved_count"`
 	ReceivedAt           time.Time      `db:"received_at"`
 }
 
 const integrityDiscrepancySelect = `SELECT id,submission_id,exam_attempt_id,participation_id,kind,generation,
-	schema_version,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,received_at
+	schema_version,focus_loss_signal_id,sequence,duration_milliseconds,source,missing_before,correction_revision_id,
+	browser_activity_source_session_id::text,final_sequence,gap_reason,unresolved_count,received_at
 	FROM integrity_discrepancies`
 
 func (row integrityDiscrepancyRow) value() (*model.IntegrityDiscrepancy, error) {
@@ -404,15 +410,39 @@ func (row integrityDiscrepancyRow) value() (*model.IntegrityDiscrepancy, error) 
 	if err != nil {
 		return nil, invalidPersistedState("integrity_discrepancy", "participation_id", err)
 	}
-	signalID, err := model.ParseFocusLossSignalID(row.SignalID)
-	if err != nil {
-		return nil, invalidPersistedState("integrity_discrepancy", "signal_id", err)
+	var signalID model.FocusLossSignalID
+	if row.SignalID.Valid {
+		signalID, err = model.ParseFocusLossSignalID(row.SignalID.String)
+		if err != nil {
+			return nil, invalidPersistedState("integrity_discrepancy", "signal_id", err)
+		}
+	}
+	var correctionRevisionID model.ExamRevisionID
+	if row.CorrectionRevisionID.Valid {
+		correctionRevisionID, err = model.ParseExamRevisionID(row.CorrectionRevisionID.String)
+		if err != nil {
+			return nil, invalidPersistedState("integrity_discrepancy", "correction_revision_id", err)
+		}
+	}
+	var browserSourceID model.BrowserSourceSessionID
+	if row.BrowserSourceID.Valid {
+		browserSourceID = model.BrowserSourceSessionID(row.BrowserSourceID.String)
+		if !browserSourceID.IsValid() {
+			return nil, invalidPersistedState("integrity_discrepancy", "browser_activity_source_session_id", errors.New("invalid Browser Source Session ID"))
+		}
+	}
+	var finalSequence *int64
+	if row.FinalSequence.Valid {
+		sequence := row.FinalSequence.Int64
+		finalSequence = &sequence
 	}
 	value, err := model.NewIntegrityDiscrepancy(model.IntegrityDiscrepancySpecification{ID: id,
 		SubmissionID: submissionID, AttemptID: attemptID, ParticipationID: participationID, Generation: row.Generation,
 		Kind: model.IntegrityDiscrepancyKind(row.Kind), SchemaVersion: row.SchemaVersion, SignalID: signalID,
-		Sequence: row.Sequence, DurationMilliseconds: row.DurationMilliseconds, Source: model.FocusLossSource(row.Source.String),
-		MissingBefore: row.MissingBefore, ReceivedAt: row.ReceivedAt})
+		Sequence: row.Sequence.Int64, DurationMilliseconds: row.DurationMilliseconds.Int64, Source: model.FocusLossSource(row.Source.String),
+		MissingBefore: row.MissingBefore.Int64, CorrectionRevisionID: correctionRevisionID, BrowserSourceSessionID: browserSourceID,
+		FinalSequence: finalSequence, GapReason: row.GapReason.String, UnresolvedCount: row.UnresolvedCount.Int64,
+		ReceivedAt: row.ReceivedAt})
 	if err != nil {
 		return nil, invalidPersistedState("integrity_discrepancy", "value", err)
 	}

@@ -162,7 +162,8 @@ func TestRendererIncludesOnlySafeSubmissionReceiptFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	sittingID, submissionID := model.NewExamSittingID(), model.NewSubmissionID()
-	for _, key := range []model.MailTemplateKey{model.MailTemplateExamSubmissionReceived, model.MailTemplateExamSubmissionAutomaticallySealed} {
+	for _, key := range []model.MailTemplateKey{model.MailTemplateExamSubmissionReceived,
+		model.MailTemplateExamSubmissionManagerEnded, model.MailTemplateExamSubmissionAutomaticallySealed} {
 		message, renderErr := renderer.render(renderRequest{Key: key, SubmissionReceipt: &SubmissionReceiptDetails{
 			ExamTitle: "Algorithms <Final> & proofs", SittingID: sittingID,
 			SubmissionID: submissionID, SealedAt: time.Date(2026, 8, 21, 9, 30, 0, 0, time.FixedZone("node", 7200)),

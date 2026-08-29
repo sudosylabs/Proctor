@@ -17,7 +17,12 @@ Academic Unit
     └── Exam Sittings
         └── Exam Attempts
             ├── sequential Attempt Participations
-            │   └── Attempt Connections
+            │   ├── one bound registered-key Desktop Session
+            │   ├── Attempt Connections
+            │   └── sequential Browser Activity Sources
+            │       └── minimized Browser Activity records
+            ├── one immutable Attempt Configuration
+            ├── Correction Acknowledgements
             ├── one Attempt Workspace
             ├── optional Execution Environment
             │   └── one Attempt Terminal
@@ -67,15 +72,17 @@ policy bytes, resource details, Starter Workspace paths, opaque content
 identities, or source bytes. Exact authored snapshots remain an internal
 application input for later Sitting delivery rather than an HTTP read model.
 
-An open or paused Sitting may receive an urgent instructions/resource
+An open or paused Sitting may receive an urgent instructions, resource, or
+Browser Policy
 correction without changing identity or forcing students to rejoin. The named
 operation creates a live-correction Revision from that Sitting's current
 Revision and atomically retargets only the affected Sitting. It records the
 old/new revisions, actor, reason, and effective time. Other Sittings remain on
 their selected revisions. The operation requires the new and current policy
 digests, Starter Workspace digests, and Execution Profile digests to match, so
-only instructions and Exam Resources can change; eligibility, schedule,
-policy, starter files, and execution cannot change through this path. Selecting the correction as the future default is
+only instructions, Exam Resources, and the separate Browser Policy can change;
+eligibility, schedule, Exam Policy, starter files, and execution cannot change
+through this path. Selecting the correction as the future default is
 explicit, and changing the reusable Draft remains a separate operation.
 
 Resource bytes for a correction are first staged against the exact Sitting,
@@ -88,6 +95,15 @@ bytes. Only that atomic final command makes staged bytes visible. It creates no
 Draft mutation, selects no future default, and exposes no file, lease, object
 key, path, or public-download identity. Exact retries return the original safe
 outcome; failed or abandoned stages remain invisible and retention-eligible.
+
+Every live-correction Revision owns an immutable candidate notice: a trimmed
+summary of 1 to 500 Unicode characters and at most 2,000 UTF-8 bytes, the
+canonically ordered changed areas (`instructions`, `resources`, and/or
+`browser_policy`), and whether acknowledgement is required. One Sitting may
+accumulate at most 32 live corrections. The manager's private reason is never
+part of the candidate notice. Candidate presentation returns the ordered
+notice history and Attempt-owned acknowledgement state instead of relying on
+transient delivery.
 
 The creator is immutable provenance and the first Owner and Exam Manager. One
 current Owner is protected from removal; ownership transfer is audited and
@@ -303,12 +319,15 @@ manager control.
 
 ## Attempts, participation, and enforcement
 
-The first eligible connection lazily creates exactly one Exam Attempt under a
-unique Sitting/student constraint, copies the frozen Starter Workspace, and
-records the initial connection atomically. The Attempt retains its initial
-Revision for provenance while current instructions/resources resolve through
-the Sitting so an accepted live correction becomes visible without recreating
-the Attempt.
+The first eligible entry lazily creates exactly one ready Exam Attempt under a
+unique Sitting/student constraint and copies the frozen Starter Workspace; it
+does not fabricate a Participation or Connection. A later secure Desktop
+admission atomically activates that ready Attempt and creates the first
+Participation and Connection only after candidate, Sitting, registered-key
+Session, build compatibility, Attempt Configuration, and runtime posture
+checks succeed. The Attempt retains its initial Revision for provenance while
+current instructions/resources resolve through the Sitting so an accepted
+live correction becomes visible without recreating the Attempt.
 
 The copy is logical copy-on-write bootstrap: PostgreSQL creates one stable
 Attempt Workspace plus attempt-owned entry/object metadata that references the
@@ -320,8 +339,8 @@ response does not depend on stale application preflight data or duplicate
 starter identities.
 
 ~~~text
-Attempt: Active <-> Suspended
-         Active/Suspended -> Submitted
+Attempt: Ready -> Active -> Suspended -> Ready
+         Ready/Active/Suspended -> Submitted
 
 Participation generation 1 -> interrupted/fenced
 Participation generation 2 -> ...
@@ -329,15 +348,35 @@ Participation generation 2 -> ...
 
 One server-owned Attempt Participation generation and one candidate connection
 may be current. PostgreSQL retains every generation under a unique
-Attempt/generation identity, its credential hash, lease, start and end times,
-and closed end reason. A brief recoverable reconnect before lease expiry may
-retain the generation, while an expired or interrupted generation is
-permanently fenced. Authorized re-allow only returns the Attempt to Active;
-fresh authenticated admission and all recovery gates create the next
+Attempt/generation identity, its bound registered-key Desktop Session, its
+credential hash, lease, start and end times, and closed end reason. An active
+Attempt has exactly one current Participation, and that Participation has
+exactly one bound Session. A brief recoverable reconnect before lease expiry
+may retain the generation and binding, while an expired or interrupted
+generation is permanently fenced. Authorized re-allow returns the Attempt to
+Ready; fresh authenticated admission and all recovery gates create the next
 generation, so an absent candidate receives no unused credential and stale
 credentials, renewals, and mutations cannot revive prior access. Individual
 Attempt Connections remain durable children of their Participation and every
 committed open/close emits a bounded manager notification after commit.
+
+The first secure admission also freezes one Attempt Configuration from the
+candidate's current portable User Settings and the exact Desktop build's
+supported configuration manifest. It contains only the closed accessibility,
+appearance, editor, motion, announcement, cursor, and approved command-binding
+preferences understood by both sides; hidden settings and registry revisions
+remain provenance rather than runtime input. The configuration is immutable
+for the Attempt, schema- and size-bounded, canonically digested, and cannot be
+recomputed on reconnect or re-allow. Unsupported or stale manifest agreement
+leaves the Attempt Ready and denies activation.
+
+Successful connection and candidate presentation return one bounded runtime
+capability document derived from the immutable Attempt Configuration, current
+Revision, Sitting state, pending correction acknowledgement, and live server
+capabilities. It explicitly states whether Workspace mutation, Submission,
+terminal use, and the governed Browser surface are available and why they are
+not. The projection is a client instruction, not an authorization grant; each
+operation rechecks authoritative state.
 
 WebSocket ping, authenticated Participation renewal, and privileged native
 process health are separate facts. Over TLS, a privileged client coordinator
@@ -366,6 +405,17 @@ resolve current Sitting Revision instructions/resources; the admission Revision
 remains provenance, and the Attempt Workspace remains its admission snapshot.
 Manager Attempt reads expose bounded lifecycle state but no credential hash or
 Session identity.
+
+The candidate's self-scoped `Exam Activity` collection is the authoritative
+navigation registry for upcoming, available, in-progress, submitted,
+result-available, and past Sittings. It derives only safe allowed actions such
+as enter, resume, or view result, includes Submission provenance where
+applicable, and never reveals withheld Review state. A manager's separate
+Sitting candidate-status board derives presence from the current Participation
+lease at one returned server time and distinguishes not-started, ready,
+connected, reconnecting, lease-expired, suspended, and submitted candidates.
+Both are bounded no-store keyset projections and never expose Sessions,
+credentials, Connections, evidence, or private reasons.
 
 PostgreSQL time is authoritative and expiry is exclusive: a lease with
 `expires_at <= database_now` can never be renewed. A late renewal invokes the
@@ -427,15 +477,29 @@ semantic fingerprint. Stable losing stages become reclaimable, while an
 outcome-unknown post-ready commit remains fenced until replay or the durable
 cleanup safety window resolves reachability.
 
+A required live-correction acknowledgement is owned by the Attempt, not the
+Participation, and therefore survives a reconnect or later Participation
+generation. Required notices are acknowledged oldest-first through an exact
+Revision route with required idempotency and the current Revision,
+Participation, generation, bound Session, credential, and open Connection
+fence. A pending acknowledgement blocks Workspace mutations, terminal use,
+governed Browser navigation, and voluntary Submission, but not protected
+reads, lease renewal, focus or Browser Activity delivery, the acknowledgement
+itself, or authorized closure. Acknowledgement remains available while the
+Sitting is paused. Exact replay repeats current authorization and audit checks
+but returns the retained result without repeating the domain mutation or
+transient effects.
+
 Normal submission first denies new edits, settles workspace mutations, closes
 and reconciles integrity source sequences/gaps, and then atomically creates one
-immutable Submission, marks the Attempt Submitted, ends Participation, and
-records audit/idempotent outcome. The Submission manifest pins the exact
-acknowledged cursor, logical entries, paths, current content versions,
-checksums, media types, and sizes without duplicating bytes. A crash before the
-atomic step leaves an interrupted Attempt rather than inventing a Submission.
-Automatic Sitting closure seals the last acknowledged state and records
-unresolved integrity gaps without depending on a cooperative client.
+immutable Submission governed by the Sitting's current Revision, marks the
+Attempt Submitted, ends Participation, and records audit/idempotent outcome.
+The Submission manifest pins the exact acknowledged cursor, logical entries,
+paths, current content versions, checksums, media types, and sizes without
+duplicating bytes. A crash before the atomic step leaves an interrupted Attempt
+rather than inventing a Submission. Automatic Sitting closure seals the last
+acknowledged state and records unresolved integrity gaps and missing required
+correction acknowledgements without depending on a cooperative client.
 
 Students receive only a safe submission receipt and never browse their sealed
 Submission or workspace after terminal state. Authorized managers cannot read
@@ -444,14 +508,31 @@ after sealing.
 
 Voluntary submission rechecks current Class membership and the exact active
 Participation generation, credential, Session-bound Connection, expected
-Workspace Cursor, and final Focus Loss sequence. Its single named atomic Store
-operation also retains the idempotent safe receipt; an exact replay returns
-that receipt without repeating realtime or runtime-unbind effects. Manager
-inspection authorizes the canonical Submission resource against the current
+current Revision, Workspace Cursor, final Focus Loss sequence, absence of a
+pending required correction, and the client's Browser Activity terminal
+accounting. Browser Activity is explicitly `not_applicable`, `complete` with a
+current source and final sequence, or `gapped` with a bounded reason; a truthful
+gap does not block sealing. Earlier incomplete sources remain discrepancy
+provenance. The single named atomic Store operation also retains the
+idempotent safe receipt; an exact replay repeats current authorization and
+audit checks but returns that receipt without repeating realtime or
+runtime-unbind effects. Manager inspection authorizes the canonical Submission
+resource against the current
 Exam Manager relationship and access scope before concealing a mismatched
 nested Exam/Sitting/Attempt path. Manifest pagination uses stable Entry identity
 only, and protected file reads stream the retained starter- or Attempt-origin
 bytes without exposing their storage selectors.
+
+An authorized Exam Manager may end any unfinished Ready, Active, or Suspended
+Attempt before the Sitting deadline by supplying the exact Attempt revision, a
+private bounded reason, and an idempotency key. The named operation seals the
+last acknowledged Workspace state, preserves an already-ended continuity
+cause or ends still-live continuity as `manager_ended`, records missing
+correction or integrity state as discrepancies, and creates a candidate-safe
+Submission with `manager_ended_attempt` provenance. At or after the deadline,
+scheduled Sitting closure owns the otherwise equivalent `sitting_closed`
+provenance. Candidate, manager, mail, and realtime projections expose the
+provenance but never the private reason.
 
 ## Policies, integrity, and review
 
@@ -522,6 +603,40 @@ window, accepts a sequence once, returns the prior result for a duplicate,
 rejects stale or fenced-generation claims, and records a gap as uncertainty
 without inventing incidents. Client clocks, severity, and guilt are never
 authority; Connection Loss remains server-observed.
+
+When the Revision enables a Browser Policy, the trusted Desktop exposes only
+one governed Browser surface. Rules are a strict, canonically ordered,
+versioned allowlist of HTTPS origin, host match, path prefix, redirect policy,
+and start rule; ordinary query strings, fragments, credentials, page content,
+titles, referrers, headers, cookies, DOM data, and download bodies are never
+policy or telemetry fields. Blocked top-level navigation is always recorded
+with a closed reason.
+
+Browser Activity is a separate privacy-minimized delivery stream. Each
+Participation may own at most 16 sequential UUIDv4 source sessions. A reset
+names the exact predecessor and one closed reason; the former source remains
+immutable history. Events cover browser open/close, allowed top-level
+navigation/redirect, and blocked top-level navigation. They carry a monotonic
+sequence, current policy Revision, client time, a reason-minimized location,
+and an applicable rule or block reason. Successful navigation and HTTPS policy
+failures retain canonical HTTPS host, optional non-default port, and path. A
+blocked HTTP navigation retains those canonical network fields with scheme
+`http`; other disallowed schemes retain only their lowercase scheme with empty
+host and path; and `invalid_url` uses empty scheme, host, and path values.
+Query, fragment, credentials, local paths, and scheme payloads are never
+retained. Batches contain 1 to 64 events and at most 256 KiB. PostgreSQL
+accepts exact replay, rejects changed duplicates and a reorder distance above 4,096, and
+acknowledges the highest contiguous and seen sequences plus at most 32 missing
+ranges. Delivery is allowed while paused or awaiting correction
+acknowledgement so evidence can converge without granting interaction.
+
+At Submission, a complete Browser Activity source must be final and contiguous
+through the declared sequence. Missing records, an unfinalized source, a
+client-declared gap, or an incomplete prior source creates explicit bounded
+Submission discrepancy provenance without inventing observations or blocking
+closure. Authorized managers may page the minimized retained records through
+the exact Attempt route; the response excludes Session, Registration,
+Connection, credentials, page content, and private Review state.
 
 A Focus Loss duration equal to or above the configured minimum qualifies. The
 threshold fires immediately when the configured count falls within the rolling

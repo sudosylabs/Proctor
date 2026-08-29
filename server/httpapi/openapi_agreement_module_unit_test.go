@@ -281,7 +281,9 @@ func TestOpenAPIAgreementEvaluatorAllowsInlineExceptionalSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	operation := document["paths"].(map[string]any)["/things/{thing_id}"].(map[string]any)["get"].(map[string]any)
-	operation["responses"] = map[string]any{"101": map[string]any{"description": "Switching Protocols"}, "404": operation["responses"].(map[string]any)["404"]}
+	responses := operation["responses"].(map[string]any)
+	delete(responses, "200")
+	responses["101"] = map[string]any{"description": "Switching Protocols"}
 	suite.Operations[0].SuccessStatus = "101"
 	encoded, err := json.Marshal(document)
 	if err != nil {
@@ -313,7 +315,7 @@ func syntheticOpenAPIAgreementInputs() ([]Route, openAPIAgreementSuite) {
 	codes := []string{"resource.not_found"}
 	return []Route{{
 			Method: "GET", Path: "/things/{thing_id:[0-9]+}", Auth: AuthPrincipalRequired,
-			ErrorCodes: append([]string(nil), codes...),
+			ErrorCodes: routeErrorCodes(AuthPrincipalRequired, codes),
 		}}, openAPIAgreementSuite{Operations: []openAPIAgreementOperation{{
 			Key: "GET /things/{thing_id}", Auth: AuthPrincipalRequired,
 			SuccessStatus: "200", SuccessRef: "#/components/responses/ThingOK", SuccessSchema: "ThingResponse",
@@ -330,11 +332,13 @@ func syntheticOpenAPIDocument(t *testing.T) []byte {
       "get": {
         "operationId": "getThing",
         "x-proctor-auth": "principal_required",
-        "x-proctor-error-codes": ["resource.not_found"],
-        "security": [{"bearerAuth": []}, {"sessionCookie": []}],
+        "x-proctor-error-codes": ["resource.not_found", "authentication.dpop.invalid", "authentication.dpop.replayed", "authentication.dpop.use_nonce", "authentication.dpop.unavailable"],
+        "security": [{"bearerAuth": []}, {"dpopAuth": []}, {"sessionCookie": []}],
         "responses": {
           "200": {"$ref": "#/components/responses/ThingOK"},
-          "404": {"$ref": "#/components/responses/NotFound"}
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
         }
       }
     }
@@ -348,6 +352,14 @@ func syntheticOpenAPIDocument(t *testing.T) []byte {
     "responses": {
       "ThingOK": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ThingResponse"}}}},
       "NotFound": {
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}
+      },
+      "Unauthorized": {
+        "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+        "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}
+      },
+      "ServiceUnavailable": {
         "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
         "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/ProblemDetails"}}}
       }

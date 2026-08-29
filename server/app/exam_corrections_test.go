@@ -67,9 +67,14 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 		t.Fatal(err)
 	}
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
+	candidateID := model.NewUserID()
+	collections := examCollectionInvalidationEffects{
+		sittings: &examCollectionInvalidationStoreFake{candidateIDs: []model.UserID{candidateID}},
+		realtime: realtime,
+	}
 	previousRevisionID, revisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
 	at := time.Date(2026, time.August, 17, 12, 0, 0, 0, time.UTC)
-	err := (examCorrectionRealtimeEffects{realtime: realtime}).Corrected(context.Background(), examcorrection.Result{
+	err := (examCorrectionRealtimeEffects{realtime: realtime, collections: collections}).Corrected(context.Background(), examcorrection.Result{
 		ExamID: examID, SittingID: sittingID, PreviousRevisionID: previousRevisionID,
 		RevisionID: revisionID, SittingRevision: 7, EffectiveAt: at,
 	})
@@ -79,9 +84,11 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 	sink.mu.Lock()
 	events := append([]apprealtime.RealtimeEvent(nil), sink.events...)
 	sink.mu.Unlock()
-	if len(events) != 2 || events[0].Action != model.ActionExamSittingView ||
+	if len(events) != 4 || events[0].Action != model.ActionExamSittingView ||
 		events[1].Action != model.ActionExamSittingParticipate || events[0].Name != "exam_sitting_content_corrected" ||
-		events[1].Name != events[0].Name || string(events[1].Data) != string(events[0].Data) {
+		events[1].Name != events[0].Name || string(events[1].Data) != string(events[0].Data) ||
+		events[2].Name != "manager.sitting_board.changed" ||
+		events[3].Name != "candidate.exam_activity.changed" || events[3].UserID != candidateID.String() {
 		t.Fatalf("events = %#v", events)
 	}
 }

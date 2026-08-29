@@ -70,6 +70,7 @@ func evaluateMailDeliveryRelevance(_ context.Context, delivery *model.MailDelive
 		model.MailTemplateExamOwnershipTransferredToYou,
 		model.MailTemplateExamOwnershipTransferredFromYou,
 		model.MailTemplateExamSubmissionReceived,
+		model.MailTemplateExamSubmissionManagerEnded,
 		model.MailTemplateExamSubmissionAutomaticallySealed,
 		model.MailTemplateExamResultReleased:
 		// Purpose-bound credential deliveries receive their authoritative

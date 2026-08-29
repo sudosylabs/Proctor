@@ -68,6 +68,9 @@ type Dependencies struct {
 	Registry         externalProviderSource
 	FileContent      FileContent
 	ExecutionHosts   appexecution.HostDirectory
+	// DesktopBuildCatalog is the immutable verified build catalog embedded by
+	// the server release. An empty catalog keeps compatibility dormant.
+	DesktopBuildCatalog []model.DesktopBuildTuple
 
 	NodeID    string
 	PublicURL string

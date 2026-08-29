@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestCreateExamBuildsChildCallAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view != child.view || child.call.Principal().UserID != userID || child.call.RequestMetadata().RequestID != "request-1" {
+	if !reflect.DeepEqual(view, child.view) || child.call.Principal().UserID != userID || child.call.RequestMetadata().RequestID != "request-1" {
 		t.Fatalf("view/call = %#v / %#v", view, child.call)
 	}
 	if child.create.IdempotencyKey != "retry-key" {
@@ -70,7 +71,7 @@ func TestEditExamDraftTextBuildsPresenceAwareIdempotentChildCommand(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view != child.view || child.edit.ExamID != examID || child.edit.ExpectedDraftRevision != 4 || child.edit.Title == nil || *child.edit.Title != title || child.edit.InstructionsMarkdown != nil {
+	if !reflect.DeepEqual(view, child.view) || child.edit.ExamID != examID || child.edit.ExpectedDraftRevision != 4 || child.edit.Title == nil || *child.edit.Title != title || child.edit.InstructionsMarkdown != nil {
 		t.Fatalf("view/edit = %#v / %#v", view, child.edit)
 	}
 	if child.edit.IdempotencyKey != "edit-once" {
@@ -124,7 +125,7 @@ func TestConfigureExamDraftFocusLossBuildsTypedIdempotentChildCommand(t *testing
 		t.Fatal(err)
 	}
 	got := child.focusLoss
-	if view != child.view || got.ExamID != examID || got.ExpectedDraftRevision != 4 || got.FocusLoss != (model.FocusLossPolicy{
+	if !reflect.DeepEqual(view, child.view) || got.ExamID != examID || got.ExpectedDraftRevision != 4 || got.FocusLoss != (model.FocusLossPolicy{
 		Enabled: false, MinimumDuration: 500*time.Millisecond + time.Nanosecond, IncidentCount: 100, Window: 4*time.Hour + time.Nanosecond, Outcome: model.IntegrityOutcomeFlagAndSuspend,
 	}) {
 		t.Fatalf("view/command = %#v / %#v", view, got)
@@ -160,7 +161,7 @@ func TestConfigureExamDraftExecutionProfileBuildsTypedIdempotentChildCommand(t *
 		t.Fatal(err)
 	}
 	got := child.executionProfile
-	if view != child.view || got.ExamID != examID || got.ExpectedDraftRevision != 7 || got.Profile != (model.ExecutionProfile{
+	if !reflect.DeepEqual(view, child.view) || got.ExamID != examID || got.ExpectedDraftRevision != 7 || got.Profile != (model.ExecutionProfile{
 		Enabled: true, Image: "golang-1.24", Network: model.ExecutionNetworkAllowlist,
 	}) {
 		t.Fatalf("view/command = %#v / %#v", view, got)
@@ -227,6 +228,7 @@ type examUseCasesFake struct {
 	edit             examengine.EditDraftTextCommand
 	focusLoss        examengine.ConfigureDraftFocusLossCommand
 	executionProfile examengine.ConfigureDraftExecutionProfileCommand
+	browserPolicy    examengine.ConfigureDraftBrowserPolicyCommand
 	list             examengine.ListQuery
 	catalog          examengine.CatalogPage
 	archive          examengine.ArchiveCommand
@@ -294,6 +296,11 @@ func (f *examUseCasesFake) ConfigureDraftFocusLoss(_ context.Context, call exame
 
 func (f *examUseCasesFake) ConfigureDraftExecutionProfile(_ context.Context, call examengine.Call, command examengine.ConfigureDraftExecutionProfileCommand) (examengine.View, error) {
 	f.call, f.executionProfile = call, command
+	return f.view, f.err
+}
+
+func (f *examUseCasesFake) ConfigureDraftBrowserPolicy(_ context.Context, call examengine.Call, command examengine.ConfigureDraftBrowserPolicyCommand) (examengine.View, error) {
+	f.call, f.browserPolicy = call, command
 	return f.view, f.err
 }
 

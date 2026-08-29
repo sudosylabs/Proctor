@@ -4,11 +4,13 @@
 package sqlstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/lib/pq"
@@ -25,32 +27,35 @@ func newSQLExamAttemptStore(sqlStore *SQLStore) store.ExamAttemptStore {
 }
 
 type examAttemptConnectOutcomeV1 struct {
-	AttemptID        string    `json:"a"`
-	WorkspaceID      string    `json:"w"`
-	ParticipationID  string    `json:"p"`
-	ConnectionID     string    `json:"c"`
-	ExamID           string    `json:"e"`
-	SittingID        string    `json:"s"`
-	CandidateID      string    `json:"u"`
-	RevisionID       string    `json:"r"`
-	SessionID        string    `json:"n"`
-	ClassID          string    `json:"l"`
-	StartedAt        time.Time `json:"t"`
-	LeaseExpiresAt   time.Time `json:"x"`
-	EntryCount       int       `json:"q"`
-	Generation       int64     `json:"g"`
-	FirstAdmission   bool      `json:"f"`
-	ConnectionOpened bool      `json:"o"`
+	AttemptID          string    `json:"a"`
+	WorkspaceID        string    `json:"w"`
+	ParticipationID    string    `json:"p"`
+	ConnectionID       string    `json:"c"`
+	ExamID             string    `json:"e"`
+	SittingID          string    `json:"s"`
+	CandidateID        string    `json:"u"`
+	RevisionID         string    `json:"r"`
+	SessionID          string    `json:"n"`
+	ClassID            string    `json:"l"`
+	StartedAt          time.Time `json:"t"`
+	LeaseExpiresAt     time.Time `json:"x"`
+	EntryCount         int       `json:"q"`
+	Generation         int64     `json:"g"`
+	FirstAdmission     bool      `json:"f"`
+	ConnectionOpened   bool      `json:"o"`
+	RevokedSessionIDs  []string  `json:"i,omitempty"`
+	RevokedTokenHashes []string  `json:"h,omitempty"`
 }
 
 type examAttemptAdmissionGuard struct {
-	ExamID       string    `db:"exam_id"`
-	RevisionID   string    `db:"exam_revision_id"`
-	ClassID      string    `db:"class_id"`
-	PeriodID     string    `db:"academic_period_id"`
-	State        string    `db:"state"`
-	ScheduledEnd time.Time `db:"scheduled_end_at"`
-	DatabaseNow  time.Time `db:"database_now"`
+	ExamID         string    `db:"exam_id"`
+	AcademicUnitID string    `db:"academic_unit_id"`
+	RevisionID     string    `db:"exam_revision_id"`
+	ClassID        string    `db:"class_id"`
+	PeriodID       string    `db:"academic_period_id"`
+	State          string    `db:"state"`
+	ScheduledEnd   time.Time `db:"scheduled_end_at"`
+	DatabaseNow    time.Time `db:"database_now"`
 }
 
 type examAttemptStarterRow struct {
@@ -99,6 +104,18 @@ func (s *sqlExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 				outcome.CandidateID != input.CandidateUserID.String() || outcome.SessionID != input.SessionID.String() {
 				return store.NewErrNotFound("exam_attempt_eligibility", input.SittingID.String())
 			}
+			var frozen struct {
+				Document []byte `db:"attempt_configuration_canonical"`
+				Digest   string `db:"attempt_configuration_digest"`
+			}
+			if lockErr = tx.Get(ctx, &frozen, `SELECT attempt_configuration_canonical,attempt_configuration_digest
+				FROM exam_attempts WHERE id=? AND exam_sitting_id=? AND candidate_user_id=? FOR SHARE`,
+				outcome.AttemptID, outcome.SittingID, outcome.CandidateID); lockErr != nil {
+				return translateError("exam_attempt", outcome.AttemptID, lockErr)
+			}
+			if _, lockErr = validateExistingAttemptConfiguration(frozen.Document, frozen.Digest, input); lockErr != nil {
+				return lockErr
+			}
 			return completeExamAttemptConnectAudit(ctx, tx, outcome, true, originalAuditID, input.AuditEventID, input.AuditAt)
 		},
 	})
@@ -111,6 +128,8 @@ func (s *sqlExamAttemptStore) Connect(ctx context.Context, input *store.ExamAtte
 	}
 	aggregate.Replayed = result.Replayed
 	aggregate.ConnectionOpened = result.Value.ConnectionOpened && !result.Replayed
+	aggregate.RevokedSessionIDs = append([]string(nil), result.Value.RevokedSessionIDs...)
+	aggregate.RevokedAccessTokenDigests = append([]string(nil), result.Value.RevokedTokenHashes...)
 	return aggregate, nil
 }
 
@@ -118,15 +137,29 @@ func validateExamAttemptConnect(input *store.ExamAttemptConnect, command *store.
 	if input == nil || command == nil ||
 		command.Operation != store.ExamAttemptConnectOperation || command.OutcomeVersion != 1 ||
 		!input.SittingID.IsValid() || !input.CandidateUserID.IsValid() || !input.SessionID.IsValid() ||
+		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		command.UserID != input.CandidateUserID || !input.AttemptID.IsValid() || !input.WorkspaceID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
-		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		!model.IsValidTokenHash(input.ContinuityCredentialHash) || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
+		input.DesktopBuild.Validate() != nil || input.DesktopCompatibilityPolicyRevision < 1 || len(input.SupportedConfigurationManifests) != 1 ||
+		input.SupportedConfigurationManifests[0] != model.CurrentAttemptConfigurationManifestFingerprint() ||
+		input.DesktopBuild.AttemptConfigurationManifestFingerprint != input.SupportedConfigurationManifests[0] {
 		return store.NewErrInvalidInput("exam_attempt", "connect", nil)
+	}
+	if input.InitialConfiguration != nil {
+		configuration := input.InitialConfiguration
+		if configuration.Validate() != nil || configuration.ManifestFingerprint != input.SupportedConfigurationManifests[0] ||
+			configuration.SourceDesktopRegistryFingerprint != input.DesktopBuild.DesktopSettingsRegistryFingerprint {
+			return store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
+		}
 	}
 	return nil
 }
 
 type attemptParticipationRenewalRow struct {
 	State           string         `db:"state"`
+	SessionID       string         `db:"session_id"`
+	RegistrationID  string         `db:"desktop_registration_id"`
+	KeyThumbprint   string         `db:"dpop_key_thumbprint"`
 	Generation      int64          `db:"generation"`
 	RenewalSequence int64          `db:"renewal_sequence"`
 	CredentialHash  string         `db:"continuity_credential_hash"`
@@ -141,16 +174,19 @@ type attemptParticipationRenewalRow struct {
 func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *store.ExamAttemptParticipationRenewal) (*store.ExamAttemptParticipationRenewalResult, error) {
 	if input == nil || !input.AttemptID.IsValid() || !input.ParticipationID.IsValid() || !input.ConnectionID.IsValid() ||
 		!input.CandidateUserID.IsValid() || !input.SessionID.IsValid() || input.Generation < 1 || input.Sequence < 1 ||
+		!input.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(input.DPoPKeyThumbprint) ||
 		!model.IsValidTokenHash(input.ContinuityCredentialHash) {
 		return nil, store.NewErrInvalidInput("attempt_participation", "renewal", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "renew Attempt Participation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptParticipationRenewalResult, error) {
 		var attempt struct {
 			CandidateID  string `db:"candidate_user_id"`
+			ExamID       string `db:"exam_id"`
+			SittingID    string `db:"exam_sitting_id"`
 			State        string `db:"state"`
 			SittingState string `db:"sitting_state"`
 		}
-		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.state,s.state AS sitting_state
+		if err := tx.Get(ctx, &attempt, `SELECT a.candidate_user_id,a.exam_id,a.exam_sitting_id,a.state,s.state AS sitting_state
 			FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 			WHERE a.id=? FOR UPDATE OF a FOR SHARE OF s`, input.AttemptID.String()); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -161,14 +197,27 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 		if attempt.CandidateID != input.CandidateUserID.String() {
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 		}
+		examID, examErr := model.ParseExamID(attempt.ExamID)
+		sittingID, sittingErr := model.ParseExamSittingID(attempt.SittingID)
+		if examErr != nil || sittingErr != nil {
+			return nil, invalidPersistedState("exam_attempt", "ownership", errors.Join(examErr, sittingErr))
+		}
 		var row attemptParticipationRenewalRow
-		if err := tx.Get(ctx, &row, `SELECT state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,
-			lease_expires_at,ended_at,end_reason
-			FROM exam_attempt_participations WHERE id=? AND exam_attempt_id=? FOR UPDATE`, input.ParticipationID.String(), input.AttemptID.String()); err != nil {
+		if err := tx.Get(ctx, &row, `SELECT p.state,p.session_id,se.desktop_registration_id,se.dpop_key_thumbprint,
+			p.generation,p.renewal_sequence,p.continuity_credential_hash,p.started_at,p.updated_at,
+			p.lease_expires_at,p.ended_at,p.end_reason
+			FROM exam_attempt_participations p JOIN sessions se ON se.id=p.session_id
+			JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
+			WHERE p.id=? AND p.exam_attempt_id=? AND se.user_id=? AND se.archived_at IS NULL AND se.revoked_at IS NULL
+			AND dr.revoked_at IS NULL FOR UPDATE OF p,se,dr`, input.ParticipationID.String(), input.AttemptID.String(), input.CandidateUserID.String()); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 			}
 			return nil, fmt.Errorf("lock Attempt Participation renewal: %w", err)
+		}
+		if row.SessionID != input.SessionID.String() || row.RegistrationID != input.DesktopRegistrationID.String() ||
+			row.KeyThumbprint != input.DPoPKeyThumbprint {
+			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
 		}
 		if input.Generation != row.Generation {
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_generation", nil)
@@ -210,12 +259,13 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
 		}
 		if input.Sequence == row.RenewalSequence {
-			return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ParticipationID: input.ParticipationID,
+			return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+				CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
 				Generation: row.Generation, AcceptedSequence: row.RenewalSequence, DatabaseTime: model.TimeUTC(row.UpdatedAt),
 				LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), Duplicate: true}, nil
 		}
 
-		participation := &model.AttemptParticipation{ID: input.ParticipationID, AttemptID: input.AttemptID,
+		participation := &model.AttemptParticipation{ID: input.ParticipationID, AttemptID: input.AttemptID, SessionID: input.SessionID,
 			State: model.AttemptParticipationActive, Generation: row.Generation, RenewalSequence: row.RenewalSequence,
 			ContinuityCredentialHash: row.CredentialHash, StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
 			LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
@@ -238,7 +288,8 @@ func (s *sqlExamAttemptStore) RenewParticipation(ctx context.Context, input *sto
 			}
 			return nil, store.NewErrConflict("attempt_participation", "attempt_participation_sequence", nil)
 		}
-		return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ParticipationID: input.ParticipationID,
+		return &store.ExamAttemptParticipationRenewalResult{AttemptID: input.AttemptID, ExamID: examID, SittingID: sittingID,
+			CandidateUserID: input.CandidateUserID, ParticipationID: input.ParticipationID,
 			Generation: participation.Generation, AcceptedSequence: participation.RenewalSequence,
 			DatabaseTime: participation.UpdatedAt, LeaseExpiresAt: participation.LeaseExpiresAt}, nil
 	})
@@ -335,6 +386,7 @@ type participationExpiryLockRow struct {
 	AttemptState           string         `db:"attempt_state"`
 	AdmissionRevisionID    string         `db:"admission_revision_id"`
 	ParticipationState     string         `db:"participation_state"`
+	SessionID              string         `db:"session_id"`
 	CredentialHash         string         `db:"continuity_credential_hash"`
 	AttemptCreatedAt       time.Time      `db:"attempt_created_at"`
 	AttemptUpdatedAt       time.Time      `db:"attempt_updated_at"`
@@ -457,7 +509,7 @@ func lockParticipationExpiry(ctx context.Context, tx *sqlxTxWrapper, attemptID m
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,a.candidate_user_id,a.id AS attempt_id,
 		p.id AS participation_id,p.generation,p.lease_expires_at,a.state AS attempt_state,a.admission_revision_id,
 		a.created_at AS attempt_created_at,a.updated_at AS attempt_updated_at,a.submitted_at,a.revision AS attempt_revision,
-		p.state AS participation_state,p.renewal_sequence,p.continuity_credential_hash,p.started_at,
+		p.state AS participation_state,p.session_id,p.renewal_sequence,p.continuity_credential_hash,p.started_at,
 		p.updated_at AS participation_updated_at,p.ended_at,p.end_reason
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id
@@ -484,7 +536,11 @@ func (row participationExpiryLockRow) domain() (*model.ExamAttempt, *model.Attem
 	if err = attempt.Validate(); err != nil {
 		return nil, nil, invalidPersistedState("exam_attempt", "value", err)
 	}
-	participation := &model.AttemptParticipation{ID: due.ParticipationID, AttemptID: due.AttemptID,
+	sessionID, err := model.ParseSessionID(row.SessionID)
+	if err != nil {
+		return nil, nil, invalidPersistedState("attempt_participation", "session_id", err)
+	}
+	participation := &model.AttemptParticipation{ID: due.ParticipationID, AttemptID: due.AttemptID, SessionID: sessionID,
 		State: model.AttemptParticipationState(row.ParticipationState), Generation: row.Generation,
 		RenewalSequence: row.RenewalSequence, ContinuityCredentialHash: row.CredentialHash,
 		StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.ParticipationUpdatedAt),
@@ -699,16 +755,17 @@ func (s *sqlExamAttemptStore) ReallowAttempt(ctx context.Context, input *store.E
 }
 
 type examAttemptReallowGuard struct {
-	AttemptState   string `db:"attempt_state"`
-	SittingState   string `db:"sitting_state"`
-	ActorIsManager bool   `db:"actor_is_manager"`
+	AttemptState    string `db:"attempt_state"`
+	SittingState    string `db:"sitting_state"`
+	CandidateUserID string `db:"candidate_user_id"`
+	ActorIsManager  bool   `db:"actor_is_manager"`
 }
 
 func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptReallow,
 	lock bool,
 ) error {
 	var guard examAttemptReallowGuard
-	query := `SELECT a.state AS attempt_state,s.state AS sitting_state,
+	query := `SELECT a.state AS attempt_state,s.state AS sitting_state,a.candidate_user_id,
 		EXISTS (SELECT 1 FROM exam_managers m WHERE m.exam_id=a.exam_id AND m.user_id=?) AS actor_is_manager
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		WHERE a.id=? AND a.exam_id=? AND a.exam_sitting_id=?`
@@ -721,6 +778,9 @@ func guardExamAttemptReallowAuthority(ctx context.Context, tx *sqlxTxWrapper, in
 	}
 	if !guard.ActorIsManager && !input.ManagerOverride {
 		return store.NewErrNotFound("exam_manager", input.ActorUserID.String())
+	}
+	if guard.CandidateUserID == input.ActorUserID.String() {
+		return store.NewErrNotFound("exam_attempt", input.AttemptID.String())
 	}
 	if guard.SittingState == string(model.ExamSittingClosing) || guard.SittingState == string(model.ExamSittingClosed) {
 		return store.NewErrConflict("exam_sitting", "exam_sitting_state", nil)
@@ -817,7 +877,7 @@ func reallowExamAttempt(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		suspension.EndedAt.Time, suspension.ReallowedByUserID.String(), suspension.PrivateReason, suspension.ID.String()); err != nil {
 		return zero, fmt.Errorf("close Attempt Suspension: %w", err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state='active',updated_at=?,revision=? WHERE id=? AND revision=?`,
+	if _, err = tx.Exec(ctx, `UPDATE exam_attempts SET state='ready',updated_at=?,revision=? WHERE id=? AND revision=?`,
 		attempt.UpdatedAt, attempt.Revision, attempt.ID.String(), row.AttemptRevision); err != nil {
 		return zero, fmt.Errorf("re-allow Exam Attempt: %w", err)
 	}
@@ -953,6 +1013,15 @@ func (s *sqlExamAttemptStore) loadExamAttemptReallowResult(ctx context.Context, 
 
 func (s *sqlExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect) (examAttemptConnectOutcomeV1, error) {
 	var zero examAttemptConnectOutcomeV1
+	// Serialize activation with every Session issuance for this User. If the
+	// Session commits first it may be used for admission; once admission commits,
+	// later Session creation observes the active Attempt and fails closed.
+	if err := lockUserSessions(ctx, tx, input.CandidateUserID.String()); err != nil {
+		return zero, err
+	}
+	if err := requireDesktopCompatibilityPolicyRevision(ctx, tx, input.DesktopCompatibilityPolicyRevision); err != nil {
+		return zero, err
+	}
 	guard, err := s.lockExamAttemptEligibility(ctx, tx, input, false)
 	if err != nil {
 		return zero, err
@@ -965,12 +1034,18 @@ func (s *sqlExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, in
 		State               string    `db:"state"`
 		CreatedAt           time.Time `db:"created_at"`
 		WorkspaceEntryCount int       `db:"workspace_entry_count"`
+		Configuration       []byte    `db:"attempt_configuration_canonical"`
+		ConfigurationDigest string    `db:"attempt_configuration_digest"`
 	}
 	err = tx.Get(ctx, &existing, `SELECT a.id AS attempt_id,w.id AS workspace_id,a.admission_revision_id,a.state,a.created_at,
+		a.attempt_configuration_canonical,a.attempt_configuration_digest,
 		(SELECT COUNT(*) FROM exam_attempt_workspace_entries entries WHERE entries.workspace_id=w.id) AS workspace_entry_count
 		FROM exam_attempts a JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
 		WHERE a.exam_sitting_id=? AND a.candidate_user_id=? FOR UPDATE OF a,w`, input.SittingID.String(), input.CandidateUserID.String())
 	if err == nil {
+		if _, configurationErr := validateExistingAttemptConfiguration(existing.Configuration, existing.ConfigurationDigest, input); configurationErr != nil {
+			return zero, configurationErr
+		}
 		return s.reconnect(ctx, tx, input, guard, existing.AttemptID, existing.WorkspaceID, existing.AdmissionRevision,
 			existing.State, existing.CreatedAt, existing.WorkspaceEntryCount)
 	}
@@ -980,14 +1055,32 @@ func (s *sqlExamAttemptStore) connect(ctx context.Context, tx *sqlxTxWrapper, in
 	return s.firstAdmission(ctx, tx, input, guard)
 }
 
+func validateExistingAttemptConfiguration(document []byte, digest string, input *store.ExamAttemptConnect) (model.AttemptConfiguration, error) {
+	configuration, err := model.DecodeAttemptConfiguration(document, digest)
+	if err != nil {
+		return model.AttemptConfiguration{}, invalidPersistedState("exam_attempt", "attempt_configuration", err)
+	}
+	if !slices.Contains(input.SupportedConfigurationManifests, configuration.ManifestFingerprint) ||
+		configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint {
+		return model.AttemptConfiguration{}, store.NewErrConflict("exam_attempt", "attempt_configuration_unsupported", nil)
+	}
+	if input.InitialConfiguration != nil {
+		proposed, proposalErr := input.InitialConfiguration.CanonicalAdmission()
+		if proposalErr != nil || !bytes.Equal(proposed, document) || input.InitialConfiguration.Digest != digest {
+			return model.AttemptConfiguration{}, store.NewErrConflict("exam_attempt", "attempt_configuration_frozen", nil)
+		}
+	}
+	return configuration, nil
+}
+
 // lockExamAttemptEligibility serializes every admission for one candidate and
 // locks current membership before the Exam/Sitting lineage. allowPaused is
 // reserved for exact replay recovery; every fresh Connection still requires
 // Open.
 func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, allowPaused bool) (examAttemptAdmissionGuard, error) {
 	var zero examAttemptAdmissionGuard
-	lockKey := "proctor:exam-attempt-admission:" + input.SittingID.String() + ":" + input.CandidateUserID.String()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext(?))`, lockKey); err != nil {
+	lockKey := "proctor:exam-attempt-admission:" + input.CandidateUserID.String()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
 		return zero, fmt.Errorf("lock Exam Attempt admission: %w", err)
 	}
 
@@ -1008,9 +1101,9 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 	}
 
 	var guard examAttemptAdmissionGuard
-	if err := tx.Get(ctx, &guard, `SELECT s.exam_id,s.exam_revision_id,s.class_id,c.academic_period_id,
+	if err := tx.Get(ctx, &guard, `SELECT s.exam_id,e.academic_unit_id,s.exam_revision_id,s.class_id,c.academic_period_id,
 		s.state,s.scheduled_end_at
-		FROM exam_sittings s JOIN classes c ON c.id=s.class_id
+		FROM exam_sittings s JOIN exams e ON e.id=s.exam_id JOIN classes c ON c.id=s.class_id
 		WHERE s.id=? AND s.exam_id=? FOR SHARE OF s,c`, input.SittingID.String(), initial.ExamID); err != nil {
 		return zero, translateError("exam_sitting", input.SittingID.String(), err)
 	}
@@ -1023,6 +1116,7 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 	var eligible bool
 	if err := tx.Get(ctx, &eligible, `SELECT true FROM users u
 		JOIN sessions se ON se.id=? AND se.user_id=u.id
+		JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 		JOIN class_members cm ON cm.user_id=u.id AND cm.class_id=?
 		JOIN classes c ON c.id=cm.class_id AND c.academic_period_id=cm.academic_period_id
 		JOIN programme_levels pl ON pl.id=c.programme_level_id
@@ -1030,11 +1124,18 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 		JOIN academic_units au ON au.id=p.academic_unit_id
 		JOIN academic_periods ap ON ap.id=c.academic_period_id AND ap.institution_id=au.institution_id
 		WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL
-		AND se.archived_at IS NULL AND se.revoked_at IS NULL
+		AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.client_type='desktop'
+		AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=?
+		AND se.desktop_release=? AND se.desktop_build_id=? AND se.desktop_platform=?
+		AND se.desktop_architecture=? AND se.desktop_realtime_protocol=?
+		AND dr.revoked_at IS NULL AND dr.key_thumbprint=?
 		AND cm.archived_at IS NULL
 		AND c.archived_at IS NULL AND pl.archived_at IS NULL AND p.archived_at IS NULL
 		AND au.archived_at IS NULL AND ap.archived_at IS NULL
-		FOR SHARE OF u,se,cm,c,pl,p,au,ap`, input.SessionID.String(), guard.ClassID, input.CandidateUserID.String()); err != nil {
+		FOR SHARE OF u,se,dr,cm,c,pl,p,au,ap`, input.SessionID.String(), guard.ClassID, input.CandidateUserID.String(),
+		input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint,
+		input.DesktopBuild.DesktopRelease, input.DesktopBuild.DesktopBuildID, string(input.DesktopBuild.Platform),
+		string(input.DesktopBuild.Architecture), input.DesktopBuild.RealtimeProtocol, input.DPoPKeyThumbprint); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return zero, store.NewErrNotFound("exam_attempt_eligibility", input.SittingID.String())
 		}
@@ -1046,12 +1147,21 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 	if err := tx.Get(ctx, &guard.DatabaseNow, `SELECT statement_timestamp()`); err != nil {
 		return zero, fmt.Errorf("read Exam Attempt admission decision time: %w", err)
 	}
+	hasManagementAuthority, err := hasEffectiveExamManagementAuthority(ctx, tx, input.CandidateUserID.String(),
+		guard.ExamID, guard.AcademicUnitID, guard.DatabaseNow)
+	if err != nil {
+		return zero, err
+	}
+	if hasManagementAuthority {
+		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_management_authority", nil)
+	}
 	if !guard.DatabaseNow.Before(guard.ScheduledEnd) {
 		return zero, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
 	}
 	if err := tx.Get(ctx, &eligible, `SELECT EXISTS (
 		SELECT 1 FROM users u
 		JOIN sessions se ON se.id=? AND se.user_id=u.id
+		JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 		JOIN class_members cm ON cm.user_id=u.id AND cm.class_id=?
 		JOIN classes c ON c.id=cm.class_id AND c.academic_period_id=cm.academic_period_id
 		JOIN programme_levels pl ON pl.id=c.programme_level_id
@@ -1059,11 +1169,19 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 		JOIN academic_units au ON au.id=p.academic_unit_id
 		JOIN academic_periods ap ON ap.id=c.academic_period_id AND ap.institution_id=au.institution_id
 		WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL
-		AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.idle_expires_at>? AND se.expires_at>?
+		AND se.archived_at IS NULL AND se.revoked_at IS NULL AND se.client_type='desktop'
+		AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=?
+		AND se.desktop_release=? AND se.desktop_build_id=? AND se.desktop_platform=?
+		AND se.desktop_architecture=? AND se.desktop_realtime_protocol=?
+		AND dr.revoked_at IS NULL AND dr.key_thumbprint=?
+		AND se.idle_expires_at>? AND se.expires_at>?
 		AND cm.archived_at IS NULL AND cm.start_at<=? AND (cm.end_at IS NULL OR cm.end_at>?)
 		AND c.archived_at IS NULL AND pl.archived_at IS NULL AND p.archived_at IS NULL
 		AND au.archived_at IS NULL AND ap.archived_at IS NULL)`, input.SessionID.String(), guard.ClassID,
-		input.CandidateUserID.String(), guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow); err != nil {
+		input.CandidateUserID.String(), input.DesktopRegistrationID.String(), input.DPoPKeyThumbprint,
+		input.DesktopBuild.DesktopRelease, input.DesktopBuild.DesktopBuildID, string(input.DesktopBuild.Platform),
+		string(input.DesktopBuild.Architecture), input.DesktopBuild.RealtimeProtocol, input.DPoPKeyThumbprint,
+		guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow, guard.DatabaseNow); err != nil {
 		return zero, fmt.Errorf("revalidate Exam Attempt eligibility at decision time: %w", err)
 	}
 	if !eligible {
@@ -1072,17 +1190,74 @@ func (s *sqlExamAttemptStore) lockExamAttemptEligibility(ctx context.Context, tx
 	return guard, nil
 }
 
+func hasEffectiveExamManagementAuthority(ctx context.Context, tx *sqlxTxWrapper, userID, examID, academicUnitID string,
+	at time.Time,
+) (bool, error) {
+	var authoritative bool
+	err := tx.Get(ctx, &authoritative, `WITH RECURSIVE ancestors AS (
+		SELECT id,parent_id FROM academic_units WHERE id=? AND archived_at IS NULL
+		UNION ALL
+		SELECT parent.id,parent.parent_id FROM academic_units parent JOIN ancestors child ON parent.id=child.parent_id
+		WHERE parent.archived_at IS NULL
+	)
+	SELECT EXISTS (
+		SELECT 1 FROM role_bindings binding JOIN roles role ON role.id=binding.role_id
+		WHERE binding.user_id=? AND binding.archived_at IS NULL AND binding.start_at<=?
+		AND (binding.end_at IS NULL OR binding.end_at>?) AND role.archived_at IS NULL
+		AND (
+			(role.name=? AND ?=ANY(role.permissions) AND binding.scope_type='institution')
+			OR (
+				?=ANY(role.permissions)
+				AND (binding.scope_type='institution' OR
+					(binding.scope_type='academic_unit' AND binding.scope_id IN (SELECT id FROM ancestors)))
+				AND EXISTS (SELECT 1 FROM exam_managers manager WHERE manager.exam_id=? AND manager.user_id=?)
+				AND EXISTS (SELECT 1 FROM academic_unit_members member WHERE member.academic_unit_id=?
+					AND member.user_id=? AND member.archived_at IS NULL AND member.start_at<=?
+					AND (member.end_at IS NULL OR member.end_at>?))
+			)
+		)
+	)`, academicUnitID, userID, at, at, model.SystemAdministratorRoleName, string(model.ActionExamManageOverride),
+		string(model.ActionExamManage), examID, userID, academicUnitID, userID, at, at)
+	if err != nil {
+		return false, fmt.Errorf("inspect effective Exam management authority: %w", err)
+	}
+	return authoritative, nil
+}
+
 func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamAttemptConnect, guard examAttemptAdmissionGuard) (examAttemptConnectOutcomeV1, error) {
 	var zero examAttemptConnectOutcomeV1
+	if input.InitialConfiguration == nil {
+		return zero, store.NewErrConflict("exam_attempt", "attempt_configuration_required", nil)
+	}
+	configuration := input.InitialConfiguration.Clone()
+	if configuration.Validate() != nil || configuration.ManifestFingerprint != input.DesktopBuild.AttemptConfigurationManifestFingerprint ||
+		configuration.SourceDesktopRegistryFingerprint != input.DesktopBuild.DesktopSettingsRegistryFingerprint {
+		return zero, store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
+	}
+	var settingsRevision string
+	if err := tx.Get(ctx, &settingsRevision, `SELECT revision FROM user_settings_documents WHERE user_id=? FOR SHARE`, input.CandidateUserID.String()); err != nil {
+		return zero, translateError("user_settings_document", input.CandidateUserID.String(), err)
+	}
+	if settingsRevision != configuration.SourceUserSettingsRevision.String() {
+		return zero, store.NewErrConflict("exam_attempt", "attempt_configuration_stale", nil)
+	}
+	canonicalConfiguration, err := configuration.CanonicalAdmission()
+	if err != nil {
+		return zero, store.NewErrInvalidInput("exam_attempt", "initial_configuration", nil)
+	}
 	var starter []examAttemptStarterRow
-	if err := tx.Select(ctx, &starter, `SELECT entry_id,kind,path,object_id,content_version,media_type,size_bytes,sha256
+	if err = tx.Select(ctx, &starter, `SELECT entry_id,kind,path,object_id,content_version,media_type,size_bytes,sha256
 		FROM exam_revision_starter_workspace_entries WHERE exam_revision_id=? ORDER BY entry_id`, guard.RevisionID); err != nil {
 		return zero, fmt.Errorf("load frozen Starter Workspace: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempts
-		(id,exam_id,exam_sitting_id,candidate_user_id,admission_revision_id,state,created_at,updated_at,revision)
-		VALUES (?,?,?,?,?,'active',?,?,1)`, input.AttemptID.String(), guard.ExamID, input.SittingID.String(),
-		input.CandidateUserID.String(), guard.RevisionID, guard.DatabaseNow, guard.DatabaseNow); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO exam_attempts
+		(id,exam_id,exam_sitting_id,candidate_user_id,admission_revision_id,
+		 attempt_configuration_canonical,attempt_configuration_digest,initial_desktop_release,initial_desktop_build_id,
+		 initial_desktop_platform,initial_desktop_architecture,state,created_at,updated_at,revision)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,'active',?,?,1)`, input.AttemptID.String(), guard.ExamID, input.SittingID.String(),
+		input.CandidateUserID.String(), guard.RevisionID, canonicalConfiguration, configuration.Digest,
+		input.DesktopBuild.DesktopRelease, input.DesktopBuild.DesktopBuildID, string(input.DesktopBuild.Platform),
+		string(input.DesktopBuild.Architecture), guard.DatabaseNow, guard.DatabaseNow); err != nil {
 		return zero, fmt.Errorf("insert Exam Attempt: %w", translateError("exam_attempt", input.AttemptID.String(), err))
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_workspaces (id,exam_attempt_id,admission_revision_id,cursor,created_at,updated_at)
@@ -1112,8 +1287,8 @@ func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 
 	leaseExpires := guard.DatabaseNow.Add(model.AttemptParticipationInitialLease)
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_participations
-		(id,exam_attempt_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
-		VALUES (?,?,'active',1,0,?,?,?,?)`, input.ParticipationID.String(), input.AttemptID.String(), input.ContinuityCredentialHash,
+		(id,exam_attempt_id,session_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
+		VALUES (?,?,?,'active',1,0,?,?,?,?)`, input.ParticipationID.String(), input.AttemptID.String(), input.SessionID.String(), input.ContinuityCredentialHash,
 		guard.DatabaseNow, guard.DatabaseNow, leaseExpires); err != nil {
 		return zero, fmt.Errorf("insert Attempt Participation: %w", translateError("attempt_participation", input.ParticipationID.String(), err))
 	}
@@ -1122,12 +1297,18 @@ func (s *sqlExamAttemptStore) firstAdmission(ctx context.Context, tx *sqlxTxWrap
 		input.ConnectionID.String(), input.AttemptID.String(), input.ParticipationID.String(), input.SessionID.String(), guard.DatabaseNow); err != nil {
 		return zero, fmt.Errorf("insert Attempt Connection: %w", translateError("attempt_connection", input.ConnectionID.String(), err))
 	}
+	revokedSessionIDs, revokedTokenHashes, err := revokeOtherInteractiveSessionsForAttempt(ctx, tx,
+		input.CandidateUserID.String(), input.SessionID.String(), guard.DatabaseNow)
+	if err != nil {
+		return zero, err
+	}
 
 	outcome := examAttemptConnectOutcomeV1{AttemptID: input.AttemptID.String(), WorkspaceID: input.WorkspaceID.String(),
 		ParticipationID: input.ParticipationID.String(), ConnectionID: input.ConnectionID.String(), ExamID: guard.ExamID,
 		SittingID: input.SittingID.String(), CandidateID: input.CandidateUserID.String(), RevisionID: guard.RevisionID,
 		SessionID: input.SessionID.String(), ClassID: guard.ClassID, StartedAt: model.TimeUTC(guard.DatabaseNow), LeaseExpiresAt: model.TimeUTC(leaseExpires),
-		EntryCount: len(starter), Generation: 1, FirstAdmission: true, ConnectionOpened: true}
+		EntryCount: len(starter), Generation: 1, FirstAdmission: true, ConnectionOpened: true,
+		RevokedSessionIDs: revokedSessionIDs, RevokedTokenHashes: revokedTokenHashes}
 	if err := completeExamAttemptConnectAudit(ctx, tx, outcome, false, "", input.AuditEventID, input.AuditAt); err != nil {
 		return zero, err
 	}
@@ -1138,34 +1319,44 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 	attemptID, workspaceID, admissionRevisionID, attemptState string, attemptCreatedAt time.Time, workspaceEntryCount int,
 ) (examAttemptConnectOutcomeV1, error) {
 	var zero examAttemptConnectOutcomeV1
-	if attemptState != string(model.ExamAttemptActive) {
+	if attemptState != string(model.ExamAttemptActive) && attemptState != string(model.ExamAttemptReady) {
 		return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 	}
+	reactivating := attemptState == string(model.ExamAttemptReady)
 	var participation struct {
 		ID             string    `db:"id"`
+		SessionID      string    `db:"session_id"`
 		CredentialHash string    `db:"continuity_credential_hash"`
 		Generation     int64     `db:"generation"`
 		LeaseExpiresAt time.Time `db:"lease_expires_at"`
 	}
-	if err := tx.Get(ctx, &participation, `SELECT id,continuity_credential_hash,generation,lease_expires_at
+	if err := tx.Get(ctx, &participation, `SELECT id,session_id,continuity_credential_hash,generation,lease_expires_at
 		FROM exam_attempt_participations WHERE exam_attempt_id=? AND state='active' FOR UPDATE`, attemptID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sql.ErrNoRows) && reactivating {
 			if err = tx.Get(ctx, &participation.Generation, `SELECT COALESCE(MAX(generation),0)+1
 				FROM exam_attempt_participations WHERE exam_attempt_id=?`, attemptID); err != nil {
 				return zero, fmt.Errorf("select next Attempt Participation generation: %w", err)
 			}
 			participation.ID = input.ParticipationID.String()
+			participation.SessionID = input.SessionID.String()
 			participation.CredentialHash = input.ContinuityCredentialHash
 			participation.LeaseExpiresAt = guard.DatabaseNow.Add(model.AttemptParticipationInitialLease)
 			if _, err = tx.Exec(ctx, `INSERT INTO exam_attempt_participations
-				(id,exam_attempt_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
-				VALUES (?,?,'active',?,0,?,?,?,?)`, participation.ID, attemptID, participation.Generation,
+				(id,exam_attempt_id,session_id,state,generation,renewal_sequence,continuity_credential_hash,started_at,updated_at,lease_expires_at)
+				VALUES (?,?,?,'active',?,0,?,?,?,?)`, participation.ID, attemptID, participation.SessionID, participation.Generation,
 				participation.CredentialHash, guard.DatabaseNow, guard.DatabaseNow, participation.LeaseExpiresAt); err != nil {
 				return zero, fmt.Errorf("insert next Attempt Participation: %w", translateError("attempt_participation", participation.ID, err))
 			}
+		} else if errors.Is(err, sql.ErrNoRows) {
+			return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
 		} else {
 			return zero, fmt.Errorf("lock active Attempt Participation: %w", err)
 		}
+	} else if reactivating {
+		return zero, invalidPersistedState("exam_attempt", "ready_participation", errors.New("ready Attempt has an active Participation"))
+	}
+	if participation.SessionID != input.SessionID.String() {
+		return zero, store.NewErrConflict("attempt_participation", "attempt_participation_session", nil)
 	}
 	if subtle.ConstantTimeCompare([]byte(participation.CredentialHash), []byte(input.ContinuityCredentialHash)) != 1 {
 		return zero, store.NewErrConflict("attempt_participation", "attempt_participation_credential", nil)
@@ -1198,16 +1389,67 @@ func (s *sqlExamAttemptStore) reconnect(ctx context.Context, tx *sqlxTxWrapper, 
 	case err != nil:
 		return zero, fmt.Errorf("lock open Attempt Connection: %w", err)
 	}
+	var revokedSessionIDs, revokedTokenHashes []string
+	if reactivating {
+		result, updateErr := tx.Exec(ctx, `UPDATE exam_attempts SET state='active',updated_at=?,revision=revision+1
+			WHERE id=? AND state='ready'`, guard.DatabaseNow, attemptID)
+		if updateErr != nil {
+			return zero, fmt.Errorf("activate ready Exam Attempt: %w", updateErr)
+		}
+		if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+			if affectedErr != nil {
+				return zero, fmt.Errorf("inspect ready Exam Attempt activation: %w", affectedErr)
+			}
+			return zero, store.NewErrConflict("exam_attempt", "exam_attempt_state", nil)
+		}
+		revokedSessionIDs, revokedTokenHashes, err = revokeOtherInteractiveSessionsForAttempt(ctx, tx,
+			input.CandidateUserID.String(), input.SessionID.String(), guard.DatabaseNow)
+		if err != nil {
+			return zero, err
+		}
+	}
 
 	outcome := examAttemptConnectOutcomeV1{AttemptID: attemptID, WorkspaceID: workspaceID, ParticipationID: participation.ID,
 		ConnectionID: connectionID, ExamID: guard.ExamID, SittingID: input.SittingID.String(), CandidateID: input.CandidateUserID.String(),
 		RevisionID: admissionRevisionID, SessionID: input.SessionID.String(), ClassID: guard.ClassID, StartedAt: model.TimeUTC(attemptCreatedAt),
 		LeaseExpiresAt: model.TimeUTC(participation.LeaseExpiresAt), EntryCount: workspaceEntryCount,
-		Generation: participation.Generation, FirstAdmission: false, ConnectionOpened: connectionOpened}
+		Generation: participation.Generation, FirstAdmission: false, ConnectionOpened: connectionOpened,
+		RevokedSessionIDs: revokedSessionIDs, RevokedTokenHashes: revokedTokenHashes}
 	if err = completeExamAttemptConnectAudit(ctx, tx, outcome, false, "", input.AuditEventID, input.AuditAt); err != nil {
 		return zero, err
 	}
 	return outcome, nil
+}
+
+func revokeOtherInteractiveSessionsForAttempt(ctx context.Context, tx *sqlxTxWrapper, userID, keepSessionID string,
+	at time.Time,
+) ([]string, []string, error) {
+	at = model.TimeUTC(at)
+	sessionIDs := []string{}
+	if err := tx.Select(ctx, &sessionIDs, `SELECT id FROM sessions
+		WHERE user_id=? AND id<>? AND client_type IN ('web','desktop')
+		AND archived_at IS NULL AND revoked_at IS NULL AND idle_expires_at>? AND expires_at>?
+		ORDER BY id FOR UPDATE`, userID, keepSessionID, at, at); err != nil {
+		return nil, nil, fmt.Errorf("lock other interactive Sessions for Exam Attempt: %w", err)
+	}
+	if len(sessionIDs) == 0 {
+		return []string{}, []string{}, nil
+	}
+	hashes := []string{}
+	if err := tx.Select(ctx, &hashes, `SELECT token_hash FROM session_credentials
+		WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL ORDER BY id FOR UPDATE`, pq.Array(sessionIDs)); err != nil {
+		return nil, nil, fmt.Errorf("lock other interactive Session credentials for Exam Attempt: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE session_credentials SET updated_at=GREATEST(updated_at,?),revoked_at=?
+		WHERE session_id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at, pq.Array(sessionIDs)); err != nil {
+		return nil, nil, fmt.Errorf("revoke other interactive Session credentials for Exam Attempt: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE sessions SET updated_at=GREATEST(updated_at,?),revoked_at=?,revocation_reason=?
+		WHERE id=ANY(?) AND archived_at IS NULL AND revoked_at IS NULL`, at, at,
+		string(model.SessionRevocationAttemptSessionLock), pq.Array(sessionIDs)); err != nil {
+		return nil, nil, fmt.Errorf("revoke other interactive Sessions for Exam Attempt: %w", err)
+	}
+	return sessionIDs, hashes, nil
 }
 
 func nullableAttemptWorkspaceObjectID(id model.AttemptWorkspaceObjectID) any {
@@ -1300,8 +1542,142 @@ func (s *sqlExamAttemptStore) examAttemptConnectResult(ctx context.Context, outc
 	if err != nil {
 		return nil, invalidPersistedState("exam_attempt", "class_id", err)
 	}
+	configuration, capabilities, browserPolicy, liveCorrections, err := s.loadConnectRuntimeCapabilities(ctx, outcome)
+	if err != nil {
+		return nil, err
+	}
 	return &store.ExamAttemptConnectResult{Attempt: attempt, Workspace: workspace, Participation: participation,
-		Connection: connection, ClassID: classID, FirstAdmission: outcome.FirstAdmission}, nil
+		Connection: connection, ClassID: classID, Configuration: configuration,
+		RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, FirstAdmission: outcome.FirstAdmission}, nil
+}
+
+func (s *sqlExamAttemptStore) loadConnectRuntimeCapabilities(ctx context.Context, outcome examAttemptConnectOutcomeV1) (model.AttemptConfiguration, store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, []model.CandidateLiveCorrection, error) {
+	var row struct {
+		Configuration       []byte    `db:"attempt_configuration_canonical"`
+		ConfigurationDigest string    `db:"attempt_configuration_digest"`
+		AdmissionRevisionID string    `db:"admission_revision_id"`
+		CurrentRevisionID   string    `db:"current_revision_id"`
+		SittingState        string    `db:"sitting_state"`
+		DatabaseNow         time.Time `db:"database_now"`
+		Policy              []byte    `db:"policy_canonical"`
+		ExecutionProfile    []byte    `db:"execution_profile_canonical"`
+		BrowserPolicy       []byte    `db:"browser_policy_canonical"`
+		BrowserPolicyDigest string    `db:"browser_policy_digest"`
+		RuntimeAvailable    bool      `db:"runtime_available"`
+		TerminalAvailable   bool      `db:"terminal_available"`
+	}
+	if err := s.GetMaster().Get(ctx, &row, `SELECT a.attempt_configuration_canonical,a.attempt_configuration_digest,
+		a.admission_revision_id,s.exam_revision_id AS current_revision_id,s.state AS sitting_state,
+		statement_timestamp() AS database_now,r.policy_canonical,r.execution_profile_canonical,
+		r.browser_policy_canonical,r.browser_policy_digest,
+		EXISTS (SELECT 1 FROM exam_attempt_participations p JOIN exam_attempt_connections c
+			ON c.participation_id=p.id AND c.exam_attempt_id=p.exam_attempt_id
+			WHERE p.id=? AND c.id=? AND p.exam_attempt_id=a.id AND p.state='active' AND c.state='open'
+			AND p.session_id=? AND c.session_id=?) AS runtime_available,
+		EXISTS (SELECT 1 FROM execution_grants grant_record WHERE grant_record.exam_attempt_id=a.id
+			AND grant_record.state='ready' AND grant_record.lifecycle_pending=false) AS terminal_available
+		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		JOIN exam_revisions r ON r.id=s.exam_revision_id AND r.exam_id=s.exam_id AND r.sealed=true
+		WHERE a.id=? AND a.candidate_user_id=?`, outcome.ParticipationID, outcome.ConnectionID, outcome.SessionID, outcome.SessionID,
+		outcome.AttemptID, outcome.CandidateID); err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, translateError("exam_attempt", outcome.AttemptID, err)
+	}
+	configuration, err := model.DecodeAttemptConfiguration(row.Configuration, row.ConfigurationDigest)
+	if err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, invalidPersistedState("exam_attempt", "attempt_configuration", err)
+	}
+	if !row.RuntimeAvailable {
+		return configuration, store.CandidateRuntimeCapabilities{}, nil, []model.CandidateLiveCorrection{}, nil
+	}
+	attemptID, err := model.ParseExamAttemptID(outcome.AttemptID)
+	if err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, invalidPersistedState("exam_attempt", "id", err)
+	}
+	currentRevisionID, err := model.ParseExamRevisionID(row.CurrentRevisionID)
+	if err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, invalidPersistedState("exam_sitting", "exam_revision_id", err)
+	}
+	liveCorrections, acknowledgementRequired, err := listCandidateLiveCorrections(ctx, s.GetMaster(), attemptID, currentRevisionID)
+	if err != nil {
+		return model.AttemptConfiguration{}, store.CandidateRuntimeCapabilities{}, nil, nil, err
+	}
+	capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, row.AdmissionRevisionID, row.CurrentRevisionID,
+		row.SittingState, row.DatabaseNow, row.Policy, row.ExecutionProfile, row.BrowserPolicy, row.BrowserPolicyDigest, acknowledgementRequired, row.TerminalAvailable)
+	return configuration, capabilities, browserPolicy, liveCorrections, err
+}
+
+func candidateRuntimeCapabilities(configuration model.AttemptConfiguration, admissionRevision, currentRevision, sittingState string,
+	databaseNow time.Time, policyDocument, executionProfileDocument, browserPolicyDocument []byte, browserPolicyDigest string,
+	acknowledgementRequired, terminalDependencyAvailable bool,
+) (store.CandidateRuntimeCapabilities, *store.CandidateBrowserPolicy, error) {
+	admissionRevisionID, err := model.ParseExamRevisionID(admissionRevision)
+	if err != nil {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_attempt", "admission_revision_id", err)
+	}
+	currentRevisionID, err := model.ParseExamRevisionID(currentRevision)
+	if err != nil {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_sitting", "exam_revision_id", err)
+	}
+	policy, err := model.DecodeExamPolicySet(policyDocument)
+	if err != nil {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "policy_canonical", err)
+	}
+	profile, err := model.DecodeExecutionProfile(executionProfileDocument)
+	if err != nil {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
+	}
+	browserPolicy, err := model.ParseBrowserPolicyDocument(browserPolicyDocument)
+	if err != nil {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "browser_policy_canonical", err)
+	}
+	computedBrowserDigest, err := model.BrowserPolicyDigest(browserPolicy)
+	if err != nil || computedBrowserDigest != browserPolicyDigest {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_revision", "browser_policy_digest", errors.New("Browser Policy digest mismatch"))
+	}
+	interaction := store.CandidateInteractionInteractive
+	if sittingState == string(model.ExamSittingPaused) {
+		interaction = store.CandidateInteractionSittingPaused
+	} else if sittingState != string(model.ExamSittingOpen) {
+		return store.CandidateRuntimeCapabilities{}, nil, invalidPersistedState("exam_sitting", "state", errors.New("runtime projection requires Open or Paused"))
+	}
+	terminalState := store.CandidateTerminalAvailable
+	switch {
+	case !profile.Enabled:
+		terminalState = store.CandidateTerminalDisabled
+	case interaction == store.CandidateInteractionSittingPaused:
+		terminalState = store.CandidateTerminalSittingPaused
+	case acknowledgementRequired:
+		terminalState = store.CandidateTerminalAcknowledgementRequired
+	case !terminalDependencyAvailable:
+		terminalState = store.CandidateTerminalTemporarilyUnavailable
+	}
+	mutationAllowed := interaction == store.CandidateInteractionInteractive && !acknowledgementRequired
+	preferences := configuration.Preferences
+	preferences.CandidateCommandBindings = slices.Clone(preferences.CandidateCommandBindings)
+	browserCapability := store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled}
+	var browserProjection *store.CandidateBrowserPolicy
+	if browserPolicy.Enabled {
+		state := store.CandidateBrowserAvailable
+		if interaction == store.CandidateInteractionSittingPaused {
+			state = store.CandidateBrowserSittingPaused
+		} else if acknowledgementRequired {
+			state = store.CandidateBrowserAcknowledgementRequired
+		}
+		visibleDigest := "sha256:" + browserPolicyDigest
+		browserCapability = store.CandidateBrowserCapability{State: state, PolicyRevisionID: currentRevisionID, PolicyDigest: visibleDigest}
+		browserProjection = &store.CandidateBrowserPolicy{PolicyRevisionID: currentRevisionID, PolicyDigest: visibleDigest, Policy: browserPolicy.Clone()}
+	}
+	return store.CandidateRuntimeCapabilities{
+		SchemaVersion: 1, ServerTime: model.TimeUTC(databaseNow), InteractionState: interaction,
+		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
+			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: preferences, Digest: configuration.Digest},
+		FocusLossCollectionEnabled: policy.FocusLoss.Enabled, WorkspaceMutationAllowed: mutationAllowed,
+		SubmissionAllowed: mutationAllowed, Terminal: store.CandidateTerminalCapability{State: terminalState},
+		Browser: browserCapability,
+		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: admissionRevisionID,
+			CurrentRevisionID: currentRevisionID, AcknowledgementRequired: acknowledgementRequired},
+		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"},
+	}, browserProjection, nil
 }
 
 func completeExamAttemptConnectAudit(ctx context.Context, tx *sqlxTxWrapper, outcome examAttemptConnectOutcomeV1,
@@ -1331,7 +1707,7 @@ func (s *sqlExamAttemptStore) CloseConnection(ctx context.Context, input *store.
 		return nil, store.NewErrInvalidInput("attempt_connection", "close", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "close Attempt Connection", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExamAttemptConnectionCloseResult, error) {
-		row, attemptID, sittingID, candidateID, err := lockAttemptConnection(ctx, tx, input.ConnectionID)
+		row, attemptID, examID, sittingID, candidateID, err := lockAttemptConnection(ctx, tx, input.ConnectionID)
 		if err != nil {
 			return nil, err
 		}
@@ -1362,7 +1738,7 @@ func (s *sqlExamAttemptStore) CloseConnection(ctx context.Context, input *store.
 		if _, err = completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", data, input.AuditAt); err != nil {
 			return nil, fmt.Errorf("complete Attempt Connection close audit: %w", err)
 		}
-		return &store.ExamAttemptConnectionCloseResult{AttemptID: attemptID, SittingID: sittingID,
+		return &store.ExamAttemptConnectionCloseResult{AttemptID: attemptID, ExamID: examID, SittingID: sittingID,
 			CandidateUserID: candidateID, Connection: connection, Changed: changed}, nil
 	})
 }
@@ -1406,31 +1782,36 @@ func (row attemptConnectionRow) model() (*model.AttemptConnection, error) {
 	return value, nil
 }
 
-func lockAttemptConnection(ctx context.Context, tx *sqlxTxWrapper, id model.AttemptConnectionID) (attemptConnectionRow, model.ExamAttemptID, model.ExamSittingID, model.UserID, error) {
+func lockAttemptConnection(ctx context.Context, tx *sqlxTxWrapper, id model.AttemptConnectionID) (attemptConnectionRow, model.ExamAttemptID, model.ExamID, model.ExamSittingID, model.UserID, error) {
 	var joined struct {
 		attemptConnectionRow
+		ExamID      string `db:"exam_id"`
 		SittingID   string `db:"exam_sitting_id"`
 		CandidateID string `db:"candidate_user_id"`
 	}
 	err := tx.Get(ctx, &joined, `SELECT c.id,c.exam_attempt_id,c.participation_id,c.session_id,c.state,c.opened_at,c.closed_at,c.close_reason,
-		a.exam_sitting_id,a.candidate_user_id FROM exam_attempt_connections c JOIN exam_attempts a ON a.id=c.exam_attempt_id
+		a.exam_id,a.exam_sitting_id,a.candidate_user_id FROM exam_attempt_connections c JOIN exam_attempts a ON a.id=c.exam_attempt_id
 		WHERE c.id=? FOR UPDATE OF c`, id.String())
 	if err != nil {
-		return attemptConnectionRow{}, "", "", "", translateError("attempt_connection", id.String(), err)
+		return attemptConnectionRow{}, "", "", "", "", translateError("attempt_connection", id.String(), err)
 	}
 	attemptID, err := model.ParseExamAttemptID(joined.AttemptID)
 	if err != nil {
-		return attemptConnectionRow{}, "", "", "", invalidPersistedState("attempt_connection", "exam_attempt_id", err)
+		return attemptConnectionRow{}, "", "", "", "", invalidPersistedState("attempt_connection", "exam_attempt_id", err)
+	}
+	examID, err := model.ParseExamID(joined.ExamID)
+	if err != nil {
+		return attemptConnectionRow{}, "", "", "", "", invalidPersistedState("attempt_connection", "exam_id", err)
 	}
 	sittingID, err := model.ParseExamSittingID(joined.SittingID)
 	if err != nil {
-		return attemptConnectionRow{}, "", "", "", invalidPersistedState("attempt_connection", "exam_sitting_id", err)
+		return attemptConnectionRow{}, "", "", "", "", invalidPersistedState("attempt_connection", "exam_sitting_id", err)
 	}
 	candidateID, err := model.ParseUserID(joined.CandidateID)
 	if err != nil {
-		return attemptConnectionRow{}, "", "", "", invalidPersistedState("attempt_connection", "candidate_user_id", err)
+		return attemptConnectionRow{}, "", "", "", "", invalidPersistedState("attempt_connection", "candidate_user_id", err)
 	}
-	return joined.attemptConnectionRow, attemptID, sittingID, candidateID, nil
+	return joined.attemptConnectionRow, attemptID, examID, sittingID, candidateID, nil
 }
 
 type examAttemptManagerRow struct {
@@ -1504,15 +1885,17 @@ func (s *sqlExamAttemptStore) Get(ctx context.Context, examID model.ExamID, atte
 
 func (s *sqlExamAttemptStore) List(ctx context.Context, options store.ExamAttemptManagerListOptions) ([]store.ExamAttemptManagerSnapshot, error) {
 	if !options.ExamID.IsValid() || !options.SittingID.IsValid() || options.Limit < 1 || options.Limit > 201 ||
-		(options.BeforeCreatedAt.IsZero() != options.BeforeAttemptID.IsZero()) {
+		!options.ExcludeCandidateUserID.IsValid() || (options.BeforeCreatedAt.IsZero() != options.BeforeAttemptID.IsZero()) {
 		return nil, store.NewErrInvalidInput("exam_attempt", "manager_list", nil)
 	}
 	query := examAttemptManagerSelect + ` WHERE a.exam_id=? AND a.exam_sitting_id=?`
 	args := []any{options.ExamID.String(), options.SittingID.String()}
+	query += ` AND a.candidate_user_id<>?`
+	args = append(args, options.ExcludeCandidateUserID.String())
 	if len(options.States) != 0 {
 		states := make([]string, len(options.States))
 		for i, state := range options.States {
-			if state != model.ExamAttemptActive && state != model.ExamAttemptSuspended && state != model.ExamAttemptSubmitted {
+			if state != model.ExamAttemptReady && state != model.ExamAttemptActive && state != model.ExamAttemptSuspended && state != model.ExamAttemptSubmitted {
 				return nil, store.NewErrInvalidInput("exam_attempt", "states", nil)
 			}
 			states[i] = string(state)
@@ -1628,25 +2011,34 @@ func (row examAttemptManagerRow) snapshot() (*store.ExamAttemptManagerSnapshot, 
 
 type candidateAttemptGuard struct {
 	AttemptID           string `db:"attempt_id"`
+	ExamID              string `db:"exam_id"`
 	SittingID           string `db:"sitting_id"`
 	ClassID             string `db:"class_id"`
+	SittingState        string `db:"sitting_state"`
 	AdmissionRevisionID string `db:"admission_revision_id"`
 	RevisionID          string `db:"revision_id"`
 }
 
 func (s *sqlExamAttemptStore) candidateGuard(ctx context.Context, access store.CandidateAttemptAccess) (candidateAttemptGuard, error) {
-	if !access.AttemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() || !access.ConnectionID.IsValid() || !model.IsValidTokenHash(access.ContinuityCredentialHash) {
+	if !access.AttemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() ||
+		!access.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) ||
+		!access.ConnectionID.IsValid() || !model.IsValidTokenHash(access.ContinuityCredentialHash) {
 		return candidateAttemptGuard{}, store.NewErrInvalidInput("exam_attempt", "candidate_access", nil)
 	}
 	var guard candidateAttemptGuard
-	err := s.GetMaster().Get(ctx, &guard, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,s.class_id,a.admission_revision_id,s.exam_revision_id AS revision_id
+	err := s.GetMaster().Get(ctx, &guard, `SELECT a.id AS attempt_id,a.exam_id,a.exam_sitting_id AS sitting_id,s.class_id,s.state AS sitting_state,a.admission_revision_id,s.exam_revision_id AS revision_id
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id AND p.state='active'
 		JOIN exam_attempt_connections c ON c.participation_id=p.id AND c.exam_attempt_id=a.id AND c.state='open'
+		JOIN sessions se ON se.id=p.session_id AND se.id=c.session_id AND se.user_id=a.candidate_user_id
+		JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 		WHERE a.id=? AND a.candidate_user_id=? AND a.state='active' AND c.id=? AND c.session_id=?
+		AND p.session_id=? AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=?
+		AND dr.revoked_at IS NULL AND dr.key_thumbprint=? AND se.revoked_at IS NULL AND se.archived_at IS NULL
 		AND p.continuity_credential_hash=? AND p.lease_expires_at>statement_timestamp()
 		AND s.state IN ('open','paused') AND s.scheduled_end_at>statement_timestamp()`, access.AttemptID.String(), access.CandidateUserID.String(),
-		access.ConnectionID.String(), access.SessionID.String(), access.ContinuityCredentialHash)
+		access.ConnectionID.String(), access.SessionID.String(), access.SessionID.String(), access.DesktopRegistrationID.String(),
+		access.DPoPKeyThumbprint, access.DPoPKeyThumbprint, access.ContinuityCredentialHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return candidateAttemptGuard{}, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
 	}
@@ -1658,13 +2050,13 @@ func (s *sqlExamAttemptStore) candidateGuard(ctx context.Context, access store.C
 
 func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTxWrapper, access store.CandidateAttemptAccess) (candidateAttemptGuard, error) {
 	if !access.AttemptID.IsValid() || !access.CandidateUserID.IsValid() || !access.SessionID.IsValid() ||
+		!access.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) ||
 		!access.ConnectionID.IsValid() || !model.IsValidTokenHash(access.ContinuityCredentialHash) {
 		return candidateAttemptGuard{}, store.NewErrInvalidInput("exam_attempt", "candidate_access", nil)
 	}
 	var row struct {
 		candidateAttemptGuard
 		AttemptState       string       `db:"attempt_state"`
-		SittingState       string       `db:"sitting_state"`
 		ScheduledEndAt     time.Time    `db:"scheduled_end_at"`
 		ParticipationState string       `db:"participation_state"`
 		CredentialHash     string       `db:"continuity_credential_hash"`
@@ -1677,7 +2069,7 @@ func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTx
 		UserArchivedAt     sql.NullTime `db:"user_archived_at"`
 		UserDisabledAt     sql.NullTime `db:"user_disabled_at"`
 	}
-	err := tx.Get(ctx, &row, `SELECT a.id AS attempt_id,a.exam_sitting_id AS sitting_id,s.class_id,
+	err := tx.Get(ctx, &row, `SELECT a.id AS attempt_id,a.exam_id,a.exam_sitting_id AS sitting_id,s.class_id,s.state AS sitting_state,
 		a.admission_revision_id,s.exam_revision_id AS revision_id,a.state AS attempt_state,
 		s.state AS sitting_state,s.scheduled_end_at,p.state AS participation_state,
 		p.continuity_credential_hash,p.lease_expires_at,c.state AS connection_state,
@@ -1687,10 +2079,14 @@ func (s *sqlExamAttemptStore) lockCandidateGuard(ctx context.Context, tx *sqlxTx
 		FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		JOIN exam_attempt_participations p ON p.exam_attempt_id=a.id
 		JOIN exam_attempt_connections c ON c.participation_id=p.id AND c.exam_attempt_id=a.id
-		JOIN sessions se ON se.id=c.session_id JOIN users u ON u.id=se.user_id
+		JOIN sessions se ON se.id=p.session_id AND se.id=c.session_id JOIN users u ON u.id=se.user_id
+		JOIN desktop_registrations dr ON dr.id=se.desktop_registration_id AND dr.user_id=se.user_id
 		WHERE a.id=? AND a.candidate_user_id=? AND c.id=? AND c.session_id=?
+		AND p.session_id=? AND se.desktop_registration_id=? AND se.dpop_key_thumbprint=?
+		AND dr.revoked_at IS NULL AND dr.key_thumbprint=?
 		FOR SHARE OF a,s,p,c,se,u`, access.AttemptID.String(), access.CandidateUserID.String(),
-		access.ConnectionID.String(), access.SessionID.String())
+		access.ConnectionID.String(), access.SessionID.String(), access.SessionID.String(), access.DesktopRegistrationID.String(),
+		access.DPoPKeyThumbprint, access.DPoPKeyThumbprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		return candidateAttemptGuard{}, store.NewErrNotFound("exam_attempt_access", access.AttemptID.String())
 	}
@@ -1722,28 +2118,53 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			return nil, err
 		}
 		var header struct {
-			Title            string `db:"title"`
-			Instructions     string `db:"instructions_markdown"`
-			Policy           []byte `db:"policy_canonical"`
-			ExecutionProfile []byte `db:"execution_profile_canonical"`
-			examCapacityPolicyRow
+			Title               string    `db:"title"`
+			Instructions        string    `db:"instructions_markdown"`
+			Policy              []byte    `db:"policy_canonical"`
+			ExecutionProfile    []byte    `db:"execution_profile_canonical"`
+			BrowserPolicy       []byte    `db:"browser_policy_canonical"`
+			BrowserPolicyDigest string    `db:"browser_policy_digest"`
+			Configuration       []byte    `db:"attempt_configuration_canonical"`
+			ConfigurationDigest string    `db:"attempt_configuration_digest"`
+			SittingState        string    `db:"sitting_state"`
+			DatabaseNow         time.Time `db:"database_now"`
+			TerminalAvailable   bool      `db:"terminal_available"`
 		}
-		if err = tx.Get(ctx, &header, `SELECT title,instructions_markdown,policy_canonical,execution_profile_canonical,
-			exam_resource_max_count,exam_resource_max_bytes,exam_workspace_max_entries,exam_workspace_max_file_bytes,exam_workspace_max_total_bytes
-			FROM exam_revisions WHERE id=? AND sealed=true FOR SHARE`, guard.RevisionID); err != nil {
+		if err = tx.Get(ctx, &header, `SELECT r.title,r.instructions_markdown,r.policy_canonical,r.execution_profile_canonical,
+			r.browser_policy_canonical,r.browser_policy_digest,
+			a.attempt_configuration_canonical,a.attempt_configuration_digest,s.state AS sitting_state,
+			statement_timestamp() AS database_now,
+			EXISTS (SELECT 1 FROM execution_grants grant_record WHERE grant_record.exam_attempt_id=a.id
+				AND grant_record.state='ready' AND grant_record.lifecycle_pending=false) AS terminal_available
+			FROM exam_revisions r JOIN exam_sittings s ON s.exam_revision_id=r.id
+			JOIN exam_attempts a ON a.id=? AND a.exam_sitting_id=s.id
+			WHERE r.id=? AND r.sealed=true FOR SHARE OF r,s,a`, guard.AttemptID, guard.RevisionID); err != nil {
 			return nil, translateError("exam_revision", guard.RevisionID, err)
 		}
-		policy, err := model.DecodeExamPolicySet(header.Policy)
+		configuration, err := model.DecodeAttemptConfiguration(header.Configuration, header.ConfigurationDigest)
 		if err != nil {
-			return nil, invalidPersistedState("exam_revision", "policy_canonical", err)
+			return nil, invalidPersistedState("exam_attempt", "attempt_configuration", err)
+		}
+		attemptID, parseErr := model.ParseExamAttemptID(guard.AttemptID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_attempt", "id", parseErr)
+		}
+		currentRevisionID, parseErr := model.ParseExamRevisionID(guard.RevisionID)
+		if parseErr != nil {
+			return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
+		}
+		liveCorrections, acknowledgementRequired, err := listCandidateLiveCorrections(ctx, tx, attemptID, currentRevisionID)
+		if err != nil {
+			return nil, err
+		}
+		capabilities, browserPolicy, err := candidateRuntimeCapabilities(configuration, guard.AdmissionRevisionID, guard.RevisionID,
+			header.SittingState, header.DatabaseNow, header.Policy, header.ExecutionProfile, header.BrowserPolicy, header.BrowserPolicyDigest, acknowledgementRequired, header.TerminalAvailable)
+		if err != nil {
+			return nil, err
 		}
 		executionProfile, err := model.DecodeExecutionProfile(header.ExecutionProfile)
 		if err != nil {
 			return nil, invalidPersistedState("exam_revision", "execution_profile_canonical", err)
-		}
-		capacity, err := header.examCapacityPolicyRow.policy()
-		if err != nil {
-			return nil, err
 		}
 		var rows []struct {
 			ResourceID  string `db:"resource_id"`
@@ -1758,10 +2179,6 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 			FROM exam_revision_resources WHERE exam_revision_id=? ORDER BY position`, guard.RevisionID); err != nil {
 			return nil, fmt.Errorf("list candidate Exam Resources: %w", err)
 		}
-		attemptID, parseErr := model.ParseExamAttemptID(guard.AttemptID)
-		if parseErr != nil {
-			return nil, invalidPersistedState("exam_attempt", "id", parseErr)
-		}
 		sittingID, parseErr := model.ParseExamSittingID(guard.SittingID)
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", parseErr)
@@ -1770,19 +2187,10 @@ func (s *sqlExamAttemptStore) GetCandidatePresentation(ctx context.Context, acce
 		if parseErr != nil {
 			return nil, invalidPersistedState("exam_sitting", "class_id", parseErr)
 		}
-		admissionRevisionID, parseErr := model.ParseExamRevisionID(guard.AdmissionRevisionID)
-		if parseErr != nil {
-			return nil, invalidPersistedState("exam_attempt", "admission_revision_id", parseErr)
-		}
-		revisionID, parseErr := model.ParseExamRevisionID(guard.RevisionID)
-		if parseErr != nil {
-			return nil, invalidPersistedState("exam_sitting", "exam_revision_id", parseErr)
-		}
-		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID, AdmissionRevisionID: admissionRevisionID,
-			CurrentRevisionID: revisionID, Title: header.Title, InstructionsMarkdown: header.Instructions,
-			ExecutionProfile:           executionProfile,
-			Capacity:                   capacity,
-			FocusLossCollectionEnabled: policy.FocusLoss.Enabled, Resources: make([]store.CandidateExamResource, 0, len(rows))}
+		result := &store.CandidateExamPresentation{AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
+			Title: header.Title, InstructionsMarkdown: header.Instructions,
+			RuntimeCapabilities: capabilities, BrowserPolicy: browserPolicy, LiveCorrections: liveCorrections, ExecutionProfile: executionProfile,
+			Resources: make([]store.CandidateExamResource, 0, len(rows))}
 		for _, row := range rows {
 			resourceID, parseErr := model.ParseExamResourceID(row.ResourceID)
 			if parseErr != nil {

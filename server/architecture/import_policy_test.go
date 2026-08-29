@@ -190,6 +190,7 @@ var dependencyRules = []dependencyRule{
 		sources:        []pathPattern{exact(serverModule + "/model")},
 		deniedStandard: standardInfrastructure,
 		project:        only(exact(serverModule + "/identityprovider")),
+		thirdParty:     only(exact("golang.org/x/net/idna")),
 	},
 	{
 		name:           "store contracts",

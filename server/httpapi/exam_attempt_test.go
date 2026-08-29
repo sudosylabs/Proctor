@@ -42,14 +42,14 @@ func TestCandidateExamPresentationRequiresBoundHeadersAndNeverEchoesSecrets(t *t
 		t.Fatalf("candidate response leaked protected internals: %s", response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 9 ||
-		string(payload["focus_loss_collection_enabled"]) != "true" {
+	var capabilities candidateRuntimeCapabilitiesResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 8 {
 		t.Fatalf("presentation shape = %v, %v", payload, err)
 	}
-	var capacity examCapacityPolicyResponse
-	if err := json.Unmarshal(payload["capacity"], &capacity); err != nil ||
-		capacity != examCapacityPolicyResponseFromModel(model.DefaultExamCapacityPolicy()) {
-		t.Fatalf("presentation capacity = %#v, %v", capacity, err)
+	if err := json.Unmarshal(payload["candidate_runtime_capabilities"], &capabilities); err != nil ||
+		!capabilities.FocusLossCollectionEnabled || capabilities.SchemaVersion != 1 ||
+		capabilities.Departure.Allowed || capabilities.Departure.Reason != "attempt_in_progress" {
+		t.Fatalf("presentation capabilities = %#v, %v", capabilities, err)
 	}
 }
 
@@ -111,7 +111,8 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 
 	fake := newExamAttemptHTTPFake(t)
 	httpAPI := newExamAttemptFocusedAPI(t, fake)
-	body := `{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_workspace_cursor":4,"final_focus_loss_sequence":0}`
+	body := `{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_current_revision_id":"` +
+		fake.submissionReceipt.ExamRevisionID.String() + `","expected_workspace_cursor":4,"final_focus_loss_sequence":0,"browser_activity":{"state":"not_applicable"}}`
 	path := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/submissions"
 	request := fake.candidateRequest(http.MethodPost, path)
 	request.Body = io.NopCloser(strings.NewReader(body))
@@ -121,12 +122,14 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" ||
 		fake.submit.Access.AttemptID != fake.attempt.ID || fake.submit.Access.ParticipationID != fake.participation.ID ||
-		fake.submit.Access.Generation != 1 || fake.submit.ExpectedWorkspaceCursor != 4 ||
+		fake.submit.Access.Generation != 1 || fake.submit.ExpectedCurrentRevisionID != fake.submissionReceipt.ExamRevisionID ||
+		fake.submit.ExpectedWorkspaceCursor != 4 || fake.submit.BrowserActivity.State != model.BrowserActivitySubmissionNotApplicable ||
 		fake.submit.FinalFocusLossSequence != 0 || fake.submit.IdempotencyKey != "submit-once" {
 		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), fake.submit, response.Body.String())
 	}
 	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 6 ||
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 7 ||
+		string(payload["exam_revision_id"]) != `"`+fake.submissionReceipt.ExamRevisionID.String()+`"` ||
 		string(payload["state"]) != `"submitted"` || string(payload["workspace_cursor"]) != "4" {
 		t.Fatalf("receipt=%v error=%v", payload, err)
 	}
@@ -134,6 +137,57 @@ func TestCandidateSubmitExamAttemptUsesStrictCausalSelectorsAndReturnsSafeReceip
 		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
 			t.Fatalf("receipt contains %q: %s", forbidden, response.Body.String())
 		}
+	}
+}
+
+func TestCandidateAcknowledgesExactCorrectionWithBoundSessionFences(t *testing.T) {
+	t.Parallel()
+
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	correctionID := model.NewExamRevisionID()
+	currentRevisionID := model.NewExamRevisionID()
+	path := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/corrections/" + correctionID.String() + "/acknowledgement"
+	body := `{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_current_revision_id":"` + currentRevisionID.String() + `"}`
+	request := fake.candidateRequest(http.MethodPut, path)
+	request.Body = io.NopCloser(strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "acknowledge-correction-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	command := fake.correctionAcknowledgement
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		command.Access.AttemptID != fake.attempt.ID || command.Access.ConnectionID != fake.connection.ID ||
+		command.Access.ContinuityCredential != fake.credential || command.Access.ParticipationID != fake.participation.ID ||
+		command.Access.Generation != 1 || command.CorrectionRevisionID != correctionID ||
+		command.ExpectedCurrentRevisionID != currentRevisionID || command.IdempotencyKey != "acknowledge-correction-once" {
+		t.Fatalf("status=%d headers=%v command=%#v body=%s", response.Code, response.Header(), command, response.Body.String())
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil || len(payload) != 3 ||
+		string(payload["revision_id"]) != `"`+correctionID.String()+`"` ||
+		string(payload["acknowledgement_state"]) != `"acknowledged"` {
+		t.Fatalf("acknowledgement response = %v, %v", payload, err)
+	}
+	for _, forbidden := range []string{"credential", "connection", "participation", "generation", "audit", "private"} {
+		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
+			t.Fatalf("acknowledgement response contains %q: %s", forbidden, response.Body.String())
+		}
+	}
+
+	invalidFake := newExamAttemptHTTPFake(t)
+	invalidAPI := newExamAttemptFocusedAPI(t, invalidFake)
+	invalid := invalidFake.candidateRequest(http.MethodPut, "/api/v1/exam-attempts/"+invalidFake.attempt.ID.String()+
+		"/corrections/"+model.NewExamRevisionID().String()+"/acknowledgement")
+	invalid.Body = io.NopCloser(strings.NewReader(`{"participation_id":"` + invalidFake.participation.ID.String() +
+		`","generation":1,"expected_current_revision_id":"` + model.NewExamRevisionID().String() + `","accepted":true}`))
+	invalid.Header.Set("Content-Type", "application/json")
+	invalid.Header.Set("Idempotency-Key", "invalid-acknowledgement")
+	invalidResponse := httptest.NewRecorder()
+	invalidAPI.ServeHTTP(invalidResponse, invalid)
+	assertHTTPProblem(t, invalidResponse, http.StatusBadRequest, "request.invalid")
+	if invalidFake.correctionAcknowledgement.CorrectionRevisionID.IsValid() {
+		t.Fatalf("unknown-member request reached application: %#v", invalidFake.correctionAcknowledgement)
 	}
 }
 
@@ -246,6 +300,44 @@ func TestManagedExamAttemptListIsBoundedSafeAndOpaque(t *testing.T) {
 	if response.Code != http.StatusOK || fake.managerGet.ExamID != fake.attempt.ExamID || fake.managerGet.SittingID != fake.attempt.SittingID ||
 		fake.managerGet.AttemptID != fake.attempt.ID || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("manager exact = %d query=%#v headers=%#v body=%s", response.Code, fake.managerGet, response.Header(), response.Body.String())
+	}
+}
+
+func TestManagedBrowserActivityIsNestedMinimizedNoStoreAndKeysetPaginated(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	fake.browserActivityPage.HasMore = true
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+		"/attempts/" + fake.attempt.ID.String() + "/browser-activity?limit=1"
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Authorization", "Bearer credential")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || fake.browserActivityQuery.Limit != 1 || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Browser Activity response/query = %d/%#v/%q: %s", response.Code, fake.browserActivityQuery, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	var page browserActivityListResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == "" || page.Items[0].Location != nil {
+		t.Fatalf("Browser Activity page = %#v, %v", page, err)
+	}
+	for _, forbidden := range []string{"participation_id", "connection_id", "registration_id", "credential", "review", "location_scheme"} {
+		if strings.Contains(response.Body.String(), forbidden) {
+			t.Fatalf("Browser Activity response contains %q: %s", forbidden, response.Body.String())
+		}
+	}
+	cursor, err := decodeBrowserActivityCursor(page.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.browserActivityPage.HasMore = false
+	second := httptest.NewRequest(http.MethodGet, path+"&cursor="+url.QueryEscape(page.NextCursor), nil)
+	second.Header.Set("Authorization", "Bearer credential")
+	secondResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(secondResponse, second)
+	if secondResponse.Code != http.StatusOK || !fake.browserActivityQuery.AfterReceivedAt.Equal(cursor.ReceivedAt) ||
+		fake.browserActivityQuery.AfterSourceID != cursor.SourceSessionID || fake.browserActivityQuery.AfterSequence != cursor.Sequence {
+		t.Fatalf("Browser Activity cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.browserActivityQuery, secondResponse.Body.String())
 	}
 }
 
@@ -440,6 +532,41 @@ func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReaso
 	}
 }
 
+func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *testing.T) {
+	t.Parallel()
+	fake := newExamAttemptHTTPFake(t)
+	httpAPI := newExamAttemptFocusedAPI(t, fake)
+	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+		"/attempts/" + fake.attempt.ID.String() + "/end"
+	privateReason := "candidate requested an assisted early end"
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"`+privateReason+`"}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Idempotency-Key", "manager-end-once")
+	response := httptest.NewRecorder()
+	httpAPI.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("status/cache=%d/%q body=%s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	if fake.managerEnd.ExamID != fake.attempt.ExamID || fake.managerEnd.SittingID != fake.attempt.SittingID ||
+		fake.managerEnd.AttemptID != fake.attempt.ID || fake.managerEnd.ExpectedAttemptRevision != 1 ||
+		fake.managerEnd.PrivateReason != privateReason || fake.managerEnd.IdempotencyKey != "manager-end-once" {
+		t.Fatalf("manager-end command = %#v", fake.managerEnd)
+	}
+	if strings.Contains(response.Body.String(), privateReason) || strings.Contains(response.Body.String(), "private") ||
+		!strings.Contains(response.Body.String(), fake.submissionReceipt.SubmissionID.String()) {
+		t.Fatalf("manager-end response exposed private state or omitted receipt: %s", response.Body.String())
+	}
+
+	invalid := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"valid","extra":true}`))
+	invalid.Header.Set("Authorization", "Bearer credential")
+	invalid.Header.Set("Idempotency-Key", "manager-end-invalid")
+	invalidResponse := httptest.NewRecorder()
+	httpAPI.ServeHTTP(invalidResponse, invalid)
+	if invalidResponse.Code != http.StatusBadRequest {
+		t.Fatalf("unknown member status=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
+	}
+}
+
 func TestManagerAttemptRefetchExposesPrivateFreeActiveSuspensionIdentity(t *testing.T) {
 	t.Parallel()
 	fake := newExamAttemptHTTPFake(t)
@@ -614,41 +741,45 @@ func assertCandidateWorkspaceMutationHTTP(t *testing.T, fake *examAttemptHTTPFak
 }
 
 type examAttemptHTTPFake struct {
-	principal               model.Principal
-	attempt                 *model.ExamAttempt
-	workspace               *model.ExamAttemptWorkspace
-	participation           *store.ExamAttemptParticipationView
-	connection              *store.ExamAttemptManagerConnection
-	credential              string
-	resourceID              model.ExamResourceID
-	presentation            application.CandidateExamPresentation
-	workspacePage           application.CandidateExamWorkspacePage
-	managerPage             application.ExamAttemptManagerPage
-	content                 application.OpenedExamAttemptContent
-	workspaceContentVersion model.WorkspaceContentVersion
-	presentationAccess      application.CandidateExamAttemptAccess
-	presentationCalls       int
-	workspaceQuery          application.ListCandidateExamWorkspaceQuery
-	managerList             application.ListExamAttemptsQuery
-	managerGet              application.GetExamAttemptQuery
-	workspaceOpen           application.OpenCandidateExamWorkspaceFileQuery
-	reallow                 application.ReallowExamAttemptCommand
-	journalQuery            application.ListCandidateExamWorkspaceJournalQuery
-	journalPage             application.CandidateExamWorkspaceJournalPage
-	workspaceDirectory      application.CreateCandidateExamWorkspaceDirectoryCommand
-	workspaceFile           application.CreateCandidateExamWorkspaceFileCommand
-	workspaceReplace        application.ReplaceCandidateExamWorkspaceFileCommand
-	workspaceMove           application.MoveCandidateExamWorkspaceEntryCommand
-	workspaceDelete         application.DeleteCandidateExamWorkspaceEntryCommand
-	workspaceMutation       application.ExamAttemptWorkspaceMutationResult
-	submit                  application.SubmitExamAttemptCommand
-	submissionReceipt       application.ExamSubmissionReceipt
-	submissionView          application.ExamSubmissionManagerView
-	submissionManifest      application.ExamSubmissionManifestPage
-	submissionGet           application.GetExamSubmissionQuery
-	submissionManifestQuery application.ListExamSubmissionManifestQuery
-	submissionOpen          application.OpenExamSubmissionFileQuery
-	uploaded                []byte
+	principal                 model.Principal
+	attempt                   *model.ExamAttempt
+	workspace                 *model.ExamAttemptWorkspace
+	participation             *store.ExamAttemptParticipationView
+	connection                *store.ExamAttemptManagerConnection
+	credential                string
+	resourceID                model.ExamResourceID
+	presentation              application.CandidateExamPresentation
+	workspacePage             application.CandidateExamWorkspacePage
+	managerPage               application.ExamAttemptManagerPage
+	browserActivityPage       application.BrowserActivityPage
+	browserActivityQuery      application.ListBrowserActivityQuery
+	correctionAcknowledgement application.AcknowledgeExamCorrectionCommand
+	managerEnd                application.EndExamAttemptByManagerCommand
+	content                   application.OpenedExamAttemptContent
+	workspaceContentVersion   model.WorkspaceContentVersion
+	presentationAccess        application.CandidateExamAttemptAccess
+	presentationCalls         int
+	workspaceQuery            application.ListCandidateExamWorkspaceQuery
+	managerList               application.ListExamAttemptsQuery
+	managerGet                application.GetExamAttemptQuery
+	workspaceOpen             application.OpenCandidateExamWorkspaceFileQuery
+	reallow                   application.ReallowExamAttemptCommand
+	journalQuery              application.ListCandidateExamWorkspaceJournalQuery
+	journalPage               application.CandidateExamWorkspaceJournalPage
+	workspaceDirectory        application.CreateCandidateExamWorkspaceDirectoryCommand
+	workspaceFile             application.CreateCandidateExamWorkspaceFileCommand
+	workspaceReplace          application.ReplaceCandidateExamWorkspaceFileCommand
+	workspaceMove             application.MoveCandidateExamWorkspaceEntryCommand
+	workspaceDelete           application.DeleteCandidateExamWorkspaceEntryCommand
+	workspaceMutation         application.ExamAttemptWorkspaceMutationResult
+	submit                    application.SubmitExamAttemptCommand
+	submissionReceipt         application.ExamSubmissionReceipt
+	submissionView            application.ExamSubmissionManagerView
+	submissionManifest        application.ExamSubmissionManifestPage
+	submissionGet             application.GetExamSubmissionQuery
+	submissionManifestQuery   application.ListExamSubmissionManifestQuery
+	submissionOpen            application.OpenExamSubmissionFileQuery
+	uploaded                  []byte
 }
 
 func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
@@ -673,9 +804,8 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		connection: &store.ExamAttemptManagerConnection{ID: connectionID, State: model.AttemptConnectionOpen, OpenedAt: at},
 		credential: model.NewCredentialToken(), resourceID: resourceID,
 		presentation: application.CandidateExamPresentation{AttemptID: attempt.ID, SittingID: attempt.SittingID,
-			AdmissionRevisionID: attempt.AdmissionRevisionID, CurrentRevisionID: model.NewExamRevisionID(), Title: "Algorithms",
-			FocusLossCollectionEnabled: true,
-			InstructionsMarkdown:       "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
+			RuntimeCapabilities: candidateTestRuntimeCapabilities(t, at, attempt), Title: "Algorithms",
+			InstructionsMarkdown: "Solve safely.", Resources: []examattempt.Resource{{ResourceID: resourceID, DisplayName: "Input",
 				DescriptionMarkdown: "Read this.", Position: 0, MediaType: model.ExamResourceMediaText, SizeBytes: 9, SHA256: strings.Repeat("b", 64)}}},
 		workspacePage: application.CandidateExamWorkspacePage{WorkspaceID: workspace.ID, Cursor: 4,
 			Items: []application.CandidateExamWorkspaceItem{workspaceItem}},
@@ -691,8 +821,14 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		CandidateUserID: attempt.CandidateUserID, WorkspaceID: workspace.ID, Entry: &workspaceItem, Change: change}
 	fake.journalPage = application.CandidateExamWorkspaceJournalPage{WorkspaceID: workspace.ID, CurrentCursor: 5,
 		Entries: []model.AttemptWorkspaceJournalEntry{change}}
+	sourceID := model.BrowserSourceSessionID("01912ed5-d4f7-4f02-9b97-928b5e8d3f21")
+	fake.browserActivityPage = application.BrowserActivityPage{Items: []application.BrowserActivityRecord{{AttemptID: attempt.ID,
+		ParticipationID: fake.participation.ID, Generation: 1, SourceSessionID: sourceID,
+		Event: model.BrowserActivityEvent{Sequence: 1, Kind: model.BrowserActivityOpened, PolicyRevisionID: model.NewExamRevisionID(),
+			ClientOccurredAt: at, ReceivedAt: at.Add(time.Second)}}}}
 	fake.submissionReceipt = application.ExamSubmissionReceipt{SubmissionID: model.NewSubmissionID(), AttemptID: attempt.ID,
-		State: model.ExamAttemptSubmitted, WorkspaceCursor: 4, ManifestDigest: strings.Repeat("d", 64), SubmittedAt: at.Add(time.Minute)}
+		ExamRevisionID: attempt.AdmissionRevisionID, State: model.ExamAttemptSubmitted, WorkspaceCursor: 4,
+		ManifestDigest: strings.Repeat("d", 64), SubmittedAt: at.Add(time.Minute)}
 	submissionManifest, err := model.NewExamSubmissionManifest(4, []model.ExamSubmissionManifestEntry{{
 		EntryID: workspaceItem.EntryID, Kind: model.StarterWorkspaceEntryFile, Path: workspaceItem.Path,
 		ContentVersion: workspaceItem.ContentVersion, MediaType: workspaceItem.MediaType, SizeBytes: workspaceItem.SizeBytes,
@@ -703,19 +839,47 @@ func newExamAttemptHTTPFake(t *testing.T) *examAttemptHTTPFake {
 		t.Fatal(err)
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: fake.submissionReceipt.SubmissionID,
-		AttemptID: attempt.ID, WorkspaceID: workspace.ID, Manifest: submissionManifest, SubmittedAt: at.Add(time.Minute)})
+		AttemptID: attempt.ID, ExamRevisionID: attempt.AdmissionRevisionID, WorkspaceID: workspace.ID, Manifest: submissionManifest,
+		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at.Add(time.Minute)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake.submissionView = application.ExamSubmissionManagerView{Authorization: store.ExamSubmissionAuthorization{
 		SubmissionID: submission.ID, ExamID: attempt.ExamID, SittingID: attempt.SittingID, AttemptID: attempt.ID,
-		AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
+		CandidateUserID: attempt.CandidateUserID, AcademicUnitID: model.NewAcademicUnitID()}, Submission: *submission}
 	fake.submissionManifest = application.ExamSubmissionManifestPage{SubmissionID: submission.ID,
 		WorkspaceCursor: submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
 		Items: []store.ExamSubmissionManifestItem{{EntryID: workspaceItem.EntryID, Kind: workspaceItem.Kind,
 			Path: workspaceItem.Path, ContentVersion: workspaceItem.ContentVersion, MediaType: workspaceItem.MediaType,
 			SizeBytes: workspaceItem.SizeBytes, SHA256: workspaceItem.SHA256}}}
 	return fake
+}
+
+func candidateTestRuntimeCapabilities(t *testing.T, at time.Time, attempt *model.ExamAttempt) store.CandidateRuntimeCapabilities {
+	t.Helper()
+	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
+	configuration, err := model.NewAttemptConfiguration(model.AttemptConfigurationSchemaVersion, manifest,
+		model.NewUserSettingsRevision(), "sha256:"+strings.Repeat("b", 64), model.AttemptConfigurationPreferences{
+			ThemeMode: model.AttemptThemeFollowSystem, HighContrastMode: model.AttemptModeAuto, UIZoomPercent: 100,
+			EditorFontSizePX: 14, EditorLineHeightPercent: 150, ReducedMotionMode: model.AttemptModeAuto,
+			ScreenReaderMode: model.AttemptModeAuto, AnnouncementDetail: model.AttemptAnnouncementStandard,
+			CursorStyle: model.AttemptCursorLine, CursorBlinking: model.AttemptCursorBlink,
+			CandidateCommandBindings: []model.AttemptCommandBinding{},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store.CandidateRuntimeCapabilities{SchemaVersion: 1, ServerTime: at,
+		InteractionState: store.CandidateInteractionInteractive,
+		AttemptConfiguration: store.CandidateAttemptConfiguration{SchemaVersion: configuration.SchemaVersion,
+			ManifestFingerprint: configuration.ManifestFingerprint, Preferences: configuration.Preferences, Digest: configuration.Digest},
+		FocusLossCollectionEnabled: true, WorkspaceMutationAllowed: true, SubmissionAllowed: true,
+		Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalDisabled},
+		Browser:  store.CandidateBrowserCapability{State: store.CandidateBrowserDisabled},
+		ExamRevision: store.CandidateExamRevisionCapability{AdmissionRevisionID: attempt.AdmissionRevisionID,
+			CurrentRevisionID: model.NewExamRevisionID()},
+		Departure: store.CandidateDepartureCapability{Allowed: false, Reason: "attempt_in_progress"}}
 }
 
 func newExamAttemptFocusedAPI(t *testing.T, fake *examAttemptHTTPFake) *API {
@@ -750,6 +914,34 @@ func (fake *examAttemptHTTPFake) GetExamAttempt(_ context.Context, _ application
 func (fake *examAttemptHTTPFake) ListExamAttempts(_ context.Context, _ application.Invocation, query application.ListExamAttemptsQuery) (application.ExamAttemptManagerPage, error) {
 	fake.managerList = query
 	return fake.managerPage, nil
+}
+
+func (fake *examAttemptHTTPFake) ListSittingCandidateStatuses(context.Context, application.Invocation,
+	application.ListSittingCandidateStatusesQuery,
+) (application.SittingCandidateStatusesPage, error) {
+	return application.SittingCandidateStatusesPage{}, nil
+}
+
+func (fake *examAttemptHTTPFake) EndExamAttemptByManager(_ context.Context, _ application.Invocation,
+	command application.EndExamAttemptByManagerCommand,
+) (application.ExamSubmissionReceipt, error) {
+	fake.managerEnd = command
+	return fake.submissionReceipt, nil
+}
+
+func (fake *examAttemptHTTPFake) ListExamAttemptBrowserActivity(_ context.Context, _ application.Invocation,
+	query application.ListBrowserActivityQuery,
+) (application.BrowserActivityPage, error) {
+	fake.browserActivityQuery = query
+	return fake.browserActivityPage, nil
+}
+
+func (fake *examAttemptHTTPFake) AcknowledgeExamAttemptCorrection(_ context.Context, _ application.Invocation,
+	command application.AcknowledgeExamCorrectionCommand,
+) (application.ExamCorrectionAcknowledgementResult, error) {
+	fake.correctionAcknowledgement = command
+	return application.ExamCorrectionAcknowledgementResult{CorrectionRevisionID: command.CorrectionRevisionID,
+		CurrentRevisionID: command.ExpectedCurrentRevisionID, AcknowledgedAt: model.OptionalTimeFrom(fake.attempt.UpdatedAt.Add(time.Minute))}, nil
 }
 
 func (fake *examAttemptHTTPFake) ReallowExamAttempt(_ context.Context, invocation application.Invocation, command application.ReallowExamAttemptCommand) (application.ExamAttemptReallowResult, error) {

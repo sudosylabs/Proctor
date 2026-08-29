@@ -15,27 +15,35 @@ import (
 // capability, active User, expiry, purpose, and every pinned proof atomically.
 // CodeLifetime is applied to the Store's authoritative database timestamp.
 type DesktopAuthorizationCodeIssue struct {
-	HandleHash               string
-	BrowserProofHash         string
-	StateHash                string
-	UserID                   model.UserID
-	AuthenticationMethod     string
-	AuthenticationProviderID string
-	ExternalIdentityID       model.ExternalIdentityID
-	AuthenticationStrength   model.AuthenticationStrength
-	AuthenticatedAt          int64
-	MFACompletedAt           int64
-	CodeHash                 string
-	CodeLifetime             time.Duration
-	Capabilities             AccessDeploymentCapabilities
-	AuditEventID             string
-	AuditAt                  int64
+	BindingHash    string
+	StateHash      string
+	CodeHash       string
+	ExpectedUserID model.UserID
+	CodeLifetime   time.Duration
+	Capabilities   AccessDeploymentCapabilities
+	AuditEventID   string
+	AuditAt        int64
 }
 
 type DesktopAuthorizationCancellation struct {
-	HandleHash       string
-	BrowserProofHash string
-	StateHash        string
+	BindingHash string
+	StateHash   string
+}
+
+// DesktopAuthorizationExchangeProof resolves the exact still-live
+// authorization represented by an exchange request without consuming it.
+// The atomic Exchange operation repeats every check before committing.
+type DesktopAuthorizationExchangeProof struct {
+	CodeHash                string
+	StateHash               string
+	CodeChallenge           string
+	Issuer                  string
+	ExpectedKeyThumbprint   string
+	DesktopRelease          string
+	DesktopBuildID          string
+	DesktopPlatform         model.DesktopPlatform
+	DesktopArchitecture     model.DesktopArchitecture
+	DesktopRealtimeProtocol int
 }
 
 type DesktopAuthorizationCodeIssued struct {
@@ -47,24 +55,34 @@ type DesktopAuthorizationCodeIssued struct {
 // ordinary Desktop Session and its initial access/refresh credentials. All
 // lifetimes are applied to one authoritative database timestamp.
 type DesktopAuthorizationExchange struct {
-	CodeHash         string
-	StateHash        string
-	CodeChallenge    string
-	Issuer           string
-	AccessTokenHash  string
-	RefreshTokenHash string
-	AccessLifetime   time.Duration
-	RefreshLifetime  time.Duration
-	IdleLifetime     time.Duration
-	AbsoluteLifetime time.Duration
-	MaximumActive    int
-	Capabilities     AccessDeploymentCapabilities
-	AuditEventID     string
-	AuditAt          int64
+	CodeHash                           string
+	StateHash                          string
+	CodeChallenge                      string
+	Issuer                             string
+	ExpectedPublicJWK                  model.DesktopPublicJWK
+	ExpectedKeyThumbprint              string
+	DesktopRelease                     string
+	DesktopBuildID                     string
+	DesktopPlatform                    model.DesktopPlatform
+	DesktopArchitecture                model.DesktopArchitecture
+	DesktopRealtimeProtocol            int
+	DesktopCompatibilityPolicyRevision int64
+	AccessTokenHash                    string
+	RefreshTokenHash                   string
+	AccessLifetime                     time.Duration
+	RefreshLifetime                    time.Duration
+	IdleLifetime                       time.Duration
+	AbsoluteLifetime                   time.Duration
+	MaximumActive                      int
+	Capabilities                       AccessDeploymentCapabilities
+	AuditEventID                       string
+	AuditAt                            int64
 }
 
 type DesktopAuthorizationExchangeResult struct {
 	Session          *model.Session
+	Registration     *model.DesktopRegistration
 	AccessExpiresAt  time.Time
 	RefreshExpiresAt time.Time
+	Denied           bool
 }

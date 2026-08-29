@@ -31,9 +31,19 @@ type RevokeSessionCommand struct {
 // RevokeAllSessionsCommand revokes every active session for the caller.
 type RevokeAllSessionsCommand struct{}
 
+// DPoPRequestProof carries the HTTP proof inputs that must be verified for a
+// Desktop-bound credential. A nil value means the credential was not
+// presented with the DPoP authorization scheme.
+type DPoPRequestProof struct {
+	Proof  string
+	Method string
+	Path   string
+}
+
 // RefreshSessionCommand rotates access/refresh credentials for a valid refresh token.
 type RefreshSessionCommand struct {
 	RefreshToken string
+	DPoP         *DPoPRequestProof
 }
 
 // LogoutCommand ends the caller's current session.

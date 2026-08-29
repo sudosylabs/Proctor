@@ -84,6 +84,7 @@ var mailCatalog = func() map[model.MailTemplateKey]definition {
 	})
 	setPresentation(result, presentationSubmissionReceipt, []model.MailTemplateKey{
 		model.MailTemplateExamSubmissionReceived,
+		model.MailTemplateExamSubmissionManagerEnded,
 		model.MailTemplateExamSubmissionAutomaticallySealed,
 	})
 	setPresentation(result, presentationResultRelease, []model.MailTemplateKey{model.MailTemplateExamResultReleased})

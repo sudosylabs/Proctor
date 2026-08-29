@@ -400,6 +400,187 @@ func (s SQLUserStore) List(
 	return users, nil
 }
 
+func (s SQLUserStore) GetCurrentContext(ctx context.Context, userID model.UserID, scopeLimit int) (*store.CurrentUserContext, error) {
+	if !userID.IsValid() || scopeLimit < 1 || scopeLimit > 51 {
+		return nil, store.NewErrInvalidInput("user", "current_context", nil)
+	}
+	var row struct {
+		UserID             string `db:"user_id"`
+		Username           string `db:"username"`
+		DisplayName        string `db:"display_name"`
+		HasAffiliation     bool   `db:"has_affiliation"`
+		HasAssignedAccess  bool   `db:"has_assigned_access"`
+		HasStudentActivity bool   `db:"has_student_activity"`
+		HasExamManagement  bool   `db:"has_exam_management"`
+		HasAdministration  bool   `db:"has_administration"`
+	}
+	err := s.GetMaster().Get(ctx, &row, `WITH RECURSIVE active_bindings AS (
+		SELECT binding.scope_type,binding.scope_id,role.name,role.permissions
+		FROM role_bindings binding JOIN roles role ON role.id=binding.role_id
+		WHERE binding.user_id=? AND binding.archived_at IS NULL AND role.archived_at IS NULL
+		AND binding.start_at<=statement_timestamp() AND (binding.end_at IS NULL OR binding.end_at>statement_timestamp())
+	), unit_ancestors(root_id,id) AS (
+		SELECT id,id FROM academic_units WHERE archived_at IS NULL
+		UNION ALL
+		SELECT child.root_id,parent.id FROM unit_ancestors child
+		JOIN academic_units current ON current.id=child.id
+		JOIN academic_units parent ON parent.id=current.parent_id AND parent.archived_at IS NULL
+	), managed_exams AS (
+		SELECT exam.id,exam.academic_unit_id FROM exams exam
+		JOIN exam_managers manager ON manager.exam_id=exam.id AND manager.user_id=?
+		JOIN academic_unit_members member ON member.academic_unit_id=exam.academic_unit_id AND member.user_id=?
+		WHERE member.archived_at IS NULL AND member.start_at<=statement_timestamp()
+		AND (member.end_at IS NULL OR member.end_at>statement_timestamp())
+	)
+	SELECT u.id AS user_id,u.username,u.display_name,
+		EXISTS(SELECT 1 FROM affiliations affiliation WHERE affiliation.user_id=u.id AND affiliation.archived_at IS NULL
+			AND affiliation.start_at<=statement_timestamp() AND (affiliation.end_at IS NULL OR affiliation.end_at>statement_timestamp())) AS has_affiliation,
+		EXISTS(SELECT 1 FROM active_bindings) AS has_assigned_access,
+		(EXISTS(SELECT 1 FROM class_members member WHERE member.user_id=u.id AND member.archived_at IS NULL
+			AND member.start_at<=statement_timestamp() AND (member.end_at IS NULL OR member.end_at>statement_timestamp()))
+		 OR EXISTS(SELECT 1 FROM exam_attempts attempt WHERE attempt.candidate_user_id=u.id
+			AND attempt.state IN ('ready','active','suspended'))) AS has_student_activity,
+		EXISTS(SELECT 1 FROM active_bindings binding WHERE
+			(binding.name=? AND ?=ANY(binding.permissions) AND binding.scope_type='institution') OR
+			(binding.permissions && ARRAY[?,?,?,?,?,?,?,?]::varchar[] AND EXISTS (
+				SELECT 1 FROM managed_exams managed WHERE binding.scope_type='institution' OR
+					(binding.scope_type='academic_unit' AND binding.scope_id IN (
+						SELECT id FROM unit_ancestors WHERE root_id=managed.academic_unit_id))))) AS has_exam_management,
+		EXISTS(SELECT 1 FROM active_bindings binding WHERE binding.permissions &&
+			ARRAY[?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?]::varchar[]) AS has_administration
+	FROM users u WHERE u.id=? AND u.archived_at IS NULL AND u.disabled_at IS NULL`,
+		userID.String(), userID.String(), userID.String(), model.SystemAdministratorRoleName,
+		string(model.ActionExamManageOverride), string(model.ActionExamCreate), string(model.ActionExamView),
+		string(model.ActionExamManage), string(model.ActionExamPublish), string(model.ActionExamSittingCreate),
+		string(model.ActionExamSittingView), string(model.ActionExamSittingManage), string(model.ActionSubmissionView),
+		string(model.ActionInstitutionManage), string(model.ActionRoleManage), string(model.ActionAuditView),
+		string(model.ActionAcademicAuditView), string(model.ActionUserView), string(model.ActionUserManage),
+		string(model.ActionJobView), string(model.ActionJobManage), string(model.ActionMailView), string(model.ActionMailManage),
+		string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage), string(model.ActionAcademicUnitMembersView),
+		string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
+		string(model.ActionProgrammeView), string(model.ActionProgrammeManage), string(model.ActionProgrammeLevelView),
+		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
+		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
+		userID.String())
+	if err != nil {
+		return nil, translateError("user", userID.String(), err)
+	}
+	result := &store.CurrentUserContext{Username: row.Username, DisplayName: row.DisplayName,
+		NoCurrentAffiliation: !row.HasAffiliation, NoAssignedAccess: !row.HasAssignedAccess}
+	if result.UserID, err = model.ParseUserID(row.UserID); err != nil {
+		return nil, invalidPersistedState("user", "id", err)
+	}
+	result.AvailableProductAreas = []store.CurrentUserProductArea{
+		store.CurrentUserProductAreaAccount,
+	}
+	if row.HasAdministration {
+		result.AvailableProductAreas = append(result.AvailableProductAreas, store.CurrentUserProductAreaAdministration)
+	}
+	if row.HasExamManagement {
+		result.AvailableProductAreas = append(result.AvailableProductAreas, store.CurrentUserProductAreaExamManagement)
+	}
+	result.AvailableProductAreas = append(result.AvailableProductAreas, store.CurrentUserProductAreaSettings)
+	if row.HasStudentActivity {
+		result.AvailableProductAreas = append(result.AvailableProductAreas, store.CurrentUserProductAreaStudentActivity)
+	}
+
+	type scopeRow struct {
+		ScopeType   string `db:"scope_type"`
+		ScopeID     string `db:"scope_id"`
+		DisplayName string `db:"display_name"`
+	}
+	rows := []scopeRow{}
+	if err = s.GetMaster().Select(ctx, &rows, `WITH RECURSIVE active_bindings AS (
+		SELECT binding.scope_type,binding.scope_id,role.name,role.permissions
+		FROM role_bindings binding JOIN roles role ON role.id=binding.role_id
+		WHERE binding.user_id=? AND binding.archived_at IS NULL AND role.archived_at IS NULL
+		AND binding.start_at<=statement_timestamp() AND (binding.end_at IS NULL OR binding.end_at>statement_timestamp())
+	), unit_ancestors(root_id,id) AS (
+		SELECT id,id FROM academic_units WHERE archived_at IS NULL
+		UNION ALL
+		SELECT child.root_id,parent.id FROM unit_ancestors child
+		JOIN academic_units current ON current.id=child.id
+		JOIN academic_units parent ON parent.id=current.parent_id AND parent.archived_at IS NULL
+	), managed_exams AS (
+		SELECT exam.id,exam.academic_unit_id FROM exams exam
+		JOIN exam_managers manager ON manager.exam_id=exam.id AND manager.user_id=?
+		JOIN academic_unit_members member ON member.academic_unit_id=exam.academic_unit_id AND member.user_id=?
+		WHERE member.archived_at IS NULL AND member.start_at<=statement_timestamp()
+		AND (member.end_at IS NULL OR member.end_at>statement_timestamp())
+	), navigable_bindings AS (
+		SELECT binding.* FROM active_bindings binding WHERE binding.scope_type IN ('institution','academic_unit') AND (
+			binding.permissions && ARRAY[?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?]::varchar[] OR
+			(binding.name=? AND ?=ANY(binding.permissions) AND binding.scope_type='institution') OR
+			(binding.permissions && ARRAY[?,?,?,?,?,?,?,?]::varchar[] AND EXISTS (
+				SELECT 1 FROM managed_exams managed WHERE binding.scope_type='institution' OR
+					(binding.scope_type='academic_unit' AND binding.scope_id IN (
+						SELECT id FROM unit_ancestors WHERE root_id=managed.academic_unit_id))))
+		)
+	), scopes AS (
+		SELECT 'institution'::text AS scope_type,institution.id AS scope_id,institution.display_name
+		FROM navigable_bindings binding JOIN institutions institution ON binding.scope_type='institution' AND institution.id=binding.scope_id
+		WHERE institution.archived_at IS NULL
+		UNION
+		SELECT 'academic_unit'::text,unit.id,unit.display_name FROM navigable_bindings binding
+		JOIN academic_units unit ON binding.scope_type='academic_unit' AND unit.id=binding.scope_id WHERE unit.archived_at IS NULL
+	)
+	SELECT scope_type,scope_id,display_name FROM scopes ORDER BY scope_type,display_name,scope_id LIMIT ?`,
+		userID.String(), userID.String(), userID.String(),
+		string(model.ActionInstitutionManage), string(model.ActionRoleManage), string(model.ActionAuditView),
+		string(model.ActionAcademicAuditView), string(model.ActionUserView), string(model.ActionUserManage),
+		string(model.ActionJobView), string(model.ActionJobManage), string(model.ActionMailView), string(model.ActionMailManage),
+		string(model.ActionAcademicUnitView), string(model.ActionAcademicUnitManage), string(model.ActionAcademicUnitMembersView),
+		string(model.ActionAcademicUnitMembersManage), string(model.ActionAcademicPeriodView), string(model.ActionAcademicPeriodManage),
+		string(model.ActionProgrammeView), string(model.ActionProgrammeManage), string(model.ActionProgrammeLevelView),
+		string(model.ActionProgrammeLevelManage), string(model.ActionClassView), string(model.ActionClassManage),
+		string(model.ActionClassMembersView), string(model.ActionClassMembersManage), string(model.ActionAcademicProgressionManage),
+		model.SystemAdministratorRoleName, string(model.ActionExamManageOverride),
+		string(model.ActionExamCreate), string(model.ActionExamView), string(model.ActionExamManage), string(model.ActionExamPublish),
+		string(model.ActionExamSittingCreate), string(model.ActionExamSittingView), string(model.ActionExamSittingManage),
+		string(model.ActionSubmissionView), scopeLimit); err != nil {
+		return nil, fmt.Errorf("list current User management scopes: %w", err)
+	}
+	result.ManagementScopesHasMore = len(rows) == scopeLimit
+	if result.ManagementScopesHasMore {
+		rows = rows[:len(rows)-1]
+	}
+	result.ManagementScopes = make([]store.CurrentUserManagementScope, 0, len(rows))
+	for _, scope := range rows {
+		scopeType := model.RoleScopeType(scope.ScopeType)
+		if !scopeType.IsValid() || !model.IsValidId(scope.ScopeID) || scope.DisplayName == "" {
+			return nil, invalidPersistedState("user", "current_context_scope", errors.New("invalid management scope"))
+		}
+		result.ManagementScopes = append(result.ManagementScopes, store.CurrentUserManagementScope{
+			ScopeType: scopeType, ScopeID: scope.ScopeID, DisplayName: scope.DisplayName,
+		})
+	}
+
+	var attempt struct {
+		AttemptID string `db:"attempt_id"`
+		SittingID string `db:"sitting_id"`
+		State     string `db:"state"`
+	}
+	err = s.GetMaster().Get(ctx, &attempt, `SELECT id AS attempt_id,exam_sitting_id AS sitting_id,state FROM exam_attempts
+		WHERE candidate_user_id=? AND state IN ('ready','active','suspended') ORDER BY updated_at DESC,id DESC LIMIT 1`, userID.String())
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("resolve current User unresolved Attempt: %w", err)
+	}
+	if err == nil {
+		selector := &store.CurrentUserAttemptSelector{State: model.ExamAttemptState(attempt.State)}
+		if selector.AttemptID, err = model.ParseExamAttemptID(attempt.AttemptID); err != nil {
+			return nil, invalidPersistedState("exam_attempt", "id", err)
+		}
+		if selector.SittingID, err = model.ParseExamSittingID(attempt.SittingID); err != nil {
+			return nil, invalidPersistedState("exam_attempt", "exam_sitting_id", err)
+		}
+		if !selector.State.IsUnresolved() {
+			return nil, invalidPersistedState("exam_attempt", "state", errors.New("invalid unresolved Attempt state"))
+		}
+		result.UnresolvedAttempt = selector
+	}
+	return result, nil
+}
+
 func validVisibilityIDs(ids []string) bool {
 	for _, id := range ids {
 		if !model.IsValidId(id) {

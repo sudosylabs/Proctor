@@ -172,6 +172,25 @@ func TestExamSittingParticipationActionIsRecognizedButNotRoleGrantable(t *testin
 	}
 }
 
+func TestDesktopCompatibilityPolicyManagementIsSystemAdministratorOnly(t *testing.T) {
+	t.Parallel()
+
+	definition, ok := DefinitionForAction(ActionDesktopCompatibilityPolicyManage)
+	if !ok || definition.ResourceType != ResourceInstitution ||
+		!definition.InheritInstitutionScope || !definition.SystemAdministratorOnly {
+		t.Fatalf("desktop compatibility policy definition = %#v, %v", definition, ok)
+	}
+	if IsGrantableAction(string(ActionDesktopCompatibilityPolicyManage)) {
+		t.Fatal("system-administrator-only action became grantable to reusable Roles")
+	}
+	if IsPersonalAccessTokenAction(string(ActionDesktopCompatibilityPolicyManage)) {
+		t.Fatal("system-administrator-only action became available to Personal Access Tokens")
+	}
+	if !slices.Contains(AllActions(), string(ActionDesktopCompatibilityPolicyManage)) {
+		t.Fatal("system-administrator-only action is missing from the protected Role")
+	}
+}
+
 func TestSubmissionActionsAreResourceTypedAndGrantable(t *testing.T) {
 	t.Parallel()
 

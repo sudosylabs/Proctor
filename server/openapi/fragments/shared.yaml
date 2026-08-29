@@ -5,6 +5,12 @@ components:
       scheme: bearer
       description: >-
         A Proctor session access credential or Personal Access Token, subject to the route's x-proctor-auth requirement.
+    dpopAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >-
+        A Desktop Session access credential accompanied by a fresh RFC 9449 DPoP proof and server nonce in the DPoP header.
     sessionCookie:
       type: apiKey
       in: cookie
@@ -19,6 +25,11 @@ components:
       type: http
       scheme: bearer
       description: A refresh credential accepted only by the refresh operation.
+    refreshDPoPAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: A Desktop refresh credential presented with the DPoP scheme and a fresh proof in the DPoP header.
     refreshCookie:
       type: apiKey
       in: cookie

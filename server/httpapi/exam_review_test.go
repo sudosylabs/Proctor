@@ -219,7 +219,9 @@ func newExamIntegrityReviewHTTPFake(t *testing.T) *examIntegrityReviewHTTPFake {
 		t.Fatal(err)
 	}
 	submission, err := model.NewExamSubmission(model.ExamSubmissionSpecification{ID: submissionID, AttemptID: attemptID,
-		WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest, SubmittedAt: at})
+		ExamRevisionID: model.NewExamRevisionID(), WorkspaceID: model.NewExamAttemptWorkspaceID(), Manifest: manifest,
+		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable},
+		Provenance:      model.ExamSubmissionCandidateSubmitted, SubmittedAt: at})
 	if err != nil {
 		t.Fatal(err)
 	}

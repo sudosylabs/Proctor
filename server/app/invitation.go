@@ -301,6 +301,11 @@ type invitationMailPreparer interface {
 	PrepareInvitationAccepted(appmail.NoticePreparation) (*preparedDirectMail, error)
 }
 
+type invitationMembershipEffects interface {
+	classMemberEffects
+	authorizationInvalidationEffects
+}
+
 type invitationService struct {
 	store                   store.InvitationStore
 	classes                 invitationClassReader
@@ -312,6 +317,7 @@ type invitationService struct {
 	hasher                  invitationPasswordHasher
 	audit                   mutationAuditor
 	attempts                invitationAttemptLimiter
+	membershipEffects       invitationMembershipEffects
 	nodeID, publicURL       string
 	newClaim                func() string
 	now                     func() time.Time
@@ -388,14 +394,16 @@ func (a invitationAuditAdapter) Fail(ctx context.Context, auditID, errorCode str
 func newInvitationService(persistence store.InvitationStore, classes invitationClassReader, periods invitationPeriodReader,
 	academicUnits invitationAcademicUnitReader, roles invitationRoleReader,
 	authorization invitationAuthorizer, mail invitationMailPreparer, hasher invitationPasswordHasher, audit mutationAuditor,
-	attempts invitationAttemptLimiter, nodeID, publicURL string, recentAuthenticationTTL time.Duration, newClaim func() string, now func() time.Time,
+	attempts invitationAttemptLimiter, membershipEffects invitationMembershipEffects, nodeID, publicURL string,
+	recentAuthenticationTTL time.Duration, newClaim func() string, now func() time.Time,
 ) (*invitationService, error) {
 	if persistence == nil || classes == nil || periods == nil || academicUnits == nil || roles == nil || authorization == nil || mail == nil || hasher == nil || audit == nil ||
-		attempts == nil || nodeID == "" || publicURL == "" || recentAuthenticationTTL <= 0 || newClaim == nil || now == nil {
+		attempts == nil || membershipEffects == nil || nodeID == "" || publicURL == "" || recentAuthenticationTTL <= 0 || newClaim == nil || now == nil {
 		return nil, errors.New("invitation service dependencies are invalid")
 	}
 	return &invitationService{store: persistence, classes: classes, periods: periods, academicUnits: academicUnits, roles: roles, authorization: authorization,
-		mail: mail, hasher: hasher, audit: audit, attempts: attempts, nodeID: nodeID, publicURL: publicURL,
+		mail: mail, hasher: hasher, audit: audit, attempts: attempts, membershipEffects: membershipEffects,
+		nodeID: nodeID, publicURL: publicURL,
 		recentAuthenticationTTL: recentAuthenticationTTL, newClaim: newClaim, now: now}, nil
 }
 
@@ -1861,6 +1869,12 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 	if err != nil {
 		return nil, invalidInvitationError(err)
 	}
+	if !result.Replayed && result.ClassMember != nil {
+		if effectErr := s.membershipEffects.MembershipChanged(ctx, result.ClassMember.UserID,
+			[]model.ClassID{result.ClassMember.ClassID}); effectErr != nil {
+			s.membershipEffects.Report(ctx, "invitation.student_class_membership_changed", effectErr)
+		}
+	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User,
 		Affiliation: result.Affiliation, ClassMember: result.ClassMember, Replayed: result.Replayed}, nil
 }
@@ -1931,6 +1945,9 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 		BrowserTransaction: command.browserTransaction})
 	if err != nil {
 		return nil, invalidInvitationError(err)
+	}
+	if !result.Replayed && result.User != nil {
+		s.membershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
 	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User, Affiliation: result.Affiliation,
 		AcademicUnitMember: result.AcademicUnitMember, RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil
@@ -2027,7 +2044,20 @@ func (s *invitationService) AcceptExternalIdentity(ctx context.Context, state *m
 		ScopeType: invitation.ScopeType, ScopeID: invitation.ScopeID, Status: model.AuditStatusSuccess,
 		RequestID: metadata.RequestID, NodeID: s.nodeID, ClientType: "web", AuthMethod: authenticationMethod,
 		IPAddress: metadata.IPAddress, UserAgent: metadata.UserAgent, Parameters: auditParameters}
-	return s.store.AcceptExternalIdentity(ctx, input)
+	result, err := s.store.AcceptExternalIdentity(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if result.User != nil && (result.AcademicUnitMember != nil || result.RoleBinding != nil) {
+		s.membershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
+	}
+	if result.ClassMember != nil {
+		if effectErr := s.membershipEffects.MembershipChanged(ctx, result.ClassMember.UserID,
+			[]model.ClassID{result.ClassMember.ClassID}); effectErr != nil {
+			s.membershipEffects.Report(ctx, "invitation.external_student_class_membership_changed", effectErr)
+		}
+	}
+	return result, nil
 }
 
 func (s *invitationService) acceptScopedRole(ctx context.Context, invocation Invocation, claim, source string, purpose model.InvitationPurpose) (*InvitationAcceptanceView, error) {
@@ -2084,6 +2114,9 @@ func (s *invitationService) acceptScopedRoleByClaimHash(
 	}, invalidInvitationError)
 	if err != nil {
 		return nil, err
+	}
+	if !result.Replayed && result.User != nil {
+		s.membershipEffects.InvalidateAuthorization(ctx, result.User.ID.String())
 	}
 	return &InvitationAcceptanceView{Invitation: invitationView(result.Invitation), User: result.User,
 		RoleBinding: result.RoleBinding, Replayed: result.Replayed}, nil

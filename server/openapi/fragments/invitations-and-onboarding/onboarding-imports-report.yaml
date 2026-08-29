@@ -23,8 +23,13 @@ paths:
         - administration.unavailable
         - onboarding_import.conflict
         - onboarding_import.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":

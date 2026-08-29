@@ -14,21 +14,19 @@ func constructIdentity(
 	foundation applicationFoundation,
 	authorization *accessControlService,
 	capabilities accessPolicyCapabilitySource,
+	desktopCompatibility *desktopCompatibilityService,
 ) (identityConstruction, error) {
+	dpop, err := newDPoPSecurity(deps.Cache, dpopPolicy{Origin: deps.PublicURL,
+		NonceLifetime: 5 * time.Minute, ProofLifetime: 5 * time.Minute, ClockSkew: time.Minute,
+		NewNonce: model.NewCredentialToken, Now: time.Now})
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	authenticationAccess, err := newCurrentAuthenticationAccessPolicy(deps.Store.AccessPolicy())
 	if err != nil {
 		return identityConstruction{}, err
 	}
 	accountMail := foundation.mail
-	desktopAuthorization, err := newDesktopAuthorizationService(
-		deps.Store.BrowserAuthentication(), deps.Store.Institution(), authenticationAccess,
-		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
-		desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, deps.Sessions,
-		DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, model.NewCredentialToken, time.Now,
-	)
-	if err != nil {
-		return identityConstruction{}, err
-	}
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
 		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, accountMail, foundation.mfa,
@@ -37,7 +35,6 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-
 	// Expand PAT policy used both at bearer resolution and administration.
 	patPolicy := deps.PersonalAccessToken
 	patResolver, err := newPersonalAccessTokenBearerResolver(
@@ -63,6 +60,18 @@ func constructIdentity(
 		deps.AuthenticationDiagnostics,
 		model.NewCredentialToken,
 		time.Now,
+		authenticationDesktopDependencies{registrations: deps.Store.DesktopRegistration(), dpop: dpop},
+	)
+	if err != nil {
+		return identityConstruction{}, err
+	}
+	desktopAuthorization, err := newDesktopAuthorizationService(
+		deps.Store.BrowserAuthentication(), deps.Store.Institution(), authenticationAccess,
+		capabilities, desktopAuthorizationAuditAdapter{audit: foundation.audit},
+		desktopAuthorizationAttemptAccounting{attempts: foundation.attempts, policy: deps.LoginRateLimit}, deps.Sessions,
+		DesktopAuthorizationPolicy{Issuer: deps.PublicURL, AllowLoopbackHTTPDevelopment: deps.LoopbackHTTPDevelopment}, model.NewCredentialToken, time.Now,
+		desktopAuthorizationIdentityDependencies{users: deps.Store.User(), authentication: authentication,
+			compatibility: desktopCompatibility, dpop: dpop},
 	)
 	if err != nil {
 		return identityConstruction{}, err
@@ -76,7 +85,8 @@ func constructIdentity(
 		deps.Store.AcademicUnit(), deps.Store.Role(),
 		invitationAuthorizationAdapter{authorization: authorization},
 		accountMail, foundation.hasher, invitationAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit}, deps.NodeID, deps.PublicURL,
+		invitationAttemptAccounting{attempts: foundation.attempts, policy: deps.AccountRecovery.RateLimit},
+		classMemberRealtimeEffects{sittings: deps.Store.ExamSitting(), realtime: foundation.realtime}, deps.NodeID, deps.PublicURL,
 		deps.RecentAuthenticationTTL, model.NewCredentialToken, time.Now,
 	)
 	if err != nil {
@@ -124,6 +134,13 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	desktopRegistrations, err := newDesktopRegistrationService(
+		deps.Store.DesktopRegistration(), mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,
+		deps.RecentAuthenticationTTL, time.Now,
+	)
+	if err != nil {
+		return identityConstruction{}, err
+	}
 	externalPolicy := deps.ExternalAuth
 	if externalPolicy.PublicURL == "" {
 		externalPolicy.PublicURL = deps.PublicURL
@@ -157,6 +174,7 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
+	externalAuthentication.desktopAuthorization = desktopAuthorization
 	authenticationMethods, err := newAuthenticationMethodService(
 		deps.Store.PasswordCredential(), deps.Store.ExternalIdentity(), deps.Registry,
 		capabilities, foundation.hasher, mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,
@@ -169,6 +187,7 @@ func constructIdentity(
 		mail:                              accountMail,
 		authentication:                    authentication,
 		desktopAuthorization:              desktopAuthorization,
+		desktopRegistrations:              desktopRegistrations,
 		browserInvitations:                browserInvitations,
 		selfSessions:                      selfSessions,
 		externalAuthentication:            externalAuthentication,

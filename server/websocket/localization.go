@@ -31,6 +31,8 @@ const (
 	websocketErrorFocusLossDenied              websocketErrorPresentation = "focus_loss_denied"
 	websocketErrorFocusLossFailed              websocketErrorPresentation = "focus_loss_failed"
 	websocketErrorFocusLossSignalInvalid       websocketErrorPresentation = "focus_loss_signal_invalid"
+	websocketErrorBrowserActivityInvalid       websocketErrorPresentation = "browser_activity_invalid"
+	websocketErrorBrowserActivityFailed        websocketErrorPresentation = "browser_activity_failed"
 	websocketErrorRequestInvalid               websocketErrorPresentation = "request_invalid"
 	websocketErrorSubscriptionDenied           websocketErrorPresentation = "subscription_denied"
 	websocketErrorSubscriptionFailed           websocketErrorPresentation = "subscription_failed"
@@ -63,6 +65,8 @@ var websocketErrorMessages = map[websocketErrorPresentation]localizedMessage{
 	websocketErrorFocusLossDenied:              {id: "websocket.error.exam_attempt.focus_loss.denied", fallback: "Focus Loss signal was denied."},
 	websocketErrorFocusLossFailed:              {id: "websocket.error.exam_attempt.focus_loss.failed", fallback: "Focus Loss signal could not be accepted."},
 	websocketErrorFocusLossSignalInvalid:       {id: "websocket.error.exam_attempt.focus_loss.signal_invalid", fallback: "Invalid Focus Loss signal."},
+	websocketErrorBrowserActivityInvalid:       {id: "websocket.error.exam_attempt.browser_activity.invalid", fallback: "Invalid browser activity record."},
+	websocketErrorBrowserActivityFailed:        {id: "websocket.error.exam_attempt.browser_activity.failed", fallback: "Browser activity could not be accepted."},
 	websocketErrorRequestInvalid:               {id: "websocket.error.request.invalid", fallback: "Invalid WebSocket request."},
 	websocketErrorSubscriptionDenied:           {id: "websocket.error.subscription.denied", fallback: "WebSocket subscription denied."},
 	websocketErrorSubscriptionFailed:           {id: "websocket.error.subscription.failed", fallback: "WebSocket subscription failed."},

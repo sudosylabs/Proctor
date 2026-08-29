@@ -4,6 +4,7 @@
 package model
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -154,7 +155,7 @@ func TestExamDraftApplyTextPatchRejectsMissingOrInvalidFieldsAtomically(t *testi
 	if _, err := draft.ApplyTextPatch(nil, &tooLarge, time.Now().UTC()); err == nil {
 		t.Fatal("ApplyTextPatch accepted oversized instructions")
 	}
-	if *draft != original {
+	if !reflect.DeepEqual(*draft, original) {
 		t.Fatalf("failed patch mutated draft: got %#v want %#v", draft, original)
 	}
 }

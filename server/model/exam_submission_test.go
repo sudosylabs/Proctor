@@ -65,8 +65,10 @@ func TestNewExamSubmissionSealsCanonicalManifestAndIntegrity(t *testing.T) {
 
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
 		ID: modelSubmissionID("j"), AttemptID: ExamAttemptID(strings.Repeat("k", IdLength)),
-		WorkspaceID: ExamAttemptWorkspaceID(strings.Repeat("m", IdLength)), Manifest: manifest,
-		FinalFocusLossSequence: 9, UnresolvedIntegrityCount: 2, SubmittedAt: at,
+		ExamRevisionID: NewExamRevisionID(),
+		WorkspaceID:    ExamAttemptWorkspaceID(strings.Repeat("m", IdLength)), Manifest: manifest,
+		FinalFocusLossSequence: 9, UnresolvedIntegrityCount: 2, Provenance: ExamSubmissionCandidateSubmitted, SubmittedAt: at,
+		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -91,8 +93,10 @@ func TestExamSubmissionSettledIntegrityRequiresNoUnresolvedGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	submission, err := NewExamSubmission(ExamSubmissionSpecification{
-		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), WorkspaceID: NewExamAttemptWorkspaceID(),
-		Manifest: manifest, SubmittedAt: time.Unix(100, 0),
+		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
+		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
+		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
+		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +168,7 @@ func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, 1, HashToken(NewCredentialToken()), startedAt)
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +190,7 @@ func TestSubmitExamAttemptAppliesCoordinatedTerminalLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	suspendedParticipation, err := NewAttemptParticipation(NewAttemptParticipationID(), suspended.ID, 1, HashToken(NewCredentialToken()), startedAt)
+	suspendedParticipation, err := NewAttemptParticipation(NewAttemptParticipationID(), suspended.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +221,7 @@ func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, 1, HashToken(NewCredentialToken()), startedAt)
+		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1, HashToken(NewCredentialToken()), startedAt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,6 +262,29 @@ func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
 		t.Fatalf("suspended automatic seal = %#v / %#v / %#v", suspended, endedParticipation, closedConnection)
 	}
 
+	ready, readyParticipation, readyConnection := newAggregate(t)
+	readyFenceAt := startedAt.Add(time.Second)
+	if err := ready.Suspend(readyFenceAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := readyParticipation.End(AttemptParticipationEndPolicySuspended, readyFenceAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := readyConnection.Close(AttemptConnectionClosePolicySuspended, readyFenceAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := ready.Reallow(readyFenceAt.Add(time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err := SealExamAttemptForSittingClose(ready, readyParticipation, readyConnection, sealedAt); err != nil {
+		t.Fatal(err)
+	}
+	if ready.State != ExamAttemptSubmitted || ready.Revision != 4 ||
+		readyParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
+		readyConnection.CloseReason != AttemptConnectionClosePolicySuspended {
+		t.Fatalf("ready automatic seal = %#v / %#v / %#v", ready, readyParticipation, readyConnection)
+	}
+
 	invalid, invalidParticipation, invalidConnection := newAggregate(t)
 	invalidConnection.AttemptID = NewExamAttemptID()
 	beforeAttempt, beforeParticipation, beforeConnection := *invalid, *invalidParticipation, *invalidConnection
@@ -266,6 +293,57 @@ func TestSealExamAttemptForSittingClosePreservesPriorFences(t *testing.T) {
 	}
 	if *invalid != beforeAttempt || *invalidParticipation != beforeParticipation || *invalidConnection != beforeConnection {
 		t.Fatalf("failed automatic seal partially mutated aggregate = %#v / %#v / %#v", invalid, invalidParticipation, invalidConnection)
+	}
+}
+
+func TestEndExamAttemptByManagerSealsUnresolvedStatesWithoutJudgment(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Unix(300, 0).UTC()
+	endedAt := startedAt.Add(2 * time.Second)
+	newAggregate := func(t *testing.T) (*ExamAttempt, *AttemptParticipation, *AttemptConnection) {
+		t.Helper()
+		attempt, err := NewExamAttempt(NewExamAttemptID(), NewExamID(), NewExamSittingID(), NewUserID(), NewExamRevisionID(), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 1,
+			HashToken(NewCredentialToken()), startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		connection, err := NewAttemptConnection(NewAttemptConnectionID(), attempt.ID, participation.ID, participation.SessionID, startedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return attempt, participation, connection
+	}
+
+	active, activeParticipation, activeConnection := newAggregate(t)
+	if err := EndExamAttemptByManager(active, activeParticipation, activeConnection, endedAt); err != nil {
+		t.Fatal(err)
+	}
+	if active.State != ExamAttemptSubmitted || activeParticipation.EndReason != AttemptParticipationEndManagerEnded ||
+		activeConnection.CloseReason != AttemptConnectionCloseManagerEnded {
+		t.Fatalf("active manager end = %#v / %#v / %#v", active, activeParticipation, activeConnection)
+	}
+
+	suspended, suspendedParticipation, suspendedConnection := newAggregate(t)
+	fencedAt := startedAt.Add(time.Second)
+	if err := suspended.Suspend(fencedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := suspendedParticipation.End(AttemptParticipationEndPolicySuspended, fencedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := suspendedConnection.Close(AttemptConnectionClosePolicySuspended, fencedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := EndExamAttemptByManager(suspended, suspendedParticipation, suspendedConnection, endedAt); err != nil {
+		t.Fatal(err)
+	}
+	if suspended.State != ExamAttemptSubmitted || suspendedParticipation.EndReason != AttemptParticipationEndPolicySuspended ||
+		suspendedConnection.CloseReason != AttemptConnectionClosePolicySuspended {
+		t.Fatalf("suspended manager end changed prior fence = %#v / %#v / %#v", suspended, suspendedParticipation, suspendedConnection)
 	}
 }
 

@@ -27,6 +27,7 @@ paths:
         - exam.revision_conflict
         - exam.manager.not_found
         - exam.manager.ineligible
+        - exam.manager.candidate_conflict
         - exam.owner.no_changes
         - exam.unavailable
         - idempotency.key_required
@@ -34,8 +35,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -57,6 +63,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     TransferExamOwnership:

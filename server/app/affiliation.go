@@ -60,17 +60,36 @@ type affiliationAuthorizer interface {
 	AuthorizeUserRead(context.Context, Invocation, string) error
 }
 
+type affiliationEffects interface {
+	Changed(context.Context, model.UserID) error
+	Report(context.Context, string, error)
+}
+
 type affiliationService struct {
 	store         affiliationStore
 	enrollments   affiliationEnrollmentReader
 	authorization affiliationAuthorizer
 	audit         mutationAuditor
+	effects       affiliationEffects
 	now           func() time.Time
 	newID         func() string
 }
 
-func newAffiliationService(persistence affiliationStore, enrollments affiliationEnrollmentReader, authorization affiliationAuthorizer, audit mutationAuditor, now func() time.Time, newID func() string) *affiliationService {
-	return &affiliationService{store: persistence, enrollments: enrollments, authorization: authorization, audit: audit, now: now, newID: newID}
+func newAffiliationService(persistence affiliationStore, enrollments affiliationEnrollmentReader, authorization affiliationAuthorizer,
+	audit mutationAuditor, effects affiliationEffects, now func() time.Time, newID func() string,
+) *affiliationService {
+	return &affiliationService{store: persistence, enrollments: enrollments, authorization: authorization,
+		audit: audit, effects: effects, now: now, newID: newID}
+}
+
+type affiliationRealtimeEffects struct{ realtime *realtimeService }
+
+func (effects affiliationRealtimeEffects) Changed(ctx context.Context, userID model.UserID) error {
+	return effects.realtime.InvalidateCurrentUserContext(ctx, userID)
+}
+
+func (effects affiliationRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	effects.realtime.reportTransientFailure(ctx, operation, err)
 }
 
 func (a *App) ListAffiliations(ctx context.Context, invocation Invocation, query ListAffiliationsQuery) ([]*model.Affiliation, error) {
@@ -135,7 +154,8 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	return runAuditedMutation(
+	changed := false
+	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -153,10 +173,20 @@ func (s *affiliationService) Create(ctx context.Context, invocation Invocation, 
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
+			changed = !input.Replayed && !input.NoOp
 			return value, storeErr
 		},
 		affiliationError,
 	)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		if effectErr := s.effects.Changed(ctx, result.UserID); effectErr != nil {
+			s.effects.Report(ctx, "affiliation.changed", effectErr)
+		}
+	}
+	return result, nil
 }
 
 func (a *App) EndAffiliation(ctx context.Context, invocation Invocation, command EndAffiliationCommand) (*model.Affiliation, error) {
@@ -199,7 +229,8 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	return runAuditedMutation(
+	changed := false
+	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -219,10 +250,20 @@ func (s *affiliationService) End(ctx context.Context, invocation Invocation, com
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
+			changed = !input.Replayed && !input.NoOp
 			return value, storeErr
 		},
 		affiliationError,
 	)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		if effectErr := s.effects.Changed(ctx, result.UserID); effectErr != nil {
+			s.effects.Report(ctx, "affiliation.changed", effectErr)
+		}
+	}
+	return result, nil
 }
 
 func (s *affiliationService) authorizeUser(ctx context.Context, invocation Invocation, userID string) (model.Resource, error) {

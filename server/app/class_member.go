@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appmail "github.com/sudosylabs/proctor/server/app/mail"
+	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -71,6 +72,15 @@ type classMemberAuthorizer interface {
 	AuthorizePreflight(context.Context, Invocation, model.Action, model.ResourceType) error
 }
 
+type classMemberSittingStore interface {
+	ListInvalidationTargetsByClass(context.Context, model.ClassID, model.ExamSittingID, int) ([]store.ExamSittingInvalidationTarget, error)
+}
+
+type classMemberEffects interface {
+	MembershipChanged(context.Context, model.UserID, []model.ClassID) error
+	Report(context.Context, string, error)
+}
+
 type classMemberService struct {
 	store         classMemberStore
 	classes       classMemberClassStore
@@ -78,16 +88,91 @@ type classMemberService struct {
 	authorization classMemberAuthorizer
 	audit         mutationAuditor
 	mail          classTransitionMailPreparer
+	effects       classMemberEffects
 	now           func() time.Time
 	newID         func() string
 }
 
 func newClassMemberService(persistence classMemberStore, classes classMemberClassStore, users classMemberUserStore,
 	authorization classMemberAuthorizer, audit mutationAuditor, mail classTransitionMailPreparer,
-	now func() time.Time, newID func() string,
+	effects classMemberEffects, now func() time.Time, newID func() string,
 ) *classMemberService {
 	return &classMemberService{store: persistence, classes: classes, users: users, authorization: authorization,
-		audit: audit, mail: mail, now: now, newID: newID}
+		audit: audit, mail: mail, effects: effects, now: now, newID: newID}
+}
+
+type classMemberRealtimeEffects struct {
+	sittings classMemberSittingStore
+	realtime *realtimeService
+}
+
+func (effects classMemberRealtimeEffects) MembershipChanged(
+	ctx context.Context,
+	candidateID model.UserID,
+	classIDs []model.ClassID,
+) error {
+	if effects.sittings == nil || effects.realtime == nil {
+		return errors.New("Class Membership realtime dependencies are invalid")
+	}
+	candidateEvent, err := apprealtime.NewCandidateExamActivityChangedEvent(candidateID)
+	if err != nil {
+		return err
+	}
+	errs := []error{effects.realtime.Publish(ctx, candidateEvent),
+		effects.realtime.InvalidateCurrentUserContext(ctx, candidateID)}
+	seen := make(map[model.ClassID]struct{}, len(classIDs))
+	for _, classID := range classIDs {
+		if !classID.IsValid() {
+			errs = append(errs, errors.New("Class Membership invalidation requires a valid Class identity"))
+			continue
+		}
+		if _, exists := seen[classID]; exists {
+			continue
+		}
+		seen[classID] = struct{}{}
+		var after model.ExamSittingID
+		for {
+			targets, listErr := effects.sittings.ListInvalidationTargetsByClass(ctx, classID, after, 200)
+			if listErr != nil {
+				errs = append(errs, listErr)
+				break
+			}
+			for _, target := range targets {
+				event, eventErr := apprealtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
+				if eventErr != nil {
+					errs = append(errs, eventErr)
+					continue
+				}
+				errs = append(errs, effects.realtime.Publish(ctx, event))
+			}
+			if len(targets) < 200 {
+				break
+			}
+			after = targets[len(targets)-1].SittingID
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (effects classMemberRealtimeEffects) Report(ctx context.Context, operation string, err error) {
+	effects.realtime.reportTransientFailure(ctx, operation, err)
+}
+
+func (effects classMemberRealtimeEffects) InvalidateAuthorization(ctx context.Context, userID string) {
+	effects.realtime.InvalidateAuthorization(ctx, userID)
+}
+
+func (s *classMemberService) publishMembershipChanged(
+	ctx context.Context,
+	candidateID model.UserID,
+	classIDs ...model.ClassID,
+) {
+	if s.effects == nil {
+		return
+	}
+	if err := s.effects.MembershipChanged(ctx, candidateID, classIDs); err != nil {
+		s.effects.Report(ctx, "class_member.membership_changed", err)
+	}
 }
 
 func (a *App) ListClassMembers(ctx context.Context, invocation Invocation, query ListClassMembersQuery) ([]*model.ClassMember, error) {
@@ -170,6 +255,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 		bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 		bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 		bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
+		freshMutation := false
 		result, replayErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
 			Resource: resource, Operation: "enroll", Value: candidate.Auditable()}, func() time.Time { return at },
 			func(ctx context.Context, reference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
@@ -181,6 +267,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 						input.ExpectedPreviousID = retainedPrevious.ID
 					}
 					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 					if command.batchReplayed != nil {
 						*command.batchReplayed = input.Replayed || input.NoOp
 					}
@@ -199,6 +286,9 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 			}, classMemberError)
 		if replayErr != nil {
 			return nil, replayErr
+		}
+		if freshMutation {
+			s.publishEnrollmentChanged(ctx, result)
 		}
 		return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
 	}
@@ -307,6 +397,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	if previous != nil {
 		destinationAttempt.Operation = "transfer_in"
 	}
+	freshMutation := false
 	result, err := runAuditedMutation(ctx, s.audit, destinationAttempt, func() time.Time { return at },
 		func(ctx context.Context, destinationReference mutationAttemptReference) (*store.ClassEnrollmentResult, error) {
 			var expectedPreviousID model.ClassMemberID
@@ -322,6 +413,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 					AuditEventID: destinationReference.ID, AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
 				}
 				value, storeErr := s.store.EnrollWithAudit(ctx, input)
+				freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 				if command.batchReplayed != nil {
 					*command.batchReplayed = input.Replayed || input.NoOp
 				}
@@ -346,6 +438,7 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 						AuditAt: destinationReference.MutationAtMillis, Command: idempotency,
 					}
 					value, storeErr := s.store.EnrollWithAudit(ctx, input)
+					freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 					if command.batchReplayed != nil {
 						*command.batchReplayed = input.Replayed || input.NoOp
 					}
@@ -356,6 +449,9 @@ func (s *classMemberService) Enroll(ctx context.Context, invocation Invocation, 
 	)
 	if err != nil {
 		return nil, err
+	}
+	if freshMutation {
+		s.publishEnrollmentChanged(ctx, result)
 	}
 	return &model.ClassEnrollment{Membership: result.Membership, Previous: result.Previous}, nil
 }
@@ -386,17 +482,26 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 		bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
 		at := model.TimeFromMillis(model.MillisFromTime(s.now()))
-		return runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
+		freshMutation := false
+		ended, mutationErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation, Action: model.ActionClassMembersManage,
 			Resource: model.Resource{Type: model.ResourceClass, ID: strings.TrimSpace(command.BatchScopeID)}, Operation: "end"},
 			func() time.Time { return at }, func(ctx context.Context, reference mutationAttemptReference) (*model.ClassMember, error) {
 				input := &store.ClassMemberEnd{ID: id, ExpectedRevision: 1, ExpectedRecipientRevision: 1,
 					EndAt: reference.MutationAtMillis, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
 				value, storeErr := s.store.EndWithAudit(ctx, input)
+				freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 				if command.batchReplayed != nil {
 					*command.batchReplayed = input.Replayed || input.NoOp
 				}
 				return value, storeErr
 			}, classMemberError)
+		if mutationErr != nil {
+			return nil, mutationErr
+		}
+		if freshMutation {
+			s.publishMembershipChanged(ctx, ended.UserID, ended.ClassID)
+		}
+		return ended, nil
 	}
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
@@ -438,7 +543,8 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 			return nil, NewError("mail.unavailable").Wrap(err)
 		}
 	}
-	return runAuditedMutation(
+	freshMutation := false
+	ended, mutationErr := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -457,6 +563,7 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
 			value, storeErr := s.store.EndWithAudit(ctx, input)
+			freshMutation = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -464,6 +571,24 @@ func (s *classMemberService) End(ctx context.Context, invocation Invocation, com
 		},
 		classMemberError,
 	)
+	if mutationErr != nil {
+		return nil, mutationErr
+	}
+	if freshMutation {
+		s.publishMembershipChanged(ctx, ended.UserID, ended.ClassID)
+	}
+	return ended, nil
+}
+
+func (s *classMemberService) publishEnrollmentChanged(ctx context.Context, result *store.ClassEnrollmentResult) {
+	if result == nil || result.Membership == nil {
+		return
+	}
+	classIDs := []model.ClassID{result.Membership.ClassID}
+	if result.Previous != nil {
+		classIDs = append(classIDs, result.Previous.ClassID)
+	}
+	s.publishMembershipChanged(ctx, result.Membership.UserID, classIDs...)
 }
 
 func (s *classMemberService) authorizeClass(ctx context.Context, invocation Invocation, classID string, action model.Action) (model.Resource, error) {

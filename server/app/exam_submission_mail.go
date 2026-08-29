@@ -48,8 +48,14 @@ func (adapter examSubmissionMailPreparationAdapter) PrepareSubmissionReceipt(ctx
 		return nil, errors.New("Submission receipt Exam revision projection is inconsistent")
 	}
 	key := model.MailTemplateExamSubmissionReceived
-	if request.Automatic {
+	switch request.Provenance {
+	case model.ExamSubmissionCandidateSubmitted:
+	case model.ExamSubmissionManagerEndedAttempt:
+		key = model.MailTemplateExamSubmissionManagerEnded
+	case model.ExamSubmissionSittingClosed:
 		key = model.MailTemplateExamSubmissionAutomaticallySealed
+	default:
+		return nil, errors.New("Submission receipt provenance is invalid")
 	}
 	prepared, err := adapter.preparer.PrepareSubmissionReceiptMail(appmail.SubmissionReceiptPreparation{
 		Recipient: recipient, OccurrenceID: model.MailOccurrenceID(request.SubmissionID.String()), TemplateKey: key,

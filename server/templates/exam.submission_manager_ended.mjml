@@ -1,0 +1,27 @@
+<!--
+Template properties (server/app/mail renderer):
+  .Copy.Subject — localized message subject
+  .Copy.Preheader — localized inbox preview
+  .Copy.Heading — localized visible heading
+  .Copy.Body — localized primary message
+  .Copy.ActionLabel — localized action label; empty when no action is offered
+  .Copy.Footer — localized closing and safety copy
+  .ActionURL — validated HTTPS action URL; empty when no action is offered
+  .SubmissionReceipt.ExamTitle — bounded published Exam title
+  .SubmissionReceipt.SittingID — safe Sitting receipt identity
+  .SubmissionReceipt.SubmissionID — safe Submission receipt identity
+  .SubmissionReceipt.SealedAt — UTC RFC 3339 manager-end seal time
+  .SubmissionReceipt.Timezone — localized explicit timezone label
+-->
+<mjml>
+  <mj-head>
+    <mj-title>{{.Copy.Subject}}</mj-title>
+    <mj-preview>{{.Copy.Preheader}}</mj-preview>
+    <mj-include path="./partials/foundation-head.mjml" />
+  </mj-head>
+  <mj-body background-color="#F4F4F6">
+    <mj-include path="./partials/foundation-intro.mjml" />
+    <mj-include path="./partials/facts-submission.mjml" />
+    <mj-include path="./partials/foundation-footer.mjml" />
+  </mj-body>
+</mjml>

@@ -37,6 +37,14 @@ type Principal struct {
 	ExternalIdentityID       ExternalIdentityID
 	AuthenticationStrength   AuthenticationStrength
 	ClientType               SessionClientType
+	DesktopRegistrationID    DesktopRegistrationID
+	DPoPKeyThumbprint        string
+	RegisteredDesktopKey     bool
+	DesktopRelease           string
+	DesktopBuildID           string
+	DesktopPlatform          DesktopPlatform
+	DesktopArchitecture      DesktopArchitecture
+	DesktopRealtimeProtocol  int
 	AuthenticatedAt          time.Time
 	MFACompletedAt           OptionalTime
 	CredentialScopes         []string
@@ -46,6 +54,7 @@ type Principal struct {
 // AuthenticationTokens contains raw credentials returned exactly once after
 // login or refresh. These values must never be persisted, audited, or logged.
 type AuthenticationTokens struct {
+	TokenType        string
 	AccessToken      string
 	RefreshToken     string
 	AccessExpiresAt  time.Time
@@ -68,6 +77,17 @@ func (p Principal) Validate() error {
 			!p.AcademicUnitID.IsZero() {
 			return errors.New("model: session principal is invalid")
 		}
+		if p.RegisteredDesktopKey {
+			if p.ClientType != SessionClientDesktop || !p.DesktopRegistrationID.IsValid() ||
+				!IsValidDPoPKeyThumbprint(p.DPoPKeyThumbprint) || !IsValidDesktopRelease(p.DesktopRelease) ||
+				!IsValidDesktopBuildID(p.DesktopBuildID) || !p.DesktopPlatform.IsValid() ||
+				!p.DesktopArchitecture.IsValid() || p.DesktopRealtimeProtocol < 1 {
+				return errors.New("model: registered Desktop-key principal is invalid")
+			}
+		} else if !p.DesktopRegistrationID.IsZero() || p.DPoPKeyThumbprint != "" || p.DesktopRelease != "" ||
+			p.DesktopBuildID != "" || p.DesktopPlatform != "" || p.DesktopArchitecture != "" || p.DesktopRealtimeProtocol != 0 {
+			return errors.New("model: unproved Desktop-key principal is invalid")
+		}
 		if (p.AuthenticationMethod == "password" && (p.AuthenticationProviderID != "" || !p.ExternalIdentityID.IsZero())) ||
 			(p.AuthenticationMethod != "password" &&
 				(!IsValidIdentityProviderID(p.AuthenticationProviderID) || !p.ExternalIdentityID.IsValid())) {
@@ -79,7 +99,8 @@ func (p Principal) Validate() error {
 			p.AuthenticationProviderID != "" ||
 			!p.ExternalIdentityID.IsZero() ||
 			!p.AuthenticatedAt.IsZero() || p.MFACompletedAt.Valid ||
-			p.ClientType != SessionClientCLI ||
+			p.ClientType != SessionClientCLI || p.RegisteredDesktopKey || !p.DesktopRegistrationID.IsZero() || p.DPoPKeyThumbprint != "" ||
+			p.DesktopRelease != "" || p.DesktopBuildID != "" || p.DesktopPlatform != "" || p.DesktopArchitecture != "" || p.DesktopRealtimeProtocol != 0 ||
 			len(p.CredentialScopes) == 0 ||
 			(!p.AcademicUnitID.IsZero() && !p.AcademicUnitID.IsValid()) {
 			return errors.New("model: personal access token principal is invalid")
@@ -102,6 +123,14 @@ func (p Principal) Validate() error {
 
 func (p Principal) HasStrongAuthentication() bool {
 	return p.AuthenticationStrength == AuthenticationMultiFactor
+}
+
+// HasRegisteredDesktopKey reports the request-scoped proof assurance. Merely
+// holding a Desktop Session snapshot is insufficient; the current request must
+// have passed DPoP verification.
+func (p Principal) HasRegisteredDesktopKey() bool {
+	return p.RegisteredDesktopKey && p.ClientType == SessionClientDesktop &&
+		p.DesktopRegistrationID.IsValid() && IsValidDPoPKeyThumbprint(p.DPoPKeyThumbprint)
 }
 
 func (p Principal) LastAuthenticationAt() time.Time {

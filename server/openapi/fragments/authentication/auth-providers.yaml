@@ -128,6 +128,7 @@ paths:
         - authentication.method.conflict
         - authentication.method.unavailable
         - authentication.sessions.maximum_reached
+        - authentication.desktop_authorization.account_session_locked
         - authentication.internal
         - audit.unavailable
       x-proctor-idempotency: none

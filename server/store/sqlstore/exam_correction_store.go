@@ -415,6 +415,13 @@ func validateExamCorrectionApplication(input *store.ExamCorrectionApplication, c
 		!validExamSittingPrivateReason(input.PrivateReason) || input.AppliedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return store.NewErrInvalidInput("exam_correction", "application", nil)
 	}
+	if input.BrowserPolicy != nil && input.BrowserPolicy.Validate() != nil {
+		return store.NewErrInvalidInput("exam_correction", "browser_policy", nil)
+	}
+	if _, err := model.NewCandidateCorrectionNotice(input.CandidateSummary,
+		[]model.ExamCorrectionChangedArea{model.ExamCorrectionChangedInstructions}, input.AcknowledgementRequired); err != nil {
+		return store.NewErrInvalidInput("exam_correction", "candidate_summary", err)
+	}
 	if input.InstructionsMarkdown != nil && (!utf8.ValidString(*input.InstructionsMarkdown) || len(*input.InstructionsMarkdown) > 65536) {
 		return store.NewErrInvalidInput("exam_correction", "instructions_markdown", nil)
 	}
@@ -480,6 +487,13 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	databaseNow = model.TimeUTC(databaseNow)
 	if !databaseNow.Before(sitting.ScheduledEndAt) {
 		return nil, store.NewErrConflict("exam_sitting", "exam_sitting_deadline_reached", nil)
+	}
+	var correctionCount int
+	if err = tx.Get(ctx, &correctionCount, `SELECT COUNT(*) FROM exam_sitting_live_corrections WHERE exam_sitting_id=?`, input.SittingID.String()); err != nil {
+		return nil, err
+	}
+	if correctionCount >= model.ExamSittingMaximumLiveCorrections {
+		return nil, store.NewErrConflict("exam_correction", "exam_correction_limit", nil)
 	}
 	var lockedBaseID string
 	if err = tx.Get(ctx, &lockedBaseID, `SELECT id FROM exam_revisions WHERE exam_id=? AND id=? AND sealed=true FOR KEY SHARE`, input.ExamID.String(), input.CurrentRevisionID.String()); errors.Is(err, sql.ErrNoRows) {
@@ -548,16 +562,27 @@ func applyExamCorrection(ctx context.Context, tx *sqlxTxWrapper, input *store.Ex
 	if input.InstructionsMarkdown != nil {
 		instructions = *input.InstructionsMarkdown
 	}
+	browserPolicy := base.BrowserPolicy.Clone()
+	if input.BrowserPolicy != nil {
+		browserPolicy = input.BrowserPolicy.Clone()
+	}
+	changedAreas, err := model.CandidateCorrectionChangedAreas(base, instructions, resources, browserPolicy)
+	if err != nil {
+		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", err)
+	}
+	if len(changedAreas) == 0 {
+		return nil, store.NewErrConflict("exam_correction", "exam_correction_no_changes", nil)
+	}
 	var number int64
 	if err = tx.Get(ctx, &number, `SELECT COALESCE(MAX(number),0)+1 FROM exam_revisions WHERE exam_id=?`, input.ExamID.String()); err != nil {
 		return nil, err
 	}
-	revision, err := model.NewLiveCorrectionExamRevision(base, input.RevisionID, number, instructions, resources, input.ActorUserID, databaseNow)
+	revision, err := model.NewLiveCorrectionExamRevision(base, model.LiveCorrectionExamRevisionSpecification{ID: input.RevisionID,
+		Number: number, InstructionsMarkdown: instructions, Resources: resources, BrowserPolicy: browserPolicy,
+		CandidateSummary: input.CandidateSummary, AcknowledgementRequired: input.AcknowledgementRequired,
+		PublishedByUserID: input.ActorUserID, PublishedAt: databaseNow})
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_correction", "snapshot", nil).Wrap(err)
-	}
-	if model.SameExamRevisionCandidatePresentation(base, revision) {
-		return nil, store.NewErrConflict("exam_correction", "exam_correction_no_changes", nil)
 	}
 	if err = insertExamRevision(ctx, tx, revision); err != nil {
 		return nil, err
@@ -629,7 +654,8 @@ func examCorrectionRevisionSummary(revision *model.ExamRevision) *store.ExamRevi
 	}
 	return &store.ExamRevisionSummary{ID: revision.ID, ExamID: revision.ExamID, Number: revision.Number,
 		SourceDraftRevision: revision.SourceDraftRevision, Title: revision.Title, PolicySchemaVersion: revision.Policy.SchemaVersion,
-		PolicyDigest: revision.PolicyDigest, ExecutionProfileDigest: revision.ExecutionProfileDigest, Capacity: revision.Capacity,
+		PolicyDigest: revision.PolicyDigest, ExecutionProfileDigest: revision.ExecutionProfileDigest,
+		BrowserPolicyDigest: revision.BrowserPolicyDigest, Capacity: revision.Capacity,
 		StarterWorkspaceDigest: revision.StarterWorkspaceDigest, ContentDigest: revision.ContentDigest,
 		ResourceCount: len(revision.Resources), StarterWorkspaceEntries: len(revision.StarterWorkspace), StarterWorkspaceBytes: starterBytes,
 		PublishedByUserID: revision.PublishedByUserID, PublishedAt: revision.PublishedAt, BaseRevisionID: revision.BaseRevisionID, Kind: revision.Kind}

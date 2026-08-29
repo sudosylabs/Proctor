@@ -49,6 +49,8 @@ type SessionAdministrationApplication interface {
 }
 
 type UserProfileApplication interface {
+	GetCurrentUserContext(context.Context, application.Invocation) (*application.CurrentUserContextView, error)
+	ListCandidateExamActivity(context.Context, application.Invocation, application.ListCandidateExamActivityQuery) (application.CandidateExamActivityPage, error)
 	SearchUsers(context.Context, application.Invocation, application.SearchUsersQuery) ([]*model.User, error)
 	GetUserProfile(context.Context, application.Invocation, application.GetUserProfileQuery) (*model.User, error)
 	UpdateUserProfile(context.Context, application.Invocation, application.UpdateUserProfileCommand) (*model.User, error)
@@ -117,6 +119,7 @@ type ExamApplication interface {
 	EditExamDraftText(context.Context, application.Invocation, application.EditExamDraftTextCommand) (application.ExamView, error)
 	ConfigureExamDraftFocusLoss(context.Context, application.Invocation, application.ConfigureExamDraftFocusLossCommand) (application.ExamView, error)
 	ConfigureExamDraftExecutionProfile(context.Context, application.Invocation, application.ConfigureExamDraftExecutionProfileCommand) (application.ExamView, error)
+	ConfigureExamDraftBrowserPolicy(context.Context, application.Invocation, application.ConfigureExamDraftBrowserPolicyCommand) (application.ExamView, error)
 	ListExamExecutionImages(context.Context, application.Invocation, application.GetExamQuery) ([]application.ExamExecutionImage, error)
 	ListExams(context.Context, application.Invocation, application.ListExamsQuery) (application.ExamCatalogPage, error)
 	ArchiveExam(context.Context, application.Invocation, application.ArchiveExamCommand) (model.Exam, error)
@@ -175,6 +178,22 @@ type BootstrapApplication interface {
 	BootstrapInstallation(context.Context, application.Invocation, application.BootstrapInstallationCommand) (*model.InstallationBootstrapResult, error)
 }
 
+type DesktopCompatibilityApplication interface {
+	EvaluateDesktopCompatibility(
+		context.Context,
+		application.DesktopCompatibilityQuery,
+	) (application.DesktopCompatibilityResult, error)
+	GetDesktopCompatibilityPolicy(
+		context.Context,
+		application.Invocation,
+	) (*model.DesktopCompatibilityPolicy, error)
+	ReplaceDesktopCompatibilityPolicy(
+		context.Context,
+		application.Invocation,
+		application.ReplaceDesktopCompatibilityPolicyCommand,
+	) (*model.DesktopCompatibilityPolicy, error)
+}
+
 type RoleApplication interface {
 	ListRoles(context.Context, application.Invocation, application.ListRolesQuery) ([]*model.Role, error)
 	GetRole(context.Context, application.Invocation, application.GetRoleQuery) (*model.Role, error)
@@ -200,12 +219,14 @@ type Realtime interface {
 type Application interface {
 	Authentication
 	DesktopAuthorization
+	DesktopRegistrations
 	ExternalAuthentication
 	authenticationMethodApplication
 	Sessions
 	PersonalAccessTokens
 	MFA
 	InstitutionApplication
+	DesktopCompatibilityApplication
 	JobOperationsApplication
 	MailApplication
 	ExamApplication

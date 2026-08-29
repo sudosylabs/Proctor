@@ -88,20 +88,32 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 		return nil, store.NewErrInvalidInput("institution", "value", nil).Wrap(err)
 	}
 
-	row := newInstitutionRow(created)
-	if _, err := s.GetMaster().NamedExec(ctx, `
-		INSERT INTO institutions (
-			id, created_at, updated_at, archived_at, revision, name, display_name, description,
-			exam_resource_max_count, exam_resource_max_bytes, exam_workspace_max_entries,
-			exam_workspace_max_file_bytes, exam_workspace_max_total_bytes
-		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :revision, :name, :display_name, :description,
-			:exam_resource_max_count, :exam_resource_max_bytes, :exam_workspace_max_entries,
-			:exam_workspace_max_file_bytes, :exam_workspace_max_total_bytes
-		)`, &row); err != nil {
-		return nil, fmt.Errorf("save institution: %w", translateError("institution", created.ID.String(), err))
-	}
-	return created, nil
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "institution creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Institution, error) {
+		row := newInstitutionRow(created)
+		if _, err := tx.NamedExec(ctx, `
+			INSERT INTO institutions (
+				id, created_at, updated_at, archived_at, revision, name, display_name, description,
+				exam_resource_max_count, exam_resource_max_bytes, exam_workspace_max_entries,
+				exam_workspace_max_file_bytes, exam_workspace_max_total_bytes
+			) VALUES (
+				:id, :created_at, :updated_at, :archived_at, :revision, :name, :display_name, :description,
+				:exam_resource_max_count, :exam_resource_max_bytes, :exam_workspace_max_entries,
+				:exam_workspace_max_file_bytes, :exam_workspace_max_total_bytes
+			)`, &row); err != nil {
+			return nil, fmt.Errorf("save institution: %w", translateError("institution", created.ID.String(), err))
+		}
+		var policyExists bool
+		if err := tx.Get(ctx, &policyExists, `SELECT EXISTS(SELECT 1 FROM desktop_compatibility_policies WHERE singleton=1)`); err != nil {
+			return nil, fmt.Errorf("inspect initial desktop compatibility policy: %w", err)
+		}
+		if !policyExists {
+			policy := model.NewInitialDesktopCompatibilityPolicy(created.ID, at)
+			if err := insertInitialDesktopCompatibilityPolicy(ctx, tx, policy); err != nil {
+				return nil, err
+			}
+		}
+		return created, nil
+	})
 }
 
 func (s SQLInstitutionStore) Get(ctx context.Context, id string) (*model.Institution, error) {

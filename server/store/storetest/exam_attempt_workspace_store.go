@@ -44,10 +44,12 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	requireNoError(t, err)
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
-		SessionID: fixture.session.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
 		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-connect", "workspace-connect"))
 	requireNoError(t, err)
@@ -55,6 +57,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	access := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
 	reservation := &store.ExamAttemptWorkspaceObjectReservation{Access: access, ObjectID: model.NewAttemptWorkspaceObjectID()}
 	reserved, err := workspace.ReserveObject(ctx, reservation)
@@ -141,9 +144,11 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 		t.Fatalf("ListJournal(after Connection close) error = %v", err)
 	}
 	reconnect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
-		SessionID: fixture.session.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash, AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, reconnect)
 	reconnected, err := ss.ExamAttempt().Connect(ctx, reconnect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-reconnect", "workspace-reconnect"))
 	requireNoError(t, err)
@@ -164,7 +169,8 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	requireSuccessfulAudit(t, ctx, ss, replayAfterReconnect.AuditEventID)
 	journal, err := workspace.ListJournal(ctx, store.CandidateWorkspaceJournalOptions{
 		Access: store.CandidateAttemptAccess{AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID,
-			SessionID: access.SessionID, ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash},
+			SessionID: access.SessionID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+			DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash},
 		AfterCursor: 0, Limit: model.AttemptWorkspaceJournalReadMaximum})
 	requireNoError(t, err)
 	if journal == nil || journal.WorkspaceID != connected.Workspace.ID || journal.CurrentCursor != 1 || journal.HasMore ||
@@ -174,6 +180,7 @@ func TestExamAttemptWorkspaceStore(t *testing.T, ss store.Store, workspace store
 	}
 	manifest, err := workspace.List(ctx, store.CandidateWorkspaceListOptions{Access: store.CandidateAttemptAccess{
 		AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID, SessionID: access.SessionID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: access.ConnectionID, ContinuityCredentialHash: access.ContinuityCredentialHash}, ExpectedCursor: -1, Limit: 200})
 	requireNoError(t, err)
 	if manifest == nil || manifest.WorkspaceID != connected.Workspace.ID || manifest.Cursor != 1 || manifest.RefreshRequired ||
@@ -495,16 +502,19 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 	fixture := newExamAttemptFixture(t, ctx, ss)
 	credentialHash := model.HashToken(model.NewCredentialToken())
 	connect := &store.ExamAttemptConnect{SittingID: fixture.sitting.ID, CandidateUserID: fixture.candidate.ID,
-		SessionID: fixture.session.ID, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
+		SessionID: fixture.session.ID, DesktopRegistrationID: fixture.session.DesktopRegistrationID,
+		DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint, AttemptID: model.NewExamAttemptID(), WorkspaceID: model.NewExamAttemptWorkspaceID(),
 		ParticipationID: model.NewAttemptParticipationID(), ConnectionID: model.NewAttemptConnectionID(),
 		ContinuityCredentialHash: credentialHash,
 		AuditEventID:             saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	prepareExamAttemptConnect(t, ctx, ss, connect)
 	connected, err := ss.ExamAttempt().Connect(ctx, connect,
 		examCommand(fixture.candidate.ID, store.ExamAttemptConnectOperation, "workspace-fence-connect", "workspace-fence-connect"))
 	requireNoError(t, err)
 	access := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID,
 		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
 		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
 		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: credentialHash}
 
 	if probe.ConcurrentPeer != nil {
@@ -575,6 +585,7 @@ func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx cont
 
 func journalAccess(access store.ExamAttemptWorkspaceMutationAccess) store.CandidateAttemptAccess {
 	return store.CandidateAttemptAccess{AttemptID: access.AttemptID, CandidateUserID: access.CandidateUserID,
-		SessionID: access.SessionID, ConnectionID: access.ConnectionID,
+		SessionID: access.SessionID, DesktopRegistrationID: access.DesktopRegistrationID,
+		DPoPKeyThumbprint: access.DPoPKeyThumbprint, ConnectionID: access.ConnectionID,
 		ContinuityCredentialHash: access.ContinuityCredentialHash}
 }

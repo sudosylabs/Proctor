@@ -39,9 +39,10 @@ type executionGrantRow struct {
 
 type executionGrantConvergenceRow struct {
 	executionGrantRow
-	AttemptState    string `db:"attempt_state"`
-	SittingState    string `db:"sitting_state"`
-	SittingRevision int64  `db:"sitting_revision"`
+	AttemptState            string `db:"attempt_state"`
+	SittingState            string `db:"sitting_state"`
+	SittingRevision         int64  `db:"sitting_revision"`
+	AcknowledgementRequired bool   `db:"acknowledgement_required"`
 }
 
 const executionGrantColumns = `id,exam_attempt_id,host_id,image,network,state,applied_sitting_state,applied_sitting_revision,lifecycle_pending,pending_sitting_state,pending_sitting_revision,created_at,updated_at,released_at,revoked_at,revision`
@@ -133,7 +134,33 @@ func (s SQLExecutionGrantStore) Reassign(ctx context.Context, change store.Execu
 }
 
 func (s SQLExecutionGrantStore) MarkReady(ctx context.Context, id model.ExecutionGrantID, revision int64, at time.Time) (*model.ExecutionGrant, error) {
-	return s.transition(ctx, id, revision, at, "reserved", `state='ready',updated_at=$1,revision=revision+1`, "mark execution grant ready")
+	if !id.IsValid() || revision < 1 || at.IsZero() {
+		return nil, store.NewErrInvalidInput("execution_grant", "mark_ready", nil)
+	}
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "mark execution grant ready", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExecutionGrant, error) {
+		var attemptID string
+		if err := tx.Get(ctx, &attemptID, `SELECT exam_attempt_id FROM execution_grants WHERE id=$1`, id.String()); err != nil {
+			return nil, translateError("execution_grant", id.String(), err)
+		}
+		parsedAttemptID, err := model.ParseExamAttemptID(attemptID)
+		if err != nil {
+			return nil, invalidPersistedState("execution_grant", "exam_attempt_id", err)
+		}
+		if err = lockExecutableAttempt(ctx, tx, parsedAttemptID); err != nil {
+			return nil, err
+		}
+		var row executionGrantRow
+		err = tx.Get(ctx, &row, `UPDATE execution_grants SET state='ready',updated_at=$1,revision=revision+1
+			WHERE id=$2 AND revision=$3 AND state='reserved' RETURNING `+executionGrantColumns,
+			model.TimeUTC(at), id.String(), revision)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, store.NewErrConflict("execution_grant", "revision_or_state", err)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("mark execution grant ready: %w", err)
+		}
+		return executionGrantModel(row)
+	})
 }
 
 func (s SQLExecutionGrantStore) PrepareSittingStateEffect(ctx context.Context, id model.ExecutionGrantID, revision int64, state model.ExamSittingState, sittingRevision int64, at time.Time) (*model.ExecutionGrant, error) {
@@ -282,7 +309,8 @@ func (s SQLExecutionGrantStore) CurrentForReconciliation(ctx context.Context, id
 	}
 	var row executionGrantConvergenceRow
 	if err := s.GetMaster().Get(ctx, &row, `SELECT `+prefixedExecutionGrantColumns("g")+`,
-		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision FROM execution_grants g
+		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,
+		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		WHERE g.id=$1 AND g.state IN ('reserved','ready')`, id.String()); err != nil {
@@ -297,7 +325,8 @@ func (s SQLExecutionGrantStore) ListCurrentForReconciliation(ctx context.Context
 	}
 	var rows []executionGrantConvergenceRow
 	if err := s.GetMaster().Select(ctx, &rows, `SELECT `+prefixedExecutionGrantColumns("g")+`,
-		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision FROM execution_grants g
+		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,
+		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
 		WHERE g.state IN ('reserved','ready') AND g.id>$1 ORDER BY g.id LIMIT $2`, after.String(), limit); err != nil {
@@ -328,7 +357,8 @@ func executionGrantConvergenceModel(row executionGrantConvergenceRow) (*store.Ex
 		return nil, fmt.Errorf("execution grant persisted invalid Sitting lifecycle")
 	}
 	return &store.ExecutionGrantConvergence{Grant: grant, AttemptState: attemptState,
-		SittingState: sittingState, SittingRevision: row.SittingRevision}, nil
+		SittingState: sittingState, SittingRevision: row.SittingRevision,
+		AcknowledgementRequired: row.AcknowledgementRequired}, nil
 }
 
 func (s SQLExecutionGrantStore) ListCurrentForSitting(ctx context.Context, sittingID model.ExamSittingID, after model.ExecutionGrantID, limit int) ([]*model.ExecutionGrant, error) {
@@ -473,17 +503,42 @@ func validateExecutionReservation(value store.ExecutionGrantReservation) error {
 }
 
 func lockExecutableAttempt(ctx context.Context, tx *sqlxTxWrapper, attemptID model.ExamAttemptID) error {
-	var allowed bool
-	err := tx.Get(ctx, &allowed, `SELECT a.state='active' AND s.state='open' FROM exam_attempts a
+	var row struct {
+		Allowed             bool   `db:"allowed"`
+		SittingID           string `db:"sitting_id"`
+		AdmissionRevisionID string `db:"admission_revision_id"`
+		CurrentRevisionID   string `db:"current_revision_id"`
+	}
+	err := tx.Get(ctx, &row, `SELECT a.state='active' AND s.state='open' AS allowed,s.id AS sitting_id,
+		a.admission_revision_id,s.exam_revision_id AS current_revision_id FROM exam_attempts a
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id WHERE a.id=$1 FOR UPDATE OF a,s`, attemptID.String())
 	if err != nil {
 		return translateError("exam_attempt", attemptID.String(), err)
 	}
-	if !allowed {
+	if !row.Allowed {
 		return store.NewErrConflict("execution_grant", "attempt_not_executable", nil)
+	}
+	pending, err := hasPendingCandidateCorrectionAcknowledgement(ctx, tx, attemptID.String(), row.SittingID,
+		row.AdmissionRevisionID, row.CurrentRevisionID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return store.NewErrConflict("execution_grant", "exam_correction_acknowledgement_required", nil)
 	}
 	return nil
 }
+
+const pendingCorrectionAcknowledgementSQL = `EXISTS (
+	SELECT 1 FROM exam_sitting_live_corrections live
+	JOIN exam_revisions correction ON correction.id=live.correction_revision_id AND correction.exam_id=live.exam_id
+	JOIN exam_revisions admission ON admission.id=a.admission_revision_id AND admission.exam_id=a.exam_id
+	JOIN exam_revisions current_revision ON current_revision.id=s.exam_revision_id AND current_revision.exam_id=a.exam_id
+	WHERE live.exam_sitting_id=s.id AND correction.number>admission.number
+	AND correction.number<=current_revision.number AND correction.publication_kind='live_correction'
+	AND correction.candidate_correction_acknowledgement_required=true
+	AND NOT EXISTS (SELECT 1 FROM exam_attempt_correction_acknowledgements acknowledgement
+		WHERE acknowledgement.exam_attempt_id=a.id AND acknowledgement.correction_revision_id=correction.id))`
 
 func insertExecutionGrant(ctx context.Context, tx *sqlxTxWrapper, value store.ExecutionGrantReservation) (executionGrantRow, error) {
 	var row executionGrantRow

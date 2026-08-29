@@ -65,9 +65,14 @@ func TestRouteMetadataRetainsVersionRegexAndPolicyContract(t *testing.T) {
 	))
 	routes := httpAPI.Routes()
 	want := "/api/testing/roles/{role_id:" + canonicalIDRoutePattern() + "}"
-	if len(routes) != 1 || routes[0].Path != want || routes[0].Auth != AuthSessionRequired ||
-		len(routes[0].ErrorCodes) != 1 || routes[0].ErrorCodes[0] != "authentication.required" {
+	if len(routes) != 1 || routes[0].Path != want || routes[0].Auth != AuthSessionRequired {
 		t.Fatalf("routes = %#v, want path %q with session policy", routes, want)
+	}
+	policy := newRouteErrorPolicy(routes[0].ErrorCodes)
+	for _, code := range routeErrorCodes(AuthSessionRequired, []string{"authentication.required"}) {
+		if _, exists := policy[code]; !exists {
+			t.Fatalf("routes = %#v, missing protected-route error %q", routes, code)
+		}
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 type terminalAttemptPortFake struct {
@@ -232,6 +233,9 @@ func validTerminalOpenFixture() (examattempt.Presentation, OpenCandidateExamTerm
 	presentation := examattempt.Presentation{
 		AttemptID: attemptID, SittingID: sittingID, ClassID: classID,
 		ExecutionProfile: model.ExecutionProfile{Enabled: true, Image: "go", Network: model.ExecutionNetworkNone},
+		RuntimeCapabilities: store.CandidateRuntimeCapabilities{
+			Terminal: store.CandidateTerminalCapability{State: store.CandidateTerminalAvailable},
+		},
 	}
 	command := OpenCandidateExamTerminalCommand{
 		Access: CandidateExamAttemptAccess{AttemptID: attemptID, ConnectionID: model.NewAttemptConnectionID(),

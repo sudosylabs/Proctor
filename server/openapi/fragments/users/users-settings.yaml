@@ -14,8 +14,13 @@ paths:
         - authentication.invalid_token
         - authentication.credential_ambiguous
         - user_settings.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -26,6 +31,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     put:
       operationId: replaceCurrentUserSettings
       summary: Conditionally replace the signed-in User's exact settings.json source
@@ -50,8 +57,13 @@ paths:
         - idempotency.invalid_key
         - idempotency.conflict
         - idempotency.in_progress
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -71,6 +83,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
     ReplaceUserSettings:

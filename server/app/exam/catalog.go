@@ -17,6 +17,9 @@ type ListQuery struct {
 	AcademicUnitID  model.AcademicUnitID
 	Query           string
 	ArchiveFilter   store.ExamArchiveFilter
+	SittingStates   []model.ExamSittingState
+	EndsAfter       time.Time
+	StartsBefore    time.Time
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID
 	Limit           int
@@ -36,6 +39,7 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 	principal := call.Principal()
 	if principal.Validate() != nil || query.Limit < 1 || query.Limit > 200 ||
 		(query.BeforeUpdatedAt.IsZero() != query.BeforeExamID.IsZero()) ||
+		(query.EndsAfter.IsZero() != query.StartsBefore.IsZero()) || (!query.EndsAfter.IsZero() && !query.EndsAfter.Before(query.StartsBefore)) ||
 		(!query.AcademicUnitID.IsZero() && !query.AcademicUnitID.IsValid()) {
 		return CatalogPage{}, invalid("list_query")
 	}
@@ -49,8 +53,21 @@ func (a *Authoring) List(ctx context.Context, call Call, query ListQuery) (Catal
 		return CatalogPage{}, err
 	}
 	visibility.ActorUserID = principal.UserID
+	states := make([]model.ExamSittingState, 0, len(query.SittingStates))
+	seenStates := make(map[model.ExamSittingState]struct{}, len(query.SittingStates))
+	for _, state := range query.SittingStates {
+		if !state.IsValid() {
+			return CatalogPage{}, invalid("sitting_state")
+		}
+		if _, exists := seenStates[state]; exists {
+			return CatalogPage{}, invalid("sitting_state")
+		}
+		seenStates[state] = struct{}{}
+		states = append(states, state)
+	}
 	items, err := a.persistence.List(ctx, store.ExamListOptions{AcademicUnitID: query.AcademicUnitID,
 		Query: strings.TrimSpace(query.Query), ArchiveFilter: query.ArchiveFilter, BeforeUpdatedAt: query.BeforeUpdatedAt,
+		SittingStates: states, EndsAfter: model.TimeUTC(query.EndsAfter), StartsBefore: model.TimeUTC(query.StartsBefore),
 		BeforeExamID: query.BeforeExamID, Limit: query.Limit, Visibility: visibility})
 	if err != nil {
 		return CatalogPage{}, mapStoreError(err)

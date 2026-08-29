@@ -100,6 +100,7 @@ type externalAuthenticationService struct {
 	recentAuthenticationTTL time.Duration
 	diagnostics             authenticationDiagnostics
 	invitationAcceptor      externalInvitationAcceptor
+	desktopAuthorization    *desktopAuthorizationService
 	newCredential           func() string
 	now                     func() time.Time
 }
@@ -203,6 +204,28 @@ type BeginProviderConnectionCommand struct {
 	Source     string
 }
 
+type BeginDesktopExternalAuthenticationCommand struct {
+	ProviderID string
+	Binding    string
+	State      string
+	Source     string
+}
+
+func (a *App) BeginDesktopExternalAuthentication(ctx context.Context, _ Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+	if a.desktopAuthorization == nil || a.externalAuthentication == nil ||
+		!model.IsValidCredentialToken(command.Binding) || !model.IsValidCredentialToken(command.State) {
+		return nil, NewError("authentication.desktop_authorization.invalid")
+	}
+	current, err := a.desktopAuthorization.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(command.Binding))
+	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateBound || !current.ID.IsValid() {
+		return nil, desktopAuthorizationStoreError(err)
+	}
+	returnTo := "/authorize/desktop?state=" + url.QueryEscape(command.State)
+	return a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, returnTo,
+		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeDesktopAuthorization,
+		"", "", "", current.ID)
+}
+
 func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
 	if err := requireStrongRecentSession(invocation.Principal(), a.externalAuthentication.now(), a.externalAuthentication.recentAuthenticationTTL); err != nil {
 		return nil, err
@@ -215,7 +238,7 @@ func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation
 	}
 	start, appErr := a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
 		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeConnect,
-		invocation.Principal().UserID, auditID, "")
+		invocation.Principal().UserID, auditID, "", "")
 	if appErr != nil {
 		if failErr := a.externalAuthentication.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
 			return nil, failErr
@@ -284,13 +307,13 @@ func (s *externalAuthenticationService) beginWithInvitationClaim(
 	deviceID, deviceName, source, invitationClaim string,
 ) (*model.ExternalAuthenticationStart, error) {
 	return s.beginForPurpose(ctx, providerID, returnTo, clientType, deviceID, deviceName, source,
-		model.ExternalAuthenticationPurposeLogin, "", "", invitationClaim)
+		model.ExternalAuthenticationPurposeLogin, "", "", invitationClaim, "")
 }
 
 func (s *externalAuthenticationService) beginForPurpose(
 	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
 	deviceID, deviceName, source string, purpose model.ExternalAuthenticationPurpose, targetUserID model.UserID,
-	auditEventID, invitationClaim string,
+	auditEventID, invitationClaim string, browserTransactionID model.BrowserAuthenticationTransactionID,
 ) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
@@ -315,6 +338,9 @@ func (s *externalAuthenticationService) beginForPurpose(
 	}
 	if purpose == model.ExternalAuthenticationPurposeConnect && !targetUserID.IsValid() {
 		return nil, invalidTokenAppError()
+	}
+	if purpose == model.ExternalAuthenticationPurposeDesktopAuthorization && !browserTransactionID.IsValid() {
+		return nil, NewError("authentication.desktop_authorization.invalid")
 	}
 	invitationClaimHash := ""
 	if invitationClaim != "" {
@@ -359,7 +385,8 @@ func (s *externalAuthenticationService) beginForPurpose(
 	state := &model.ExternalLoginState{
 		Provider: providerID, StateHash: model.HashToken(stateToken),
 		Purpose: purpose, TargetUserID: targetUserID, AuditEventID: auditEventID,
-		BindingHash: model.HashToken(bindingToken), ReturnTo: returnTo,
+		BrowserAuthenticationTransactionID: browserTransactionID,
+		BindingHash:                        model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
 	}
 	var saved *model.ExternalLoginState
@@ -648,6 +675,16 @@ func (s *externalAuthenticationService) complete(
 		return nil, invalidExternalAuthenticationError(
 			"CompleteExternalAuthentication.user",
 		)
+	}
+	if state.Purpose == model.ExternalAuthenticationPurposeDesktopAuthorization {
+		if s.desktopAuthorization == nil || !state.BrowserAuthenticationTransactionID.IsValid() {
+			return nil, authenticationUnavailable(errors.New("desktop authorization completion is unavailable"))
+		}
+		if appErr := s.desktopAuthorization.authenticateExternal(ctx, state.BrowserAuthenticationTransactionID,
+			resolution.User, resolution.Identity, method, assertion); appErr != nil {
+			return nil, appErr
+		}
+		return &model.ExternalAuthenticationCompletion{User: resolution.User, ReturnTo: state.ReturnTo}, nil
 	}
 
 	auditEvent, appErr := s.audit.BeginAuthentication(

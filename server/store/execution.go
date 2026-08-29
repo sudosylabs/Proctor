@@ -52,10 +52,11 @@ type ExecutionGrantReassignmentResult struct {
 // ExecutionGrantConvergence is the bounded durable projection used to make a
 // current guest agree with its authoritative Attempt and Sitting lifecycle.
 type ExecutionGrantConvergence struct {
-	Grant           *model.ExecutionGrant
-	AttemptState    model.ExamAttemptState
-	SittingState    model.ExamSittingState
-	SittingRevision int64
+	Grant                   *model.ExecutionGrant
+	AttemptState            model.ExamAttemptState
+	SittingState            model.ExamSittingState
+	SittingRevision         int64
+	AcknowledgementRequired bool
 }
 
 // ExecutionLifecycleLease serializes transient host lifecycle effects for one

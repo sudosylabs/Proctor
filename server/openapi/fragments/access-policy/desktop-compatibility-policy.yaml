@@ -1,0 +1,234 @@
+paths:
+  /api/v1/desktop-compatibility-policy:
+    get:
+      operationId: getDesktopCompatibilityPolicy
+      summary: Get the Institution Desktop Compatibility Policy
+      tags:
+        - Access policy
+      description: >-
+        Returns the complete revisioned Institution policy that narrows the immutable verified Desktop build catalog embedded in this server release. The policy cannot authorize an unknown build and contains no update feed or executable destination.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - desktop_compatibility_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/DesktopCompatibilityPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      operationId: replaceDesktopCompatibilityPolicy
+      summary: Replace the Institution Desktop Compatibility Policy
+      tags:
+        - Access policy
+      description: >-
+        Completely replaces the policy under an optimistic revision fence. The operation requires a strong recent interactive system-administrator Session, an Idempotency-Key, and durable audit. Revoked build identities and administrator message text are excluded from ordinary audit payloads.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request PUT \
+              --url 'https://proctor.example.edu/api/v1/desktop-compatibility-policy' \
+              --header 'Authorization: Bearer <interactive-system-administrator-session>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-desktop-policy-001' \
+              --data '{"expected_revision":3,"minimum_desktop_release":"1.4.0","revoked_desktop_build_ids":["desktop-build-2026-08-17"],"administrator_message":"Update Proctor Desktop before your next exam.","availability":"maintenance","retry_at":"2026-08-28T11:00:00Z"}'
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - request.invalid
+        - desktop_compatibility_policy.invalid
+        - desktop_compatibility_policy.revision_conflict
+        - desktop_compatibility_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceDesktopCompatibilityPolicy'
+      responses:
+        "200":
+          $ref: '#/components/responses/DesktopCompatibilityPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ReplaceDesktopCompatibilityPolicy:
+      required: true
+      description: Complete revision-fenced replacement. Every policy setting is required, including empty values.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DesktopCompatibilityPolicyRequest'
+          example:
+            expected_revision: 3
+            minimum_desktop_release: 1.4.0
+            revoked_desktop_build_ids:
+              - desktop-build-2026-08-17
+            administrator_message: Update Proctor Desktop before your next exam.
+            availability: maintenance
+            retry_at: '2026-08-28T11:00:00Z'
+  responses:
+    DesktopCompatibilityPolicyOK:
+      description: Current revisioned Desktop Compatibility Policy
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/DesktopCompatibilityPolicyResponse'
+          example:
+            revision: 3
+            minimum_desktop_release: 1.4.0
+            revoked_desktop_build_ids:
+              - desktop-build-2026-08-17
+            administrator_message: Update Proctor Desktop before your next exam.
+            availability: maintenance
+            retry_at: '2026-08-28T11:00:00Z'
+            created_at: '2026-08-01T12:00:00Z'
+            updated_at: '2026-08-28T10:11:12Z'
+  schemas:
+    DesktopCompatibilityPolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - minimum_desktop_release
+        - revoked_desktop_build_ids
+        - administrator_message
+        - availability
+        - retry_at
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        minimum_desktop_release:
+          type: string
+          maxLength: 64
+          description: Empty for no Institution minimum, otherwise a canonical semantic release without a leading v.
+        revoked_desktop_build_ids:
+          type: array
+          maxItems: 256
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+        administrator_message:
+          type: string
+          maxLength: 500
+          description: Trimmed bounded plain text with control characters rejected.
+        availability:
+          type: string
+          enum:
+            - ready
+            - maintenance
+        retry_at:
+          description: Optional retry time; it must be null while availability is ready.
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+    DesktopCompatibilityPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - minimum_desktop_release
+        - revoked_desktop_build_ids
+        - administrator_message
+        - availability
+        - retry_at
+        - created_at
+        - updated_at
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        minimum_desktop_release:
+          type: string
+          maxLength: 64
+        revoked_desktop_build_ids:
+          type: array
+          maxItems: 256
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        administrator_message:
+          type: string
+          maxLength: 500
+        availability:
+          type: string
+          enum:
+            - ready
+            - maintenance
+        retry_at:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

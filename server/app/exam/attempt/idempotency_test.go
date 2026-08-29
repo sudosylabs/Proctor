@@ -101,13 +101,15 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 	sittingID, attemptID := model.NewExamSittingID(), model.NewExamAttemptID()
 	credential := model.NewCredentialToken()
 
+	manifest := model.CurrentAttemptConfigurationManifestFingerprint()
 	connected, err := prepareConnectIdempotency(call, ConnectCommand{SittingID: sittingID,
-		ContinuityCredential: credential, IdempotencyKey: "connect-key"})
+		ContinuityCredential: credential, SupportedConfigurationManifests: []string{manifest}, IdempotencyKey: "connect-key"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertPreparedIdempotency(t, connected, userID, store.ExamAttemptConnectOperation, "connect-key",
-		fmt.Sprintf(`{"exam_sitting_id":%q,"session_id":%q,"continuity_credential_hash":%q}`, sittingID, sessionID, model.HashToken(credential)))
+		fmt.Sprintf(`{"exam_sitting_id":%q,"session_id":%q,"continuity_credential_hash":%q,"supported_attempt_configuration_manifests":[%q],"initial_configuration":null}`,
+			sittingID, sessionID, model.HashToken(credential), manifest))
 
 	examID, suspensionID := model.NewExamID(), model.NewAttemptSuspensionID()
 	reallowed, err := prepareReallowIdempotency(call, ReallowCommand{ExamID: examID, SittingID: sittingID,
@@ -120,12 +122,15 @@ func TestCommandIdempotencyDocumentsAndStoreBoundaryCompatibility(t *testing.T) 
 		fmt.Sprintf(`{"exam_id":%q,"exam_sitting_id":%q,"exam_attempt_id":%q,"suspension_id":%q,"expected_attempt_revision":3,"private_reason":"reviewed"}`,
 			examID, sittingID, attemptID, suspensionID))
 
-	submitted, err := prepareSubmissionIdempotency(call, "submit-key", attemptID, 11, 7)
+	revisionID := model.NewExamRevisionID()
+	submitted, err := prepareSubmissionIdempotency(call, "submit-key", attemptID, revisionID, 11, 7,
+		model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionNotApplicable})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertPreparedIdempotency(t, submitted, userID, store.ExamSubmissionSealOperation, "submit-key",
-		fmt.Sprintf(`{"exam_attempt_id":%q,"expected_workspace_cursor":11,"final_focus_loss_sequence":7}`, attemptID))
+		fmt.Sprintf(`{"exam_attempt_id":%q,"expected_current_revision_id":%q,"expected_workspace_cursor":11,"final_focus_loss_sequence":7,"browser_activity_state":"not_applicable","browser_source_session_id":"","browser_final_sequence":null,"browser_gap_reason":""}`,
+			attemptID, revisionID))
 }
 
 func TestWorkspaceMutationOriginIsExcludedFromVersionOneFingerprint(t *testing.T) {

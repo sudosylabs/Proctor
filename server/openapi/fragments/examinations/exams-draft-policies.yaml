@@ -1,4 +1,67 @@
 paths:
+  /api/v1/exams/{exam_id}/draft/browser-policy:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    put:
+      operationId: configureExamDraftBrowserPolicy
+      summary: Replace the Browser Policy on the active Exam Draft
+      description: >-
+        Replaces the complete closed Browser Policy value at the expected Draft revision. Disabled policies contain no rules; enabled policies use canonical HTTPS origins and deterministic path and host matching.
+      tags:
+        - Examinations
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - exam.invalid
+        - exam.archived
+        - exam.draft.revision_conflict
+        - exam.draft.no_changes
+        - exam.unavailable
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ConfigureExamDraftBrowserPolicy'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExamOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/exams/{exam_id}/draft/policies/focus-loss:
     parameters:
       - $ref: '#/components/parameters/ExamID'
@@ -32,8 +95,13 @@ paths:
         - idempotency.conflict
         - idempotency.in_progress
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:
@@ -55,8 +123,22 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   requestBodies:
+    ConfigureExamDraftBrowserPolicy:
+      required: true
+      description: Supplies the expected Draft revision and complete replacement Browser Policy.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfigureExamDraftBrowserPolicyRequest'
+          example:
+            expected_draft_revision: 4
+            browser_policy:
+              schema_version: 1
+              enabled: false
     ConfigureExamDraftFocusLoss:
       required: true
       description: Supplies the expected Draft revision and the complete replacement Focus Loss collection and outcome policy.
@@ -72,6 +154,19 @@ components:
             window_milliseconds: 300000
             outcome: flag_and_warn
   schemas:
+    ConfigureExamDraftBrowserPolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_draft_revision
+        - browser_policy
+      properties:
+        expected_draft_revision:
+          type: integer
+          format: int64
+          minimum: 1
+        browser_policy:
+          $ref: '#/components/schemas/BrowserPolicy'
     ConfigureExamDraftFocusLossRequest:
       type: object
       additionalProperties: false

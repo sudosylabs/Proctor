@@ -7,6 +7,7 @@ import (
 	"context"
 
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -18,10 +19,12 @@ type ListExamSubmissionManifestQuery = examattempt.ListSubmissionManifestQuery
 type OpenExamSubmissionFileQuery = examattempt.OpenSubmissionFileQuery
 
 type SubmitExamAttemptCommand struct {
-	Access                  ExamAttemptWorkspaceMutationAccess
-	ExpectedWorkspaceCursor int64
-	FinalFocusLossSequence  int64
-	IdempotencyKey          string
+	Access                    ExamAttemptWorkspaceMutationAccess
+	ExpectedCurrentRevisionID model.ExamRevisionID
+	ExpectedWorkspaceCursor   int64
+	FinalFocusLossSequence    int64
+	BrowserActivity           model.BrowserActivitySubmission
+	IdempotencyKey            string
 }
 
 func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
@@ -29,8 +32,9 @@ func (a *App) SubmitExamAttempt(ctx context.Context, invocation Invocation,
 ) (response ExamSubmissionReceipt, resultErr error) {
 	defer func() { a.recordOperational("exam_attempt", "submit", resultErr) }()
 	result, err := a.examAttempts.Submit(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
-		examattempt.SubmitCommand{Access: command.Access, ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor,
-			FinalFocusLossSequence: command.FinalFocusLossSequence, IdempotencyKey: command.IdempotencyKey})
+		examattempt.SubmitCommand{Access: command.Access, ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID,
+			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, FinalFocusLossSequence: command.FinalFocusLossSequence,
+			BrowserActivity: command.BrowserActivity.Clone(), IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamSubmissionReceipt{}, examAttemptError(err, true)
 	}

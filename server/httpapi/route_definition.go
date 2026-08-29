@@ -34,7 +34,7 @@ func upgradeRoute(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes:   append([]string(nil), errorCodes...),
+		errorCodes:   routeErrorCodes(auth, errorCodes),
 		protocolName: name, protocolKind: RouteProtocolUpgrade,
 		upgradeOperation: operation, idempotency: IdempotencyNone,
 	}
@@ -49,9 +49,35 @@ func route(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes: append([]string(nil), errorCodes...), operation: operation,
+		errorCodes: routeErrorCodes(auth, errorCodes), operation: operation,
 		idempotency: IdempotencyNone,
 	}
+}
+
+func routeErrorCodes(auth AuthRequirement, errorCodes []string) []string {
+	result := append([]string(nil), errorCodes...)
+	switch auth {
+	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
+		AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
+		for _, code := range []string{
+			"authentication.dpop.invalid",
+			"authentication.dpop.replayed",
+			"authentication.dpop.use_nonce",
+			"authentication.dpop.unavailable",
+		} {
+			found := false
+			for _, existing := range result {
+				if existing == code {
+					found = true
+					break
+				}
+			}
+			if !found {
+				result = append(result, code)
+			}
+		}
+	}
+	return result
 }
 
 func idempotentPrincipalRoute(requirement IdempotencyRequirement, method string, path routePath, errorCodes []string, operation operation) routeDefinition {
@@ -123,7 +149,7 @@ func protocolRoute(
 ) routeDefinition {
 	return routeDefinition{
 		method: method, path: path, auth: auth,
-		errorCodes:   append([]string(nil), errorCodes...),
+		errorCodes:   routeErrorCodes(auth, errorCodes),
 		protocolName: name, protocolKind: kind, protocolOperation: operation,
 		idempotency: IdempotencyNone,
 	}

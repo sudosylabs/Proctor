@@ -43,8 +43,15 @@ func TestExamAttemptValidationClosesLifecycleStates(t *testing.T) {
 	if suspended.State.AllowsCandidateConnection() || suspended.State.IsTerminal() {
 		t.Fatalf("Suspended capabilities = %#v", suspended.State)
 	}
+	ready := suspended
+	ready.State = ExamAttemptReady
+	ready.UpdatedAt = at.Add(90 * time.Second)
+	ready.Revision++
+	if err = ready.Validate(); err != nil || ready.State.AllowsCandidateConnection() || !ready.State.IsUnresolved() {
+		t.Fatalf("valid Ready Attempt = %#v, %v", ready, err)
+	}
 
-	submitted := suspended
+	submitted := ready
 	submitted.State = ExamAttemptSubmitted
 	submitted.SubmittedAt = OptionalTimeFrom(at.Add(2 * time.Minute))
 	submitted.UpdatedAt = submitted.SubmittedAt.Time
@@ -75,7 +82,7 @@ func TestNewAttemptParticipationStoresOnlyHashAndUsesExactInitialLease(t *testin
 	}
 	startedAt := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.FixedZone("source", -3*60*60))
 	rawCredential := NewCredentialToken()
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 1, HashToken(rawCredential), startedAt)
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), NewSessionID(), 1, HashToken(rawCredential), startedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +104,7 @@ func TestAttemptParticipationRejectsRawOrNonCanonicalCredentialMaterial(t *testi
 	t.Parallel()
 	at := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
 	for _, credential := range []string{NewCredentialToken(), strings.Repeat("A", TokenHashLength)} {
-		if _, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 1, credential, at); err == nil {
+		if _, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), NewSessionID(), 1, credential, at); err == nil {
 			t.Fatalf("credential material %q was accepted", credential)
 		}
 	}
@@ -106,7 +113,7 @@ func TestAttemptParticipationRejectsRawOrNonCanonicalCredentialMaterial(t *testi
 func TestAttemptParticipationEndIsPermanentAndAtomic(t *testing.T) {
 	t.Parallel()
 	at := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 1, HashToken(NewCredentialToken()), at)
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), NewSessionID(), 1, HashToken(NewCredentialToken()), at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +135,7 @@ func TestAttemptParticipationEndIsPermanentAndAtomic(t *testing.T) {
 func TestAttemptParticipationRenewalIsGenerationFencedAndMonotonic(t *testing.T) {
 	t.Parallel()
 	startedAt := time.Date(2026, time.August, 17, 9, 0, 0, 0, time.UTC)
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), 3,
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), NewExamAttemptID(), NewSessionID(), 3,
 		HashToken(NewCredentialToken()), startedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +198,8 @@ func TestAttemptConnectionCloseReasonValidity(t *testing.T) {
 	t.Parallel()
 	for _, reason := range []AttemptConnectionCloseReason{
 		AttemptConnectionCloseTransport, AttemptConnectionCloseInterrupted, AttemptConnectionCloseLeaseExpired,
-		AttemptConnectionCloseKicked, AttemptConnectionCloseSubmitted, AttemptConnectionCloseSittingClosed,
+		AttemptConnectionCloseKicked, AttemptConnectionCloseSubmitted, AttemptConnectionCloseManagerEnded,
+		AttemptConnectionCloseSittingClosed,
 	} {
 		if !reason.IsValid() {
 			t.Fatalf("known close reason %q is invalid", reason)
@@ -278,8 +286,11 @@ func TestExamAttemptSuspendAndReallowAreRevisionFencedStateChanges(t *testing.T)
 	if err = attempt.Suspend(at.Add(time.Second)); err != nil || attempt.State != ExamAttemptSuspended || attempt.Revision != 2 {
 		t.Fatalf("Suspend() Attempt=%#v error=%v", attempt, err)
 	}
-	if err = attempt.Reallow(at.Add(2 * time.Second)); err != nil || attempt.State != ExamAttemptActive || attempt.Revision != 3 {
+	if err = attempt.Reallow(at.Add(2 * time.Second)); err != nil || attempt.State != ExamAttemptReady || attempt.Revision != 3 {
 		t.Fatalf("Reallow() Attempt=%#v error=%v", attempt, err)
+	}
+	if err = attempt.Activate(at.Add(3 * time.Second)); err != nil || attempt.State != ExamAttemptActive || attempt.Revision != 4 {
+		t.Fatalf("Activate() Attempt=%#v error=%v", attempt, err)
 	}
 }
 

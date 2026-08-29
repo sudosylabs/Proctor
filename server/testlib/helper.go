@@ -19,6 +19,7 @@ import (
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/httpapi"
 	"github.com/sudosylabs/proctor/server/logging"
+	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -29,6 +30,7 @@ type setupOptions struct {
 	cluster          platform.Cluster
 	configuredMailer bool
 	buildInfo        httpapi.BuildInfo
+	desktopBuilds    []model.DesktopBuildTuple
 }
 
 // Option customizes one concern in the test graph; everything else is
@@ -72,6 +74,14 @@ func WithConfiguredMailer() Option {
 func WithBuildInfo(buildInfo httpapi.BuildInfo) Option {
 	return func(options *setupOptions) {
 		options.buildInfo = buildInfo
+	}
+}
+
+// WithDesktopBuildCatalog supplies exact verified Desktop build tuples to the
+// test-only composition seam. Production catalog ownership remains compiled.
+func WithDesktopBuildCatalog(builds ...model.DesktopBuildTuple) Option {
+	return func(options *setupOptions) {
+		options.desktopBuilds = append([]model.DesktopBuildTuple(nil), builds...)
 	}
 }
 
@@ -184,15 +194,16 @@ func Setup(tb testing.TB, options ...Option) *Helper {
 		persistenceOverride = lifecycle
 	}
 	runtime, err := server.NewForTesting(context.Background(), server.TestingOverrides{
-		Configuration:    store,
-		Logger:           logger,
-		Persistence:      persistenceOverride,
-		Cache:            cache,
-		Cluster:          settings.cluster,
-		Mailer:           mailerOverride,
-		Filesystem:       filesystem,
-		AllowMissingJobs: lifecycle != nil,
-		BuildInfo:        settings.buildInfo,
+		Configuration:       store,
+		Logger:              logger,
+		Persistence:         persistenceOverride,
+		Cache:               cache,
+		Cluster:             settings.cluster,
+		Mailer:              mailerOverride,
+		Filesystem:          filesystem,
+		AllowMissingJobs:    lifecycle != nil,
+		BuildInfo:           settings.buildInfo,
+		DesktopBuildCatalog: settings.desktopBuilds,
 	})
 	if err != nil {
 		tb.Fatalf("create test server: %v", err)
@@ -236,8 +247,11 @@ func NewLifecycleStore() *LifecycleStore {
 	return &LifecycleStore{}
 }
 
-func (s *LifecycleStore) Institution() store.InstitutionStore       { return lifecycleInstitutionStore{} }
-func (s *LifecycleStore) AccessPolicy() store.AccessPolicyStore     { return lifecycleAccessPolicyStore{} }
+func (s *LifecycleStore) Institution() store.InstitutionStore   { return lifecycleInstitutionStore{} }
+func (s *LifecycleStore) AccessPolicy() store.AccessPolicyStore { return lifecycleAccessPolicyStore{} }
+func (s *LifecycleStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
+	return lifecycleDesktopCompatibilityPolicyStore{}
+}
 func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lifecycleAcademicUnitStore{} }
 func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
 func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
@@ -294,6 +308,9 @@ func (s *LifecycleStore) ExternalLoginState() store.ExternalLoginStateStore {
 }
 func (s *LifecycleStore) BrowserAuthentication() store.BrowserAuthenticationStore {
 	return lifecycleBrowserAuthenticationStore{}
+}
+func (s *LifecycleStore) DesktopRegistration() store.DesktopRegistrationStore {
+	return lifecycleDesktopRegistrationStore{}
 }
 func (s *LifecycleStore) UserToken() store.UserTokenStore { return lifecycleUserTokenStore{} }
 func (s *LifecycleStore) Invitation() store.InvitationStore {
@@ -385,6 +402,9 @@ var _ store.Store = (*LifecycleStore)(nil)
 type lifecycleUserStore struct{ store.UserStore }
 type lifecycleOnboardingImportStore struct{ store.OnboardingImportStore }
 type lifecycleAccessPolicyStore struct{ store.AccessPolicyStore }
+type lifecycleDesktopCompatibilityPolicyStore struct {
+	store.DesktopCompatibilityPolicyStore
+}
 type lifecycleUserSettingsStore struct{ store.UserSettingsStore }
 type lifecycleInstitutionStore struct{ store.InstitutionStore }
 type lifecycleAcademicUnitStore struct{ store.AcademicUnitStore }
@@ -411,6 +431,9 @@ type lifecycleExternalIdentityStore struct{ store.ExternalIdentityStore }
 type lifecycleExternalLoginStateStore struct{ store.ExternalLoginStateStore }
 type lifecycleBrowserAuthenticationStore struct {
 	store.BrowserAuthenticationStore
+}
+type lifecycleDesktopRegistrationStore struct {
+	store.DesktopRegistrationStore
 }
 type lifecycleInvitationStore struct{ store.InvitationStore }
 type lifecycleUserTokenStore struct{ store.UserTokenStore }

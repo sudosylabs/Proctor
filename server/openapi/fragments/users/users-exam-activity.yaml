@@ -1,0 +1,227 @@
+paths:
+  /api/v1/users/me/exam-activity:
+    get:
+      operationId: listCandidateExamActivity
+      summary: List the signed-in candidate's Exam activity
+      tags:
+        - Users
+      description: >-
+        Returns a self-scoped, live navigation projection for an interactive Web or Desktop Session. It conceals every withheld Review state and exposes only executable navigation hints. Personal Access Tokens cannot use this operation; every destination independently reauthorizes current state.
+      x-proctor-auth: session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - request.invalid
+        - exam.attempt.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of self-scoped Exam activity rows to return in this keyset page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque live-view keyset cursor. Restart from the first page after invalidation.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: '#/components/responses/CandidateExamActivityOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  responses:
+    CandidateExamActivityOK:
+      description: Candidate Exam activity collection
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CandidateExamActivityResponse'
+  schemas:
+    ExamSubmissionProvenance:
+      type: string
+      enum:
+        - candidate_submitted
+        - manager_ended_attempt
+        - sitting_closed
+    CandidateExamActivityState:
+      type: string
+      enum:
+        - upcoming
+        - available
+        - in_progress
+        - submitted
+        - results_available
+        - past
+    CandidateExamAccessState:
+      type: string
+      enum:
+        - not_open
+        - joinable
+        - resumable
+        - sitting_paused
+        - await_reallow
+        - blocked_by_other_attempt
+        - not_eligible
+        - submitted
+        - result_available
+        - ended
+    CandidateExamAllowedAction:
+      type: string
+      enum:
+        - enter
+        - resume
+        - view_result
+    CandidateExamActivityRelationResponse:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        display_name:
+          type: string
+          minLength: 1
+    CandidateExamActivityAttemptResponse:
+      type: object
+      additionalProperties: false
+      required: [id, state, suspension_reason_code]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        state:
+          type: string
+          enum: [ready, active, suspended, submitted]
+        suspension_reason_code:
+          type:
+            - string
+            - "null"
+          enum:
+            - secure_connectivity_lost
+            - focus_policy_review_required
+            - null
+    CandidateExamActivitySubmissionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, submitted_at, provenance]
+      properties:
+        id:
+          $ref: '#/components/schemas/ID'
+        submitted_at:
+          type: string
+          format: date-time
+        provenance:
+          $ref: '#/components/schemas/ExamSubmissionProvenance'
+    CandidateExamActivityResultResponse:
+      type: object
+      additionalProperties: false
+      required: [released_at]
+      properties:
+        released_at:
+          type: string
+          format: date-time
+    CandidateExamActivityItemResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - exam_id
+        - exam_sitting_id
+        - title
+        - academic_unit
+        - class
+        - scheduled_start_at
+        - scheduled_end_at
+        - sitting_state
+        - sitting_reason_code
+        - activity_state
+        - access_state
+        - allowed_actions
+        - attempt
+        - submission
+        - result
+      properties:
+        exam_id:
+          $ref: '#/components/schemas/ID'
+        exam_sitting_id:
+          $ref: '#/components/schemas/ID'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        academic_unit:
+          $ref: '#/components/schemas/CandidateExamActivityRelationResponse'
+        class:
+          $ref: '#/components/schemas/CandidateExamActivityRelationResponse'
+        scheduled_start_at:
+          type: string
+          format: date-time
+        scheduled_end_at:
+          type: string
+          format: date-time
+        sitting_state:
+          $ref: '#/components/schemas/ExamSittingState'
+        sitting_reason_code:
+          type:
+            - string
+            - "null"
+          maxLength: 64
+        activity_state:
+          $ref: '#/components/schemas/CandidateExamActivityState'
+        access_state:
+          $ref: '#/components/schemas/CandidateExamAccessState'
+        allowed_actions:
+          type: array
+          uniqueItems: true
+          maxItems: 1
+          items:
+            $ref: '#/components/schemas/CandidateExamAllowedAction'
+        attempt:
+          oneOf:
+            - $ref: '#/components/schemas/CandidateExamActivityAttemptResponse'
+            - type: "null"
+        submission:
+          oneOf:
+            - $ref: '#/components/schemas/CandidateExamActivitySubmissionResponse'
+            - type: "null"
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/CandidateExamActivityResultResponse'
+            - type: "null"
+    CandidateExamActivityResponse:
+      type: object
+      additionalProperties: false
+      required: [server_time, items]
+      properties:
+        server_time:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CandidateExamActivityItemResponse'
+        next_cursor:
+          type: string

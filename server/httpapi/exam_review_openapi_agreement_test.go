@@ -56,7 +56,7 @@ func TestExamIntegrityReviewOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "ExamIntegrityFlagListResponse", DTO: reflect.TypeOf(examIntegrityFlagListResponse{}), Required: []string{"items"}},
 			{Name: "ExamIntegrityEvidenceResponse", DTO: reflect.TypeOf(examIntegrityEvidenceResponse{}), Required: []string{"id", "exam_attempt_id", "participation_id", "integrity_flag_id", "generation", "policy_kind", "sequence", "duration_milliseconds", "missing_before", "observed_at", "recorded_at"}},
 			{Name: "ExamIntegrityEvidenceListResponse", DTO: reflect.TypeOf(examIntegrityEvidenceListResponse{}), Required: []string{"items"}},
-			{Name: "ExamIntegrityDiscrepancyResponse", DTO: reflect.TypeOf(examIntegrityDiscrepancyResponse{}), Required: []string{"id", "exam_attempt_id", "participation_id", "generation", "kind", "schema_version", "focus_loss_signal_id", "sequence", "duration_milliseconds", "missing_before", "received_at"}},
+			{Name: "ExamIntegrityDiscrepancyResponse", DTO: reflect.TypeOf(examIntegrityDiscrepancyResponse{}), Required: []string{"id", "exam_attempt_id", "participation_id", "generation", "kind", "schema_version", "received_at"}},
 			{Name: "ExamIntegrityDiscrepancyListResponse", DTO: reflect.TypeOf(examIntegrityDiscrepancyListResponse{}), Required: []string{"items"}},
 			{Name: "StudentExamResultResponse", DTO: reflect.TypeOf(studentExamResultResponse{}), Required: []string{"submission_review_id", "submission_id", "exam_attempt_id", "student_remarks_markdown", "released_at"}},
 		},

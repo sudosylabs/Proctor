@@ -465,9 +465,29 @@ export interface paths {
         put?: never;
         /**
          * Create a purpose-bound Desktop browser authorization transaction
-         * @description Starts a short-lived browser handoff for a Desktop client, binding the callback, opaque state, selected authentication method, device presentation, and S256 PKCE challenge. No Session is created until the browser approves the transaction and the Desktop client exchanges the one-use code.
+         * @description Starts the current protocol-1 system-browser handoff and pins its exact loopback callback, state, S256 PKCE challenge, and bounded device presentation. Authentication is selected only inside the hosted journey.
          */
         post: operations["startDesktopAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/account/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return the same hosted transaction to account selection
+         * @description Removes only the authenticated-account proof from the browser-bound transaction so the same tab can select another method without changing the pinned Desktop request.
+         */
+        post: operations["resetDesktopAuthorizationAccount"];
         delete?: never;
         options?: never;
         head?: never;
@@ -484,10 +504,90 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Approve a Desktop transaction with the current browser Session
-         * @description Uses the current interactive browser Session to approve the exact pending Desktop transaction identified by its handle, browser proof, and state. Approval issues a short-lived one-use code without exposing browser credentials to the Desktop client.
+         * Explicitly approve the authenticated Desktop transaction
+         * @description Requires the browser-bound transaction's confirmed account and exact pinned state, then issues one short-lived loopback code without exposing Session credentials to the browser.
          */
         post: operations["approveDesktopAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/authenticate/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prove a local account for only this Desktop transaction
+         * @description Validates local credentials and any required MFA code only for the browser-bound Desktop transaction, without creating a Web Session or approving the Desktop request.
+         */
+        post: operations["authenticateDesktopAuthorizationWithPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/authenticate/providers/{provider_id}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin provider authentication bound to this Desktop transaction
+         * @description Creates a purpose-bound external-provider state for the exact browser-bound Desktop transaction and redirects without creating an ordinary Web login transaction.
+         */
+        get: operations["beginDesktopAuthorizationExternalAuthentication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/authenticate/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind the current Web Session identity without approving the Desktop
+         * @description Uses the current interactive Web Session only as account proof for the browser-bound Desktop transaction; it neither approves the request nor issues another Session.
+         */
+        post: operations["authenticateDesktopAuthorizationWithSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/bind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange the one-time fragment proof for an HttpOnly browser binding
+         * @description Exchanges the handle, fragment-delivered browser proof, and pinned state exactly once for a host-only HttpOnly binding cookie, then returns no credential material to rendered content.
+         */
+        post: operations["bindDesktopAuthorizationBrowser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -504,10 +604,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Cancel one pending Desktop browser authorization transaction
-         * @description Cancels the exact pending Desktop transaction after validating its handle, browser proof, and state. Cancellation is terminal and prevents a later approval or token exchange for that transaction.
+         * Terminally cancel the browser-bound Desktop transaction
+         * @description Validates the binding cookie and exact pinned state before terminally cancelling the transaction and destroying every remaining browser and code proof.
          */
         post: operations["cancelDesktopAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/desktop/authorizations/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the safe current hosted-journey context
+         * @description Resolves the scoped binding cookie and returns only the safe device, authentication-choice, expiry, and confirmed-account presentation needed by the current hosted page.
+         */
+        get: operations["getDesktopAuthorizationContext"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -524,8 +644,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Atomically exchange one Desktop code and S256 verifier for an ordinary Desktop Session
-         * @description Consumes the one-use Desktop authorization code only when the opaque state and PKCE verifier match the original transaction. A successful exchange creates an ordinary bounded Desktop Session; replay or mismatched proof is rejected.
+         * Exchange one Desktop code and S256 verifier for a Desktop Session
+         * @description Atomically consumes the code only when state and PKCE match and no active Attempt currently owns the account Session lock.
          */
         post: operations["exchangeDesktopAuthorizationCode"];
         delete?: never;
@@ -735,7 +855,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate refresh credentials
-         * @description Atomically rotates the current Session's refresh credential and returns a fresh access/refresh pair or browser cookies. Reuse of a consumed refresh credential is treated as replay and invalidates the affected Session family.
+         * @description Atomically rotates the current Session's refresh credential and returns a fresh access/refresh pair or browser cookies. A Desktop-bound refresh credential must use the DPoP authorization scheme and a fresh proof bound to its registered key and current server nonce. Reuse of a consumed refresh credential is treated as replay and invalidates the affected Session family.
          */
         post: operations["refreshSession"];
         delete?: never;
@@ -982,6 +1102,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/desktop-compatibility-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the Institution Desktop Compatibility Policy
+         * @description Returns the complete revisioned Institution policy that narrows the immutable verified Desktop build catalog embedded in this server release. The policy cannot authorize an unknown build and contains no update feed or executable destination.
+         */
+        get: operations["getDesktopCompatibilityPolicy"];
+        /**
+         * Replace the Institution Desktop Compatibility Policy
+         * @description Completely replaces the policy under an optimistic revision fence. The operation requires a strong recent interactive system-administrator Session, an Idempotency-Key, and durable audit. Revoked build identities and administrator message text are excluded from ordinary audit payloads.
+         */
+        put: operations["replaceDesktopCompatibilityPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discovery": {
         parameters: {
             query?: never;
@@ -995,6 +1139,31 @@ export interface paths {
          */
         get: operations["getPublicAccessDiscovery"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exam-attempts/{exam_attempt_id}/corrections/{exam_revision_id}/acknowledgement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description The immutable Exam Revision identifier. */
+                exam_revision_id: components["parameters"]["ExamRevisionID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Acknowledge one required live correction for an active Attempt
+         * @description Records the candidate's acknowledgement of the oldest pending required correction after rechecking the current Revision, active Participation generation, registered-key Session, continuity credential, and open Attempt Connection. Exact replay returns the retained acknowledgement without repeating mutation effects.
+         */
+        put: operations["acknowledgeExamAttemptCorrection"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1255,7 +1424,7 @@ export interface paths {
         };
         /**
          * List Exams visible to the current principal
-         * @description Returns only Exams visible to the current principal, ordered by update time and identity for stable keyset pagination. Filters may narrow by owning Academic Unit, current Draft title, and archive state. Follow next_cursor exactly as returned; it is opaque and does not authorize access.
+         * @description Returns one row per Exam visible to the current principal, ordered by update time and identity for stable keyset pagination. Sitting filters use same-Sitting existential semantics; when present, one Sitting must satisfy every state and schedule constraint. Follow next_cursor exactly as returned; it is opaque and does not authorize access.
          */
         get: operations["listExams"];
         put?: never;
@@ -1337,6 +1506,29 @@ export interface paths {
          * @description Changes one or both authored text fields on the mutable Draft only when the expected Draft revision still matches. Null leaves a field unchanged, while bounded Markdown is stored as authored content and rendered through the documentation-safe presentation contract.
          */
         patch: operations["editExamDraftText"];
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/draft/browser-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the Browser Policy on the active Exam Draft
+         * @description Replaces the complete closed Browser Policy value at the expected Draft revision. Disabled policies contain no rules; enabled policies use canonical HTTPS origins and deterministic path and host matching.
+         */
+        put: operations["configureExamDraftBrowserPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/exams/{exam_id}/draft/execution-images": {
@@ -1878,6 +2070,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/browser-activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List privacy-minimized Browser Activity for one managed Attempt
+         * @description Returns a no-store keyset page of minimized top-level browser navigation records after resolving the exact nested Attempt and checking the dedicated Browser Activity view authority. Session, Connection, Desktop Registration, credentials, page content, and private Review state are excluded.
+         */
+        get: operations["listExamAttemptBrowserActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End and seal one unfinished Exam Attempt
+         * @description An authorized current Exam Manager atomically seals the last acknowledged Workspace state and ends one active, ready, or suspended Attempt. The private reason is retained for audit and is never returned to the candidate. At or after the Sitting deadline, scheduled closure owns terminal provenance.
+         */
+        post: operations["endExamAttemptByManager"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/attempts/{exam_attempt_id}/reallow": {
         parameters: {
             query?: never;
@@ -1895,8 +2141,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Re-allow one exact active Exam Attempt suspension
-         * @description Closes only the identified active suspension episode. It preserves integrity evidence and creates no continuity credential or Participation.
+         * Re-allow one exact suspended Exam Attempt
+         * @description Closes only the identified active suspension episode and moves the Attempt to ready. It preserves integrity evidence and creates no continuity credential, Participation, Session binding, or Connection; the candidate must rejoin through full admission validation.
          */
         post: operations["reallowExamAttempt"];
         delete?: never;
@@ -2013,6 +2259,31 @@ export interface paths {
          * @description Cancels one still-scheduled Sitting under an exact revision fence and retains a bounded private manager rationale in durable audit state. Cancellation never fabricates Attempts or Submissions and cannot rewrite a Sitting that has opened.
          */
         post: operations["cancelExamSitting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/candidate-statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the minimized candidate-status board for one Exam Sitting
+         * @description Returns one bounded row per authoritative Sitting candidate after current exam.sitting.view authorization. Presence is derived from the authoritative Participation lease at server_time. The projection excludes Sessions, credentials, connections, evidence, private reasons, and Review decisions.
+         */
+        get: operations["listExamSittingCandidateStatuses"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3368,6 +3639,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/system/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check product availability and Desktop compatibility
+         * @description Returns a request-specific, fail-closed compatibility result for one declared Proctor Desktop build. The declarations are consistency metadata rather than binary attestation. Every well-formed request returns 200, including unsupported builds and temporary unavailability; malformed selectors return Problem Details. The response deliberately omits Installation identity, authentication policy, providers, build provenance, and update destinations.
+         */
+        get: operations["pingSystem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/system/version": {
         parameters: {
             query?: never;
@@ -3420,6 +3711,86 @@ export interface paths {
          * @description Returns the current principal's own safe User profile from durable state. The projection contains no password data, authentication-provider claims, Session credentials, Personal Access Token material, or private authorization bindings.
          */
         get: operations["getCurrentUserProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the signed-in User's bounded product context
+         * @description Returns a credential-free navigation projection for the current interactive Session. It identifies available product areas, a bounded list of management scopes, and the current unresolved Attempt selector without exposing Roles, permissions, provider claims, Session credentials, or examination content. This response is not an authorization receipt and must never be cached.
+         */
+        get: operations["getCurrentUserContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/desktop-registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the current User's Desktop Registrations
+         * @description Returns only bounded registration presentation and compatibility metadata; public keys, thumbprints, proofs, and Session identities are never exposed.
+         */
+        get: operations["listDesktopRegistrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/desktop-registrations/{desktop_registration_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Irreversibly revoke one Desktop Registration
+         * @description Requires strong recent interactive authentication and atomically revokes the registration and all bound Session credential families.
+         */
+        delete: operations["revokeDesktopRegistration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/me/exam-activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in candidate's Exam activity
+         * @description Returns a self-scoped, live navigation projection for an interactive Web or Desktop Session. It conceals every withheld Review state and exposes only executable navigation hints. Personal Access Tokens cannot use this operation; every destination independently reauthorizes current state.
+         */
+        get: operations["listCandidateExamActivity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4221,6 +4592,19 @@ export interface components {
             /** Format: int64 */
             to_revision: number;
         };
+        AcknowledgeExamCorrectionRequest: {
+            expected_current_revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            generation: number;
+            participation_id: components["schemas"]["ID"];
+        };
+        AcknowledgeExamCorrectionResponse: {
+            /** Format: date-time */
+            acknowledged_at: string;
+            /** @constant */
+            acknowledgement_state: "acknowledged";
+            revision_id: components["schemas"]["ID"];
+        };
         AddExamManagerRequest: {
             /** Format: int64 */
             expected_exam_revision: number;
@@ -4246,6 +4630,11 @@ export interface components {
         };
         /** @description Revision-fenced complete content correction for one open or paused Sitting. */
         ApplyExamSittingCorrectionRequest: {
+            acknowledgement_required: boolean;
+            /** @description Omitted preserves the current Browser Policy; a present object replaces it atomically with the other correction content. */
+            browser_policy?: components["schemas"]["BrowserPolicy"];
+            /** @description Required trimmed candidate-facing plain text, limited to 500 Unicode scalar values and 2000 UTF-8 bytes with no control characters. */
+            candidate_summary: string;
             expected_current_revision_id: components["schemas"]["ID"];
             /** Format: int64 */
             expected_sitting_revision: number;
@@ -4259,6 +4648,30 @@ export interface components {
         ArchiveExamRequest: {
             /** Format: int64 */
             expected_exam_revision: number;
+        };
+        AttemptCommandBinding: {
+            command_id: string;
+            keybinding_id: string;
+        };
+        AttemptConfigurationPreferences: {
+            /** @enum {string} */
+            announcement_detail: "standard" | "verbose";
+            candidate_command_bindings: components["schemas"]["AttemptCommandBinding"][];
+            /** @enum {string} */
+            cursor_blinking: "blink" | "solid";
+            /** @enum {string} */
+            cursor_style: "line" | "block" | "underline";
+            editor_font_size_px: number;
+            editor_line_height_percent: number;
+            /** @enum {string} */
+            high_contrast_mode: "auto" | "on" | "off";
+            /** @enum {string} */
+            reduced_motion_mode: "auto" | "on" | "off";
+            /** @enum {string} */
+            screen_reader_mode: "auto" | "on" | "off";
+            /** @enum {string} */
+            theme_mode: "follow_system" | "light" | "dark";
+            ui_zoom_percent: number;
         };
         /** @enum {string} */
         AttemptConnectionCloseReason: "transport_closed" | "interrupted" | "lease_expired" | "kicked" | "submitted" | "sitting_closed";
@@ -4336,6 +4749,8 @@ export interface components {
             /** Format: int64 */
             refresh_expires_at: number;
             refresh_token: string;
+            /** @enum {string} */
+            token_type: "Bearer" | "DPoP";
         };
         BeginProviderConnectionRequest: {
             return_to?: string;
@@ -4376,6 +4791,67 @@ export interface components {
             /** @description Canonical machine name for the Institution. */
             name: string;
         };
+        BrowserActivityItemResponse: {
+            /** @enum {string|null} */
+            block_reason: "scheme_not_allowed" | "origin_not_allowed" | "path_not_allowed" | "redirect_not_allowed" | "invalid_url" | null;
+            /** Format: date-time */
+            client_occurred_at: string;
+            /** Format: int64 */
+            generation: number;
+            /** @enum {string} */
+            kind: "browser_opened" | "browser_closed" | "top_level_navigation" | "top_level_redirect" | "blocked_top_level_navigation";
+            /** @description Reason-minimized navigation location. Successful navigation and HTTPS policy failures use a canonical HTTPS host, optional non-default port, and path. A blocked HTTP navigation uses the same canonical network fields with scheme `http`. Other disallowed schemes retain only their lowercase scheme while host and path are empty. An `invalid_url` block uses empty scheme, host, and path values. Query, fragment, user information, local paths, and scheme payloads are never retained. */
+            location: {
+                host: string;
+                path: string;
+                port?: string;
+                scheme: string;
+            } | null;
+            matched_rule_id: string | null;
+            policy_revision_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            received_at: string;
+            /** Format: int64 */
+            sequence: number;
+            /** Format: uuid */
+            source_session_id: string;
+        };
+        BrowserActivityListResponse: {
+            items: components["schemas"]["BrowserActivityItemResponse"][];
+            next_cursor?: string;
+        };
+        BrowserActivitySubmission: {
+            /** Format: int64 */
+            final_sequence?: number;
+            /** @enum {string} */
+            reason?: "spool_overflow" | "spool_corrupt" | "spool_key_unavailable" | "delivery_incomplete";
+            /** Format: uuid */
+            source_session_id?: string;
+            /** @enum {string} */
+            state: "not_applicable" | "complete" | "gapped";
+        } & (components["schemas"]["BrowserActivitySubmissionNotApplicable"] | components["schemas"]["BrowserActivitySubmissionComplete"] | components["schemas"]["BrowserActivitySubmissionGapped"]);
+        BrowserActivitySubmissionComplete: {
+            /** Format: int64 */
+            final_sequence: number;
+            /** Format: uuid */
+            source_session_id: string;
+            /** @constant */
+            state: "complete";
+        };
+        BrowserActivitySubmissionGapped: {
+            /** Format: int64 */
+            final_sequence?: number;
+            /** @enum {string} */
+            reason: "spool_overflow" | "spool_corrupt" | "spool_key_unavailable" | "delivery_incomplete";
+            /** Format: uuid */
+            source_session_id: string;
+            /** @constant */
+            state: "gapped";
+        };
+        BrowserActivitySubmissionNotApplicable: {
+            /** @constant */
+            state: "not_applicable";
+        };
         BrowserInvitationAcceptanceRequest: {
             display_name?: string;
             first_name?: string;
@@ -4401,6 +4877,30 @@ export interface components {
             /** @enum {string} */
             requirement: "account" | "session";
         };
+        BrowserPolicy: {
+            enabled: boolean;
+            rules?: components["schemas"]["BrowserPolicyRule"][];
+            /** @constant */
+            schema_version: 1;
+            start_rule_id?: string;
+        } & ({
+            /** @constant */
+            enabled?: false;
+        } | {
+            /** @constant */
+            enabled?: true;
+        });
+        BrowserPolicyRule: {
+            allow_redirects: boolean;
+            /** @constant */
+            blocked_navigation_outcome: "record";
+            /** @enum {string} */
+            host_match: "exact" | "exact_and_subdomains";
+            /** Format: uri */
+            origin: string;
+            path_prefix: string;
+            rule_id: string;
+        };
         /** @description Public build provenance for the serving Proctor binary. */
         BuildInfoResponse: {
             /** @description Build timestamp embedded in the binary. */
@@ -4422,16 +4922,103 @@ export interface components {
             /** @description Private manager rationale. Must be valid UTF-8, already trimmed, 1-1000 Unicode scalar values, and at most 4000 UTF-8 bytes. */
             reason: string;
         };
-        CandidateExamPresentationResponse: {
-            admission_revision_id: components["schemas"]["ID"];
-            attempt_id: components["schemas"]["ID"];
-            capacity: components["schemas"]["ExamCapacityPolicy"];
-            current_revision_id: components["schemas"]["ID"];
+        CandidateAttemptConfiguration: {
+            digest: string;
+            manifest_fingerprint: string;
+            preferences: components["schemas"]["AttemptConfigurationPreferences"];
+            /** @enum {integer} */
+            schema_version: 1;
+        };
+        CandidateBrowserCapability: {
+            policy_digest?: string;
+            policy_revision_id?: components["schemas"]["ID"];
+            /** @enum {string} */
+            state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required";
+        } & ({
+            /** @enum {string} */
+            state?: "disabled";
+        } | {
+            policy_digest: string;
+            policy_revision_id: components["schemas"]["ID"];
+            /** @enum {string} */
+            state: "available" | "sitting_paused" | "acknowledgement_required";
+        });
+        CandidateBrowserPolicy: {
+            /** @constant */
+            enabled: true;
+            policy_digest: string;
+            policy_revision_id: components["schemas"]["ID"];
+            rules: components["schemas"]["BrowserPolicyRule"][];
+            /** @constant */
+            schema_version: 1;
+            start_rule_id: string;
+        };
+        CandidateDepartureCapability: {
+            /** @enum {boolean} */
+            allowed: false;
+            /** @enum {string} */
+            reason: "attempt_in_progress";
+        };
+        /** @enum {string} */
+        CandidateExamAccessState: "not_open" | "joinable" | "resumable" | "sitting_paused" | "await_reallow" | "blocked_by_other_attempt" | "not_eligible" | "submitted" | "result_available" | "ended";
+        CandidateExamActivityAttemptResponse: {
+            id: components["schemas"]["ID"];
+            /** @enum {string} */
+            state: "ready" | "active" | "suspended" | "submitted";
+            /** @enum {string|null} */
+            suspension_reason_code: "secure_connectivity_lost" | "focus_policy_review_required" | null;
+        };
+        CandidateExamActivityItemResponse: {
+            academic_unit: components["schemas"]["CandidateExamActivityRelationResponse"];
+            access_state: components["schemas"]["CandidateExamAccessState"];
+            activity_state: components["schemas"]["CandidateExamActivityState"];
+            allowed_actions: components["schemas"]["CandidateExamAllowedAction"][];
+            attempt: components["schemas"]["CandidateExamActivityAttemptResponse"] | null;
+            class: components["schemas"]["CandidateExamActivityRelationResponse"];
+            exam_id: components["schemas"]["ID"];
             exam_sitting_id: components["schemas"]["ID"];
-            /** @description Whether the trusted client should collect and transmit bounded Focus Loss signals for this Sitting. */
-            focus_loss_collection_enabled: boolean;
+            result: components["schemas"]["CandidateExamActivityResultResponse"] | null;
+            /** Format: date-time */
+            scheduled_end_at: string;
+            /** Format: date-time */
+            scheduled_start_at: string;
+            sitting_reason_code: string | null;
+            sitting_state: components["schemas"]["ExamSittingState"];
+            submission: components["schemas"]["CandidateExamActivitySubmissionResponse"] | null;
+            title: string;
+        };
+        CandidateExamActivityRelationResponse: {
+            display_name: string;
+            id: components["schemas"]["ID"];
+        };
+        CandidateExamActivityResponse: {
+            items: components["schemas"]["CandidateExamActivityItemResponse"][];
+            next_cursor?: string;
+            /** Format: date-time */
+            server_time: string;
+        };
+        CandidateExamActivityResultResponse: {
+            /** Format: date-time */
+            released_at: string;
+        };
+        /** @enum {string} */
+        CandidateExamActivityState: "upcoming" | "available" | "in_progress" | "submitted" | "results_available" | "past";
+        CandidateExamActivitySubmissionResponse: {
+            id: components["schemas"]["ID"];
+            provenance: components["schemas"]["ExamSubmissionProvenance"];
+            /** Format: date-time */
+            submitted_at: string;
+        };
+        /** @enum {string} */
+        CandidateExamAllowedAction: "enter" | "resume" | "view_result";
+        CandidateExamPresentationResponse: {
+            attempt_id: components["schemas"]["ID"];
+            browser_policy: components["schemas"]["CandidateBrowserPolicy"] | null;
+            candidate_runtime_capabilities: components["schemas"]["CandidateRuntimeCapabilities"];
+            exam_sitting_id: components["schemas"]["ID"];
             /** @description Current Sitting Revision instructions as bounded authored Markdown. */
             instructions_markdown: string;
+            live_corrections: components["schemas"]["CandidateLiveCorrection"][];
             resources: components["schemas"]["CandidateExamResourceResponse"][];
             title: string;
         };
@@ -4444,6 +5031,11 @@ export interface components {
             sha256: components["schemas"]["SHA256"];
             /** Format: int64 */
             size: number;
+        };
+        CandidateExamRevisionCapability: {
+            acknowledgement_required: boolean;
+            admission_revision_id: components["schemas"]["ID"];
+            current_revision_id: components["schemas"]["ID"];
         };
         CandidateExamWorkspaceItemResponse: {
             content_version?: components["schemas"]["WorkspaceContentVersion"];
@@ -4471,6 +5063,40 @@ export interface components {
             /** Format: int64 */
             workspace_cursor: number;
             workspace_id: components["schemas"]["ID"];
+        };
+        CandidateLiveCorrection: {
+            /** Format: date-time */
+            acknowledged_at: string | null;
+            acknowledgement_required: boolean;
+            /** @enum {string} */
+            acknowledgement_state: "not_required" | "pending" | "acknowledged";
+            changed_areas: ("browser_policy" | "instructions" | "resources")[];
+            /** Format: date-time */
+            effective_at: string;
+            revision_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            revision_number: number;
+            summary: string;
+        };
+        CandidateRuntimeCapabilities: {
+            attempt_configuration: components["schemas"]["CandidateAttemptConfiguration"];
+            browser: components["schemas"]["CandidateBrowserCapability"];
+            departure: components["schemas"]["CandidateDepartureCapability"];
+            exam_revision: components["schemas"]["CandidateExamRevisionCapability"];
+            focus_loss_collection_enabled: boolean;
+            /** @enum {string} */
+            interaction_state: "interactive" | "sitting_paused";
+            /** @enum {integer} */
+            schema_version: 1;
+            /** Format: date-time */
+            server_time: string;
+            submission_allowed: boolean;
+            terminal: components["schemas"]["CandidateTerminalCapability"];
+            workspace_mutation_allowed: boolean;
+        };
+        CandidateTerminalCapability: {
+            /** @enum {string} */
+            state: "disabled" | "available" | "sitting_paused" | "acknowledgement_required" | "temporarily_unavailable";
         };
         CandidateWorkspaceFileUploadMetadata: {
             /**
@@ -4576,6 +5202,11 @@ export interface components {
             programme_level_id: components["schemas"]["ID"];
             /** Format: int64 */
             update_at: number;
+        };
+        ConfigureExamDraftBrowserPolicyRequest: {
+            browser_policy: components["schemas"]["BrowserPolicy"];
+            /** Format: int64 */
+            expected_draft_revision: number;
         };
         ConfigureExamDraftExecutionProfileRequest: {
             enabled: boolean;
@@ -4913,12 +5544,45 @@ export interface components {
             /** @description Duplicate-free complete set of known permission actions granted by the Role. */
             permissions: string[];
         };
+        CurrentUserContextIdentity: {
+            display_name: string;
+            id: components["schemas"]["ID"];
+            profile_picture_reference: string;
+            username: string;
+        };
+        CurrentUserContextResponse: {
+            available_product_areas: ("account" | "administration" | "exam_management" | "settings" | "student_activity")[];
+            current_desktop_registration_id: string | null;
+            management_scopes: components["schemas"]["CurrentUserManagementScope"][];
+            management_scopes_has_more: boolean;
+            no_assigned_access: boolean;
+            no_current_affiliation: boolean;
+            session_management_available: boolean;
+            unresolved_attempt: {
+                exam_sitting_id: components["schemas"]["ID"];
+                id: components["schemas"]["ID"];
+                /** @enum {string} */
+                state: "ready" | "active" | "suspended";
+            } | null;
+            user: components["schemas"]["CurrentUserContextIdentity"];
+        };
+        CurrentUserManagementScope: {
+            display_name: string;
+            scope_id: components["schemas"]["ID"];
+            /** @enum {string} */
+            scope_type: "institution" | "academic_unit";
+        };
         DeleteCandidateWorkspaceEntryRequest: {
             expected_content_version?: components["schemas"]["WorkspaceContentVersion"];
             expected_path: components["schemas"]["StarterWorkspacePath"];
             /** Format: int64 */
             generation: number;
             participation_id: components["schemas"]["ID"];
+        };
+        DesktopAuthorizationAccountResponse: {
+            display_name: string;
+            id: string;
+            username: string;
         };
         DesktopAuthorizationApprovalResponse: {
             /** Format: int64 */
@@ -4933,10 +5597,34 @@ export interface components {
             /** @constant */
             protocol: "proctor-desktop-authorization";
         };
+        DesktopAuthorizationContextResponse: {
+            account?: components["schemas"]["DesktopAuthorizationAccountResponse"];
+            device_name: string;
+            /** Format: int64 */
+            expires_at: number;
+            external_providers: components["schemas"]["ExternalAuthenticationProviderResponse"][];
+            local_login_enabled: boolean;
+            /** @enum {string} */
+            state: "bound" | "authenticated";
+        };
         DesktopAuthorizationExchangeRequest: {
+            /** @enum {string} */
+            architecture: "arm64" | "x64";
             code: string;
             code_verifier: string;
+            desktop_build_id: string;
+            desktop_release: string;
+            /** @enum {string} */
+            platform: "darwin" | "win32" | "linux";
+            public_jwk: components["schemas"]["DesktopPublicJWK"];
+            realtime_protocol: number;
             state: string;
+        };
+        DesktopAuthorizationLocalAuthenticationRequest: {
+            login_id: string;
+            mfa_code?: string;
+            /** Format: password */
+            password: string;
         };
         DesktopAuthorizationProofRequest: {
             browser_proof: string;
@@ -4944,13 +5632,19 @@ export interface components {
             state: string;
         };
         DesktopAuthorizationStartRequest: {
-            authentication_method: string;
+            /** @enum {string} */
+            architecture: "arm64" | "x64";
             /** Format: uri */
             callback_url: string;
             code_challenge: string;
+            desktop_build_id: string;
+            desktop_release: string;
             device_id?: string;
             device_name?: string;
-            provider_id?: string;
+            /** @enum {string} */
+            platform: "darwin" | "win32" | "linux";
+            public_jwk: components["schemas"]["DesktopPublicJWK"];
+            realtime_protocol: number;
             state: string;
         };
         DesktopAuthorizationStartResponse: {
@@ -4958,6 +5652,63 @@ export interface components {
             authorization_url: string;
             /** Format: int64 */
             expires_at: number;
+        };
+        DesktopAuthorizationStateRequest: {
+            state: string;
+        };
+        DesktopCompatibilityPolicyRequest: {
+            /** @description Trimmed bounded plain text with control characters rejected. */
+            administrator_message: string;
+            /** @enum {string} */
+            availability: "ready" | "maintenance";
+            /** Format: int64 */
+            expected_revision: number;
+            /** @description Empty for no Institution minimum, otherwise a canonical semantic release without a leading v. */
+            minimum_desktop_release: string;
+            /** @description Optional retry time; it must be null while availability is ready. */
+            retry_at: string | null;
+            revoked_desktop_build_ids: string[];
+        };
+        DesktopCompatibilityPolicyResponse: {
+            administrator_message: string;
+            /** @enum {string} */
+            availability: "ready" | "maintenance";
+            /** Format: date-time */
+            created_at: string;
+            minimum_desktop_release: string;
+            retry_at: string | null;
+            /** Format: int64 */
+            revision: number;
+            revoked_desktop_build_ids: string[];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DesktopPublicJWK: {
+            /** @constant */
+            crv: "P-256";
+            /** @constant */
+            kty: "EC";
+            x: string;
+            y: string;
+        };
+        DesktopRegistrationListResponse: components["schemas"]["DesktopRegistrationResponse"][];
+        DesktopRegistrationResponse: {
+            /** @enum {string} */
+            architecture: "arm64" | "x64";
+            /** Format: int64 */
+            created_at: number;
+            current: boolean;
+            desktop_build_id: string;
+            desktop_release: string;
+            display_name: string;
+            id: components["schemas"]["ID"];
+            /** Format: int64 */
+            last_used_at: number;
+            /** @enum {string} */
+            platform: "darwin" | "win32" | "linux";
+            realtime_protocol: number;
+            /** @enum {string} */
+            status: "active" | "revoked";
         };
         EditExamDraftTextRequest: {
             /** Format: int64 */
@@ -4985,6 +5736,12 @@ export interface components {
         };
         EmailVerificationCompletionRequest: {
             token: string;
+        };
+        EndExamAttemptByManagerRequest: {
+            /** Format: int64 */
+            expected_attempt_revision: number;
+            /** @description Trimmed private manager reason; never exposed to the candidate. */
+            reason: string;
         };
         EnrollClassMemberRequest: {
             /**
@@ -5095,7 +5852,7 @@ export interface components {
             suspension_state: "closed";
         };
         /** @enum {string} */
-        ExamAttemptState: "active" | "suspended" | "submitted";
+        ExamAttemptState: "ready" | "active" | "suspended" | "submitted";
         ExamAttemptSuspensionResponse: {
             /** @constant */
             candidate_reason: "secure_connectivity_lost";
@@ -5135,6 +5892,7 @@ export interface components {
         };
         ExamDraftResponse: {
             base_revision_id?: components["schemas"]["ID"];
+            browser_policy: components["schemas"]["BrowserPolicy"];
             capacity: components["schemas"]["ExamCapacityPolicy"];
             exam_id: components["schemas"]["ID"];
             execution_profile: components["schemas"]["ExecutionProfile"];
@@ -5170,34 +5928,46 @@ export interface components {
             /** @description Opaque continuation for the next page, omitted after the final page. */
             next_cursor?: string;
         };
-        /** @description Late integrity record retained separately after collection for the Submission ended. */
+        /** @description Bounded manager-only uncertainty associated with a sealed Submission. Kind-specific fields are present only for their named kind; the record is not evidence, a misconduct finding, a score, or a grade. */
         ExamIntegrityDiscrepancyResponse: {
+            /** Format: uuid */
+            browser_activity_source_session_id?: string;
+            correction_revision_id?: components["schemas"]["ID"];
             /**
              * Format: int64
              * @description Reported focus-loss duration in milliseconds.
              */
-            duration_milliseconds: number;
+            duration_milliseconds?: number;
             exam_attempt_id: components["schemas"]["ID"];
-            focus_loss_signal_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            final_sequence?: number;
+            focus_loss_signal_id?: components["schemas"]["ID"];
+            /** @enum {string} */
+            gap_reason?: "sequence_gap" | "source_not_finalized" | "sequence_gap_and_source_not_finalized" | "spool_overflow" | "spool_corrupt" | "spool_key_unavailable" | "delivery_incomplete" | "prior_source_gap";
             /** Format: int64 */
             generation: number;
             id: components["schemas"]["ID"];
-            /** @constant */
-            kind: "late_focus_loss";
+            /** @enum {string} */
+            kind: "late_focus_loss" | "focus_loss_gap" | "browser_activity_gap" | "correction_acknowledgement_missing";
             /**
              * Format: int64
              * @description Number of missing monotonic signals observed before this late record.
              */
-            missing_before: number;
+            missing_before?: number;
             participation_id: components["schemas"]["ID"];
             /** Format: date-time */
             received_at: string;
             /** @constant */
             schema_version: 1;
             /** Format: int64 */
-            sequence: number;
+            sequence?: number;
             /** @enum {string} */
             source?: "application_backgrounded" | "document_hidden" | "fullscreen_exited" | "window_blur";
+            /**
+             * Format: int64
+             * @description Bounded aggregate represented by this terminal discrepancy.
+             */
+            unresolved_count?: number;
         };
         /** @description One bounded page of purpose-specific integrity evidence. */
         ExamIntegrityEvidenceListResponse: {
@@ -5420,6 +6190,17 @@ export interface components {
             starter_workspace_total_bytes: number;
             title: string;
         };
+        ExamSittingCandidateStatusesResponse: {
+            exam_id: components["schemas"]["ID"];
+            exam_sitting_id: components["schemas"]["ID"];
+            items: components["schemas"]["SittingCandidateStatusItemResponse"][];
+            next_cursor?: string;
+            /** Format: date-time */
+            server_time: string;
+            /** Format: int64 */
+            sitting_revision: number;
+            sitting_state: components["schemas"]["ExamSittingState"];
+        };
         /** @description An item without stage_id retains the exact base content. An item with stage_id selects the ready stage bound to this resource and correction target. */
         ExamSittingCorrectionResourceRequest: {
             /** @description Authored Markdown encoded as UTF-8 and limited to 16384 bytes. */
@@ -5639,6 +6420,8 @@ export interface components {
         ExamSubmissionManagerResponse: {
             exam_attempt_id: components["schemas"]["ID"];
             exam_id: components["schemas"]["ID"];
+            /** @description Exact Exam Sitting Revision governing the atomic Submission commit. */
+            exam_revision_id: components["schemas"]["ID"];
             exam_sitting_id: components["schemas"]["ID"];
             /**
              * Format: int64
@@ -5706,9 +6489,12 @@ export interface components {
             /** Format: int64 */
             workspace_cursor: number;
         };
+        /** @enum {string} */
+        ExamSubmissionProvenance: "candidate_submitted" | "manager_ended_attempt" | "sitting_closed";
         /** @description Candidate-safe retained receipt for an atomically sealed Submission. */
         ExamSubmissionReceiptResponse: {
             exam_attempt_id: components["schemas"]["ID"];
+            exam_revision_id: components["schemas"]["ID"];
             /** @description SHA-256 digest of the immutable sealed Workspace manifest. */
             manifest_digest: components["schemas"]["SHA256"];
             /** @constant */
@@ -5759,15 +6545,31 @@ export interface components {
             updated_at: string;
         };
         ExamSummaryResponse: {
+            academic_unit_display_name: string;
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
             archived_at: string | null;
             creator_user_id: components["schemas"]["ID"];
             id: components["schemas"]["ID"];
             manager_count: number;
+            matching_sitting_count: number;
             owner_user_id: components["schemas"]["ID"];
             /** Format: int64 */
             revision: number;
+            sitting_count: number;
+            sitting_summary: {
+                class_display_name: string;
+                class_id: components["schemas"]["ID"];
+                exam_revision_id: components["schemas"]["ID"];
+                id: components["schemas"]["ID"];
+                /** Format: int64 */
+                revision: number;
+                /** Format: date-time */
+                scheduled_end_at: string;
+                /** Format: date-time */
+                scheduled_start_at: string;
+                state: components["schemas"]["ExamSittingState"];
+            } | null;
             title: string;
             /** Format: date-time */
             updated_at: string;
@@ -6774,6 +7576,14 @@ export interface components {
             create_at: number;
             /** Format: int64 */
             delete_at: number;
+            /** @enum {string} */
+            desktop_architecture?: "arm64" | "x64";
+            desktop_build_id?: string;
+            /** @enum {string} */
+            desktop_platform?: "darwin" | "win32" | "linux";
+            desktop_realtime_protocol?: number;
+            desktop_registration_id?: components["schemas"]["ID"];
+            desktop_release?: string;
             device_id?: string;
             device_name?: string;
             /** Format: int64 */
@@ -6788,7 +7598,7 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: int64 */
             revoked_at?: number;
             /** Format: int64 */
@@ -6807,6 +7617,14 @@ export interface components {
             create_at: number;
             /** Format: int64 */
             delete_at: number;
+            /** @enum {string} */
+            desktop_architecture?: "arm64" | "x64";
+            desktop_build_id?: string;
+            /** @enum {string} */
+            desktop_platform?: "darwin" | "win32" | "linux";
+            desktop_realtime_protocol?: number;
+            desktop_registration_id?: components["schemas"]["ID"];
+            desktop_release?: string;
             device_id?: string;
             device_name?: string;
             /** Format: int64 */
@@ -6821,12 +7639,59 @@ export interface components {
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: int64 */
             revoked_at?: number;
             /** Format: int64 */
             update_at: number;
             user_id: components["schemas"]["ID"];
+        };
+        SittingCandidateAttemptResponse: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["ID"];
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            state: "ready" | "active" | "suspended" | "submitted";
+            submission: components["schemas"]["SittingCandidateSubmissionResponse"] | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SittingCandidateIdentityResponse: {
+            display_name: string;
+            user_id: components["schemas"]["ID"];
+            username: string;
+        };
+        SittingCandidatePresenceResponse: {
+            /** Format: date-time */
+            last_lease_renewed_at: string | null;
+            /** Format: date-time */
+            lease_expires_at: string | null;
+            state: components["schemas"]["SittingCandidatePresenceState"];
+        };
+        /** @enum {string} */
+        SittingCandidatePresenceState: "not_started" | "ready" | "connected" | "reconnecting" | "lease_expired" | "suspended" | "submitted";
+        SittingCandidateStatusItemResponse: {
+            attempt: components["schemas"]["SittingCandidateAttemptResponse"] | null;
+            candidate: components["schemas"]["SittingCandidateIdentityResponse"];
+            current_class_membership: boolean;
+            /** Format: int64 */
+            integrity_attention_count: number;
+            presence: components["schemas"]["SittingCandidatePresenceResponse"];
+            suspension: components["schemas"]["SittingCandidateSuspensionResponse"] | null;
+        };
+        SittingCandidateSubmissionResponse: {
+            id: components["schemas"]["ID"];
+            provenance: components["schemas"]["ExamSubmissionProvenance"];
+            /** Format: date-time */
+            submitted_at: string;
+        };
+        SittingCandidateSuspensionResponse: {
+            /** @enum {string} */
+            candidate_reason: "secure_connectivity_lost" | "focus_policy_review_required";
+            id: components["schemas"]["ID"];
+            reallow_available: boolean;
         };
         /** @description An already-canonical, case-sensitive POSIX-relative path: at most 16 segments and 255 UTF-8 bytes per segment. Empty, absolute, dot, dot-dot, repeated/trailing separators, backslashes, NUL/control characters, and the reserved .proctor root are rejected. */
         StarterWorkspacePath: string;
@@ -6860,6 +7725,9 @@ export interface components {
             source_period_id: components["schemas"]["ID"];
         };
         SubmitExamAttemptRequest: {
+            browser_activity: components["schemas"]["BrowserActivitySubmission"];
+            /** @description The current Exam Sitting Revision displayed by the client. */
+            expected_current_revision_id: components["schemas"]["ID"];
             /**
              * Format: int64
              * @description The last Workspace mutation cursor acknowledged by the client.
@@ -6877,6 +7745,41 @@ export interface components {
             generation: number;
             /** @description The active Participation identifier returned by the successful Attempt connection. */
             participation_id: components["schemas"]["ID"];
+        };
+        /** @description Safe product availability and compatibility projection for one declared Desktop build. */
+        SystemPingResponse: {
+            /** @description Optional bounded plain-text Institution administrator message. */
+            administrator_message?: string;
+            /** @enum {string} */
+            availability: "ready" | "maintenance" | "temporarily_unavailable";
+            /** @enum {string} */
+            compatibility: "compatible" | "update_required" | "server_incompatible" | "unsupported_target";
+            /**
+             * @description Stable safe reason for the compatibility result.
+             * @enum {string}
+             */
+            compatibility_reason: "compatible" | "release_too_old" | "release_too_new" | "realtime_protocol_too_old" | "realtime_protocol_too_new" | "build_revoked" | "build_unrecognized" | "unsupported_target" | "compatibility_unavailable";
+            maximum_desktop_release?: string;
+            maximum_realtime_protocol?: number;
+            minimum_desktop_release?: string;
+            minimum_realtime_protocol?: number;
+            /**
+             * @description Stable safe reason for the product availability state.
+             * @enum {string}
+             */
+            reason: "ready" | "maintenance" | "temporarily_unavailable";
+            /**
+             * Format: date-time
+             * @description Optional later server-selected time at which Desktop may retry.
+             */
+            retry_at?: string;
+            /** @constant */
+            schema_version: 1;
+            /**
+             * Format: date-time
+             * @description Authoritative serving-node time in RFC 3339 format.
+             */
+            server_time: string;
         };
         /** @description Existing Review identity and exact revision for a terminal transition. */
         TerminalExamIntegrityReviewRequest: {
@@ -7331,6 +8234,16 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /** @description Bounded privacy-minimized Browser Activity page */
+        BrowserActivityListOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BrowserActivityListResponse"];
+            };
+        };
         /** @description Invitation accepted or its exact durable outcome replayed */
         BrowserInvitationAccepted: {
             headers: {
@@ -7358,6 +8271,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["BuildInfoResponse"];
+            };
+        };
+        /** @description Candidate Exam activity collection */
+        CandidateExamActivityOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CandidateExamActivityResponse"];
             };
         };
         /** @description Protected candidate Exam content has not changed */
@@ -7515,6 +8438,27 @@ export interface components {
                 "application/problem+json": components["schemas"]["ProblemDetails"];
             };
         };
+        /** @description Bounded current User product context */
+        CurrentUserContextOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CurrentUserContextResponse"];
+            };
+        };
+        /** @description DPoP-bound Desktop Session created */
+        DesktopAuthenticationOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                "DPoP-Nonce": components["headers"]["DPoPNonce"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["AuthenticationResponse"];
+            };
+        };
         /** @description One-use Desktop code issued */
         DesktopAuthorizationApproved: {
             headers: {
@@ -7525,14 +8469,59 @@ export interface components {
                 "application/json": components["schemas"]["DesktopAuthorizationApprovalResponse"];
             };
         };
-        /** @description Desktop browser authorization transaction created */
-        DesktopAuthorizationStarted: {
+        /** @description Safe current hosted Desktop authorization context */
+        DesktopAuthorizationContextOK: {
             headers: {
                 "Cache-Control": components["headers"]["NoStore"];
                 [name: string]: unknown;
             };
             content: {
+                "application/json": components["schemas"]["DesktopAuthorizationContextResponse"];
+            };
+        };
+        /** @description Desktop browser authorization transaction created */
+        DesktopAuthorizationStarted: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                "DPoP-Nonce": components["headers"]["DPoPNonce"];
+                [name: string]: unknown;
+            };
+            content: {
                 "application/json": components["schemas"]["DesktopAuthorizationStartResponse"];
+            };
+        };
+        /** @description Current revisioned Desktop Compatibility Policy */
+        DesktopCompatibilityPolicyOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "administrator_message": "Update Proctor Desktop before your next exam.",
+                 *       "availability": "maintenance",
+                 *       "created_at": "2026-08-01T12:00:00Z",
+                 *       "minimum_desktop_release": "1.4.0",
+                 *       "retry_at": "2026-08-28T11:00:00Z",
+                 *       "revision": 3,
+                 *       "revoked_desktop_build_ids": [
+                 *         "desktop-build-2026-08-17"
+                 *       ],
+                 *       "updated_at": "2026-08-28T10:11:12Z"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DesktopCompatibilityPolicyResponse"];
+            };
+        };
+        /** @description Current User's Desktop Registration security history */
+        DesktopRegistrationListOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DesktopRegistrationListResponse"];
             };
         };
         /** @description Bounded manager-safe Exam Attempt collection */
@@ -7568,6 +8557,16 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["ExamAttemptReallowResponse"];
+            };
+        };
+        /** @description Retained acknowledgement for the exact required correction */
+        ExamCorrectionAcknowledged: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["AcknowledgeExamCorrectionResponse"];
             };
         };
         /** @description Exam and initial Draft created */
@@ -7778,6 +8777,16 @@ export interface components {
                 "application/json": components["schemas"]["ExamRevisionResponse"];
             };
         };
+        /** @description Minimized live candidate-status board */
+        ExamSittingCandidateStatusesOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ExamSittingCandidateStatusesResponse"];
+            };
+        };
         /** @description Immutable live correction created and the affected Sitting retargeted */
         ExamSittingCorrectionCreated: {
             headers: {
@@ -7955,6 +8964,16 @@ export interface components {
         };
         /** @description Candidate-safe retained receipt for a committed Submission or its exact replay */
         ExamSubmissionReceiptCreated: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ExamSubmissionReceiptResponse"];
+            };
+        };
+        /** @description Candidate-safe retained receipt for the manager-ended Submission or its exact replay */
+        ExamSubmissionReceiptOK: {
             headers: {
                 "Cache-Control": components["headers"]["NoStore"];
                 [name: string]: unknown;
@@ -8632,6 +9651,26 @@ export interface components {
                 "text/csv": string;
             };
         };
+        /** @description Request-specific availability and Desktop compatibility result */
+        SystemPingOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "availability": "ready",
+                 *       "compatibility": "unsupported_target",
+                 *       "compatibility_reason": "unsupported_target",
+                 *       "reason": "ready",
+                 *       "schema_version": 1,
+                 *       "server_time": "2026-08-28T10:11:12Z"
+                 *     }
+                 */
+                "application/json": components["schemas"]["SystemPingResponse"];
+            };
+        };
         /** @description Rate limited */
         TooManyRequests: {
             headers: {
@@ -8742,6 +9781,10 @@ export interface components {
         ClassMemberID: components["schemas"]["ID"];
         /** @description Client family that will receive the authenticated result and determines the permitted handoff behavior. */
         ClientType: "desktop" | "web";
+        /** @description A fresh RFC 9449 ES256 proof JWT made by the public JWK bound to this authorization. */
+        DPoPProof: string;
+        /** @description Exact Desktop Registration identity from the current User's private registration list. */
+        DesktopRegistrationID: components["schemas"]["ID"];
         /** @description Optional stable client-controlled device identifier recorded on the resulting Session. */
         DeviceID: string;
         /** @description Optional human-facing device label shown in Session management views. */
@@ -8794,6 +9837,19 @@ export interface components {
         UserID: components["schemas"]["ID"];
     };
     requestBodies: {
+        /** @description Exact active Participation fence and current Revision observed while acknowledging the path-selected oldest required correction. */
+        AcknowledgeExamCorrection: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza5",
+                 *       "generation": 2,
+                 *       "participation_id": "ybndrfg8ejkmcpqxot1uwisza4"
+                 *     }
+                 */
+                "application/json": components["schemas"]["AcknowledgeExamCorrectionRequest"];
+            };
+        };
         /** @description Identifies the eligible User to add and the last observed Exam aggregate revision for concurrency control. */
         AddExamManager: {
             content: {
@@ -8811,6 +9867,8 @@ export interface components {
             content: {
                 /**
                  * @example {
+                 *       "acknowledgement_required": true,
+                 *       "candidate_summary": "The formula sheet for Question 3 was corrected.",
                  *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza3",
                  *       "expected_sitting_revision": 8,
                  *       "instructions_markdown": "Read the corrected resource before continuing.",
@@ -9007,6 +10065,21 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["PasswordResetCompletionRequest"];
+            };
+        };
+        /** @description Supplies the expected Draft revision and complete replacement Browser Policy. */
+        ConfigureExamDraftBrowserPolicy: {
+            content: {
+                /**
+                 * @example {
+                 *       "browser_policy": {
+                 *         "enabled": false,
+                 *         "schema_version": 1
+                 *       },
+                 *       "expected_draft_revision": 4
+                 *     }
+                 */
+                "application/json": components["schemas"]["ConfigureExamDraftBrowserPolicyRequest"];
             };
         };
         /** @description Supplies the expected Draft revision and the complete enabled, image, and network selection that should replace the current profile. */
@@ -9231,20 +10304,44 @@ export interface components {
                 "application/json": components["schemas"]["DeleteCandidateWorkspaceEntryRequest"];
             };
         };
-        /** @description Supplies the one-use authorization code, original state, and PKCE verifier required to create the Desktop Session. */
+        /** @description One-use code, pinned state, S256 verifier, identical public key, and exact verified Desktop build declarations for Session issuance. */
         DesktopAuthorizationExchange: {
             content: {
                 /**
                  * @example {
+                 *       "architecture": "arm64",
                  *       "code": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                 *       "code_verifier": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-                 *       "state": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+                 *       "code_verifier": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+                 *       "desktop_build_id": "darwin-arm64-1.0.0",
+                 *       "desktop_release": "1.0.0",
+                 *       "platform": "darwin",
+                 *       "public_jwk": {
+                 *         "crv": "P-256",
+                 *         "kty": "EC",
+                 *         "x": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+                 *         "y": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+                 *       },
+                 *       "realtime_protocol": 1,
+                 *       "state": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
                  *     }
                  */
                 "application/json": components["schemas"]["DesktopAuthorizationExchangeRequest"];
             };
         };
-        /** @description Proves possession of the browser-facing transaction values before approving or cancelling the exact pending Desktop handoff. */
+        /** @description Local account proof scoped to the bound Desktop transaction; an MFA code is supplied only after the server requires it. */
+        DesktopAuthorizationLocalAuthentication: {
+            content: {
+                /**
+                 * @example {
+                 *       "login_id": "candidate@example.edu",
+                 *       "mfa_code": "123456",
+                 *       "password": "synthetic-local-password"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DesktopAuthorizationLocalAuthenticationRequest"];
+            };
+        };
+        /** @description One-use handle, fragment proof, and pinned state presented by the hosted browser before it stores a scoped binding cookie. */
         DesktopAuthorizationProof: {
             content: {
                 /**
@@ -9257,20 +10354,41 @@ export interface components {
                 "application/json": components["schemas"]["DesktopAuthorizationProofRequest"];
             };
         };
-        /** @description Declares the trusted loopback callback, anti-forgery state, S256 PKCE challenge, authentication method, and optional device presentation for the Desktop handoff. */
+        /** @description Exact loopback, PKCE, public-key, device, and verified Desktop build declarations to pin to the new transaction. */
         DesktopAuthorizationStart: {
             content: {
                 /**
                  * @example {
-                 *       "authentication_method": "password",
-                 *       "callback_url": "http://127.0.0.1:49152/callback",
-                 *       "code_challenge": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
-                 *       "device_id": "exam-laptop-01",
+                 *       "architecture": "arm64",
+                 *       "callback_url": "http://127.0.0.1:49152/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                 *       "code_challenge": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+                 *       "desktop_build_id": "darwin-arm64-1.0.0",
+                 *       "desktop_release": "1.0.0",
+                 *       "device_id": "exam-laptop",
                  *       "device_name": "Exam laptop",
-                 *       "state": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                 *       "platform": "darwin",
+                 *       "public_jwk": {
+                 *         "crv": "P-256",
+                 *         "kty": "EC",
+                 *         "x": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+                 *         "y": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+                 *       },
+                 *       "realtime_protocol": 1,
+                 *       "state": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
                  *     }
                  */
                 "application/json": components["schemas"]["DesktopAuthorizationStartRequest"];
+            };
+        };
+        /** @description Exact opaque state already pinned to the browser-bound Desktop transaction. */
+        DesktopAuthorizationState: {
+            content: {
+                /**
+                 * @example {
+                 *       "state": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DesktopAuthorizationStateRequest"];
             };
         };
         /** @description Exact source and destination academic structure plus the future effective instant to validate without mutation. */
@@ -9311,6 +10429,18 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["EditExamResourceMetadataRequest"];
+            };
+        };
+        /** @description Exact Attempt revision and private bounded manager reason for sealing one unfinished Attempt before scheduled closure owns it. */
+        EndExamAttemptByManager: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_attempt_revision": 7,
+                 *       "reason": "Candidate requested an early end after completing the exam."
+                 *     }
+                 */
+                "application/json": components["schemas"]["EndExamAttemptByManagerRequest"];
             };
         };
         /** @description Existing User and optional effective interval for enrollment in the route Class. */
@@ -9551,6 +10681,24 @@ export interface components {
                 "application/json": components["schemas"]["AccessPolicySettingsRequest"];
             };
         };
+        /** @description Complete revision-fenced replacement. Every policy setting is required, including empty values. */
+        ReplaceDesktopCompatibilityPolicy: {
+            content: {
+                /**
+                 * @example {
+                 *       "administrator_message": "Update Proctor Desktop before your next exam.",
+                 *       "availability": "maintenance",
+                 *       "expected_revision": 3,
+                 *       "minimum_desktop_release": "1.4.0",
+                 *       "retry_at": "2026-08-28T11:00:00Z",
+                 *       "revoked_desktop_build_ids": [
+                 *         "desktop-build-2026-08-17"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["DesktopCompatibilityPolicyRequest"];
+            };
+        };
         /** @description Exact pending revision and complete immutable package for the replacement Invitation. */
         ReplaceInvitation: {
             content: {
@@ -9695,6 +10843,10 @@ export interface components {
             content: {
                 /**
                  * @example {
+                 *       "browser_activity": {
+                 *         "state": "not_applicable"
+                 *       },
+                 *       "expected_current_revision_id": "ybndrfg8ejkmcpqxot1uwisza5",
                  *       "expected_workspace_cursor": 18,
                  *       "final_focus_loss_sequence": 3,
                  *       "generation": 2,
@@ -9858,6 +11010,8 @@ export interface components {
         };
     };
     headers: {
+        /** @description Server-issued nonce required by every accepted Desktop DPoP proof. */
+        DPoPNonce: string;
         /** @description Prevents content-type sniffing. */
         NoSniff: "nosniff";
         /** @description Prevents storage of sensitive responses. */
@@ -9910,6 +11064,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createAcademicPeriod: {
@@ -9931,6 +11086,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getAcademicPeriod: {
@@ -9951,6 +11107,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveAcademicPeriod: {
@@ -9972,6 +11129,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateAcademicPeriod: {
@@ -9993,6 +11151,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     endAcademicUnitMember: {
@@ -10014,6 +11173,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAcademicUnits: {
@@ -10035,6 +11195,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createRootAcademicUnit: {
@@ -10055,6 +11216,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getAcademicUnit: {
@@ -10075,6 +11237,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveAcademicUnit: {
@@ -10096,6 +11259,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateAcademicUnit: {
@@ -10117,6 +11281,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAcademicUnitChildren: {
@@ -10137,6 +11302,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createAcademicUnitChild: {
@@ -10158,6 +11324,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     searchClasses: {
@@ -10183,6 +11350,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     issueAcademicUnitRoleInvitation: {
@@ -10294,6 +11462,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createAcademicUnitMember: {
@@ -10315,6 +11484,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listProgrammes: {
@@ -10340,6 +11510,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createProgramme: {
@@ -10361,6 +11532,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getAccessPolicy: {
@@ -10438,6 +11610,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAuditEvents: {
@@ -10467,6 +11640,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     startBrowserInvitation: {
@@ -10535,7 +11709,103 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    resetDesktopAuthorizationAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: components["responses"]["SensitiveNoContent"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     approveDesktopAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["DesktopAuthorizationState"];
+        responses: {
+            200: components["responses"]["DesktopAuthorizationApproved"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    authenticateDesktopAuthorizationWithPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["DesktopAuthorizationLocalAuthentication"];
+        responses: {
+            200: components["responses"]["DesktopAuthorizationContextOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    beginDesktopAuthorizationExternalAuthentication: {
+        parameters: {
+            query: {
+                /** @description The exact opaque state pinned by the Desktop when it created this transaction. */
+                state: string;
+            };
+            header?: never;
+            path: {
+                /** @description The configured external authentication provider identifier. */
+                provider_id: components["parameters"]["ProviderID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            303: components["responses"]["ExternalAuthenticationRedirect"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    authenticateDesktopAuthorizationWithSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DesktopAuthorizationContextOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    bindDesktopAuthorizationBrowser: {
         parameters: {
             query?: never;
             header?: never;
@@ -10544,10 +11814,9 @@ export interface operations {
         };
         requestBody: components["requestBodies"]["DesktopAuthorizationProof"];
         responses: {
-            200: components["responses"]["DesktopAuthorizationApproved"];
+            204: components["responses"]["SensitiveNoContent"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -10560,12 +11829,28 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["DesktopAuthorizationProof"];
+        requestBody: components["requestBodies"]["DesktopAuthorizationState"];
         responses: {
             204: components["responses"]["SensitiveNoContent"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getDesktopAuthorizationContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DesktopAuthorizationContextOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -10574,16 +11859,18 @@ export interface operations {
     exchangeDesktopAuthorizationCode: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description A fresh RFC 9449 ES256 proof JWT made by the public JWK bound to this authorization. */
+                DPoP: components["parameters"]["DPoPProof"];
+            };
             path?: never;
             cookie?: never;
         };
         requestBody: components["requestBodies"]["DesktopAuthorizationExchange"];
         responses: {
-            200: components["responses"]["AuthenticationOK"];
+            200: components["responses"]["DesktopAuthenticationOK"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
@@ -10654,6 +11941,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     completePasswordReset: {
@@ -10790,6 +12078,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     registerLocalUser: {
@@ -10954,6 +12243,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getClass: {
@@ -10974,6 +12264,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveClass: {
@@ -10995,6 +12286,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateClass: {
@@ -11016,6 +12308,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     issueStudentClassInvitation: {
@@ -11085,6 +12378,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     enrollClassMember: {
@@ -11106,6 +12400,45 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getDesktopCompatibilityPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DesktopCompatibilityPolicyOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    replaceDesktopCompatibilityPolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ReplaceDesktopCompatibilityPolicy"];
+        responses: {
+            200: components["responses"]["DesktopCompatibilityPolicyOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getPublicAccessDiscovery: {
@@ -11118,6 +12451,37 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["PublicAccessDiscoveryOK"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    acknowledgeExamAttemptCorrection: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Sensitive canonical 32-byte Raw URL-safe base64 continuity credential for the active Participation. Never log, persist, cache, or place this value in a URL. */
+                "X-Proctor-Attempt-Credential": components["parameters"]["CandidateAttemptCredential"];
+                /** @description The durable open Attempt Connection bound to the current authenticated Session. */
+                "X-Proctor-Attempt-Connection-ID": components["parameters"]["CandidateAttemptConnectionID"];
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+                /** @description The immutable Exam Revision identifier. */
+                exam_revision_id: components["parameters"]["ExamRevisionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["AcknowledgeExamCorrection"];
+        responses: {
+            200: components["responses"]["ExamCorrectionAcknowledged"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
@@ -11144,6 +12508,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getCandidateExamResourceContent: {
@@ -11174,6 +12539,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getStudentExamResult: {
@@ -11193,6 +12559,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     submitExamAttempt: {
@@ -11221,6 +12588,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listCandidateExamWorkspace: {
@@ -11251,6 +12619,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listCandidateExamWorkspaceChanges: {
@@ -11281,6 +12650,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createCandidateExamWorkspaceDirectory: {
@@ -11309,6 +12679,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     deleteCandidateExamWorkspaceEntry: {
@@ -11339,6 +12710,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     moveCandidateExamWorkspaceEntry: {
@@ -11369,6 +12741,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createCandidateExamWorkspaceFile: {
@@ -11402,6 +12775,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getCandidateExamWorkspaceContent: {
@@ -11432,6 +12806,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceCandidateExamWorkspaceFile: {
@@ -11467,6 +12842,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExams: {
@@ -11478,6 +12854,12 @@ export interface operations {
                 q?: string;
                 /** @description Select active Exams, archived Exams, or both. */
                 archive_state?: "active" | "archived" | "all";
+                /** @description Repeated lifecycle-state filter. One same Sitting must also satisfy the optional schedule interval. */
+                sitting_state?: components["schemas"]["ExamSittingState"][];
+                /** @description Exclusive lower bound for Sitting scheduled end; must be supplied with starts_before. */
+                ends_after?: string;
+                /** @description Exclusive upper bound for Sitting scheduled start; must be supplied with ends_after and be later than it. */
+                starts_before?: string;
                 /** @description Maximum page size from 1 through 200. */
                 limit?: number;
                 /** @description Opaque next_cursor from the previous page. Do not parse, modify, or persist it as a resource identifier. */
@@ -11494,6 +12876,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createExam: {
@@ -11515,6 +12898,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExam: {
@@ -11535,6 +12919,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveExam: {
@@ -11559,6 +12944,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     editExamDraftText: {
@@ -11583,6 +12969,32 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    configureExamDraftBrowserPolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ConfigureExamDraftBrowserPolicy"];
+        responses: {
+            200: components["responses"]["ExamOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamExecutionImages: {
@@ -11603,6 +13015,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     configureExamDraftExecutionProfile: {
@@ -11627,6 +13040,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     configureExamDraftFocusLoss: {
@@ -11651,6 +13065,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamDraftResources: {
@@ -11671,6 +13086,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createExamDraftResource: {
@@ -11700,6 +13116,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     reorderExamDraftResources: {
@@ -11724,6 +13141,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     removeExamDraftResource: {
@@ -11750,6 +13168,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     editExamDraftResourceMetadata: {
@@ -11776,6 +13195,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamDraftResourceContent: {
@@ -11802,6 +13222,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceExamDraftResourceContent: {
@@ -11833,6 +13254,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamDraftStarterWorkspace: {
@@ -11853,6 +13275,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createExamDraftStarterWorkspaceDirectory: {
@@ -11877,6 +13300,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     removeExamDraftStarterWorkspaceEntry: {
@@ -11903,6 +13327,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     moveExamDraftStarterWorkspaceEntry: {
@@ -11929,6 +13354,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createExamDraftStarterWorkspaceFile: {
@@ -11958,6 +13384,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamDraftStarterWorkspaceFileContent: {
@@ -11984,6 +13411,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceExamDraftStarterWorkspaceFileContent: {
@@ -12015,6 +13443,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamManagers: {
@@ -12040,6 +13469,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     addExamManager: {
@@ -12064,6 +13494,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     removeExamManager: {
@@ -12090,6 +13521,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     transferExamOwnership: {
@@ -12114,6 +13546,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamRevisions: {
@@ -12139,6 +13572,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     publishExamRevision: {
@@ -12163,6 +13597,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamRevision: {
@@ -12185,6 +13620,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamSittings: {
@@ -12218,6 +13654,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     scheduleExamSitting: {
@@ -12242,6 +13679,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamSitting: {
@@ -12264,6 +13702,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateExamSittingSchedule: {
@@ -12290,6 +13729,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamAttempts: {
@@ -12319,6 +13759,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamAttempt: {
@@ -12343,6 +13784,66 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listExamAttemptBrowserActivity: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of minimized Browser Activity records to return in this keyset page. */
+                limit?: number;
+                /** @description Opaque versioned keyset cursor; return it unchanged and do not infer Browser location data from it. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BrowserActivityListOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    endExamAttemptByManager: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The Exam Attempt identifier. */
+                exam_attempt_id: components["parameters"]["ExamAttemptID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["EndExamAttemptByManager"];
+        responses: {
+            200: components["responses"]["ExamSubmissionReceiptOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     reallowExamAttempt: {
@@ -12371,6 +13872,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamSubmission: {
@@ -12397,6 +13899,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamSubmissionFileContent: {
@@ -12429,6 +13932,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamSubmissionManifest: {
@@ -12460,6 +13964,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     cancelExamSitting: {
@@ -12486,6 +13991,35 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listExamSittingCandidateStatuses: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of candidate-status rows to return from the live Sitting projection. */
+                limit?: number;
+                /** @description Opaque live-view keyset cursor over ascending candidate User identity. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamSittingCandidateStatusesOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     closeExamSitting: {
@@ -12512,6 +14046,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     stageExamSittingCorrectionResourceContent: {
@@ -12543,6 +14078,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     applyExamSittingCorrection: {
@@ -12569,6 +14105,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     extendExamSitting: {
@@ -12595,6 +14132,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamSittingNoShows: {
@@ -12623,6 +14161,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     pauseExamSitting: {
@@ -12649,6 +14188,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     resumeExamSitting: {
@@ -12675,6 +14215,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getInstitution: {
@@ -12692,6 +14233,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateInstitution: {
@@ -12710,6 +14252,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     issueInstitutionRoleInvitation: {
@@ -13064,6 +14607,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getJob: {
@@ -13084,6 +14628,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listJobAttempts: {
@@ -13109,6 +14654,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     cancelJob: {
@@ -13130,6 +14676,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     retryJob: {
@@ -13151,6 +14698,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listMailDeliveries: {
@@ -13180,6 +14728,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getMailDelivery: {
@@ -13200,6 +14749,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     cancelMailDelivery: {
@@ -13221,6 +14771,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     retryMailDelivery: {
@@ -13242,6 +14793,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     inspectMailKeyState: {
@@ -13258,6 +14810,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getMailMetrics: {
@@ -13274,6 +14827,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     startMailRekey: {
@@ -13291,6 +14845,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getMailRekeyStatus: {
@@ -13311,6 +14866,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     sendControlledTestMail: {
@@ -13329,6 +14885,7 @@ export interface operations {
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     uploadOnboardingImport: {
@@ -13472,6 +15029,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveProgrammeLevel: {
@@ -13493,6 +15051,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateProgrammeLevel: {
@@ -13514,6 +15073,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listClasses: {
@@ -13534,6 +15094,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createClass: {
@@ -13555,6 +15116,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getProgramme: {
@@ -13575,6 +15137,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     archiveProgramme: {
@@ -13596,6 +15159,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateProgramme: {
@@ -13617,6 +15181,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listProgrammeLevels: {
@@ -13642,6 +15207,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createProgrammeLevel: {
@@ -13663,6 +15229,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listRoleBindings: {
@@ -13686,6 +15253,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createRoleBinding: {
@@ -13704,6 +15272,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     endRoleBinding: {
@@ -13725,6 +15294,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listRoles: {
@@ -13741,6 +15311,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createRole: {
@@ -13758,6 +15329,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getRole: {
@@ -13778,6 +15350,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     deleteRole: {
@@ -13799,6 +15372,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateRole: {
@@ -13820,6 +15394,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     dryRunStudentProgression: {
@@ -13954,6 +15529,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamIntegrityFlags: {
@@ -13979,6 +15555,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listExamIntegrityEvidence: {
@@ -14006,6 +15583,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getExamIntegrityReview: {
@@ -14026,6 +15604,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateExamIntegrityReview: {
@@ -14050,6 +15629,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     saveExamIntegrityDecision: {
@@ -14076,6 +15656,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     finalizeExamIntegrityReview: {
@@ -14100,6 +15681,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     releaseStudentExamResult: {
@@ -14124,6 +15706,31 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    pingSystem: {
+        parameters: {
+            query: {
+                /** @description Canonical semantic release declared by Proctor Desktop, without a leading v. */
+                desktop_release: string;
+                /** @description Canonical signed-build identity declared by Proctor Desktop. */
+                desktop_build_id: string;
+                /** @description Bounded target selector. Initially recognized targets use darwin, win32, or linux; another syntactically valid value receives unsupported_target. */
+                platform: string;
+                /** @description Bounded target selector. Initially recognized architectures use arm64 or x64; another syntactically valid value receives unsupported_target. */
+                architecture: string;
+                /** @description Positive realtime protocol version declared by Proctor Desktop. */
+                realtime_protocol: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["SystemPingOK"];
+            400: components["responses"]["BadRequest"];
         };
     };
     getSystemVersion: {
@@ -14163,6 +15770,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getCurrentUserProfile: {
@@ -14180,6 +15788,81 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getCurrentUserContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CurrentUserContextOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listDesktopRegistrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DesktopRegistrationListOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    revokeDesktopRegistration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Exact Desktop Registration identity from the current User's private registration list. */
+                desktop_registration_id: components["parameters"]["DesktopRegistrationID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: components["responses"]["SensitiveNoContent"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCandidateExamActivity: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of self-scoped Exam activity rows to return in this keyset page. */
+                limit?: number;
+                /** @description Opaque live-view keyset cursor. Restart from the first page after invalidation. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CandidateExamActivityOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getMFAStatus: {
@@ -14311,6 +15994,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     revokeCurrentUserSession: {
@@ -14328,6 +16012,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     revokeAllCurrentUserSessions: {
@@ -14344,6 +16029,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getCurrentUserSettings: {
@@ -14359,6 +16045,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceCurrentUserSettings: {
@@ -14379,6 +16066,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listPersonalAccessTokens: {
@@ -14394,6 +16082,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createPersonalAccessToken: {
@@ -14412,6 +16101,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     revokePersonalAccessToken: {
@@ -14432,6 +16122,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     disablePersonalAccessToken: {
@@ -14452,6 +16143,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     enablePersonalAccessToken: {
@@ -14473,6 +16165,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getUserProfile: {
@@ -14493,6 +16186,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateUserProfile: {
@@ -14514,6 +16208,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAffiliations: {
@@ -14534,6 +16229,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     createAffiliation: {
@@ -14555,6 +16251,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     disableUser: {
@@ -14576,6 +16273,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     changeUserEmail: {
@@ -14641,6 +16339,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getUserProfilePicture: {
@@ -14674,6 +16373,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     uploadUserProfilePicture: {
@@ -14705,6 +16405,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     removeUserProfilePicture: {
@@ -14729,6 +16430,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listUserSessions: {
@@ -14752,6 +16454,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     revokeUserSessions: {
@@ -14772,6 +16475,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     revokeUserSession: {
@@ -14794,6 +16498,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     connectWebSocket: {

@@ -66,15 +66,17 @@ type academicUnitMemberService struct {
 	authorization academicUnitMemberAuthorizer
 	audit         mutationAuditor
 	mail          relationshipTransitionMailPreparer
+	effects       authorizationInvalidationEffects
 	now           func() time.Time
 	newID         func() string
 }
 
 func newAcademicUnitMemberService(persistence academicUnitMemberStore, users academicUnitMemberUserStore,
 	authorization academicUnitMemberAuthorizer, audit mutationAuditor, mail relationshipTransitionMailPreparer,
-	now func() time.Time, newID func() string,
+	effects authorizationInvalidationEffects, now func() time.Time, newID func() string,
 ) *academicUnitMemberService {
-	return &academicUnitMemberService{store: persistence, users: users, authorization: authorization, audit: audit, mail: mail, now: now, newID: newID}
+	return &academicUnitMemberService{store: persistence, users: users, authorization: authorization, audit: audit,
+		mail: mail, effects: effects, now: now, newID: newID}
 }
 
 func (a *App) ListAcademicUnitMembers(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error) {
@@ -153,7 +155,8 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 	bindOnboardingImportCommand(idempotency, command.onboardingImportID, command.onboardingImportRowNumber)
 	bindAcademicAdministrationAuthorization(idempotency, command.batchAuthorization)
 	bindAcademicAdministrationBatch(idempotency, command.batchMetadata)
-	return runAuditedMutation(
+	changed := false
+	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -168,6 +171,7 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 			input := &store.AcademicUnitMemberCreation{Member: candidate, ExpectedRecipientRevision: recipient.Revision,
 				Notice: notice, AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency}
 			value, storeErr := s.store.Create(ctx, input)
+			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -175,6 +179,10 @@ func (s *academicUnitMemberService) Create(ctx context.Context, invocation Invoc
 		},
 		academicUnitMemberError,
 	)
+	if err == nil && changed {
+		s.effects.InvalidateAuthorization(ctx, userID.String())
+	}
+	return result, err
 }
 
 func (a *App) EndAcademicUnitMember(ctx context.Context, invocation Invocation, command EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error) {
@@ -228,7 +236,8 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 			return nil, NewError("mail.unavailable").Wrap(err)
 		}
 	}
-	return runAuditedMutation(
+	changed := false
+	result, err := runAuditedMutation(
 		ctx,
 		s.audit,
 		mutationAttempt{
@@ -246,6 +255,7 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
 			}
 			value, storeErr := s.store.EndWithAudit(ctx, input)
+			changed = storeErr == nil && !input.Replayed && !input.NoOp
 			if command.batchReplayed != nil {
 				*command.batchReplayed = input.Replayed || input.NoOp
 			}
@@ -253,6 +263,10 @@ func (s *academicUnitMemberService) End(ctx context.Context, invocation Invocati
 		},
 		academicUnitMemberError,
 	)
+	if err == nil && changed {
+		s.effects.InvalidateAuthorization(ctx, current.UserID.String())
+	}
+	return result, err
 }
 
 func concealMembershipAuthorizationError(err error, resource string) error {

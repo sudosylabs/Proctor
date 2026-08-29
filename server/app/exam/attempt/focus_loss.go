@@ -31,6 +31,7 @@ type FocusLossCommand struct {
 // exact duplicate; Duplicate suppresses post-commit effects, not the replayed
 // acknowledgement.
 type FocusLossEvaluation struct {
+	ExamID                      model.ExamID
 	SittingID                   model.ExamSittingID
 	CandidateUserID             model.UserID
 	SubmissionID                model.SubmissionID
@@ -103,7 +104,8 @@ func (service *Service) EvaluateFocusLoss(ctx context.Context, call Call, comman
 	if err != nil {
 		return FocusLossEvaluation{}, err
 	}
-	if !result.Duplicate && (result.ManagerNotificationRequired || result.CandidateWarningCreated || result.SuspensionCreated) {
+	if !result.Duplicate && (result.GapDetected || result.FlagCreated || result.ManagerNotificationRequired ||
+		result.CandidateWarningCreated || result.SuspensionCreated) {
 		if effectErr := service.deps.Effects.FocusLossEvaluated(ctx, result); effectErr != nil {
 			service.deps.EffectFailures.Report(ctx, "exam_attempt_focus_loss_evaluated", effectErr)
 		}
@@ -155,7 +157,7 @@ func (service *Service) evaluateEndedFocusLoss(ctx context.Context, call Call, c
 		(stored.Discrepancy.ID != discrepancyID || stored.Discrepancy.SignalID != signalID)) {
 		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent late Focus Loss outcome"))
 	}
-	result := FocusLossEvaluation{SittingID: target.SittingID, CandidateUserID: target.CandidateUserID,
+	result := FocusLossEvaluation{ExamID: target.ExamID, SittingID: target.SittingID, CandidateUserID: target.CandidateUserID,
 		SubmissionID: target.SubmissionID, AttemptID: target.AttemptID, ParticipationID: target.ParticipationID,
 		DiscrepancyID: stored.Discrepancy.ID, Generation: target.Generation,
 		AcceptedSequence: stored.Discrepancy.Sequence, ReceivedAt: stored.Discrepancy.ReceivedAt,
@@ -209,7 +211,7 @@ func projectFocusLoss(stored *store.ExamAttemptFocusLossResult, target *store.Ex
 	if !validFocusLossEnforcement(stored, access) {
 		return FocusLossEvaluation{}, unavailable(errors.New("inconsistent Focus Loss enforcement outcome"))
 	}
-	result := FocusLossEvaluation{SittingID: stored.SittingID, CandidateUserID: stored.CandidateUserID,
+	result := FocusLossEvaluation{ExamID: stored.ExamID, SittingID: stored.SittingID, CandidateUserID: stored.CandidateUserID,
 		AttemptID: stored.AttemptID, ParticipationID: stored.ParticipationID, Generation: stored.Generation,
 		AcceptedSequence: stored.AcceptedSequence, ReceivedAt: stored.DatabaseTime, Duplicate: stored.Duplicate,
 		GapDetected: stored.MissingBefore > 0, PolicyDisabled: !stored.CollectionEnabled, Qualified: stored.Qualified,

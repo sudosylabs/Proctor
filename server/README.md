@@ -129,6 +129,15 @@ representations. There is intentionally no upgrade path from those development
 schemas: existing development databases must be discarded and recreated. Back
 up any data you need before resetting a database.
 
+Baseline changes never invent compatibility records or lifecycle facts. In
+particular, the server must not fabricate Attempt Participation, Session
+binding or assurance, Attempt Configuration, Submission, or terminal
+provenance merely to make retained development data fit a newer pre-release
+model. Preserving a non-empty development database is unsupported unless a
+separately reviewed read-only preflight can prove that every retained record is
+truthfully representable; any reported conflict requires explicit operator
+remediation through legitimate lifecycle operations before enforcement.
+
 The checked-in Docker PostgreSQL service stores its database on a temporary
 filesystem. Recreate it and run the PostgreSQL integration suite with:
 
@@ -150,13 +159,18 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 
 - `GET /health/live`
 - `GET /health/ready`
+- `GET /api/v1/system/ping` (public request-specific Desktop compatibility;
+  always `no-store`)
 - `GET /api/v1/system/version`
 - `GET /api/v1/bootstrap` (public boolean installation status)
 - `POST /api/v1/bootstrap` (public only until the atomic bootstrap succeeds)
-- `GET /api/v1/discovery` (public safe access and desktop compatibility)
+- `GET /api/v1/discovery` (public origin, Institution, access capabilities,
+  providers, and Desktop Authorization protocol discovery)
 - `GET /api/v1/access-policy` (authorized policy and bounded history)
 - `POST /api/v1/access-policy/preflight` and `PUT /api/v1/access-policy`
   (strong recent Session; replacement also requires `Idempotency-Key`)
+- `GET` and `PUT /api/v1/desktop-compatibility-policy` (authorized read;
+  strong recent system-administrator Session and `Idempotency-Key` for replace)
 - `POST /api/v1/auth/register` (policy-fenced public local registration used by
   the hosted `/register` page)
 - `POST /api/v1/auth/login`
@@ -183,6 +197,12 @@ The default listener is `127.0.0.1:8065`. Available endpoints are:
 - `GET /api/v1/users/me/sessions`
 - `POST /api/v1/users/me/sessions/revoke`
 - `POST /api/v1/users/me/sessions/revoke-all`
+- `GET /api/v1/users/me/desktop-registrations` and
+  `DELETE /api/v1/users/me/desktop-registrations/{desktop_registration_id}`
+  (private device/build projection; revocation requires a strong recent
+  Session and revokes every bound Desktop Session)
+- `GET /api/v1/users/me/exam-activity` (candidate-safe no-store navigation
+  registry; Personal Access Tokens are not accepted)
 - `GET /api/v1/users/me/mfa`
 - `POST /api/v1/users/me/mfa/setup` (recent session; returns the TOTP secret
   once)
@@ -238,7 +258,8 @@ Bootstrap is explicit: normal account creation never promotes a â€œfirst user.â€
 The successful transaction creates the institution, unverified administrator
 and password credential, initial User Settings and profile-picture Job,
 protected system-administrator role and institution binding, conservative
-Access Policy revision 1, installation marker, and audit event together. A
+Access Policy revision 1, non-narrowing Desktop Compatibility Policy revision
+1, installation marker, and audit event together. A
 PostgreSQL advisory lock plus secret digest and command fingerprint make exact
 replay safe and conflicting concurrent attempts fail without partial state.
 The status response exposes only `initialized`, and bootstrap creates no
@@ -287,8 +308,14 @@ HTTPS public URL.
 Desktop authentication does not use the JSON login operation or those browser
 cookies. The native client starts the system-browser authorization protocol at
 `POST /api/v1/auth/desktop/authorizations` and exchanges its short-lived,
-one-use code at `POST /api/v1/auth/desktop/token` for an ordinary rotating
-Desktop Session. The packaged runtime implements the hosted
+one-use code at `POST /api/v1/auth/desktop/token`. Start and exchange bind the
+same caller-generated ES256 P-256 public key, and exchange atomically creates
+or refreshes its Desktop Registration before issuing a rotating Desktop
+Session. Desktop credentials use the `DPoP` authorization scheme: every access
+and refresh request requires a nonce-bound proof by the registered key, and
+shared replay state rejects accepted proof reuse across nodes. A revoked
+Registration and its Sessions cannot be restored by reusing that key. The
+packaged runtime implements the hosted
 `/authorize/desktop` confirmation page; the Desktop UI remains separate client
 work.
 
@@ -724,6 +751,11 @@ data.
 ```sh
 make -C server check
 ```
+
+Verification evidence belongs to CI and release artifacts for the exact source
+commit being built. Generated OpenAPI remains tracked, but raw test logs,
+screenshots, and manually copied status matrices are not maintained as a second
+repository authority.
 
 `check` includes the production import-boundary gate. Run that gate alone with:
 

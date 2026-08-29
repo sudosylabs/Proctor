@@ -11,12 +11,17 @@ package httpapi
 
 import (
 	"context"
-	application "github.com/sudosylabs/proctor/server/app"
 	"net/http"
+	"strings"
 	"time"
 
+	application "github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
 )
+
+type dpopAuthenticator interface {
+	AuthenticateDPoP(context.Context, string, string, string, string) (*model.Principal, error)
+}
 
 func (a *API) newHandlerWithErrorPolicy(
 	handler http.Handler,
@@ -83,7 +88,19 @@ func requireAuthentication(
 			}
 			var principal *model.Principal
 			var authErr error
-			if requirement == AuthPrincipalRequired &&
+			if credential.source == credentialSourceDPoP {
+				dpop, ok := application.(dpopAuthenticator)
+				if !ok {
+					authErr = applicationError("authentication.dpop.unavailable")
+				} else {
+					proof, proofErr := requestDPoPProof(request)
+					if proofErr != nil {
+						authErr = proofErr
+					} else {
+						principal, authErr = dpop.AuthenticateDPoP(request.Context(), credential.token, proof, request.Method, request.URL.EscapedPath())
+					}
+				}
+			} else if requirement == AuthPrincipalRequired &&
 				credential.source == credentialSourceBearer {
 				principal, authErr = application.AuthenticateBearer(
 					request.Context(),
@@ -99,7 +116,11 @@ func requireAuthentication(
 				if credential.source == credentialSourceCookie {
 					cookies.clear(writer)
 				}
-				writeRouteApplicationError(writer, request, logger, errorPolicy, authErr)
+				if credential.source == credentialSourceDPoP {
+					writeDPoPApplicationError(writer, request, logger, errorPolicy, authErr)
+				} else {
+					writeRouteApplicationError(writer, request, logger, errorPolicy, authErr)
+				}
 				return
 			}
 			if appErr := requirePrincipalAssurance(
@@ -125,6 +146,31 @@ func requireAuthentication(
 			WriteProblem(writer, internalProblem(request))
 		})
 	}
+}
+
+func requestDPoPProof(request *http.Request) (string, error) {
+	values := request.Header.Values("DPoP")
+	if len(values) == 0 {
+		return "", nil
+	}
+	if len(values) != 1 || strings.TrimSpace(values[0]) != values[0] || values[0] == "" || strings.ContainsAny(values[0], " \t\r\n,") {
+		return "", applicationError("authentication.dpop.invalid")
+	}
+	return values[0], nil
+}
+
+func writeDPoPApplicationError(writer http.ResponseWriter, request *http.Request, logger Logger, policy routeErrorPolicy, err error) {
+	if nonce, ok := application.DPoPChallengeNonce(err); ok {
+		writer.Header().Set("DPoP-Nonce", nonce)
+		writer.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+	} else {
+		writer.Header().Set("WWW-Authenticate", `DPoP error="invalid_dpop_proof"`)
+	}
+	writeRouteApplicationError(writer, request, logger, policy, err)
+}
+
+func applicationError(code string) error {
+	return application.NewError(code)
 }
 
 func requirePrincipalAssurance(

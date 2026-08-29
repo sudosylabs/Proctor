@@ -564,7 +564,11 @@ func (row focusLossAccessRow) enforcementDomain() (*model.ExamAttempt, *model.At
 	if err != nil {
 		return nil, nil, nil, invalidPersistedState("attempt_participation", "id", err)
 	}
-	participation := &model.AttemptParticipation{ID: participationID, AttemptID: attemptID,
+	sessionID, err := model.ParseSessionID(row.ConnectionSessionID)
+	if err != nil {
+		return nil, nil, nil, invalidPersistedState("attempt_connection", "session_id", err)
+	}
+	participation := &model.AttemptParticipation{ID: participationID, AttemptID: attemptID, SessionID: sessionID,
 		State: model.AttemptParticipationState(row.ParticipationState), Generation: row.Generation, RenewalSequence: row.RenewalSequence,
 		ContinuityCredentialHash: row.CredentialHash, StartedAt: model.TimeUTC(row.ParticipationStartedAt),
 		UpdatedAt: model.TimeUTC(row.ParticipationUpdatedAt), LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt),
@@ -575,10 +579,6 @@ func (row focusLossAccessRow) enforcementDomain() (*model.ExamAttempt, *model.At
 	connectionID, err := model.ParseAttemptConnectionID(row.ConnectionID)
 	if err != nil {
 		return nil, nil, nil, invalidPersistedState("attempt_connection", "id", err)
-	}
-	sessionID, err := model.ParseSessionID(row.ConnectionSessionID)
-	if err != nil {
-		return nil, nil, nil, invalidPersistedState("attempt_connection", "session_id", err)
 	}
 	connection := &model.AttemptConnection{ID: connectionID, AttemptID: attemptID, ParticipationID: participationID,
 		SessionID: sessionID, State: model.AttemptConnectionState(row.ConnectionState), OpenedAt: model.TimeUTC(row.ConnectionOpenedAt),
@@ -739,7 +739,11 @@ func loadFocusLossSuspensionResult(ctx context.Context, tx *sqlxTxWrapper, acces
 	if err = attempt.Validate(); err != nil {
 		return invalidPersistedState("exam_attempt", "value", err)
 	}
-	domainParticipation := &model.AttemptParticipation{ID: result.ParticipationID, AttemptID: result.AttemptID,
+	sessionID, err := model.ParseSessionID(access.ConnectionSessionID)
+	if err != nil {
+		return invalidPersistedState("attempt_connection", "session_id", err)
+	}
+	domainParticipation := &model.AttemptParticipation{ID: result.ParticipationID, AttemptID: result.AttemptID, SessionID: sessionID,
 		State: model.AttemptParticipationState(row.ParticipationState), Generation: result.Generation, RenewalSequence: row.RenewalSequence,
 		ContinuityCredentialHash: access.CredentialHash, StartedAt: model.TimeUTC(row.StartedAt), UpdatedAt: model.TimeUTC(row.ParticipationAt),
 		LeaseExpiresAt: model.TimeUTC(row.LeaseExpiresAt), EndedAt: OptionalTimeFromNullTime(row.EndedAt),
@@ -754,10 +758,6 @@ func loadFocusLossSuspensionResult(ctx context.Context, tx *sqlxTxWrapper, acces
 	connectionID, err := model.ParseAttemptConnectionID(access.ConnectionID)
 	if err != nil {
 		return invalidPersistedState("attempt_connection", "id", err)
-	}
-	sessionID, err := model.ParseSessionID(access.ConnectionSessionID)
-	if err != nil {
-		return invalidPersistedState("attempt_connection", "session_id", err)
 	}
 	domainConnection := &model.AttemptConnection{ID: connectionID, AttemptID: result.AttemptID, ParticipationID: result.ParticipationID,
 		SessionID: sessionID, State: model.AttemptConnectionState(row.ConnectionState), OpenedAt: model.TimeUTC(row.ConnectionOpenedAt),

@@ -575,7 +575,7 @@ CREATE TABLE mail_occurrences (
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
-        'exam.submission_received', 'exam.submission_automatically_sealed',
+        'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
         'exam.result_released'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
@@ -621,7 +621,7 @@ CREATE TABLE mail_deliveries (
         'exam.sitting_cancelled', 'exam.sitting_assignment_removed',
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
-        'exam.submission_received', 'exam.submission_automatically_sealed',
+        'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
         'exam.result_released'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
@@ -851,6 +851,7 @@ CREATE TABLE exam_drafts (
     instructions_markdown text NOT NULL DEFAULT '',
     policy jsonb NOT NULL,
     execution_profile jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false,"image":"","network":"none"}'::jsonb,
+    browser_policy jsonb NOT NULL DEFAULT '{"schema_version":1,"enabled":false}'::jsonb,
     base_revision_id varchar(26),
     updated_at timestamptz NOT NULL,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
@@ -858,7 +859,8 @@ CREATE TABLE exam_drafts (
     CONSTRAINT exam_drafts_instructions_markdown_check
         CHECK (octet_length(instructions_markdown) <= 65536),
     CONSTRAINT exam_drafts_policy_size_check CHECK (octet_length(policy::text) <= 65536),
-    CONSTRAINT exam_drafts_execution_profile_size_check CHECK (octet_length(execution_profile::text) <= 1024)
+    CONSTRAINT exam_drafts_execution_profile_size_check CHECK (octet_length(execution_profile::text) <= 1024),
+    CONSTRAINT exam_drafts_browser_policy_size_check CHECK (octet_length(browser_policy::text) <= 65536)
 );
 
 CREATE INDEX exam_drafts_title_search_idx
@@ -1040,6 +1042,12 @@ CREATE TABLE exam_revisions (
     execution_profile_document jsonb NOT NULL,
     execution_profile_canonical bytea NOT NULL CHECK (octet_length(execution_profile_canonical) BETWEEN 1 AND 1024),
     execution_profile_digest char(64) NOT NULL CHECK (execution_profile_digest ~ '^[0-9a-f]{64}$'),
+    browser_policy_document jsonb NOT NULL CHECK (octet_length(browser_policy_document::text) <= 65536),
+    browser_policy_canonical bytea NOT NULL CHECK (octet_length(browser_policy_canonical) BETWEEN 1 AND 32768),
+    browser_policy_digest char(64) NOT NULL CHECK (browser_policy_digest ~ '^[0-9a-f]{64}$'),
+    candidate_correction_summary text,
+    candidate_correction_changed_areas text[],
+    candidate_correction_acknowledgement_required boolean,
     starter_workspace_digest char(64) NOT NULL CHECK (starter_workspace_digest ~ '^[0-9a-f]{64}$'),
     content_digest char(64) NOT NULL CHECK (content_digest ~ '^[0-9a-f]{64}$'),
     exam_resource_max_count integer NOT NULL DEFAULT 10 CHECK (exam_resource_max_count BETWEEN 1 AND 100),
@@ -1062,7 +1070,18 @@ CREATE TABLE exam_revisions (
     UNIQUE (exam_id, number),
     CONSTRAINT exam_revisions_base_revision_fkey
         FOREIGN KEY (exam_id, base_revision_id) REFERENCES exam_revisions(exam_id, id),
-    CONSTRAINT exam_revisions_base_not_self_check CHECK (base_revision_id IS NULL OR base_revision_id <> id)
+    CONSTRAINT exam_revisions_base_not_self_check CHECK (base_revision_id IS NULL OR base_revision_id <> id),
+    CONSTRAINT exam_revisions_candidate_correction_check CHECK (
+        (publication_kind = 'standard' AND candidate_correction_summary IS NULL AND
+            candidate_correction_changed_areas IS NULL AND candidate_correction_acknowledgement_required IS NULL) OR
+        (publication_kind = 'live_correction' AND base_revision_id IS NOT NULL AND
+            candidate_correction_summary = btrim(candidate_correction_summary) AND
+            char_length(candidate_correction_summary) BETWEEN 1 AND 500 AND
+            octet_length(candidate_correction_summary) <= 2000 AND
+            cardinality(candidate_correction_changed_areas) BETWEEN 1 AND 3 AND
+            candidate_correction_changed_areas <@ ARRAY['instructions','resources','browser_policy']::text[] AND
+            candidate_correction_acknowledgement_required IS NOT NULL)
+    )
 );
 
 CREATE INDEX exam_revisions_exam_id_number_idx ON exam_revisions (exam_id, number DESC);
@@ -1489,6 +1508,40 @@ ALTER TABLE invitations
     ADD CONSTRAINT invitations_accepted_role_binding_id_fkey
     FOREIGN KEY (accepted_role_binding_id) REFERENCES role_bindings(id);
 
+CREATE TABLE desktop_registrations (
+    id varchar(26) PRIMARY KEY,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    user_id varchar(26) NOT NULL REFERENCES users(id),
+    institution_id varchar(26) NOT NULL REFERENCES institutions(id),
+    public_jwk jsonb NOT NULL,
+    key_thumbprint varchar(43) NOT NULL,
+    display_name varchar(512) NOT NULL DEFAULT '',
+    desktop_release varchar(64) NOT NULL,
+    desktop_build_id varchar(128) NOT NULL,
+    platform varchar(32) NOT NULL CHECK (platform IN ('darwin', 'win32', 'linux')),
+    architecture varchar(32) NOT NULL CHECK (architecture IN ('arm64', 'x64')),
+    realtime_protocol integer NOT NULL CHECK (realtime_protocol > 0),
+    last_used_at timestamptz NOT NULL,
+    revoked_at timestamptz,
+    UNIQUE (id, user_id),
+    UNIQUE (user_id, institution_id, key_thumbprint),
+    CONSTRAINT desktop_registrations_lifecycle_check CHECK (
+        updated_at >= created_at AND last_used_at BETWEEN created_at AND updated_at AND
+        (revoked_at IS NULL OR revoked_at BETWEEN created_at AND updated_at)
+    ),
+    CONSTRAINT desktop_registrations_jwk_check CHECK (
+        jsonb_typeof(public_jwk) = 'object' AND
+        public_jwk - 'kty' - 'crv' - 'x' - 'y' = '{}'::jsonb AND
+        public_jwk->>'kty' = 'EC' AND public_jwk->>'crv' = 'P-256' AND
+        public_jwk->>'x' ~ '^[A-Za-z0-9_-]{43}$' AND public_jwk->>'y' ~ '^[A-Za-z0-9_-]{43}$' AND
+        key_thumbprint ~ '^[A-Za-z0-9_-]{43}$'
+    )
+);
+
+CREATE INDEX desktop_registrations_user_last_used_idx
+    ON desktop_registrations (user_id, last_used_at DESC, id);
+
 CREATE TABLE sessions (
     id varchar(26) PRIMARY KEY,
     created_at timestamptz NOT NULL,
@@ -1496,6 +1549,13 @@ CREATE TABLE sessions (
     archived_at timestamptz,
     user_id varchar(26) NOT NULL REFERENCES users(id),
     client_type varchar(16) NOT NULL CHECK (client_type IN ('desktop', 'cli', 'web')),
+    desktop_registration_id varchar(26),
+    dpop_key_thumbprint varchar(43),
+    desktop_release varchar(64),
+    desktop_build_id varchar(128),
+    desktop_platform varchar(32),
+    desktop_architecture varchar(32),
+    desktop_realtime_protocol integer,
     device_id varchar(128) NOT NULL DEFAULT '',
 	device_name varchar(512) NOT NULL DEFAULT '',
 	authentication_method varchar(64) NOT NULL,
@@ -1516,11 +1576,23 @@ CREATE TABLE sessions (
 		(revoked_at IS NULL AND revocation_reason = '') OR
 		(revoked_at IS NOT NULL AND revocation_reason IN (
 			'access_policy_changed', 'account_disabled', 'administrator_all_sessions',
-			'administrator_session', 'authentication_audit_failed', 'external_identity_unlinked',
+			'administrator_session', 'authentication_audit_failed', 'desktop_authorization_failed', 'external_identity_unlinked',
 			'inactive_user', 'password_removed', 'password_reset', 'refresh_replay',
-			'user_all_sessions', 'user_logout', 'user_session'
+			'user_all_sessions', 'user_logout', 'user_session', 'desktop_registration_revoked',
+			'exam_attempt_session_lock', 'expired'
 		))
 	),
+    CONSTRAINT sessions_desktop_registration_fkey
+        FOREIGN KEY (desktop_registration_id, user_id) REFERENCES desktop_registrations(id, user_id),
+    CONSTRAINT sessions_desktop_binding_check CHECK (
+        (client_type = 'desktop' AND desktop_registration_id IS NOT NULL AND
+         dpop_key_thumbprint ~ '^[A-Za-z0-9_-]{43}$' AND desktop_release IS NOT NULL AND
+         desktop_build_id IS NOT NULL AND desktop_platform IN ('darwin', 'win32', 'linux') AND
+         desktop_architecture IN ('arm64', 'x64') AND desktop_realtime_protocol > 0) OR
+        (client_type <> 'desktop' AND desktop_registration_id IS NULL AND dpop_key_thumbprint IS NULL AND
+         desktop_release IS NULL AND desktop_build_id IS NULL AND desktop_platform IS NULL AND
+         desktop_architecture IS NULL AND desktop_realtime_protocol IS NULL)
+    ),
 	CONSTRAINT sessions_authentication_identity_check CHECK (
 		(authentication_provider_id = '' AND external_identity_id IS NULL) OR
 		(authentication_provider_id <> '' AND external_identity_id IS NOT NULL)
@@ -1545,22 +1617,39 @@ CREATE TABLE exam_attempts (
     exam_sitting_id varchar(26) NOT NULL,
     candidate_user_id varchar(26) NOT NULL REFERENCES users(id),
     admission_revision_id varchar(26) NOT NULL,
-    state varchar(16) NOT NULL CHECK (state IN ('active', 'suspended', 'submitted')),
+    attempt_configuration_canonical bytea NOT NULL,
+    attempt_configuration_digest varchar(71) NOT NULL,
+    initial_desktop_release varchar(64) NOT NULL,
+    initial_desktop_build_id varchar(128) NOT NULL,
+    initial_desktop_platform varchar(32) NOT NULL,
+    initial_desktop_architecture varchar(32) NOT NULL,
+    state varchar(16) NOT NULL CHECK (state IN ('ready', 'active', 'suspended', 'submitted')),
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     submitted_at timestamptz,
     revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     UNIQUE (exam_sitting_id, candidate_user_id),
     UNIQUE (exam_sitting_id, id),
+    UNIQUE (id, exam_id, exam_sitting_id),
     UNIQUE (id, admission_revision_id),
     UNIQUE (id, exam_id, admission_revision_id),
     CONSTRAINT exam_attempts_sitting_fkey
         FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id),
     CONSTRAINT exam_attempts_admission_revision_fkey
         FOREIGN KEY (exam_id, admission_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_attempts_configuration_check CHECK (
+        octet_length(attempt_configuration_canonical) BETWEEN 1 AND 16384 AND
+        attempt_configuration_digest ~ '^sha256:[0-9a-f]{64}$'
+    ),
+    CONSTRAINT exam_attempts_initial_desktop_check CHECK (
+        initial_desktop_release ~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$' AND
+        initial_desktop_build_id ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' AND
+        initial_desktop_platform IN ('darwin', 'win32', 'linux') AND
+        initial_desktop_architecture IN ('arm64', 'x64')
+    ),
     CONSTRAINT exam_attempts_lifecycle_check CHECK (
         updated_at >= created_at AND
-        ((state IN ('active', 'suspended') AND submitted_at IS NULL) OR
+        ((state IN ('ready', 'active', 'suspended') AND submitted_at IS NULL) OR
          (state = 'submitted' AND submitted_at BETWEEN created_at AND updated_at))
     )
 );
@@ -1569,11 +1658,14 @@ CREATE INDEX exam_attempts_sitting_state_created_id_idx
     ON exam_attempts (exam_sitting_id, state, created_at DESC, id DESC);
 CREATE INDEX exam_attempts_sitting_unfinished_id_idx
     ON exam_attempts (exam_sitting_id, id)
-    WHERE state IN ('active', 'suspended');
+    WHERE state IN ('ready', 'active', 'suspended');
 CREATE INDEX exam_attempts_sitting_created_id_idx
     ON exam_attempts (exam_sitting_id, created_at DESC, id DESC);
 CREATE INDEX exam_attempts_candidate_created_id_idx
     ON exam_attempts (candidate_user_id, created_at DESC, id DESC);
+CREATE UNIQUE INDEX exam_attempts_one_unresolved_candidate_key
+    ON exam_attempts (candidate_user_id)
+    WHERE state IN ('ready', 'active', 'suspended');
 
 -- An Execution Grant records only authoritative placement and cleanup state.
 -- Live host readiness and capacity are deliberately not indexed in PostgreSQL.
@@ -1747,6 +1839,7 @@ CREATE INDEX exam_attempt_workspace_journal_entry_cursor_idx
 CREATE TABLE exam_attempt_participations (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    session_id varchar(26) NOT NULL REFERENCES sessions(id),
     state varchar(16) NOT NULL CHECK (state IN ('active', 'ended')),
     generation bigint NOT NULL CHECK (generation > 0),
     renewal_sequence bigint NOT NULL DEFAULT 0 CHECK (renewal_sequence >= 0),
@@ -1757,7 +1850,7 @@ CREATE TABLE exam_attempt_participations (
     lease_expires_at timestamptz NOT NULL,
     ended_at timestamptz,
     end_reason varchar(24) CHECK (end_reason IN (
-        'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'sitting_closed'
+        'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'manager_ended', 'sitting_closed'
     )),
     UNIQUE (exam_attempt_id, generation),
     UNIQUE (id, exam_attempt_id),
@@ -1777,6 +1870,9 @@ CREATE UNIQUE INDEX exam_attempt_participations_one_active_key
 CREATE INDEX exam_attempt_participations_expiry_idx
     ON exam_attempt_participations (lease_expires_at, id)
     WHERE state = 'active';
+CREATE INDEX exam_attempt_participations_session_active_idx
+    ON exam_attempt_participations (session_id, exam_attempt_id)
+    WHERE state = 'active';
 
 CREATE TABLE exam_attempt_connections (
     id varchar(26) PRIMARY KEY,
@@ -1787,7 +1883,7 @@ CREATE TABLE exam_attempt_connections (
     opened_at timestamptz NOT NULL,
     closed_at timestamptz,
     close_reason varchar(24) CHECK (close_reason IN (
-        'transport_closed', 'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'sitting_closed'
+        'transport_closed', 'interrupted', 'lease_expired', 'policy_suspended', 'kicked', 'submitted', 'manager_ended', 'sitting_closed'
     )),
     UNIQUE (id, exam_attempt_id, participation_id),
     CONSTRAINT exam_attempt_connections_participation_fkey
@@ -1805,6 +1901,104 @@ CREATE UNIQUE INDEX exam_attempt_connections_one_open_participation_key
     ON exam_attempt_connections (participation_id) WHERE state = 'open';
 CREATE INDEX exam_attempt_connections_attempt_opened_id_idx
     ON exam_attempt_connections (exam_attempt_id, opened_at DESC, id DESC);
+
+-- Browser Activity is a privacy-minimized, Attempt-owned record family. A
+-- UUIDv4 source is generated by the privileged Desktop collector but gains no
+-- authority from its identifier; every append is fenced by Participation,
+-- Session, Connection, generation, and continuity credential.
+CREATE TABLE browser_activity_sources (
+    id uuid PRIMARY KEY,
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    session_id varchar(26) NOT NULL REFERENCES sessions(id),
+    connection_id varchar(26) NOT NULL,
+    predecessor_id uuid REFERENCES browser_activity_sources(id),
+    reset_reason varchar(24) CHECK (reset_reason IN ('coordinator_restarted','spool_unavailable','source_corrupt')),
+    state varchar(12) NOT NULL CHECK (state IN ('current','closed','gapped')),
+    highest_contiguous bigint NOT NULL DEFAULT 0 CHECK (highest_contiguous >= 0),
+    highest_seen bigint NOT NULL DEFAULT 0 CHECK (highest_seen >= highest_contiguous),
+    started_at timestamptz NOT NULL,
+    ended_at timestamptz,
+    UNIQUE (id, exam_attempt_id, participation_id),
+    CONSTRAINT browser_activity_sources_attempt_fkey
+        FOREIGN KEY (exam_attempt_id, exam_id, exam_sitting_id)
+        REFERENCES exam_attempts(id, exam_id, exam_sitting_id),
+    CONSTRAINT browser_activity_sources_participation_fkey
+        FOREIGN KEY (participation_id, exam_attempt_id)
+        REFERENCES exam_attempt_participations(id, exam_attempt_id),
+    CONSTRAINT browser_activity_sources_connection_fkey
+        FOREIGN KEY (connection_id, exam_attempt_id, participation_id)
+        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id),
+    CONSTRAINT browser_activity_sources_reset_check CHECK (
+        (predecessor_id IS NULL AND reset_reason IS NULL) OR
+        (predecessor_id IS NOT NULL AND reset_reason IS NOT NULL AND predecessor_id <> id)
+    ),
+    CONSTRAINT browser_activity_sources_lifecycle_check CHECK (
+        (state='current' AND ended_at IS NULL) OR
+        (state IN ('closed','gapped') AND ended_at >= started_at)
+    )
+);
+
+CREATE UNIQUE INDEX browser_activity_sources_one_current_participation_key
+    ON browser_activity_sources (participation_id) WHERE state='current';
+CREATE INDEX browser_activity_sources_attempt_started_id_idx
+    ON browser_activity_sources (exam_attempt_id, started_at, id);
+
+CREATE TABLE browser_activity_events (
+    source_session_id uuid NOT NULL REFERENCES browser_activity_sources(id),
+    sequence bigint NOT NULL CHECK (sequence > 0),
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    exam_attempt_id varchar(26) NOT NULL,
+    participation_id varchar(26) NOT NULL,
+    generation bigint NOT NULL CHECK (generation > 0),
+    policy_revision_id varchar(26) NOT NULL,
+    kind varchar(40) NOT NULL CHECK (kind IN (
+        'browser_opened','browser_closed','top_level_navigation','top_level_redirect','blocked_top_level_navigation'
+    )),
+    client_occurred_at timestamptz NOT NULL,
+    location_scheme varchar(32),
+    location_host text,
+    location_port varchar(5),
+    location_path text,
+    matched_rule_id varchar(64),
+    block_reason varchar(32) CHECK (block_reason IN (
+        'scheme_not_allowed','origin_not_allowed','path_not_allowed','redirect_not_allowed','invalid_url'
+    )),
+    event_fingerprint char(64) NOT NULL CHECK (event_fingerprint ~ '^[0-9a-f]{64}$'),
+    received_at timestamptz NOT NULL,
+    PRIMARY KEY (source_session_id, sequence),
+    CONSTRAINT browser_activity_events_revision_fkey
+        FOREIGN KEY (exam_id, policy_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT browser_activity_events_source_fkey
+        FOREIGN KEY (source_session_id, exam_attempt_id, participation_id)
+        REFERENCES browser_activity_sources(id, exam_attempt_id, participation_id),
+    CONSTRAINT browser_activity_events_location_check CHECK (
+        (kind IN ('browser_opened','browser_closed') AND location_scheme IS NULL AND location_host IS NULL AND
+            location_port IS NULL AND location_path IS NULL AND matched_rule_id IS NULL AND block_reason IS NULL) OR
+        (kind IN ('top_level_navigation','top_level_redirect') AND location_scheme='https' AND location_host IS NOT NULL AND
+            location_path IS NOT NULL AND matched_rule_id IS NOT NULL AND block_reason IS NULL) OR
+        (kind='blocked_top_level_navigation' AND (
+            (block_reason='invalid_url' AND location_scheme='' AND location_host='' AND location_port IS NULL AND
+                location_path='' AND matched_rule_id IS NULL) OR
+            (block_reason='scheme_not_allowed' AND location_scheme ~ '^[a-z][a-z0-9+.-]{0,31}$' AND
+                location_scheme<>'https' AND matched_rule_id IS NULL AND (
+                    (location_scheme='http' AND location_host IS NOT NULL AND location_host<>'' AND
+                        location_path IS NOT NULL AND location_path<>'') OR
+                    (location_scheme<>'http' AND location_host='' AND location_port IS NULL AND location_path='')
+                )) OR
+            (block_reason IN ('origin_not_allowed','path_not_allowed','redirect_not_allowed') AND
+                location_scheme='https' AND location_host IS NOT NULL AND location_host<>'' AND
+                location_path IS NOT NULL AND location_path<>'')
+        ))
+    )
+);
+
+CREATE INDEX browser_activity_events_attempt_received_identity_idx
+    ON browser_activity_events (exam_attempt_id, received_at, source_session_id, sequence);
 
 CREATE FUNCTION guard_exam_attempt_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -1889,7 +2083,7 @@ CREATE FUNCTION guard_attempt_participation_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.id IS DISTINCT FROM OLD.id OR NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR
-       NEW.generation IS DISTINCT FROM OLD.generation OR
+       NEW.session_id IS DISTINCT FROM OLD.session_id OR NEW.generation IS DISTINCT FROM OLD.generation OR
        NEW.continuity_credential_hash IS DISTINCT FROM OLD.continuity_credential_hash OR
        NEW.started_at IS DISTINCT FROM OLD.started_at OR OLD.state = 'ended' OR
        NEW.renewal_sequence < OLD.renewal_sequence OR NEW.updated_at < OLD.updated_at OR
@@ -1917,6 +2111,73 @@ $$;
 CREATE TRIGGER exam_attempt_connections_guard
     BEFORE UPDATE ON exam_attempt_connections FOR EACH ROW
     EXECUTE FUNCTION guard_attempt_connection_mutation();
+
+-- Revoking the Desktop Session bound by the current Participation is itself a
+-- lifecycle fence. Keeping this as a database trigger makes every Session
+-- invalidation path (logout, expiry enforcement, account security, key
+-- revocation, and administrator revocation) atomic with releasing the active
+-- Attempt account lock.
+CREATE FUNCTION fence_active_attempt_on_session_revocation() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    fence_at timestamptz;
+    fenced_attempt_id varchar(26);
+    fenced_participation_id varchar(26);
+    fenced_generation bigint;
+    fenced_attempt_revision bigint;
+BEGIN
+    IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL THEN
+        fence_at := NEW.revoked_at;
+
+		SELECT a.id,p.id,p.generation,a.revision,GREATEST(fence_at,p.started_at,a.updated_at)
+		  INTO fenced_attempt_id,fenced_participation_id,fenced_generation,fenced_attempt_revision,fence_at
+		  FROM exam_attempt_participations p
+		  JOIN exam_attempts a ON a.id=p.exam_attempt_id
+		 WHERE p.session_id=NEW.id AND p.state='active' AND a.state='active'
+		 FOR UPDATE OF a,p;
+
+		IF fenced_attempt_id IS NULL THEN
+			RETURN NEW;
+		END IF;
+
+        UPDATE exam_attempt_connections c
+           SET state='closed', closed_at=GREATEST(fence_at,c.opened_at), close_reason='policy_suspended'
+		 WHERE c.participation_id=fenced_participation_id
+		   AND c.exam_attempt_id=fenced_attempt_id AND c.state='open';
+
+        UPDATE exam_attempt_participations p
+           SET state='ended', updated_at=GREATEST(fence_at,p.updated_at),
+               ended_at=GREATEST(fence_at,p.started_at), end_reason='policy_suspended'
+		 WHERE p.id=fenced_participation_id AND p.state='active';
+
+        UPDATE exam_attempts a
+           SET state='suspended', updated_at=GREATEST(fence_at,a.updated_at), revision=a.revision+1
+		 WHERE a.id=fenced_attempt_id AND a.state='active' AND a.revision=fenced_attempt_revision
+		 RETURNING revision INTO fenced_attempt_revision;
+
+		INSERT INTO integrity_flags (id,exam_attempt_id,generation,policy_kind,state,created_at)
+		VALUES (NEW.id,fenced_attempt_id,fenced_generation,'connection_loss','open',fence_at);
+
+		INSERT INTO integrity_evidence (
+			id,exam_attempt_id,participation_id,integrity_flag_id,generation,policy_kind,observed_at,recorded_at
+		) VALUES (
+			NEW.id,fenced_attempt_id,fenced_participation_id,NEW.id,fenced_generation,'connection_loss',fence_at,fence_at
+		);
+
+		INSERT INTO exam_attempt_suspensions (
+			id,exam_attempt_id,participation_id,integrity_flag_id,generation,suspension_attempt_revision,
+			state,source,candidate_reason,started_at
+		) VALUES (
+			fenced_participation_id,fenced_attempt_id,fenced_participation_id,NEW.id,fenced_generation,
+			fenced_attempt_revision,'active','policy','secure_connectivity_lost',fence_at
+		);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER sessions_fence_active_attempt
+    AFTER UPDATE OF revoked_at ON sessions FOR EACH ROW
+    EXECUTE FUNCTION fence_active_attempt_on_session_revocation();
 
 -- Integrity records are append-preserving facts. A Suspension is the one
 -- mutable enforcement episode: only its active-to-closed re-allow transition
@@ -2133,6 +2394,7 @@ ALTER TABLE exam_attempt_workspace_entries
 CREATE TABLE exam_submissions (
     id varchar(26) PRIMARY KEY,
     exam_attempt_id varchar(26) NOT NULL UNIQUE,
+    exam_revision_id varchar(26) NOT NULL REFERENCES exam_revisions(id),
     workspace_id varchar(26) NOT NULL UNIQUE,
     participation_id varchar(26) NOT NULL,
     generation bigint NOT NULL CHECK (generation > 0),
@@ -2143,8 +2405,15 @@ CREATE TABLE exam_submissions (
     manifest_entry_count integer NOT NULL CHECK (manifest_entry_count BETWEEN 0 AND 5000),
     manifest_total_file_bytes bigint NOT NULL CHECK (manifest_total_file_bytes BETWEEN 0 AND 1073741824),
     final_focus_loss_sequence bigint NOT NULL CHECK (final_focus_loss_sequence >= 0),
+    browser_activity_state varchar(16) NOT NULL CHECK (browser_activity_state IN ('not_applicable','complete','gapped')),
+    browser_activity_source_session_id uuid REFERENCES browser_activity_sources(id),
+    browser_activity_final_sequence bigint CHECK (browser_activity_final_sequence > 0),
+    browser_activity_gap_reason varchar(32) CHECK (browser_activity_gap_reason IN (
+        'spool_overflow','spool_corrupt','spool_key_unavailable','delivery_incomplete','source_not_finalized'
+    )),
     integrity_state varchar(16) NOT NULL CHECK (integrity_state IN ('settled', 'gapped')),
     unresolved_integrity_count bigint NOT NULL CHECK (unresolved_integrity_count >= 0),
+    provenance varchar(32) NOT NULL CHECK (provenance IN ('candidate_submitted', 'manager_ended_attempt', 'sitting_closed')),
     submitted_at timestamptz NOT NULL,
     sealed boolean NOT NULL DEFAULT false,
     UNIQUE (id, workspace_id),
@@ -2160,6 +2429,14 @@ CREATE TABLE exam_submissions (
     CONSTRAINT exam_submissions_integrity_check CHECK (
         (integrity_state = 'settled' AND unresolved_integrity_count = 0) OR
         (integrity_state = 'gapped' AND unresolved_integrity_count > 0)
+    ),
+    CONSTRAINT exam_submissions_browser_activity_check CHECK (
+        (browser_activity_state='not_applicable' AND browser_activity_source_session_id IS NULL AND
+            browser_activity_final_sequence IS NULL AND browser_activity_gap_reason IS NULL) OR
+        (browser_activity_state='complete' AND browser_activity_source_session_id IS NOT NULL AND
+            browser_activity_final_sequence IS NOT NULL AND browser_activity_gap_reason IS NULL) OR
+        (browser_activity_state='gapped' AND browser_activity_source_session_id IS NOT NULL AND
+            browser_activity_gap_reason IS NOT NULL)
     )
 );
 
@@ -2330,13 +2607,23 @@ CREATE TABLE integrity_discrepancies (
     participation_id varchar(26) NOT NULL,
     connection_id varchar(26) NOT NULL,
     generation bigint NOT NULL CHECK (generation > 0),
-    kind varchar(32) NOT NULL CHECK (kind = 'late_focus_loss'),
+    kind varchar(48) NOT NULL CHECK (kind IN (
+        'late_focus_loss', 'focus_loss_gap', 'browser_activity_gap', 'correction_acknowledgement_missing'
+    )),
     schema_version integer NOT NULL CHECK (schema_version = 1),
-    focus_loss_signal_id varchar(26) NOT NULL UNIQUE,
-    sequence bigint NOT NULL CHECK (sequence > 0),
-    duration_milliseconds bigint NOT NULL CHECK (duration_milliseconds BETWEEN 1 AND 86400000),
+    focus_loss_signal_id varchar(26) UNIQUE,
+    sequence bigint CHECK (sequence > 0),
+    duration_milliseconds bigint CHECK (duration_milliseconds BETWEEN 1 AND 86400000),
     source varchar(32) CHECK (source IN ('window_blur', 'document_hidden', 'application_backgrounded', 'fullscreen_exited')),
-    missing_before bigint NOT NULL CHECK (missing_before >= 0),
+    missing_before bigint CHECK (missing_before >= 0),
+    correction_revision_id varchar(26) REFERENCES exam_revisions(id),
+    browser_activity_source_session_id uuid REFERENCES browser_activity_sources(id),
+    final_sequence bigint CHECK (final_sequence > 0),
+    gap_reason varchar(48) CHECK (gap_reason IN (
+        'sequence_gap', 'source_not_finalized', 'sequence_gap_and_source_not_finalized',
+        'spool_overflow', 'spool_corrupt', 'spool_key_unavailable', 'delivery_incomplete', 'prior_source_gap'
+    )),
+    unresolved_count bigint CHECK (unresolved_count > 0),
     received_at timestamptz NOT NULL,
     UNIQUE (id, submission_id, exam_attempt_id),
     UNIQUE (submission_id, participation_id, generation, sequence),
@@ -2348,10 +2635,36 @@ CREATE TABLE integrity_discrepancies (
         REFERENCES exam_attempt_participations(id, exam_attempt_id, generation),
     CONSTRAINT integrity_discrepancies_connection_fkey
         FOREIGN KEY (connection_id, exam_attempt_id, participation_id)
-        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id)
+        REFERENCES exam_attempt_connections(id, exam_attempt_id, participation_id),
+    CONSTRAINT integrity_discrepancies_value_check CHECK (
+        (kind = 'late_focus_loss' AND focus_loss_signal_id IS NOT NULL AND sequence IS NOT NULL AND
+            duration_milliseconds IS NOT NULL AND correction_revision_id IS NULL AND
+            browser_activity_source_session_id IS NULL AND final_sequence IS NULL AND gap_reason IS NULL AND
+            unresolved_count IS NULL AND missing_before IS NOT NULL) OR
+        (kind = 'focus_loss_gap' AND focus_loss_signal_id IS NULL AND sequence IS NULL AND
+            duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL AND
+            correction_revision_id IS NULL AND browser_activity_source_session_id IS NULL AND final_sequence IS NULL AND
+            gap_reason IN ('sequence_gap', 'source_not_finalized', 'sequence_gap_and_source_not_finalized') AND
+            unresolved_count IS NOT NULL) OR
+        (kind = 'browser_activity_gap' AND focus_loss_signal_id IS NULL AND sequence IS NULL AND
+            duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL AND
+            correction_revision_id IS NULL AND browser_activity_source_session_id IS NOT NULL AND
+            gap_reason IN ('source_not_finalized', 'spool_overflow', 'spool_corrupt', 'spool_key_unavailable', 'delivery_incomplete', 'prior_source_gap') AND
+            unresolved_count IS NOT NULL) OR
+        (kind = 'correction_acknowledgement_missing' AND focus_loss_signal_id IS NULL AND sequence IS NULL AND
+            duration_milliseconds IS NULL AND source IS NULL AND missing_before IS NULL AND
+            correction_revision_id IS NOT NULL AND browser_activity_source_session_id IS NULL AND
+            final_sequence IS NULL AND gap_reason IS NULL AND unresolved_count = 1)
+    )
 );
 CREATE INDEX integrity_discrepancies_submission_page_idx
     ON integrity_discrepancies (submission_id, id);
+CREATE UNIQUE INDEX integrity_discrepancies_terminal_kind_key
+    ON integrity_discrepancies (submission_id, kind)
+    WHERE kind IN ('focus_loss_gap', 'browser_activity_gap');
+CREATE UNIQUE INDEX integrity_discrepancies_correction_key
+    ON integrity_discrepancies (submission_id, correction_revision_id)
+    WHERE kind = 'correction_acknowledgement_missing';
 CREATE TRIGGER integrity_discrepancies_immutable BEFORE UPDATE OR DELETE ON integrity_discrepancies
     FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
 
@@ -2707,9 +3020,10 @@ CREATE TABLE external_login_states (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     provider varchar(64) NOT NULL,
-	purpose varchar(32) NOT NULL CHECK (purpose IN ('login', 'connect', 'invitation_admission')),
+	purpose varchar(32) NOT NULL CHECK (purpose IN ('login', 'connect', 'invitation_admission', 'desktop_authorization')),
 	target_user_id varchar(26) REFERENCES users(id),
 	invitation_id varchar(26) REFERENCES invitations(id),
+	browser_authentication_transaction_id varchar(26),
 	audit_event_id varchar(26),
     state_hash char(64) NOT NULL,
     binding_hash char(64) NOT NULL,
@@ -2725,9 +3039,10 @@ CREATE TABLE external_login_states (
             (consumed_at IS NULL OR (consumed_at >= created_at AND consumed_at < expires_at))
 		),
 	CONSTRAINT external_login_states_purpose_target_check CHECK (
-		(purpose = 'login' AND target_user_id IS NULL AND invitation_id IS NULL AND audit_event_id IS NULL) OR
-		(purpose = 'connect' AND target_user_id IS NOT NULL AND invitation_id IS NULL AND audit_event_id IS NOT NULL) OR
-		(purpose = 'invitation_admission' AND target_user_id IS NULL AND invitation_id IS NOT NULL AND audit_event_id IS NULL)
+		(purpose = 'login' AND target_user_id IS NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NULL) OR
+		(purpose = 'connect' AND target_user_id IS NOT NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NOT NULL) OR
+		(purpose = 'invitation_admission' AND target_user_id IS NULL AND invitation_id IS NOT NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NULL) OR
+		(purpose = 'desktop_authorization' AND target_user_id IS NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NOT NULL AND audit_event_id IS NULL)
 	)
 );
 
@@ -2742,7 +3057,7 @@ CREATE TABLE browser_authentication_transactions (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     purpose varchar(32) NOT NULL CHECK (purpose IN ('desktop_authorization', 'invitation_acceptance')),
-    state varchar(16) NOT NULL CHECK (state IN ('pending', 'code_issued', 'exchanged', 'completed', 'cancelled', 'expired')),
+    state varchar(16) NOT NULL CHECK (state IN ('pending', 'bound', 'authenticated', 'code_issued', 'exchanged', 'completed', 'cancelled', 'denied', 'expired')),
     institution_id varchar(26) NOT NULL REFERENCES institutions(id),
     issuer varchar(2048) NOT NULL,
     invitation_id varchar(26) REFERENCES invitations(id),
@@ -2757,6 +3072,13 @@ CREATE TABLE browser_authentication_transactions (
     client_type varchar(32) NOT NULL CHECK (client_type IN ('desktop', 'web')),
     device_id varchar(128) NOT NULL DEFAULT '',
     device_name varchar(512) NOT NULL DEFAULT '',
+    proposed_public_jwk jsonb,
+    proposed_key_thumbprint varchar(43),
+    desktop_release varchar(64),
+    desktop_build_id varchar(128),
+    desktop_platform varchar(32),
+    desktop_architecture varchar(32),
+    desktop_realtime_protocol integer,
     expires_at timestamptz NOT NULL,
     user_id varchar(26) REFERENCES users(id),
     authentication_method varchar(64),
@@ -2768,6 +3090,8 @@ CREATE TABLE browser_authentication_transactions (
     code_hash char(64),
     code_expires_at timestamptz,
     cancelled_at timestamptz,
+    denied_at timestamptz,
+    denial_reason varchar(48) CHECK (denial_reason IN ('active_attempt_session_lock')),
     exchanged_at timestamptz,
     completed_at timestamptz,
     expired_at timestamptz,
@@ -2775,57 +3099,88 @@ CREATE TABLE browser_authentication_transactions (
         updated_at >= created_at AND expires_at > created_at AND expires_at <= created_at + interval '5 minutes'
     ),
     CONSTRAINT browser_authentication_transactions_expected_path_check CHECK (
-        (purpose = 'invitation_acceptance' AND expected_authentication_method = '' AND expected_provider_id IS NULL) OR
-        (purpose = 'desktop_authorization' AND (
-          (expected_authentication_method = 'password' AND expected_provider_id IS NULL) OR
-          (expected_authentication_method <> 'password' AND expected_provider_id IS NOT NULL)
-        ))
+        expected_authentication_method = '' AND expected_provider_id IS NULL
+    ),
+    CONSTRAINT browser_authentication_transactions_desktop_key_check CHECK (
+        (purpose = 'desktop_authorization' AND state IN ('pending', 'bound', 'authenticated', 'code_issued') AND
+         jsonb_typeof(proposed_public_jwk) = 'object' AND
+         proposed_public_jwk - 'kty' - 'crv' - 'x' - 'y' = '{}'::jsonb AND
+         proposed_public_jwk->>'kty' = 'EC' AND proposed_public_jwk->>'crv' = 'P-256' AND
+         proposed_public_jwk->>'x' ~ '^[A-Za-z0-9_-]{43}$' AND proposed_public_jwk->>'y' ~ '^[A-Za-z0-9_-]{43}$' AND
+         proposed_key_thumbprint ~ '^[A-Za-z0-9_-]{43}$' AND
+         desktop_release IS NOT NULL AND desktop_build_id IS NOT NULL AND
+         desktop_platform IN ('darwin', 'win32', 'linux') AND desktop_architecture IN ('arm64', 'x64') AND
+         desktop_realtime_protocol > 0) OR
+        ((purpose = 'desktop_authorization' AND state IN ('exchanged', 'cancelled', 'denied', 'expired')) OR
+         purpose = 'invitation_acceptance') AND
+         proposed_public_jwk IS NULL AND proposed_key_thumbprint IS NULL AND desktop_release IS NULL AND
+         desktop_build_id IS NULL AND desktop_platform IS NULL AND desktop_architecture IS NULL AND
+         desktop_realtime_protocol IS NULL
     ),
     CONSTRAINT browser_authentication_transactions_state_shape_check CHECK (
       (purpose = 'desktop_authorization' AND client_type = 'desktop' AND invitation_id IS NULL AND
-       invitation_claim_hash IS NULL AND completed_at IS NULL AND (
+       invitation_claim_hash IS NULL AND completed_at IS NULL AND expected_authentication_method = '' AND expected_provider_id IS NULL AND (
         (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+        (state = 'bound' AND handle_hash IS NULL AND browser_proof_hash IS NOT NULL AND
+         state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
+         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
+         authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
+         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+        (state = 'authenticated' AND handle_hash IS NULL AND browser_proof_hash IS NOT NULL AND
+         state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
+         user_id IS NOT NULL AND authentication_method IS NOT NULL AND
+         ((authentication_method = 'password' AND authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+          (authentication_method <> 'password' AND authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
+         authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
+         ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
+          (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
+         code_hash IS NULL AND code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
+         exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'code_issued' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NOT NULL AND callback_url IS NOT NULL AND code_challenge IS NOT NULL AND
-         user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
-         authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
-		 ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
-		  (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
+         user_id IS NOT NULL AND authentication_method IS NOT NULL AND
+         ((authentication_method = 'password' AND authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+          (authentication_method <> 'password' AND authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
          code_hash IS NOT NULL AND code_expires_at > updated_at AND
          code_expires_at <= LEAST(expires_at, updated_at + interval '1 minute') AND
-         cancelled_at IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'cancelled' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
          user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
          authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at = updated_at AND exchanged_at IS NULL AND expired_at IS NULL) OR
+         code_expires_at IS NULL AND cancelled_at = updated_at AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND expired_at IS NULL) OR
+        (state = 'denied' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
+         state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
+         user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
+         authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND code_hash IS NULL AND
+         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at = updated_at AND denial_reason = 'active_attempt_session_lock' AND
+         exchanged_at IS NULL AND expired_at IS NULL) OR
         (state = 'exchanged' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND
-         user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
-         authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
-		 ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
-		  (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
+         user_id IS NOT NULL AND authentication_method IS NOT NULL AND
+         ((authentication_method = 'password' AND authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+          (authentication_method <> 'password' AND authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
          authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
          ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
           (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at)) AND
-         code_hash IS NULL AND code_expires_at IS NULL AND cancelled_at IS NULL AND exchanged_at = updated_at AND expired_at IS NULL) OR
+         code_hash IS NULL AND code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND
+         exchanged_at = updated_at AND expired_at IS NULL) OR
         (state = 'expired' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND
          state_hash IS NULL AND callback_url IS NULL AND code_challenge IS NULL AND code_hash IS NULL AND
-         code_expires_at IS NULL AND cancelled_at IS NULL AND exchanged_at IS NULL AND
+         code_expires_at IS NULL AND cancelled_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND
          expired_at = updated_at AND updated_at <= expires_at AND
 		 ((user_id IS NULL AND authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
 		   authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND updated_at = expires_at) OR
-          (user_id IS NOT NULL AND authentication_method = expected_authentication_method AND
-           authentication_provider_id IS NOT DISTINCT FROM expected_provider_id AND
-		   ((authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
-		    (authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
+          (user_id IS NOT NULL AND authentication_method IS NOT NULL AND
+           ((authentication_method = 'password' AND authentication_provider_id IS NULL AND external_identity_id IS NULL) OR
+            (authentication_method <> 'password' AND authentication_provider_id IS NOT NULL AND external_identity_id IS NOT NULL)) AND
            authentication_strength IN ('single_factor', 'multi_factor') AND authenticated_at IS NOT NULL AND
            ((authentication_strength = 'single_factor' AND mfa_completed_at IS NULL) OR
             (authentication_strength = 'multi_factor' AND mfa_completed_at BETWEEN authenticated_at AND updated_at))))
@@ -2835,7 +3190,7 @@ CREATE TABLE browser_authentication_transactions (
        expected_authentication_method = '' AND expected_provider_id IS NULL AND device_id = '' AND device_name = '' AND
        authentication_method IS NULL AND authentication_provider_id IS NULL AND external_identity_id IS NULL AND
        authentication_strength IS NULL AND authenticated_at IS NULL AND mfa_completed_at IS NULL AND
-       code_hash IS NULL AND code_expires_at IS NULL AND exchanged_at IS NULL AND (
+       code_hash IS NULL AND code_expires_at IS NULL AND denied_at IS NULL AND denial_reason IS NULL AND exchanged_at IS NULL AND (
         (state = 'pending' AND handle_hash IS NOT NULL AND browser_proof_hash IS NOT NULL AND invitation_claim_hash IS NOT NULL AND
          user_id IS NULL AND cancelled_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR
         (state = 'completed' AND handle_hash IS NULL AND browser_proof_hash IS NULL AND invitation_claim_hash IS NULL AND
@@ -2848,19 +3203,23 @@ CREATE TABLE browser_authentication_transactions (
     )
 );
 
+ALTER TABLE external_login_states
+    ADD CONSTRAINT external_login_states_browser_authentication_transaction_fkey
+    FOREIGN KEY (browser_authentication_transaction_id) REFERENCES browser_authentication_transactions(id);
+
 CREATE UNIQUE INDEX browser_authentication_transactions_handle_hash_key
     ON browser_authentication_transactions (handle_hash) WHERE handle_hash IS NOT NULL;
 CREATE UNIQUE INDEX browser_authentication_transactions_code_hash_key
     ON browser_authentication_transactions (code_hash) WHERE code_hash IS NOT NULL;
 CREATE INDEX browser_authentication_transactions_expiry_idx
 	ON browser_authentication_transactions (expires_at, id)
-	WHERE state IN ('pending', 'code_issued');
+	WHERE state IN ('pending', 'bound', 'authenticated', 'code_issued');
 CREATE INDEX browser_authentication_transactions_code_expiry_idx
 	ON browser_authentication_transactions (code_expires_at, id)
 	WHERE state = 'code_issued';
 CREATE INDEX browser_authentication_transactions_terminal_retention_idx
     ON browser_authentication_transactions (updated_at, id)
-    WHERE state IN ('cancelled', 'exchanged', 'completed', 'expired');
+    WHERE state IN ('cancelled', 'denied', 'exchanged', 'completed', 'expired');
 
 -- ---------------------------------------------------------------------------
 -- Authorization audit and installation marker
@@ -2907,6 +3266,22 @@ CREATE INDEX audit_events_status_created_at_id_idx
 ALTER TABLE external_login_states
     ADD CONSTRAINT external_login_states_audit_event_id_fkey
     FOREIGN KEY (audit_event_id) REFERENCES audit_events(id);
+
+-- The manager's private reason is retained separately from the immutable
+-- candidate-safe Submission. It is written once by the same transaction and
+-- cannot become an integrity or grading judgment.
+CREATE TABLE exam_attempt_manager_end_actions (
+    submission_id varchar(26) PRIMARY KEY REFERENCES exam_submissions(id),
+    exam_attempt_id varchar(26) NOT NULL UNIQUE REFERENCES exam_attempts(id),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    private_reason text NOT NULL,
+    audit_event_id varchar(26) NOT NULL UNIQUE REFERENCES audit_events(id),
+    ended_at timestamptz NOT NULL,
+    CONSTRAINT exam_attempt_manager_end_actions_reason_check CHECK (
+        private_reason = btrim(private_reason) AND char_length(private_reason) BETWEEN 1 AND 1000 AND
+        octet_length(private_reason) <= 4000
+    )
+);
 
 CREATE TABLE exam_sitting_private_actions (
     audit_event_id varchar(26) PRIMARY KEY REFERENCES audit_events(id),
@@ -2967,6 +3342,30 @@ CREATE TRIGGER exam_sitting_live_corrections_append_only
     BEFORE UPDATE OR DELETE ON exam_sitting_live_corrections
     FOR EACH ROW EXECUTE FUNCTION reject_exam_sitting_private_action_mutation();
 
+CREATE TABLE exam_attempt_correction_acknowledgements (
+    exam_attempt_id varchar(26) NOT NULL REFERENCES exam_attempts(id),
+    exam_id varchar(26) NOT NULL,
+    exam_sitting_id varchar(26) NOT NULL,
+    correction_revision_id varchar(26) NOT NULL,
+    current_revision_id varchar(26) NOT NULL,
+    audit_event_id varchar(26) NOT NULL UNIQUE REFERENCES audit_events(id),
+    acknowledged_at timestamptz NOT NULL,
+    PRIMARY KEY (exam_attempt_id, correction_revision_id),
+    CONSTRAINT exam_attempt_correction_ack_revision_fkey
+        FOREIGN KEY (exam_id, correction_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_attempt_correction_ack_current_revision_fkey
+        FOREIGN KEY (exam_id, current_revision_id) REFERENCES exam_revisions(exam_id, id),
+    CONSTRAINT exam_attempt_correction_ack_sitting_fkey
+        FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id)
+);
+
+CREATE INDEX exam_attempt_correction_ack_sitting_attempt_idx
+    ON exam_attempt_correction_acknowledgements (exam_sitting_id, exam_attempt_id, correction_revision_id);
+
+CREATE TRIGGER exam_attempt_correction_acknowledgements_append_only
+    BEFORE UPDATE OR DELETE ON exam_attempt_correction_acknowledgements
+    FOR EACH ROW EXECUTE FUNCTION reject_exam_sitting_private_action_mutation();
+
 CREATE TABLE command_outcomes (
     user_id varchar(26) NOT NULL REFERENCES users(id),
     operation varchar(128) NOT NULL,
@@ -3012,6 +3411,30 @@ CREATE TABLE access_policies (
         jsonb_typeof(provider_admissions) = 'object' AND
         octet_length(provider_admissions::text) <= 16384
     )
+);
+
+CREATE TABLE desktop_compatibility_policies (
+    singleton smallint PRIMARY KEY CHECK (singleton = 1),
+    institution_id varchar(26) NOT NULL UNIQUE REFERENCES institutions(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    minimum_desktop_release varchar(64) NOT NULL,
+    revoked_desktop_build_ids jsonb NOT NULL CHECK (
+        jsonb_typeof(revoked_desktop_build_ids) = 'array' AND
+        jsonb_array_length(revoked_desktop_build_ids) <= 256
+    ),
+    administrator_message varchar(2048) NOT NULL CHECK (
+        char_length(administrator_message) <= 500 AND
+        octet_length(administrator_message) <= 2048
+    ),
+	availability varchar(16) NOT NULL CHECK (availability IN ('ready','maintenance')),
+	retry_at timestamptz NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL CHECK (updated_at >= created_at),
+	CONSTRAINT desktop_compatibility_policies_retry_check CHECK (
+		(availability = 'ready' AND retry_at IS NULL) OR availability = 'maintenance'
+	),
+    CONSTRAINT desktop_compatibility_policies_institution_id_canonical_check
+        CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
 );
 
 CREATE TABLE access_policy_transitions (
@@ -3425,7 +3848,8 @@ ALTER TABLE exam_attempt_workspace_journal
 
 ALTER TABLE exam_attempt_participations
     ADD CONSTRAINT exam_attempt_participations_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT exam_attempt_participations_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT exam_attempt_participations_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_participations_session_id_canonical_check CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_attempt_connections
     ADD CONSTRAINT exam_attempt_connections_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -3468,6 +3892,7 @@ ALTER TABLE exam_attempt_suspensions
 ALTER TABLE exam_submissions
     ADD CONSTRAINT exam_submissions_id_canonical_check CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submissions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_submissions_exam_revision_id_canonical_check CHECK (exam_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submissions_workspace_id_canonical_check CHECK (workspace_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submissions_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT exam_submissions_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
@@ -3478,7 +3903,37 @@ ALTER TABLE integrity_discrepancies
     ADD CONSTRAINT integrity_discrepancies_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT integrity_discrepancies_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT integrity_discrepancies_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
-    ADD CONSTRAINT integrity_discrepancies_focus_loss_signal_id_canonical_check CHECK (focus_loss_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+    ADD CONSTRAINT integrity_discrepancies_focus_loss_signal_id_canonical_check CHECK (focus_loss_signal_id IS NULL OR focus_loss_signal_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT integrity_discrepancies_correction_revision_id_canonical_check CHECK (correction_revision_id IS NULL OR correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_manager_end_actions
+    ADD CONSTRAINT exam_attempt_manager_end_actions_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_manager_end_actions_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_manager_end_actions_actor_user_id_canonical_check CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_manager_end_actions_audit_event_id_canonical_check CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_activity_sources
+    ADD CONSTRAINT browser_activity_sources_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_session_id_canonical_check CHECK (session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_sources_connection_id_canonical_check CHECK (connection_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE browser_activity_events
+    ADD CONSTRAINT browser_activity_events_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_events_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_events_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_events_participation_id_canonical_check CHECK (participation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT browser_activity_events_policy_revision_id_canonical_check CHECK (policy_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_attempt_correction_acknowledgements
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_attempt_id_canonical_check CHECK (exam_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_id_canonical_check CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_exam_sitting_id_canonical_check CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_correction_revision_id_canonical_check CHECK (correction_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_current_revision_id_canonical_check CHECK (current_revision_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_attempt_correction_acknowledgements_audit_event_id_canonical_check CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE exam_submission_manifest_entries
     ADD CONSTRAINT exam_submission_manifest_entries_submission_id_canonical_check CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
@@ -3708,8 +4163,18 @@ ALTER TABLE sessions
     CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT sessions_user_id_canonical_check
     CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT sessions_desktop_registration_id_canonical_check
+	CHECK (desktop_registration_id IS NULL OR desktop_registration_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT sessions_external_identity_id_canonical_check
 	CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE desktop_registrations
+    ADD CONSTRAINT desktop_registrations_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT desktop_registrations_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT desktop_registrations_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 
 ALTER TABLE session_credentials
     ADD CONSTRAINT session_credentials_id_canonical_check
@@ -3772,6 +4237,8 @@ ALTER TABLE external_login_states
 	CHECK (target_user_id IS NULL OR target_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_invitation_id_canonical_check
 	CHECK (invitation_id IS NULL OR invitation_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+	ADD CONSTRAINT external_login_states_browser_authentication_transaction_id_can
+	CHECK (browser_authentication_transaction_id IS NULL OR browser_authentication_transaction_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
 	ADD CONSTRAINT external_login_states_audit_event_id_canonical_check
 	CHECK (audit_event_id IS NULL OR audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
 

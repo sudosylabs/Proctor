@@ -22,8 +22,13 @@ paths:
         - exam.integrity_review.invalid
         - exam.integrity_review.unavailable
         - administration.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       parameters:
         - name: limit
@@ -53,6 +58,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   responses:
     ExamIntegrityDiscrepancyListOK:
@@ -70,7 +77,9 @@ components:
             items: []
   schemas:
     ExamIntegrityDiscrepancyResponse:
-      description: Late integrity record retained separately after collection for the Submission ended.
+      description: >-
+        Bounded manager-only uncertainty associated with a sealed Submission. Kind-specific fields are present only for
+        their named kind; the record is not evidence, a misconduct finding, a score, or a grade.
       type: object
       additionalProperties: false
       required:
@@ -80,10 +89,6 @@ components:
         - generation
         - kind
         - schema_version
-        - focus_loss_signal_id
-        - sequence
-        - duration_milliseconds
-        - missing_before
         - received_at
       properties:
         id:
@@ -98,7 +103,11 @@ components:
           minimum: 1
         kind:
           type: string
-          const: late_focus_loss
+          enum:
+            - late_focus_loss
+            - focus_loss_gap
+            - browser_activity_gap
+            - correction_acknowledgement_missing
         schema_version:
           type: integer
           const: 1
@@ -126,6 +135,31 @@ components:
           format: int64
           minimum: 0
           description: Number of missing monotonic signals observed before this late record.
+        correction_revision_id:
+          $ref: '#/components/schemas/ID'
+        browser_activity_source_session_id:
+          type: string
+          format: uuid
+        final_sequence:
+          type: integer
+          format: int64
+          minimum: 1
+        gap_reason:
+          type: string
+          enum:
+            - sequence_gap
+            - source_not_finalized
+            - sequence_gap_and_source_not_finalized
+            - spool_overflow
+            - spool_corrupt
+            - spool_key_unavailable
+            - delivery_incomplete
+            - prior_source_gap
+        unresolved_count:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Bounded aggregate represented by this terminal discrepancy.
         received_at:
           type: string
           format: date-time

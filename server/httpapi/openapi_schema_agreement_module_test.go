@@ -98,6 +98,29 @@ func evaluateOpenAPIShapeAgreement(
 	if forceNonNullable {
 		nullable = false
 	}
+	unionNullable := false
+	if len(shape.OneOf) > 0 {
+		if len(shape.OneOf) != 2 {
+			return appendAgreementViolation(violations, target, "oneOf", "nullable union must contain exactly one value schema and null")
+		}
+		var value *openAPISchemaShape
+		for index := range shape.OneOf {
+			candidate := shape.OneOf[index]
+			if openAPITypesEqual(candidate.Type, []string{"null"}) {
+				unionNullable = true
+				continue
+			}
+			if value != nil {
+				return appendAgreementViolation(violations, target, "oneOf", "nullable union contains multiple value schemas")
+			}
+			value = &candidate
+		}
+		if !unionNullable || value == nil {
+			return appendAgreementViolation(violations, target, "oneOf", "nullable union is missing its value or null schema")
+		}
+		shape = *value
+		nullable = true
+	}
 	if shape.Ref != "" {
 		const prefix = "#/components/schemas/"
 		name := strings.TrimPrefix(shape.Ref, prefix)
@@ -111,6 +134,14 @@ func evaluateOpenAPIShapeAgreement(
 		}
 		if err := json.Unmarshal(encoded, &shape); err != nil {
 			return appendAgreementViolation(violations, target, "reference", fmt.Sprintf("decode %q: %v", shape.Ref, err))
+		}
+	}
+	if unionNullable {
+		switch value := shape.Type.(type) {
+		case string:
+			shape.Type = []any{value, "null"}
+		case []any:
+			shape.Type = append(value, "null")
 		}
 	}
 

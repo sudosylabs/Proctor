@@ -23,14 +23,15 @@ const (
 type ExternalAuthenticationPurpose string
 
 const (
-	ExternalAuthenticationPurposeLogin               ExternalAuthenticationPurpose = "login"
-	ExternalAuthenticationPurposeConnect             ExternalAuthenticationPurpose = "connect"
-	ExternalAuthenticationPurposeInvitationAdmission ExternalAuthenticationPurpose = "invitation_admission"
+	ExternalAuthenticationPurposeLogin                ExternalAuthenticationPurpose = "login"
+	ExternalAuthenticationPurposeConnect              ExternalAuthenticationPurpose = "connect"
+	ExternalAuthenticationPurposeInvitationAdmission  ExternalAuthenticationPurpose = "invitation_admission"
+	ExternalAuthenticationPurposeDesktopAuthorization ExternalAuthenticationPurpose = "desktop_authorization"
 )
 
 func (p ExternalAuthenticationPurpose) IsValid() bool {
 	return p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect ||
-		p == ExternalAuthenticationPurposeInvitationAdmission
+		p == ExternalAuthenticationPurposeInvitationAdmission || p == ExternalAuthenticationPurposeDesktopAuthorization
 }
 
 var ErrInvalidExternalAuthenticationCallback = errors.New(
@@ -124,22 +125,23 @@ func (c ExternalAuthenticationCallback) OptionalSingleValue(
 //
 // StateHash and BindingHash are deliberately excluded from JSON.
 type ExternalLoginState struct {
-	ID           ExternalLoginStateID
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Provider     string
-	Purpose      ExternalAuthenticationPurpose
-	TargetUserID UserID
-	InvitationID InvitationID
-	AuditEventID string
-	StateHash    string `json:"-"`
-	BindingHash  string `json:"-"`
-	ReturnTo     string
-	ClientType   SessionClientType
-	DeviceID     string
-	DeviceName   string
-	ExpiresAt    time.Time
-	ConsumedAt   OptionalTime
+	ID                                 ExternalLoginStateID
+	CreatedAt                          time.Time
+	UpdatedAt                          time.Time
+	Provider                           string
+	Purpose                            ExternalAuthenticationPurpose
+	TargetUserID                       UserID
+	InvitationID                       InvitationID
+	BrowserAuthenticationTransactionID BrowserAuthenticationTransactionID
+	AuditEventID                       string
+	StateHash                          string `json:"-"`
+	BindingHash                        string `json:"-"`
+	ReturnTo                           string
+	ClientType                         SessionClientType
+	DeviceID                           string
+	DeviceName                         string
+	ExpiresAt                          time.Time
+	ConsumedAt                         OptionalTime
 }
 
 // PrepareCreate applies application-owned lifecycle fields before validation.
@@ -189,9 +191,10 @@ func (s *ExternalLoginState) Validate() error {
 		)
 	}
 	if !s.Purpose.IsValid() ||
-		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || s.AuditEventID != "")) ||
-		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !IsValidId(s.AuditEventID))) ||
-		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || s.AuditEventID != "")) {
+		(s.Purpose == ExternalAuthenticationPurposeLogin && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeConnect && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !IsValidId(s.AuditEventID))) ||
+		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
+		(s.Purpose == ExternalAuthenticationPurposeDesktopAuthorization && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsValid() || s.AuditEventID != "")) {
 		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
 	}
 	if !IsValidTokenHash(s.StateHash) || !IsValidTokenHash(s.BindingHash) {
@@ -260,15 +263,16 @@ func (s *ExternalLoginState) Auditable() map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"id":             s.ID.String(),
-		"created_at":     MillisFromTime(s.CreatedAt),
-		"updated_at":     MillisFromTime(s.UpdatedAt),
-		"provider":       s.Provider,
-		"purpose":        s.Purpose,
-		"target_user_id": s.TargetUserID.String(),
-		"client_type":    s.ClientType,
-		"expires_at":     MillisFromTime(s.ExpiresAt),
-		"consumed_at":    s.ConsumedAt.Millis(),
+		"id":                                    s.ID.String(),
+		"created_at":                            MillisFromTime(s.CreatedAt),
+		"updated_at":                            MillisFromTime(s.UpdatedAt),
+		"provider":                              s.Provider,
+		"purpose":                               s.Purpose,
+		"target_user_id":                        s.TargetUserID.String(),
+		"browser_authentication_transaction_id": s.BrowserAuthenticationTransactionID.String(),
+		"client_type":                           s.ClientType,
+		"expires_at":                            MillisFromTime(s.ExpiresAt),
+		"consumed_at":                           s.ConsumedAt.Millis(),
 	}
 }
 

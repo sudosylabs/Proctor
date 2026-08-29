@@ -52,12 +52,13 @@ func (is *InstallationState) Auditable() map[string]any {
 // InstallationBootstrapResult contains the public, non-secret records created
 // by the atomic bootstrap aggregate.
 type InstallationBootstrapResult struct {
-	State         *InstallationState
-	Institution   *Institution
-	Administrator *User
-	Role          *Role
-	RoleBinding   *RoleBinding
-	AccessPolicy  *AccessPolicy
+	State                      *InstallationState
+	Institution                *Institution
+	Administrator              *User
+	Role                       *Role
+	RoleBinding                *RoleBinding
+	AccessPolicy               *AccessPolicy
+	DesktopCompatibilityPolicy *DesktopCompatibilityPolicy
 }
 
 var _ Auditable = (*InstallationState)(nil)

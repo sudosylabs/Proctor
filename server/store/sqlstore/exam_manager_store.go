@@ -134,6 +134,9 @@ func prepareExamManagerMutation(input *store.ExamManagerMutation) (*store.ExamMa
 }
 
 func addExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamManagerMutation) (*store.ExamManagerCommandResult, error) {
+	if err := lockExamManagerCandidateFence(ctx, tx, input.TargetUserID); err != nil {
+		return nil, err
+	}
 	exam, actorIsManager, err := lockExamForManagerMutation(ctx, tx, input)
 	if err != nil {
 		return nil, err
@@ -192,6 +195,9 @@ func removeExamManager(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 }
 
 func transferExamOwner(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamManagerMutation) (*store.ExamManagerCommandResult, error) {
+	if err := lockExamManagerCandidateFence(ctx, tx, input.TargetUserID); err != nil {
+		return nil, err
+	}
 	exam, actorIsManager, err := lockExamForManagerMutation(ctx, tx, input)
 	if err != nil {
 		return nil, err
@@ -277,6 +283,15 @@ func guardExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *mode
 		return store.NewErrConflict("exam", "exam_revision", nil)
 	}
 	if requireEligibility {
+		var unresolved bool
+		if err := tx.Get(ctx, &unresolved, `SELECT EXISTS(SELECT 1 FROM exam_attempts
+			WHERE exam_id=? AND candidate_user_id=? AND state IN ('ready','active','suspended'))`,
+			exam.ID.String(), input.TargetUserID.String()); err != nil {
+			return fmt.Errorf("inspect target User unresolved Exam Attempt: %w", err)
+		}
+		if unresolved {
+			return store.NewErrConflict("exam_manager", "exam_manager_candidate_conflict", nil)
+		}
 		var eligible int
 		if err := tx.Get(ctx, &eligible, `SELECT 1 FROM users u JOIN academic_unit_members m ON m.user_id = u.id
 			WHERE u.id = ? AND u.archived_at IS NULL AND u.disabled_at IS NULL
@@ -288,6 +303,14 @@ func guardExamManagerMutation(ctx context.Context, tx *sqlxTxWrapper, exam *mode
 			}
 			return fmt.Errorf("recheck Exam Manager eligibility: %w", err)
 		}
+	}
+	return nil
+}
+
+func lockExamManagerCandidateFence(ctx context.Context, tx *sqlxTxWrapper, userID model.UserID) error {
+	lockKey := "proctor:exam-attempt-admission:" + userID.String()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, lockKey); err != nil {
+		return fmt.Errorf("lock Exam Manager candidate fence: %w", err)
 	}
 	return nil
 }

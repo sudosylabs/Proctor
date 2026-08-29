@@ -12,6 +12,7 @@ import (
 
 const (
 	ExamSubmissionSealOperation          = "exam.attempt.submit.v1"
+	ExamSubmissionManagerEndOperation    = "exam.attempt.manager_end.v1"
 	ExamSubmissionAutomaticSealOperation = "exam.attempt.seal_for_sitting_close.v1"
 )
 
@@ -22,28 +23,31 @@ const (
 // Workspace Cursor, and final client Focus Loss high-water under its locks.
 // Sequence zero is valid when the client has emitted no Focus Loss claim.
 type ExamSubmissionSealAccess struct {
-	AttemptID                model.ExamAttemptID
-	ParticipationID          model.AttemptParticipationID
-	Generation               int64
-	ConnectionID             model.AttemptConnectionID
-	CandidateUserID          model.UserID
-	SessionID                model.SessionID
-	ContinuityCredentialHash string
-	ExpectedWorkspaceCursor  int64
-	FinalFocusLossSequence   int64
+	AttemptID                 model.ExamAttemptID
+	ParticipationID           model.AttemptParticipationID
+	Generation                int64
+	ConnectionID              model.AttemptConnectionID
+	CandidateUserID           model.UserID
+	SessionID                 model.SessionID
+	ContinuityCredentialHash  string
+	ExpectedCurrentRevisionID model.ExamRevisionID
+	ExpectedWorkspaceCursor   int64
+	FinalFocusLossSequence    int64
+	BrowserActivity           model.BrowserActivitySubmission
 }
 
 // ExamSubmissionSealTarget is the bounded preflight projection used to begin
 // the candidate's Class-scoped audit attempt and address post-commit effects.
 // It exposes no path, content, credential, Session, policy, or evidence.
 type ExamSubmissionSealTarget struct {
-	ExamID          model.ExamID
-	SittingID       model.ExamSittingID
-	ClassID         model.ClassID
-	CandidateUserID model.UserID
-	WorkspaceID     model.ExamAttemptWorkspaceID
-	Replayed        bool
-	SealAt          time.Time
+	ExamID            model.ExamID
+	SittingID         model.ExamSittingID
+	ClassID           model.ClassID
+	CandidateUserID   model.UserID
+	WorkspaceID       model.ExamAttemptWorkspaceID
+	CurrentRevisionID model.ExamRevisionID
+	Replayed          bool
+	SealAt            time.Time
 }
 
 // ExamSubmissionSeal supplies the server-proposed identity and safe audit
@@ -65,6 +69,7 @@ type ExamSubmissionSeal struct {
 type ExamSubmissionReceipt struct {
 	SubmissionID    model.SubmissionID
 	AttemptID       model.ExamAttemptID
+	ExamRevisionID  model.ExamRevisionID
 	State           model.ExamAttemptState
 	WorkspaceCursor int64
 	ManifestDigest  string
@@ -101,16 +106,17 @@ type ExamSubmissionAutomaticSealListOptions struct {
 // Connection so active and previously suspended/disconnected work share the
 // same terminal sealing operation.
 type ExamSubmissionAutomaticSealTarget struct {
-	ExamID          model.ExamID
-	SittingID       model.ExamSittingID
-	ClassID         model.ClassID
-	AcademicUnitID  model.AcademicUnitID
-	CandidateUserID model.UserID
-	AttemptID       model.ExamAttemptID
-	WorkspaceID     model.ExamAttemptWorkspaceID
-	ParticipationID model.AttemptParticipationID
-	Generation      int64
-	ConnectionID    model.AttemptConnectionID
+	ExamID            model.ExamID
+	SittingID         model.ExamSittingID
+	ClassID           model.ClassID
+	AcademicUnitID    model.AcademicUnitID
+	CandidateUserID   model.UserID
+	AttemptID         model.ExamAttemptID
+	WorkspaceID       model.ExamAttemptWorkspaceID
+	CurrentRevisionID model.ExamRevisionID
+	ParticipationID   model.AttemptParticipationID
+	Generation        int64
+	ConnectionID      model.AttemptConnectionID
 }
 
 // ExamSubmissionAutomaticSeal supplies a server-proposed Submission identity
@@ -133,6 +139,42 @@ type ExamSubmissionAutomaticSealResult struct {
 	ConnectionClosed bool
 }
 
+// ExamSubmissionManagerEndPreparation is the exact preflight projection for
+// an authorized manager seal. The target is safe application identity; SealAt
+// is reserved by PostgreSQL and Replayed means the same manager-ended terminal
+// aggregate already exists and mail preparation can be skipped.
+type ExamSubmissionManagerEndPreparation struct {
+	Target                  ExamSubmissionAutomaticSealTarget
+	ExpectedAttemptRevision int64
+	Replayed                bool
+	SealAt                  time.Time
+}
+
+type ExamSubmissionManagerEndRequest struct {
+	ExamID                  model.ExamID
+	SittingID               model.ExamSittingID
+	AttemptID               model.ExamAttemptID
+	ActorUserID             model.UserID
+	ManagerOverride         bool
+	ExpectedAttemptRevision int64
+	PrivateReason           string
+}
+
+type ExamSubmissionManagerEnd struct {
+	Request                   ExamSubmissionManagerEndRequest
+	Target                    ExamSubmissionAutomaticSealTarget
+	SubmissionID              model.SubmissionID
+	AuditEventID              string
+	AuditAt                   int64
+	Notice                    *PreparedMail
+	ExpectedRecipientRevision int64
+}
+
+type ExamSubmissionManagerEndResult struct {
+	ExamSubmissionSealResult
+	ConnectionClosed bool
+}
+
 // ExamSubmissionAutomaticSealPreparation reserves the PostgreSQL action time
 // used by a fresh automatic receipt and reports whether the terminal aggregate
 // already exists. The terminal mutation still rechecks all lifecycle state.
@@ -145,11 +187,12 @@ type ExamSubmissionAutomaticSealPreparation struct {
 // required to authorize one Submission resource without hydrating its
 // protected manifest.
 type ExamSubmissionAuthorization struct {
-	SubmissionID   model.SubmissionID
-	ExamID         model.ExamID
-	SittingID      model.ExamSittingID
-	AttemptID      model.ExamAttemptID
-	AcademicUnitID model.AcademicUnitID
+	SubmissionID    model.SubmissionID
+	ExamID          model.ExamID
+	SittingID       model.ExamSittingID
+	AttemptID       model.ExamAttemptID
+	CandidateUserID model.UserID
+	AcademicUnitID  model.AcademicUnitID
 }
 
 // ExamSubmissionManifestItem is manager-visible protected metadata for one
@@ -249,6 +292,8 @@ type ExamSubmissionFileSelector struct {
 type ExamSubmissionStore interface {
 	ResolveSealTarget(context.Context, ExamSubmissionSealAccess) (*ExamSubmissionSealTarget, error)
 	Seal(context.Context, *ExamSubmissionSeal, *CommandIdempotency) (*ExamSubmissionSealResult, error)
+	PrepareManagerEnd(context.Context, ExamSubmissionManagerEndRequest) (*ExamSubmissionManagerEndPreparation, error)
+	EndByManager(context.Context, *ExamSubmissionManagerEnd, *CommandIdempotency) (*ExamSubmissionManagerEndResult, error)
 	ListAutomaticSealTargets(context.Context, ExamSubmissionAutomaticSealListOptions) ([]ExamSubmissionAutomaticSealTarget, error)
 	PrepareAutomaticSeal(context.Context, ExamSubmissionAutomaticSealTarget) (*ExamSubmissionAutomaticSealPreparation, error)
 	SealForSittingClose(context.Context, *ExamSubmissionAutomaticSeal) (*ExamSubmissionAutomaticSealResult, error)

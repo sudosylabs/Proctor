@@ -352,7 +352,7 @@ func TestInvitationBatchRunsIndependentRowsAndRecoversCommittedItems(t *testing.
 	auditEvents := []string{}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
-		&mutationAttemptAuditorFake{events: &auditEvents}, invitationAttemptLimiterFake{}, "node-a", "https://proctor.example.edu", time.Hour,
+		&mutationAttemptAuditorFake{events: &auditEvents}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-a", "https://proctor.example.edu", time.Hour,
 		model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
@@ -606,7 +606,7 @@ func TestInvitationServiceAcceptsAcademicUnitRoleForAuthenticatedExistingUserWit
 	mail := &invitationMailPreparerFake{}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
-		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
@@ -659,7 +659,7 @@ func TestInvitationServiceTerminalizesScopedRoleAcceptanceConflict(t *testing.T)
 		scopedAcceptErr: store.NewErrConflict("invitation", "invitation_role_binding_conflict", nil)}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, &invitationMailPreparerFake{},
-		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
@@ -814,7 +814,7 @@ func newInvitationServiceForTest(t *testing.T, persistence store.InvitationStore
 	t.Helper()
 	events := []string{}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, units, roles,
-		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{},
+		authorization, mail, invitationHasherFake{}, &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
 		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
@@ -889,7 +889,7 @@ func TestInvitationReplacementReauthorizesAndBuildsANewImmutablePackage(t *testi
 	auditor := &mutationAttemptAuditorFake{events: &events, beginIDs: auditIDs}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class: class}, invitationPeriodStoreFake{period: period},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{},
-		auditor, invitationAttemptLimiterFake{},
+		auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{},
 		"node-1", "https://proctor.example.edu", 15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Hour) })
 	if err != nil {
 		t.Fatal(err)
@@ -930,7 +930,7 @@ func TestInvitationIssueAuthorizesBeforeInspectingMailCapability(t *testing.T) {
 	service, err := newInvitationService(&invitationStoreFake{}, invitationClassStoreFake{&model.Class{ID: classID, AcademicPeriodID: periodID}},
 		invitationPeriodStoreFake{&model.AcademicPeriod{ID: periodID, StartsAt: now, EndsAt: now.Add(24 * time.Hour)}},
 		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail,
-		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
@@ -955,7 +955,7 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	persistence := &invitationStoreFake{invitation: invitation}
 	mail := &invitationMailPreparerFake{disabled: true}
 	service, err := newInvitationService(persistence, invitationClassStoreFake{}, invitationPeriodStoreFake{}, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, &invitationAuthorizerFake{}, mail,
-		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu",
+		invitationHasherFake{}, &mutationAttemptAuditorFake{}, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu",
 		15*time.Minute, model.NewCredentialToken, func() time.Time { return now.Add(time.Minute) })
 	if err != nil {
 		t.Fatal(err)
@@ -991,7 +991,7 @@ func TestInvitationServiceIssuesAndAcceptsWithoutPersistingRawClaim(t *testing.T
 	auditor := &mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()}
 	raw := model.NewCredentialToken()
 	service, err := newInvitationService(persistence, invitationClassStoreFake{class}, invitationPeriodStoreFake{period},
-		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
+		invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{}, authorizer, mail, invitationHasherFake{}, auditor, invitationAttemptLimiterFake{}, &classMemberEffectsFake{}, "node-1", "https://proctor.example.edu", 15*time.Minute, func() string { return raw }, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("newInvitationService() error = %v", err)
 	}

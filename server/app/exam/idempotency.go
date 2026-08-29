@@ -15,6 +15,7 @@ const (
 	idempotencyOperationEditDraftText             = "exam.draft.text.edit.v1"
 	idempotencyOperationConfigureDraftFocusLoss   = "exam.draft.focus_loss.configure.v1"
 	idempotencyOperationConfigureExecutionProfile = "exam.draft.execution_profile.configure.v1"
+	idempotencyOperationConfigureBrowserPolicy    = "exam.draft.browser_policy.configure.v1"
 	idempotencyOperationArchive                   = "exam.archive.v1"
 	idempotencyOperationAddManager                = "exam.manager.add.v1"
 	idempotencyOperationRemoveManager             = "exam.manager.remove.v1"

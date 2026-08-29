@@ -72,6 +72,14 @@ type LoginResult struct {
 	Tokens  *model.AuthenticationTokens
 }
 
+type localAuthenticationProof struct {
+	User                   *model.User
+	AuthenticationStrength model.AuthenticationStrength
+	AuthenticatedAt        int64
+	MFACompletedAt         int64
+	receipt                authenticationAttemptReceipt
+}
+
 // CreateLocalUserCommand creates a local user with a password credential.
 type CreateLocalUserCommand struct {
 	User     *model.User
@@ -107,8 +115,19 @@ type authenticationService struct {
 	sessionPolicy      SessionPolicy
 	loginRateLimit     LoginRateLimitPolicy
 	diagnostics        authenticationDiagnostics
+	registrations      authenticationDesktopRegistrationStore
+	dpop               *dpopSecurity
 	newCredential      func() string
 	now                func() time.Time
+}
+
+type authenticationDesktopDependencies struct {
+	registrations authenticationDesktopRegistrationStore
+	dpop          *dpopSecurity
+}
+
+type authenticationDesktopRegistrationStore interface {
+	Get(context.Context, string) (*model.DesktopRegistration, error)
 }
 
 type cachedAuthentication struct {
@@ -131,8 +150,26 @@ func (s *authenticationService) ValidatePrincipal(ctx context.Context, principal
 		}
 		return authenticationUnavailable(err)
 	}
-	if session.UserID != principal.UserID || session.IsExpiredAt(s.now().UTC()) {
+	if session.UserID != principal.UserID {
 		return invalidTokenAppError()
+	}
+	session, err = s.enforceSessionExpiry(ctx, session, s.now().UTC())
+	if err != nil {
+		return err
+	}
+	if principal.HasRegisteredDesktopKey() {
+		if session.DesktopRegistrationID != principal.DesktopRegistrationID ||
+			session.DPoPKeyThumbprint != principal.DPoPKeyThumbprint || s.registrations == nil {
+			return invalidTokenAppError()
+		}
+		registration, registrationErr := s.registrations.Get(ctx, principal.DesktopRegistrationID.String())
+		if registrationErr != nil || !registration.IsActive() || registration.UserID != principal.UserID ||
+			registration.KeyThumbprint != principal.DPoPKeyThumbprint {
+			if registrationErr == nil || store.IsNotFound(registrationErr) {
+				return invalidTokenAppError()
+			}
+			return authenticationUnavailable(registrationErr)
+		}
 	}
 	user, err := s.users.Get(ctx, principal.UserID.String())
 	if err != nil {
@@ -164,6 +201,7 @@ func newAuthenticationService(
 	diagnostics authenticationDiagnostics,
 	newCredential func() string,
 	now func() time.Time,
+	desktop authenticationDesktopDependencies,
 ) (*authenticationService, error) {
 	if users == nil {
 		return nil, errors.New("authentication user store is required")
@@ -207,6 +245,9 @@ func newAuthenticationService(
 	if now == nil {
 		now = time.Now
 	}
+	if desktop.registrations == nil || desktop.dpop == nil {
+		return nil, errors.New("authentication Desktop dependencies are required")
+	}
 	return &authenticationService{
 		users: users, passwords: passwords, sessions: sessions,
 		sessionCredentials: sessionCredentials, accessPolicy: accessPolicy, cache: cache, attempts: attempts,
@@ -214,6 +255,7 @@ func newAuthenticationService(
 		personalTokens: personalTokens, sessionPolicy: sessionPolicy,
 		loginRateLimit: loginRateLimit, diagnostics: diagnostics,
 		newCredential: newCredential, now: now,
+		registrations: desktop.registrations, dpop: desktop.dpop,
 	}, nil
 }
 
@@ -278,6 +320,32 @@ func (s *authenticationService) login(
 	if command.ClientType == model.SessionClientDesktop || !command.ClientType.IsValid() {
 		return nil, NewError("authentication.client_type.invalid").WithField("field", "client_type")
 	}
+	proof, err := s.authenticateLocal(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	savedSession, tokens, sessionErr := s.createSession(
+		ctx,
+		sessionIssuance{
+			User: proof.User, ClientType: command.ClientType,
+			DeviceID: command.DeviceID, DeviceName: command.DeviceName,
+			AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
+			AuthenticatedAt: proof.AuthenticatedAt, MFACompletedAt: proof.MFACompletedAt,
+		},
+	)
+	if sessionErr != nil {
+		return nil, sessionErr
+	}
+	s.resetLocalAuthenticationAttempts(ctx, proof.receipt)
+	return &LoginResult{User: proof.User, Session: savedSession, Tokens: tokens}, nil
+}
+
+// authenticateLocal proves a local identity without deciding which
+// purpose-bound credential or Session will consume that proof.
+func (s *authenticationService) authenticateLocal(
+	ctx context.Context,
+	command LoginCommand,
+) (*localAuthenticationProof, error) {
 	receipt, err := s.checkLoginRateLimit(ctx, command.LoginID, command.Source)
 	if err != nil {
 		return nil, err
@@ -315,11 +383,6 @@ func (s *authenticationService) login(
 	if verifyErr := s.hasher.Verify(credential.PasswordHash, command.Password); verifyErr != nil || !user.IsActive() {
 		return nil, invalidCredentialsAppError()
 	}
-	if !command.ClientType.IsValid() {
-		return nil, NewError("authentication.client_type.invalid").
-			WithField("field", "client_type")
-	}
-
 	now := s.now()
 	authenticationStrength, mfaCompletedAt, err := s.mfa.VerifyLogin(
 		ctx, user.ID.String(), command.MFACode, now,
@@ -339,22 +402,14 @@ func (s *authenticationService) login(
 		}
 	}
 
-	savedSession, tokens, sessionErr := s.createSession(
-		ctx,
-		sessionIssuance{
-			User: user, ClientType: command.ClientType,
-			DeviceID: command.DeviceID, DeviceName: command.DeviceName,
-			AuthenticationMethod: "password", AuthenticationStrength: authenticationStrength,
-			AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt,
-		},
-	)
-	if sessionErr != nil {
-		return nil, sessionErr
-	}
+	return &localAuthenticationProof{User: user, AuthenticationStrength: authenticationStrength,
+		AuthenticatedAt: now.UnixMilli(), MFACompletedAt: mfaCompletedAt, receipt: receipt}, nil
+}
+
+func (s *authenticationService) resetLocalAuthenticationAttempts(ctx context.Context, receipt authenticationAttemptReceipt) {
 	if err := s.attempts.reset(ctx, receipt, authenticationAttemptDimensionIdentitySource); err != nil {
 		s.warn(ctx, "login rate-limit reset failed", err)
 	}
-	return &LoginResult{User: user, Session: savedSession, Tokens: tokens}, nil
 }
 
 func (s *authenticationService) createSession(
@@ -430,9 +485,13 @@ func (s *authenticationService) createSession(
 			return nil, nil, invalidCredentialsAppError()
 		}
 		var conflict *store.ErrConflict
-		if errors.As(saveErr, &conflict) &&
-			conflict.Constraint == "sessions_maximum_per_user" {
-			return nil, nil, NewError("authentication.sessions.maximum_reached")
+		if errors.As(saveErr, &conflict) {
+			switch conflict.Constraint {
+			case "sessions_maximum_per_user":
+				return nil, nil, NewError("authentication.sessions.maximum_reached")
+			case "active_attempt_session_lock":
+				return nil, nil, NewError("authentication.desktop_authorization.account_session_locked")
+			}
 		}
 		return nil, nil, authenticationUnavailable(saveErr)
 	}
@@ -455,6 +514,7 @@ func (s *authenticationService) createSession(
 		User:       user,
 	}, nowMillis)
 	return savedSession, &model.AuthenticationTokens{
+		TokenType:        "Bearer",
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,
 		AccessExpiresAt:  model.TimeFromMillis(accessExpiresAt),
@@ -542,32 +602,39 @@ func (s *authenticationService) authenticateAccess(
 	now := s.now().UnixMilli()
 	tokenHash := model.HashToken(rawToken)
 	resolved := s.cachedAuthentication(ctx, tokenHash)
+	var err error
 	if resolved == nil {
-		credential, session, err := s.sessionCredentials.GetSessionByTokenHash(
+		credential, session, resolveErr := s.sessionCredentials.GetSessionByTokenHash(
 			ctx,
 			tokenHash,
 			model.SessionCredentialAccess,
 		)
-		if err != nil {
-			if store.IsNotFound(err) {
+		if resolveErr != nil {
+			if store.IsNotFound(resolveErr) {
 				return nil, invalidTokenAppError()
 			}
-			return nil, authenticationUnavailable(err)
+			return nil, authenticationUnavailable(resolveErr)
 		}
-		user, err := s.users.Get(ctx, session.UserID.String())
-		if err != nil {
-			if store.IsNotFound(err) {
+		user, userErr := s.users.Get(ctx, session.UserID.String())
+		if userErr != nil {
+			if store.IsNotFound(userErr) {
 				return nil, invalidTokenAppError()
 			}
-			return nil, authenticationUnavailable(err)
+			return nil, authenticationUnavailable(userErr)
 		}
 		resolved = &cachedAuthentication{Credential: credential, Session: session, User: user}
 	}
 	nowTime := model.TimeFromMillis(now)
-	if !resolved.User.IsActive() ||
-		resolved.Credential.IsExpiredAt(nowTime) ||
-		resolved.Session.IsExpiredAt(nowTime) {
+	if !resolved.User.IsActive() || resolved.Credential.IsExpiredAt(nowTime) {
 		_ = s.cache.Delete(ctx, authenticationCachePrefix+tokenHash)
+		return nil, invalidTokenAppError()
+	}
+	resolved.Session, err = s.enforceSessionExpiry(ctx, resolved.Session, nowTime)
+	if err != nil {
+		_ = s.cache.Delete(ctx, authenticationCachePrefix+tokenHash)
+		return nil, err
+	}
+	if resolved.Session.ClientType == model.SessionClientDesktop {
 		return nil, invalidTokenAppError()
 	}
 	if err := s.updateActivity(ctx, resolved, now); err != nil {
@@ -645,16 +712,38 @@ func (a *App) RefreshSession(
 	_ Invocation,
 	command RefreshSessionCommand,
 ) (*model.Session, *model.AuthenticationTokens, error) {
-	session, tokens, err := a.authentication.refresh(ctx, command.RefreshToken)
+	session, tokens, err := a.authentication.refresh(ctx, command)
 	a.recordOperational("authentication", "refresh", err)
 	return session, tokens, err
 }
 
 func (s *authenticationService) refresh(
 	ctx context.Context,
-	rawRefreshToken string,
+	command RefreshSessionCommand,
 ) (*model.Session, *model.AuthenticationTokens, error) {
+	rawRefreshToken := command.RefreshToken
 	if !validRawCredential(rawRefreshToken) {
+		return nil, nil, invalidTokenAppError()
+	}
+	_, session, err := s.sessionCredentials.GetSessionByTokenHash(
+		ctx,
+		model.HashToken(rawRefreshToken),
+		model.SessionCredentialRefresh,
+	)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, nil, invalidTokenAppError()
+		}
+		return nil, nil, authenticationUnavailable(err)
+	}
+	if session.ClientType == model.SessionClientDesktop {
+		if command.DPoP == nil {
+			return nil, nil, invalidTokenAppError()
+		}
+		if err = s.validateDPoPRefresh(ctx, rawRefreshToken, command.DPoP.Proof, command.DPoP.Method, command.DPoP.Path); err != nil {
+			return nil, nil, err
+		}
+	} else if command.DPoP != nil {
 		return nil, nil, invalidTokenAppError()
 	}
 	now := s.now().UnixMilli()
@@ -682,7 +771,7 @@ func (s *authenticationService) refresh(
 		}
 		return nil, nil, authenticationUnavailable(err)
 	}
-	if rotation.ReplayDetected {
+	if rotation.ReplayDetected || rotation.Expired {
 		s.sessionsRevoked(
 			ctx,
 			rotation.Session.UserID.String(),
@@ -696,7 +785,7 @@ func (s *authenticationService) refresh(
 			rotation.RevokedAccessHashes,
 		)
 	}
-	if rotation.ReplayDetected {
+	if rotation.ReplayDetected || rotation.Expired {
 		return nil, nil, invalidTokenAppError()
 	}
 	user, err := s.users.Get(ctx, rotation.Session.UserID.String())
@@ -727,11 +816,19 @@ func (s *authenticationService) refresh(
 		User:       user,
 	}, now)
 	return rotation.Session, &model.AuthenticationTokens{
+		TokenType:        tokenTypeForSession(rotation.Session),
 		AccessToken:      accessToken,
 		RefreshToken:     refreshToken,
 		AccessExpiresAt:  rotation.AccessCredential.ExpiresAt,
 		RefreshExpiresAt: rotation.RefreshCredential.ExpiresAt,
 	}, nil
+}
+
+func tokenTypeForSession(session *model.Session) string {
+	if session != nil && session.ClientType == model.SessionClientDesktop {
+		return "DPoP"
+	}
+	return "Bearer"
 }
 
 func (a *App) Logout(ctx context.Context, invocation Invocation, _ LogoutCommand) error {
@@ -845,6 +942,44 @@ func (s *authenticationService) sessionsRevoked(
 	hashes []string,
 ) {
 	s.securityEffects.SessionsRevoked(ctx, userID, sessionIDs, hashes)
+}
+
+func (s *authenticationService) enforceSessionExpiry(
+	ctx context.Context,
+	session *model.Session,
+	now time.Time,
+) (*model.Session, error) {
+	if session == nil {
+		return nil, invalidTokenAppError()
+	}
+	if !session.IsExpiredAt(now) {
+		return session, nil
+	}
+	result, err := s.sessions.EnforceExpiry(
+		ctx,
+		session.ID.String(),
+		session.UserID.String(),
+		model.MillisFromTime(now),
+	)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return nil, invalidTokenAppError()
+		}
+		return nil, authenticationUnavailable(err)
+	}
+	if result == nil || result.Session == nil {
+		return nil, authenticationUnavailable(errors.New("session expiry result is incomplete"))
+	}
+	if !result.Expired {
+		return result.Session, nil
+	}
+	s.sessionsRevoked(
+		ctx,
+		result.Session.UserID.String(),
+		[]string{result.Session.ID.String()},
+		result.TokenHashes,
+	)
+	return nil, invalidTokenAppError()
 }
 
 func (s *authenticationService) warn(ctx context.Context, message string, err error) {

@@ -5,6 +5,7 @@ package model
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -124,7 +125,7 @@ func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
 		if changed, applyErr := candidate.ApplyFocusLossPolicy(policy, at.Add(time.Minute)); applyErr == nil || changed {
 			t.Fatalf("invalid policy accepted: %#v", policy)
 		}
-		if candidate != *draft {
+		if !reflect.DeepEqual(candidate, *draft) {
 			t.Fatal("invalid policy mutated Draft")
 		}
 	}

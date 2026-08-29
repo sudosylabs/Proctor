@@ -26,7 +26,11 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
-	effects := examRealtimeEffects{realtime: foundation.realtime}
+	collectionEffects := examCollectionInvalidationEffects{
+		sittings: deps.Store.ExamSitting(),
+		realtime: foundation.realtime,
+	}
+	effects := examRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects}
 	authoring, err := examengine.NewAuthoring(
 		deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(), deps.Store.User(),
 		foundation.mail,
@@ -62,8 +66,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		examSittingAuthorizationAdapter{authorization: access.authorization},
 		examSittingAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		examSittingSystemAuditAdapter{audit: foundation.audit},
-		examSittingRealtimeEffects{realtime: foundation.realtime, execution: execution},
-		examSittingRealtimeEffects{realtime: foundation.realtime},
+		examSittingRealtimeEffects{realtime: foundation.realtime, execution: execution, collections: collectionEffects},
+		examSittingRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects},
 		appjobs.NewExamSittingLifecycleJobFactory(time.Now, model.NewJobID),
 		sittingMailPreparation,
 		time.Now, model.NewExamSittingID,
@@ -77,11 +81,12 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	attempts, err := examattempt.New(examattempt.Dependencies{
 		Persistence: deps.Store.ExamAttempt(), Workspace: deps.Store.ExamAttemptWorkspace(),
 		Submissions: deps.Store.ExamSubmission(), Sittings: deps.Store.ExamSitting(),
-		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings, submissions: deps.Store.ExamSubmission()},
+		Managers:      examAttemptManagerAuthorizationAdapter{sittings: sittings, submissions: deps.Store.ExamSubmission(), audit: foundation.audit},
 		Auditor:       examAttemptAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
 		SystemAuditor: examAttemptSystemAuditAdapter{audit: foundation.audit},
 		Effects:       attemptEffects, EffectFailures: attemptEffects, Content: deps.FileContent, Mail: submissionMail,
-		Now: time.Now, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
+		DesktopBuilds: access.desktopCompatibility,
+		Now:           time.Now, NewAttemptID: model.NewExamAttemptID, NewWorkspaceID: model.NewExamAttemptWorkspaceID,
 		NewParticipation: model.NewAttemptParticipationID, NewConnection: model.NewAttemptConnectionID,
 		NewEvidence: model.NewIntegrityEvidenceID, NewFlag: model.NewIntegrityFlagID,
 		NewSuspension: model.NewAttemptSuspensionID, NewFocusLossSignal: model.NewFocusLossSignalID,
@@ -102,9 +107,10 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	resultReleaseMail := examResultReleaseMailPreparationAdapter{preparer: foundation.mail, users: deps.Store.User(),
 		sittings: deps.Store.ExamSitting(), revisions: deps.Store.ExamRevision()}
 	reviews, err := examreview.New(examreview.Dependencies{Persistence: deps.Store.ExamIntegrityReview(),
-		Authorizer: examIntegrityReviewAuthorizationAdapter{reviews: deps.Store.ExamIntegrityReview(), sittings: sittings},
-		Auditor:    examIntegrityReviewAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		Effects:    reviewEffects, EffectFailures: reviewEffects, Mail: resultReleaseMail, Now: time.Now,
+		Authorizer: examIntegrityReviewAuthorizationAdapter{reviews: deps.Store.ExamIntegrityReview(), sittings: sittings,
+			audit: foundation.audit},
+		Auditor: examIntegrityReviewAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		Effects: reviewEffects, EffectFailures: reviewEffects, Mail: resultReleaseMail, Now: time.Now,
 		NewReviewID: model.NewSubmissionReviewID, NewDecisionID: model.NewIntegrityReviewDecisionID})
 	if err != nil {
 		return examinationConstruction{}, err
@@ -125,8 +131,8 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 		deps.Store.ExamCorrection(), deps.Store.ExamRevision(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
 		examCorrectionAuthorizationAdapter{authorization: access.authorization},
 		examCorrectionAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime},
-		examCorrectionRealtimeEffects{realtime: foundation.realtime},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects, execution: execution},
+		examCorrectionRealtimeEffects{realtime: foundation.realtime, collections: collectionEffects, execution: execution},
 		deps.FileContent, time.Now, model.NewExamCorrectionResourceStageID, model.NewExamResourceID,
 		model.NewFileEntryID, model.NewFileRevisionID, model.NewUploadLeaseID, model.NewFileRenditionID,
 		model.NewExamRevisionID,

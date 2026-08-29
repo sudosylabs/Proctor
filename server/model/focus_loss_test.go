@@ -163,7 +163,7 @@ func TestFocusLossSuspensionEndsParticipationAndConnectionWithPolicyReason(t *te
 	t.Parallel()
 	at := time.Date(2026, time.August, 21, 9, 0, 0, 0, time.UTC)
 	attemptID, participationID := NewExamAttemptID(), NewAttemptParticipationID()
-	participation, err := NewAttemptParticipation(participationID, attemptID, 2,
+	participation, err := NewAttemptParticipation(participationID, attemptID, NewSessionID(), 2,
 		HashToken(NewCredentialToken()), at)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestSuspendExamAttemptForFocusLossAppliesOneCausalDomainTransition(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, 3,
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 3,
 		HashToken(NewCredentialToken()), at)
 	if err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestSuspendExamAttemptForFocusLossRejectsMismatchedAggregateWithoutPartialM
 	if err != nil {
 		t.Fatal(err)
 	}
-	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, 3,
+	participation, err := NewAttemptParticipation(NewAttemptParticipationID(), attempt.ID, NewSessionID(), 3,
 		HashToken(NewCredentialToken()), at)
 	if err != nil {
 		t.Fatal(err)

@@ -329,6 +329,30 @@ func (service *Service) AuthorizeView(ctx context.Context, call Call, sittingID 
 	return err
 }
 
+// AuthorizeBrowserActivityView applies the dedicated manager permission while
+// retaining the exact current Manager and Academic Unit membership checks of
+// other Sitting reads.
+func (service *Service) AuthorizeBrowserActivityView(ctx context.Context, call Call, sittingID model.ExamSittingID) (model.AcademicUnitID, bool, error) {
+	if !sittingID.IsValid() || call.Principal().Validate() != nil {
+		return "", false, invalid("exam_sitting_id")
+	}
+	snapshot, err := service.persistence.Resolve(ctx, sittingID)
+	if err != nil {
+		return "", false, mapStoreError(err)
+	}
+	value, err := requireSnapshot(snapshot)
+	if err != nil {
+		return "", false, err
+	}
+	decision, err := service.authorize(ctx, call, value.Sitting.ExamID,
+		model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}, model.TimeUTC(service.now()),
+		model.ActionExamAttemptBrowserActivityView, model.ActionExamAttemptBrowserActivityViewOverride)
+	if err != nil {
+		return "", false, err
+	}
+	return decision.unitID, decision.override, nil
+}
+
 // AuthorizeSubmissionView applies the current Exam Manager relationship and
 // exact-unit membership decision to one immutable Submission resource. The
 // caller resolves the Submission's owning Exam through the bounded ownership

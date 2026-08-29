@@ -31,8 +31,13 @@ paths:
         - administration.unavailable
         - idempotency.key_required
         - idempotency.invalid_key
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       parameters:

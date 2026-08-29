@@ -131,6 +131,9 @@ type ExamListOptions struct {
 	AcademicUnitID  model.AcademicUnitID
 	Query           string
 	ArchiveFilter   ExamArchiveFilter
+	SittingStates   []model.ExamSittingState
+	EndsAfter       time.Time
+	StartsBefore    time.Time
 	BeforeUpdatedAt time.Time
 	BeforeExamID    model.ExamID
 	Limit           int
@@ -140,15 +143,30 @@ type ExamListOptions struct {
 // ExamSummary is the bounded catalog projection. Authored Markdown, policy,
 // resources, and Starter Workspace state are deliberately absent.
 type ExamSummary struct {
-	ID             model.ExamID
-	AcademicUnitID model.AcademicUnitID
-	CreatorUserID  model.UserID
-	OwnerUserID    model.UserID
-	Title          string
-	UpdatedAt      time.Time
-	ArchivedAt     model.OptionalTime
-	Revision       int64
-	ManagerCount   int
+	ID                      model.ExamID
+	AcademicUnitID          model.AcademicUnitID
+	AcademicUnitDisplayName string
+	CreatorUserID           model.UserID
+	OwnerUserID             model.UserID
+	Title                   string
+	UpdatedAt               time.Time
+	ArchivedAt              model.OptionalTime
+	Revision                int64
+	ManagerCount            int
+	SittingCount            int
+	MatchingSittingCount    int
+	SittingSummary          *ExamCatalogSittingSummary
+}
+
+type ExamCatalogSittingSummary struct {
+	ID               model.ExamSittingID
+	ExamRevisionID   model.ExamRevisionID
+	ClassID          model.ClassID
+	ClassDisplayName string
+	ScheduledStartAt time.Time
+	ScheduledEndAt   time.Time
+	State            model.ExamSittingState
+	Revision         int64
 }
 
 // ExamManagerSummary is the bounded management projection. It deliberately
@@ -261,6 +279,19 @@ type ExamDraftExecutionProfileUpdate struct {
 	AuditAt          int64
 }
 
+// ExamDraftBrowserPolicyUpdate replaces the complete canonical Browser Policy
+// value. Individual rules are never independently mutable Store entities.
+type ExamDraftBrowserPolicyUpdate struct {
+	ExamID           model.ExamID
+	ActorUserID      model.UserID
+	ManagerOverride  bool
+	ExpectedRevision int64
+	Policy           model.BrowserPolicy
+	UpdatedAt        int64
+	AuditEventID     string
+	AuditAt          int64
+}
+
 // ExamAuthoringStore owns atomic Exam authoring mutations and bounded reads.
 // Create commits the Exam, its one Draft, creator-manager relation, audit
 // success, and retry outcome together. Draft updates recheck the current
@@ -274,6 +305,7 @@ type ExamAuthoringStore interface {
 	UpdateDraftText(context.Context, *ExamDraftTextUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftFocusLoss(context.Context, *ExamDraftFocusLossUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	UpdateDraftExecutionProfile(context.Context, *ExamDraftExecutionProfileUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
+	UpdateDraftBrowserPolicy(context.Context, *ExamDraftBrowserPolicyUpdate, *CommandIdempotency) (*ExamAuthoringCommandResult, error)
 	// List returns at most Limit summaries in descending (UpdatedAt, ExamID)
 	// order, strictly before the optional complete cursor pair. The adapter must
 	// apply exact-unit, archive-state, role-scope, current exact Academic Unit
@@ -340,6 +372,7 @@ type Catalog interface {
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	BrowserAuthentication() BrowserAuthenticationStore
+	DesktopRegistration() DesktopRegistrationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
 	OnboardingImport() OnboardingImportStore
@@ -356,6 +389,7 @@ type Catalog interface {
 	Audit() AuditStore
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
+	DesktopCompatibilityPolicy() DesktopCompatibilityPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
@@ -387,6 +421,7 @@ type Store interface {
 	ExternalIdentity() ExternalIdentityStore
 	ExternalLoginState() ExternalLoginStateStore
 	BrowserAuthentication() BrowserAuthenticationStore
+	DesktopRegistration() DesktopRegistrationStore
 	UserToken() UserTokenStore
 	Invitation() InvitationStore
 	OnboardingImport() OnboardingImportStore
@@ -403,6 +438,7 @@ type Store interface {
 	Audit() AuditStore
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
+	DesktopCompatibilityPolicy() DesktopCompatibilityPolicyStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
@@ -1167,10 +1203,48 @@ type UserStore interface {
 	GetByUsername(context.Context, string) (*model.User, error)
 	GetByEmail(context.Context, string) (*model.User, error)
 	List(context.Context, UserListOptions) ([]*model.User, error)
+	GetCurrentContext(context.Context, model.UserID, int) (*CurrentUserContext, error)
 	MatchVisibility(context.Context, string, UserVisibilityScope) (UserVisibilityMatch, error)
 	UpdateProfileWithAudit(context.Context, *UserProfileUpdate) (*model.User, error)
 	SetDisabledWithAudit(context.Context, *UserDisabledStateChange) (*UserDisabledStateResult, error)
 	UpdateLastLogin(context.Context, string, int64) error
+}
+
+type CurrentUserProductArea string
+
+const (
+	CurrentUserProductAreaAccount         CurrentUserProductArea = "account"
+	CurrentUserProductAreaAdministration  CurrentUserProductArea = "administration"
+	CurrentUserProductAreaExamManagement  CurrentUserProductArea = "exam_management"
+	CurrentUserProductAreaSettings        CurrentUserProductArea = "settings"
+	CurrentUserProductAreaStudentActivity CurrentUserProductArea = "student_activity"
+)
+
+type CurrentUserManagementScope struct {
+	ScopeType   model.RoleScopeType
+	ScopeID     string
+	DisplayName string
+}
+
+type CurrentUserAttemptSelector struct {
+	AttemptID model.ExamAttemptID
+	SittingID model.ExamSittingID
+	State     model.ExamAttemptState
+}
+
+// CurrentUserContext is a bounded, credential-free navigation projection.
+// It is never an authorization receipt and deliberately omits Role names,
+// permission arrays, provider data, and examination content.
+type CurrentUserContext struct {
+	UserID                  model.UserID
+	Username                string
+	DisplayName             string
+	NoCurrentAffiliation    bool
+	NoAssignedAccess        bool
+	AvailableProductAreas   []CurrentUserProductArea
+	ManagementScopes        []CurrentUserManagementScope
+	ManagementScopesHasMore bool
+	UnresolvedAttempt       *CurrentUserAttemptSelector
 }
 
 // UserSettingsStore owns the exact current User Settings Document. Mutations
@@ -2196,6 +2270,15 @@ type SessionRevocationResult struct {
 	TokenHashes []string
 }
 
+// SessionExpiryEnforcementResult reports the authoritative outcome of checking
+// one active Session against both of its durable expiry clocks. Expired is true
+// only when this call committed the Session and credential-family revocation.
+type SessionExpiryEnforcementResult struct {
+	Session     *model.Session
+	TokenHashes []string
+	Expired     bool
+}
+
 // UserSessionsRevocation is the complete durable input for revoking every
 // active session belonging to one user under an already-persisted audit
 // attempt.
@@ -2232,6 +2315,7 @@ type SessionStore interface {
 	ListByUser(context.Context, string) ([]*model.Session, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
 	UpdateActivity(context.Context, string, int64, int64) error
+	EnforceExpiry(context.Context, string, string, int64) (*SessionExpiryEnforcementResult, error)
 	Revoke(context.Context, string, string, int64, model.SessionRevocationReason) ([]string, error)
 	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(
@@ -2249,6 +2333,30 @@ type SessionRotation struct {
 	RefreshCredential   *model.SessionCredential
 	RevokedAccessHashes []string
 	ReplayDetected      bool
+	Expired             bool
+}
+
+type DesktopRegistrationRevocation struct {
+	RegistrationID model.DesktopRegistrationID
+	UserID         model.UserID
+	RevokedAt      int64
+	AuditEventID   string
+	AuditAt        int64
+}
+
+type DesktopRegistrationRevocationResult struct {
+	Registration   *model.DesktopRegistration
+	Sessions       []*model.Session
+	TokenHashes    []string
+	AlreadyRevoked bool
+}
+
+// DesktopRegistrationStore owns safe self-listing and the atomic irreversible
+// key, Session, and token-family revocation transition.
+type DesktopRegistrationStore interface {
+	Get(context.Context, string) (*model.DesktopRegistration, error)
+	ListByUser(context.Context, string) ([]*model.DesktopRegistration, error)
+	RevokeWithAudit(context.Context, *DesktopRegistrationRevocation) (*DesktopRegistrationRevocationResult, error)
 }
 
 // SessionCredentialStore resolves bearer credentials and atomically rotates

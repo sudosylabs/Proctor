@@ -129,6 +129,7 @@ func TestDependencyPolicyAllowsInwardImports(t *testing.T) {
 	}{
 		{name: "store contracts may import domain", from: serverModule + "/store", imported: serverModule + "/model"},
 		{name: "domain may import identity-provider constraints", from: serverModule + "/model", imported: serverModule + "/identityprovider"},
+		{name: "domain may canonicalize internationalized host names", from: serverModule + "/model", imported: "golang.org/x/net/idna"},
 		{name: "configuration may import identity-provider constraints", from: serverModule + "/config", imported: serverModule + "/identityprovider"},
 		{name: "application may import store contracts", from: serverModule + "/app", imported: serverModule + "/store"},
 		{name: "application may import Job engine", from: serverModule + "/app", imported: serverModule + "/app/job"},

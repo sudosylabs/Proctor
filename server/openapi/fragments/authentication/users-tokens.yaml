@@ -13,9 +13,14 @@ paths:
         - authentication.invalid_token
         - authentication.credential_ambiguous
         - personal_access_token.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
       responses:
         "200":
@@ -26,6 +31,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
     post:
       operationId: createPersonalAccessToken
       summary: Create a Personal Access Token
@@ -46,9 +53,14 @@ paths:
         - personal_access_token.maximum_reached
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       requestBody:
@@ -68,6 +80,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/tokens/{personal_access_token_id}/disable:
     parameters:
       - $ref: '#/components/parameters/PersonalAccessTokenID'
@@ -95,9 +109,14 @@ paths:
         - resource.not_found
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -113,6 +132,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/tokens/{personal_access_token_id}/enable:
     parameters:
       - $ref: '#/components/parameters/PersonalAccessTokenID'
@@ -142,9 +163,14 @@ paths:
         - personal_access_token.maximum_reached
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -162,6 +188,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/users/me/tokens/{personal_access_token_id}:
     parameters:
       - $ref: '#/components/parameters/PersonalAccessTokenID'
@@ -189,9 +217,14 @@ paths:
         - resource.not_found
         - personal_access_token.unavailable
         - audit.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
       x-proctor-idempotency: none
       security:
         - bearerAuth: []
+        - dpopAuth: []
         - sessionCookie: []
           csrfToken: []
       responses:
@@ -207,6 +240,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "500":
           $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     PersonalAccessTokenID:

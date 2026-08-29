@@ -507,7 +507,7 @@ func TestSecurityModelValidationReturnsPreciseErrors(t *testing.T) {
 				at := TimeFromMillis(now)
 				s := &Session{
 					UserID:                   NewUserID(),
-					ClientType:               SessionClientDesktop,
+					ClientType:               SessionClientWeb,
 					AuthenticationMethod:     "oidc",
 					AuthenticationProviderID: "campus-oidc",
 					ExternalIdentityID:       NewExternalIdentityID(),

@@ -34,13 +34,26 @@ const BrowserAuthenticationPurposeInvitationAcceptance BrowserAuthenticationPurp
 type BrowserAuthenticationState string
 
 const (
-	BrowserAuthenticationStatePending    BrowserAuthenticationState = "pending"
-	BrowserAuthenticationStateCodeIssued BrowserAuthenticationState = "code_issued"
-	BrowserAuthenticationStateExchanged  BrowserAuthenticationState = "exchanged"
-	BrowserAuthenticationStateCompleted  BrowserAuthenticationState = "completed"
-	BrowserAuthenticationStateCancelled  BrowserAuthenticationState = "cancelled"
-	BrowserAuthenticationStateExpired    BrowserAuthenticationState = "expired"
+	BrowserAuthenticationStatePending       BrowserAuthenticationState = "pending"
+	BrowserAuthenticationStateBound         BrowserAuthenticationState = "bound"
+	BrowserAuthenticationStateAuthenticated BrowserAuthenticationState = "authenticated"
+	BrowserAuthenticationStateCodeIssued    BrowserAuthenticationState = "code_issued"
+	BrowserAuthenticationStateExchanged     BrowserAuthenticationState = "exchanged"
+	BrowserAuthenticationStateCompleted     BrowserAuthenticationState = "completed"
+	BrowserAuthenticationStateCancelled     BrowserAuthenticationState = "cancelled"
+	BrowserAuthenticationStateDenied        BrowserAuthenticationState = "denied"
+	BrowserAuthenticationStateExpired       BrowserAuthenticationState = "expired"
 )
+
+// DesktopAuthorizationDenialReason is a closed, safe terminal denial. It is
+// retained for audit and maintenance, but not as a bearer to the transaction.
+type DesktopAuthorizationDenialReason string
+
+const DesktopAuthorizationDenialActiveAttempt DesktopAuthorizationDenialReason = "active_attempt_session_lock"
+
+func (r DesktopAuthorizationDenialReason) IsValid() bool {
+	return r == DesktopAuthorizationDenialActiveAttempt
+}
 
 // BrowserAuthenticationTransaction is one purpose-bound browser handoff. All
 // bearer values are persisted only as hashes; the Desktop PKCE verifier and
@@ -63,11 +76,17 @@ type BrowserAuthenticationTransaction struct {
 	CodeChallenge                string `json:"-"`
 	ExpectedAuthenticationMethod string
 	ExpectedProviderID           string
-
-	ClientType SessionClientType
-	DeviceID   string
-	DeviceName string
-	ExpiresAt  time.Time
+	ClientType                   SessionClientType
+	DeviceID                     string
+	DeviceName                   string
+	ProposedPublicJWK            DesktopPublicJWK
+	ProposedKeyThumbprint        string
+	DesktopRelease               string
+	DesktopBuildID               string
+	DesktopPlatform              DesktopPlatform
+	DesktopArchitecture          DesktopArchitecture
+	DesktopRealtimeProtocol      int
+	ExpiresAt                    time.Time
 
 	UserID                   UserID
 	AuthenticationMethod     string
@@ -79,6 +98,8 @@ type BrowserAuthenticationTransaction struct {
 	CodeHash                 string `json:"-"`
 	CodeExpiresAt            OptionalTime
 	CancelledAt              OptionalTime
+	DeniedAt                 OptionalTime
+	DenialReason             DesktopAuthorizationDenialReason
 	ExchangedAt              OptionalTime
 	CompletedAt              OptionalTime
 	ExpiredAt                OptionalTime
@@ -131,51 +152,73 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	if !t.InvitationID.IsZero() || t.InvitationClaimHash != "" || t.CompletedAt.Valid {
 		return invalidModelError(where, "browser_authentication_transaction", "invitation", "must be empty for desktop authorization", details)
 	}
-	if !validAuthenticationPath(t.ExpectedAuthenticationMethod, t.ExpectedProviderID) {
-		return invalidModelError(where, "browser_authentication_transaction", "expected_authentication", "must identify one exact authentication path", details)
-	}
 	if len(t.DeviceID) > SessionDeviceIdMaxLength ||
 		utf8.RuneCountInString(t.DeviceName) > SessionDeviceNameMaxRunes {
 		return invalidModelError(where, "browser_authentication_transaction", "device", "exceeds the model bounds", details)
+	}
+	hasProposedKey := t.ProposedPublicJWK.Validate() == nil &&
+		IsValidDPoPKeyThumbprint(t.ProposedKeyThumbprint) &&
+		IsValidDesktopRelease(t.DesktopRelease) && IsValidDesktopBuildID(t.DesktopBuildID) &&
+		t.DesktopPlatform.IsValid() && t.DesktopArchitecture.IsValid() && t.DesktopRealtimeProtocol > 0
+	noProposedKey := t.ProposedPublicJWK == (DesktopPublicJWK{}) && t.ProposedKeyThumbprint == "" &&
+		t.DesktopRelease == "" && t.DesktopBuildID == "" && t.DesktopPlatform == "" &&
+		t.DesktopArchitecture == "" && t.DesktopRealtimeProtocol == 0
+	if hasProposedKey {
+		thumbprint, _ := t.ProposedPublicJWK.Thumbprint()
+		hasProposedKey = thumbprint == t.ProposedKeyThumbprint
+	}
+	if t.ExpectedAuthenticationMethod != "" || t.ExpectedProviderID != "" {
+		return invalidModelError(where, "browser_authentication_transaction", "expected_authentication", "must be empty for desktop authorization", details)
 	}
 	switch t.State {
 	case BrowserAuthenticationStatePending:
 		if !IsValidTokenHash(t.HandleHash) || !IsValidTokenHash(t.BrowserProofHash) ||
 			!IsValidTokenHash(t.StateHash) || !IsValidCredentialToken(t.CodeChallenge) ||
 			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil ||
-			!t.UserID.IsZero() || t.AuthenticationMethod != "" || t.AuthenticationProviderID != "" || !t.ExternalIdentityID.IsZero() ||
-			t.AuthenticationStrength != "" || t.AuthenticatedAt.Valid || t.MFACompletedAt.Valid || t.CodeHash != "" ||
-			t.CodeExpiresAt.Valid || t.CancelledAt.Valid || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
+			!hasProposedKey || !t.hasNoDesktopAuthentication() || t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.hasNoDesktopTerminal() {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid pending state", details)
+		}
+	case BrowserAuthenticationStateBound:
+		if t.HandleHash != "" || !IsValidTokenHash(t.BrowserProofHash) ||
+			!IsValidTokenHash(t.StateHash) || !IsValidCredentialToken(t.CodeChallenge) ||
+			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil ||
+			!hasProposedKey || !t.hasNoDesktopAuthentication() || t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.hasNoDesktopTerminal() {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid bound state", details)
+		}
+	case BrowserAuthenticationStateAuthenticated:
+		if t.HandleHash != "" || !IsValidTokenHash(t.BrowserProofHash) ||
+			!IsValidTokenHash(t.StateHash) || !IsValidCredentialToken(t.CodeChallenge) ||
+			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil || !hasProposedKey || !t.hasValidDesktopAuthentication() ||
+			t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.hasNoDesktopTerminal() {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid authenticated state", details)
 		}
 	case BrowserAuthenticationStateCodeIssued:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || !IsValidTokenHash(t.StateHash) ||
 			ValidateDesktopAuthorizationCallback(t.CallbackURL) != nil || !IsValidCredentialToken(t.CodeChallenge) ||
-			!t.UserID.IsValid() || !validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) ||
-			!validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) ||
-			t.AuthenticationMethod != t.ExpectedAuthenticationMethod || t.AuthenticationProviderID != t.ExpectedProviderID ||
-			!t.AuthenticationStrength.IsValid() || !t.AuthenticatedAt.Valid || t.AuthenticatedAt.Time.After(t.UpdatedAt) ||
-			(t.AuthenticationStrength == AuthenticationMultiFactor && (!t.MFACompletedAt.Valid || t.MFACompletedAt.Time.Before(t.AuthenticatedAt.Time) || t.MFACompletedAt.Time.After(t.UpdatedAt))) ||
-			(t.AuthenticationStrength == AuthenticationSingleFactor && t.MFACompletedAt.Valid) ||
+			!hasProposedKey || !t.hasValidDesktopAuthentication() ||
 			!IsValidTokenHash(t.CodeHash) || !t.CodeExpiresAt.Valid || !t.CodeExpiresAt.Time.After(t.UpdatedAt) ||
 			t.CodeExpiresAt.Time.After(t.UpdatedAt.Add(DesktopAuthorizationCodeLifetime)) ||
-			t.CodeExpiresAt.Time.After(t.ExpiresAt) || t.CancelledAt.Valid || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
+			t.CodeExpiresAt.Time.After(t.ExpiresAt) || !t.hasNoDesktopTerminal() {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid issued-code state", details)
 		}
 	case BrowserAuthenticationStateCancelled:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
-			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.CancelledAt.Valid ||
-			t.MFACompletedAt.Valid || t.CancelledAt.Time != t.UpdatedAt || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
+			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.CancelledAt.Valid ||
+			!t.hasNoDesktopAuthentication() || t.CancelledAt.Time != t.UpdatedAt || t.DeniedAt.Valid ||
+			t.DenialReason != "" || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid cancelled state", details)
+		}
+	case BrowserAuthenticationStateDenied:
+		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
+			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.hasNoDesktopAuthentication() ||
+			t.CancelledAt.Valid || !t.DeniedAt.Valid || t.DeniedAt.Time != t.UpdatedAt ||
+			!t.DenialReason.IsValid() || t.ExchangedAt.Valid || t.ExpiredAt.Valid {
+			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid denied state", details)
 		}
 	case BrowserAuthenticationStateExchanged:
 		if t.HandleHash != "" || t.BrowserProofHash != "" || t.StateHash != "" || t.CallbackURL != "" ||
-			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !t.UserID.IsValid() ||
-			!validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) ||
-			!validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) ||
-			!t.AuthenticationStrength.IsValid() || !t.AuthenticatedAt.Valid || t.CancelledAt.Valid ||
-			(t.AuthenticationStrength == AuthenticationMultiFactor && !t.MFACompletedAt.Valid) ||
-			(t.AuthenticationStrength == AuthenticationSingleFactor && t.MFACompletedAt.Valid) ||
+			t.CodeChallenge != "" || t.CodeHash != "" || t.CodeExpiresAt.Valid || !noProposedKey || !t.hasValidDesktopAuthentication() ||
+			t.CancelledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" ||
 			!t.ExchangedAt.Valid || t.ExchangedAt.Time != t.UpdatedAt || t.ExpiredAt.Valid {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid exchanged state", details)
 		}
@@ -186,12 +229,11 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 			t.AuthenticationStrength == "" && !t.AuthenticatedAt.Valid && !t.MFACompletedAt.Valid
 		resolvedUser := t.UserID.IsValid() && validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) &&
 			validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) &&
-			t.AuthenticationMethod == t.ExpectedAuthenticationMethod && t.AuthenticationProviderID == t.ExpectedProviderID &&
 			t.AuthenticationStrength.IsValid() && t.AuthenticatedAt.Valid && !t.AuthenticatedAt.Time.After(t.UpdatedAt) &&
 			((t.AuthenticationStrength == AuthenticationSingleFactor && !t.MFACompletedAt.Valid) ||
 				(t.AuthenticationStrength == AuthenticationMultiFactor && t.MFACompletedAt.Valid &&
 					!t.MFACompletedAt.Time.Before(t.AuthenticatedAt.Time) && !t.MFACompletedAt.Time.After(t.UpdatedAt)))
-		if !proofsDestroyed || (!noResolvedUser && !resolvedUser) || t.CancelledAt.Valid || t.ExchangedAt.Valid ||
+		if !proofsDestroyed || !noProposedKey || (!noResolvedUser && !resolvedUser) || t.CancelledAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" || t.ExchangedAt.Valid ||
 			!t.ExpiredAt.Valid || !t.ExpiredAt.Time.Equal(t.UpdatedAt) || t.UpdatedAt.After(t.ExpiresAt) ||
 			(noResolvedUser && !t.UpdatedAt.Equal(t.ExpiresAt)) {
 			return invalidModelError(where, "browser_authentication_transaction", "state", "contains invalid expired state", details)
@@ -202,13 +244,38 @@ func (t *BrowserAuthenticationTransaction) Validate() error {
 	return nil
 }
 
+func (t *BrowserAuthenticationTransaction) hasNoDesktopAuthentication() bool {
+	return t.UserID.IsZero() && t.AuthenticationMethod == "" && t.AuthenticationProviderID == "" &&
+		t.ExternalIdentityID.IsZero() && t.AuthenticationStrength == "" && !t.AuthenticatedAt.Valid && !t.MFACompletedAt.Valid
+}
+
+func (t *BrowserAuthenticationTransaction) hasValidDesktopAuthentication() bool {
+	if !t.UserID.IsValid() || !validAuthenticationPath(t.AuthenticationMethod, t.AuthenticationProviderID) ||
+		!validAuthenticationIdentity(t.AuthenticationProviderID, t.ExternalIdentityID) ||
+		!t.AuthenticationStrength.IsValid() || !t.AuthenticatedAt.Valid || t.AuthenticatedAt.Time.After(t.UpdatedAt) {
+		return false
+	}
+	if t.AuthenticationStrength == AuthenticationMultiFactor {
+		return t.MFACompletedAt.Valid && !t.MFACompletedAt.Time.Before(t.AuthenticatedAt.Time) &&
+			!t.MFACompletedAt.Time.After(t.UpdatedAt)
+	}
+	return !t.MFACompletedAt.Valid
+}
+
+func (t *BrowserAuthenticationTransaction) hasNoDesktopTerminal() bool {
+	return !t.CancelledAt.Valid && !t.DeniedAt.Valid && t.DenialReason == "" &&
+		!t.ExchangedAt.Valid && !t.ExpiredAt.Valid
+}
+
 func (t *BrowserAuthenticationTransaction) validateInvitationAcceptance(details string) error {
 	const where = "BrowserAuthenticationTransaction.Validate"
 	if !t.InvitationID.IsValid() || t.ExpectedAuthenticationMethod != "" || t.ExpectedProviderID != "" ||
 		t.StateHash != "" || t.CallbackURL != "" || t.CodeChallenge != "" || t.DeviceID != "" || t.DeviceName != "" ||
+		t.ProposedPublicJWK != (DesktopPublicJWK{}) || t.ProposedKeyThumbprint != "" || t.DesktopRelease != "" ||
+		t.DesktopBuildID != "" || t.DesktopPlatform != "" || t.DesktopArchitecture != "" || t.DesktopRealtimeProtocol != 0 ||
 		t.AuthenticationMethod != "" || t.AuthenticationProviderID != "" || !t.ExternalIdentityID.IsZero() ||
 		t.AuthenticationStrength != "" || t.AuthenticatedAt.Valid || t.MFACompletedAt.Valid || t.CodeHash != "" ||
-		t.CodeExpiresAt.Valid || t.ExchangedAt.Valid {
+		t.CodeExpiresAt.Valid || t.DeniedAt.Valid || t.DenialReason != "" || t.ExchangedAt.Valid {
 		return invalidModelError(where, "browser_authentication_transaction", "invitation", "contains desktop authorization state", details)
 	}
 	switch t.State {
@@ -301,6 +368,7 @@ func (t *BrowserAuthenticationTransaction) Auditable() map[string]any {
 		"expires_at": MillisFromTime(t.ExpiresAt), "authenticated_at": t.AuthenticatedAt.Millis(),
 		"mfa_completed_at": t.MFACompletedAt.Millis(),
 		"code_expires_at":  t.CodeExpiresAt.Millis(), "cancelled_at": t.CancelledAt.Millis(),
+		"denied_at": t.DeniedAt.Millis(), "denial_reason": t.DenialReason,
 		"exchanged_at": t.ExchangedAt.Millis(), "completed_at": t.CompletedAt.Millis(), "expired_at": t.ExpiredAt.Millis(),
 	}
 }

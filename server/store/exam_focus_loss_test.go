@@ -79,8 +79,8 @@ func TestExamAttemptReallowResultMakesCausalFocusWindowResetExplicit(t *testing.
 
 func TestCandidateExamPresentationExposesOnlyTheSafeCollectionDecision(t *testing.T) {
 	t.Parallel()
-	presentation := CandidateExamPresentation{FocusLossCollectionEnabled: true}
-	if !presentation.FocusLossCollectionEnabled {
+	presentation := CandidateExamPresentation{RuntimeCapabilities: CandidateRuntimeCapabilities{FocusLossCollectionEnabled: true}}
+	if !presentation.RuntimeCapabilities.FocusLossCollectionEnabled {
 		t.Fatal("candidate presentation omitted the current Revision's Focus Loss collection decision")
 	}
 	typ := reflect.TypeOf(presentation)

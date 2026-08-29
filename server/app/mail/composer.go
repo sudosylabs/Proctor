@@ -481,7 +481,9 @@ func (p *Composer) PrepareSubmissionReceiptMail(request SubmissionReceiptPrepara
 	if request.Recipient == nil || request.Recipient.Validate() != nil || !request.OccurrenceID.IsValid() ||
 		request.Details.ExamTitle == "" || !request.Details.SittingID.IsValid() || !request.Details.SubmissionID.IsValid() ||
 		request.Details.SealedAt.IsZero() || request.ActionAt.IsZero() ||
-		request.TemplateKey != model.MailTemplateExamSubmissionReceived && request.TemplateKey != model.MailTemplateExamSubmissionAutomaticallySealed {
+		request.TemplateKey != model.MailTemplateExamSubmissionReceived &&
+			request.TemplateKey != model.MailTemplateExamSubmissionManagerEnded &&
+			request.TemplateKey != model.MailTemplateExamSubmissionAutomaticallySealed {
 		return nil, errors.New("submission receipt mail input is invalid")
 	}
 	at := model.TimeUTC(request.ActionAt)

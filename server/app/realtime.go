@@ -11,6 +11,7 @@ import (
 	examsitting "github.com/sudosylabs/proctor/server/app/exam/sitting"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
 	"github.com/sudosylabs/proctor/server/model"
+	"github.com/sudosylabs/proctor/server/store"
 )
 
 // realtimeDiagnostics extends the child module's bounded diagnostics only for
@@ -25,6 +26,9 @@ type realtimeDiagnostics interface {
 type realtimeService struct {
 	delivery    *apprealtime.Service
 	diagnostics realtimeDiagnostics
+	attempts    interface {
+		ListSessionRevocationInvalidationTargets(context.Context, model.UserID, []model.SessionID) ([]store.ExamAttemptInvalidationTarget, error)
+	}
 }
 
 func newRealtimeService(
@@ -108,6 +112,42 @@ func (s *realtimeService) SessionsRevoked(
 	accessTokenHashes []string,
 ) {
 	s.delivery.SessionsRevoked(ctx, userID, sessionIDs, accessTokenHashes)
+	if s.attempts == nil || len(sessionIDs) == 0 {
+		return
+	}
+	candidateID, err := model.ParseUserID(userID)
+	if err != nil {
+		s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", err)
+		return
+	}
+	parsedSessionIDs := make([]model.SessionID, len(sessionIDs))
+	for index, sessionID := range sessionIDs {
+		parsedSessionIDs[index], err = model.ParseSessionID(sessionID)
+		if err != nil {
+			s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", err)
+			return
+		}
+	}
+	targets, err := s.attempts.ListSessionRevocationInvalidationTargets(ctx, candidateID, parsedSessionIDs)
+	if err != nil {
+		s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", err)
+		return
+	}
+	for _, target := range targets {
+		candidateEvent, candidateErr := apprealtime.NewCandidateExamActivityChangedEvent(target.CandidateUserID)
+		managerEvent, managerErr := apprealtime.NewManagerSittingBoardChangedEvent(target.ExamID, target.SittingID)
+		publishErr := errors.Join(candidateErr, managerErr)
+		if candidateErr == nil {
+			publishErr = errors.Join(publishErr, s.Publish(ctx, candidateEvent))
+		}
+		if managerErr == nil {
+			publishErr = errors.Join(publishErr, s.Publish(ctx, managerEvent))
+		}
+		publishErr = errors.Join(publishErr, s.InvalidateCurrentUserContext(ctx, target.CandidateUserID))
+		if publishErr != nil {
+			s.reportTransientFailure(ctx, "session_revocation.attempt_invalidations", publishErr)
+		}
+	}
 }
 
 func (s *realtimeService) AuthenticationCacheInvalidated(
@@ -120,6 +160,28 @@ func (s *realtimeService) AuthenticationCacheInvalidated(
 
 func (s *realtimeService) InvalidateAuthorization(ctx context.Context, userID string) {
 	s.delivery.InvalidateAuthorization(ctx, userID)
+	if userID == "" {
+		return
+	}
+	parsed, err := model.ParseUserID(userID)
+	if err == nil {
+		candidateEvent, candidateErr := apprealtime.NewCandidateExamActivityChangedEvent(parsed)
+		err = errors.Join(candidateErr, s.InvalidateCurrentUserContext(ctx, parsed))
+		if candidateErr == nil {
+			err = errors.Join(err, s.Publish(ctx, candidateEvent))
+		}
+	}
+	if err != nil {
+		s.reportTransientFailure(ctx, "authorization.current_user_context_invalidation", err)
+	}
+}
+
+func (s *realtimeService) InvalidateCurrentUserContext(ctx context.Context, userID model.UserID) error {
+	event, err := apprealtime.NewCurrentUserContextChangedEvent(userID)
+	if err != nil {
+		return err
+	}
+	return s.Publish(ctx, event)
 }
 
 var _ authenticationSecurityEffects = (*realtimeService)(nil)

@@ -5,6 +5,7 @@ package exam
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -49,6 +50,13 @@ type ConfigureDraftExecutionProfileCommand struct {
 	ExamID                model.ExamID
 	ExpectedDraftRevision int64
 	Profile               model.ExecutionProfile
+	IdempotencyKey        string
+}
+
+type ConfigureDraftBrowserPolicyCommand struct {
+	ExamID                model.ExamID
+	ExpectedDraftRevision int64
+	Policy                model.BrowserPolicy
 	IdempotencyKey        string
 }
 
@@ -597,6 +605,94 @@ func (a *Authoring) ConfigureDraftExecutionProfile(ctx context.Context, call Cal
 	return project(result.Value), nil
 }
 
+// ConfigureDraftBrowserPolicy replaces the complete canonical enforcement
+// value. Publication, rather than this mutable Draft, controls open Sittings.
+func (a *Authoring) ConfigureDraftBrowserPolicy(ctx context.Context, call Call, command ConfigureDraftBrowserPolicyCommand) (View, error) {
+	principal := call.Principal()
+	if principal.Validate() != nil || !command.ExamID.IsValid() || command.ExpectedDraftRevision < 1 {
+		return View{}, invalid("draft_revision")
+	}
+	policy, err := model.NewBrowserPolicy(command.Policy.Enabled, command.Policy.StartRuleID, command.Policy.Rules)
+	if err != nil {
+		return View{}, invalidCause("browser_policy", err)
+	}
+	canonical, err := model.EncodeBrowserPolicy(policy)
+	if err != nil {
+		return View{}, invalidCause("browser_policy", err)
+	}
+	idempotency, err := prepareIdempotency(call, idempotencyOperationConfigureBrowserPolicy, command.IdempotencyKey, struct {
+		ExamID                string          `json:"exam_id"`
+		ExpectedDraftRevision int64           `json:"expected_draft_revision"`
+		Policy                json.RawMessage `json:"browser_policy"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, canonical})
+	if err != nil {
+		return View{}, err
+	}
+	at := model.TimeUTC(a.now())
+	access, err := a.persistence.Access(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if access == nil || access.Exam == nil {
+		return View{}, unavailable(errors.New("exam store returned no access projection"))
+	}
+	action, err := a.actionForAccess(ctx, principal.UserID, access, at, model.ActionExamManage, model.ActionExamManageOverride)
+	if err != nil {
+		return View{}, err
+	}
+	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
+	if err = a.authorizer.Authorize(ctx, call, action, resource); err != nil {
+		return View{}, err
+	}
+	snapshot, err := a.persistence.Get(ctx, command.ExamID, principal.UserID)
+	if err != nil {
+		return View{}, mapStoreError(err)
+	}
+	if snapshot == nil || snapshot.Exam == nil || snapshot.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned an incomplete snapshot"))
+	}
+	candidate := *snapshot.Draft
+	changed, err := candidate.ApplyBrowserPolicy(policy, at)
+	if err != nil {
+		return View{}, invalidCause("browser_policy", err)
+	}
+	if !changed && snapshot.Draft.Revision == command.ExpectedDraftRevision && !snapshot.Exam.IsArchived() {
+		return View{}, &Fault{Code: "exam.draft.no_changes"}
+	}
+	auditID, err := a.auditor.Begin(ctx, call, action, resource, model.RoleScopeAcademicUnit, access.Exam.AcademicUnitID.String(), "configure_draft_browser_policy", map[string]any{
+		"exam_id": command.ExamID.String(), "expected_draft_revision": command.ExpectedDraftRevision,
+		"draft_revision": command.ExpectedDraftRevision + 1, "browser_policy_enabled": policy.Enabled,
+	}, nil)
+	if err != nil {
+		return View{}, err
+	}
+	result, err := a.persistence.UpdateDraftBrowserPolicy(ctx, &store.ExamDraftBrowserPolicyUpdate{
+		ExamID: command.ExamID, ActorUserID: principal.UserID, ManagerOverride: action == model.ActionExamManageOverride,
+		ExpectedRevision: command.ExpectedDraftRevision, Policy: policy, UpdatedAt: model.MillisFromTime(candidate.UpdatedAt),
+		AuditEventID: auditID, AuditAt: model.MillisFromTime(at),
+	}, idempotency)
+	if err != nil {
+		mapped := mapStoreError(err)
+		var fault *Fault
+		if !errors.As(mapped, &fault) {
+			fault = &Fault{Code: "exam.unavailable", Cause: mapped}
+		}
+		if auditErr := a.auditor.Fail(ctx, auditID, fault.Code); auditErr != nil {
+			return View{}, auditErr
+		}
+		return View{}, mapped
+	}
+	if result == nil || result.Value == nil || result.Value.Draft == nil {
+		return View{}, unavailable(errors.New("exam store returned no Browser Policy update result"))
+	}
+	if !result.Replayed {
+		if effectErr := a.effects.DraftUpdated(ctx, result.Value.Exam.ID, result.Value.Draft.Revision); effectErr != nil {
+			a.failures.Report(ctx, "exam_draft_updated", effectErr)
+		}
+	}
+	return project(result.Value), nil
+}
+
 func (a *Authoring) failExecutionProfileAudit(ctx context.Context, auditID string, failure error) error {
 	code := "exam.unavailable"
 	var fault *Fault
@@ -697,6 +793,8 @@ func mapStoreError(err error) error {
 			return &Fault{Code: "exam.manager.not_found", Cause: err}
 		case "exam_manager_ineligible":
 			return &Fault{Code: "exam.manager.ineligible", Cause: err}
+		case "exam_manager_candidate_conflict":
+			return &Fault{Code: "exam.manager.candidate_conflict", Cause: err}
 		case "exam_owner_manager":
 			return &Fault{Code: "exam.manager.owner_protected", Cause: err}
 		case "exam_owner_no_changes":
