@@ -96,7 +96,25 @@ test('mutations require a valid media example or executable-style code sample', 
 
 test('each product area requires representative success and Problem Details examples', () => {
   expectError((document) => {
-    delete document.components.responses.InstallationStatusOK.content['application/json'].example;
+    for (const pathItem of Object.values(document.paths)) {
+      for (const operation of Object.values(pathItem)) {
+        if (!operation?.tags?.includes('System')) {
+          continue;
+        }
+        for (const [status, responseReference] of Object.entries(operation.responses ?? {})) {
+          if (!/^2\d\d$/.test(status)) {
+            continue;
+          }
+          const response = responseReference.$ref?.startsWith('#/components/responses/')
+            ? document.components.responses[responseReference.$ref.split('/').at(-1)]
+            : responseReference;
+          for (const mediaType of Object.values(response?.content ?? {})) {
+            delete mediaType.example;
+            delete mediaType.examples;
+          }
+        }
+      }
+    }
   }, 'tag "System": at least one representative success response example is required');
   expectError((document) => {
     for (const response of Object.values(document.components.responses)) {
