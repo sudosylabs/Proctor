@@ -128,14 +128,14 @@ describe("hosted route bootstrap", () => {
       ),
     ).toEqual({
       replacements: [
-        "https://proctor.example/authorize/desktop?request=handle&state=state",
+        "https://proctor.example/authorize/desktop?state=state",
       ],
       value: {
         route: "/authorize/desktop",
+        state: "state",
         credential: {
           kind: "desktop_browser_proof",
           handle: "handle",
-          state: "state",
           value: "secret",
         },
       },
@@ -149,11 +149,11 @@ describe("hosted route bootstrap", () => {
       ).value,
     ).toEqual({
       route: "/authorize/desktop",
-      credential: {
-        kind: "desktop_browser_proof",
-        handle: "handle",
-        value: "secret",
-      },
+    });
+
+    expect(bootstrap("/authorize/desktop?state=state")).toEqual({
+      replacements: [],
+      value: { route: "/authorize/desktop", state: "state" },
     });
 
     expect(bootstrap("/authorize/desktop", "#token=secret")).toEqual({
@@ -191,9 +191,9 @@ describe("purpose-specific page projection", () => {
       credential: {
         kind: "desktop_browser_proof",
         handle: "handle",
-        state: "state",
         value: "proof",
       },
+      state: "state",
     }) as ReactElement<{ proof?: { browserProof: string } }>;
     expect(desktop.type).toBe(DesktopAuthorizationPage);
     expect(desktop.props.proof?.browserProof).toBe("proof");

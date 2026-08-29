@@ -31,9 +31,22 @@ const discovery: PublicAccessDiscovery = {
 describe("requestDesktopAuthorizationContext", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("combines the current User with validated public discovery", async () => {
+  it("combines the browser transaction with validated public discovery", async () => {
     vi.spyOn(apiClient, "GET").mockResolvedValue(
-      apiResult(200, { data: { username: "student.one" } }),
+      apiResult(200, {
+        data: {
+          state: "authenticated",
+          account: {
+            id: "user-1",
+            username: "student.one",
+            display_name: "Student One",
+          },
+          device_name: "Exam laptop",
+          expires_at: 1000,
+          local_login_enabled: false,
+          external_providers: [],
+        },
+      }),
     );
     await expect(
       requestDesktopAuthorizationContext(
@@ -43,23 +56,46 @@ describe("requestDesktopAuthorizationContext", () => {
     ).resolves.toEqual({
       kind: "ready",
       context: {
-        account: "student.one",
+        account: {
+          id: "user-1",
+          username: "student.one",
+          display_name: "Student One",
+        },
+        deviceName: "Exam laptop",
+        expiresAt: 1000,
+        externalProviders: [],
         installation: "Example University",
+        localLoginEnabled: false,
+        state: "authenticated",
       },
     });
   });
 
-  it("distinguishes a missing Session from unavailable public context", async () => {
+  it("distinguishes a rejected binding from unavailable public context", async () => {
     const get = vi.spyOn(apiClient, "GET");
-    get.mockResolvedValue(apiResult(401));
+    get.mockResolvedValue(
+      apiResult(409, {
+        problemCode: "authentication.desktop_authorization.rejected",
+      }),
+    );
     await expect(
       requestDesktopAuthorizationContext(
         "https://proctor.example",
         async () => ({ kind: "ready", discovery }),
       ),
-    ).resolves.toEqual({ kind: "no_session" });
+    ).resolves.toEqual({ kind: "invalid" });
 
-    get.mockResolvedValue(apiResult(200, { data: { username: "student.one" } }));
+    get.mockResolvedValue(
+      apiResult(200, {
+        data: {
+          state: "bound",
+          device_name: "",
+          expires_at: 1000,
+          local_login_enabled: true,
+          external_providers: [],
+        },
+      }),
+    );
     await expect(
       requestDesktopAuthorizationContext(
         "https://proctor.example",

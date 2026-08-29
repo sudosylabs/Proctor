@@ -24,10 +24,10 @@ export type HostedPageBootstrap =
   | { route: "/register" }
   | {
       route: "/authorize/desktop";
+      state?: string;
       credential?: {
         kind: "desktop_browser_proof";
-        handle?: string;
-        state?: string;
+        handle: string;
         value: string;
       };
     }
@@ -95,13 +95,13 @@ const hostedRouteDescriptors = {
     fragment: { kind: "desktop_browser_proof", name: "proof" },
     render: (bootstrap) => (
       <DesktopAuthorizationPage
+        state={bootstrap.state}
         proof={
-          bootstrap.credential?.handle !== undefined &&
-          bootstrap.credential.state !== undefined
+          bootstrap.credential !== undefined && bootstrap.state !== undefined
             ? {
                 browserProof: bootstrap.credential.value,
                 handle: bootstrap.credential.handle,
-                state: bootstrap.credential.state,
+                state: bootstrap.state,
               }
             : undefined
         }
@@ -171,25 +171,32 @@ export function bootstrapHostedPage(
       } as RouteBootstrap<typeof route>;
     }
     case "desktop_browser_proof": {
-      const value = captureFragmentCredential(
-        location,
-        history,
-        policy.name,
-      );
-      if (value === undefined) {
-        return { route } as RouteBootstrap<typeof route>;
-      }
       const url = new URL(location.href);
       const handle = boundedParameter(url.searchParams.get("request"));
       const state = boundedParameter(url.searchParams.get("state"));
+      const fragment = location.hash.startsWith("#")
+        ? location.hash.slice(1)
+        : location.hash;
+      const fragmentParameters = new URLSearchParams(fragment);
+      const value = fragmentParameters.get(policy.name);
+      const sanitized = new URL(location.href);
+      sanitized.hash = "";
+      sanitized.searchParams.delete("request");
+      if (sanitized.href !== location.href) {
+        history.replaceState(history.state, "", sanitized);
+      }
       return {
         route,
-        credential: {
-          kind: "desktop_browser_proof",
-          value,
-          ...(handle === undefined ? {} : { handle }),
-          ...(state === undefined ? {} : { state }),
-        },
+        ...(state === undefined ? {} : { state }),
+        ...(value === null || value === "" || fragmentParameters.size !== 1 || handle === undefined || state === undefined
+          ? {}
+          : {
+              credential: {
+                kind: "desktop_browser_proof" as const,
+                handle,
+                value,
+              },
+            }),
       } as RouteBootstrap<typeof route>;
     }
     case "invitation_claim":
