@@ -1,6 +1,6 @@
 module github.com/sudosylabs/proctor/packages/vfs
 
-go 1.25.4
+go 1.25.13
 
 require github.com/minio/minio-go/v7 v7.0.97
 

@@ -18,21 +18,74 @@ env:
   GOPRIVATE: github.com/sudosylabs/proctor
 
 jobs:
+  quality:
+    name: Formatting and static analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/mail/go.sum
+            packages/vfs/go.sum
+            build/tools/go.sum
+            build/tools/gopls/go.sum
+      - name: Select linter comparison revision
+        id: lint-base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          revision=
+          if [ "$EVENT_NAME" = pull_request ]; then
+            revision=$PULL_REQUEST_BASE
+          elif [ "$EVENT_NAME" = push ]; then
+            if ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$PUSH_BEFORE"
+            fi
+            git cat-file -e "$PUSH_BEFORE^{commit}"
+            revision=$PUSH_BEFORE
+          elif [ "$EVENT_NAME" = workflow_dispatch ]; then
+            git fetch --no-tags origin "$DEFAULT_BRANCH"
+            revision=$(git merge-base HEAD FETCH_HEAD)
+          else
+            printf 'unsupported event for incremental linting: %s\n' "$EVENT_NAME" >&2
+            exit 2
+          fi
+          test -n "$revision"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Run formatting and linter gates
+        env:
+          LINT_BASE_REV: ${{ steps.lint-base.outputs.revision }}
+        run: make quality
+
   hermetic:
     name: Hermetic and independent modules
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.25.4
+          go-version-file: go.work
           cache-dependency-path: |
             go.work.sum
             server/go.sum
             packages/cache/go.sum
+            packages/mail/go.sum
             packages/vfs/go.sum
       - name: Set up Node
         uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
@@ -53,15 +106,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.25.4
+          go-version-file: go.work
           cache-dependency-path: |
             go.work.sum
             server/go.sum
             packages/cache/go.sum
+            packages/mail/go.sum
             packages/vfs/go.sum
       - name: Run integration suites
         run: make integration
@@ -72,15 +126,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.25.4
+          go-version-file: go.work
           cache-dependency-path: |
             go.work.sum
             server/go.sum
             packages/cache/go.sum
+            packages/mail/go.sum
             packages/vfs/go.sum
       - name: Set up Node
         uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
@@ -99,20 +154,21 @@ jobs:
 
   release:
     name: Reproducible release artifacts
-    needs: [hermetic, integration, cluster]
+    needs: [quality, hermetic, integration, cluster]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5442e5b4c0 # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4b7341a0c50ab9762a7b6426f9c51d80bff8b0a5 # v6.3.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: 1.25.4
+          go-version-file: go.work
           cache-dependency-path: |
             go.work.sum
             server/go.sum
             packages/cache/go.sum
+            packages/mail/go.sum
             packages/vfs/go.sum
       - name: Set up Node
         uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0

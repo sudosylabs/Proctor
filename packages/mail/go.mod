@@ -1,3 +1,3 @@
 module github.com/sudosylabs/proctor/packages/mail
 
-go 1.25.4
+go 1.25.13

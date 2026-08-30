@@ -1,6 +1,7 @@
 # Runtime and maintainer images need only the Go workspace, reusable modules,
-# server, and hosted webapp. Everything else stays outside the build context so
-# ignored operator/developer material cannot influence or reach the builder.
+# server, hosted webapp, and pinned Go tool manifests. Everything else stays
+# outside the build context so ignored operator/developer material cannot
+# influence or reach the builder.
 *
 !go.work
 !go.work.sum
@@ -42,3 +43,13 @@
 **/yarn-debug.log*
 **/yarn-error.log*
 server/config/config.json
+
+# The maintainer image installs the repository-pinned Go developer tools.
+!build/
+build/**
+!build/tools/
+!build/tools/go.mod
+!build/tools/go.sum
+!build/tools/gopls/
+!build/tools/gopls/go.mod
+!build/tools/gopls/go.sum

@@ -1,0 +1,243 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s GO_QUALITY_SCRIPT\n' "$0" >&2
+	exit 2
+fi
+
+script=$1
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-go-quality.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+
+mkdir -p "$fixture/bin" "$fixture/go-root/bin" "$fixture/repository"
+cat >"$fixture/go-root/bin/gofmt" <<'EOF'
+#!/bin/sh
+exec gofmt "$@"
+EOF
+chmod +x "$fixture/go-root/bin/gofmt"
+cat >"$fixture/bin/go" <<EOF
+#!/bin/sh
+if [ "\$1 \${2:-}" = 'env GOROOT' ]; then
+	printf '%s\\n' '$fixture/go-root'
+	exit 0
+fi
+exit 2
+EOF
+chmod +x "$fixture/bin/go"
+cat >"$fixture/bin/goimports" <<'EOF'
+#!/bin/sh
+exec gofmt "$@"
+EOF
+chmod +x "$fixture/bin/goimports"
+cat >"$fixture/bin/golangci-lint" <<EOF
+#!/bin/sh
+if [ "\$1" = run ] && printf '%s\n' " \$* " | grep -q ' --new-from-rev '; then
+	[ -n "\${GIT_INDEX_FILE:-}" ] || exit 3
+	if printf '%s\n' " \$* " | grep -q ' --new-from-rev HEAD '; then
+		for expected in server/changed.go server/staged.go; do
+			GIT_INDEX_FILE="\$GIT_INDEX_FILE" git -C '$fixture/repository' diff --name-only HEAD -- \
+				| grep -q "^\$expected\$" || exit 3
+		done
+	fi
+fi
+printf '%s|%s\\n' "\$PWD" "\$*" >>'$fixture/lint-calls'
+if [ "\${FAIL_SERVER_RUNS:-}" = 1 ] && [ "\$1" = run ]; then
+	case "\$(pwd)" in
+		*/server) exit 7 ;;
+	esac
+fi
+EOF
+chmod +x "$fixture/bin/golangci-lint"
+cat >"$fixture/bin/govulncheck" <<EOF
+#!/bin/sh
+printf '%s|%s|%s\n' "\$PWD" "\$*" "\${GOWORK-unset}" >>'$fixture/vuln-calls'
+if [ "\${FAIL_SERVER_VULN:-}" = 1 ]; then
+	case "\$(pwd)" in
+		*/server) exit 7 ;;
+	esac
+fi
+EOF
+chmod +x "$fixture/bin/govulncheck"
+
+cd "$fixture/repository"
+git init -q
+mkdir -p server packages/cache packages/mail packages/vfs
+printf 'ignored.go\n' >.gitignore
+printf 'package sample\n\nfunc tracked( ) {}\n' >tracked.go
+printf 'package sample\n\nfunc removed( ) {}\n' >deleted.go
+git add .gitignore tracked.go deleted.go
+git -c user.name=Proctor -c user.email=proctor@example.invalid -c commit.gpgsign=false commit -qm baseline
+if ! git show-ref --verify --quiet refs/heads/main; then
+	git branch main HEAD
+fi
+git checkout -qb feature
+printf 'package server\n\nfunc earlier( ) {}\n' >server/earlier.go
+git add server/earlier.go
+git -c user.name=Proctor -c user.email=proctor@example.invalid -c commit.gpgsign=false commit -qm 'earlier feature change'
+printf 'feature branch\n' >README.md
+git add README.md
+git -c user.name=Proctor -c user.email=proctor@example.invalid -c commit.gpgsign=false commit -qm 'later feature change'
+main_base=$(git rev-parse main)
+rm deleted.go
+
+printf 'package sample\n\nfunc untracked( ) {}\n' >untracked.go
+printf 'package sample\n\nfunc ignored( ) {}\n' >ignored.go
+printf 'package server\n\nfunc changed( ) {}\n' >server/changed.go
+printf 'package server\n\nfunc staged( ) {}\n' >server/staged.go
+git add server/staged.go
+printf 'version: "2"\n' >.golangci.yml
+
+if GOLANGCI_LINT="$fixture/bin/golangci-lint" LINT_BASE_REV=missing-revision \
+	"$script" lint "$fixture/repository" >"$fixture/invalid-base-output" 2>&1; then
+	printf 'expected an invalid linter comparison revision to fail\n' >&2
+	exit 1
+fi
+if ! grep -q 'invalid linter comparison revision' "$fixture/invalid-base-output"; then
+	printf 'expected a clear invalid comparison revision error\n' >&2
+	exit 1
+fi
+
+if GOIMPORTS="$fixture/bin/goimports" GO_COMMAND="$fixture/bin/go" \
+	"$script" format-check "$fixture/repository" >"$fixture/check-output" 2>&1; then
+	printf 'expected stale formatting to fail\n' >&2
+	exit 1
+fi
+if ! grep -q 'untracked.go' "$fixture/check-output"; then
+	printf 'expected formatting check to include untracked Go source\n' >&2
+	exit 1
+fi
+
+GOIMPORTS="$fixture/bin/goimports" GO_COMMAND="$fixture/bin/go" \
+	"$script" format "$fixture/repository"
+if [ -n "$(gofmt -l tracked.go untracked.go server/changed.go)" ]; then
+	printf 'expected tracked and untracked Go source to be formatted\n' >&2
+	exit 1
+fi
+if [ -z "$(gofmt -l ignored.go)" ]; then
+	printf 'expected ignored Go source to remain outside repository formatting\n' >&2
+	exit 1
+fi
+
+GIT_INDEX_FILE="$fixture/ambient-index" GOLANGCI_LINT="$fixture/bin/golangci-lint" LINT_BASE_REV=HEAD \
+	"$script" lint "$fixture/repository"
+if [ "$(wc -l <"$fixture/lint-calls" | tr -d ' ')" -ne 6 ]; then
+	printf 'expected config validation, four authority smoke runs, and one changed-module lint run\n' >&2
+	exit 1
+fi
+if ! grep -Fq '|config verify --config ' "$fixture/lint-calls"; then
+	printf 'expected lint to validate its configuration\n' >&2
+	exit 1
+fi
+if [ "$(grep -c '|run --new=false ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected lint-authority changes to exercise all product modules\n' >&2
+	exit 1
+fi
+if ! grep -Fq '/repository/server|run --new-from-rev HEAD ' "$fixture/lint-calls"; then
+	printf 'expected lint to use the explicit comparison revision\n' >&2
+	exit 1
+fi
+
+mkdir -p build/make
+printf '%s\n' 'GOFLAGS := -mod=readonly' >build/make/config.mk
+git add .golangci.yml build/make/config.mk server/changed.go server/earlier.go server/staged.go
+git -c user.name=Proctor -c user.email=proctor@example.invalid -c commit.gpgsign=false commit -qm 'tracked lint authority'
+printf '%s\n' 'GOFLAGS := -mod=readonly -buildvcs=false' >build/make/config.mk
+: >"$fixture/lint-calls"
+GOLANGCI_LINT="$fixture/bin/golangci-lint" LINT_BASE_REV=HEAD \
+	"$script" lint "$fixture/repository"
+if [ "$(grep -c '|run --new=false ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected config.mk changes to exercise every product module\n' >&2
+	exit 1
+fi
+if grep -q -- '--new-from-rev' "$fixture/lint-calls"; then
+	printf 'expected the config-only authority test to have no changed Go module\n' >&2
+	exit 1
+fi
+
+: >"$fixture/lint-calls"
+GOLANGCI_LINT="$fixture/bin/golangci-lint" "$script" lint "$fixture/repository"
+if ! grep -Fq "/repository/server|run --new-from-rev $main_base " "$fixture/lint-calls"; then
+	printf 'expected local lint to compare the complete feature branch with its main merge-base\n' >&2
+	exit 1
+fi
+if ! git diff --name-only "$main_base" -- | grep -q '^server/earlier.go$'; then
+	printf 'multi-commit lint fixture does not cover the earlier feature change\n' >&2
+	exit 1
+fi
+
+: >"$fixture/lint-calls"
+GOLANGCI_LINT="$fixture/bin/golangci-lint" "$script" lint-full "$fixture/repository"
+if [ "$(wc -l <"$fixture/lint-calls" | tr -d ' ')" -ne 5 ]; then
+	printf 'expected config validation and four complete-backlog lint runs\n' >&2
+	exit 1
+fi
+if [ "$(grep -c '|run --new=false ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected lint-full to disable new-finding filtering in every module\n' >&2
+	exit 1
+fi
+if grep -q -- '--new-from-rev' "$fixture/lint-calls"; then
+	printf 'expected lint-full not to select an incremental comparison revision\n' >&2
+	exit 1
+fi
+
+: >"$fixture/lint-calls"
+if FAIL_SERVER_RUNS=1 GOLANGCI_LINT="$fixture/bin/golangci-lint" \
+	"$script" lint-full "$fixture/repository"; then
+	printf 'expected lint-full to report a failing module\n' >&2
+	exit 1
+fi
+if [ "$(grep -c '|run --new=false ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected lint-full to inspect every module after one fails\n' >&2
+	exit 1
+fi
+
+: >"$fixture/lint-calls"
+GOLANGCI_LINT="$fixture/bin/golangci-lint" "$script" lint-fix "$fixture/repository"
+if [ "$(grep -c '|run --fix ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected lint-fix to process every module without new-finding filtering\n' >&2
+	exit 1
+fi
+if grep -q -- '--new-from-rev' "$fixture/lint-calls"; then
+	printf 'expected lint-fix not to select an incremental comparison revision\n' >&2
+	exit 1
+fi
+
+: >"$fixture/lint-calls"
+if FAIL_SERVER_RUNS=1 GOLANGCI_LINT="$fixture/bin/golangci-lint" \
+	"$script" lint-fix "$fixture/repository"; then
+	printf 'expected lint-fix to report a failing module\n' >&2
+	exit 1
+fi
+if [ "$(grep -c '|run --fix ' "$fixture/lint-calls")" -ne 4 ]; then
+	printf 'expected lint-fix to process every module after one fails\n' >&2
+	exit 1
+fi
+
+: >"$fixture/vuln-calls"
+GOWORK="$fixture/repository/go.work" GOVULNCHECK="$fixture/bin/govulncheck" \
+	"$script" vulncheck "$fixture/repository"
+if [ "$(wc -l <"$fixture/vuln-calls" | tr -d ' ')" -ne 4 ]; then
+	printf 'expected vulncheck to scan every product module\n' >&2
+	exit 1
+fi
+if [ "$(grep -c '|off$' "$fixture/vuln-calls")" -ne 4 ]; then
+	printf 'expected vulncheck to scan each independent module graph without workspace assistance\n' >&2
+	exit 1
+fi
+
+: >"$fixture/vuln-calls"
+if FAIL_SERVER_VULN=1 GOVULNCHECK="$fixture/bin/govulncheck" \
+	"$script" vulncheck "$fixture/repository"; then
+	printf 'expected vulncheck to report a failing module\n' >&2
+	exit 1
+fi
+if [ "$(wc -l <"$fixture/vuln-calls" | tr -d ' ')" -ne 4 ]; then
+	printf 'expected vulncheck to scan every module after one fails\n' >&2
+	exit 1
+fi
+
+printf 'go-quality tests passed\n'

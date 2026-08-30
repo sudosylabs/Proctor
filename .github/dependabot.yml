@@ -1,0 +1,45 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directories:
+      - /server
+      - /packages/cache
+      - /packages/mail
+      - /packages/vfs
+      - /build/tools
+      - /build/tools/gopls
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-dependencies:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directories:
+      - /webapp
+      - /docs/site
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      javascript-dependencies:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /build/docker
+    schedule:
+      interval: weekly
+      day: monday

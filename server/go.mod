@@ -1,6 +1,6 @@
 module github.com/sudosylabs/proctor/server
 
-go 1.25.4
+go 1.25.13
 
 require (
 	github.com/HugoSmits86/nativewebp v1.3.0
@@ -25,10 +25,10 @@ require (
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260811012629-fe3dc2e7fe5b
 	golang.org/x/crypto v0.54.0
-	golang.org/x/image v0.41.0
+	golang.org/x/image v0.45.0
 	golang.org/x/net v0.57.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -92,10 +92,10 @@ require (
 	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/wiggin77/merror v1.0.2 // indirect
 	github.com/wiggin77/srslog v1.0.1 // indirect
-	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/mod v0.38.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/tools v0.47.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

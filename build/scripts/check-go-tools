@@ -1,0 +1,106 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 3 ]; then
+	printf 'usage: %s TOOL_MODULE_DIR BIN_DIR GO_COMMAND\n' "$0" >&2
+	exit 2
+fi
+
+tool_module_dir=$1
+bin_dir=$2
+go_command=$3
+go_mod=$tool_module_dir/go.mod
+gopls_go_mod=$tool_module_dir/gopls/go.mod
+
+for manifest in "$go_mod" "$gopls_go_mod"; do
+	if [ ! -f "$manifest" ]; then
+		printf 'missing Go tool module: %s\n' "$manifest" >&2
+		exit 1
+	fi
+done
+
+required_version() {
+	module=$1
+	manifest=$go_mod
+	if [ "$module" = golang.org/x/tools/gopls ]; then
+		manifest=$gopls_go_mod
+	fi
+	awk -v wanted="$module" '
+		$1 == wanted { print $2; exit }
+		$1 == "require" && $2 == wanted { print $3; exit }
+	' "$manifest"
+}
+
+check_tool() {
+	binary_name=$1
+	module=$2
+	binary=$bin_dir/$binary_name
+	expected=$(required_version "$module")
+
+	if [ -z "$expected" ]; then
+		printf 'no pinned version for %s in %s\n' "$module" "$go_mod" >&2
+		return 1
+	fi
+	if [ ! -x "$binary" ]; then
+		printf 'missing pinned tool %s; run make tools\n' "$binary" >&2
+		return 1
+	fi
+
+	actual=$(
+		"$go_command" version -m "$binary" |
+			awk -v wanted="$module" '$1 == "mod" && $2 == wanted { print $3; exit }'
+	)
+	if [ "$actual" != "$expected" ]; then
+		printf '%s has version %s; expected %s (run make tools)\n' \
+			"$binary_name" "${actual:-unknown}" "$expected" >&2
+		return 1
+	fi
+
+	printf '%-16s %s\n' "$binary_name" "$actual"
+}
+
+check_standard_tool() {
+	binary_name=$1
+	command_path=$2
+	expected_help_status=$3
+	binary=$bin_dir/$binary_name
+	expected_go_version=$("$go_command" env GOVERSION)
+
+	if [ ! -x "$binary" ]; then
+		printf 'missing pinned tool %s; run make tools\n' "$binary" >&2
+		return 1
+	fi
+
+	build_info=$("$go_command" version -m "$binary")
+	actual_go_version=$(printf '%s\n' "$build_info" | awk 'NR == 1 { print $NF; exit }')
+	actual_path=$(printf '%s\n' "$build_info" | awk '$1 == "path" { print $2; exit }')
+	if [ "$actual_go_version" != "$expected_go_version" ] || [ "$actual_path" != "$command_path" ]; then
+		printf '%s was built as %s with %s; expected %s with %s (run make tools)\n' \
+			"$binary_name" "${actual_path:-unknown}" "${actual_go_version:-unknown}" \
+			"$command_path" "$expected_go_version" >&2
+		return 1
+	fi
+
+	help_status=0
+	"$binary" -h >/dev/null 2>&1 || help_status=$?
+	if [ "$help_status" -ne "$expected_help_status" ]; then
+		printf '%s failed its help smoke check with status %s; expected %s (run make tools)\n' \
+			"$binary_name" "$help_status" "$expected_help_status" >&2
+		return 1
+	fi
+
+	printf '%-16s %s\n' "$binary_name" "$actual_go_version"
+}
+
+status=0
+check_tool dlv github.com/go-delve/delve || status=1
+check_tool golangci-lint github.com/golangci/golangci-lint/v2 || status=1
+check_tool goimports golang.org/x/tools || status=1
+check_tool gopls golang.org/x/tools/gopls || status=1
+check_tool govulncheck golang.org/x/vuln || status=1
+check_standard_tool pprof cmd/pprof 0 || status=1
+check_standard_tool trace cmd/trace 2 || status=1
+exit "$status"

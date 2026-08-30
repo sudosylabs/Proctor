@@ -1,0 +1,67 @@
+name: Go vulnerability scan
+
+on:
+  pull_request:
+    paths:
+      - '**/go.mod'
+      - '**/go.sum'
+      - '**/*.go'
+      - 'go.work'
+      - 'go.work.sum'
+      - 'Makefile'
+      - '.github/workflows/security.yml'
+      - '.golangci.yml'
+      - 'build/make/config.mk'
+      - 'build/make/tools.mk'
+      - 'build/scripts/go-quality'
+  push:
+    branches: [main]
+    paths:
+      - '**/go.mod'
+      - '**/go.sum'
+      - '**/*.go'
+      - 'go.work'
+      - 'go.work.sum'
+      - 'Makefile'
+      - '.github/workflows/security.yml'
+      - '.golangci.yml'
+      - 'build/make/config.mk'
+      - 'build/make/tools.mk'
+      - 'build/scripts/go-quality'
+  schedule:
+    - cron: '19 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proctor-vulnerability-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOFLAGS: -buildvcs=false -mod=readonly
+  GOPRIVATE: github.com/sudosylabs/proctor
+
+jobs:
+  govulncheck:
+    name: Current Go vulnerability database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            server/go.sum
+            packages/cache/go.sum
+            packages/mail/go.sum
+            packages/vfs/go.sum
+            build/tools/go.sum
+            build/tools/gopls/go.sum
+      - name: Scan reachable Go vulnerabilities
+        run: make vulncheck

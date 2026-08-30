@@ -8,6 +8,7 @@ ROOT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 -include $(ROOT_DIR)/config.override.mk
 
 include $(ROOT_DIR)/build/make/config.mk
+include $(ROOT_DIR)/build/make/tools.mk
 include $(ROOT_DIR)/build/make/dev.mk
 include $(ROOT_DIR)/build/make/test.mk
 include $(ROOT_DIR)/build/make/release.mk

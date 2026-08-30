@@ -1,0 +1,207 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 2 ]; then
+	printf 'usage: %s COMMAND ROOT\n' "$0" >&2
+	exit 2
+fi
+
+command_name=$1
+root=$2
+modules='server packages/cache packages/mail packages/vfs'
+lint_base_rev=${LINT_BASE_REV:-}
+lint_index=
+unset GIT_INDEX_FILE
+
+cleanup_lint_index() {
+	if [ -n "$lint_index" ]; then
+		rm -f "$lint_index"
+	fi
+}
+
+go_files() {
+	git ls-files -z --cached --others --exclude-standard -- '*.go' \
+		| xargs -0 sh -c 'for file do [ ! -f "$file" ] || printf "%s\0" "$file"; done' sh
+}
+
+module_has_go_changes() (
+	module_path=$1
+	if git -C "$root" diff --name-only "$lint_base_rev" -- "$module_path" | grep -q '\.go$'; then
+		return 0
+	fi
+	git -C "$root" ls-files --others --exclude-standard -- "$module_path" | grep -q '\.go$'
+)
+
+lint_inputs_changed() (
+	{
+		git -C "$root" diff --name-only "$lint_base_rev" --
+		git -C "$root" ls-files --others --exclude-standard
+	} | grep -Eq '(^|/)(go\.mod|go\.sum)$|^go\.work(\.sum)?$|^\.golangci\.yml$|^build/(make/(config|tools)\.mk|scripts/go-quality|tools/)'
+)
+
+format() {
+	: "${GOIMPORTS:?missing GOIMPORTS}"
+	: "${GO_COMMAND:?missing GO_COMMAND}"
+	cd "$root"
+	gofmt_command=$("$GO_COMMAND" env GOROOT)/bin/gofmt
+	go_files | xargs -0 "$gofmt_command" -w
+	go_files | xargs -0 "$GOIMPORTS" -w
+}
+
+format_check() {
+	: "${GOIMPORTS:?missing GOIMPORTS}"
+	: "${GO_COMMAND:?missing GO_COMMAND}"
+	cd "$root"
+	gofmt_command=$("$GO_COMMAND" env GOROOT)/bin/gofmt
+	gofmt_files=$(go_files | xargs -0 "$gofmt_command" -l)
+	goimports_files=$(go_files | xargs -0 "$GOIMPORTS" -l)
+	if [ -n "$gofmt_files" ] || [ -n "$goimports_files" ]; then
+		printf 'Go formatting is stale; run make fmt.\n' >&2
+		if [ -n "$gofmt_files" ]; then
+			printf '%s\n' "$gofmt_files"
+		fi
+		if [ -n "$goimports_files" ]; then
+			printf '%s\n' "$goimports_files"
+		fi
+		exit 1
+	fi
+}
+
+lint_config() {
+	: "${GOLANGCI_LINT:?missing GOLANGCI_LINT}"
+	"$GOLANGCI_LINT" config verify --config "$root/.golangci.yml"
+}
+
+default_lint_base() {
+	origin_head=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+	for candidate in "$origin_head" refs/remotes/origin/main refs/heads/main; do
+		if [ -z "$candidate" ]; then
+			continue
+		fi
+		if git -C "$root" rev-parse --verify --quiet "${candidate}^{commit}" >/dev/null; then
+			git -C "$root" merge-base HEAD "$candidate"
+			return
+		fi
+	done
+	printf 'cannot determine the default branch for incremental linting; set LINT_BASE_REV\n' >&2
+	exit 2
+}
+
+validate_lint_base() {
+	if [ -z "$lint_base_rev" ]; then
+		lint_base_rev=$(default_lint_base)
+	fi
+	if ! git -C "$root" rev-parse --verify --quiet "${lint_base_rev}^{commit}" >/dev/null; then
+		printf 'invalid linter comparison revision: %s\n' "$lint_base_rev" >&2
+		exit 2
+	fi
+}
+
+prepare_lint_index() {
+	lint_index=$(mktemp "${TMPDIR:-/tmp}/proctor-lint-index.XXXXXX")
+	trap cleanup_lint_index EXIT HUP INT TERM
+	real_index=$(git -C "$root" rev-parse --git-path index)
+	case "$real_index" in
+		/*) ;;
+		*) real_index=$root/$real_index ;;
+	esac
+	cp "$real_index" "$lint_index"
+	if [ -n "$(git -C "$root" ls-files --others --exclude-standard -- '*.go')" ]; then
+		git -C "$root" ls-files -z --others --exclude-standard -- '*.go' \
+			| GIT_INDEX_FILE=$lint_index xargs -0 git -C "$root" add --intent-to-add --
+	fi
+}
+
+lint_authority_smoke() {
+	for module in $modules; do
+		printf 'exercising linter authority against %s\n' "$module"
+		(cd "$root/$module" && GIT_INDEX_FILE=$lint_index "$GOLANGCI_LINT" run --new=false --issues-exit-code 0 --output.text.path /dev/null --config "$root/.golangci.yml" ./...)
+	done
+}
+
+lint() {
+	validate_lint_base
+	lint_config
+	prepare_lint_index
+	if lint_inputs_changed; then
+		lint_authority_smoke
+	fi
+	for module in $modules; do
+		if ! module_has_go_changes "$module"; then
+			printf 'skipping %s; no Go changes since %s\n' "$module" "$lint_base_rev"
+			continue
+		fi
+		printf 'linting %s\n' "$module"
+		(cd "$root/$module" && GIT_INDEX_FILE=$lint_index "$GOLANGCI_LINT" run --new-from-rev "$lint_base_rev" --config "$root/.golangci.yml" ./...)
+	done
+	cleanup_lint_index
+	lint_index=
+	trap - EXIT HUP INT TERM
+}
+
+lint_full() {
+	lint_config
+	status=0
+	for module in $modules; do
+		printf 'linting complete %s backlog\n' "$module"
+		if ! (cd "$root/$module" && "$GOLANGCI_LINT" run --new=false --config "$root/.golangci.yml" ./...); then
+			status=1
+		fi
+	done
+	return "$status"
+}
+
+lint_fix() {
+	lint_config
+	status=0
+	for module in $modules; do
+		printf 'linting and fixing %s\n' "$module"
+		if ! (cd "$root/$module" && "$GOLANGCI_LINT" run --fix --config "$root/.golangci.yml" ./...); then
+			status=1
+		fi
+	done
+	return "$status"
+}
+
+vulncheck() {
+	: "${GOVULNCHECK:?missing GOVULNCHECK}"
+	status=0
+	for module in $modules; do
+		printf 'scanning %s\n' "$module"
+		if ! (cd "$root/$module" && GOWORK=off "$GOVULNCHECK" ./...); then
+			status=1
+		fi
+	done
+	return "$status"
+}
+
+case "$command_name" in
+	format)
+		format
+		;;
+	format-check)
+		format_check
+		;;
+	lint-config)
+		lint_config
+		;;
+	lint)
+		lint
+		;;
+	lint-full)
+		lint_full
+		;;
+	lint-fix)
+		lint_fix
+		;;
+	vulncheck)
+		vulncheck
+		;;
+	*)
+		printf 'unknown Go quality command: %s\n' "$command_name" >&2
+		exit 2
+		;;
+esac
