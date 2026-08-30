@@ -1,0 +1,81 @@
+---
+title: Manage Account Security
+description: Integrate MFA, authentication methods, Session review, Desktop Registration revocation, and Personal Access Tokens without weakening assurance.
+audience: api-consumer
+maturity: preview
+sidebar_position: 2
+---
+
+import Link from '@docusaurus/Link';
+
+# Manage Account Security
+
+This recipe starts with an authenticated Web Session at the assurance declared
+by each operation. A Personal Access Token cannot substitute for Session-only,
+recent, or strong-recent operations.
+
+## 1. Inspect Before Mutating
+
+Read the current state through:
+
+- <Link to="/api/reference/get-mfa-status">Get MFA status</Link>;
+- <Link to="/api/reference/list-authentication-methods">List authentication methods</Link>;
+- <Link to="/api/reference/list-current-user-sessions">List current User Sessions</Link>;
+- <Link to="/api/reference/list-desktop-registrations">List Desktop Registrations</Link>; and
+- <Link to="/api/reference/list-personal-access-tokens">List Personal Access Tokens</Link>.
+
+These are separate resources. Never infer a Desktop Registration from a
+user-agent string or infer a provider link from an email address.
+
+## 2. Activate MFA as One Deliberate Ceremony
+
+Call <Link to="/api/reference/setup-mfa">Set up MFA</Link>, enroll the returned
+secret in the authenticator, then call <Link to="/api/reference/activate-mfa">Activate MFA</Link>
+with a current code. Treat setup without successful activation as incomplete.
+Return recovery codes once to the user and never log them.
+
+Use <Link to="/api/reference/regenerate-mfa-recovery-codes">Regenerate recovery codes</Link>
+only after the declared strong recent authentication. The replacement set
+invalidates the previous set. <Link to="/api/reference/disable-mfa">Disable MFA</Link>
+is also an assurance-sensitive change; never automate a fallback to a bearer
+token when reauthentication is required.
+
+When a sensitive operation requires a stronger current Session, use
+<Link to="/api/reference/challenge-mfa">Challenge MFA</Link> with a current TOTP
+or one unused recovery code. The upgraded assurance belongs to that Session;
+it is not a reusable authorization receipt for another client.
+
+## 3. Connect or Remove Authentication Methods
+
+Provider connection begins with <Link to="/api/reference/begin-provider-connection">Begin provider connection</Link>
+and completes in the hosted callback. Preserve browser proof and purpose; do
+not implement email-match linking in an API client.
+
+Use <Link to="/api/reference/enroll-password">Enroll Password</Link> only when
+current policy permits local credential enrollment and the Session satisfies
+the declared recent assurance. Enrollment adds one authentication method; it
+does not unlink an external identity or grant a relationship.
+
+Before <Link to="/api/reference/remove-password">removing a password</Link> or
+<Link to="/api/reference/unlink-external-identity">unlinking an external identity</Link>,
+list the methods again and confirm another currently permitted method remains.
+The server's last-usable-method fence is authoritative and may reject a state
+that became unsafe after the read.
+
+## 4. Revoke the Smallest Compromised Boundary
+
+- Use <Link to="/api/reference/revoke-current-user-session">Revoke current User Session</Link>
+  for one known Session.
+- Use <Link to="/api/reference/revoke-all-current-user-sessions">Revoke all current User Sessions</Link>
+  when the affected Session is unknown; expect the caller's Session to end.
+- Use <Link to="/api/reference/revoke-desktop-registration">Revoke Desktop Registration</Link>
+  when a registered key or device is no longer trusted. This permanently
+  revokes every Session and credential bound to the registration.
+- Use <Link to="/api/reference/revoke-personal-access-token">Revoke Personal Access Token</Link>
+  for an automation credential. Disabling controls use; revocation is the
+  terminal security action.
+
+Revocation requests that require idempotency must use a fresh key for a new
+decision and the same key only for an exact safe replay. Verify the resulting
+resource state and record only bounded identifiers, result codes, and request
+IDs in client diagnostics.

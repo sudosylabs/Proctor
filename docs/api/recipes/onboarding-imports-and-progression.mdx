@@ -1,0 +1,83 @@
+---
+title: Run Onboarding Imports and Progression
+description: Upload, validate, commit, monitor, cancel, and download bounded row outcomes without turning Jobs into authorization receipts.
+audience: api-consumer
+maturity: preview
+sidebar_position: 7
+---
+
+import Link from '@docusaurus/Link';
+
+# Run Onboarding Imports and Progression
+
+The CSV workflow separates untrusted file parsing from durable mutations:
+upload, asynchronous validation, immutable preview, explicit commit, row-wise
+execution, and retained report.
+
+<GovernedFigure asset="onboarding-import-timeline" />
+
+## 1. Upload to an Exact Mode and Scope
+
+POST `text/csv` to <Link to="/api/reference/upload-onboarding-import">Upload Onboarding Import</Link>
+with `mode`, `scope_type`, and `scope_id`; include `role_id` only for a mode that
+packages a Role. Enforce the 10 MiB and 50,000-row boundaries before upload,
+but still treat server validation as authoritative.
+
+The accepted response names the domain import and validation Job. It proves no
+row has changed application state.
+
+## 2. Wait for the Immutable Preview
+
+Poll <Link to="/api/reference/get-onboarding-import">Get Onboarding Import</Link>
+or observe the generic Job without reading domain rows from the Job payload.
+When validation completes, retain the preview digest and review normalized
+outcomes. Unknown headers, duplicate package rows, unresolved canonical names,
+scope escapes, and invalid Unicode are review failures, not warnings to hide.
+
+## 3. Commit the Exact Preview
+
+Call <Link to="/api/reference/commit-onboarding-import">Commit Onboarding Import</Link>
+with the exact preview identity/digest, the documented commit mode, and an
+`Idempotency-Key`. One preview creates at most one execution Job. Reusing the
+key for changed mode or preview input is a conflict.
+
+Execution checks current authority and target state for every row. A Job is
+not an authorization receipt. Loss of authority stops later unauthorized rows
+while retaining earlier outcomes.
+
+## 4. Cancel or Recover
+
+<Link to="/api/reference/cancel-onboarding-import">Cancel Onboarding Import</Link>
+stops admission of new rows; a currently committing row completes. The terminal
+result may therefore contain successes after cancellation was requested.
+
+Use <Link to="/api/reference/download-onboarding-import-report">Download Onboarding Import report</Link>
+after reauthorization. The CSV is formula-safe, but consumers must still treat
+every cell as untrusted text. Compensate an unwanted successful row through its
+ordinary end, revoke, or replacement operation.
+
+## 5. Progress Students Through a Dedicated Preview
+
+Call <Link to="/api/reference/dry-run-student-progression">Dry-run Student Progression</Link>
+with exact source/destination Period and Class IDs plus `effective_at`. Review
+the immutable preview, then call
+<Link to="/api/reference/commit-student-progression">Commit Student Progression</Link>
+with the expected preview and idempotency inputs.
+
+Monitor <Link to="/api/reference/get-student-progression">Get Student Progression</Link>,
+use <Link to="/api/reference/cancel-student-progression">Cancel Student Progression</Link>
+to stop new students, and retrieve the
+<Link to="/api/reference/download-student-progression-report">formula-safe report</Link>.
+Same-Period transfer ends/replaces membership atomically; another-Period
+progression preserves old history and creates the new relationship.
+
+## Retry Rules
+
+| Boundary | Safe response to ambiguity |
+| --- | --- |
+| upload | query known import identity when available; otherwise a new upload creates a distinct preview |
+| preview | read only; repeat with the same filters |
+| commit | replay only the exact body with the same idempotency key |
+| row failure | inspect the public code and current target; never assume all prior rows rolled back |
+| cancellation | wait for terminal state and download the report |
+| report download | reauthorize and retry the read without changing the domain result |

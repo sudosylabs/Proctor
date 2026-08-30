@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Exam Sitting lifecycle and distinct manager controls</title>
+  <desc id="description">A Sitting moves from Scheduled to Open, then Closing and Closed. Scheduled can instead become Canceled. Open can pause and resume without moving the deadline, and both Open and Paused can enter Closing through early close or the scheduled deadline. Closing seals unfinished created Attempts before Closed. Kick, Suspension, re-allow, and manager end operate on one Attempt rather than changing Sitting state.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+    <marker id="complete" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#0b766e"/></marker>
+    <marker id="failure" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#b4233c"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">One Sitting state; several non-equivalent controls</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">PostgreSQL time and revision fences decide every transition. Realtime only asks readers to refetch.</text>
+
+  <rect x="56" y="160" width="176" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="202" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Scheduled</text>
+  <text x="80" y="230" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Revision + Class</text>
+  <text x="80" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">time window</text>
+  <path d="M232 216H312" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="272" y="198" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">START</text>
+
+  <rect x="312" y="160" width="160" height="112" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="336" y="202" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Open</text>
+  <text x="336" y="234" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Delivery active</text>
+
+  <path d="M472 216H760" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="616" y="198" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">CLOSE OR DEADLINE</text>
+
+  <rect x="760" y="160" width="176" height="112" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+  <text x="784" y="202" fill="#95520d" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Closing</text>
+  <text x="784" y="230" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Seal unfinished</text>
+  <text x="784" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Attempts</text>
+  <path d="M936 216H984" fill="none" stroke="#0b766e" stroke-width="3" marker-end="url(#complete)"/>
+
+  <rect x="984" y="160" width="160" height="112" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="1008" y="202" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Closed</text>
+  <text x="1008" y="230" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">All created</text>
+  <text x="1008" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Attempts terminal</text>
+
+  <path d="M392 272V328H520" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="432" y="310" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">PAUSE</text>
+  <rect x="520" y="304" width="176" height="112" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="544" y="346" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Paused</text>
+  <text x="544" y="378" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Read-only; same deadline</text>
+  <path d="M520 392H440V272" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="464" y="380" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">RESUME</text>
+  <path d="M696 360H720V272H760" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <path d="M144 272V328" fill="none" stroke="#b4233c" stroke-width="2" marker-end="url(#failure)"/>
+  <rect x="56" y="328" width="176" height="88" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="80" y="364" fill="#b4233c" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Canceled</text>
+  <text x="80" y="392" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Scheduled only; no Attempts</text>
+
+  <rect x="56" y="480" width="1088" height="144" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="516" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SITTING CONTROLS</text>
+  <text x="80" y="548" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Pause / resume / extend</text>
+  <text x="80" y="574" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Change capability or end time; not one candidate</text>
+  <path d="M440 500V604M792 500V604" fill="none" stroke="#e1dce5" stroke-width="1"/>
+  <text x="464" y="548" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Cancel / close / deadline</text>
+  <text x="464" y="574" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Change Sitting state; Closing is recoverable work</text>
+  <text x="816" y="516" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ATTEMPT CONTROLS</text>
+  <text x="816" y="548" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Kick / suspend / re-allow / end</text>
+  <text x="816" y="574" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">One Attempt only; provenance remains distinct</text>
+  <text x="600" y="676" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Closing creates no Attempt for a no-show and never reopens a terminal Submission.</text>
+</svg>

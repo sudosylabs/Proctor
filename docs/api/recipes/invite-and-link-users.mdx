@@ -14,6 +14,12 @@ Choose an invitation type from the relationship being created. The immutable
 invitation package determines the exact target scope and role or membership;
 email ownership alone does not expand it.
 
+<GovernedFigure asset="invitation-lifecycle" />
+
+No Invitation creates a disabled placeholder User. The issuer must be
+authorized for every packaged effect; the server rechecks current inviter,
+policy, target, Role, account, and academic state when acceptance commits.
+
 ## Invite a Student to a Class
 
 Call <Link to="/api/reference/issue-student-class-invitation">Issue student Class invitation</Link>
@@ -56,6 +62,65 @@ Account-creating links enter through the browser invitation transaction:
    as appropriate.
 
 For an existing authenticated account, use the matching typed acceptance
-operation. Resending rotates the claim without changing the package. To change
-scope or roles, <Link to="/api/reference/replace-invitation">replace the invitation</Link>;
-do not mutate the meaning of a previously issued claim.
+operation:
+
+- <Link to="/api/reference/accept-institution-role-invitation">Accept Institution Role Invitation</Link>;
+- <Link to="/api/reference/accept-academic-unit-role-invitation">Accept Academic Unit Role Invitation</Link>;
+- <Link to="/api/reference/accept-teacher-academic-unit-invitation">Accept Teacher Academic Unit Invitation</Link>; or
+- <Link to="/api/reference/accept-student-class-invitation">Accept Student Class Invitation</Link>.
+
+<Link to="/api/reference/resend-invitation">Resending</Link> rotates the claim
+without changing the package. To change scope or roles,
+<Link to="/api/reference/replace-invitation">replace the invitation</Link>;
+do not mutate the meaning of a previously issued claim. Use
+<Link to="/api/reference/revoke-invitation">Revoke Invitation</Link> when the
+package must become terminally unusable.
+
+## Distinguish Lifecycle and Delivery
+
+| Action | Invitation effect | Mail effect |
+| --- | --- | --- |
+| issue | creates one pending immutable package and one durable mail intent | queues the first occurrence |
+| resend | keeps the package, rotates claim and deadline | queues a new occurrence; every old link is invalid |
+| replace | creates a new package and supersedes the previous Invitation | new Invitation owns its own delivery |
+| revoke | terminally invalidates one Invitation | cancels queued delivery when possible; sent mail is harmless |
+| accept | atomically applies the package and consumes the Invitation | suppresses obsolete queued credential delivery |
+| expire | prevents terminal acceptance after PostgreSQL deadline | pending delivery is no longer useful |
+
+`pending` does not mean delivered, and SMTP `accepted` does not prove inbox
+receipt. A production API never returns the raw invitation link.
+
+## Preserve Effective History
+
+Future effective starts are permitted. Acceptance uses the later of intended
+start and acceptance time, so it never grants authority retroactively. An
+already elapsed intended end cannot be accepted.
+
+Teacher packages retain provenance: ending their package-originated Unit
+membership atomically ends Role Bindings created by that package. Independently
+created bindings remain independent. Ending any relationship does not
+implicitly end the User's broader Affiliation.
+
+## Batch Small Typed Changes
+
+<Link to="/api/reference/run-invitation-batch">Run Invitation Batch</Link>
+accepts at most 200 typed items. Give the batch a required idempotency identity
+and every item a bounded request-unique key. Duplicate item keys are invalid;
+each retained success owns a minimal secret-free outcome so reordered retry
+cannot create another Invitation or mail occurrence.
+
+For larger files, immutable previews, cancellation, reports, and student
+progression, continue with
+[Run Onboarding Imports and Progression](./onboarding-imports-and-progression.mdx).
+
+## Recover From Conflicts
+
+- An expired, superseded, revoked, or consumed claim is never revived. Issue or
+  resend through the intended lifecycle.
+- A target or Role conflict requires a new replacement package after the
+  administrator reviews current scope.
+- An email already owned by an unlinked User is not an instruction to merge.
+  The person signs in through an existing method and uses the supported
+  purpose-bound connection or existing-Session acceptance path.
+- A provider or mail outage does not weaken claim proof. Restore the dependency
+  and resend when the Invitation remains eligible.

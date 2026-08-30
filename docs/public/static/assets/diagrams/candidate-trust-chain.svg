@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Candidate Desktop Session, Participation, and Connection trust chain</title>
+  <desc id="description">A Desktop Registration binds a User and Institution to a public key. A DPoP Desktop Session proves that registered key for every request. Admission rechecks current candidate, Sitting, compatibility, configuration, and Session-lock conditions before creating one Participation generation bound to that exact Session and one Connection. Candidate HTTP operations require the DPoP Session, continuity credential, Connection identity, Participation identity, and generation together.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Candidate access is a chain, not one bearer token</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Every link is exact, current, and independently fenced.</text>
+
+  <rect x="56" y="152" width="232" height="232" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">REGISTERED CLIENT</text>
+  <text x="80" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Desktop Registration</text>
+  <text x="80" y="260" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">User + Institution</text>
+  <text x="80" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">P-256 public-key thumbprint</text>
+  <text x="80" y="316" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Permanent revocation history</text>
+  <text x="80" y="354" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">PRIVATE KEY STAYS DESKTOP</text>
+  <path d="M288 268H336" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="336" y="152" width="232" height="232" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="360" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTHENTICATED CLIENT</text>
+  <text x="360" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Desktop Session</text>
+  <text x="360" y="260" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">DPoP access + fresh proof</text>
+  <text x="360" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Current server nonce</text>
+  <text x="360" y="316" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Method + target + access hash</text>
+  <text x="360" y="354" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">NOT ATTEMPT AUTHORITY</text>
+  <path d="M568 268H616" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="616" y="128" width="248" height="280" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <text x="640" y="168" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SECURE ADMISSION</text>
+  <text x="640" y="204" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Participation generation</text>
+  <text x="640" y="238" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Bound to this Desktop Session</text>
+  <text x="640" y="266" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Continuity credential hash</text>
+  <text x="640" y="294" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Lease + monotonic renewal</text>
+  <path d="M640 316H840" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <text x="640" y="346" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ONE CURRENT GENERATION</text>
+  <text x="640" y="376" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Older generations stay fenced</text>
+  <path d="M864 268H912" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="912" y="152" width="232" height="232" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="936" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ACTIVE TRANSPORT</text>
+  <text x="936" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Attempt Connection</text>
+  <text x="936" y="260" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Durable Connection identity</text>
+  <text x="936" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Open under this generation</text>
+  <text x="936" y="316" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Closed on expiry or end</text>
+  <text x="936" y="354" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">PING ≠ RENEWAL</text>
+
+  <rect x="56" y="472" width="1088" height="144" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="510" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">One protected candidate HTTP operation requires every current selector</text>
+  <text x="80" y="548" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">DPOP SESSION</text>
+  <text x="208" y="548" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">registered key + access credential + new proof</text>
+  <text x="80" y="580" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ATTEMPT FENCE</text>
+  <text x="208" y="580" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">continuity credential + Connection ID + Participation ID + generation</text>
+  <text x="600" y="668" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Authentication establishes the chain. Current Sitting and Attempt state still decide the operation.</text>
+</svg>

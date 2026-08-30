@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
   <title id="title">Protected request proof and permission</title>
-  <desc id="description">One presented credential passes through a transport proof gate to establish an immutable principal. That principal carries identity and assurance but no permission snapshot. The owning use case combines the principal with an action and exact resource, reads current PostgreSQL authority, and durably records an allow or deny decision.</desc>
+  <desc id="description">A Web Session, DPoP-bound Desktop Session, or Personal Access Token passes through its exact transport proof gate to establish an immutable principal. That principal carries identity and assurance but no permission snapshot. The owning use case combines the principal with an action and exact resource, reads current PostgreSQL authority, and durably records an allow or deny decision.</desc>
   <defs>
     <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
       <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
@@ -20,8 +20,8 @@
   <text x="80" y="136" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Presented credential</text>
   <text x="80" y="160" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXACTLY ONE SOURCE</text>
   <path d="M 80 184 H 280" fill="none" stroke="#e1dce5" stroke-width="1"/>
-  <text x="80" y="216" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser Session cookie</text>
-  <text x="80" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Session access bearer</text>
+  <text x="80" y="216" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Web Session cookie / access</text>
+  <text x="80" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Desktop Session + DPoP</text>
   <text x="80" y="280" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Personal Access Token</text>
 
   <path d="M 304 196 H 352" fill="none" stroke="#655f69" stroke-width="2" marker-end="url(#arrow-neutral)"/>
@@ -36,7 +36,7 @@
 
   <circle cx="392" cy="224" r="16" fill="#5c00aa"/>
   <text x="392" y="229" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">2</text>
-  <text x="424" y="221" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Check CSRF for unsafe cookie use</text>
+  <text x="424" y="221" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Check CSRF or DPoP binding</text>
   <text x="424" y="245" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">No source precedence fallback</text>
 
   <circle cx="392" cy="280" r="16" fill="#5c00aa"/>

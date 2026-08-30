@@ -1,0 +1,78 @@
+---
+title: Proctor Command-Line Reference
+description: Checked operator-facing commands for serving, validating configuration, migrating, recovering administrator access, and identifying a build.
+audience: operator
+maturity: preview
+slug: /reference/command-line/
+---
+
+# Proctor Command-Line Reference
+
+The CLI is a thin caller of server capabilities. It does not implement a second
+policy path. Run `proctor help` or command-specific `--help` from the exact
+release binary for localized usage and the current flag surface.
+
+Every command accepts `--config` (short form `-c`). An explicit path wins over
+`PROCTOR_CONFIG` and the default `config/config.json`.
+
+## Commands
+
+| Command | Purpose | Starts the server? |
+| --- | --- | --- |
+| `proctor serve` | run migrations/startup reconciliation, dependencies, Jobs, WebSocket, HTTP, readiness, and bounded shutdown | yes |
+| `proctor config validate` | strictly load and validate effective configuration | no |
+| `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
+| `proctor migrate up` | apply every pending migration deliberately | no |
+| `proctor administrator recover` | host-only administrator local-authentication recovery while all nodes are stopped | no |
+| `proctor version` | print build version, commit, build time, and Go version | no |
+
+## Serve and Validate
+
+```sh
+proctor config validate --config /etc/proctor/config.json
+proctor serve --config /etc/proctor/config.json
+```
+
+`serve` integrates with systemd notification when `NOTIFY_SOCKET` is present.
+The CLI warns when run as root; use a dedicated non-root service account.
+
+## Database Migration
+
+```sh
+proctor migrate status --config /etc/proctor/config.json
+proctor migrate up --config /etc/proctor/config.json
+```
+
+The current pre-release baseline does not support upgrading older incompatible
+development schemas. Status does not certify backup, rollback, or production
+upgrade safety.
+
+## Host-Only Administrator Recovery
+
+Stop every application node first. Confirm the exact Institution and active
+system-administrator User. Choose at least one recovery action:
+
+```sh
+proctor administrator recover \
+  --config /etc/proctor/config.json \
+  --institution-id <institution-id> \
+  --user-id <user-id> \
+  --enable-local-login \
+  --rotate-password
+```
+
+`--rotate-password` reads the new password from private standard input; a
+password is never a positional argument or flag. The operation writes a durable
+recovery record while transports and workers remain stopped. Restart normally
+so Proctor reconciles its audit record. Other flags are `--institution-id`,
+`--user-id`, and `--enable-local-login`.
+
+## Build Identity
+
+```sh
+proctor version
+proctor version --json
+```
+
+Use `--json` for automation. Compare the binary identity with the release
+manifest and packaged hosted application before deployment.

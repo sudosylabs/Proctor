@@ -25,17 +25,19 @@ configuration.
 
 ```bash
 curl --request GET \
-  --url https://proctor.example.edu/api/v1/access-policy/discovery \
+  --url https://proctor.example.edu/api/v1/discovery \
   --header 'Accept: application/json'
 ```
 
 ## Choose a Credential
 
-Browser clients normally establish an interactive Session through
+Browser clients normally establish a Web Session through
 <Link to="/api/reference/login">login</Link>. Non-browser integrations use a Personal Access
 Token only on operations whose **Authentication** panel permits a principal
 credential. A token cannot stand in for a recent or strongly authenticated
-interactive Session.
+interactive Session. Proctor Desktop establishes a registered-key Desktop
+Session through the separate browser-authorization and DPoP exchange; do not
+send a Desktop credential in the bearer example below.
 
 Read [Authentication and Assurance](./authentication.mdx) before making a
 protected request.
@@ -75,8 +77,9 @@ other sensitive material in a URL, example fixture, or application log.
 
 ## Versioning and Compatibility
 
-`/api/v1` evolves additively. Clients should ignore response fields they do not
-recognize, while still sending only documented request fields. Removing a
-field, making an optional input required, or changing established semantics
-requires a new API version. See [Limits and Compatibility](./limits-and-compatibility.mdx)
-for the client rules that make additive evolution safe.
+Before the first supported Proctor release, `/api/v1` may change in place when
+the server, reviewed contract, and compatible clients are activated together.
+Pin the exact OpenAPI artifact used by an integration. After the first
+supported release, established meanings evolve additively unless an explicit
+compatibility decision introduces another version and migration. See
+[Limits and Compatibility](./limits-and-compatibility.mdx) for the client rules.

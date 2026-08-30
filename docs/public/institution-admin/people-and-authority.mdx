@@ -1,0 +1,187 @@
+---
+title: Manage People and Scoped Authority
+description: Keep User identity, relationships, Roles, Role Bindings, account state, and current context separate.
+audience: institution-administrator
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Manage People and Scoped Authority
+
+Proctor deliberately separates who a person is, how they authenticate, where
+they belong, and what they may do. This prevents an enrollment import or
+provider claim from becoming an accidental administrator grant.
+
+## Read the Layers Independently
+
+| Layer | Durable fact | Does not imply |
+| --- | --- | --- |
+| <Term id="user">User</Term> | canonical account, profile, and lifecycle state | a password, membership, or permission |
+| Authentication method | password or immutable external-provider subject linked to the User | an Affiliation or Role |
+| <Term id="affiliation">Affiliation</Term> | a relationship with the Institution | Academic Unit placement or authority |
+| Academic Unit Member | a time-bounded relationship with one Unit | a Role Binding |
+| Class Member | one student's exact roster relationship for a Period | permission to administer the Class |
+| Role | a reusable Institution-wide set of stable actions | any scope by itself |
+| <Term id="role-binding">Role Binding</Term> | one Role granted to one User at Institution, Academic Unit, or Class scope | ownership outside that scope |
+
+One student may have several simultaneous Affiliations but at most one active
+Class membership in an Academic Period. A teacher may have different Role
+Bindings in several Academic Units.
+
+## Use Current User Context for Navigation, Not Authorization
+
+The current-User context is a bounded, no-store projection of identity and
+product areas relevant to the signed-in User. It can drive navigation and
+refetches after relationship changes. It is not a permission snapshot; every
+task still performs its own current action/resource authorization.
+
+Profile updates change canonical presentation fields. Profile-picture upload
+and removal use a narrower action. Academic Unit administrators can see a User
+only through a current relationship in their authorized subtree, and the
+projection omits relationships outside it. An Institution Affiliation alone
+does not anchor subtree visibility.
+
+Inspect your own safe profile and interactive navigation context separately:
+
+```sh
+curl --fail-with-body \
+  --request GET \
+  --url 'https://proctor.example.edu/api/v1/users/me' \
+  --header 'Authorization: Bearer <access-token>'
+
+curl --fail-with-body \
+  --request GET \
+  --url 'https://proctor.example.edu/api/v1/users/me/context' \
+  --header 'Authorization: Bearer <session-access-token>'
+```
+
+The first response is the canonical safe User profile. The second is a
+credential-free, `no-store` navigation projection for an interactive Session.
+A Personal Access Token can read the profile when scoped, but cannot replace
+the interactive Session required by the context route. Refetch context after
+relationship or account changes; never cache it as an authorization decision.
+
+## Update a Visible User Profile
+
+Prerequisites are current visibility of the target User and the exact profile-
+management action at a scope that reaches that User. Read
+`GET /api/v1/users/<user-id>` first so a concealed or stale target is not
+mistaken for an editable account, then send only intended presentation fields:
+
+```sh
+curl --fail-with-body \
+  --request PATCH \
+  --url 'https://proctor.example.edu/api/v1/users/<user-id>' \
+  --header 'Authorization: Bearer <access-token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "display_name": "Amina Diallo",
+    "first_name": "Amina",
+    "last_name": "Diallo",
+    "locale": "en",
+    "timezone": "Europe/Paris"
+  }'
+```
+
+Success returns the updated safe profile. Verify the returned identity and
+fields, then inspect authorized audit history for the administrative change.
+Omitted and explicit `null` fields remain unchanged; they are not a clearing
+mechanism. A `404` may deliberately conceal a User outside the caller's
+current scope. On `409 user.conflict`, refetch before choosing a different
+username or retrying other intended fields. Authorization or audit
+unavailability means no update should be claimed.
+
+Email, account state, credentials, memberships, Affiliations, and Role
+Bindings are not profile fields. Use their purpose-specific operations.
+
+## Replace or Remove a Profile Picture Safely
+
+PNG, JPEG, and WebP source images are normalized into private 128, 256, and
+512-pixel WebP renditions. They are protected content, not public URLs. The
+first custom upload omits `If-Match`; a replacement uses the current strong
+ETag so one administrator cannot overwrite a newer revision:
+
+```sh
+curl --fail-with-body \
+  --request PUT \
+  --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture' \
+  --header 'Authorization: Bearer <access-token>' \
+  --header 'Content-Type: image/png' \
+  --header 'If-Match: "<current-sha256>"' \
+  --data-binary '@profile.png'
+```
+
+Verify the committed rendition and retain its returned ETag for the next
+conditional change:
+
+```sh
+curl --fail-with-body \
+  --request GET \
+  --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture?size=256' \
+  --header 'Authorization: Bearer <access-token>' \
+  --header 'Accept: image/webp' \
+  --dump-header profile-picture.headers \
+  --output profile-picture.webp
+```
+
+Removal always requires the current custom-picture ETag and restores the
+permanently retained default picture:
+
+```sh
+curl --fail-with-body \
+  --request DELETE \
+  --url 'https://proctor.example.edu/api/v1/users/<user-id>/profile-picture' \
+  --header 'Authorization: Bearer <access-token>' \
+  --header 'If-Match: "<current-sha256>"'
+```
+
+A `409 user.conflict` means the picture changed after it was read. Fetch the
+current rendition and ask whether the newer revision should really be
+replaced or removed; do not drop the fence and retry blindly. An invalid image
+or unavailable normalization service commits no replacement. Keep source
+images and downloaded renditions out of logs, tickets, and ordinary audit
+fields.
+
+## Design Roles From Stable Actions
+
+`system_admin` is the only built-in Role and is protected. Create custom Roles
+such as Teacher, Roster Manager, or Reviewer from the closed action catalog.
+Do not name a Role after an HTTP verb or assume its display name has behavior.
+
+Bindings are additive and access is denied by default. Institution scope
+reaches the Institution. Academic Unit scope may reach descendants only where
+the action's inheritance rule allows it. Class scope reaches the exact Class.
+Programme, Programme Level, Academic Period, and Exam authorization resolve
+through their owning Institution, Academic Unit, or Class; they are not new
+binding kinds.
+
+## Delegate No More Than You Hold
+
+A caller cannot create a broader binding, delegate an action they do not have,
+or delegate protected system, role-management, access-policy, or
+administrative-delegation authority without the separately required parent or
+Institution authority. The server rechecks the exact target scope at commit.
+
+End a Role Binding with its effective history intact. Deleting a custom Role
+is an archive-like lifecycle transition and is blocked while active bindings
+depend on it. Ending a membership does not silently end every Role Binding;
+review both resource types when a person leaves a Unit.
+
+## Disable Accounts Only at Institution Scope
+
+Disabling a User is a global Institution action and shares the lockout fence
+that protects the last usable administrator path. An Academic Unit
+administrator ends relationships in scope instead of disabling the global
+User, changing canonical identity, or intervening in credentials.
+
+Disabling atomically changes account state and revokes active Sessions while
+retaining historical relationships, attempts, Submissions, and audit records.
+Enabling later does not recreate Sessions, credentials, ended memberships, or
+Role Bindings. After either transition, verify the returned safe profile and
+refetch affected administrative views. If the last-system-administrator fence
+returns `409 user.last_system_admin`, establish and verify another usable
+administrator path before retrying; never bypass the lockout protection.
+
+For exact operations and retry rules, see
+<Link to="/api/recipes/roles-and-scopes">Roles and Scoped Bindings</Link>.

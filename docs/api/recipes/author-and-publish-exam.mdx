@@ -1,23 +1,26 @@
 ---
 title: Author and Publish an Exam
-description: Create a mutable Exam Draft, attach protected materials, and publish an immutable Revision safely.
+description: Create a revision-fenced Exam Draft, attach typed policies and protected material, govern Managers, and publish one complete immutable Revision.
 audience: api-consumer
 maturity: preview
-sidebar_position: 4
+sidebar_position: 8
 ---
 
 import Link from '@docusaurus/Link';
 
 # Author and Publish an Exam
 
-An Exam owns one mutable Draft and a history of immutable Revisions. Sittings
-target a published Revision, never a moving Draft.
+An Exam owns stable identity, creator provenance, current owner, Managers,
+archive state, and one mutable Draft. Publication freezes the complete Draft as
+the next immutable numbered Revision. Sittings select a Revision and never
+follow later Draft changes.
 
 <GovernedFigure asset="exam-publication-delivery-lifecycle" />
 
-## 1. Create the Exam
+## 1. Create the Exam in Its Academic Unit
 
-Call <Link to="/api/reference/create-exam">Create Exam</Link> with its owning Academic Unit.
+Call <Link to="/api/reference/create-exam">Create Exam</Link>. The creator
+becomes immutable provenance, owner, and first Manager.
 
 ```json
 {
@@ -27,13 +30,14 @@ Call <Link to="/api/reference/create-exam">Create Exam</Link> with its owning Ac
 }
 ```
 
-Retain both the Exam ID and current Draft revision returned by the server.
+Retain the Exam ID, Exam revision, and Draft revision. They fence different
+transitions: Manager and ownership changes compare the Exam revision; authored
+content compares the Draft revision.
 
-## 2. Edit with a Revision Fence
+## 2. Edit Text Through the Draft Revision
 
-<Link to="/api/reference/edit-exam-draft-text">Edit Draft text</Link> requires the exact
-`expected_draft_revision`. Each successful edit returns the new state; use its
-revision for the next change.
+<Link to="/api/reference/edit-exam-draft-text">Edit Draft text</Link> requires
+the exact `expected_draft_revision`.
 
 ```json
 {
@@ -43,31 +47,141 @@ revision for the next change.
 }
 ```
 
-Omitting or sending `null` for these PATCH fields leaves the value unchanged;
-an empty `instructions_markdown` clears it.
+Omitting a PATCH field leaves it unchanged; an empty instructions value clears
+instructions. After every successful mutation, replace the local Draft model
+with the response. On `exam.draft.revision_conflict`, refetch and compare every
+authored area—never increment a stale revision by guess.
 
-## 3. Add Execution and Content
+## 3. Configure Typed Policies
 
-Configure the execution profile and focus-loss policy with their replacement
-operations. Add ordered protected resources and Starter Workspace files with
-the strict multipart flow in [Uploads and Protected Content](../guides/uploads-and-content.mdx).
+Replace Browser Policy with
+<Link to="/api/reference/configure-exam-draft-browser-policy">Configure Draft Browser Policy</Link>.
+An enabled policy has schema version 1, an exact start rule, and one to 64
+HTTPS rules with closed host matching, path prefix, redirect, and recorded
+blocked-navigation behavior.
 
-Resource bytes and Starter Workspace paths are protected exam material. Keep
-them out of logs, public object URLs, and client-generated telemetry.
+```json
+{
+  "expected_draft_revision": 4,
+  "browser_policy": {
+    "schema_version": 1,
+    "enabled": true,
+    "start_rule_id": "reference",
+    "rules": [{
+      "rule_id": "reference",
+      "origin": "https://reference.example.edu",
+      "path_prefix": "/algorithms/",
+      "host_match": "exact",
+      "allow_redirects": false,
+      "blocked_navigation_outcome": "record"
+    }]
+  }
+}
+```
 
-## 4. Publish an Immutable Revision
+Replace the Focus Loss rule with
+<Link to="/api/reference/configure-exam-draft-focus-loss">Configure Draft Focus Loss</Link>.
+Its duration, threshold, time window, and outcome are one coherent rule.
 
-Publish only after fetching the current Exam authoring view and confirming the
-Draft revision.
+```json
+{
+  "expected_draft_revision": 5,
+  "enabled": true,
+  "minimum_duration_milliseconds": 1500,
+  "incident_count": 3,
+  "window_milliseconds": 300000,
+  "outcome": "flag_and_warn"
+}
+```
+
+Connection Loss remains the fixed `flag_and_suspend` outcome. Do not invent a
+generic policy object or encode grades, rubrics, or pass/fail in these fields.
+
+## 4. Attach Protected Resources
+
+Use <Link to="/api/reference/create-exam-draft-resource">Create Draft Resource</Link>
+for metadata, then
+<Link to="/api/reference/replace-exam-draft-resource-content">Replace Draft Resource content</Link>
+through the documented strict multipart flow. Replacing bytes creates an
+immutable File Revision; previously published Revisions retain the old one.
+
+Use <Link to="/api/reference/reorder-exam-draft-resources">Reorder Draft Resources</Link>
+with the complete expected active order. Removal closes the Draft order gap
+without deleting published history. Read content only through the protected
+inline operation; no storage key or public URL is part of the contract.
+
+## 5. Build the Starter Workspace
+
+Start from <Link to="/api/reference/list-exam-draft-starter-workspace">List Draft Starter Workspace</Link>.
+Create directories and files with the dedicated operations, then move or
+replace exact Entries using their current content versions and Draft revision.
+
+Paths are canonical case-sensitive POSIX-relative values. Reject traversal,
+backslashes, repeated separators, and `.proctor`. Deleting a non-empty
+directory is not recursive. Apply the Institution's current entry, per-file,
+and total-byte policy before upload while still handling authoritative
+mutation-time rejection.
+
+## 6. Choose the Execution Profile
+
+Read <Link to="/api/reference/list-exam-execution-images">List Exam execution images</Link>,
+then <Link to="/api/reference/configure-exam-draft-execution-profile">Configure Draft Execution Profile</Link>
+with the exact Draft revision.
+
+```json
+{
+  "expected_draft_revision": 11,
+  "enabled": true,
+  "image": "go-1.25",
+  "network": "none"
+}
+```
+
+The safe catalog is an intersection of currently usable isolated hosts. It
+exposes image IDs and network modes—not host identity or capacity. Disabled is
+the default. `allowlist` selects operator-defined destinations; it is not an
+arbitrary URL list.
+
+## 7. Govern Managers and Ownership
+
+Use <Link to="/api/reference/list-exam-managers">List Exam Managers</Link> for
+bounded relationship provenance. An added Manager must be active and currently
+belong to the Exam's exact Academic Unit.
+
+- <Link to="/api/reference/add-exam-manager">Add Exam Manager</Link> grants
+  equal responsibility without changing owner.
+- <Link to="/api/reference/transfer-exam-ownership">Transfer Exam ownership</Link>
+  changes the protected owner; the previous owner remains a Manager.
+- <Link to="/api/reference/remove-exam-manager">Remove Exam Manager</Link>
+  cannot remove the current owner.
+
+All three compare `expected_exam_revision`, require idempotency, preserve
+provenance, and commit the matching safe notice without duplicating it on exact
+replay.
+
+## 8. Publish the Complete Snapshot
+
+Fetch the complete current authoring view and confirm title, rendered
+instructions, typed policies, Resource order/content, Starter Workspace,
+Execution Profile, capacity totals, and Draft revision. Then call
+<Link to="/api/reference/publish-exam-revision">Publish Exam Revision</Link>
+with a required idempotency key.
 
 ```bash
 curl --request POST \
   --url https://proctor.example.edu/api/v1/exams/<exam-id>/revisions \
   --header 'Authorization: Bearer <interactive-session-access-token>' \
   --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: publish-algorithms-final-12' \
   --data '{"expected_draft_revision":12}'
 ```
 
-<Link to="/api/reference/publish-exam-revision">Publish Exam Revision</Link> validates and
-freezes the complete Draft. A stale revision fails rather than publishing
-unreviewed concurrent edits. Retain the returned Revision ID for scheduling.
+Publication validates and freezes the entire Draft, current capacity values,
+publisher, time, and content digests in one transaction. An unchanged Draft
+returns a no-changes outcome rather than another Revision. Retain the Revision
+ID for Sitting scheduling.
+
+On timeout, replay only the exact body with the same key. On a stale Draft,
+refetch and review. On failed content or image validation, repair the named
+Draft area and publish with a new key after its revision advances. Do not create
+a second Exam to evade a failed stage.

@@ -1,0 +1,71 @@
+---
+title: Perform Maintenance and Bounded Recovery
+description: Drain an application node, rotate Memberlist keys, recover administrator access offline, and handle the current pre-release database boundary.
+audience: operator
+maturity: preview
+---
+
+# Perform Maintenance and Bounded Recovery
+
+Current procedures recover application-node lifecycle and specific security
+controls. They are not a general backup, disaster-recovery, upgrade, or rollback
+runbook.
+
+## Drain or Restart One Node
+
+1. Ensure other ready application nodes and required dependencies can carry the
+   traffic in your tested topology.
+2. Remove the node from the load-balancer pool or wait for readiness removal.
+3. Send SIGTERM through systemd or the container runtime.
+4. Allow the configured HTTP drain and external stop window to complete.
+5. Confirm the process withdrew its serving and discovery leases; an expired
+   lease is also bounded recovery after process loss.
+6. Start the matched payload, wait for readiness, then return it to service.
+
+Normal shutdown marks unready before HTTP drain and closes Jobs, WebSocket,
+transport, serving lease, metrics, and platform in reverse ownership order.
+
+## Rotate Memberlist Keys
+
+Key changes require restart and a three-stage overlap:
+
+1. add the new key as a fallback on every node;
+2. promote it to primary everywhere while retaining the old primary as a
+   fallback; and
+3. remove the old fallback only after every node has converged.
+
+Skipping overlap partitions nodes that cannot decrypt each other. The fallback
+ring accepts at most eight distinct keys. This procedure rotates gossip
+encryption only; it does not rotate TLS, MFA, mail, or dependency credentials.
+
+## Recover Administrator Authentication Offline
+
+Stop every application node, verify the exact Institution and active
+system-administrator User identifiers, then use the host-only command described
+in the [CLI reference](../reference/command-line.mdx). It can re-enable local
+login and/or read a replacement password from private standard input. The
+command starts no workers, listeners, or transports.
+
+Restart normally so Proctor reconciles the durable recovery record into audit.
+Do not use this path as a routine password reset or run it while another node is
+serving.
+
+## Pre-release Database Boundary
+
+The current schema is a squashed pre-release baseline. Older incompatible
+development migration histories have no upgrade path. Recreate the dedicated
+development database and rerun the current baseline; do not fabricate Session,
+Participation, Attempt Configuration, Submission, or terminal provenance to
+make old rows fit.
+
+`proctor migrate status` and `proctor migrate up` inspect and converge the
+current migration set. They do not prove backup completeness, restore behavior,
+mixed-version safety, or rollback.
+
+{/* TODO(operator-backup-recovery): Define and exercise PostgreSQL plus VFS
+backup consistency, restore validation, key/config recovery, RPO/RTO, and
+disaster-failover procedures before publishing a recovery runbook. */}
+
+{/* TODO(operator-upgrade-policy): Define supported source/target releases,
+preflight, mixed-version duration, schema compatibility, rollback or forward-
+recovery, and zero-downtime evidence before documenting production upgrades. */}

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Governed Browser Policy and privacy-minimized Browser Activity</title>
+  <desc id="description">A versioned Browser Policy permits one governed Desktop browser surface using HTTPS origin, host match, path prefix, redirect behavior, and start rule. Only top-level open, close, allowed navigation or redirect, and blocked navigation events enter a minimization boundary. Retained fields include source and sequence, policy Revision, time, closed reason, and a minimized network location. Queries, fragments, credentials, page content, titles, referrers, headers, cookies, DOM data, download bodies, local paths, screenshots, clipboard, terminal output, and source code are excluded.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Policy governs navigation; minimization governs evidence</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser Activity is not page capture, general history, or a verdict.</text>
+
+  <rect x="56" y="144" width="296" height="272" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="182" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">BROWSER POLICY</text>
+  <text x="80" y="218" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">One governed surface</text>
+  <text x="80" y="252" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">HTTPS origin</text>
+  <text x="80" y="280" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">exact host or subdomains</text>
+  <text x="80" y="308" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">path prefix + redirects</text>
+  <text x="80" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one start rule</text>
+  <text x="80" y="378" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">BLOCKS ARE RECORDED</text>
+  <path d="M352 280H400" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="400" y="144" width="296" height="272" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="424" y="182" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">TOP-LEVEL EVENTS ONLY</text>
+  <text x="424" y="218" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Privacy-minimization gate</text>
+  <text x="424" y="252" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">browser open / close</text>
+  <text x="424" y="280" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">allowed navigation / redirect</text>
+  <text x="424" y="308" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">blocked navigation</text>
+  <text x="424" y="344" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">1–64 EVENTS · ≤ 256 KIB</text>
+  <text x="424" y="378" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Missing data remains an explicit gap</text>
+  <path d="M696 280H744" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="744" y="144" width="400" height="272" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="768" y="182" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RETAINED ACTIVITY</text>
+  <text x="768" y="218" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Bounded facts, not page content</text>
+  <text x="768" y="252" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">source + monotonic sequence + policy Revision</text>
+  <text x="768" y="280" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">client time + server receipt + closed reason</text>
+  <text x="768" y="308" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">minimized scheme · host · port · path</text>
+  <text x="768" y="344" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">QUERY + FRAGMENT NEVER RETAINED</text>
+  <text x="768" y="378" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Managers see only this bounded projection</text>
+
+  <rect x="56" y="472" width="1088" height="144" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="80" y="510" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXCLUDED FROM POLICY AND ACTIVITY</text>
+  <text x="80" y="546" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">URL credentials · query · fragment · page title/content · referrer · headers · cookies · DOM · download bodies · local paths</text>
+  <text x="80" y="578" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">screenshots · webcam · clipboard · terminal output · source code · arbitrary payloads</text>
+  <text x="600" y="668" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">A gap records uncertainty. Proctor never invents an observation.</text>
+</svg>

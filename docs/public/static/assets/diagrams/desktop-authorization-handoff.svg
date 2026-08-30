@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Desktop authorization browser handoff</title>
+  <desc id="description">Proctor Desktop creates state, PKCE, a P-256 key, and an exact loopback callback before opening a hosted browser page. The browser binds the request, authenticates an account, and asks for approval. A one-use code returns to the exact callback. Desktop verifies state and exchanges the code with the same verifier and public key to create a Desktop Registration and DPoP Session.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">One approval, bound end to end</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">The browser proves the person. Desktop retains the secrets that prove the client.</text>
+
+  <rect x="56" y="136" width="248" height="276" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <rect x="76" y="156" width="46" height="28" rx="6" fill="#f3eafb"/>
+  <text x="99" y="175" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">01</text>
+  <text x="76" y="220" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Desktop prepares</text>
+  <text x="76" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Random state</text>
+  <text x="76" y="284" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">S256 PKCE verifier</text>
+  <text x="76" y="314" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">P-256 ES256 key pair</text>
+  <text x="76" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Exact IP-literal callback</text>
+  <text x="76" y="382" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PRIVATE KEY STAYS HERE</text>
+
+  <path d="M304 274H352" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="328" y="255" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">START</text>
+
+  <rect x="352" y="136" width="248" height="276" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <rect x="372" y="156" width="46" height="28" rx="6" fill="#5c00aa"/>
+  <text x="395" y="175" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">02</text>
+  <text x="372" y="220" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Browser binds</text>
+  <text x="372" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">One-use fragment proof</text>
+  <text x="372" y="284" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Route-scoped HttpOnly cookie</text>
+  <text x="372" y="314" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Sensitive URL data removed</text>
+  <text x="372" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Canonical origin retained</text>
+  <text x="372" y="382" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NO DESKTOP CREDENTIAL</text>
+
+  <path d="M600 274H648" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="624" y="255" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">PROVE</text>
+
+  <rect x="648" y="136" width="248" height="276" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <rect x="668" y="156" width="46" height="28" rx="6" fill="#f3eafb"/>
+  <text x="691" y="175" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">03</text>
+  <text x="668" y="220" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Person approves</text>
+  <text x="668" y="254" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Current Web Session,</text>
+  <text x="668" y="278" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">password, or provider</text>
+  <text x="668" y="314" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Account + device confirmed</text>
+  <text x="668" y="344" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Explicit authorize or cancel</text>
+  <text x="668" y="382" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">CODE + STATE ONLY</text>
+
+  <path d="M896 274H944" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="920" y="255" text-anchor="middle" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">RETURN</text>
+
+  <rect x="944" y="136" width="200" height="276" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <rect x="964" y="156" width="46" height="28" rx="6" fill="#ffffff"/>
+  <text x="987" y="175" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">04</text>
+  <text x="964" y="220" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Desktop exchanges</text>
+  <text x="964" y="254" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Verify exact state</text>
+  <text x="964" y="284" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Same verifier + JWK</text>
+  <text x="964" y="314" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Fresh nonce-bound proof</text>
+  <text x="964" y="344" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Code consumed once</text>
+  <text x="964" y="382" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">DPOP SESSION</text>
+
+  <path d="M180 412V468H1044V412" fill="none" stroke="#c8c0ce" stroke-width="2"/>
+  <rect x="192" y="468" width="816" height="116" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="216" y="508" fill="#0b766e" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Durable result</text>
+  <text x="216" y="542" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Desktop Registration: User + Institution + public-key thumbprint + revocation history</text>
+  <text x="216" y="570" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Desktop Session: access and refresh credentials usable only with the registered private key</text>
+
+  <path d="M56 620V640H1144V620" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="664" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">The authorization URL is a handoff—not a credential and never a custom login form.</text>
+</svg>

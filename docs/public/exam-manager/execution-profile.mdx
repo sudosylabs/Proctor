@@ -1,0 +1,52 @@
+---
+title: Choose an Execution Profile
+description: Select whether an Exam offers an isolated Attempt Terminal, a verified image, and a bounded network mode.
+audience: exam-manager
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Choose an Execution Profile
+
+An Execution Profile is authored on the Draft and frozen beside the Starter
+Workspace in the Revision. It is not part of the Exam Policy Set, a Dockerfile,
+or `devcontainer.json`. It selects only whether a terminal is enabled, one safe
+catalog image ID, and one network mode.
+
+## Leave Execution Off Unless the Exam Needs It
+
+The default profile is disabled. A published Exam with execution disabled does
+not contact an Execution Host and cannot grow a terminal during a Sitting.
+Enabling execution is an authored Exam decision, not an installation default.
+
+When enabled:
+
+- select an image returned by the current safe catalog;
+- choose `none` for no network, or `allowlist` for operator-defined
+  destinations; and
+- do not accept an arbitrary creator URL or open-internet mode.
+
+An Execution Image is a baked isolated disk already available on an Execution
+Host. It is not a Docker tag and is never pulled when an Attempt starts. The
+catalog intentionally omits host IDs, addresses, credentials, live capacity,
+and release detail.
+
+## Understand What Publication Freezes
+
+The Revision pins enabled state, image, and network. Live correction cannot
+change them. A later standard Revision may choose another profile for future
+Sittings; an already open Sitting retains its selected Revision.
+
+CPU, memory, disk, process caps, host placement, and capacity are
+installation-owned. The profile does not request hardware. At first authorized
+terminal open, the server selects a usable host with the image and capacity,
+then projects the authoritative Attempt Workspace into an isolated environment.
+
+Losing a host cannot erase an acknowledged Workspace change. A later open can
+replace the host and rebuild from PostgreSQL/VFS authority. The host never
+receives a general VFS credential or learns Session and academic identities;
+the candidate never learns a host address.
+
+Use <Link to="/api/reference/list-exam-execution-images">List Exam execution images</Link>
+before <Link to="/api/reference/configure-exam-draft-execution-profile">replacing the Draft Execution Profile</Link>.

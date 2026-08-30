@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Proctor node readiness and bounded lifecycle</title>
+  <desc id="desc">A node starts platform and metrics, commits its serving lease and reconciliation, starts jobs and WebSocket, then hands the listener to HTTP before becoming ready. Cancellation enters graceful drain. Serving lease or metrics failure makes the node unready and force-stops HTTP. Both paths close owned components in reverse order.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L12 6L0 12Z" fill="#5c00aa"/></marker>
+    <marker id="arrow-red" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L12 6L0 12Z" fill="#b4233c"/></marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="718" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <rect x="2" y="2" width="1196" height="716" rx="15" fill="url(#grid)"/>
+  <g font-family="IBM Plex Sans, Arial, sans-serif" fill="#161616">
+    <text x="56" y="64" font-size="18" font-weight="700">Readiness is published only after every serving prerequisite</text>
+    <text x="56" y="92" font-size="14" fill="#655f69">Process liveness is not permission to route traffic. Every exit closes owned components in reverse order.</text>
+
+    <text x="56" y="140" font-size="12" font-weight="700" fill="#470082" font-family="IBM Plex Mono, monospace">STARTUP · NOT READY</text>
+    <g font-size="14" text-anchor="middle">
+      <rect x="56" y="168" width="200" height="96" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="156" y="208" font-weight="700">Platform + metrics</text>
+      <text x="156" y="236" font-size="12" fill="#655f69">dependencies usable</text>
+      <path d="M256 216H296" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="304" y="168" width="200" height="96" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="404" y="200" font-weight="700">Serving lease</text>
+      <text x="404" y="224" font-weight="700">+ reconciliation</text>
+      <text x="404" y="248" font-size="12" fill="#655f69">durable proof first</text>
+      <path d="M504 216H544" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="552" y="168" width="200" height="96" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="652" y="208" font-weight="700">Jobs + WebSocket</text>
+      <text x="652" y="236" font-size="12" fill="#655f69">consumers started</text>
+      <path d="M752 216H792" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="800" y="168" width="200" height="96" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="900" y="208" font-weight="700">HTTP handoff</text>
+      <text x="900" y="236" font-size="12" fill="#655f69">listener accepted</text>
+      <path d="M1000 216H1032" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="1040" y="168" width="104" height="96" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+      <text x="1092" y="210" font-size="12" font-weight="700" fill="#0b766e" font-family="IBM Plex Mono, monospace">READY</text>
+      <text x="1092" y="238" font-size="12">route traffic</text>
+    </g>
+
+    <rect x="56" y="328" width="488" height="120" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+    <text x="80" y="364" font-size="12" font-weight="700" fill="#95520d" font-family="IBM Plex Mono, monospace">NORMAL STOP · SIGTERM / CONTEXT CANCEL</text>
+    <text x="80" y="400" font-size="18" font-weight="700">Unready, then graceful HTTP drain</text>
+    <text x="80" y="428" font-size="14" fill="#49434f">Bounded by configured shutdown timeout</text>
+    <path d="M1092 264V304H300V328" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="656" y="328" width="488" height="120" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+    <text x="680" y="364" font-size="12" font-weight="700" fill="#b4233c" font-family="IBM Plex Mono, monospace">TERMINAL RUNTIME FAILURE</text>
+    <text x="680" y="400" font-size="18" font-weight="700">Unready, then force-stop HTTP</text>
+    <text x="680" y="428" font-size="14" fill="#49434f">Serving lease or required metrics listener</text>
+    <path d="M1092 264V288H900V328" fill="none" stroke="#b4233c" stroke-width="3" marker-end="url(#arrow-red)"/>
+
+    <path d="M300 448V496H552V512" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M900 448V496H648V512" fill="none" stroke="#b4233c" stroke-width="3" marker-end="url(#arrow-red)"/>
+    <rect x="384" y="512" width="432" height="120" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+    <text x="408" y="548" font-size="12" font-weight="700" fill="#ffffff" font-family="IBM Plex Mono, monospace">REVERSE OWNERSHIP CLOSE</text>
+    <text x="408" y="584" font-size="18" font-weight="700" fill="#ffffff">No component outlives authority</text>
+    <text x="408" y="612" font-size="14" fill="#ffffff">Jobs · socket · transport · lease · metrics · platform</text>
+
+    <text x="600" y="680" text-anchor="middle" font-size="14" fill="#655f69">A startup failure follows the same close path and never publishes readiness.</text>
+  </g>
+</svg>

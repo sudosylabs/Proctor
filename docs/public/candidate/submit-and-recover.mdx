@@ -1,0 +1,55 @@
+---
+title: Submit Safely and Recover From Blocks
+description: Reconcile every submission fence, acknowledge corrections, recover from pause or Suspension, and understand terminal outcomes.
+audience: candidate
+maturity: preview
+---
+
+# Submit Safely and Recover From Blocks
+
+Voluntary submission seals only acknowledged, synchronized authority. Before
+Desktop can offer submission, the current runtime capability must permit it and
+all terminal fences must agree.
+
+## Resolve Submission Fences
+
+The request names the current Participation and generation, expected current
+Revision, final acknowledged Workspace Cursor, final Focus Loss sequence, and
+Browser Activity terminal accounting. It also requires the DPoP-bound Session,
+continuity credential, and current open Connection.
+
+Browser Activity is explicitly:
+
+- `not_applicable` only when collection is not part of this Attempt;
+- `complete` with the current finalized source and sequence; or
+- `gapped` with a bounded truthful reason.
+
+A truthful gap records discrepancy provenance and need not prevent sealing.
+Never claim `not_applicable` to avoid enabled collection.
+
+## Handle Common Blocks
+
+| Block | Safe next action |
+| --- | --- |
+| Sitting paused | keep secure renewal and permitted reporting active; wait for resume |
+| correction acknowledgement required | read the oldest notice, acknowledge its exact Revision, then refetch presentation |
+| Workspace cursor conflict | reconcile ordered journal or reload the full manifest |
+| Focus Loss or Browser Activity sequence conflict | send/reconcile the missing terminal accounting; do not decrement the fence |
+| reconnecting | renew and reconnect before exclusive lease expiry |
+| suspended | ask an Exam Manager to review and re-allow; fresh admission will create another generation |
+| scheduled deadline reached | stop mutation; Sitting closure owns terminal sealing |
+
+## Treat Submission as Terminal
+
+Successful voluntary submission atomically creates one immutable Submission,
+marks the Attempt Submitted, ends Participation, and returns a candidate-safe
+receipt. Exact retry uses the same body and idempotency key but a fresh DPoP
+proof. There is no reopen or resubmit.
+
+An authorized Manager may end an unfinished Attempt and seal the last
+acknowledged Workspace with `manager_ended_attempt` provenance. Scheduled or
+early Sitting closure seals unfinished created Attempts with `sitting_closed`
+provenance. A no-show has no fabricated Attempt or Submission.
+
+Candidates receive the receipt and later only an explicitly released narrow
+result. They cannot browse the sealed Workspace or private integrity Review.

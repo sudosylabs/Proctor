@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Live correction and required acknowledgement sequence</title>
+  <desc id="description">A Manager first stages replacement Resource bytes, which remain invisible. The final complete correction manifest creates a new immutable Revision and retargets only one open or paused Sitting. Candidates receive a safe ordered notice. When acknowledgement is required, each Attempt acknowledges the oldest pending Revision; protected reads and continuity continue, while Workspace mutation, terminal, governed browser navigation, and voluntary submission remain blocked until acknowledgement commits.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Change one Sitting without rewriting an Attempt</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Correction is an immutable Revision. Acknowledgement is durable Attempt state.</text>
+
+  <rect x="56" y="152" width="232" height="184" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">01 · STAGE BYTES</text>
+  <text x="80" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Purpose-bound upload</text>
+  <text x="80" y="258" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Exact Sitting + base Revision</text>
+  <text x="80" y="286" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">New or replacement Resource</text>
+  <text x="80" y="318" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">NOT VISIBLE</text>
+  <path d="M288 244H336" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="336" y="152" width="248" height="184" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="360" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">02 · APPLY</text>
+  <text x="360" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Complete manifest</text>
+  <text x="360" y="258" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Instructions · Resources</text>
+  <text x="360" y="286" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Browser Policy · safe notice</text>
+  <text x="360" y="318" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ONE ATOMIC COMMAND</text>
+  <path d="M584 244H632" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="632" y="152" width="240" height="184" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <text x="656" y="190" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">03 · COMMIT</text>
+  <text x="656" y="226" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">New Revision</text>
+  <text x="656" y="258" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Retarget this Sitting only</text>
+  <text x="656" y="286" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Other Sittings unchanged</text>
+  <text x="656" y="318" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ATTEMPTS KEEP IDENTITY</text>
+  <path d="M872 244H920" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="920" y="152" width="224" height="184" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="944" y="190" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">04 · CANDIDATE</text>
+  <text x="944" y="226" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Ordered safe notice</text>
+  <text x="944" y="258" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Summary + changed areas</text>
+  <text x="944" y="286" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Oldest pending first</text>
+  <text x="944" y="318" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ACKNOWLEDGE REVISION</text>
+
+  <path d="M1032 336V400H316V448" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="56" y="448" width="520" height="144" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+  <text x="80" y="486" fill="#95520d" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">WHILE ACKNOWLEDGEMENT IS PENDING</text>
+  <text x="80" y="522" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Blocked</text>
+  <text x="144" y="522" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Workspace writes · terminal · governed Browser · submit</text>
+  <text x="80" y="558" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Continues</text>
+  <text x="160" y="558" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">reads · renewal · activity reporting · acknowledgement</text>
+
+  <path d="M576 520H624" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="600" y="506" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">ACK</text>
+
+  <rect x="624" y="448" width="520" height="144" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="648" y="486" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AFTER ACKNOWLEDGEMENT COMMITS</text>
+  <text x="648" y="522" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Capability is derived again from current Sitting and Attempt state.</text>
+  <text x="648" y="554" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Reconnect or re-allow does not erase the acknowledgement.</text>
+  <text x="648" y="580" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">EXACT REPLAY DOES NOT ACKNOWLEDGE TWICE</text>
+  <text x="600" y="660" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Private manager reason never enters the candidate notice.</text>
+</svg>

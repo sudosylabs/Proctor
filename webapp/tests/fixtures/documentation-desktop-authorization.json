@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "Documentation Desktop Authorization confirmation state",
+  "route": "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
+  "viewport": {
+    "width": 1440,
+    "height": 1024
+  },
+  "browser": "chromium",
+  "device_scale_factor": 1,
+  "color_scheme": "light",
+  "reduced_motion": "reduce",
+  "locale": "application English catalog",
+  "timezone": "not displayed by this state",
+  "state": "authenticated_confirmation",
+  "wait_for": {
+    "role": "heading",
+    "name": "Continue in Proctor Desktop"
+  },
+  "capture_environment": "PROCTOR_DOCS_DESKTOP_AUTHORIZATION_SCREENSHOT",
+  "capture_command": "cd webapp && PROCTOR_DOCS_DESKTOP_AUTHORIZATION_SCREENSHOT=../docs/public/static/assets/screenshots/desktop-authorization-confirmation.png npx playwright test tests/browser/hosted-access.spec.ts --project=chromium --grep 'Desktop authorization approves the exact sanitized request' --workers=1",
+  "synthetic_context": {
+    "institution": "Northbridge Institute",
+    "username": "student.one",
+    "display_name": "Student One",
+    "device_name": "Exam laptop"
+  },
+  "privacy": "All visible product data is deterministic and synthetic. The fragment proof and request handle are removed from browser history before rendering and are absent from the screenshot. No real Institution, User, credential, hostname, device, or operational data is captured."
+}

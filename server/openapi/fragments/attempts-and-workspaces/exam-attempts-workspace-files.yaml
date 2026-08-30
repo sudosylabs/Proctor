@@ -15,7 +15,8 @@ paths:
             curl --fail-with-body \
               --request POST \
               --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/workspace/files' \
-              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'Authorization: DPoP <desktop-session-access-credential>' \
+              --header 'DPoP: <fresh-proof-for-this-post-target-and-current-nonce>' \
               --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
               --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
               --header 'Idempotency-Key: docs-workspace-file-019' \
@@ -106,7 +107,8 @@ paths:
             curl --fail-with-body \
               --request GET \
               --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/workspace/files/<workspace-entry-id>/content' \
-              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'Authorization: DPoP <desktop-session-access-credential>' \
+              --header 'DPoP: <fresh-proof-for-this-get-target-and-current-nonce>' \
               --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
               --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
               --output 'main.go'
@@ -166,7 +168,8 @@ paths:
           label: Replace acknowledged Workspace content
           source: |-
             curl --request PUT \
-              --header "Authorization: Bearer $PROCTOR_TOKEN" \
+              --header "Authorization: DPoP $PROCTOR_DESKTOP_ACCESS_CREDENTIAL" \
+              --header "DPoP: $PROCTOR_DPOP_PROOF" \
               --header "X-Proctor-Attempt-Credential: $ATTEMPT_CREDENTIAL" \
               --header "X-Proctor-Attempt-Connection-ID: $ATTEMPT_CONNECTION_ID" \
               --header "Idempotency-Key: workspace-replace-020" \

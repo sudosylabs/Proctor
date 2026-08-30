@@ -1,0 +1,71 @@
+---
+title: Operate Health, Metrics, Logs, and Traces
+description: Route by readiness, understand serving-lease failure, scrape every node safely, and diagnose failures without leaking private data.
+audience: operator
+maturity: preview
+---
+
+# Operate Health, Metrics, Logs, and Traces
+
+Process existence, liveness, readiness, and dependency diagnostics answer
+different questions. Only readiness should put a node in the client traffic
+pool.
+
+<GovernedFigure asset="node-readiness-lifecycle" />
+
+## Health Endpoints
+
+| Endpoint | Meaning | Traffic decision |
+| --- | --- | --- |
+| `GET /health/live` | process and root runtime can answer | restart policy signal; not sufficient for routing |
+| `GET /health/ready` | mandatory startup and serving prerequisites are currently satisfied | include/remove node from load-balancer pool |
+
+Readiness remains false until platform dependencies, metrics, serving lease,
+startup reconciliation, Jobs, WebSocket, listener, and HTTP handoff succeed. It
+becomes false before drain. A serving-lease renewal or required metrics-listener
+failure is terminal: Proctor removes readiness and stops serving rather than
+risk operating without its durable node proof.
+
+The serving lease lasts 30 seconds, renews every 5 seconds, and bounds each
+operation to 5 seconds. These are current implementation timings, not alert
+threshold recommendations.
+
+## Metrics
+
+Metrics use a separate node-local listener, default `127.0.0.1:8067`, exposing
+only `GET /metrics`. Scrape every node; Memberlist does not aggregate metrics.
+The `proctor_` families cover readiness, HTTP, stores, caches, WebSocket,
+cluster, Jobs, execution, VFS, mail, and selected domain outcomes.
+
+When binding beyond loopback, configuration requires static TLS and a random
+32–512-byte bearer token. Keep the token in protected secret input. Do not put
+it in scrape URLs or logs.
+
+## Logs and Traces
+
+Use JSON logs for machine ingestion and bounded file rotation where local files
+are selected. Preserve request/node correlation and closed component/outcome
+fields. Do not increase diagnostic value by logging credentials, URLs with
+secrets, User/Exam identifiers without approved purpose, Workspace paths or
+content, recipients, evidence, provider payloads, or error strings as metric
+labels.
+
+The tracked development OpenTelemetry, Prometheus, Grafana, and Loki stack is a
+local verification environment. It is not a production retention, sampling, or
+alerting policy.
+
+## Diagnose a Not-ready Node
+
+1. read the first bounded startup/runtime error from the node log;
+2. verify effective configuration with `proctor config validate`;
+3. verify PostgreSQL and selected required dependencies from their own trusted
+   diagnostics without printing credentials;
+4. compare `proctor version --json` and hosted build identity;
+5. in a cluster, check stable Node ID, Redis/shared VFS, Memberlist key overlap,
+   bind/advertise resolution, and compatible peer versions; and
+6. fix the owning dependency or configuration, then restart and wait for
+   readiness—never force the load balancer to ignore it.
+
+{/* TODO(operator-alert-policy): Establish exercised service-level objectives,
+alert thresholds, paging routes, log/trace retention, and dashboard ownership
+before publishing recommended production alarms. */}

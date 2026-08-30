@@ -49,6 +49,14 @@ context in which examinations are created and delivered.
 
 ## Read the Governing Model
 
+- [Govern account access](./access-policy.mdx) before admitting people or
+  removing an administrator authentication path.
+- [Build the academic structure](./academic-structure.mdx) with explicit
+  ownership, applicability, archive, and retry rules.
+- [Manage people and scoped authority](./people-and-authority.mdx) without
+  turning membership into permission.
+- [Inspect audit history](./audit-history.mdx) through the caller's current
+  authorized scope.
 - [Proctor glossary](../reference/glossary.mdx) defines Institution, Academic
   Unit, Programme, Academic Period, and Class.
 - <Link to="/api/recipes/bootstrap-installation">Bootstrap an installation</Link>
@@ -64,3 +72,21 @@ Use **Class**, not Group, for the concrete roster. Use <Term id="exam-manager">E
 Manager</Term> for an Exam's creator or another teacher with equal management
 authority. “Proctor” is the product name and does not silently grant a person a
 special role.
+
+## First-administrator checklist
+
+Bootstrap creates the Institution, first User, password credential, protected
+`system_admin` Role and binding, Access Policy revision 1, and successful audit
+as one transaction. It does not create a Session or prove mailbox control.
+
+After bootstrap, the first administrator should:
+
+1. sign in through the ordinary hosted login;
+2. verify the bootstrap email address;
+3. test transactional mail;
+4. configure, enable, and deliberately connect any external provider;
+5. establish another administrator with an independent usable method; and
+6. only then consider disabling local login.
+
+Host recovery is an offline operator procedure, not an administrator endpoint.
+Do not weaken Access Policy to substitute for tested recovery.

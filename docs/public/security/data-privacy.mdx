@@ -1,0 +1,63 @@
+---
+title: Data Classification, Privacy, and Diagnostics
+description: Classify Proctor data, constrain where it may appear, and preserve privacy through logs, metrics, audit, realtime, screenshots, and support diagnostics.
+audience: security-reviewer
+maturity: preview
+---
+
+# Data Classification, Privacy, and Diagnostics
+
+Data minimization is an architectural boundary, not a documentation-only
+promise. Each transport and projection exposes a smaller reviewed shape than
+the authoritative record behind it.
+
+## Classification and Handling
+
+| Class | Examples | Handling rule |
+| --- | --- | --- |
+| Secret credential material | passwords, Session/PAT/Attempt credentials, DPoP private key, recovery and Invitation claims, provider tokens, MFA/mail/cluster keys | never log, audit, screenshot, place in URL, or return after one-use display |
+| Private academic content | Exam instructions before authorized delivery, Resources, Workspace/Submission files, answers, private manager rationale | purpose-specific authorization; private/no-store transport; no general analytics |
+| Private identity and structure | User profile, memberships, Role Bindings, class roster, provider subject | scoped projection, bounded audit, concealment across resource boundaries |
+| Integrity and Review | Focus/Connection Loss, Browser Activity, Flags, evidence, discrepancies, decisions, notes | manager-only bounded access; candidate sees only released approved remarks |
+| Operational secret/configuration | database DSN, Redis/S3/SMTP credentials, TLS keys, bearer tokens | protected files or secret integration, redacted display, least-readable service account |
+| Safe operational metadata | sealed route template, result class, component, request/node correlation, bounded IDs where approved | low-cardinality logs and metrics; no payload or arbitrary error strings |
+
+## Logs and Metrics
+
+Application services return errors and do not log request data opportunistically.
+The outer boundary logs an unexpected failure once with approved bounded scalar
+fields. Log configuration caps field bytes, queueing, flush, and target behavior.
+
+Metrics use closed low-cardinality labels. They never contain raw URLs or VFS
+paths, cache keys, host/node/User/Session/Exam IDs, mail recipients, content,
+credentials, or error text. Prometheus scrapes every node separately.
+
+## Realtime and Cluster Projections
+
+Events are minimal past-tense refetch hints. Candidate and manager projections
+are separate and reauthorize current subscriptions. Events omit Exam content,
+Workspace paths and bytes, evidence payloads, private reasons, remarks, and
+credentials. Memberlist messages are bounded, authenticated/encrypted by the
+operator keyring, idempotent under duplicate delivery, and never authority.
+
+## Browser Activity Privacy
+
+<GovernedFigure asset="browser-activity-privacy-boundary" />
+
+Only minimized top-level navigation facts enter Browser Activity. Query,
+fragment, URL credentials, page title/content, referrer, headers, cookies, DOM,
+download bodies, and local paths are excluded. Initial integrity evidence also
+excludes screenshots, webcam, clipboard, terminal output, source code, and
+arbitrary payloads. Missing data becomes an explicit gap; it is not inferred.
+
+## Documentation and Diagnostics
+
+Examples, screenshots, mail previews, bug reports, and support artifacts use
+synthetic data. Remove URL fragments, authorization headers, cookies, DPoP
+proofs/nonces, file content, student identifiers, and local paths before
+sharing. A request ID can correlate server-side diagnostics without disclosing
+the underlying private record.
+
+{/* TODO(security-support-diagnostics): Define a reviewed support-bundle format,
+redaction contract, retention period, and transfer channel before documenting
+or automating support archive collection. */}

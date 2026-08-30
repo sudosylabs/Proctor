@@ -1,0 +1,97 @@
+---
+title: Sign In and Recover Access
+description: Use local, provider, Invitation, verification, and recovery journeys without confusing authentication with membership.
+audience: account-holder
+maturity: preview
+---
+
+# Sign In and Recover Access
+
+Always begin at the canonical Proctor origin supplied by your Institution. Do
+not enter credentials into a copied page, an address received from an
+untrusted source, or a Proctor Desktop window: Desktop opens the Institution's
+hosted browser page for authentication.
+
+## Choose the Right Entry Point
+
+### You already have an account
+
+Open `/login`. The page shows only methods currently enabled by the
+Institution's revisioned <Term id="access-policy">Access Policy</Term> and by the
+server's configured providers.
+
+- **Local login** uses the username or email accepted by the form and the
+  account's password. If MFA is active, complete the second factor in the same
+  transaction.
+- **External login** redirects through the provider selected on the page. The
+  immutable provider subject identifies an existing link; an email returned by
+  a provider never silently merges two accounts.
+- If several providers are available, choose the provider originally connected
+  to the account. An unlinked external identity does not become an account
+  merely because its email resembles one.
+
+A successful login creates a Web <Term id="session">Session</Term>. It does not
+accept an Invitation, enroll a person in a Class, or grant a role.
+
+### Your Institution sent an Invitation
+
+Use the complete `/join` link from the most recent delivery. An
+<Term id="invitation">Invitation</Term> is a purpose-specific, pre-account
+package: it may create or resolve the User and atomically establish the exact
+relationship or role package it names.
+
+The hosted journey may offer a local credential, an enabled external provider,
+or acceptance with a current Session. Those branches converge on the same
+frozen package. A replacement Invitation invalidates the previous claim;
+resending rotates delivery without broadening its meaning.
+
+If the link is expired, revoked, replaced, already consumed, or malformed, the
+page gives a harmless unusable-link result. Ask the issuer for a new Invitation
+instead of repeatedly submitting the old claim.
+
+### Public registration is offered
+
+Open `/register` only when the hosted page says public local registration is
+enabled. Registration creates a User and begins mailbox verification. It does
+not create an Affiliation, membership, or Role Binding. When registration is
+disabled, an Invitation is required; the page does not collect an email merely
+to reveal Invitation state.
+
+## Verify the Mailbox
+
+The bootstrap administrator and a newly registered local account begin with an
+unverified email address. Use the newest verification delivery. Verification
+proves mailbox control only; it does not prove legal identity, institutional
+relationship, or permission.
+
+If no delivery arrives:
+
+1. confirm the address through a safe account or administrator view rather
+   than posting it in a support channel;
+2. request a new verification delivery once;
+3. check the Institution's mail-delivery status with an operator; and
+4. discard older links after the new request.
+
+## Recover a Local Password
+
+Open `/account/forgot-password` when local login is available. Submit the
+account identifier once. The response is intentionally generic whether or not
+an eligible account exists. If a delivery arrives, open the newest
+`/account/reset-password` link and choose a new password before the transaction
+expires.
+
+Password recovery changes a credential; it does not silently clear MFA or
+create academic authority. If local login is disabled, the hosted login page
+hides recovery even though the API preserves a non-enumerating response.
+
+## Understand Safe Failure Messages
+
+| Result | What to do |
+| --- | --- |
+| Invalid credentials | Re-enter the chosen method; do not try to infer whether the account exists. |
+| MFA required or invalid | Complete the factor or use one unused recovery code. Never send a recovery code to support. |
+| Method disabled | Use another method already connected to the same account or ask an administrator about policy. |
+| Account disabled | Contact the Institution; creating another account does not restore the original authority. |
+| Session limit reached | Revoke an old Session through account security, or ask an administrator for help. |
+| Active Attempt Session lock | Return to the Desktop Session already taking the Exam; Proctor will not create a competing User Session. |
+| Provider unavailable | Retry after the provider or server capability is restored; do not link by matching email. |

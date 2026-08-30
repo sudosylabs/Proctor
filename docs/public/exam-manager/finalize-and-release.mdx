@@ -1,0 +1,56 @@
+---
+title: Finalize the Review and Release the Result
+description: Check completeness, freeze one bounded integrity inventory, and explicitly release only approved candidate-facing remarks.
+audience: exam-manager
+maturity: preview
+---
+
+# Finalize the Review and Release the Result
+
+Finalization and release are deliberately separate. Finalization freezes the
+manager's complete Review and its evidence inventory. Release makes only one
+narrow candidate projection visible.
+
+## Check Before Finalization
+
+Use a fresh Review snapshot and verify all of the following:
+
+- integrity collection is terminal as `settled` or `gapped`;
+- every current Flag has one current decision;
+- private notes contain no secrets, credentials, or unnecessary student data;
+- student remarks contain only text approved for the candidate; and
+- concurrent Review revision changes have been reconciled.
+
+Finalization locks the sealed Submission and freezes stable Flag, decision,
+evidence, and discrepancy identities in a canonical digest. The operation is
+bounded to 200 Flags, 20,000 evidence rows, and 200 explicit discrepancies. A
+larger inventory must be investigated; it cannot be silently truncated to make
+finalization succeed.
+
+After finalization, notes, remarks, and decisions have no mutable backdoor.
+Late integrity records remain visible as append-only discrepancies, but they do
+not rewrite the finalized inventory or released projection.
+
+## Release Is a Separate Decision
+
+Release rechecks current Submission authority and the exact finalized Review
+revision. Until that transition succeeds, the candidate result is concealed as
+not found—not returned as an empty or “pending” private Review.
+
+The released projection contains only:
+
+- Review, Submission, and Attempt identities;
+- sanitized approved student-facing Markdown remarks; and
+- the release time.
+
+It never contains Flags, evidence, discrepancies, decisions, private rationale,
+manager notes, sealed Workspace content, grade, score, rubric, pass/fail, or an
+academic outcome. Proctor currently does not own those academic result models.
+
+## Handle Uncertain Requests Safely
+
+Finalization and release require idempotency. If a response is lost, retry the
+exact operation with the same body and idempotency key after re-establishing the
+transport proof. A revision conflict means the Review changed and must be
+reread. A state conflict means a prerequisite is incomplete; it is not
+permission to bypass the missing decision or terminal collection state.

@@ -1,0 +1,119 @@
+---
+title: Implement Desktop Authorization
+description: Exchange a hosted browser approval for a registered-key DPoP Desktop Session with exact origin, callback, PKCE, nonce, and compatibility checks.
+audience: api-consumer
+maturity: preview
+sidebar_position: 3
+---
+
+import Link from '@docusaurus/Link';
+
+# Implement Desktop Authorization
+
+Desktop Authorization is a public-client handoff. The client owns state, PKCE,
+the P-256 private key, loopback listener, and Session credential storage. The
+hosted server owns account authentication and explicit human approval. Never
+put a password, provider credential, browser proof, code, or Session credential
+into application logs.
+
+<GovernedFigure asset="desktop-authorization-handoff" />
+
+## 1. Pin the Server and Check the Build
+
+Read <Link to="/api/reference/get-public-access-discovery">public discovery</Link>
+from the user-entered origin. Require its canonical origin and installation
+identity to remain stable for the transaction. Production uses HTTPS; only
+explicit loopback development may use HTTP.
+
+Call <Link to="/api/reference/ping-system">Ping system</Link> with the exact
+Desktop release, build ID, platform, architecture, and realtime protocol.
+Treat `availability` and `compatibility` as separate values. A well-formed
+request returns `200` even for maintenance, update-required, incompatible, or
+unsupported results. Stop before authorization unless the response is
+available and compatible.
+
+## 2. Create One Authorization Request
+
+Generate independently:
+
+- at least 43 raw-URL-base64 characters of state;
+- a high-entropy PKCE verifier and its S256 challenge;
+- an ES256 P-256 key pair; and
+- an HTTP loopback callback using literal `127.0.0.1` or `[::1]`, an ephemeral
+  port, and an unpredictable path.
+
+Do not use `localhost`, a wildcard listener, a remote callback, or a callback
+whose host, port, or path can change after start. Keep the private key and
+verifier in the Desktop process.
+
+POST the public JWK, challenge, callback, state, and exact build selectors to
+<Link to="/api/reference/start-desktop-authorization">Start Desktop Authorization</Link>.
+Retain the `DPoP-Nonce` response header. Open only the returned
+`authorization_url` in the system browser; do not parse it into a custom login
+surface.
+
+## 3. Let the Hosted Browser Own Authentication
+
+The server page binds the URL's request handle, fragment proof, and state once,
+then removes sensitive URL material from history. It may use a current Web
+Session, local password authentication, or a configured provider. Each path is
+purpose-bound and converges on an explicit approval screen.
+
+The client does not call the bind, context, authenticate, approve, reset, or
+cancel endpoints on the browser's behalf. Those operations belong to the
+same-tab hosted journey and its HttpOnly route cookie.
+
+## 4. Verify the Loopback Return
+
+Accept exactly one callback on the expected literal address, port, and random
+path. Compare returned state in constant-time before reading the code. Reject
+missing, mismatched, duplicate, or late callbacks and close the listener.
+
+The redirect contains no access credential. A cancellation, expired request,
+or active Attempt Session lock is terminal; begin with new state, verifier, key,
+and callback only when the user deliberately retries.
+
+## 5. Exchange With the Same Key and Verifier
+
+POST the code, exact state, original verifier, same public JWK, and unchanged
+build selectors to <Link to="/api/reference/exchange-desktop-authorization-code">Exchange Desktop Authorization code</Link>.
+Sign a fresh exchange proof with the private key and current nonce. The server
+atomically consumes the code, creates or refreshes the Desktop Registration,
+creates a Desktop Session, and returns proof-bound access and refresh
+credentials plus the next nonce.
+
+An ambiguous transport result is not permission to reuse the code blindly.
+First determine whether the exact exchange completed through the bounded
+response or account security projection. If it did not, restart the complete
+authorization because the code and proof are one-use security material.
+
+## 6. Sign Every Desktop Request
+
+<GovernedFigure asset="desktop-dpop-boundary" />
+
+For each access request, build a new DPoP proof over the exact canonical public
+method and URI, access-credential hash, issued-at time, unique proof ID, and
+current Session nonce. Send:
+
+```text
+Authorization: DPoP <access-credential>
+DPoP: <new-proof>
+```
+
+On `authentication.dpop.use_nonce`, capture the replacement `DPoP-Nonce`, sign
+a new proof, and retry only when the operation's idempotency contract permits.
+On `authentication.dpop.replayed`, never resend the captured proof. Refresh
+uses the same key but a refresh-specific proof without the access-credential
+hash.
+
+## 7. Handle Revocation and Storage Failure
+
+A revoked Desktop Registration makes its Sessions and credentials unusable and
+cannot be restored. Clear affected client credentials and require a new
+explicit browser approval with a new key.
+
+The server contract does not define a Desktop client's secure-storage UI. A
+client that cannot protect the private key and refresh credential must not
+write them to ordinary files, console output, crash reports, or analytics. Keep
+that product decision explicit in the Desktop repository rather than inventing
+a fallback in an API integration.

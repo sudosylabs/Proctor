@@ -1,0 +1,82 @@
+---
+title: Threat Model and Trust Boundaries
+description: Identify protected assets, trusted components, untrusted inputs, attackers, and the controls that preserve one Proctor installation.
+audience: security-reviewer
+maturity: preview
+---
+
+# Threat Model and Trust Boundaries
+
+One Proctor installation represents one Institution. Several application nodes
+sharing authoritative state are one installation, not tenants. The threat model
+therefore protects institution-wide academic and identity boundaries without
+pretending that a tenant column or node-local state provides isolation.
+
+## Protected Assets
+
+The highest-sensitivity assets are authentication credentials and keys,
+password and recovery material, provider tokens, Invitation claims, Session and
+Attempt continuity credentials, Exam instructions and Resources, candidate
+Workspace and Submission content, integrity evidence and private Review text,
+student identity and membership, audit evidence, and operator secrets.
+
+Availability-sensitive assets include Sitting schedules and closure, active
+Participation leases, Jobs and mail occurrences, VFS reachability, execution
+grants, and the serving-node lease.
+
+## Actors and Capabilities
+
+| Actor | Expected capability | Not trusted to decide |
+| --- | --- | --- |
+| Unauthenticated network client | public discovery, bootstrap while pristine, login and recovery entry points | identity, Role, resource existence, rate-limit result |
+| Authenticated User | actions allowed by current account, credential, Role, Binding, relationship, and resource state | its own scope, assurance, audit projection, or stale permission |
+| Registered Desktop | prove one P-256 key and operate supported delivery protocols | current Exam eligibility, policy outcome, server time, guilt, or severity |
+| Exam Manager | manage one authorized Exam and inspect sealed Submissions | live candidate Workspace, broader student data, grading, or hidden operator state |
+| System administrator | explicit audited installation actions and override actions | bypass of intrinsic lifecycle, immutable publication, or concealment contracts |
+| Application node | execute the same validated build and current configuration | node-local cache or peer messages as durable authority |
+| Execution host | operate one bounded grant and isolated Workspace projection | Proctor Sessions, Sitting policy, general VFS, or durable Workspace truth |
+| Infrastructure operator | supply trusted runtime, network, database, storage, mail, TLS, and secrets | silent weakening of product invariants without a changed validated configuration |
+
+## Boundary Map
+
+<GovernedFigure asset="installation-authority-topology" />
+
+The public listener and metrics listener are separate. HTTP and WebSocket input
+are untrusted until strict transport validation and authentication complete.
+Application use cases authorize current action/resource pairs. Named Store
+operations commit durable state and required audit. Only afterward may cache,
+Memberlist, WebSocket, execution, or mail effects proceed.
+
+PostgreSQL is trusted for durable application facts and database time. VFS is
+trusted to retain opaque bytes selected through PostgreSQL metadata, not to
+decide identity or authorization. Redis and Memberlist are disposable
+coordination accelerators. SMTP acceptance is not proof of final delivery.
+
+## Principal Threats and Controls
+
+| Threat | Primary controls |
+| --- | --- |
+| Credential theft or replay | hashed durable credentials, rotation/revocation, DPoP binding, fresh nonce and unique proof, HttpOnly cookies, CSRF and Origin checks |
+| Horizontal or stale access | canonical resource resolution, current Store-backed authorization, scope intersection, concealment, audit |
+| Cross-node inconsistency | PostgreSQL authority, shared Redis security counters in cluster mode, commit-before-effect, refetch after event gaps |
+| Malicious or malformed input | bounded bodies and batches, strict decoding, closed enums, normalized paths, VFS streaming limits |
+| Untrusted Desktop claims | registered build/key, compatibility policy, server-derived identity/time, generation and sequence fences |
+| Content disclosure | purpose-specific reads, private/no-store caching, no storage URLs, redacted logs and projections |
+| Execution escape or stale host | external isolated host, opaque grant, bounded projection, revoke/freeze, no general credentials, current fencing |
+| Evidence overcollection | typed policies, privacy minimization before persistence, explicit gaps, bounded inventories, separate private Review |
+| Operational secret exposure | protected config/environment files, purpose-specific keyrings, redacted display, non-root service, minimal writable paths |
+
+## Out of Scope and Unresolved Policy
+
+The code does not make a compromised PostgreSQL, VFS, execution host, operating
+system, or operator account safe. Deployments must isolate and monitor those
+systems. Proctor's current server controls also do not constitute a certified
+production environment or academic appeals process.
+
+{/* TODO(security-retention-policy): Define product-owned retention, purge,
+legal-hold, and deletion guarantees before promising lifecycle behavior for
+Submissions, evidence, audit, mail, or content. */}
+
+{/* TODO(security-production-at-rest): Define supported production encryption-
+at-rest responsibilities and evidence for PostgreSQL, VFS, backups, and operator
+secret stores beyond the implemented MFA/mail envelope encryption boundaries. */}

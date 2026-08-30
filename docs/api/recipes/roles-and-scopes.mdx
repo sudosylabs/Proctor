@@ -1,0 +1,82 @@
+---
+title: Define Roles and Scoped Bindings
+description: Create reusable action sets and bind them at Institution, Academic Unit, or Class scope without delegating broader authority.
+audience: api-consumer
+maturity: preview
+sidebar_position: 5
+---
+
+import Link from '@docusaurus/Link';
+
+# Define Roles and Scoped Bindings
+
+Roles are reusable Institution-wide action sets. Role Bindings grant one Role
+to one User at one supported scope. Relationship records are not permission
+grants, and binding display names are not authorization inputs.
+
+## 1. Inspect the Action Catalog and Existing Roles
+
+Use <Link to="/api/reference/list-roles">List Roles</Link> and
+<Link to="/api/reference/get-role">Get Role</Link> through the caller's current
+`role.view` authority. `system_admin` is protected; do not clone it as a
+shortcut for a custom administrator.
+
+Create a custom Role with <Link to="/api/reference/create-role">Create Role</Link>.
+Choose the minimum stable actions needed for one responsibility. Actions are
+domain contracts such as `class.members.view`, not route names or HTTP verbs.
+Adding an action later changes every active binding of that Role, so review the
+scope consequences before <Link to="/api/reference/update-role">updating it</Link>.
+
+## 2. Resolve the Target Scope
+
+Supported binding scopes are Institution, Academic Unit, and Class. Programme,
+Programme Level, Academic Period, Exam, Sitting, Attempt, and Submission
+operations resolve to those scopes through their authoritative lineage. Do not
+create a synthetic binding type for them.
+
+## 3. Create the Binding
+
+Call <Link to="/api/reference/create-role-binding">Create Role Binding</Link>
+with the target User, Role, supported scope type, exact resource ID, effective
+time, and optional bounded end time defined by the current schema. The server
+verifies that the caller can manage bindings at that scope and can delegate
+every requested action.
+
+An exact idempotent replay may return the retained outcome. Reusing an
+idempotency key for another User, Role, scope, or effective interval is a
+conflict.
+
+## 4. Verify Effective Authority
+
+Use <Link to="/api/reference/list-role-bindings">List Role Bindings</Link> with
+an authorized scope constraint. Then exercise a safe read operation at the
+intended resource. Do not treat a list response as a permanent permission
+snapshot: the owning use case rereads active roles, bindings, lineage, and
+relationships for every decision.
+
+## 5. End Instead of Erasing
+
+Call <Link to="/api/reference/end-role-binding">End Role Binding</Link> with the
+current lifecycle inputs. The history remains. Deleting a Role through
+<Link to="/api/reference/delete-role">Delete Role</Link> is blocked while active
+bindings depend on it and never removes the protected built-in Role.
+
+After ending a person's Unit or Class relationship, separately review bindings
+whose business purpose no longer exists. Relationship end and permission end
+are deliberately not one implicit cascade.
+
+Use <Link to="/api/reference/list-audit-events">List Audit Events</Link> to
+confirm the retained security decision after an authorized Role or Binding
+change. Audit history is evidence of the completed decision, not a current
+permission snapshot; authorization still resolves live Role, Binding, scope,
+and relationship state.
+
+## Failure and Recovery
+
+| Failure | Recovery |
+| --- | --- |
+| authorization denied | Narrow the actions or scope; do not retry under a guessed parent resource. |
+| target concealed as not found | Recheck the exact typed ID and caller visibility without probing sibling scopes. |
+| conflict | Refetch the Role or Binding and reconsider current effective state. |
+| idempotency in progress | Back off and query the resulting resource before replaying the exact request. |
+| audit unavailable | Stop. The security-sensitive decision is required to fail closed. |

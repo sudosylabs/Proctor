@@ -1,0 +1,57 @@
+---
+title: Prepare and Enter an Attempt
+description: Reach a compatible registered-key Desktop Session and understand the Attempt, Participation, Connection, and configuration created at admission.
+audience: candidate
+maturity: preview
+---
+
+# Prepare and Enter an Attempt
+
+## Check the Server and Desktop Build
+
+Start from the Institution's canonical server origin. Desktop discovery pins
+that origin and `system/ping` evaluates the exact release, build, platform,
+architecture, and realtime protocol. Stop when the server reports maintenance,
+update required, incompatible server, unsupported target, or revoked build;
+do not edit selectors to appear compatible.
+
+If no active registered-key Session exists, complete
+[Desktop Authorization](../account/desktop-authorization.mdx). The private key
+stays in Desktop and every protected request uses a fresh DPoP proof.
+
+## Use Candidate Exam Activity
+
+The Candidate Exam Activity collection is the authoritative bounded navigation
+registry. Choose only an action currently returned by the server. A Sitting can
+appear without an Attempt: Proctor creates the one ready Attempt lazily on the
+first eligible entry and does not fabricate one for a no-show.
+
+## Understand Admission
+
+Secure admission rechecks:
+
+- current membership in the exact Class;
+- Sitting state and selected current Revision;
+- compatible registered Desktop key and active Desktop Session;
+- the one-unresolved-Attempt-per-User Session lock;
+- Desktop runtime posture and configuration support; and
+- whether the Attempt is Ready rather than terminal or blocked.
+
+The first accepted admission creates one active Participation generation and
+one Connection bound to the exact registered-key Desktop Session. A continuity
+credential proves that generation. It belongs only in protected process memory
+and sensitive headers—not URLs, logs, support messages, or browser storage.
+
+<GovernedFigure asset="candidate-trust-chain" />
+
+## Keep the Immutable Attempt Configuration
+
+Admission freezes one Attempt Configuration from the candidate's portable
+settings and the Desktop build's supported manifest. It includes only closed,
+approved accessibility, appearance, editor, motion, announcement, cursor, and
+command-binding preferences understood by both sides. Hidden settings and
+registry revisions remain provenance.
+
+Reconnect and re-allow do not recompute it. If the client cannot support the
+configuration manifest, admission leaves the Attempt Ready instead of silently
+dropping preferences.

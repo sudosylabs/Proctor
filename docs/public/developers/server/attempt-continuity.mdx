@@ -1,0 +1,111 @@
+---
+title: Develop Attempt Continuity
+description: Keep Participation renewal, database-time expiry, Connection teardown, corrections, Workspace recovery, and manager re-allow causally exact.
+audience: developer
+maturity: preview
+slug: /developers/server/attempt-continuity/
+---
+
+# Develop Attempt Continuity
+
+Attempt continuity is durable domain state, not WebSocket liveness. A ping can
+show that bytes crossed a transport. Only authenticated monotonic renewal can
+extend a Participation lease, and only PostgreSQL time can decide expiry.
+
+<GovernedFigure asset="participation-lease-timeline" />
+
+## Start in the Owning Package
+
+`server/app/exam/attempt` owns admission, Participation and Connection fencing,
+renewal, expiry enforcement, Focus Loss, correction acknowledgement, protected
+Workspace access, Submission sealing, and manager inspection. The parent
+`server/app` facade exposes those capabilities and owns post-commit effect
+adapters. `server/app/exam_attempt_expiry_runtime.go` only schedules bounded
+scans; it does not decide expiry semantics.
+
+The domain model owns valid states and transitions. The bounded Store contract
+owns atomic lock order, database-time comparison, idempotent outcomes, and
+cross-row invariants. The transport owns socket envelopes and teardown. Keep
+those three roles separate.
+
+## Model the Current Generation Exactly
+
+One unresolved Attempt has at most one current Participation generation and one
+current Connection. The Participation binds the exact Desktop Session, hashed
+continuity credential, generation, renewal sequence, and lease. Protected HTTP
+access must also name the current Connection and pass DPoP authentication.
+
+Never authorize from an Attempt ID plus a valid Session alone. Never let a new
+generation revive an old continuity credential or sequence. Connection IDs,
+Participation IDs, generation numbers, and credential hashes are selectors with
+different meanings; do not collapse them into one token field.
+
+## Renew Monotonically
+
+The renewal Store operation compares the current generation, bound Session,
+credential hash, Connection, lease, and sequence under lock. An exact duplicate
+returns its retained result. A stale or changed sequence cannot extend the
+lease. The new expiry derives from database time, not client time or application
+node time.
+
+The initial runtime uses a 5-second renewal interval, 20-second lease, and
+2-second bounded expiry scan. Treat those as server-owned values, not permanent
+client constants. The client schedules from the admission result.
+
+## Expire Once and Fence Forever
+
+At `expires_at <= database_now`, the generation is dead. The named atomic
+operation closes the Connection, ends Participation, records neutral Connection
+Loss evidence, opens one Suspension episode and Flag, and advances Attempt
+state. Retry returns the retained terminal outcome rather than duplicating the
+episode.
+
+Effects follow commit: close local transport, publish candidate-safe Suspension,
+notify manager subscriptions, and fan out to peers. Failure of those effects
+does not roll durable state back. A missed event triggers authoritative refetch.
+
+One failed HTTP request, socket close, or ping is not Connection Loss. Do not
+add an eager application timer that races PostgreSQL and produces accusation
+from transient network noise.
+
+## Recover Without Overwriting Authority
+
+Before expiry, reconnect may replace the Connection while retaining the
+generation if current policy permits. The client then refetches presentation and
+replays the bounded Workspace journal from its last acknowledged cursor. If the
+journal cannot bridge the gap, it replaces its local projection from a complete
+manifest.
+
+After expiry, Kick, or Suspension, only revision-fenced manager re-allow can
+close the exact episode. Fresh admission creates the next generation. It
+preserves the Attempt, Workspace, frozen configuration, Flags, evidence, and
+prior Suspension provenance.
+
+## Keep Corrections Attempt-Scoped
+
+A required live-correction acknowledgement belongs to the Attempt, not a
+Participation. It therefore survives reconnect and re-allow. Pending
+acknowledgement blocks governed navigation, terminal use, Workspace mutation,
+and voluntary submission, while protected reads, renewal, integrity delivery,
+and the acknowledgement itself remain available.
+
+Acknowledgements are oldest-first, revision-fenced, idempotent, and bound to
+the current Participation, generation, Session, credential, and Connection.
+Do not clear the requirement from a socket-local handler.
+
+## Focused Verification
+
+From `server/` run:
+
+```sh
+go test ./app/exam/attempt -run 'Test.*Participation|Test.*Expiry|Test.*Reconnect|Test.*Correction'
+go test ./app -run 'TestParticipationExpiry|TestExamAttemptExpiry'
+go test ./store/sqlstore -run 'Test.*Participation|Test.*Attempt.*Race'
+go test -race ./app/exam/attempt ./app
+make architecture
+```
+
+Cover duplicate and stale renewal, exact expiry, two scanners racing, effect
+failure after commit, reconnect before and after expiry, old-generation access,
+two managers re-allowing, correction survival across generations, and journal
+gap recovery.

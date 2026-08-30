@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Submission provenance and immutable boundary</title>
+  <desc id="desc">Candidate submission, manager end, and Sitting closure converge on one immutable Submission. A no-show creates neither an Attempt nor a Submission. The Submission pins acknowledged workspace and integrity state.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L12 6L0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="718" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <rect x="2" y="2" width="1196" height="716" rx="15" fill="url(#grid)"/>
+  <g font-family="IBM Plex Sans, Arial, sans-serif" fill="#161616">
+    <text x="56" y="64" font-size="18" font-weight="700">Three terminal paths; one immutable Submission contract</text>
+    <text x="56" y="92" font-size="14" fill="#655f69">Provenance records how sealing happened. It does not grade the work or infer intent.</text>
+
+    <rect x="56" y="144" width="304" height="176" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+    <text x="80" y="180" font-size="12" font-weight="700" fill="#0b766e" font-family="IBM Plex Mono, monospace">CANDIDATE_SUBMITTED</text>
+    <text x="80" y="216" font-size="18" font-weight="700">Voluntary handshake</text>
+    <text x="80" y="252" font-size="14" fill="#49434f">Current Participation + Connection</text>
+    <text x="80" y="280" font-size="14" fill="#49434f">All terminal fences acknowledged</text>
+
+    <rect x="448" y="144" width="304" height="176" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+    <text x="472" y="180" font-size="12" font-weight="700" fill="#470082" font-family="IBM Plex Mono, monospace">MANAGER_ENDED_ATTEMPT</text>
+    <text x="472" y="216" font-size="18" font-weight="700">Authorized early end</text>
+    <text x="472" y="252" font-size="14" fill="#49434f">Exact Attempt revision + reason</text>
+    <text x="472" y="280" font-size="14" fill="#49434f">Latest acknowledged Workspace state</text>
+
+    <rect x="840" y="144" width="304" height="176" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+    <text x="864" y="180" font-size="12" font-weight="700" fill="#95520d" font-family="IBM Plex Mono, monospace">SITTING_CLOSED</text>
+    <text x="864" y="216" font-size="18" font-weight="700">Bounded closure work</text>
+    <text x="864" y="252" font-size="14" fill="#49434f">Scheduled or explicit close</text>
+    <text x="864" y="280" font-size="14" fill="#49434f">Missing state becomes discrepancy</text>
+
+    <path d="M208 320V360H520V384" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M600 320V384" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M992 320V360H680V384" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="440" y="384" width="320" height="120" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+    <text x="464" y="420" font-size="12" font-weight="700" fill="#ffffff" font-family="IBM Plex Mono, monospace">ONE TERMINAL RECORD</text>
+    <text x="464" y="456" font-size="18" font-weight="700" fill="#ffffff">Immutable Submission</text>
+    <text x="464" y="484" font-size="14" fill="#ffffff">No reopen · no resubmit · no live view</text>
+
+    <rect x="56" y="552" width="760" height="112" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+    <text x="80" y="588" font-size="12" font-weight="700" fill="#470082" font-family="IBM Plex Mono, monospace">PINNED AUTHORITY</text>
+    <text x="80" y="620" font-size="14" fill="#49434f">Exam Revision · Workspace Cursor · manifest identities + versions + checksums</text>
+    <text x="80" y="648" font-size="14" fill="#49434f">Focus/Browser terminal accounting · discrepancies · provenance · server time</text>
+    <path d="M440 504V536H424V552" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+    <rect x="856" y="552" width="288" height="112" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2" stroke-dasharray="8 8"/>
+    <text x="880" y="588" font-size="12" font-weight="700" fill="#b4233c" font-family="IBM Plex Mono, monospace">NO-SHOW</text>
+    <text x="880" y="620" font-size="18" font-weight="700">No fabricated record</text>
+    <text x="880" y="648" font-size="14" fill="#49434f">No Attempt · no Submission</text>
+  </g>
+</svg>

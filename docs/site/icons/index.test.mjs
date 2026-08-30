@@ -7,6 +7,9 @@ const stylesUrl = new URL('../src/components/DocIcon/styles.module.css', import.
 
 const expectedNames = [
   'deployment',
+  'account',
+  'exam',
+  'candidate',
   'institution',
   'assurance',
   'integration',

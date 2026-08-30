@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Integrity evidence, private review, and candidate release boundary</title>
+  <desc id="desc">Observation, signal, finding, evidence, and flag form a bounded chain into a private manager Review. Complete decisions allow finalization. Explicit release exposes only approved remarks, identities, and release time while evidence and private fields remain excluded.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0L12 6L0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="718" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <rect x="2" y="2" width="1196" height="716" rx="15" fill="url(#grid)"/>
+  <g font-family="IBM Plex Sans, Arial, sans-serif" fill="#161616">
+    <text x="56" y="64" font-size="18" font-weight="700">Evidence stays private; release is a smaller, explicit projection</text>
+    <text x="56" y="92" font-size="14" fill="#655f69">No observation, Flag, or manager disposition is a grade or an automatic guilt verdict.</text>
+
+    <text x="56" y="144" font-size="12" font-weight="700" fill="#470082" font-family="IBM Plex Mono, monospace">BOUNDED INTEGRITY CHAIN</text>
+    <g font-size="14" text-anchor="middle">
+      <rect x="56" y="168" width="160" height="80" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+      <text x="136" y="216" font-weight="700">Observation</text>
+      <path d="M216 208H248" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="256" y="168" width="160" height="80" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+      <text x="336" y="216" font-weight="700">Security signal</text>
+      <path d="M416 208H448" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="456" y="168" width="160" height="80" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+      <text x="536" y="216" font-weight="700">Detector finding</text>
+      <path d="M616 208H648" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="656" y="168" width="160" height="80" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="736" y="216" font-weight="700">Evidence</text>
+      <path d="M816 208H848" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+      <rect x="856" y="168" width="160" height="80" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+      <text x="936" y="216" font-weight="700">Flag</text>
+    </g>
+    <text x="1048" y="198" font-size="12" fill="#655f69">Gaps remain</text>
+    <text x="1048" y="218" font-size="12" fill="#655f69">discrepancies</text>
+
+    <path d="M936 248V288H376V304" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="56" y="304" width="640" height="208" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+    <text x="80" y="340" font-size="12" font-weight="700" fill="#470082" font-family="IBM Plex Mono, monospace">PRIVATE MANAGER REVIEW</text>
+    <text x="80" y="376" font-size="18" font-weight="700">Interpret the complete bounded record</text>
+    <text x="80" y="412" font-size="14" fill="#49434f">Each Flag → confirmed · dismissed · inconclusive</text>
+    <text x="80" y="440" font-size="14" fill="#49434f">Private rationale + notes · optional approved remarks</text>
+    <text x="80" y="468" font-size="14" fill="#49434f">Every edit is Review-revision fenced</text>
+    <rect x="448" y="400" width="216" height="80" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+    <text x="556" y="432" font-size="12" text-anchor="middle" font-weight="700" fill="#ffffff" font-family="IBM Plex Mono, monospace">FINALIZE</text>
+    <text x="556" y="460" font-size="14" text-anchor="middle" fill="#ffffff">Freeze inventory digest</text>
+
+    <path d="M696 408H768" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="768" y="304" width="376" height="208" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+    <text x="792" y="340" font-size="12" font-weight="700" fill="#0b766e" font-family="IBM Plex Mono, monospace">EXPLICIT RELEASE</text>
+    <text x="792" y="376" font-size="18" font-weight="700">Narrow candidate projection</text>
+    <text x="792" y="412" font-size="14" fill="#49434f">Review + Submission + Attempt IDs</text>
+    <text x="792" y="440" font-size="14" fill="#49434f">Sanitized approved remarks</text>
+    <text x="792" y="468" font-size="14" fill="#49434f">Release time</text>
+
+    <rect x="56" y="568" width="1088" height="96" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+    <text x="80" y="604" font-size="12" font-weight="700" fill="#b4233c" font-family="IBM Plex Mono, monospace">NEVER RELEASED THROUGH THIS PROJECTION</text>
+    <text x="80" y="636" font-size="14" fill="#49434f">Flags · evidence · discrepancies · decisions · private rationale/notes · Workspace files · grade · score · rubric · pass/fail</text>
+  </g>
+</svg>

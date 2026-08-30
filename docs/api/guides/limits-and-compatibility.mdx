@@ -1,6 +1,6 @@
 ---
 title: Limits and Compatibility
-description: Design Proctor clients for bounded inputs, rate controls, additive API evolution, and safe observability.
+description: Design Proctor clients for bounded inputs, rate controls, the pre-release compatibility boundary, and safe observability.
 audience: api-consumer
 maturity: preview
 sidebar_position: 8
@@ -33,9 +33,18 @@ override the endpoint schema.
 
 ## Compatibility Within `/api/v1`
 
-The v1 contract can add operations, optional request fields, response fields,
-enum values where openness is documented, and new stable error codes. A robust
-client therefore:
+Proctor has not yet made its first supported-release API commitment. During
+this pre-release period, the `/api/v1` contract may change in place when the
+server, generated contract, and compatible first-party clients are activated
+together. There is no parallel version created solely to preserve an older
+development contract. Pin the reviewed OpenAPI artifact and server build used
+by every integration instead of treating the path suffix as a support promise.
+
+After the first supported release, established meanings evolve additively
+unless an explicit compatibility decision introduces another version and a
+migration path. Additive evolution can include operations, optional request
+fields, response fields, open enum values, and new stable error codes. A robust
+client in either period:
 
 - ignores unknown response object fields;
 - handles unknown error and realtime event types safely;
@@ -43,14 +52,15 @@ client therefore:
 - sends only fields supported by the contract version it targets; and
 - does not derive meaning from opaque identifiers, cursors, ETags, or tokens.
 
-Removing a field, making an input required, or changing established behavior
-requires a new API version. The checked-in OpenAPI contract is authoritative
-for a release; pin or archive the contract used to generate a client so a
-future additive update is a deliberate upgrade.
+After that supported-release boundary, removing a field, making an input
+required, or changing established behavior requires an explicit compatibility
+decision. The checked-in OpenAPI contract is authoritative for a build; pin or
+archive the contract used to generate a client so every update is deliberate.
 
 ## Observability Without Exposure
 
 Safe client telemetry includes the HTTP method, route template, status,
-duration, stable `code`, and `request_id`. Do not log bearer or refresh tokens,
-cookies, CSRF values, invitation secrets, attempt credentials, student
-answers, raw exam content, or unbounded user-controlled fields.
+duration, stable `code`, and `request_id`. Do not log bearer, DPoP, or refresh
+credentials; DPoP proofs or nonces; cookies; CSRF values; invitation secrets;
+Attempt credentials; student answers; raw Exam content; or unbounded
+user-controlled fields.

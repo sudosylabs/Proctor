@@ -1,0 +1,104 @@
+---
+title: Develop Browser Activity and Submission
+description: Preserve privacy-minimized Browser Activity, explicit gaps, acknowledged Workspace fences, and one immutable terminal Submission.
+audience: developer
+maturity: preview
+slug: /developers/server/browser-activity-submission/
+---
+
+# Develop Browser Activity and Submission
+
+Browser Activity is a narrow integrity stream, not browser surveillance.
+Submission is a terminal snapshot of acknowledged authority, not a copy of
+whatever happens to be on an execution host or in a local editor buffer.
+
+<GovernedFigure asset="browser-activity-privacy-boundary" />
+
+## Keep Collection Inside the Frozen Policy
+
+Browser Policy is authored as a typed Draft field and frozen into an immutable
+Exam Revision. It governs one Desktop Browser surface through reviewed HTTPS
+origin, host, path, redirect, and start rules. Candidate admission exposes the
+exact frozen policy; a Desktop client must not widen it locally.
+
+`server/model/browser_activity.go` owns closed event, reason, and minimized
+location shapes. `server/app/exam/attempt/browser_activity.go` owns current
+Attempt access and collection behavior. SQL persistence owns source sequencing,
+reorder bounds, exact replay, and retained gaps.
+
+Do not add a generic telemetry envelope. New event or field meaning requires a
+privacy review, strict model validation, wire versioning, retention decision,
+and updated terminal accounting.
+
+## Minimize Before Persistence
+
+Retain only top-level browser open/close, allowed navigation or redirect, and
+blocked navigation. Query, fragment, URL credentials, page content, title,
+referrer, headers, cookies, DOM, downloaded bodies, local paths, and scheme
+payloads are excluded. Other integrity evidence also excludes screenshots,
+webcam, clipboard, terminal output, source code, and arbitrary payloads.
+
+Minimization happens before durable persistence and before logs, metrics, audit,
+or realtime publication. A manager response is a bounded projection that omits
+Session, Registration, Connection, credentials, and private Review state.
+
+## Preserve Source and Sequence Semantics
+
+Each Participation may own at most 16 source sessions. An explicit reset names
+its predecessor and one closed reason; prior sources remain immutable. Batches
+contain 1–64 events and at most 256 KiB. Persistence accepts exact replay,
+rejects changed duplicates and a reorder distance above 4,096, and returns the
+highest contiguous and seen sequences with at most 32 missing ranges.
+
+A gap is evidence of uncertainty. Never synthesize a navigation event to close
+it. Delivery may continue while the Sitting is paused or a correction awaits
+acknowledgement because convergence does not grant candidate interaction.
+
+## Seal Only Acknowledged Workspace State
+
+Voluntary submission first denies new edits, settles Workspace mutation,
+reconciles Focus Loss and Browser Activity terminal accounting, then calls one
+named atomic Store operation. The request fences current Revision, Workspace
+Cursor, final Focus Loss sequence, Browser Activity state, Participation,
+generation, credential, bound Session, and open Connection.
+
+Browser Activity terminal state is exactly one of `not_applicable`, `complete`,
+or truthful `gapped`. A gap does not prevent sealing; it creates explicit
+discrepancy provenance. `not_applicable` is valid only when collection was not
+part of the frozen Attempt Configuration.
+
+<GovernedFigure asset="submission-provenance-boundary" />
+
+The atomic operation creates one immutable manifest, marks the Attempt
+Submitted, ends Participation, retains the candidate-safe idempotent receipt,
+and commits audit. Candidate, manager-ended, and Sitting-closed provenance use
+the same immutable Submission contract. They differ in prerequisites and
+provenance, not in whether acknowledged state is authoritative.
+
+## Keep Terminal State Terminal
+
+There is no reopen, resubmit, or post-seal Workspace mutation. Late Focus Loss
+with an exact retained causal selector enters a bounded discrepancy stream; it
+does not mutate the frozen evidence inventory or Submission. A no-show has no
+Attempt and no Submission.
+
+After an uncertain voluntary response, exact replay uses the same semantic body
+and idempotency key with fresh transport proof. Changed retry content conflicts.
+Post-commit realtime or runtime-unbind failure must not produce a second seal.
+
+## Focused Verification
+
+```sh
+cd server
+go test ./model -run 'TestBrowserActivity|TestExamSubmission'
+go test ./app/exam/attempt -run 'Test.*Browser|Test.*Submission'
+go test ./store/sqlstore -run 'Test.*Browser|Test.*Submission'
+go test ./httpapi -run 'Test.*Submission|Test.*Workspace'
+go test -race ./app/exam/attempt
+make architecture
+```
+
+Test private-field rejection, malformed and oversized batches, source reset,
+changed duplicate, reorder gaps, correction and pause collection, every
+submission fence, exact retry, automatic close, manager end, and late evidence
+serialization against finalization.

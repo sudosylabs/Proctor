@@ -1,6 +1,6 @@
 ---
 title: Authentication and Assurance
-description: Choose between browser sessions, bearer tokens, MFA, recent authentication, CSRF proof, and attempt credentials.
+description: Choose the correct Web, Desktop, automation, refresh, and Attempt credentials and satisfy the operation's assurance contract.
 audience: api-consumer
 maturity: preview
 sidebar_position: 2
@@ -20,15 +20,18 @@ request boundary from credential proof through the current audited decision.
 
 | Credential | Transport | Intended use |
 | --- | --- | --- |
-| Browser Session | `PROCTOR_ACCESS` secure cookie | Interactive browser clients |
-| Session access token | `Authorization: Bearer …` | Native or trusted interactive clients |
+| Web Session | `PROCTOR_ACCESS` secure cookie, or its access credential on operations that allow bearer transport | Interactive browser journeys and trusted same-installation Web clients |
+| Desktop Session | `Authorization: DPoP …` plus a fresh `DPoP` proof | Registered Proctor Desktop clients |
 | Personal Access Token | `Authorization: Bearer …` | Automation on operations that permit a principal credential |
-| Refresh credential | Refresh cookie or bearer credential | Session refresh only |
-| Attempt credential | `X-Proctor-Attempt-Credential` plus connection ID | Candidate attempt and workspace operations |
+| Web refresh credential | `PROCTOR_REFRESH` cookie or the refresh operation's allowed bearer transport | Refreshing a Web Session only |
+| Desktop refresh credential | `Authorization: DPoP …` plus a refresh-specific `DPoP` proof | Refreshing the same registered-key Desktop Session only |
+| Attempt credential | `X-Proctor-Attempt-Credential` plus `X-Proctor-Attempt-Connection-ID` | Additional continuity proof for protected candidate Attempt operations |
 
-Credential values are secrets. Store them in an operating-system credential
-store or secret manager, redact them from diagnostics, and never place them in
-URLs.
+Credential values and Desktop private keys are secrets. Store them in an
+operating-system credential store or secret manager, redact them from
+diagnostics, and never place them in URLs. A DPoP public key, thumbprint, proof,
+or nonce is not a substitute for the access credential and must not be logged
+as ordinary request metadata.
 
 ## Operation Assurance Levels
 
@@ -38,11 +41,11 @@ Authentication panel.
 | Contract value | Requirement |
 | --- | --- |
 | `public` | No authenticated principal |
-| `principal_required` | An allowed bearer credential or interactive Session |
-| `session_required` | An interactive Session; a Personal Access Token is insufficient |
-| `recent_session_required` | An interactive Session with recent authentication |
-| `strong_recent_session_required` | A recently authenticated interactive Session with the required strong factor |
-| `refresh_credential_required` | A valid refresh credential, only for refreshing a Session |
+| `principal_required` | An allowed Web Session, DPoP-bound Desktop Session, or Personal Access Token |
+| `session_required` | An allowed Web or Desktop Session; a Personal Access Token is insufficient |
+| `recent_session_required` | An allowed Session whose authentication is recent enough for the operation |
+| `strong_recent_session_required` | A recent Session with the operation's required strong factor; some operations further require the Web journey |
+| `refresh_credential_required` | A valid Web or Desktop refresh credential, only on the refresh operation |
 
 Treat these as minimum requirements, not an authorization promise. The server
 can still reject a valid credential when the principal lacks permission for
@@ -57,7 +60,7 @@ the active Session.
 
 ```bash
 curl --request PATCH \
-  --url https://proctor.example.edu/api/v1/users/me/profile \
+  --url https://proctor.example.edu/api/v1/users/me \
   --cookie 'PROCTOR_ACCESS=<session-cookie>' \
   --header 'X-Proctor-CSRF-Token: <session-csrf-token>' \
   --header 'Content-Type: application/json' \
@@ -68,6 +71,37 @@ Cross-origin browser use is not a substitute for a same-origin application
 integration. Deploy the UI and API under the installation's intended origin
 and honor its cookie and Origin policy.
 
+## Desktop DPoP Proof
+
+Proctor Desktop does not present its Session credential as a bearer token. The
+Desktop authorization flow registers one ES256 P-256 public key and binds the
+new Desktop Session to that key. Every access request then supplies both:
+
+```text
+Authorization: DPoP <desktop-session-access-credential>
+DPoP: <fresh-signed-proof>
+```
+
+The proof covers the exact canonical public method and target URI, the access
+credential hash, its issue time, a unique proof identifier, and the server's
+current Session nonce. Build a new proof for every request. Reusing a proof,
+changing the method or target after signing, or presenting the credential with
+the `Bearer` scheme is invalid.
+
+The exchange and later nonce challenges return the next value in the
+`DPoP-Nonce` response header. When the server responds with
+`authentication.dpop.use_nonce`, store that replacement nonce, create a new
+proof, and retry only when the original operation is otherwise safe to retry.
+Do not resend the rejected proof. `authentication.dpop.replayed` means the
+proof identifier was already observed and also requires a newly signed proof.
+
+Desktop refresh is proof-of-possession too, but its proof is refresh-specific
+and does not carry the access-credential hash. Keep access and refresh proof
+construction as separate code paths.
+
+The complete browser handoff, loopback, PKCE, compatibility, and revocation
+sequence is in [Implement Desktop Authorization](../recipes/desktop-authorization.mdx).
+
 ## Recent and Strong Authentication
 
 Sensitive account and administration operations can require recent
@@ -76,12 +110,19 @@ returns an assurance-related stable error, direct the human through the
 interactive reauthentication flow and retry only after a new Session meets the
 declared level. Do not silently fall back to a Personal Access Token.
 
+For MFA, linked methods, Session review, Desktop Registrations, and Personal
+Access Token revocation, follow [Manage Account Security](../recipes/account-security.mdx).
+
 ## Candidate Attempt Requests
 
-Protected candidate delivery combines the authenticated Session with an
-attempt-scoped credential and connection identity:
+Protected candidate delivery requires the exact registered-key Desktop Session
+owned by the active Participation. It combines that Session's valid DPoP
+access credential and proof with an Attempt-scoped continuity credential and
+Connection identity:
 
 ```text
+Authorization: DPoP <desktop-session-access-credential>
+DPoP: <fresh-proof-for-this-method-target-and-current-nonce>
 X-Proctor-Attempt-Credential: <43-character-raw-url-base64-value>
 X-Proctor-Attempt-Connection-ID: <active-connection-id>
 ```

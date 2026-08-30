@@ -16,6 +16,25 @@ mail delivery is still queued. Use these administration routes to observe and
 control durable work; do not infer application state from a worker process or
 SMTP connection.
 
+## Understand the Durable Boundary
+
+A Job is a finite, versioned command whose descriptor closes retry policy,
+timeout, concurrency, lease, checkpoint, cancellation, visibility, and
+retention. PostgreSQL owns queue state and claiming. A worker lease and claim
+token fence stale executors; handler logic remains idempotent because process
+loss can repeat work.
+
+The business transaction commits domain state and Job intent together when the
+effect must survive process loss. Ordinary realtime, cache, and cluster effects
+do not become Jobs: clients recover those best-effort hints by refetching
+authority.
+
+Mail has two durable layers. The occurrence records why the application needs a
+message and freezes its semantic recipient set. The encrypted Delivery owns the
+rendered transport attempt, stable Message-ID, retry, cancellation, expiry, and
+public failure. SMTP acceptance means only that the selected relay accepted the
+message; it does not prove inbox delivery.
+
 ## Inspect Durable Jobs
 
 <Link to="/api/reference/list-jobs">List Jobs</Link> returns a bounded,
@@ -29,16 +48,36 @@ and unbounded worker errors. Store the stable Job ID and public failure code in
 client telemetry; do not copy internal worker state into another source of
 truth.
 
+Read attempts chronologically. A claim can end because the handler completed,
+failed, timed out, lost its lease, observed cancellation, or relinquished work
+to a compatible node. The current Job record decides whether more work remains;
+the last attempt alone does not.
+
+For checkpointed work, progress is durable domain progress—not merely the
+number of loop iterations. Sitting closure, onboarding imports, progression,
+mail expansion, and key rotation may resume from a stable cursor after process
+loss. A reserved-but-not-checkpointed batch can remain intentionally consumed
+to preserve a hard work cap.
+
 ## Cancel or Retry Intentionally
 
 <Link to="/api/reference/cancel-job">Cancel Job</Link> requests cooperative
 cancellation. A worker may already have committed an idempotent effect, so read
 the returned Job state instead of assuming that cancellation rolled back work.
 
+Cancellation prevents new bounded work after the handler observes it. Earlier
+row-atomic or idempotent commits remain authoritative and may require a separate
+domain compensation. Do not repeatedly cancel a terminal Job or mutate domain
+records to make its history look rolled back.
+
 <Link to="/api/reference/retry-job">Retry Job</Link> is available only for Job
 types whose descriptor explicitly permits a safe retry. It creates bounded new
 execution history; it does not erase the prior failure or bypass current
 authorization.
+
+Before retrying, verify the failed dependency or configuration is healthy and
+that the owning domain state still permits the operation. Retry uses the same
+versioned payload meaning; it is not an endpoint for editing hidden Job data.
 
 ## Inspect Mail Delivery
 
@@ -53,6 +92,11 @@ only while a delivery remains cancellable. Use
 <Link to="/api/reference/retry-mail-delivery">Retry Mail Delivery</Link> for a
 failed delivery whose current state permits an audited retry. Neither operation
 changes the application command that originally queued the message.
+
+Recipient relevance is rechecked where the template contract requires it.
+Resend or retry cannot revive a revoked Invitation, terminal Submission state,
+or otherwise superseded purpose. Delivery projections omit recipient address,
+subject/body, claims, ciphertext, provider detail, and internal failure text.
 
 ## Operate Mail Safely
 
@@ -70,3 +114,22 @@ changes the application command that originally queued the message.
 Treat `503` as an authoritative dependency failure and use the operation's
 stable Problem Details code to decide whether to back off. Do not create a
 parallel retry loop when Proctor already owns durable delivery and retry state.
+
+## Recover an Operational Backlog
+
+1. Confirm the application node is ready and the expected Job workers are
+   running; do not infer this from process existence alone.
+2. Page the affected type/state and record bounded counts, oldest creation
+   time, public failure codes, and stable IDs without exporting payloads.
+3. Inspect attempts for one representative Job and verify the owning dependency
+   through its protected diagnostics.
+4. Fix the dependency, configuration, compatibility, or domain prerequisite.
+5. Retry only the explicitly retryable failed records, then observe the
+   authoritative Job or Delivery transition.
+6. Escalate a repeated permanent failure with request/Job correlation and safe
+   code—not credentials, recipients, content, or raw worker errors.
+
+In a multi-node installation, workers claim from shared PostgreSQL. Restarting
+or adding an application node does not transfer authority from the Job record,
+and killing a process is not cancellation. Lease expiry makes abandoned work
+claimable according to the descriptor.

@@ -1,70 +1,59 @@
 ---
 title: Review Proctor Security
-description: Trace Proctor's trust boundaries across identity, authorization, audit, files, execution, and deployment.
+description: Trace implemented controls and operator responsibilities across identity, authorization, data, content, execution, and deployment trust boundaries.
 audience: security-reviewer
 maturity: preview
 slug: /security/
 ---
 
-import Link from '@docusaurus/Link';
-
 # Review Proctor Security
 
-Security review starts with the decisions Proctor owns and the controls the
-installation operator must supply. This guide maps the review surface without
-replacing the detailed architecture contracts.
+This review path separates controls Proctor enforces from controls an
+installation operator must supply. It describes implemented boundaries and
+explicitly marks product or production policy that has not been decided.
 
 <Maturity state="preview">
-  These links describe implemented server boundaries and explicitly deferred
-  product behavior. Retention periods, dedicated proctor assignment, candidate
-  accommodations, and review appeals remain open product decisions.
+  The server controls described here are implemented and checked against current
+  code and configuration. Retention and purge schedules, legal hold, support
+  windows, stable deprecation, and a production encryption-at-rest policy beyond
+  existing operator and secret-sealing boundaries remain undecided.
 </Maturity>
 
-## Trust Boundaries
+## Follow the Review Surface
 
-### Identity Establishes an Immutable Principal
+1. [Threat model and trust boundaries](./threat-model.mdx) defines protected
+   assets, actors, assumptions, and control ownership.
+2. [Credentials and authorization](./credentials-authorization.mdx) maps
+   credential proof and assurance separately from action/resource permission,
+   concealment, and durable audit.
+3. [Data and privacy](./data-privacy.mdx) classifies credentials, student and
+   Exam data, diagnostics, integrity evidence, and redaction.
+4. [Keys, certificates, and network](./keys-network.mdx) assigns Desktop, MFA,
+   mail, Memberlist, TLS, listener, and outbound dependency responsibility.
+5. [Content and execution](./content-execution.mdx) covers VFS, Workspace,
+   Submission, Browser Activity, and execution-host isolation.
+6. [Errors, limits, and compatibility](./errors-limits-compatibility.mdx)
+   explains fail-closed public errors, bounded inputs, compatibility, and safe
+   recovery.
 
-Authentication proves the current <Term id="principal">principal</Term> and
-assurance level. It does not pre-authorize a later action. Application use cases
-re-read authoritative state and decide whether the principal may act on the
-exact resource.
+## Core Security Properties
 
-### Authorization Is Current and Scoped
-
-<Term id="role">Roles</Term> and scoped <Term id="role-binding">Role Bindings</Term>
-grant permissions. Academic relationships help define visibility and context,
-but membership alone grants no unrestricted access.
-Security-sensitive decisions are durably auditable and fail closed where the
-architecture requires it.
+- Authentication establishes an immutable principal; it never embeds a
+  reusable permission snapshot.
+- Every application action resolves current authority on the canonical
+  resource and records required audit durably.
+- PostgreSQL is authority for durable state. Cache, cluster, realtime, and
+  execution projections are reconstructible.
+- Credentials, secrets, Exam answers, student content, private Review fields,
+  and unbounded input stay out of ordinary logs and unsafe audit fields.
+- Candidate delivery requires a registered-key Desktop Session plus the exact
+  current Attempt continuity fence.
+- Integrity signals are bounded evidence with explicit uncertainty, not a
+  verdict or academic outcome.
 
 <GovernedFigure asset="protected-request-assurance-flow" />
 
-### PostgreSQL Is the Recovery Authority
-
-Durable application state commits before disposable cache invalidation,
-cross-node fan-out, or realtime publication. A cache or cluster message may be
-discarded and reconstructed; it must never become the only record of a decision.
-
-### Workspaces Are Durable; Execution Hosts Are Projections
-
-<Term id="attempt-workspace">Attempt Workspace</Term> state remains under
-Proctor's durable authority. An execution host receives a bounded, isolated
-projection and can be repaired or revoked from authoritative state.
-
-## Review by Concern
-
-| Concern | Governing document |
-| --- | --- |
-| Credentials, sessions, MFA, and external identity | <Link to="/api/guides/authentication">Authentication guide</Link> |
-| Permissions, scope inheritance, and decision audit | <Link to="/api/recipes/consume-audit">Consume the audit trail</Link> |
-| Secrets, logs, headers, and transport behavior | <Link to="/api/guides/errors">Errors and safe disclosure</Link> |
-| Files, retention, legal holds, and purge boundaries | <Link to="/api/guides/uploads-and-content">Uploads and protected content</Link> |
-| Isolated execution and host trust | <Link to="/api/recipes/candidate-attempt">Candidate Attempt workflow</Link> |
-| Exam integrity evidence and review | <Link to="/api/recipes/review-and-release">Review and release</Link> |
-
-## Data-Handling Rule
-
-Credentials, secrets, student data, exam answers, and unbounded user-controlled
-content do not belong in ordinary logs or unsafe audit fields. Documentation,
-examples, screenshots, and support reports must use synthetic data and preserve
-that same boundary.
+Use the checked [configuration](../reference/configuration.mdx), generated
+[environment variable](../reference/environment-variables.mdx), and
+[command-line](../reference/command-line.mdx) references while reviewing an
+installation.

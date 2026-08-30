@@ -1,0 +1,43 @@
+---
+title: Understand the Governed Browser and Activity Privacy
+description: See what Browser Policy permits, what top-level activity is minimized, and what Proctor deliberately does not collect.
+audience: candidate
+maturity: preview
+---
+
+# Understand the Governed Browser and Activity Privacy
+
+When the selected Revision enables Browser Policy, Desktop exposes one governed
+Browser surface. Its allowlist controls top-level HTTPS origin, host matching,
+path prefix, redirects, and start rule. It does not turn arbitrary web browsing
+into an Exam capability.
+
+<GovernedFigure asset="browser-activity-privacy-boundary" />
+
+## What Can Be Recorded
+
+Browser Activity covers browser open/close, allowed top-level navigation or
+redirect, and blocked top-level navigation. A retained event has server-bound
+Participation/source/sequence facts, current policy Revision, client time, one
+closed reason, and a minimized location.
+
+- Allowed HTTPS navigation may retain canonical host, optional non-default
+  port, and path.
+- Blocked HTTP may retain the same network fields with scheme `http`.
+- Other disallowed schemes retain only the lowercase scheme.
+- Invalid URLs retain empty scheme, host, and path.
+
+## What Is Deliberately Excluded
+
+Query strings, fragments, URL credentials, page content, titles, referrers,
+headers, cookies, DOM data, downloads, local paths, and scheme payloads are not
+policy or telemetry fields. Initial integrity evidence also excludes
+screenshots, webcam, clipboard, terminal output, source code, and arbitrary
+unbounded payloads.
+
+Activity is privacy-minimized evidence, not a verdict. Client time and claims
+do not decide severity or guilt. Missing or gapped records become explicit
+uncertainty; the server does not invent navigation.
+
+Delivery may continue while the Sitting is paused or a correction awaits
+acknowledgement so the stream can converge without granting interaction.

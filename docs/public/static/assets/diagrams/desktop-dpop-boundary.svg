@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">DPoP proof boundary for a Desktop request</title>
+  <desc id="description">The Desktop client keeps the private key, access credential, and current nonce. For each request it signs a new proof over the exact method, target URI, access credential hash, issue time, unique identifier, and nonce. The server verifies every binding and replay state before establishing the registered-key principal. A nonce challenge requires a new proof, never replay of the rejected proof.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Possession must be proved on every request</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">A Desktop access credential is unusable without the registered private key and a fresh server nonce.</text>
+
+  <rect x="56" y="136" width="328" height="396" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="180" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Proctor Desktop</text>
+  <text x="80" y="206" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">LOCAL SECURITY BOUNDARY</text>
+  <rect x="80" y="232" width="280" height="112" rx="6" fill="#f3eafb" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="100" y="264" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Kept by the client</text>
+  <text x="100" y="294" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">P-256 private key · access credential</text>
+  <text x="100" y="322" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">refresh credential · current nonce</text>
+  <text x="80" y="386" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Sign one new proof over</text>
+  <text x="80" y="416" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">method · canonical target URI</text>
+  <text x="80" y="446" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">access hash · issued-at · unique jti</text>
+  <text x="80" y="476" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">server nonce</text>
+  <text x="80" y="510" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NEVER REUSE THE PROOF</text>
+
+  <path d="M384 306H480" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="432" y="272" text-anchor="middle" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">HTTPS</text>
+  <text x="432" y="294" text-anchor="middle" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">DPoP credential</text>
+  <text x="432" y="336" text-anchor="middle" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="12">+ signed proof</text>
+
+  <rect x="480" y="136" width="360" height="396" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="504" y="180" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Transport proof gate</text>
+  <text x="504" y="206" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ALL CHECKS MUST PASS</text>
+  <circle cx="524" cy="250" r="14" fill="#5c00aa"/><text x="524" y="255" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">1</text>
+  <text x="552" y="255" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Access credential is active</text>
+  <circle cx="524" cy="298" r="14" fill="#5c00aa"/><text x="524" y="303" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">2</text>
+  <text x="552" y="303" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Public key matches registration</text>
+  <circle cx="524" cy="346" r="14" fill="#5c00aa"/><text x="524" y="351" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">3</text>
+  <text x="552" y="351" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Method, URI, hash, time bind</text>
+  <circle cx="524" cy="394" r="14" fill="#5c00aa"/><text x="524" y="399" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">4</text>
+  <text x="552" y="399" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Nonce is current</text>
+  <circle cx="524" cy="442" r="14" fill="#5c00aa"/><text x="524" y="447" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">5</text>
+  <text x="552" y="447" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">jti has not been replayed</text>
+  <rect x="504" y="478" width="312" height="34" rx="6" fill="#fff0f1" stroke="#b4233c" stroke-width="1"/>
+  <text x="660" y="500" text-anchor="middle" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ANY FAILURE STOPS AUTHENTICATION</text>
+
+  <path d="M840 306H888" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="888" y="136" width="256" height="396" rx="16" fill="#5c00aa" stroke="#470082" stroke-width="2"/>
+  <text x="912" y="180" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Registered-key principal</text>
+  <text x="912" y="220" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">IDENTITY</text>
+  <text x="912" y="246" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">User + Institution</text>
+  <text x="912" y="286" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">CLIENT</text>
+  <text x="912" y="312" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Desktop Registration</text>
+  <text x="912" y="352" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ASSURANCE</text>
+  <text x="912" y="378" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">method + auth time</text>
+  <path d="M912 410H1120" fill="none" stroke="#ffffff" stroke-width="1"/>
+  <text x="1016" y="444" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Authorization still reads</text>
+  <text x="1016" y="468" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">current resource authority</text>
+  <text x="1016" y="506" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">NOT PERMISSION</text>
+
+  <path d="M660 532V580H220V532" fill="none" stroke="#95520d" stroke-width="2"/>
+  <rect x="220" y="580" width="440" height="64" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+  <text x="440" y="606" text-anchor="middle" fill="#95520d" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Nonce challenge?</text>
+  <text x="440" y="630" text-anchor="middle" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Store replacement nonce → sign a completely new proof</text>
+  <text x="1016" y="610" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Fresh proof in. Immutable principal out.</text>
+</svg>

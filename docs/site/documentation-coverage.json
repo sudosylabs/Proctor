@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "productAreas": [
+    {"tag": "System", "page": "docs/api/recipes/bootstrap-installation.mdx"},
+    {"tag": "Authentication", "page": "docs/api/guides/authentication.mdx"},
+    {"tag": "Users", "page": "docs/api/recipes/invite-and-link-users.mdx"},
+    {"tag": "Academic structure", "page": "docs/api/recipes/academic-structure.mdx"},
+    {"tag": "Membership and progression", "page": "docs/api/recipes/onboarding-imports-and-progression.mdx"},
+    {"tag": "Invitations and onboarding", "page": "docs/api/recipes/invite-and-link-users.mdx"},
+    {"tag": "Roles and access", "page": "docs/api/recipes/roles-and-scopes.mdx"},
+    {"tag": "Access policy", "page": "docs/api/recipes/access-policy.mdx"},
+    {"tag": "Examinations", "page": "docs/api/recipes/author-and-publish-exam.mdx"},
+    {"tag": "Sittings", "page": "docs/api/recipes/manage-sitting.mdx"},
+    {"tag": "Attempts and workspaces", "page": "docs/api/recipes/candidate-attempt.mdx"},
+    {"tag": "Submissions", "page": "docs/api/recipes/candidate-attempt.mdx"},
+    {"tag": "Integrity review", "page": "docs/api/recipes/review-and-release.mdx"},
+    {"tag": "Jobs", "page": "docs/api/guides/durable-operations.mdx"},
+    {"tag": "Mail", "page": "docs/api/guides/durable-operations.mdx"},
+    {"tag": "Realtime", "page": "docs/api/guides/realtime.mdx"}
+  ],
+  "workflows": [
+    {
+      "id": "web-account-entry-and-recovery",
+      "phase": 2,
+      "state": "documented",
+      "page": "docs/api/recipes/account-entry-and-recovery.mdx",
+      "operations": [
+        "registerLocalUser", "login", "refreshSession", "logout",
+        "listAuthenticationProviders", "beginExternalAuthentication",
+        "completeExternalAuthentication",
+        "requestEmailVerification", "completeEmailVerification",
+        "requestPasswordReset", "completePasswordReset"
+      ]
+    },
+    {
+      "id": "account-methods-and-session-security",
+      "phase": 2,
+      "state": "documented",
+      "page": "docs/api/recipes/account-security.mdx",
+      "operations": [
+        "setupMFA",
+        "activateMFA", "challengeMFA", "disableMFA",
+        "listAuthenticationMethods", "enrollPassword", "removePassword",
+        "beginProviderConnection", "unlinkExternalIdentity",
+        "listCurrentUserSessions", "revokeCurrentUserSession",
+        "revokeAllCurrentUserSessions"
+      ]
+    },
+    {
+      "id": "access-policy-administration",
+      "phase": 2,
+      "state": "documented",
+      "page": "docs/api/recipes/access-policy.mdx",
+      "operations": [
+        "getAccessPolicy", "preflightAccessPolicy", "replaceAccessPolicy"
+      ]
+    },
+    {
+      "id": "desktop-authorization-and-trust",
+      "phase": 2,
+      "state": "documented",
+      "page": "docs/api/recipes/desktop-authorization.mdx",
+      "operations": [
+        "getPublicAccessDiscovery", "startDesktopAuthorization",
+        "bindDesktopAuthorizationBrowser", "getDesktopAuthorizationContext",
+        "authenticateDesktopAuthorizationWithSession",
+        "authenticateDesktopAuthorizationWithPassword",
+        "beginDesktopAuthorizationExternalAuthentication",
+        "resetDesktopAuthorizationAccount", "approveDesktopAuthorization",
+        "cancelDesktopAuthorization", "exchangeDesktopAuthorizationCode",
+        "listDesktopRegistrations", "revokeDesktopRegistration", "pingSystem",
+        "getDesktopCompatibilityPolicy", "replaceDesktopCompatibilityPolicy"
+      ]
+    },
+    {
+      "id": "institution-and-academic-structure",
+      "phase": 3,
+      "state": "documented",
+      "page": "docs/api/recipes/academic-structure.mdx",
+      "operations": [
+        "bootstrapInstallation", "getInstitution", "updateInstitution",
+        "createRootAcademicUnit", "createAcademicUnitChild",
+        "updateAcademicUnit", "archiveAcademicUnit", "createProgramme",
+        "updateProgramme", "archiveProgramme", "createProgrammeLevel",
+        "updateProgrammeLevel", "archiveProgrammeLevel",
+        "createAcademicPeriod", "updateAcademicPeriod",
+        "archiveAcademicPeriod", "createClass", "updateClass", "archiveClass"
+      ]
+    },
+    {
+      "id": "invitations-and-membership",
+      "phase": 4,
+      "state": "documented",
+      "page": "docs/api/recipes/invite-and-link-users.mdx",
+      "operations": [
+        "issueInstitutionRoleInvitation", "issueAcademicUnitRoleInvitation",
+        "issueTeacherAcademicUnitInvitation", "issueStudentClassInvitation",
+        "replaceInvitation", "resendInvitation", "revokeInvitation",
+        "acceptInstitutionRoleInvitation", "acceptAcademicUnitRoleInvitation",
+        "acceptTeacherAcademicUnitInvitation", "acceptStudentClassInvitation",
+        "runInvitationBatch"
+      ]
+    },
+    {
+      "id": "onboarding-imports-and-progression",
+      "phase": 4,
+      "state": "documented",
+      "page": "docs/api/recipes/onboarding-imports-and-progression.mdx",
+      "operations": [
+        "uploadOnboardingImport", "commitOnboardingImport",
+        "cancelOnboardingImport", "downloadOnboardingImportReport",
+        "dryRunStudentProgression", "commitStudentProgression",
+        "cancelStudentProgression", "downloadStudentProgressionReport"
+      ]
+    },
+    {
+      "id": "roles-bindings-and-audit",
+      "phase": 3,
+      "state": "documented",
+      "page": "docs/api/recipes/roles-and-scopes.mdx",
+      "operations": [
+        "createRole", "updateRole", "deleteRole", "createRoleBinding",
+        "endRoleBinding", "listAuditEvents"
+      ]
+    },
+    {
+      "id": "exam-authoring-and-publication",
+      "phase": 5,
+      "state": "documented",
+      "page": "docs/api/recipes/author-and-publish-exam.mdx",
+      "operations": [
+        "createExam", "editExamDraftText", "configureExamDraftFocusLoss",
+        "configureExamDraftBrowserPolicy", "configureExamDraftExecutionProfile",
+        "createExamDraftResource", "replaceExamDraftResourceContent",
+        "createExamDraftStarterWorkspaceDirectory",
+        "createExamDraftStarterWorkspaceFile", "publishExamRevision",
+        "addExamManager", "transferExamOwnership", "removeExamManager"
+      ]
+    },
+    {
+      "id": "sitting-lifecycle-and-corrections",
+      "phase": 6,
+      "state": "documented",
+      "page": "docs/api/recipes/manage-sitting.mdx",
+      "operations": [
+        "scheduleExamSitting", "updateExamSittingSchedule", "pauseExamSitting",
+        "resumeExamSitting", "extendExamSitting", "cancelExamSitting",
+        "closeExamSitting", "listExamSittingNoShows",
+        "listExamSittingCandidateStatuses", "stageExamSittingCorrectionResourceContent",
+        "applyExamSittingCorrection", "endExamAttemptByManager", "reallowExamAttempt"
+      ]
+    },
+    {
+      "id": "candidate-attempt-and-submission",
+      "phase": 7,
+      "state": "documented",
+      "page": "docs/api/recipes/candidate-attempt.mdx",
+      "operations": [
+        "listCandidateExamActivity", "connectWebSocket",
+        "getCandidateExamPresentation", "getCandidateExamResourceContent",
+        "listCandidateExamWorkspace", "listCandidateExamWorkspaceChanges",
+        "createCandidateExamWorkspaceDirectory", "createCandidateExamWorkspaceFile",
+        "moveCandidateExamWorkspaceEntry", "replaceCandidateExamWorkspaceFile",
+        "deleteCandidateExamWorkspaceEntry", "acknowledgeExamAttemptCorrection",
+        "submitExamAttempt"
+      ]
+    },
+    {
+      "id": "integrity-review-and-result-release",
+      "phase": 8,
+      "state": "documented",
+      "page": "docs/api/recipes/review-and-release.mdx",
+      "operations": [
+        "getExamSubmission", "listExamSubmissionManifest",
+        "getExamSubmissionFileContent", "listExamIntegrityFlags",
+        "listExamIntegrityEvidence", "listExamIntegrityDiscrepancies",
+        "getExamIntegrityReview", "updateExamIntegrityReview",
+        "saveExamIntegrityDecision", "finalizeExamIntegrityReview",
+        "releaseStudentExamResult", "getStudentExamResult"
+      ]
+    },
+    {
+      "id": "durable-job-and-mail-recovery",
+      "phase": 11,
+      "state": "documented",
+      "page": "docs/api/guides/durable-operations.mdx",
+      "operations": [
+        "listJobs", "getJob", "listJobAttempts", "cancelJob", "retryJob",
+        "listMailDeliveries", "getMailDelivery", "cancelMailDelivery",
+        "retryMailDelivery", "getMailMetrics", "sendControlledTestMail"
+      ]
+    }
+  ]
+}

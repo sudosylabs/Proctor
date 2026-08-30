@@ -1,0 +1,132 @@
+---
+title: Enter and Recover an Account
+description: Register, sign in, verify an email address, rotate a Session, and recover a local account without leaking account state or weakening policy.
+audience: api-consumer
+maturity: preview
+sidebar_position: 2
+---
+
+import Link from '@docusaurus/Link';
+
+# Enter and Recover an Account
+
+Account entry is governed by the current Access Policy. Start with
+<Link to="/api/reference/get-public-access-discovery">Public Access Discovery</Link>
+instead of guessing whether public registration, local login, an external
+provider, Invitation admission, or Desktop Authorization is available. The
+discovery document exposes safe capabilities, not provider secrets or account
+existence.
+
+## 1. Choose an Admission Path
+
+Public local registration is one admission path, not a generic User-creation
+API. Call <Link to="/api/reference/register-local-user">Register Local User</Link>
+only when discovery permits it. Supply the exact public schema: first name,
+last name, username, email, and a policy-compliant password.
+
+The names are self-asserted presentation data. Registration creates an
+unverified User and local credential but grants no Affiliation, membership,
+Role Binding, or academic access. Treat
+`authentication.registration.invitation_required` as an instruction to use a
+valid Invitation, not as permission to retry another address or call an
+administrator-only User endpoint.
+
+Invitation admission is purpose-bearing and applies its frozen relationship or
+Role package only at successful acceptance. Follow
+[Invite and Link Users](./invite-and-link-users.mdx) for that transaction.
+
+## 2. Create a Web or Native Session
+
+For local credentials, call <Link to="/api/reference/login">Login</Link> with
+the declared `client_type`. Browser login establishes host-only cookies;
+eligible non-browser clients receive credentials in the response. Proctor
+Desktop does not call this route directly or reuse browser cookies—it follows
+[Desktop Authorization](./desktop-authorization.mdx).
+
+When MFA is active, include a current TOTP or one unused recovery code in the
+login ceremony. `authentication.mfa.required` means the primary credential was
+not enough; it does not authorize a second request that omits or downgrades the
+challenge. All invalid-credential outcomes are intentionally bounded, so a
+client must not turn response differences into account discovery.
+
+For external login:
+
+1. Read <Link to="/api/reference/list-authentication-providers">List Authentication Providers</Link>.
+2. Navigate the browser to
+   <Link to="/api/reference/begin-external-authentication">Begin External Authentication</Link>
+   for the selected provider. Do not fetch the redirect as a background API
+   request or copy provider state between browsers.
+3. Let the provider return to
+   <Link to="/api/reference/complete-external-authentication">Complete External Authentication</Link>.
+   The callback consumes the one-use state and browser binding; the fixed
+   hosted completion page confirms the resulting Web Session.
+
+Email and username are never external-identity keys. An unlinked provider
+subject is admitted only under the current provider mode; a client must not
+implement its own email-match linking or auto-provisioning rule.
+
+## 3. Verify the Current Email Address
+
+Successful public registration returns the generic `202 Accepted` response,
+queues the initial verification message, and returns neither a Session nor
+credential material. Use the credential from that message in the hosted
+verification page. The page requires an explicit person action before it calls
+<Link to="/api/reference/complete-email-verification">Complete Email Verification</Link>,
+so mail scanners and link previews cannot consume the credential merely by
+opening the URL.
+
+If the person later signs in but still needs a fresh message, call
+<Link to="/api/reference/request-email-verification">Request Email Verification</Link>
+with that authenticated Session. Issuing another message may supersede the
+previous credential. Registration itself is not an authenticated Session and
+does not call this resend route.
+
+The raw credential belongs in the URL fragment and must be removed from browser
+history before render. Expired, consumed, superseded, malformed, and
+concurrent-loser credentials all recover the same way: sign in, then request a
+fresh message for the authenticated account. Never log the fragment or echo it
+in an error.
+
+## 4. Recover a Local Password Without Enumeration
+
+Call <Link to="/api/reference/request-password-reset">Request Password Reset</Link>
+with the normalized mailbox entered by the person. The accepted response is
+deliberately identical whether or not an eligible local account exists. Keep
+that response generic in UI, telemetry, timing analysis, and support scripts.
+
+The hosted reset page captures the fragment credential, removes it from
+history, collects a new policy-compliant password, and calls
+<Link to="/api/reference/complete-password-reset">Complete Password Reset</Link>.
+A successful completion consumes the credential, changes the password, and
+revokes the affected Sessions atomically. It does not silently create an
+Affiliation, link a provider, bypass MFA, or mint administrator authority.
+
+If completion is ambiguous, do not replay the same secret repeatedly. Return
+to login with the new password; if that fails, request a fresh reset message.
+
+## 5. Rotate or End the Exact Session
+
+Use <Link to="/api/reference/refresh-session">Refresh Session</Link> only with
+the current refresh credential. Rotation replaces the access, refresh, and—on
+cookie transport—CSRF credentials. Reuse of a consumed refresh credential is
+treated as replay and invalidates the affected Session family.
+
+Desktop-bound refresh uses `Authorization: DPoP` plus a fresh proof and current
+nonce. It is not interchangeable with a browser cookie or generic bearer
+refresh.
+
+Call <Link to="/api/reference/logout">Logout</Link> to revoke the exact current
+Session and clear its browser cookies. Other Sessions remain active. For a lost
+or compromised device, continue with [Manage Account Security](./account-security.mdx)
+and revoke the smallest affected Session, Desktop Registration, or token.
+
+## Failure and Recovery
+
+| Failure | Correct response |
+| --- | --- |
+| capability disabled | Refresh discovery; do not call a hidden method directly. |
+| invalid credentials | Show one bounded failure and apply backoff; do not reveal whether the User exists. |
+| verification link unusable | Request a fresh message from an authenticated Session. |
+| reset request accepted but no mail arrives | Preserve the generic response; check mail operations without confirming account existence. |
+| refresh replay or invalid Session | Discard local credentials and start a new supported login ceremony. |
+| provider is unlinked | Use Invitation admission or an authenticated provider-connection flow when policy permits; never match by email. |

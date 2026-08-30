@@ -1,0 +1,67 @@
+---
+title: Run Proctor With Systemd or a Container
+description: Preserve the tracked non-root, readiness, writable-path, and shutdown contracts in a host service or immutable container.
+audience: operator
+maturity: preview
+---
+
+# Run Proctor With Systemd or a Container
+
+The repository ships two pre-production application runtime examples. Both run
+one Proctor application node. Neither bundles a certified highly available
+database, storage, cache, or load balancer.
+
+## Systemd
+
+The tracked `deploy/systemd/proctor.service` runs as the dedicated `proctor`
+user, validates configuration in `ExecStartPre`, starts `proctor serve`, and
+uses `Type=notify`.
+
+```sh
+install -o root -g root -m 0644 \
+  /opt/proctor/deploy/systemd/proctor.service \
+  /etc/systemd/system/proctor.service
+systemctl daemon-reload
+systemctl enable --now proctor
+systemctl status proctor
+```
+
+The unit removes capabilities, enables `NoNewPrivileges`, protects system and
+kernel surfaces, restricts address families, and grants only the state, log,
+and runtime directories. Use a drop-in for another deliberate writable path;
+do not weaken `ProtectSystem` or grant root merely to bind public ports. Let a
+load balancer bind privileged ports or grant only the narrow OS bind capability
+after reviewing the change.
+
+Proctor sends `READY=1` only after dependencies, serving lease, startup
+reconciliation, Jobs, WebSocket, listener handoff, and readiness succeed. A
+notification failure is logged; systemd's startup timeout remains the external
+boundary.
+
+## Container
+
+Copy the tracked `deploy/compose` example, select an immutable image tag and
+digest, and provide protected config, environment, state, log, and secret paths.
+
+```sh
+docker compose config
+docker compose up --detach --wait
+docker compose ps
+```
+
+The application container runs uid/gid `65532`, drops all capabilities, uses a
+read-only root filesystem, has a bounded no-exec `/tmp`, and mounts only the
+declared writable data/log paths plus read-only configuration/secrets. Its
+healthcheck calls the packaged `proctor-healthcheck` against readiness.
+
+Do not bake populated configuration or secrets into the image. Do not mount the
+Docker socket. The example's single-host service is a deployment illustration,
+not active-active infrastructure.
+
+## Shutdown
+
+Send SIGTERM or use the runtime's normal stop command. Proctor first becomes
+unready, drains HTTP under the configured timeout, stops Jobs and WebSocket,
+closes transport, withdraws the serving lease, closes metrics, then closes
+shared infrastructure. The tracked systemd/container stop windows are longer
+than the application drain budget.

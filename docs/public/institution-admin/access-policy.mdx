@@ -1,0 +1,95 @@
+---
+title: Govern Account Access
+description: Change the revisioned Access Policy without removing the last administrator path or confusing policy with deployment capability.
+audience: institution-administrator
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Govern Account Access
+
+The <Term id="access-policy">Access Policy</Term> is durable Institution data.
+It chooses among capabilities the operator has already configured: local
+login, public local registration, local credential enrollment, Invitation
+admission, external-provider admission, and Desktop Authorization. It never
+contains provider secrets, TLS material, SMTP credentials, or deployment
+configuration.
+
+## Read Capability and Policy Separately
+
+Public discovery reports the signed-out methods currently available. The
+authenticated policy view includes its opaque ID, revision, settings, and
+bounded transition history. A configured provider can be selected by policy;
+an absent or invalid deployment capability cannot be made available merely by
+writing its provider ID into policy.
+
+Provider modes have different admission effects:
+
+| Mode | Existing linked identity | Unlinked identity |
+| --- | --- | --- |
+| disabled | cannot log in | cannot enter |
+| linked only | may log in | rejected without revealing another account |
+| Invitation required | may log in | must enter through the exact Invitation-bound provider journey |
+| auto provision | may log in | may create a relationship-free User only after configured eligibility passes |
+
+Auto-provisioning creates no Affiliation, membership, or Role Binding. Provider
+email and username are candidate profile fields, never account-merge keys.
+
+## Preflight Every Path-removing Change
+
+Call <Link to="/api/reference/preflight-access-policy">Preflight access policy</Link>
+with the intended settings and expected revision. Resolve every blocker before
+replacement. Preflight is advisory: the server rechecks current PostgreSQL
+policy, active administrators, methods, provider capability, and mail health
+atomically when the change commits.
+
+The shared lockout fence prevents concurrent operations from each removing a
+path the other assumed would remain. It also protects User disablement, ending
+the last `system_admin` binding, password removal, and provider unlinking.
+
+Before disabling local login:
+
+1. verify the first administrator's mailbox;
+2. configure and test mail;
+3. enable and test the intended external provider;
+4. deliberately link an immutable provider identity to an active system
+   administrator; and
+5. preferably establish a second administrator with an independent usable
+   path.
+
+## Decide Whether to Revoke Existing Sessions
+
+Disabling a method controls new authentication. It does not revoke existing
+Sessions unless the one transition sets `revoke_existing_sessions`. When set,
+the policy replacement and revocation of Sessions authenticated through newly
+disabled methods commit atomically. Sessions using retained methods are not
+touched. This is a one-shot transition decision, not a standing policy field.
+
+## Govern Desktop Admission
+
+Access Policy enables or disables the Desktop Authorization capability. The
+separate Desktop Compatibility Policy narrows the verified build catalog with
+a minimum release, bounded revoked build IDs, availability state, optional
+retry time, and bounded administrator message. It cannot make an unknown build
+valid.
+
+Use request-specific `system/ping` results when helping one client. Use the
+authenticated policy view when reviewing Institution intent. Do not publish
+update URLs or tell users to falsify build selectors.
+
+## Commit and Verify
+
+Replace policy with the expected revision and an `Idempotency-Key`. A revision
+conflict means the policy changed after it was read: fetch it again, reconsider
+the complete desired state, and use a new idempotency key. Do not mechanically
+overwrite another administrator's change.
+
+After success:
+
+- read the new revision;
+- verify signed-out discovery from the canonical origin;
+- inspect safe audit/history fields for the exact changed setting names;
+- verify intended Session revocations separately; and
+- test every retained administrator authentication path before ending the
+  maintenance window.

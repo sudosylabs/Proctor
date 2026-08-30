@@ -1,0 +1,53 @@
+---
+title: Use Your Proctor Account
+description: Choose the supported path for signing in, recovering access, securing sessions, or authorizing Proctor Desktop.
+audience: account-holder
+maturity: preview
+slug: /account/
+---
+
+# Use Your Proctor Account
+
+A Proctor <Term id="user">User</Term> is one account in one Institution. A
+password, an external provider identity, and MFA are ways to prove that account;
+they are not separate accounts and they do not grant academic membership or
+permission by themselves.
+
+<Maturity state="preview">
+  The hosted sign-in, recovery, account-connection, Invitation, and Desktop
+  Authorization pages are implemented. Some broader authenticated account
+  administration still relies on API-backed guidance; this documentation does
+  not invent unfinished screens.
+</Maturity>
+
+## Start With the Outcome You Need
+
+| You need to… | Read… |
+| --- | --- |
+| register, sign in, verify an email address, or recover a local password | [Sign in and recover access](./access.mdx) |
+| add MFA, review Sessions, or understand provider and password changes | [Secure your account](./security.mdx) |
+| approve a registered-key Session for the native client | [Authorize Proctor Desktop](./desktop-authorization.mdx) |
+| accept an Institution, Academic Unit, role, or Class package | the exact `/join` link delivered by your Institution |
+
+## What Account Access Does Not Prove
+
+Successful authentication establishes who is asking and how recently or
+strongly they proved it. Proctor still reads current authority for the exact
+action and resource. An <Term id="affiliation">Affiliation</Term>, Academic Unit
+membership, Class membership, and <Term id="role-binding">Role Binding</Term>
+remain separate durable facts.
+
+This distinction explains two common outcomes:
+
+- a person can sign in successfully but still be unable to open an Exam or
+  administer a Class; and
+- ending a membership or Role Binding can remove access without deleting the
+  person's account or authentication methods.
+
+## Ask for Help Safely
+
+Give an administrator the time of the failed action, the server origin, the
+safe error code, and the request ID when one is shown. Never send a password,
+cookie, bearer credential, DPoP proof or nonce, Invitation claim, recovery code,
+or Attempt credential. Proctor deliberately uses generic signed-out failures
+where a more specific answer would reveal whether an account exists.

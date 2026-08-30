@@ -20460,7 +20460,7 @@
         "x-codeSamples": [
           {
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/submissions' \\\n  --header 'Authorization: Bearer \u003ccandidate-session-access-token\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --header 'Idempotency-Key: docs-submit-001' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"participation_id\":\"\u003cparticipation-id\u003e\",\"generation\":2,\"expected_current_revision_id\":\"\u003crevision-id\u003e\",\"expected_workspace_cursor\":18,\"final_focus_loss_sequence\":3,\"browser_activity\":{\"state\":\"not_applicable\"}}'"
+            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/submissions' \\\n  --header 'Authorization: DPoP \u003cdesktop-session-access-credential\u003e' \\\n  --header 'DPoP: \u003cfresh-proof-for-this-post-target-and-current-nonce\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --header 'Idempotency-Key: docs-submit-001' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\"participation_id\":\"\u003cparticipation-id\u003e\",\"generation\":2,\"expected_current_revision_id\":\"\u003crevision-id\u003e\",\"expected_workspace_cursor\":18,\"final_focus_loss_sequence\":3,\"browser_activity\":{\"state\":\"not_applicable\"}}'"
           }
         ],
         "x-proctor-auth": "session_required",
@@ -21054,7 +21054,7 @@
         "x-codeSamples": [
           {
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/workspace/files' \\\n  --header 'Authorization: Bearer \u003ccandidate-session-access-token\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --header 'Idempotency-Key: docs-workspace-file-019' \\\n  --form 'metadata={\"participation_id\":\"\u003cparticipation-id\u003e\",\"generation\":2,\"path\":\"answers/main.go\",\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"\u003csha256\u003e\"};type=application/json' \\\n  --form 'content=@main.go;type=application/octet-stream'"
+            "source": "curl --fail-with-body \\\n  --request POST \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/workspace/files' \\\n  --header 'Authorization: DPoP \u003cdesktop-session-access-credential\u003e' \\\n  --header 'DPoP: \u003cfresh-proof-for-this-post-target-and-current-nonce\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --header 'Idempotency-Key: docs-workspace-file-019' \\\n  --form 'metadata={\"participation_id\":\"\u003cparticipation-id\u003e\",\"generation\":2,\"path\":\"answers/main.go\",\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"\u003csha256\u003e\"};type=application/json' \\\n  --form 'content=@main.go;type=application/octet-stream'"
           }
         ],
         "x-proctor-auth": "session_required",
@@ -21154,7 +21154,7 @@
         "x-codeSamples": [
           {
             "lang": "Shell",
-            "source": "curl --fail-with-body \\\n  --request GET \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/workspace/files/\u003cworkspace-entry-id\u003e/content' \\\n  --header 'Authorization: Bearer \u003ccandidate-session-access-token\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --output 'main.go'"
+            "source": "curl --fail-with-body \\\n  --request GET \\\n  --url 'https://proctor.example.edu/api/v1/exam-attempts/\u003cexam-attempt-id\u003e/workspace/files/\u003cworkspace-entry-id\u003e/content' \\\n  --header 'Authorization: DPoP \u003cdesktop-session-access-credential\u003e' \\\n  --header 'DPoP: \u003cfresh-proof-for-this-get-target-and-current-nonce\u003e' \\\n  --header 'X-Proctor-Attempt-Credential: \u003cattempt-credential\u003e' \\\n  --header 'X-Proctor-Attempt-Connection-ID: \u003cattempt-connection-id\u003e' \\\n  --output 'main.go'"
           }
         ],
         "x-proctor-auth": "session_required",
@@ -21262,7 +21262,7 @@
           {
             "label": "Replace acknowledged Workspace content",
             "lang": "Shell",
-            "source": "curl --request PUT \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  --header \"X-Proctor-Attempt-Credential: $ATTEMPT_CREDENTIAL\" \\\n  --header \"X-Proctor-Attempt-Connection-ID: $ATTEMPT_CONNECTION_ID\" \\\n  --header \"Idempotency-Key: workspace-replace-020\" \\\n  --form 'metadata={\"participation_id\":\"ybndrfg8ejkmcpqxot1uwisza3\",\"generation\":2,\"expected_path\":\"answers/main.go\",\"expected_content_version\":3,\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exam-attempts/ybndrfg8ejkmcpqxot1uwisza4/workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
+            "source": "curl --request PUT \\\n  --header \"Authorization: DPoP $PROCTOR_DESKTOP_ACCESS_CREDENTIAL\" \\\n  --header \"DPoP: $PROCTOR_DPOP_PROOF\" \\\n  --header \"X-Proctor-Attempt-Credential: $ATTEMPT_CREDENTIAL\" \\\n  --header \"X-Proctor-Attempt-Connection-ID: $ATTEMPT_CONNECTION_ID\" \\\n  --header \"Idempotency-Key: workspace-replace-020\" \\\n  --form 'metadata={\"participation_id\":\"ybndrfg8ejkmcpqxot1uwisza3\",\"generation\":2,\"expected_path\":\"answers/main.go\",\"expected_content_version\":3,\"media_type\":\"text/plain\",\"size\":128,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"};type=application/json' \\\n  --form 'content=@./main.go;type=application/octet-stream' \\\n  https://proctor.example.edu/api/v1/exam-attempts/ybndrfg8ejkmcpqxot1uwisza4/workspace/files/ybndrfg8ejkmcpqxot1uwisza5/content"
           }
         ],
         "x-proctor-auth": "session_required",

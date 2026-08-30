@@ -1,0 +1,56 @@
+---
+title: Keys, Certificates, and Network Boundaries
+description: Assign key ownership, rotation responsibility, listener exposure, and outbound dependency trust for Proctor installations.
+audience: security-reviewer
+maturity: preview
+---
+
+# Keys, Certificates, and Network Boundaries
+
+Keys with different purposes are never interchangeable. Rotation preserves the
+old read/decrypt key only for the bounded convergence window of that purpose.
+
+## Key and Certificate Responsibility
+
+| Material | Owner and location | Responsibility |
+| --- | --- | --- |
+| Desktop P-256 private key | Proctor Desktop secure local storage | never sent to server; signs fresh DPoP proof |
+| Desktop public JWK/thumbprint | Registration and Session authority | bind exact client; revoke Registration and all bound Sessions together |
+| MFA encryption keyring | operator configuration | canonical base64 32-byte primary plus bounded old decrypt keys |
+| Mail secret-sealing keyring | operator configuration | encrypt durable recipient/content bundle; rotate independently of MFA |
+| Memberlist keyring | all application nodes | same primary and staged fallback keys; private cluster network |
+| Public TLS certificate/key | load balancer or Proctor static TLS | hostname-valid chain, protected key file, coordinated renewal |
+| Let's Encrypt account/cache | one local-backend node only | persistent protected cache; public DNS and ports 80/443 |
+| Metrics TLS key and bearer token | operator monitoring boundary | both required when metrics listen beyond loopback |
+| Execution-host token or mTLS client key | operator configuration on application nodes | one host endpoint, never application or candidate state |
+| PostgreSQL/Redis/S3/SMTP credentials | operator secret delivery | least privilege, TLS as configured, never committed or logged |
+
+## Inbound Listener Matrix
+
+| Listener | Default | Protocol and exposure | Protection |
+| --- | --- | --- | --- |
+| Application HTTP/WebSocket | `127.0.0.1:8065` | TCP; public only behind selected TLS boundary | built-in static/Let's Encrypt TLS or trusted external termination |
+| Optional HTTP forward/challenge | `127.0.0.1:8080` | TCP; used only with configured HTTPS forwarding/ACME | redirects plus ACME HTTP-01 handling under same runtime lifecycle |
+| Metrics | `127.0.0.1:8067` | TCP; scrape each node directly | loopback by default; non-loopback requires TLS and 32–512-byte bearer token |
+| Memberlist | `127.0.0.1:7946` | TCP and UDP between cluster nodes | private bind/advertise network plus shared keyring; public bind rejected by default |
+
+Health endpoints share the application listener. Profiling endpoints are not
+mounted on metrics. The Compose example's host ports are development or
+pre-production examples and loopback-bound by default, not a firewall policy.
+
+## Outbound Dependency Matrix
+
+| Destination | Purpose | Required boundary |
+| --- | --- | --- |
+| PostgreSQL | durable authority, locks, database time, audit, migrations | installation-scoped database role and protected TLS/network path |
+| Redis | shared disposable cache and cluster-wide security counters | required in Memberlist mode; protected credentials/TLS/network |
+| S3-compatible VFS | opaque managed bytes | shared in multi-node mode; private bucket/prefix and protected TLS/credentials |
+| SMTP relay | transactional delivery | selected TLS/auth mode; accepted transport is not final delivery proof |
+| Execution hosts | isolated Workspace projection and terminal | bounded configured catalog, token or mTLS, protected host network |
+| External identity providers | browser authentication and claims | exact issuer/provider ID, TLS, state/nonce/PKCE and opaque subject |
+| ACME service | certificate issuance in single-node local mode | public DNS and HTTP-01 reachability with persistent protected cache |
+
+Cluster nodes require the same application build/protocol compatibility, shared
+PostgreSQL/Redis/VFS, and unique stable node IDs. Node-local Let's Encrypt is
+rejected in Memberlist mode; use redundant external termination or coordinated
+static certificates.

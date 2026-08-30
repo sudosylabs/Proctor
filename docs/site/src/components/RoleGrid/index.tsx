@@ -11,6 +11,14 @@ const roles: Array<{
   icon: DocIconName;
 }> = [
   {
+    icon: 'account',
+    label: 'Use your account',
+    audience: 'Account holder',
+    title: 'Sign in with confidence',
+    description: 'Access, recover, protect, and review the sessions connected to your account.',
+    to: '/account/',
+  },
+  {
     icon: 'deployment',
     label: 'Operate',
     audience: 'Operator',
@@ -25,6 +33,22 @@ const roles: Array<{
     title: 'Shape the institution',
     description: 'Build the academic hierarchy, identities, roles, and access policy.',
     to: '/institution-admin/',
+  },
+  {
+    icon: 'exam',
+    label: 'Manage exams',
+    audience: 'Exam Manager',
+    title: 'Author protected delivery',
+    description: 'Build immutable revisions, manage sittings, and review terminal submissions.',
+    to: '/exam-manager/',
+  },
+  {
+    icon: 'candidate',
+    label: 'Take an exam',
+    audience: 'Candidate',
+    title: 'Protect your attempt',
+    description: 'Prepare Desktop, keep work acknowledged, recover continuity, and submit safely.',
+    to: '/candidate/',
   },
   {
     icon: 'assurance',

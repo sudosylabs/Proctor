@@ -1,0 +1,72 @@
+---
+title: Correct Live Content and Control Attempts
+description: Apply one immutable live correction, require acknowledgement when needed, and distinguish Kick, Suspension, re-allow, and manager-ended Submission.
+audience: exam-manager
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Correct Live Content and Control Attempts
+
+An open or paused Sitting can receive an urgent correction without changing
+its identity or forcing candidates to rejoin. The correction creates another
+immutable Revision and retargets only that Sitting.
+
+<GovernedFigure asset="correction-acknowledgement-sequence" />
+
+## Keep the Correction Boundary Narrow
+
+A live correction may change instructions, ordered Exam Resources, and Browser
+Policy. It cannot change Exam Policy, Starter Workspace, Execution Profile,
+Class eligibility, or schedule. The operation verifies those protected digests
+match the current Revision.
+
+For Resource bytes, stage each addition or replacement against the exact
+Sitting, base Revision, target kind, Manager, and expiry. Staging has no
+candidate-visible effect. The final correction submits one complete ordered
+manifest:
+
+- omission removes a Resource;
+- order becomes its new position;
+- an item without a stage retains base content; and
+- an item with a ready stage selects those bytes.
+
+Failed or abandoned stages stay invisible and become retention-eligible.
+
+## Write a Candidate-safe Notice
+
+Every correction has a trimmed 1–500 character summary, canonically ordered
+changed areas, and an explicit acknowledgement requirement. Keep the private
+manager reason separate. Candidate notices must explain what changed without
+revealing internal policy evaluation, another candidate, or an accusation.
+
+When acknowledgement is required, each Attempt must acknowledge notices oldest
+first. Pending acknowledgement blocks Workspace mutations, terminal use,
+governed Browser navigation, and voluntary submission. It does not block
+protected reads, Participation renewal, Focus Loss or Browser Activity
+delivery, the acknowledgement itself, or authorized closure. The state belongs
+to the Attempt and survives reconnect or re-allow.
+
+## Distinguish Candidate Controls
+
+| Control | What it means | What it preserves |
+| --- | --- | --- |
+| Kick | authorized manual interruption that blocks the active Attempt | Attempt, Workspace, evidence, and distinct manual provenance |
+| automatic Suspension | policy or confirmed continuity enforcement | neutral evidence, Flag, triggering episode, and Workspace |
+| re-allow | closes one exact Suspension episode and returns the Attempt to Ready | Flags, evidence, immutable configuration, and prior generations |
+| manager end | seals any unfinished Ready, Active, or Suspended Attempt | last acknowledged Workspace and `manager_ended_attempt` Submission provenance |
+| Sitting close | seals every unfinished created Attempt at deadline or early close | `sitting_closed` Submission provenance and prior continuity cause |
+
+Re-allow requires the exact Suspension, expected Attempt revision, and a
+private bounded reason. Fresh admission creates a new Participation generation;
+old credentials cannot revive it. Reset only the triggering evaluation window,
+so later violations can enforce again.
+
+Manager end is terminal. It never reopens or resubmits an Attempt, and its
+private reason is absent from candidate, mail, realtime, and Submission
+projections. At or after the deadline, Sitting closure owns the otherwise
+equivalent sealing transition.
+
+Use the <Link to="/api/recipes/manage-sitting">Sitting API recipe</Link> for
+operation-level fencing and safe retry.

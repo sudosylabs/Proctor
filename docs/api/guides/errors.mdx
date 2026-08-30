@@ -61,5 +61,12 @@ mutation, use its documented idempotency behavior before retrying after a
 timeout or lost response. Authentication, authorization, validation, conflict,
 and assurance failures generally require a state or user-action change first.
 
+DPoP has one narrow retry branch: on `authentication.dpop.use_nonce`, retain
+the replacement `DPoP-Nonce`, create a completely new proof, and retry only if
+the operation is otherwise safe. `authentication.dpop.replayed` also requires
+a new proof identifier; resending the rejected proof can never recover. A
+revoked Desktop Registration or incompatible Desktop build requires a new
+human or installation action, not a token refresh loop.
+
 WebSocket protocol failures use typed protocol envelopes instead of HTTP
 Problem Details after the connection is established. See [Realtime and Replay](./realtime.mdx).

@@ -10,9 +10,10 @@ hide_title: true
 <ApiOverviewHero />
 
 <Maturity state="preview">
-  The contract and generated endpoint reference are available. Operations that
-  describe planned server behavior remain preview until their implementation
-  status is recorded by the server project.
+  The contract and generated endpoint reference describe the current
+  pre-release server operation set. The `/api/v1` contract may still change in
+  place before the first supported release; pin the reviewed OpenAPI artifact
+  used by an integration.
 </Maturity>
 
 ## Use the Contract as the Authority
@@ -33,9 +34,10 @@ pagination, safe retries, uploads, protected content, realtime recovery, and
 compatibility.
 
 The [end-to-end recipes](./recipes/bootstrap-installation.mdx) connect those
-rules into real workflows: installation bootstrap, academic structure,
-invitations, Exam publication, Sitting control, candidate Attempts, integrity
-review, and audit consumption.
+rules into real workflows: installation bootstrap, account entry and recovery,
+Access Policy changes, academic structure, Invitations and onboarding, Exam
+publication, Sitting control, candidate Attempts, integrity review, and audit
+consumption.
 
 ## Choose a Product Area
 
@@ -48,10 +50,10 @@ the surrounding workflow before you use its exact endpoint pages.
 | Authentication | [Authentication and Assurance](./guides/authentication.mdx) |
 | Users | [Invite and Link Users](./recipes/invite-and-link-users.mdx) |
 | Academic structure | [Model an Academic Structure](./recipes/academic-structure.mdx) |
-| Membership and progression | [Invite and Link Users](./recipes/invite-and-link-users.mdx) |
+| Membership and progression | [Run Onboarding Imports and Progression](./recipes/onboarding-imports-and-progression.mdx) |
 | Invitations and onboarding | [Invite and Link Users](./recipes/invite-and-link-users.mdx) |
-| Roles and access | [Consume Audit History](./recipes/consume-audit.mdx) |
-| Access policy | [Authentication and Assurance](./guides/authentication.mdx) |
+| Roles and access | [Define Roles and Scoped Bindings](./recipes/roles-and-scopes.mdx) |
+| Access policy | [Change the Access Policy Safely](./recipes/access-policy.mdx) |
 | Examinations | [Author and Publish an Exam](./recipes/author-and-publish-exam.mdx) |
 | Sittings | [Manage a Sitting](./recipes/manage-sitting.mdx) |
 | Attempts and workspaces | [Run a Candidate Attempt](./recipes/candidate-attempt.mdx) |

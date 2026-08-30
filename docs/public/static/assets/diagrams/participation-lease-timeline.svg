@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Attempt Participation renewal, reconnect, expiry, and re-allow timeline</title>
+  <desc id="description">Secure admission creates Participation generation one, one Connection, and a server-owned renewal interval and lease. Monotonic authenticated renewals extend the PostgreSQL lease; WebSocket ping does not. A brief reconnect before exclusive expiry may retain the generation. At expiry the old generation and Connection are permanently fenced, neutral Connection Loss evidence and one Flag are retained, and the Attempt is suspended. Manager re-allow returns it to Ready; fresh admission creates generation two.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Continuity advances only through authenticated renewal</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Database time is authoritative. Expiry is exclusive and permanently fences the generation.</text>
+
+  <path d="M80 248H1120" fill="none" stroke="#c8c0ce" stroke-width="3" marker-end="url(#arrow)"/>
+  <circle cx="144" cy="248" r="14" fill="#5c00aa"/>
+  <text x="144" y="253" text-anchor="middle" fill="#ffffff" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">1</text>
+  <text x="104" y="182" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ADMIT</text>
+  <text x="104" y="208" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Generation 1 + Connection</text>
+
+  <circle cx="352" cy="248" r="10" fill="#5c00aa"/>
+  <text x="304" y="182" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RENEW 1</text>
+  <text x="304" y="208" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Accept monotonic sequence</text>
+
+  <circle cx="520" cy="248" r="10" fill="#5c00aa"/>
+  <text x="472" y="292" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RENEW 2</text>
+  <text x="472" y="318" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Return database expiry</text>
+
+  <rect x="608" y="152" width="200" height="104" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="632" y="188" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">BRIEF RECONNECT</text>
+  <text x="632" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Before expiry: same generation</text>
+  <text x="632" y="240" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">New Connection if permitted</text>
+  <path d="M708 256V280" fill="none" stroke="#5c00aa" stroke-width="2"/>
+
+  <line x1="848" y1="136" x2="848" y2="376" stroke="#b4233c" stroke-width="3"/>
+  <text x="872" y="166" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXPIRES_AT ≤ DB NOW</text>
+  <text x="872" y="194" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Renewal cannot revive it</text>
+  <text x="872" y="222" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Generation 1 + Connection fenced</text>
+
+  <rect x="720" y="424" width="256" height="128" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="744" y="462" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">AUTOMATIC SUSPENSION</text>
+  <text x="744" y="494" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Neutral Connection Loss evidence</text>
+  <text x="744" y="522" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">One Flag + closed episode</text>
+  <path d="M848 376V424" fill="none" stroke="#b4233c" stroke-width="3"/>
+
+  <path d="M976 488H1024" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="1024" y="424" width="120" height="128" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="1048" y="460" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">RE-ALLOW</text>
+  <text x="1048" y="492" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Ready</text>
+  <text x="1048" y="520" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Fresh admit</text>
+
+  <rect x="56" y="424" width="600" height="128" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="462" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">THREE DIFFERENT SIGNALS</text>
+  <text x="80" y="494" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Ping</text>
+  <text x="136" y="494" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">transport liveness only</text>
+  <text x="320" y="494" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Renew</text>
+  <text x="384" y="494" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">extends the lease</text>
+  <text x="80" y="526" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Request failure</text>
+  <text x="192" y="526" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">not proof of Connection Loss</text>
+
+  <path d="M56 608V624H1144V608" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="660" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">After re-allow, generation 2 begins; generation 1 stays fenced forever.</text>
+</svg>

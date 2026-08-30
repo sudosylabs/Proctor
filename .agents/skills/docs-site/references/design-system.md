@@ -211,6 +211,9 @@ The bounded vocabulary is deliberate:
 | Name | Meaning |
 | --- | --- |
 | `deployment` | Runtime nodes and operational deployment work |
+| `account` | Personal access, authentication methods, and account security |
+| `exam` | Exam Manager authoring, delivery, and review work |
+| `candidate` | Candidate preparation, participation, and result access |
 | `institution` | The one educational Institution governed by an Installation |
 | `assurance` | Reviewed security or authorization guarantees |
 | `integration` | Developer work across a typed or protocol boundary |

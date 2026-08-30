@@ -21,11 +21,11 @@ request, keep the headers separately and project the body to safe fields:
 ```sh
 curl --silent --show-error \
   --dump-header /tmp/proctor-response-headers \
-  http://127.0.0.1:8065/api/v1/example \
+  http://127.0.0.1:8065/api/v1/system/version \
   | jq '{type, title, status, code, request_id}'
 ```
 
-Replace the example path with the operation under test. Do not paste an
+Replace the safe version path with the operation under test. Do not paste an
 `Authorization`, cookie, CSRF, invitation, or reset credential into a shell
 history or issue. Use only synthetic local credentials and redact the request
 before sharing it.
@@ -62,19 +62,30 @@ a regression test.
 Each route declares the credential kinds and assurance it accepts. Proctor
 rejects ambiguous combinations rather than choosing one silently.
 
-- Browser Sessions use host-only, `HttpOnly`, `SameSite=Lax` cookies.
+- Web Sessions use host-only, `HttpOnly`, `SameSite=Lax` cookies.
 - Unsafe cookie-authenticated requests also require the rotating signed
   double-submit `X-Proctor-CSRF-Token` proof.
-- Bearer requests do not use the cookie CSRF proof, but the route must permit
-  that bearer credential kind.
-- Mixed bearer and cookie credentials, or duplicate authentication cookies,
-  are rejected.
+- Web Session access credentials and Personal Access Tokens can use bearer
+  transport only when the route permits that credential kind. They do not use
+  the cookie CSRF proof.
+- Desktop Sessions use `Authorization: DPoP …` plus a newly signed `DPoP`
+  proof for the exact method, public target, access-credential hash, proof ID,
+  and current server nonce. A Desktop credential presented as `Bearer` is
+  invalid.
+- Mixed DPoP, bearer, and cookie credentials, or duplicate authentication
+  cookies, are rejected.
 - A Personal Access Token never silently gains interactive-session assurance.
 
-In the browser network panel, inspect whether the request mode is cookie or
-bearer without copying the credential value. Confirm the route's declared
-requirement in the <a href="/api/">API reference</a>, then reproduce only
-that mode.
+In the browser network panel, inspect whether the request mode is cookie,
+bearer, or DPoP without copying the credential value. Confirm the route's
+declared requirement in the <a href="/api/">API reference</a>, then reproduce
+only that mode.
+
+For `authentication.dpop.use_nonce`, retain the replacement `DPoP-Nonce`
+response header and sign a new proof before a safe retry. Do not replay the
+rejected proof. For `authentication.dpop.replayed`, inspect proof-ID generation
+and shared retry code; each network attempt needs a unique signed proof even
+when an idempotent operation reuses the same body and `Idempotency-Key`.
 
 ## Separate Assurance From Permission
 

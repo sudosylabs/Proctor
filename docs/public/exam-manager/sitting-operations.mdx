@@ -1,0 +1,81 @@
+---
+title: Operate an Exam Sitting
+description: Schedule one Revision for one Class, interpret candidate status at server time, and control the Sitting without confusing lifecycle actions.
+audience: exam-manager
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Operate an Exam Sitting
+
+An <Term id="exam-sitting">Exam Sitting</Term> delivers one immutable Revision
+to one exact Class during a half-open time window. Schedule, class, and selected
+Revision belong to the Sitting—not the reusable Exam.
+
+<GovernedFigure asset="sitting-lifecycle-controls" />
+
+## Schedule Against Exact Academic State
+
+The Class Programme must belong to the Exam's Academic Unit. The selected
+Revision must belong to the same Exam. The complete interval must fit the
+Class's exact Academic Period, and a new or changed start must be strictly after
+PostgreSQL decision time.
+
+Only a Scheduled Sitting can be rescheduled or canceled. Opening rechecks the
+academic structure, so a lineage or Period change after scheduling can still
+prevent an ineligible Sitting from opening. Start and deadline Jobs are
+deduplicated hints; PostgreSQL state and the recovery scan remain authority.
+
+## Distinguish Every Lifecycle Action
+
+| Action | Eligible state | Durable consequence |
+| --- | --- | --- |
+| reschedule | Scheduled | changes Revision, Class, or time window under the Sitting revision fence |
+| cancel | Scheduled | terminally prevents opening; creates no Attempts or Submissions |
+| pause | Open | retains presentation and integrity monitoring but blocks new Attempts, writes, execution, and submission |
+| resume | Paused | restores eligible delivery; it does not add the paused duration to the deadline |
+| extend | Open or Paused | moves only the scheduled end later; cannot shorten or rewrite the start |
+| close early | Open or Paused | enters Closing and seals every unfinished created Attempt |
+| scheduled deadline | Open or Paused | enters Closing under server time and owns the terminal reason |
+
+At or after `scheduled_end_at`, the deadline transition wins over a racing
+manager command. In version 1, paused duration does not extend the Sitting.
+Closing is visible work, not a synonym for Closed.
+
+## Understand Closing and No-shows
+
+Closing immediately rejects new participation and Workspace mutations. A
+non-cancelable durable Job seals unfinished Attempts in bounded pages from
+their last acknowledged Workspace state, skips existing Submissions, and
+closes the Sitting only when every created Attempt is terminal.
+
+Node loss cannot make closure depend on one worker: retries use the one-
+Submission invariant and recovery recreates missing or terminally failed work.
+A Sitting with no Attempts closes through the same completion check.
+
+No Attempt or Submission is fabricated for a student who never entered. The
+no-show view derives membership active at the authoritative `opened_at` and
+excludes every candidate with an Attempt.
+
+## Read Candidate Status at One Server Time
+
+The status board is a bounded no-store projection evaluated at one returned
+server time. It exposes no Session, credential, Connection, evidence, or
+private reason.
+
+| Status | Meaning for operations |
+| --- | --- |
+| not started | eligible roster member has no Attempt |
+| ready | Attempt exists but has no active Participation |
+| connected | current Participation lease is active and connection is present |
+| reconnecting | continuity remains recoverable before lease expiry |
+| lease expired | secure continuity is no longer renewable and enforcement is converging |
+| suspended | Attempt is blocked pending authorized review or re-allow |
+| submitted | one terminal Submission exists |
+
+Realtime events prompt refetch. They do not mutate this board or replace the
+HTTP state.
+
+For API commands and race recovery, follow
+<Link to="/api/recipes/manage-sitting">Schedule and Manage a Sitting</Link>.

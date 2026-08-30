@@ -12,7 +12,10 @@ const requiredFields = ['title', 'description', 'audience', 'maturity'];
 const knownAudiences = new Set([
   'everyone',
   'operator',
+  'account-holder',
   'institution-administrator',
+  'exam-manager',
+  'candidate',
   'security-reviewer',
   'developer',
   'api-consumer',

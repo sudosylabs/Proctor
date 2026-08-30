@@ -1,0 +1,87 @@
+---
+title: Secure Your Account
+description: Protect authentication methods, MFA, Web and Desktop Sessions, Desktop Registrations, and Personal Access Tokens.
+audience: account-holder
+maturity: preview
+---
+
+# Secure Your Account
+
+Account security is a collection of independent controls. A password or
+external identity proves the User; MFA raises assurance; a Session keeps one
+authenticated client active; a Desktop Registration records a trusted public
+key; and a <Term id="personal-access-token">Personal Access Token</Term> is an
+automation credential. Treating them as one “login token” hides important
+revocation consequences.
+
+## Add MFA and Keep Recovery Codes Offline
+
+MFA setup is a two-stage operation: begin setup, then activate it by proving a
+valid code. Do not consider an unactivated setup protective. Store recovery
+codes offline and separate from the password. Each recovery code is one-use;
+regenerating the set invalidates the previous set.
+
+Disabling MFA and regenerating recovery codes require the operation's declared
+recent or strong Session. If the Session is too old, reauthenticate through the
+interactive account journey instead of substituting a Personal Access Token.
+
+## Review Authentication Methods Before Removing One
+
+An account may have a local password and one or more external identities. A
+provider connection begins from an authenticated, purpose-bound browser
+journey and links the provider's immutable subject. It does not select an
+account by email.
+
+Before removing a password or unlinking a provider, confirm another usable
+method remains under the current Access Policy. Proctor rejects removal of the
+last usable method. Unlinking one external identity revokes only Sessions that
+were authenticated through that exact identity, including Desktop Sessions
+approved through such a Web Session; unrelated provider identities remain
+separate.
+
+## Review and Revoke Sessions
+
+The Session list is security history, not a device inventory inferred from
+user-agent strings. Use the creation time, last-seen projection, method, client
+type, and revocation state to decide whether a Session is expected.
+
+- Revoke one current Session when a browser or client is no longer trusted.
+- Revoke all current-User Sessions after suspected credential theft. Expect
+  the current browser to sign out too.
+- An administrator can revoke Sessions for a disabled or compromised User, but
+  that does not erase the User or their audit history.
+
+Revocation is durable. Closing a browser window is not equivalent to revoking
+the server-side Session.
+
+## Treat Desktop Registrations as Permanent Security History
+
+A Desktop Registration binds one User, Institution, and P-256 public-key
+thumbprint. Its private key stays with the Desktop client. The account view
+deliberately omits the public JWK and thumbprint; it exposes the bounded device,
+platform, build, creation, last-used, and revocation facts needed for review.
+
+Revoking a Desktop Registration is irreversible. It revokes every Session and
+credential bound to that registration. A legitimate device must complete a
+fresh browser approval with a new key to return. Do not promise an “undo” or
+silently recreate a revoked registration.
+
+## Keep Personal Access Tokens Narrow
+
+Personal Access Tokens are bearer credentials for automation on operations
+that permit them. They are not Web Sessions, cannot satisfy Session-only or
+recent-assurance operations, and are never valid for the candidate Desktop
+Attempt path. Copy the raw value only when it is created, place it in a secret
+manager, and revoke it when the integration is retired or suspected of
+exposure.
+
+## Respond to Suspected Compromise
+
+1. From a known-good browser and canonical server origin, revoke the affected
+   Session, Desktop Registration, or Personal Access Token.
+2. If the boundary is unclear, revoke all current-User Sessions and rotate the
+   local password or recover the affected external provider.
+3. Regenerate MFA recovery codes if a stored set may have been read.
+4. Ask an administrator to inspect bounded audit events by time and resource.
+5. Never attach credentials, raw provider claims, Exam answers, or unbounded
+   browser data to the report.

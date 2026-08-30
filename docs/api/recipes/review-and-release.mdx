@@ -1,6 +1,6 @@
 ---
 title: Review Integrity and Release a Result
-description: Inspect bounded evidence, record non-academic decisions, finalize review, and explicitly release the candidate projection.
+description: Inspect immutable Submission state, assess bounded evidence, revision-fence non-academic decisions, finalize the inventory, and explicitly release the candidate projection.
 audience: api-consumer
 maturity: preview
 sidebar_position: 7
@@ -10,41 +10,97 @@ import Link from '@docusaurus/Link';
 
 # Review Integrity and Release a Result
 
-Integrity review records evidence and a manager disposition; it is not a grade
-calculation and does not declare guilt. Private review data remains unavailable
-to the candidate unless the release projection explicitly includes approved
-remarks.
+Submission, integrity Review, and candidate result are separate resources with
+separate authority. A Submission preserves acknowledged work and terminal
+provenance. A Review preserves private manager interpretation. Explicit release
+creates a smaller candidate projection. None of them is a grade calculation or
+an automatic guilt verdict.
 
-## 1. Load the Review Snapshot
+<GovernedFigure asset="submission-provenance-boundary" />
 
-Call <Link to="/api/reference/get-exam-integrity-review">Get integrity review</Link>, then page
-through <Link to="/api/reference/list-exam-integrity-flags">flags</Link>, purpose-specific
-<Link to="/api/reference/list-exam-integrity-evidence">evidence</Link>, and retained
-<Link to="/api/reference/list-exam-integrity-discrepancies">discrepancies</Link> as needed.
-Do not export evidence to general analytics or logs.
+## 1. Authorize and Inspect the Submission
 
-## 2. Record a Decision for Each Flag
+Begin with <Link to="/api/reference/get-exam-submission">Get Submission</Link>.
+The server authorizes the canonical Submission resource first, rechecks the
+current Exam Manager relationship and scope, then conceals mismatched nested
+Exam, Sitting, or Attempt selectors as not found.
 
-Use the review's current revision and the current decision revision. For a new
-decision, follow the endpoint schema's initial revision rule.
+The header pins the Submission's terminal provenance, governing Revision,
+acknowledged Workspace Cursor, integrity state, discrepancy count, and time.
+Page the <Link to="/api/reference/list-exam-submission-manifest">immutable manifest</Link>
+by stable Entry identity. Fetch file bytes only through the protected
+<Link to="/api/reference/get-exam-submission-file-content">Submission content route</Link>.
+Do not construct storage URLs or treat VFS keys as hierarchy.
+
+Managers may inspect files only after sealing; there is no manager endpoint for
+reading a live candidate Workspace. A no-show has no fabricated Attempt or
+Submission.
+
+## 2. Load the Complete Review Context
+
+Call <Link to="/api/reference/get-exam-integrity-review">Get integrity review</Link>,
+then page through <Link to="/api/reference/list-exam-integrity-flags">Flags</Link>,
+purpose-specific <Link to="/api/reference/list-exam-integrity-evidence">evidence</Link>,
+and <Link to="/api/reference/list-exam-integrity-discrepancies">discrepancies</Link>
+as needed. Keep these private records out of general analytics, ordinary logs,
+and candidate-visible caches.
+
+<GovernedFigure asset="integrity-review-release-boundary" />
+
+Interpret the chain in order: observation, signal, finding, evidence, Flag,
+then Review outcome. A Flag groups detected policy evidence; it does not declare
+intent. A discrepancy retains uncertainty such as a sequence gap, incomplete
+Browser Activity source, missing correction acknowledgement, or late Focus Loss.
+
+## 3. Create or Update Review Text
+
+<Link to="/api/reference/update-exam-integrity-review">Update integrity review</Link>
+conditionally replaces both mutable text fields. Use zero when the command
+creates the Review; otherwise send its identity and exact current revision.
 
 ```json
 {
+  "submission_review_id": "<review-id>",
+  "expected_review_revision": 3,
+  "manager_notes": "Private evidence assessment is complete.",
+  "student_remarks_markdown": "Your submission was received and reviewed."
+}
+```
+
+`manager_notes` remain private. `student_remarks_markdown` is optional approved
+candidate-facing content and is sanitized again on projection. Neither field
+should contain credentials, secrets, unnecessary student data, or an academic
+grade that Proctor does not model.
+
+## 4. Record One Decision for Every Flag
+
+Use the Review's current revision and the current decision revision. Zero means
+create; a positive value must equal the current revision.
+
+```json
+{
+  "submission_review_id": "<review-id>",
   "expected_review_revision": 4,
-  "expected_decision_revision": 1,
+  "expected_decision_revision": 0,
   "outcome": "inconclusive",
   "private_rationale": "The retained evidence does not establish a reliable conclusion."
 }
 ```
 
-<Link to="/api/reference/save-exam-integrity-decision">Save integrity decision</Link> accepts
-only `confirmed`, `dismissed`, or `inconclusive`. A concurrent review update
-changes the revision and must be reconciled rather than overwritten.
+<Link to="/api/reference/save-exam-integrity-decision">Save integrity decision</Link>
+accepts only `confirmed`, `dismissed`, or `inconclusive`. The outcome is a
+non-academic disposition, never a grade or guilt verdict. The trimmed rationale
+is required and manager-only.
 
-## 3. Finalize the Complete Review
+Every text or decision mutation advances the one Review revision. On a conflict,
+reread the snapshot and reconcile concurrent work; never guess the next number.
+Use a stable idempotency key for exact retries.
 
-Fetch a fresh review snapshot, verify its bounded evidence inventory and every
-required decision, then call <Link to="/api/reference/finalize-exam-integrity-review">Finalize review</Link>:
+## 5. Finalize the Bounded Inventory
+
+Fetch a fresh snapshot and verify that integrity collection is terminal as
+`settled` or `gapped` and every current Flag has a current decision. Then call
+<Link to="/api/reference/finalize-exam-integrity-review">Finalize review</Link>:
 
 ```json
 {
@@ -53,13 +109,36 @@ required decision, then call <Link to="/api/reference/finalize-exam-integrity-re
 }
 ```
 
-Finalization freezes the review. Treat a stale revision as a signal to reread,
-not as a reason to guess the next number.
+Finalization locks the Submission and freezes stable identities and decision
+revisions into a canonical digest. The inventory is bounded to 200 Flags,
+20,000 evidence rows, and 200 explicit discrepancies. A limit error is not
+permission to omit records. After finalization, Review text and decisions are
+immutable.
 
-## 4. Release Explicitly
+Late integrity records remain append-only manager-visible discrepancies. Rows
+committed before finalization enter the frozen inventory; later rows do not
+rewrite the finalized or released Review.
 
-<Link to="/api/reference/release-student-exam-result">Release student result</Link> is a
-separate explicit transition using the finalized review ID and revision. Only
-after it succeeds can the candidate retrieve <Link to="/api/reference/get-student-exam-result">their released result</Link>.
-The candidate endpoint exposes the approved projection, not private evidence or
-manager rationale.
+## 6. Release Explicitly
+
+<Link to="/api/reference/release-student-exam-result">Release student result</Link>
+is a separate one-way, revision-fenced, idempotent transition using the same
+terminal request shape:
+
+```json
+{
+  "submission_review_id": "<review-id>",
+  "expected_review_revision": 8
+}
+```
+
+Before this succeeds, <Link to="/api/reference/get-student-exam-result">the
+candidate result route</Link> is concealed as not found. After release it
+returns only the Review, Submission, and Attempt identities, sanitized approved
+remarks, and release time. It never returns Flags, evidence, discrepancies,
+decisions, private rationale or notes, Workspace content, grade, score, rubric,
+pass/fail, or another academic outcome.
+
+If a finalization or release response is lost, retry the exact body and
+idempotency key after creating the transport proof required for the new HTTP
+request. Do not invent a new key for the same logical operation.

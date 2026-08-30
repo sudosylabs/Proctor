@@ -1,0 +1,77 @@
+---
+title: Invite People Into the Institution
+description: Issue, replace, resend, revoke, and accept purpose-specific Invitations without placeholder accounts or email-based authority.
+audience: institution-administrator
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Invite People Into the Institution
+
+An <Term id="invitation">Invitation</Term> is a durable pre-User package with
+one immutable purpose. It is not an email message and it is never an empty
+placeholder account. Creation records the package and durable mail intent
+atomically; acceptance creates or resolves the User and applies every frozen
+effect, or none.
+
+<GovernedFigure asset="invitation-lifecycle" />
+
+## Choose the Package From the Intended Effect
+
+| Purpose | Effects after valid acceptance |
+| --- | --- |
+| student Class | student Affiliation when needed and membership in one exact Class |
+| teacher Academic Unit | teacher Affiliation when needed, Unit membership, and one selected scoped Role Binding |
+| Academic Unit Role | one approved Role Binding at the exact Unit scope for an existing User |
+| Institution Role | one approved Institution Role Binding for an existing User |
+
+The issuer needs authority for every effect at issue time. A Unit-scoped
+administrator cannot package a broader Role or delegate an action they do not
+hold. The committing acceptance rechecks current inviter authority, target and
+Role validity, Access Policy, account state, and academic invariants.
+
+## Replace, Resend, and Revoke Mean Different Things
+
+- **Resend** preserves the package but rotates the secret and deadline. Every
+  previously delivered link becomes invalid.
+- **Replace** changes recipient, purpose, target, Role, or effective bounds by
+  creating a new Invitation and marking the old one superseded.
+- **Revoke** invalidates one Invitation immediately and cancels queued delivery
+  where possible. Mail already accepted by SMTP becomes harmless because the
+  hosted page reads authoritative Invitation state.
+- **Expire** is server-time lifecycle, not an email-client event. Expiry during
+  a provider round trip prevents acceptance.
+
+Never edit the semantic package behind a previously delivered claim. Never
+paste an Invitation claim into logs, a ticket, analytics, or provider state.
+
+## Understand the Acceptance Branches
+
+The `/join` page removes the fragment credential before rendering and exchanges
+it once for a short-lived handle plus host-only HttpOnly proof. Depending on
+policy and package, the person may:
+
+- create a local credential;
+- prove an enabled provider identity; or
+- accept an existing-User package with the current Session.
+
+Provider email can prove mailbox control but never selects or merges an account
+by equality. A different verified provider mailbox is acceptable only when it
+does not belong to another User. Existing-User Role packages still require the
+claim; they create no credential, Session, membership, or welcome message.
+
+## Verify Without Exposing the Claim
+
+Read the safe Invitation projection: purpose, recipient, target summary, Role
+name, inviter, lifecycle timestamps, accepted User when applicable, and bounded
+delivery state. Pending does not mean delivered, and SMTP acceptance does not
+prove inbox receipt.
+
+If acceptance fails, the claim remains unconsumed unless the lifecycle itself
+became terminal. The recipient sees a bounded message; the administrator uses
+the exact Invitation and audit record to resolve invalid targets, changed Role,
+lost inviter authority, policy, or delivery health.
+
+For route-level integration, use
+<Link to="/api/recipes/invite-and-link-users">Invite and Link Users</Link>.

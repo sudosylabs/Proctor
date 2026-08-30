@@ -210,10 +210,17 @@ Do not patch it to compensate for an incomplete source contract.
 
 ## Preserve Compatibility
 
-The current public API is versioned under `/api/v1`. Contract changes are
-additive unless a new API version and migration path are explicitly designed.
-Renaming a field, narrowing an accepted value, changing concealment behavior,
-or removing a public error may be breaking even when Go compilation succeeds.
+The current public API is namespaced under `/api/v1`, but Proctor has not yet
+made its first supported-release API commitment. During this pre-release
+period, a contract can change in place only when the server, reviewed OpenAPI
+artifact, agreement tests, and compatible clients move together. Do not create
+a parallel version solely to preserve an old development contract.
+
+After the first supported release, established meanings evolve additively
+unless an explicit compatibility decision introduces another version and
+migration path. Renaming a field, narrowing an accepted value, changing
+concealment behavior, or removing a public error may be breaking even when Go
+compilation succeeds.
 
 {/* TODO(api-sdks): Decide whether generated client SDKs belong in this
 repository, which languages are supported, and how they are versioned before

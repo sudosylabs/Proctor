@@ -125,6 +125,26 @@ API endpoint and product-area pages are generated from the reviewed
 [HTTP and OpenAPI workflow](./http-and-openapi.mdx); never edit
 `docs/api/reference` output.
 
+## Maintain Technical References
+
+The environment-variable inventory is generated from the server's typed
+override declarations. The command-line reference is deliberately
+human-authored, while its required commands and flags are checked against the
+Cobra source. After changing configuration overrides or the CLI, run from
+`docs/site`:
+
+```sh
+npm run generate:technical-reference
+npm run check:technical-reference
+```
+
+Do not edit `docs/public/reference/environment-variables.mdx` by hand. Update
+`server/config/environment_overlay.go`, then regenerate it. Update
+`docs/public/reference/command-line.mdx` when a command's purpose, arguments,
+side effects, output, failure behavior, or recovery guidance changes. The
+technical-reference check detects stale environment output and required CLI
+contracts that no longer agree with their source declarations.
+
 ## Preview and Verify
 
 Start the documentation site from the repository root:

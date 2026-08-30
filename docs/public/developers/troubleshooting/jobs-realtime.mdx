@@ -67,12 +67,13 @@ Job to explain it. Metrics do not replace the Job record.
 When the connection never opens, inspect the browser handshake:
 
 - the URL and configured public origin;
-- exactly one permitted cookie or bearer credential mode;
+- exactly one permitted cookie, bearer, or DPoP credential mode;
 - the exact Origin for cookie-authenticated connections;
 - HTTP status and stable Problem Details code when upgrade is rejected; and
 - server readiness on the node that received the handshake.
 
-Do not paste cookies, bearer values, or a full handshake export into an issue.
+Do not paste cookies, bearer or DPoP credentials, DPoP proofs or nonces, or a
+full handshake export into an issue.
 
 ## Diagnose Missing or Gapped Events
 

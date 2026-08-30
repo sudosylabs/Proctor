@@ -1,0 +1,68 @@
+---
+title: Deployment Configuration Reference
+description: Understand Proctor's strict versioned JSON configuration, process-level overrides, validation, reload boundaries, and secret responsibilities.
+audience: operator
+maturity: preview
+slug: /reference/configuration/
+---
+
+# Deployment Configuration Reference
+
+Proctor requires one versioned JSON configuration. An explicit `--config` path
+wins over `PROCTOR_CONFIG`, which wins over `config/config.json`. The server
+never creates the active file; copy the tracked example and edit it.
+
+```sh
+cp config/config.example.json config/config.json
+proctor config validate --config config/config.json
+```
+
+The canonical shape and safe development defaults live in
+[`server/config/config.example.json`](https://github.com/sudosylabs/Proctor/blob/main/server/config/config.example.json).
+Validation is strict: unknown fields, invalid combinations, unsafe exposed
+listeners, malformed URLs/addresses/durations, and invalid key material fail
+before the server starts.
+
+## Configuration Areas
+
+| Area | Owns |
+| --- | --- |
+| `Server` | public listener, canonical URL, hosted build, TLS, forwarding, timeouts and bounds |
+| `Metrics` | node-local scrape listener, TLS/token, timeouts and concurrency |
+| `Database` | PostgreSQL DSN, pool, query and migration bounds |
+| `Cache` | bounded memory or Redis cache and namespace |
+| `Cluster` | local/memberlist transport, stable node identity, addresses, discovery and keyring |
+| `Mail` | SMTP transport, sender, limits and durable secret-sealing keyring |
+| `VFS` | local or S3-compatible opaque byte storage |
+| `Execution` | bounded outbound execution-host catalog and timeouts |
+| `Authentication` | bootstrap, password/session/rate-limit/MFA/PAT/external-provider policy |
+| `Localization` | default locale |
+| `Log` | bounded asynchronous console/file targets and rotation |
+
+## Environment Overrides
+
+The server accepts a checked set of 122 `PROCTOR_` overrides. Values affect the
+running process but are never persisted back to JSON. See the generated
+[environment variable inventory](./environment-variables.mdx).
+
+Use protected environment or secret-file integration for credentials and key
+material. Do not place populated examples in source control. Keep JSON and
+environment files readable only by the service account or its protected group.
+
+## Reload and Restart
+
+The configuration store supports atomic file writes, snapshots, and structured
+diffs. Logging and the external-provider registry are dynamically
+reconfigurable. Listener, timeout, cluster, execution-host, and most
+infrastructure changes require restart so every owner sees one coherent catalog.
+
+Run `proctor config validate` before restart. Validation proves the effective
+shape and cross-field rules, not dependency reachability or production fitness.
+Read the operator guides for readiness and dependency checks.
+
+## Secret Separation
+
+MFA, mail secret sealing, Memberlist, TLS, metrics bearer, execution-host, and
+dependency credentials have different purposes. Never reuse one key across
+those boundaries. Rotation must follow the purpose-specific primary/fallback
+contract and converge every relevant node before removing an old decrypt key.

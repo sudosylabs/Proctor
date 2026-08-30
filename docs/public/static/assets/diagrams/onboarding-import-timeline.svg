@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Onboarding CSV preview, commit, and report timeline</title>
+  <desc id="description">Uploading a bounded CSV creates an asynchronous validation Job without application mutations. Validation resolves and normalizes rows, deletes original bytes, and freezes an immutable preview and digest. An administrator explicitly commits either all-valid or valid-only rows. A durable Job reauthorizes and commits each row independently. Cancellation stops new rows, not a row already committing. The retained formula-safe report records successes, no-ops, and public failures for compensation.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Preview first. Commit rows second.</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">A Job coordinates work; it never carries a reusable authorization receipt.</text>
+
+  <rect x="56" y="144" width="272" height="152" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="80" y="180" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">01 · UPLOAD</text>
+  <text x="80" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">CSV + exact scope</text>
+  <text x="80" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">≤ 10 MiB · ≤ 50,000 rows · UTF-8</text>
+  <text x="80" y="274" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">No domain mutation</text>
+  <path d="M328 220H384" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="384" y="144" width="272" height="152" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="408" y="180" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">02 · VALIDATE</text>
+  <text x="408" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Resolve every row</text>
+  <text x="408" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Names → IDs + revisions + bounds</text>
+  <text x="408" y="274" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Original bytes deleted after preview</text>
+  <path d="M656 220H712" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="712" y="144" width="432" height="152" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="736" y="180" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">03 · IMMUTABLE PREVIEW</text>
+  <text x="736" y="216" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Frozen digest + normalized outcomes</text>
+  <text x="736" y="248" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Headers · duplicates · targets · Roles · bounds</text>
+  <text x="736" y="274" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">STILL NO DOMAIN MUTATION</text>
+
+  <path d="M928 296V352" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="712" y="352" width="432" height="152" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+  <text x="736" y="388" fill="#95520d" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">04 · EXPLICIT COMMIT</text>
+  <text x="736" y="424" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Choose one reviewed policy</text>
+  <text x="736" y="456" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">require_all_valid · or · valid_rows_only</text>
+  <text x="736" y="482" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Exact preview + idempotency identity</text>
+  <path d="M712 428H656" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="384" y="352" width="272" height="152" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="408" y="388" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">05 · EXECUTION JOB</text>
+  <text x="408" y="424" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Reauthorize every row</text>
+  <text x="408" y="456" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">One atomic row transaction</text>
+  <text x="408" y="482" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Cancellation stops new rows only</text>
+  <path d="M384 428H328" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="56" y="352" width="272" height="152" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="80" y="388" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">06 · RETAINED REPORT</text>
+  <text x="80" y="424" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Success · no-op · failure</text>
+  <text x="80" y="456" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Safe refs · created IDs · codes</text>
+  <text x="80" y="482" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Download reauthorizes + escapes formulas</text>
+
+  <rect x="56" y="560" width="1088" height="80" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="594" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Partial completion is durable.</text>
+  <text x="280" y="594" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Later failures do not roll back earlier rows. Compensate through explicit inverse use cases.</text>
+  <text x="80" y="620" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Generic Job projections and logs contain counts and closed codes—not recipient lists, CSV rows, or credentials.</text>
+  <path d="M56 668H1144" fill="none" stroke="#655f69" stroke-width="1"/>
+</svg>

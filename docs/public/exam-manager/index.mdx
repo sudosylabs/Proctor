@@ -1,0 +1,65 @@
+---
+title: Manage Exams
+description: Author immutable examination delivery, operate Sittings, and review terminal Submissions without collapsing distinct lifecycle states.
+audience: exam-manager
+maturity: preview
+slug: /exam-manager/
+---
+
+import Link from '@docusaurus/Link';
+
+# Manage Exams
+
+An <Term id="exam-manager">Exam Manager</Term> shares responsibility for one
+Exam. Ordinary authority requires both the current Manager relationship and an
+applicable Role permission at the Exam's Academic Unit. Creator provenance,
+current ownership, management relationship, and permission are separate facts.
+
+<Maturity state="preview">
+  The server and API lifecycle are implemented. A complete authenticated Exam
+  Manager interface is not present in this repository, so these pages describe
+  exact model, security, consequence, and recovery behavior without fictional
+  button names or screenshots.
+</Maturity>
+
+## Follow the Lifecycle
+
+1. [Author and publish](./author-and-publish.mdx) one mutable Draft into an
+   immutable numbered Revision.
+2. [Add protected Resources and a Starter Workspace](./resources-and-workspace.mdx)
+   that every Attempt receives through the protected application boundary.
+3. [Choose an Execution Profile](./execution-profile.mdx) only when the Exam
+   requires an isolated Attempt Terminal.
+4. Schedule and operate an Exam Sitting against one exact Revision.
+5. [Inspect only terminal Submissions and review integrity](./submission-and-integrity-review.mdx)
+   separately from academic grading.
+6. [Finalize and explicitly release](./finalize-and-release.mdx) only the narrow
+   candidate result projection.
+
+<GovernedFigure asset="exam-publication-delivery-lifecycle" />
+
+## Preserve Responsibility and Provenance
+
+The creator is immutable provenance and begins as owner and Manager. One
+current owner is always protected. Adding a Manager grants equal management
+responsibility but does not transfer ownership. Transferring ownership leaves
+the previous owner as a Manager. Remove a Manager only after transferring
+ownership when necessary.
+
+The target Manager must be an active User with current membership in the
+Exam's exact Academic Unit. The server rechecks eligibility inside the locked,
+revision-fenced transition. Losing membership or Role permission removes
+ordinary authority without erasing creator or grant history.
+
+System-administrator override is an explicit, audited action. It does not turn
+the administrator into a Manager or bypass archive, ownership, lineage,
+revision, or immutable-publication rules.
+
+## Keep the Product Boundary Clear
+
+Proctor manages protected programming-exam delivery and integrity review. It
+does not define scores, rubrics, grading, pass/fail, or academic outcomes.
+Do not place those meanings in a Draft policy or Submission Review.
+
+API clients should begin with
+<Link to="/api/recipes/author-and-publish-exam">Author and Publish an Exam</Link>.

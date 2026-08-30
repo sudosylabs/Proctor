@@ -1,0 +1,79 @@
+---
+title: Author and Publish an Exam
+description: Edit one revision-fenced Draft and publish a complete immutable Revision without exposing concurrent or protected content.
+audience: exam-manager
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Author and Publish an Exam
+
+An <Term id="exam">Exam</Term> is stable identity and ownership. It has exactly
+one mutable <Term id="exam-draft">Draft</Term> and a history of immutable
+<Term id="exam-revision">Revisions</Term>. A Sitting selects a Revision; it
+never follows the changing Draft.
+
+## Create in the Exact Academic Unit
+
+Creation names the owning Academic Unit and initial title and instructions.
+The creator becomes immutable provenance, current owner, and first Manager.
+The Exam itself does not store mutable title, policy, Resources, Class, or
+schedule; those belong to Draft, Revision, or Sitting.
+
+## Edit Through One Revision Fence
+
+Every Draft mutation supplies `expected_draft_revision`. After success, use the
+returned revision for the next operation. On conflict, fetch the complete
+current authoring view, compare all changed areas, and deliberately reapply the
+edit. Do not increment a stale number or replay one field over another
+Manager's work.
+
+The Draft freezes these areas at publication:
+
+- required title and optional sanitized-at-presentation Markdown instructions;
+- typed Exam Policy Set, including the Focus Loss rule;
+- separate Browser Policy;
+- ordered Exam Resources and their exact File Revisions;
+- Starter Workspace hierarchy and content versions;
+- Execution Profile; and
+- the current Exam Capacity Policy values governing content limits.
+
+There is no generic policy JSON. Use the typed fields in the current contract.
+Connection Loss is fixed to `flag_and_suspend`. Focus Loss carries enabled,
+minimum duration, incident threshold, time window, and one closed outcome.
+Browser Policy is a versioned start rule and bounded set of HTTPS origin/path
+rules; blocked navigation is recorded rather than silently broadened.
+
+## Review Before Publishing
+
+Check the title, rendered and sanitized instructions, policy values, Browser
+Policy start rule, Resource order and metadata, Starter Workspace manifest,
+Execution Profile, content-capacity totals, and current Draft revision. Verify
+every referenced execution image is still in the safe catalog.
+
+Publishing validates the complete Draft atomically. An unchanged Draft does
+not create a redundant Revision. A stale Draft, invalid path, unavailable image,
+over-capacity resource, or incomplete typed policy blocks the transition
+without publishing a partial snapshot.
+
+## Understand the Immutable Result
+
+Publication creates the next numbered Revision, selects it as the future
+default, rebases the Draft, records publisher and time, and commits audit and
+idempotent outcome before transient effects. Existing Revisions never change
+when the Draft is edited later.
+
+Manager Revision discovery exposes safe identity, order, provenance, digests,
+and aggregate counts. It deliberately omits instructions, canonical policy
+bytes, Resource details, Starter Workspace paths, opaque content identities,
+and source bytes.
+
+An urgent live correction later creates another immutable Revision for one
+open or paused Sitting. It may change only instructions, Resources, and Browser
+Policy; it cannot change Exam Policy, Starter Workspace, Execution Profile,
+eligibility, or schedule. The full correction lifecycle is covered in Phase 6
+Sitting guidance.
+
+Use the <Link to="/api/recipes/author-and-publish-exam">API recipe</Link> for
+exact operations and safe retry.

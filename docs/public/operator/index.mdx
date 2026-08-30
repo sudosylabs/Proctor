@@ -1,71 +1,58 @@
 ---
 title: Operate Proctor
-description: Plan and run a self-hosted Proctor installation from its authoritative infrastructure contracts.
+description: Install and run the current Proctor runtime without mistaking pre-production examples for certified production procedures.
 audience: operator
 maturity: preview
 slug: /operator/
 ---
 
-import Link from '@docusaurus/Link';
-
 # Operate Proctor
 
-Proctor is one self-hosted <Term id="installation">installation</Term> for one
-educational <Term id="institution">institution</Term>. A single node and an
-active-active cluster use the same architecture; scaling does not unlock a
-different product edition.
+One Proctor installation represents one Institution. A single application node
+and an active-active group use the same product semantics. Horizontal scaling
+changes infrastructure redundancy, not authorization or feature availability.
 
 <Maturity state="preview">
-  The runtime, packaging, dependency, health, and clustering foundations are
-  implemented. This page is an operator map while release-grade installation,
-  backup, and upgrade runbooks are being written.
+  Packaging, configuration validation, hardened systemd and container examples,
+  TLS modes, node lifecycle, serving leases, health, metrics, logs, Memberlist,
+  and pre-release recovery boundaries are implemented. This is pre-production
+  guidance, not a certified production support matrix.
 </Maturity>
 
-## Know Each Dependency's Authority
+## Follow the Operating Path
 
-| Dependency | Responsibility |
-| --- | --- |
-| PostgreSQL | Authoritative durable application state |
-| Redis | Disposable shared cache, counters, and coordination acceleration |
-| VFS or object storage | Managed file content behind Proctor's file contracts |
-| SMTP service | Delivery for durably committed transactional mail |
-| Execution hosts | Ephemeral isolated projections of Attempt Workspaces |
-
-PostgreSQL commits before cache invalidation, cluster fan-out, WebSocket
-publication, or other best-effort effects. Back up and restore the authoritative
-stores; do not treat Redis as a recovery source.
+1. [Verify a package or image](./package-and-install.mdx) and its embedded
+   binary/hosted-application identity.
+2. [Create protected configuration and secret inputs](./configuration-and-secrets.mdx)
+   and validate them before any listener starts.
+3. Choose the tracked [systemd or container runtime](./systemd-and-container.mdx)
+   without weakening non-root and read-only boundaries.
+4. Select [single-node or active-active topology](./topology-and-dependencies.mdx)
+   and assign PostgreSQL, Redis, VFS, SMTP, execution-host, and load-balancer
+   responsibility.
+5. Configure [TLS and reverse-proxy behavior](./tls-and-proxy.mdx), including
+   the separate metrics and cluster boundaries.
+6. Route traffic by [readiness and observable evidence](./health-and-observability.mdx),
+   not process existence.
+7. Use the bounded [maintenance and recovery procedures](./maintenance-and-recovery.mdx)
+   that are implemented today.
+8. Stop at the explicit [pre-production limits](./pre-production-readiness.mdx)
+   instead of inventing sizing, backup, upgrade, or support promises.
 
 <GovernedFigure asset="installation-authority-topology" />
 
-## Choose a Deployment Shape
+## Authority at a Glance
 
-### Single Node
+| Dependency | Durable responsibility |
+| --- | --- |
+| PostgreSQL | application state, authorization facts, audit, leases, Jobs, mail state, Workspace metadata |
+| VFS/S3 | opaque managed bytes selected through PostgreSQL metadata |
+| Redis | disposable shared cache and installation-wide counters in cluster mode |
+| Memberlist | best-effort peer discovery and effect propagation, never durable state |
+| SMTP | transport acceptance for durable mail delivery, not application truth |
+| Execution hosts | isolated, replaceable Attempt Workspace projections |
 
-Use the ordinary server composition with production PostgreSQL and the required
-configured dependencies. A single node is the smallest form of the clustered
-architecture, not a special development mode.
-
-### Active-Active
-
-Place several identical application nodes behind a redundant external load
-balancer. All nodes share authoritative PostgreSQL state and the infrastructure
-required by the selected cluster mode. Readiness, not process existence, decides
-whether a node receives traffic.
-
-## Start From Tracked Operational Sources
-
-- [Build and development environment](https://github.com/sudosylabs/Proctor/blob/main/build/README.md)
-  explains the supported product commands, release archives, containers, and
-  certified development topology.
-- [Server operations](https://github.com/sudosylabs/Proctor/blob/main/server/README.md)
-  owns server configuration and verification commands.
-- <Link to="/api/">API guide</Link> leads to the generated System reference for
-  public liveness, readiness, discovery, and version contracts.
-
-## Before Production Use
-
-Confirm TLS termination, database recovery, object-storage durability, mail
-delivery, log retention, metrics access, time synchronization, and dependency
-failure behavior in the environment that will host the institution. Production
-examples must use redundant infrastructure before they are described as highly
-available.
+PostgreSQL commits before cache invalidation, peer fan-out, WebSocket
+publication, execution projection, or SMTP delivery. A failure of a transient
+effect is recovered by durable state and refetch, not by treating that effect
+as the source of truth.

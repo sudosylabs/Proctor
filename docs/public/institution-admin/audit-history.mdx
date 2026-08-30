@@ -1,0 +1,52 @@
+---
+title: Inspect Audit History
+description: Review structural, identity, authority, and security-sensitive decisions through the caller's authorized scope.
+audience: institution-administrator
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Inspect Audit History
+
+Audit history is durable PostgreSQL authority for security-sensitive attempts,
+mutations, and authorization decisions. Operational logs explain process
+behavior; they are not a substitute for audit.
+
+## Choose the Correct Visibility Boundary
+
+Institution-wide `audit.view` can reach the full authorized Institution event
+set. `academic_audit.view` is narrower: it includes only academic mutations,
+Invitations, batches, and decisions whose scope resolves to an authorized
+Academic Unit or Class subtree. It excludes unrelated identity, provider, and
+security events.
+
+An Affiliation alone does not expose a User through a Unit. The caller needs a
+current relationship-based visibility anchor and the applicable audit action.
+Changing the caller's bindings changes subsequent audit visibility; a previous
+page is not an authorization receipt.
+
+## Read Events as Decisions, Not Payload Archives
+
+Use the stable action, typed resource, resolved academic scope, outcome, actor
+or principal, request context, and server time. Safe prior/result projections
+are bounded. Credentials, provider claims, Invitation claims, Exam answers,
+file contents, private Review rationale, and unbounded user input must not be
+present.
+
+When investigating a change:
+
+1. start with a narrow time and resource filter;
+2. page with the returned keyset cursor without changing filters;
+3. correlate a safe `request_id` with operational logs when necessary;
+4. distinguish `attempt`, `success`, `fail`, `allow`, and `deny`; and
+5. record the audit event ID in the investigation, not a copied private
+   payload.
+
+Authorization decisions that require audit fail closed when their durable
+record cannot be written. A critical mutation may retain an unresolved attempt
+if terminal audit completion fails after commit; operators reconcile that
+condition rather than inventing a successful outcome from logs.
+
+The API traversal and cursor rules are in
+<Link to="/api/recipes/consume-audit">Consume Audit History</Link>.

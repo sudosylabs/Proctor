@@ -14,10 +14,18 @@ Proctor exposes one authenticated WebSocket endpoint at `/api/v1/websocket`.
 Realtime delivery accelerates an interface; durable HTTP resources remain the
 authority.
 
-Browser connections use the interactive Session cookie and must present the
-installation's exact allowed Origin. Native clients can use an allowed bearer
-credential and may omit Origin. The connection handshake does not grant every
-subscription: each subscription action and resource is authorized separately.
+Browser connections use the Web Session cookie and must present the
+installation's exact allowed Origin. A Web client using an allowed Web Session
+access credential may use bearer transport. Proctor Desktop instead presents
+its Desktop Session as `Authorization: DPoP …` with a fresh proof for the
+WebSocket handshake and current server nonce; a Desktop credential is never a
+bearer credential. Non-browser clients may omit Origin.
+
+The connection handshake authenticates one Session but does not grant every
+subscription. Each subscription action and exact resource is authorized
+separately. Candidate admission additionally requires the registered-key
+Desktop Session and the exact Desktop compatibility inputs enforced by the
+Attempt protocol.
 
 See <Link to="/api/reference/connect-web-socket">Connect WebSocket</Link> for the current
 handshake parameters and protocol schemas.
@@ -46,4 +54,6 @@ After upgrade, protocol errors use stable typed WebSocket envelopes rather
 than RFC 9457 Problem Details. Handle an unknown event or error type
 defensively, preserve ordering within its documented scope, and reconnect with
 bounded backoff. Avoid tight reconnect loops after authentication or
-authorization rejection.
+authorization rejection. A failed DPoP handshake can return a replacement
+`DPoP-Nonce`; reconnect with a newly signed proof rather than replaying the
+upgrade request byte-for-byte.

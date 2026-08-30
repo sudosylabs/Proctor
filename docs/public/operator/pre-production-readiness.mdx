@@ -1,0 +1,69 @@
+---
+title: Evaluate Pre-production Readiness
+description: Verify the implemented runtime in a representative environment while keeping unsupported production claims explicitly blocked.
+audience: operator
+maturity: preview
+---
+
+# Evaluate Pre-production Readiness
+
+Use this checklist to evaluate the current preview runtime. Passing it proves
+only the environment and scenarios you exercised; it is not Proctor production
+certification.
+
+## Artifact and Identity
+
+- archive checksum or image digest recorded;
+- binary `version --json`, `BUILD_METADATA`, and hosted build identity match;
+- configuration example copied rather than used as a secret-bearing source;
+- service runs non-root with an immutable application payload.
+
+## Configuration and Secrets
+
+- `config validate` passes for every node's effective inputs;
+- config/environment/secret files have least-readable ownership and modes;
+- bootstrap, MFA, mail, Memberlist, TLS, metrics, execution, and dependency
+  secrets are independent and rotation ownership is recorded;
+- every restart-required change is documented in the deployment procedure.
+
+## Traffic and Topology
+
+- canonical HTTPS `PublicURL`, proxy, WebSocket, upload, redirect, and DPoP
+  target behavior are tested end to end;
+- application, metrics, and cluster listeners are exposed only to intended
+  networks;
+- load balancer uses readiness and respects drain;
+- shared PostgreSQL/Redis/VFS and unique stable Node IDs are verified when
+  using Memberlist;
+- the tracked single-container Compose example is not presented as HA.
+
+## Lifecycle and Failure Exercises
+
+- cold startup, repeated startup failure, SIGTERM drain, and restart succeed;
+- serving-lease or metrics failure removes readiness and stops serving;
+- one application node can be removed and restored in the tested topology;
+- delayed/lost peer notification recovers through refetch and durable state;
+- queued Job and mail retry/cancellation behavior is understood;
+- execution-host loss preserves authoritative Workspace state;
+- administrator recovery is rehearsed only in an isolated non-production copy.
+
+## Data and Diagnostics
+
+- PostgreSQL and VFS are recognized as the recovery set; Redis is disposable;
+- logs, metrics, traces, screenshots, and tickets are reviewed for credential,
+  student, Exam, Workspace, mail, and private Review leakage;
+- metrics access is loopback or protected by both TLS and bearer token;
+- synthetic data is used in operational screenshots and reports.
+
+## Claims That Remain Blocked
+
+Do not publish or rely on a Proctor-supported production matrix, sizing table,
+backup/restore guarantee, RPO/RTO, stable upgrade/mixed-version/rollback policy,
+alert thresholds, support bundle, release support window, security-update SLA,
+or certified execution-host capacity. Each requires explicit decisions and
+evidence in a declared environment.
+
+The tracked systemd and container definitions are hardened implementation
+examples. They are not certifications for a particular operating system,
+orchestrator, cloud, database service, object store, mail relay, identity
+provider, or execution host.

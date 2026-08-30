@@ -79,7 +79,8 @@ paths:
             curl --fail-with-body \
               --request POST \
               --url 'https://proctor.example.edu/api/v1/exam-attempts/<exam-attempt-id>/submissions' \
-              --header 'Authorization: Bearer <candidate-session-access-token>' \
+              --header 'Authorization: DPoP <desktop-session-access-credential>' \
+              --header 'DPoP: <fresh-proof-for-this-post-target-and-current-nonce>' \
               --header 'X-Proctor-Attempt-Credential: <attempt-credential>' \
               --header 'X-Proctor-Attempt-Connection-ID: <attempt-connection-id>' \
               --header 'Idempotency-Key: docs-submit-001' \

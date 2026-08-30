@@ -4,6 +4,9 @@ import styles from './styles.module.css';
 
 export const DOC_ICON_NAMES = [
   'deployment',
+  'account',
+  'exam',
+  'candidate',
   'institution',
   'assurance',
   'integration',
@@ -26,6 +29,27 @@ const geometry: Record<DocIconName, React.ReactNode> = {
       <rect height="6" rx="2" width="18" x="3" y="3" />
       <rect height="6" rx="2" width="18" x="3" y="15" />
       <path d="M7 6h.01M7 18h.01M11 6h6M11 18h6" />
+    </>
+  ),
+  account: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+      <path d="M17 5 19 7 21 4.5" />
+    </>
+  ),
+  exam: (
+    <>
+      <path d="M7 3h10a2 2 0 0 1 2 2v16H5V5a2 2 0 0 1 2-2Z" />
+      <path d="M8 8h8M8 12h5M8 16h3" />
+      <path d="m14 16 1.5 1.5L19 14" />
+    </>
+  ),
+  candidate: (
+    <>
+      <rect height="12" rx="2" width="18" x="3" y="4" />
+      <path d="M8 20h8M12 16v4" />
+      <path d="m8 10 2.5 2.5L16 7" />
     </>
   ),
   institution: (

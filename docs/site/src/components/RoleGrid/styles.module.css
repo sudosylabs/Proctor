@@ -22,6 +22,14 @@
   border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
 }
 
+.card:nth-child(4n + 1):not(:first-child) {
+  border-left: 0;
+}
+
+.card:nth-child(n + 5) {
+  border-top: var(--proctor-stroke-hairline) solid var(--proctor-border);
+}
+
 .card::before {
   background: var(--proctor-primary);
   content: "";
@@ -104,7 +112,15 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .card:nth-child(3) {
+  .card + .card {
+    border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  }
+
+  .card:nth-child(4n + 1):not(:first-child) {
+    border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
+  }
+
+  .card:nth-child(2n + 1):not(:first-child) {
     border-left: 0;
   }
 

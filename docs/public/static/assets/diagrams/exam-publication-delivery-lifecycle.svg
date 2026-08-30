@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
   <title id="title">Exam publication and delivery boundary</title>
-  <desc id="description">An Exam owns one mutable Draft. Publishing freezes an immutable numbered Exam Revision before an Exam Sitting selects it for delivery. The first eligible connection creates one Exam Attempt, and submission or automatic sealing creates one terminal Submission.</desc>
+  <desc id="description">An Exam owns one mutable Draft. Publishing freezes title, typed Exam and Browser policies, Resources, Starter Workspace, Execution Profile, and capacity into an immutable numbered Exam Revision before an Exam Sitting selects it for delivery. A live correction creates a new Revision for one open or paused Sitting while preserving policy, starter, execution, eligibility, and schedule. The first eligible connection creates one Exam Attempt, and submission or automatic sealing creates one terminal Submission.</desc>
   <defs>
     <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
       <path d="M 8 0 H 0 V 8" fill="none" stroke="#f4f1f6" stroke-width="1"/>
@@ -56,15 +56,15 @@
   <text x="632" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">explicit time window</text>
   <text x="632" y="304" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SCHEDULE → CLOSED</text>
 
-  <path d="M 768 248 H 800" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
+  <path d="M 768 248 H 792" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow-primary)"/>
 
-  <rect x="800" y="160" width="144" height="176" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
-  <text x="824" y="204" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Attempt</text>
-  <text x="824" y="236" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one per student</text>
-  <text x="824" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">and Sitting</text>
-  <text x="824" y="304" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ACTIVE / SUSPENDED</text>
+  <rect x="792" y="160" width="160" height="176" rx="16" fill="#ffffff" stroke="#5c00aa" stroke-width="2"/>
+  <text x="816" y="204" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Exam Attempt</text>
+  <text x="816" y="236" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">one per student</text>
+  <text x="816" y="268" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">and Sitting</text>
+  <text x="816" y="304" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ACTIVE / SUSPENDED</text>
 
-  <path d="M 944 248 H 976" fill="none" stroke="#0b766e" stroke-width="3" marker-end="url(#arrow-complete)"/>
+  <path d="M 952 248 H 976" fill="none" stroke="#0b766e" stroke-width="3" marker-end="url(#arrow-complete)"/>
 
   <rect x="976" y="144" width="168" height="208" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
   <text x="1000" y="188" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Submission</text>
@@ -74,7 +74,16 @@
   <path d="M 1000 296 H 1120" fill="none" stroke="#0b766e" stroke-width="1"/>
   <text x="1000" y="328" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">TERMINAL</text>
 
-  <path d="M 56 472 V 488 H 1144 V 472" fill="none" stroke="#655f69" stroke-width="1"/>
-  <text x="600" y="528" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Only the Draft changes. Publishing freezes a Revision before delivery begins.</text>
-  <text x="600" y="552" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Submission and automatic Sitting closure converge on one terminal result.</text>
+  <rect x="216" y="384" width="928" height="80" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="240" y="418" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">REVISION FREEZES</text>
+  <text x="240" y="444" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Text + typed policies</text>
+  <path d="M408 400V448M640 400V448M888 400V448" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="432" y="430" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Resources + Starter Workspace</text>
+  <text x="664" y="430" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Execution Profile</text>
+  <text x="912" y="430" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Capacity limits + digests</text>
+
+  <path d="M 56 504 V 520 H 1144 V 504" fill="none" stroke="#655f69" stroke-width="1"/>
+  <text x="600" y="556" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Only the Draft changes. Publishing freezes a Revision before delivery begins.</text>
+  <text x="600" y="584" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Live correction creates a new Revision for one Sitting: instructions, Resources, and Browser Policy only.</text>
+  <text x="600" y="612" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Submission and automatic Sitting closure converge on one terminal result.</text>
 </svg>

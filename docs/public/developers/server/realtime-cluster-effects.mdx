@@ -64,12 +64,45 @@ A failed post-commit publication is reported as a bounded transient diagnostic.
 It must not turn a successful durable mutation into a rollback claim or cause
 the application to repeat the mutation.
 
+## Invalidate Derived Collections Deliberately
+
+Candidate Exam Activity and the manager candidate-status board are derived,
+paginated projections. A mutation that changes their answer publishes a
+selector-only refetch hint after commit; it does not attempt to patch one
+client's current page or carry the changed record on the wire.
+
+`server/app/exam_collection_invalidations.go` owns the fan-out rules:
+
+- `CandidateActivityChangedForSitting` pages through affected candidate
+  identities in bounded groups and emits one self-scoped activity hint;
+- `SittingBoardChanged` emits one Exam-and-Sitting selector for authorized
+  managers; and
+- `ExamArchived` pages through affected Sittings and invalidates both views.
+
+Keep the query projection and the invalidation selector separate. The event
+must contain only the identifiers needed to refetch; no candidate row, Session,
+Registration, Participation, Connection, Browser Activity, evidence, private
+reason, or Review decision belongs in it. Fan-out may partially fail after the
+durable mutation, so join bounded publication errors for diagnostics and rely
+on reconnect or ordinary refetch for convergence.
+
+When adding a state transition, inspect its effect on both collections. Sitting
+schedule and lifecycle changes, corrections, enrollment changes, Attempt and
+Submission transitions, Review release, and Exam archival do not all have the
+same audience. Wire the smallest owning invalidation helper only after commit.
+Test event privacy in
+`server/app/realtime/exam_collection_invalidation_event_test.go`, fan-out and
+mutation placement beside the owning application tests, and HTTP projection
+shape in `server/httpapi/exam_attempt_openapi_agreement_test.go`.
+
 ## Establish and Authorize Connections
 
 The HTTP route catalog owns the named WebSocket upgrade. Cookie-authenticated
-upgrades require the exact configured public Origin; bearer-authenticated
-native clients may omit Origin. A successful upgrade transfers the connection
-to the sibling WebSocket transport.
+Web Session upgrades require the exact configured public Origin. A Web Session
+access credential may use an allowed bearer transport; a Desktop Session must
+use `Authorization: DPoP` and a fresh proof for the handshake. Non-browser
+clients may omit Origin. A successful upgrade transfers the connection to the
+sibling WebSocket transport.
 
 Each connection retains:
 

@@ -1,0 +1,69 @@
+---
+title: Errors, Limits, and Compatibility
+description: Review safe Problem Details, concealment, input bounds, idempotency, client compatibility, and pre-release contract limits.
+audience: security-reviewer
+maturity: preview
+---
+
+# Errors, Limits, and Compatibility
+
+Public errors help an authorized client recover without exposing internal or
+protected state. Limits prevent untrusted input and retained evidence from
+becoming unbounded work. Compatibility checks keep unsupported clients from
+entering security-sensitive delivery.
+
+## Problem Details and Concealment
+
+Expected failures use stable dotted application codes and an allowlist of safe
+typed fields. HTTP maps them to RFC 9457 Problem Details; WebSocket uses its own
+versioned error envelope. Localized title/detail are presentation. SQL errors,
+provider payloads, stack traces, private IDs/state, and arbitrary strings stay
+internal.
+
+Unknown or undeclared failures become one correlated internal error and are
+logged once at the outer boundary. A protected resource may return not found for
+denied, absent, mismatched, or unreleased states when existence is sensitive.
+The response must not vary across those cases.
+
+## Bounded Inputs and Work
+
+The runtime applies header/body limits and per-operation stricter bounds before
+decoding or streaming. JSON is strict where declared. Collections use bounded
+pages and opaque cursors. WebSocket frames, replay, queues, fan-out, Browser
+Activity batches/sources/gaps, evidence, Reviews, uploads, Workspace paths,
+mail, Jobs, logs, and configuration values all have closed limits.
+
+Rejecting an oversized or malformed value is safer than truncating it into a
+different semantic command. Inventory limits during integrity finalization are
+errors to investigate, not permission to omit evidence.
+
+## Idempotency and Unknown Outcomes
+
+Security-sensitive mutations declare whether idempotency is required. Exact
+replay returns the retained semantic outcome after current authorization; a
+changed body conflicts. Transport credentials and fresh DPoP proof are not part
+of the semantic fingerprint. Unknown storage outcomes retain staged bytes or
+in-progress state until replay or bounded reconciliation resolves authority.
+
+## Desktop and Node Compatibility
+
+`system/ping` compares Desktop release, build ID, platform, architecture, and
+realtime protocol against the compiled catalog and current policy. Unsupported,
+revoked, too-old, too-new, maintenance, and protocol-incompatible clients are
+denied before admission. The client cannot self-assert compatibility.
+
+Memberlist peers advertise compiled protocol metadata. Malformed, duplicate,
+or incompatible peers are rejected during join and later admission. Lost peer
+messages do not affect durable correctness.
+
+## API and Release Compatibility
+
+The API uses `/api/v1`, but the product has not made its first supported-release
+compatibility commitment. During this pre-release period, server, OpenAPI,
+agreement tests, and compatible clients move together. Development databases
+from earlier incompatible baseline histories must be recreated; the server does
+not fabricate lifecycle facts to migrate them.
+
+{/* TODO(security-support-deprecation): Define supported release channels,
+security-update windows, stable API deprecation notice, and mixed-version client
+policy before converting pre-release compatibility text into a support promise. */}

@@ -1,0 +1,64 @@
+---
+title: Content, Workspace, Submission, and Execution Security
+description: Review semantic metadata authority, opaque byte storage, protected Workspace operations, immutable Submission access, and isolated execution projection.
+audience: security-reviewer
+maturity: preview
+---
+
+# Content, Workspace, Submission, and Execution Security
+
+PostgreSQL decides what content means and who may access it. VFS stores opaque
+bytes. Execution hosts receive replaceable projections. None of those outer
+systems can grant application authority from an object key, path, host address,
+or local filesystem state.
+
+## Managed Content
+
+Uploads are bounded before and during streaming, content-typed from bytes, and
+staged under private unguessable keys. Required inspection and renditions finish
+before a named Store operation makes metadata Available. Unknown database
+outcomes retain staged objects until reference-aware cleanup can prove deletion
+safe.
+
+Protected downloads authorize semantic metadata before opening bytes. They
+return explicit media type, length, ETag, private/no-store cache policy, and
+`nosniff` behavior. Proctor does not expose public or signed object-storage URLs.
+
+## Attempt Workspace and Submission
+
+Workspace paths are normalized, bounded, case-sensitive POSIX-relative metadata.
+Traversal, links, devices, sockets, and `.proctor` candidate writes are denied.
+Every mutation fences current Participation, generation, credential, Session,
+Connection, expected entry/path/version state, and Attempt-scoped idempotency.
+
+Submission pins acknowledged logical entries and content versions without
+duplicating bytes. Managers can inspect the immutable Submission only after
+sealing and cannot read live Workspace content. Candidates receive a safe
+receipt and do not browse the sealed manifest or files.
+
+<GovernedFigure asset="submission-provenance-boundary" />
+
+## Execution Hosts
+
+An Execution Profile selects a reviewed image and network mode. It does not
+select a host. The application places one opaque grant on a configured host,
+projects acknowledged Workspace state, and can freeze, thaw, replace, or revoke
+that projection.
+
+Hosts never receive Proctor Sessions, Participation credentials, general VFS
+credentials, or authorization policy. Candidates never receive host addresses
+or grants. Guest changes pass the same path/quota validation and PostgreSQL
+acknowledgement before becoming durable. PTY bytes are not logs, audit, domain
+events, Workspace mutations, or integrity evidence.
+
+Production use requires independently isolated execution hosts. The in-memory
+adapter is test-only. Certified images, host hardening, capacity, and network
+policy remain operator/release responsibilities until production certification.
+
+## Browser and Execution Are Different Surfaces
+
+The governed Browser follows a frozen allowlist and records minimized top-level
+activity. The Attempt Terminal operates the isolated Workspace image. Browser
+page content does not enter evidence, and terminal output/source code does not
+become Browser Activity. A failure in either surface must not silently broaden
+the other.

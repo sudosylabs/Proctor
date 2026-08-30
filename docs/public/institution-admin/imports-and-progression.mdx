@@ -1,0 +1,82 @@
+---
+title: Run Imports and Student Progression
+description: Review immutable CSV previews, commit independent rows, cancel safely, and retain membership history during transfer or progression.
+audience: institution-administrator
+maturity: preview
+---
+
+import Link from '@docusaurus/Link';
+
+# Run Imports and Student Progression
+
+Use bounded JSON batches for at most 200 typed items. Use CSV imports for
+larger file-driven work. Neither surface is an arbitrary command interpreter:
+identity attachment, password assignment, MFA removal, permanent deletion, and
+bulk User merge remain outside these workflows.
+
+<GovernedFigure asset="onboarding-import-timeline" />
+
+## Select Scope Outside the File
+
+Student Class and teacher Academic Unit imports select their exact target in
+the request, not in a user-editable row. Institution-wide onboarding may use
+canonical target names defined by the schema. Existing-User academic
+administration selects one Institution, Unit, or Class scope outside the file;
+no row can escape it.
+
+The initial CSV boundary is 10 MiB and 50,000 data rows, UTF-8 with optional
+BOM, RFC 4180-compatible quoting, unique bounded headers and fields, and no NUL
+or invalid Unicode. Unknown columns are ignored only as documented and their
+names are surfaced once in preview so misspellings are visible.
+
+## Treat Preview as the Review Boundary
+
+Upload creates a validation Job and performs no account, membership, Role, or
+delivery mutation. Complete validation resolves canonical names to exact IDs
+and revisions, normalizes rows, deletes the original CSV bytes, and freezes an
+immutable content-digested preview.
+
+Review:
+
+- scope, mode, digest, total rows, unknown headers, and validation counts;
+- every invalid or duplicate row;
+- resolved User, relationship, target and Role revisions; and
+- effective bounds and explicit no-op outcomes.
+
+Choose `require_all_valid` to refuse commit when any preview row is invalid, or
+`valid_rows_only` to skip invalid preview rows. Runtime state can still change
+after preview, so execution reauthorizes and revalidates each row.
+
+## Understand Partial Completion
+
+Each row commits as one named atomic aggregate and rows remain independent.
+A later conflict yields `completed_with_errors`; it does not roll back earlier
+successful rows. Cancellation stops new rows and lets a row already committing
+finish. It never rolls back completed work.
+
+Recovery is explicit compensation: inspect the retained report, decide which
+successful effects should be reversed, and invoke their normal end, revoke, or
+replacement use cases with fresh authorization. Do not rerun the entire file
+under new row keys merely to hide partial results.
+
+Reports retain source row number, safe reference, normalized operation, status,
+created IDs, and public error code for the bounded retention window. Download
+reauthorizes and escapes spreadsheet formulas. Generic Job views, logs, metrics,
+and audit contain safe IDs, counts, timing, and closed codes—not full rows or
+recipient lists.
+
+## Transfer or Progress Students
+
+Student progression always names exact source and destination Periods and
+Classes plus an effective instant. Dry-run every student conflict before
+commit.
+
+- A same-Period transfer atomically ends and replaces the active Class
+  membership.
+- Progression into another Period creates new history without rewriting the
+  old membership.
+- Every student commits independently; failures remain in the report.
+- A student may have at most one active Class membership in an Academic Period.
+
+For exact request and Job transitions, follow
+<Link to="/api/recipes/onboarding-imports-and-progression">Onboarding Imports and Progression</Link>.

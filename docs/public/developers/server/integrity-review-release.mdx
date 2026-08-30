@@ -1,0 +1,102 @@
+---
+title: Develop Integrity Review and Result Release
+description: Keep evidence collection, private manager interpretation, immutable finalization, and narrow candidate release as separate capabilities.
+audience: developer
+maturity: preview
+slug: /developers/server/integrity-review-release/
+---
+
+# Develop Integrity Review and Result Release
+
+Integrity collection and Review deliberately live on opposite sides of the
+Submission boundary. Collection creates bounded facts and uncertainty. Review
+adds manager interpretation. Release exposes only approved candidate-facing
+remarks. Do not merge these stages into one mutable “result” object.
+
+<GovernedFigure asset="integrity-review-release-boundary" />
+
+## Work in the Review Module
+
+`server/app/exam/review` owns post-Submission inspection, revision-fenced
+decisions and draft remarks, finalization, release, late-discrepancy inspection,
+and the candidate projection. It depends on the bounded Review Store contract,
+authorization, audit, safe Markdown, and realtime ports. It does not own
+collection, Submission sealing or content, HTTP, SQL, grading, or academic
+outcomes.
+
+The parent `server/app/exam_reviews.go` is the public facade. HTTP DTOs and
+route declarations live in `server/httpapi/exam_review.go`. Authored schemas
+live in `server/openapi/fragments/integrity-review` and the candidate result
+fragment under `submissions`.
+
+## Treat Every Manager Edit as Concurrent
+
+One Review revision advances for private notes, student remarks, decisions,
+finalization, and release. Each Flag has one decision revision as an additional
+fence. Initial creation uses zero; later mutations require the exact current
+identities and revisions. A stale command conflicts rather than silently
+overwriting another manager.
+
+Outcomes are closed to `confirmed`, `dismissed`, and `inconclusive`. They are
+non-academic integrity dispositions. The private rationale is required,
+trimmed, bounded, and absent from candidate projections. Student Markdown is
+bounded, stored as reviewed text, and sanitized again when projected.
+
+## Finalize a Complete Frozen Inventory
+
+Finalization requires terminal `settled` or `gapped` collection and one current
+decision for every Flag. The named Store operation locks the Submission and
+Review, verifies the exact revision, and freezes stable Flag, evidence,
+discrepancy, decision, and decision-revision identities in a canonical SHA-256
+digest.
+
+The limits—200 Flags, 20,000 evidence rows, and 200 discrepancies—are integrity
+guards. Do not page around them or truncate data in application code. A limit
+failure remains visible for investigation.
+
+Finalized Reviews are immutable. Rows serialized before finalization enter the
+digest; late records enter append-only discrepancies and never rewrite it.
+
+## Release Less Than Managers Can See
+
+Release is a separate authorization action, audit record, revision fence, and
+idempotent Store transition. Before release, the candidate selector returns the
+same concealed not-found shape as an unavailable result. After release, it
+returns only Review, Submission, and Attempt IDs, sanitized approved remarks,
+and release time.
+
+Never reuse the manager Review DTO for the candidate. A future field added to
+that DTO must not leak evidence, decisions, private notes, rationale, manifest,
+or academic data. Keep an independently declared candidate response schema and
+an explicit mapper with omission tests.
+
+## Order State and Effects
+
+Authorization and required audit prepare before the named atomic mutation.
+Durable Review state, audit, and idempotent outcome commit together. Only then
+publish minimal manager or candidate refetch events. Events contain safe IDs,
+state, revision, and time—not remarks, rationale, evidence, or files.
+
+An exact replay repeats current authorization and audit policy but returns the
+retained result without duplicating publication. A post-commit event failure is
+observable operationally and recoverable by refetch; it never rolls release
+back.
+
+## Focused Verification
+
+```sh
+cd server
+go test ./model -run 'TestSubmissionReview|TestIntegrityReview'
+go test ./app/exam/review ./app -run 'Test.*Review|Test.*Release'
+go test ./store/sqlstore -run 'Test.*IntegrityReview'
+go test ./httpapi -run 'Test.*IntegrityReview|Test.*Student.*Result'
+go test -race ./app/exam/review ./app
+make openapi-agreement
+make architecture
+```
+
+Cover initial creation, stale Review and decision revisions, every disposition,
+missing decisions, nonterminal collection, inventory limits, concurrent late
+records, finalization immutability, pre-release concealment, candidate-field
+omission, exact retry, authorization revocation, audit failure, and post-commit
+effect failure.

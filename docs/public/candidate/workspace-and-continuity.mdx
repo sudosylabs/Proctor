@@ -1,0 +1,60 @@
+---
+title: Keep Work and Continuity Acknowledged
+description: Distinguish local editing, remotely authoritative Workspace state, Connection liveness, Participation renewal, reconnect, and Suspension.
+audience: candidate
+maturity: preview
+---
+
+# Keep Work and Continuity Acknowledged
+
+The Attempt Workspace is remotely authoritative. A local editor buffer,
+terminal filesystem, WebSocket write, or “saved” indicator is not durable until
+the server acknowledges the exact mutation and Workspace Cursor.
+
+## Work Inside the Protected Workspace
+
+The Starter Workspace is copied logically into one private Attempt Workspace.
+Exam Resources remain read-only outside it. Workspace paths are case-sensitive
+POSIX-relative values and `.proctor` is reserved. Links, devices, sockets,
+traversal, and recursive deletion of non-empty directories are rejected.
+
+Each file has a stable Entry identity, mutable path, and opaque current Content
+Version. Create, replace, move, and delete compare expected state and use an
+Attempt-scoped idempotency key. After acknowledgement, retain the new Content
+Version and Workspace Cursor.
+
+An enabled Attempt Terminal is a non-authoritative projection of the same
+Workspace. Guest changes become durable only after the server harvests,
+validates, and acknowledges them. Ignored build/dependency trees and paths
+outside the Workspace mount remain ephemeral and do not enter Submission.
+
+## Separate Ping, Renewal, and Connection
+
+<GovernedFigure asset="participation-lease-timeline" />
+
+- WebSocket ping tests transport liveness only.
+- Authenticated Participation renewal proves the generation and advances its
+  PostgreSQL lease through a monotonic sequence.
+- A Connection is one durable transport child of the current Participation.
+
+Desktop schedules renewal at the server-provided interval. A duplicate sequence
+returns its retained result; a stale sequence cannot extend the lease. Brief
+reconnect before expiry may retain the generation. Expiry permanently fences
+it, closes the Connection, records neutral Connection Loss evidence, and
+suspends the Attempt.
+
+One failed request or ping is not Connection Loss. Confirmed lease expiry is.
+The candidate message should say secure continuity could not be renewed, not
+accuse the candidate or reveal internal lease/generation vocabulary.
+
+## Recover From Interruption
+
+After a recoverable reconnect, refetch the presentation and reconcile the
+ordered Workspace journal from the last acknowledged cursor. If history cannot
+bridge the cursor, replace the local view from a complete manifest. Never push
+an unacknowledged local tree over authoritative state.
+
+After expiry, Kick, or automatic Suspension, only an authorized Manager can
+re-allow the exact episode. Fresh admission creates a new Participation
+generation; prior credentials, sequence numbers, and Connections remain fenced.
+The same Attempt, Workspace, configuration, Flags, and evidence continue.

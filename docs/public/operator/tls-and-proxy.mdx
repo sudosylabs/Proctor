@@ -1,0 +1,67 @@
+---
+title: Configure TLS, Forwarding, and a Reverse Proxy
+description: Select external termination, static TLS, or single-node Let's Encrypt while preserving canonical origins, redirects, WebSocket, and private cluster boundaries.
+audience: operator
+maturity: preview
+---
+
+# Configure TLS, Forwarding, and a Reverse Proxy
+
+`Server.PublicURL` is the canonical public origin used for redirects, DPoP
+target binding, hosted authentication, cookies, and Desktop discovery. Set it
+to the exact HTTPS origin users and Desktop clients reach. Do not derive public
+authority from an inbound `Host` header.
+
+## Choose One Public TLS Model
+
+### External Termination
+
+Set `Server.TLS.Mode` to `disabled` only when a trusted reverse proxy or load
+balancer terminates public TLS. Restrict the application listener to the proxy
+network. Forward HTTP and WebSocket traffic without changing the public origin,
+request method, path, query, or upgrade semantics.
+
+For active-active deployments, external termination and HTTP-to-HTTPS
+forwarding belong at the redundant load balancer. Use readiness for backend
+selection. Static TLS may still protect the proxy-to-node hop.
+
+### Static TLS
+
+Set mode `static` with a certificate and matching private key readable only by
+the service account. The runtime requires TLS 1.2 or newer. Optional HTTP
+forwarding binds a distinct listener and redirects to the configured public
+authority while preserving path and query.
+
+Rotate files as one coherent identity and restart. Validate the hostname,
+chain, expiry, key permissions, and client trust from the actual traffic path.
+
+### Built-in Let's Encrypt
+
+Mode `lets_encrypt` is a single-node convenience. It requires an HTTPS
+`PublicURL` with one fully qualified DNS hostname, persistent private writable
+cache, HTTP forwarding, public DNS, and certificate-authority reachability on
+ports 80 and 443. Certificate maintenance starts and stops with HTTP serving.
+
+Let's Encrypt is rejected in Memberlist mode because its cache and issuance are
+node-local and uncoordinated.
+
+## Keep Other TLS Boundaries Separate
+
+- a non-loopback metrics listener requires its own static TLS identity and
+  bearer token;
+- PostgreSQL, Redis, S3, SMTP, providers, and execution hosts use their own
+  client/server trust configuration;
+- Memberlist uses gossip encryption, not public TLS; and
+- no TLS private key may substitute for MFA, mail, DPoP, or cluster key material.
+
+## Proxy Review Checklist
+
+- preserve WebSocket upgrade and long-lived connection behavior;
+- do not cache authenticated, no-store, or candidate delivery responses;
+- preserve request size/time bounds rather than adding an unbounded buffer;
+- pass a stable request correlation mechanism without trusting client identity
+  headers as authentication;
+- remove unready nodes before drain and allow the configured shutdown window;
+- restrict application and cluster listeners to intended networks; and
+- test public discovery, login cookies, DPoP target URI, redirects, upload,
+  WebSocket, and large-but-valid responses through the complete path.

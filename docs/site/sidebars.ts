@@ -5,9 +5,43 @@ const sidebars: SidebarsConfig = {
     {type: 'doc', id: 'index', label: 'Overview'},
     {
       type: 'category',
+      label: 'Use Your Account',
+      collapsed: false,
+      link: {type: 'doc', id: 'account/index'},
+      items: [
+        {type: 'doc', id: 'account/access', label: 'Sign In and Recover Access'},
+        {type: 'doc', id: 'account/security', label: 'Secure Your Account'},
+        {type: 'doc', id: 'account/desktop-authorization', label: 'Authorize Proctor Desktop'},
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Take an Exam',
+      collapsed: false,
+      link: {type: 'doc', id: 'candidate/index'},
+      items: [
+        {type: 'doc', id: 'candidate/prepare-and-enter', label: 'Prepare and Enter'},
+        {type: 'doc', id: 'candidate/workspace-and-continuity', label: 'Workspace and Continuity'},
+        {type: 'doc', id: 'candidate/browser-and-privacy', label: 'Browser and Privacy'},
+        {type: 'doc', id: 'candidate/submit-and-recover', label: 'Submit and Recover'},
+        {type: 'doc', id: 'candidate/released-result', label: 'Released Result'},
+      ],
+    },
+    {
+      type: 'category',
       label: 'Run Proctor',
       collapsed: false,
-      items: [{type: 'doc', id: 'operator/index', label: 'Deployment Overview'}],
+      link: {type: 'doc', id: 'operator/index'},
+      items: [
+        {type: 'doc', id: 'operator/package-and-install', label: 'Package and Install'},
+        {type: 'doc', id: 'operator/configuration-and-secrets', label: 'Configuration and Secrets'},
+        {type: 'doc', id: 'operator/systemd-and-container', label: 'Systemd and Container'},
+        {type: 'doc', id: 'operator/topology-and-dependencies', label: 'Topology and Dependencies'},
+        {type: 'doc', id: 'operator/tls-and-proxy', label: 'TLS and Proxy'},
+        {type: 'doc', id: 'operator/health-and-observability', label: 'Health and Observability'},
+        {type: 'doc', id: 'operator/maintenance-and-recovery', label: 'Maintenance and Recovery'},
+        {type: 'doc', id: 'operator/pre-production-readiness', label: 'Pre-production Readiness'},
+      ],
     },
     {
       type: 'category',
@@ -15,7 +49,41 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         {type: 'doc', id: 'institution-admin/index', label: 'Institution Setup'},
-        {type: 'doc', id: 'security/index', label: 'Security Review'},
+        {type: 'doc', id: 'institution-admin/access-policy', label: 'Access Policy'},
+        {type: 'doc', id: 'institution-admin/academic-structure', label: 'Academic Structure'},
+        {type: 'doc', id: 'institution-admin/people-and-authority', label: 'People and Scoped Authority'},
+        {type: 'doc', id: 'institution-admin/onboarding', label: 'Invitations and Onboarding'},
+        {type: 'doc', id: 'institution-admin/imports-and-progression', label: 'Imports and Progression'},
+        {type: 'doc', id: 'institution-admin/audit-history', label: 'Audit History'},
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Manage Exams',
+      collapsed: false,
+      link: {type: 'doc', id: 'exam-manager/index'},
+      items: [
+        {type: 'doc', id: 'exam-manager/author-and-publish', label: 'Author and Publish'},
+        {type: 'doc', id: 'exam-manager/resources-and-workspace', label: 'Resources and Starter Workspace'},
+        {type: 'doc', id: 'exam-manager/execution-profile', label: 'Execution Profile'},
+        {type: 'doc', id: 'exam-manager/sitting-operations', label: 'Sitting Operations'},
+        {type: 'doc', id: 'exam-manager/corrections-and-attempt-control', label: 'Corrections and Attempt Control'},
+        {type: 'doc', id: 'exam-manager/submission-and-integrity-review', label: 'Submission and Integrity Review'},
+        {type: 'doc', id: 'exam-manager/finalize-and-release', label: 'Finalize and Release'},
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Review Security',
+      collapsed: false,
+      link: {type: 'doc', id: 'security/index'},
+      items: [
+        {type: 'doc', id: 'security/threat-model', label: 'Threat Model and Trust Boundaries'},
+        {type: 'doc', id: 'security/credentials-authorization', label: 'Credentials and Authorization'},
+        {type: 'doc', id: 'security/data-privacy', label: 'Data and Privacy'},
+        {type: 'doc', id: 'security/keys-network', label: 'Keys, Certificates, and Network'},
+        {type: 'doc', id: 'security/content-execution', label: 'Content and Execution'},
+        {type: 'doc', id: 'security/errors-limits-compatibility', label: 'Errors, Limits, and Compatibility'},
       ],
     },
     {
@@ -96,6 +164,11 @@ const sidebars: SidebarsConfig = {
                     },
                     {
                       type: 'doc',
+                      id: 'developers/server/desktop-trust-admission',
+                      label: 'Desktop Trust and Admission',
+                    },
+                    {
+                      type: 'doc',
                       id: 'developers/server/jobs-mail',
                       label: 'Jobs and Transactional Mail',
                     },
@@ -103,6 +176,21 @@ const sidebars: SidebarsConfig = {
                       type: 'doc',
                       id: 'developers/server/files-execution',
                       label: 'Files, Workspaces, and Execution',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/attempt-continuity',
+                      label: 'Attempt Continuity',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/browser-activity-submission',
+                      label: 'Browser Activity and Submission',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'developers/server/integrity-review-release',
+                      label: 'Integrity Review and Release',
                     },
                     {
                       type: 'doc',
@@ -251,6 +339,9 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         {type: 'doc', id: 'reference/glossary', label: 'Glossary'},
+        {type: 'doc', id: 'reference/configuration', label: 'Configuration'},
+        {type: 'doc', id: 'reference/environment-variables', label: 'Environment Variables'},
+        {type: 'doc', id: 'reference/command-line', label: 'Command Line'},
         {
           type: 'link',
           href: 'https://github.com/sudosylabs/Proctor/tree/main/docs/architecture',

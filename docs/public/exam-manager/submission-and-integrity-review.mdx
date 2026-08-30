@@ -1,0 +1,80 @@
+---
+title: Inspect a Submission and Review Integrity
+description: Read the immutable submitted work, distinguish provenance from suspicion, assess bounded evidence, and record non-academic dispositions.
+audience: exam-manager
+maturity: preview
+---
+
+# Inspect a Submission and Review Integrity
+
+A Submission answers “what acknowledged work was sealed, when, and by which
+terminal path?” Integrity review answers “how should a manager interpret the
+bounded record?” Neither object is a grade, a misconduct verdict, or permission
+to reconstruct a candidate's broader device activity.
+
+## Begin With Submission Provenance
+
+Every created Attempt reaches at most one immutable Submission:
+
+- `candidate_submitted` means the candidate completed the synchronized
+  voluntary-submission handshake;
+- `manager_ended_attempt` means an authorized Manager deliberately sealed the
+  latest acknowledged state before the Sitting deadline; and
+- `sitting_closed` means scheduled or early Sitting closure sealed unfinished
+  created Attempts.
+
+<GovernedFigure asset="submission-provenance-boundary" />
+
+Provenance describes the terminal path, not quality or intent. A no-show has no
+fabricated Attempt or Submission. A manager-ending private reason remains
+private even though the candidate-safe receipt names the terminal provenance.
+
+## Inspect Only the Sealed Record
+
+The Submission header pins the governing Exam Revision, acknowledged Workspace
+Cursor, integrity terminal state, unresolved discrepancy count, provenance,
+and submission time. Its manifest preserves stable entry identities, logical
+paths, content origins, versions, checksums, media types, and sizes.
+
+Managers can page the manifest and open retained file bytes only after sealing.
+They cannot read a live candidate Workspace. Do not treat object-storage keys,
+local Desktop paths, or terminal filesystem state as the Submission hierarchy;
+the immutable manifest is authority.
+
+## Read the Integrity Chain in Order
+
+<GovernedFigure asset="integrity-review-release-boundary" />
+
+A native observation becomes a security signal, detector finding, bounded
+evidence, and possibly a Flag before any Review outcome exists. Each layer
+adds context; no earlier layer independently proves intent or guilt.
+
+Review these sources together:
+
+- **Flags** group one detected policy kind and Participation generation.
+- **Evidence** retains bounded qualifying episodes and summarized overflow.
+- **Discrepancies** retain gaps, missing correction acknowledgement, incomplete
+  Browser Activity, late Focus Loss, and other explicit uncertainty.
+- **Submission integrity state** is `settled` only when collection completed
+  without unresolved gaps; `gapped` means the uncertainty remains visible.
+
+Client clocks, severity claims, and manager intuition are not server authority.
+Connection Loss is based on confirmed lease expiry, while one failed request or
+ping is not enough. Browser Activity is the minimized top-level record described
+in [Browser and Privacy](../candidate/browser-and-privacy.mdx), never page
+content or general browsing history.
+
+## Record a Disposition, Not a Verdict
+
+Every Flag requires one current `confirmed`, `dismissed`, or `inconclusive`
+decision before finalization. Use `inconclusive` when the retained record cannot
+support a reliable conclusion; do not force uncertainty into either of the
+other outcomes.
+
+The rationale is manager-only and must explain the evidence-based reason for
+the disposition. It is not shown to the candidate. Private Review notes are
+also separate from optional approved student-facing Markdown remarks.
+
+Concurrent manager changes advance the Review revision. If the revision is
+stale, reread the Review and reconcile the other manager's work rather than
+guessing the next number or overwriting it.

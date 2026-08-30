@@ -1,6 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import desktopAuthorizationDocumentationFixture from "../fixtures/documentation-desktop-authorization.json" with {
+  type: "json",
+};
+
 const canonicalOrigin = "http://127.0.0.1:5173";
+
+function requiredFixtureValue(value: string | null, name: string) {
+  if (!value) {
+    throw new Error(`Documentation fixture is missing ${name}`);
+  }
+  return value;
+}
+
+const desktopAuthorizationDocumentationRoute = new URL(
+  desktopAuthorizationDocumentationFixture.route,
+  canonicalOrigin,
+);
+const desktopAuthorizationDocumentationFragment = new URLSearchParams(
+  desktopAuthorizationDocumentationRoute.hash.slice(1),
+);
 
 const defaultDiscovery = {
   discovery_version: 1,
@@ -20,7 +39,8 @@ const defaultDiscovery = {
   institution: {
     id: "institution-1",
     name: "northbridge",
-    display_name: "Northbridge Institute",
+    display_name:
+      desktopAuthorizationDocumentationFixture.synthetic_context.institution,
   },
   providers: [
     {
@@ -29,6 +49,30 @@ const defaultDiscovery = {
       type: "oidc",
     },
   ],
+};
+
+const defaultDesktopAuthorization = {
+  handle: requiredFixtureValue(
+    desktopAuthorizationDocumentationRoute.searchParams.get("request"),
+    "route request handle",
+  ),
+  state: requiredFixtureValue(
+    desktopAuthorizationDocumentationRoute.searchParams.get("state"),
+    "route state",
+  ),
+  browserProof: requiredFixtureValue(
+    desktopAuthorizationDocumentationFragment.get("proof"),
+    "route browser proof",
+  ),
+  account: {
+    id: "user-1",
+    username:
+      desktopAuthorizationDocumentationFixture.synthetic_context.username,
+    display_name:
+      desktopAuthorizationDocumentationFixture.synthetic_context.display_name,
+  },
+  deviceName:
+    desktopAuthorizationDocumentationFixture.synthetic_context.device_name,
 };
 
 async function mockDiscovery(
@@ -56,15 +100,14 @@ async function mockSetupStatus(page: Page, initialized = false) {
   });
 }
 
-async function mockCurrentUser(page: Page) {
+async function mockCurrentUser(
+  page: Page,
+  account = defaultDesktopAuthorization.account,
+) {
   await page.route("**/api/v1/users/me", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        id: "user-1",
-        username: "student.one",
-        display_name: "Student One",
-      }),
+      body: JSON.stringify(account),
     });
   });
 }
@@ -80,7 +123,13 @@ async function mockProviders(page: Page) {
 
 async function mockDesktopAuthorization(
   page: Page,
-  { currentSession = true }: { currentSession?: boolean } = {},
+  {
+    currentSession = true,
+    request = defaultDesktopAuthorization,
+  }: {
+    currentSession?: boolean;
+    request?: typeof defaultDesktopAuthorization;
+  } = {},
 ) {
   let authenticated = false;
   let bindings = 0;
@@ -89,13 +138,11 @@ async function mockDesktopAuthorization(
     ...(authenticated
       ? {
           account: {
-            id: "user-1",
-            username: "student.one",
-            display_name: "Student One",
+            ...request.account,
           },
         }
       : {}),
-    device_name: "Exam laptop",
+    device_name: request.deviceName,
     expires_at: Date.now() + 300_000,
     local_login_enabled: !authenticated,
     external_providers: authenticated ? [] : defaultDiscovery.providers,
@@ -106,9 +153,9 @@ async function mockDesktopAuthorization(
     async (route) => {
       bindings += 1;
       expect(await route.request().postDataJSON()).toEqual({
-        handle: "desktop-handle",
-        browser_proof: "private-browser-proof",
-        state: "desktop-state",
+        handle: request.handle,
+        browser_proof: request.browserProof,
+        state: request.state,
       });
       await route.fulfill({ status: 204 });
     },
@@ -881,13 +928,25 @@ test("Session Invitation preserves its handle while warning about new-tab sign i
 test("Desktop authorization approves the exact sanitized request", async ({
   page,
 }) => {
-  await mockDiscovery(page);
-  const desktop = await mockDesktopAuthorization(page);
-  await mockCurrentUser(page);
+  const fixtureRequest = defaultDesktopAuthorization;
+  await mockDiscovery(page, {
+    ...defaultDiscovery,
+    institution: {
+      ...defaultDiscovery.institution,
+      display_name:
+        desktopAuthorizationDocumentationFixture.synthetic_context.institution,
+    },
+  });
+  const desktop = await mockDesktopAuthorization(page, {
+    request: fixtureRequest,
+  });
+  await mockCurrentUser(page, fixtureRequest.account);
   await page.route(
     "**/api/v1/auth/desktop/authorizations/approve",
     async (route) => {
-      expect(await route.request().postDataJSON()).toEqual({ state: "desktop-state" });
+      expect(await route.request().postDataJSON()).toEqual({
+        state: fixtureRequest.state,
+      });
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -897,22 +956,52 @@ test("Desktop authorization approves the exact sanitized request", async ({
       });
     },
   );
-  await page.goto(
-    "/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof",
-  );
+  await page.goto(desktopAuthorizationDocumentationFixture.route);
 
   await expect(page).toHaveURL(
-    `${canonicalOrigin}/authorize/desktop?state=desktop-state`,
+    `${canonicalOrigin}/authorize/desktop?state=${fixtureRequest.state}`,
   );
   await expect(
-    page.getByRole("heading", { name: "Continue in Proctor Desktop" }),
+    page.getByRole("heading", {
+      name: desktopAuthorizationDocumentationFixture.wait_for.name,
+    }),
   ).toBeVisible();
   expect(desktop.bindingCount()).toBe(1);
-  await expect(page.getByText("Northbridge Institute")).toBeVisible();
-  await expect(page.getByText("student.one")).toHaveAttribute(
+  await expect(
+    page.getByText(
+      desktopAuthorizationDocumentationFixture.synthetic_context.institution,
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      desktopAuthorizationDocumentationFixture.synthetic_context.username,
+    ),
+  ).toHaveAttribute(
     "translate",
     "no",
   );
+  const documentationCapture =
+    process.env.PROCTOR_DOCS_DESKTOP_AUTHORIZATION_SCREENSHOT;
+  if (documentationCapture) {
+    await page.setViewportSize(
+      desktopAuthorizationDocumentationFixture.viewport,
+    );
+    await page.emulateMedia({
+      colorScheme: desktopAuthorizationDocumentationFixture.color_scheme as
+        | "dark"
+        | "light"
+        | "no-preference",
+      reducedMotion: desktopAuthorizationDocumentationFixture.reduced_motion as
+        | "no-preference"
+        | "reduce",
+    });
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      path: documentationCapture,
+      animations: "disabled",
+      fullPage: false,
+    });
+  }
   await page.getByRole("button", { name: "Continue to desktop" }).click();
 
   await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);

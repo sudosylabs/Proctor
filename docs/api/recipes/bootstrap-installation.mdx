@@ -66,3 +66,22 @@ and configure admission policy through a preflight before replacing it.
 If two bootstrap requests race, only the authoritative transition can succeed.
 Treat an already-bootstrapped response as a definitive state, not as a reason
 to retry with a different secret.
+
+## 5. Complete First-administrator Safety
+
+Bootstrap leaves the administrator email unverified because possession of a
+deployment secret does not prove mailbox control. Through ordinary account
+operations:
+
+1. verify the mailbox;
+2. test transactional mail delivery;
+3. configure and enable an external provider at the deployment and Access
+   Policy boundaries;
+4. deliberately connect its immutable identity to the administrator;
+5. establish a second administrator with an independent usable method; and
+6. preflight any change that disables local login.
+
+The Access Policy and User-disablement transaction fence prevents removal of
+the last usable active-system-administrator path. Do not rely on that rejection
+as the only recovery plan: host recovery is an offline operator procedure and
+cannot mint a Session or clear MFA.

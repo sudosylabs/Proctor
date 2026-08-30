@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Invitation lifecycle and independent mail state</title>
+  <desc id="description">Issuing an Invitation creates one pending immutable purpose package and a durable mail intent. From pending, acceptance atomically applies the package, replacement creates a new Invitation and supersedes the old one, revocation invalidates it, or PostgreSQL time expires it. Resend keeps the package but rotates the secret and deadline. Mail delivery is separate: pending does not mean delivered, and sent mail is harmless after terminal Invitation state.</desc>
+  <defs>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M8 0H0V8" fill="none" stroke="#f4f1f6" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#5c00aa"/></marker>
+  </defs>
+  <rect width="1200" height="720" rx="16" fill="#ffffff"/>
+  <rect x="1" y="1" width="1198" height="718" rx="15" fill="url(#grid)" stroke="#e1dce5" stroke-width="2"/>
+  <text x="56" y="64" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">The package is durable; the link is disposable</text>
+  <text x="56" y="92" fill="#655f69" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Every terminal transition reads current Invitation state. Mail delivery never overrides it.</text>
+
+  <rect x="56" y="244" width="160" height="112" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="282" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Issue</text>
+  <text x="80" y="312" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Freeze purpose, target,</text>
+  <text x="80" y="336" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Role and recipient</text>
+  <path d="M216 300H264" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="264" y="176" width="296" height="248" rx="16" fill="#f3eafb" stroke="#5c00aa" stroke-width="2"/>
+  <text x="288" y="216" fill="#470082" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">PENDING</text>
+  <text x="288" y="254" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Immutable purpose package</text>
+  <text x="288" y="288" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Only the domain-separated claim</text>
+  <text x="288" y="312" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">hash persists</text>
+  <path d="M288 336H536" fill="none" stroke="#c8c0ce" stroke-width="1"/>
+  <text x="288" y="368" fill="#470082" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14" font-weight="600">Resend</text>
+  <text x="352" y="368" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">rotate claim + deadline</text>
+  <text x="288" y="402" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12">OLD LINKS BECOME INVALID</text>
+
+  <path d="M560 300H620" fill="none" stroke="#5c00aa" stroke-width="3"/>
+  <path d="M620 172V484" fill="none" stroke="#5c00aa" stroke-width="3"/>
+  <path d="M620 172H680" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M620 276H680" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M620 380H680" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M620 484H680" fill="none" stroke="#5c00aa" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="680" y="128" width="464" height="88" rx="16" fill="#e7f5f1" stroke="#0b766e" stroke-width="2"/>
+  <text x="704" y="164" fill="#0b766e" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">ACCEPTED</text>
+  <text x="704" y="192" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">All frozen package effects commit atomically—or none do</text>
+
+  <rect x="680" y="232" width="464" height="88" rx="16" fill="#fff3e5" stroke="#95520d" stroke-width="2"/>
+  <text x="704" y="268" fill="#95520d" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">SUPERSEDED</text>
+  <text x="704" y="296" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">A new Invitation owns the changed package and claim</text>
+
+  <rect x="680" y="336" width="464" height="88" rx="16" fill="#fff0f1" stroke="#b4233c" stroke-width="2"/>
+  <text x="704" y="372" fill="#b4233c" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">REVOKED</text>
+  <text x="704" y="400" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">An administrator invalidates this exact Invitation</text>
+
+  <rect x="680" y="440" width="464" height="88" rx="16" fill="#ffffff" stroke="#655f69" stroke-width="2"/>
+  <text x="704" y="476" fill="#655f69" font-family="IBM Plex Mono, Consolas, monospace" font-size="12" font-weight="600">EXPIRED</text>
+  <text x="704" y="504" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">PostgreSQL time closes the acceptance window</text>
+
+  <rect x="56" y="568" width="1088" height="88" rx="16" fill="#ffffff" stroke="#c8c0ce" stroke-width="2"/>
+  <text x="80" y="602" fill="#161616" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="18" font-weight="600">Mail is a separate delivery record</text>
+  <text x="80" y="630" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Pending ≠ delivered. Sent mail is harmless after accept, replace, revoke, or expire because the server rereads Invitation state.</text>
+  <text x="600" y="688" text-anchor="middle" fill="#49434f" font-family="IBM Plex Sans, Segoe UI, Arial, sans-serif" font-size="14">Possession of an old link never restores a terminal package.</text>
+</svg>

@@ -1,0 +1,66 @@
+---
+title: Choose Topology and Assign Dependency Ownership
+description: Run one node or several active nodes without confusing application redundancy with dependency availability or durable authority.
+audience: operator
+maturity: preview
+---
+
+# Choose Topology and Assign Dependency Ownership
+
+Single-node and active-active Proctor have the same application semantics. A
+cluster improves application-node availability only when every required shared
+dependency and the traffic path have suitable redundancy.
+
+## Single Application Node
+
+Use `Cluster.Backend: local`, a stable node ID, production-suitable PostgreSQL
+and VFS, and the selected mail/execution/provider services. The application may
+use bounded process-local cache. Memberlist has no peers and broadcast is a
+no-op.
+
+Single node is simpler to operate but its application process, host, and any
+node-local VFS or certificate cache are single points of failure. Built-in
+Let's Encrypt is available only in this local cluster mode.
+
+## Active-Active Application Nodes
+
+Place identical compatible application nodes behind a redundant external load
+balancer and route only to ready nodes. Configure:
+
+- one shared authoritative PostgreSQL installation;
+- shared S3-compatible VFS rather than node-local content;
+- Redis application cache for installation-wide disposable security counters;
+- `Cluster.Backend: memberlist`, a unique stable Node ID per node, and one
+  converged gossip keyring;
+- private reachable TCP and UDP bind/advertise endpoints;
+- the same validated application and policy configuration; and
+- shared SMTP, identity-provider, and execution-host capabilities as selected.
+
+Memberlist carries best-effort invalidation and realtime facts. Redis does not
+transport Memberlist messages. Neither replaces PostgreSQL authority.
+
+## Dependency Consequences
+
+| Dependency loss | Expected consequence |
+| --- | --- |
+| PostgreSQL unavailable | readiness/startup or current operations fail closed; durable work cannot proceed |
+| Redis unavailable in Memberlist mode | required shared security/cache capability is unavailable; do not downgrade silently to local memory |
+| VFS unavailable | metadata may remain readable, but protected content operations fail; do not substitute object listings |
+| SMTP unavailable | durable delivery remains queued/retryable according to descriptor; application state is not rolled back |
+| execution host unavailable | terminal placement/open fails or is revoked; Workspace authority remains in PostgreSQL/VFS |
+| peer message lost | affected clients/nodes recover through refetch, TTL, renewal, and durable state |
+| load balancer unhealthy | application nodes may be ready but externally unreachable; this is operator infrastructure |
+
+<GovernedFigure asset="installation-authority-topology" />
+
+## Do Not Call the Compose Example HA
+
+The tracked Compose file demonstrates one immutable application container and
+its mounts/ports. It intentionally does not package single-host PostgreSQL,
+Redis, or object storage as a highly available production installation. Use
+independently operated redundant dependencies and load balancing before making
+an availability claim.
+
+{/* TODO(operator-capacity-topology): Certify supported node counts, dependency
+topologies, latency budgets, and event/candidate capacity before publishing
+sizing or scaling tables. */}

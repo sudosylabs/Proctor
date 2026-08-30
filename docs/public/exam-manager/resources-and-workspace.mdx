@@ -1,0 +1,61 @@
+---
+title: Add Resources and a Starter Workspace
+description: Keep read-only Exam Resources separate from initial writable code and freeze both into immutable Revisions.
+audience: exam-manager
+maturity: preview
+---
+
+# Add Resources and a Starter Workspace
+
+Exam Resources and the Starter Workspace are both protected authored material,
+but they serve different purposes and use different identity models.
+
+| Material | Candidate use | Identity and change model |
+| --- | --- | --- |
+| Exam Resource | read-only supporting material outside the code Workspace | stable File Entry with immutable File Revisions and explicit order |
+| Starter Workspace | initial files and empty directories copied into each Attempt Workspace | one logical hierarchy with opaque content versions |
+
+## Govern Exam Resources
+
+Each Resource has a required display name, optional bounded Markdown
+description, explicit zero-based order, and an exact available content
+revision. Replacing content creates another File Revision, so already published
+Revisions retain the bytes they selected. Removing a Resource closes the Draft
+ordering gap but does not erase published history.
+
+The default authoring policy allows ten Resources of at most 10 MiB each. Fixed
+server ceilings are 100 Resources and 100 MiB each. The initial allowlist is
+verified PDF, PNG, JPEG, WebP, UTF-8 text, Markdown, CSV, and JSON; executables,
+archives, macros, and disk images are excluded. The current Institution policy
+may be narrower and is rechecked at mutation and publication.
+
+## Build the Starter Workspace as a Logical Tree
+
+Paths are case-sensitive, canonical POSIX-relative values. They reject empty
+or absolute paths, dot traversal, repeated or trailing separators, backslashes,
+control characters, and the reserved `.proctor` root. Directories are metadata;
+removing a non-empty directory is rejected rather than recursive.
+
+Defaults are 500 entries, 10 MiB per file, and 50 MiB total. Fixed ceilings are
+5,000 entries, 100 MiB per file, and 1 GiB total. Each file change compares the
+current opaque Workspace Content Version. That value is a concurrency token,
+not a file or revision identity.
+
+## Protect Content Throughout the Flow
+
+Uploads stream to a new unguessable VFS object while checking type, size, and
+checksum. PostgreSQL makes content visible only after metadata and domain
+relationship commit. A failed commit can leave an invisible object for bounded
+orphan cleanup; visible metadata never points to a partial upload.
+
+Protected reads authorize every request, return inline content with checksum
+ETag and `nosniff`, and expose no object key or public URL. Candidate delivery
+offers no download, export, print, drag-out, external-open, or local-folder
+projection. Rendering necessarily transfers bounded bytes to an authorized
+client; the enforceable guarantee is export containment, not that bytes never
+reach the device.
+
+Lowering Institution capacity does not rewrite existing Draft material.
+Removal, reordering, and metadata repair remain possible, while replacement
+content and publication must meet the new limits. Publication freezes the
+complete capacity values for future Attempts.

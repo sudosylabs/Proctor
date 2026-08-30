@@ -32,6 +32,8 @@ npm run test:glossary
 npm run generate:search
 npm run check:search
 npm run test:search
+npm run generate:technical-reference
+npm run check:technical-reference
 ```
 
 The check rejects stale generated CSS, literal colors outside the token module,
@@ -55,6 +57,30 @@ The search module reads human-authored MDX plus `server/openapi.json` and hides
 route derivation, text extraction, duplicate detection, and TypeScript adapter
 generation behind `generate:search`. Regenerate after public content or OpenAPI
 changes; `check:search` rejects a stale index.
+
+`scripts/technical-reference.mjs` generates the complete environment-variable
+inventory from `server/config/environment_overlay.go` and checks the authored
+command-line reference against the command constructors and flags in
+`server/cmd/proctor/commands`. Regenerate after adding, removing, or renaming an
+environment override. The command-line page remains human-authored because it
+must explain intent, consequences, and recovery rather than merely repeat Cobra
+help; `check:technical-reference` catches drift in both sources. Never edit the
+generated environment-variable page by hand.
+
+`validate:routes` checks every Proctor `/api/v1` path written in authored public
+or API guidance against the reviewed OpenAPI path and method set. It understands
+documentary placeholders and deliberately ignores API-shaped paths on explicit
+external origins such as the local Prometheus API. Generated endpoint pages are
+excluded because their paths already come directly from OpenAPI.
+
+`documentation-coverage.json` is the human-edited routing table from every
+OpenAPI product area and named multi-operation workflow to its authored entry
+page. A workflow can remain `planned` only with its delivery phase recorded.
+`validate:coverage` rejects missing tags, pages, and operation IDs; update the
+map and the validator's explicit expected-workflow inventory when a contract
+change adds, removes, or moves a workflow. Keeping the inventory separate from
+the routing table means deleting a complete workflow record cannot silently
+reduce the claimed coverage.
 
 ## Commands
 

@@ -1,9 +1,9 @@
 ---
 title: Build the Academic Structure
-description: Create Academic Units, Programmes, Programme Levels, Academic Periods, and Classes in dependency order.
+description: Create, verify, move, and archive Academic Units, Programmes, Programme Levels, Academic Periods, and Classes in ownership order.
 audience: api-consumer
 maturity: preview
-sidebar_position: 2
+sidebar_position: 4
 ---
 
 import Link from '@docusaurus/Link';
@@ -11,21 +11,22 @@ import Link from '@docusaurus/Link';
 # Build the Academic Structure
 
 Create academic resources in ownership order. A Class is the concrete student
-roster; it belongs to a Programme Level and one Academic Period.
+roster; it belongs to one Programme Level and names one exact applicable
+Academic Period.
 
-```text
-Institution
-├── Academic Unit
-│   └── Programme
-│       └── Programme Level
-│           └── Class ───── Academic Period
-```
+<GovernedFigure asset="academic-structure-ownership-map" />
+
+Every operation authorizes the actual typed resource. Programme, Programme
+Level, Academic Period, and Class resolve to Institution, Academic Unit, or
+Class binding scope through current PostgreSQL lineage. A visible parent is
+not proof that the caller can mutate a child.
 
 ## 1. Create an Academic Unit
 
-Use <Link to="/api/reference/create-root-academic-unit">Create root Academic Unit</Link>, or
-create a child under an existing unit. Retain the returned `id`; route scope,
-not an ID repeated in the request body, establishes the parent.
+Use <Link to="/api/reference/create-root-academic-unit">Create root Academic Unit</Link>,
+or <Link to="/api/reference/create-academic-unit-child">create a child</Link>
+under an existing Unit. Retain the returned `id`; route scope, not an ID
+repeated in the request body, establishes the parent.
 
 ```json
 {
@@ -35,10 +36,15 @@ not an ID repeated in the request body, establishes the parent.
 }
 ```
 
+The hierarchy permits several generic levels but no cycle and no
+cross-Institution parent. Classifications such as faculty or department are
+presentation; they do not alter scope inheritance.
+
 ## 2. Create a Programme and Level
 
-Call <Link to="/api/reference/create-programme">Create Programme</Link> with the Academic Unit
-ID in the path, then <Link to="/api/reference/create-programme-level">Create Programme Level</Link>
+Call <Link to="/api/reference/create-programme">Create Programme</Link> with the
+Academic Unit ID in the path, then
+<Link to="/api/reference/create-programme-level">Create Programme Level</Link>
 with the Programme ID in the path.
 
 ```json
@@ -57,9 +63,9 @@ with the Programme ID in the path.
 
 ## 3. Create an Academic Period
 
-<Link to="/api/reference/create-academic-period">Create Academic Period</Link> can use either
-the Institution or an Academic Unit as its owner. `start_at` and `end_at` are
-positive Unix-millisecond timestamps.
+<Link to="/api/reference/create-academic-period">Create Academic Period</Link>
+can use the Institution or one Academic Unit as its owner. `start_at` and
+`end_at` are positive Unix-millisecond timestamps.
 
 ```json
 {
@@ -72,10 +78,15 @@ positive Unix-millisecond timestamps.
 }
 ```
 
+An Institution Period applies to every Academic Unit. A Unit Period applies to
+its owner and descendants. Period names are unique within the owner scope, but
+date ranges may overlap. Do not derive a current Period from dates or assume a
+Unit-owned Period overrides an Institution Period.
+
 ## 4. Create the Class
 
-Call <Link to="/api/reference/create-class">Create Class</Link> under the Programme Level and
-refer to the Academic Period in the body.
+Call <Link to="/api/reference/create-class">Create Class</Link> under the
+Programme Level and refer to the exact Academic Period in the body.
 
 ```json
 {
@@ -85,7 +96,61 @@ refer to the Academic Period in the body.
 }
 ```
 
-Do not use a Class as a permission grant. Enrollment records roster membership;
-Roles and scoped Role Bindings grant permissions. Archive operations also
-enforce current dependency constraints, so end or move active dependents before
-archiving a parent.
+The server verifies that the Period is applicable to the Programme's Academic
+Unit. Keep the returned Class ID; names are presentation and discovery fields,
+not stable foreign keys.
+
+## 5. Read Back the Lineage
+
+Verify each result through its exact read and bounded collection operations:
+
+- <Link to="/api/reference/list-academic-units">List Academic Units</Link> and
+  <Link to="/api/reference/list-academic-unit-children">List child Academic Units</Link>;
+- <Link to="/api/reference/list-programmes">List Programmes</Link> and
+  <Link to="/api/reference/list-programme-levels">List Programme Levels</Link>;
+- <Link to="/api/reference/list-academic-periods">List Academic Periods</Link>;
+- <Link to="/api/reference/list-classes">List Classes</Link>.
+
+Use keyset cursors exactly as returned. Do not fetch all resources and filter
+authorization in the client; collection visibility is already constrained by
+the caller's current scope.
+
+## 6. Update or Reparent With Current State
+
+Presentation updates use the resource's update operation. Reparenting an
+Academic Unit is structurally significant: the application authorizes both
+lineages and atomically rejects a cycle, cross-Institution ownership, or a
+dependency that would become invalid. Inventory descendant Units, Programmes,
+Period applicability, memberships, and Role Bindings before moving it.
+
+If another administrator changed the resource, reread the exact representation
+and deliberately rebuild the intended request. A conflict is not a signal to
+blindly repeat stale input.
+
+## 7. Archive From the Leaves Up
+
+Archive retains identity, lineage, lifecycle timestamps, and audit history.
+It never cascades through active descendants or authority dependencies.
+
+1. end or move active Class and Academic Unit memberships through their own
+   lifecycle;
+2. resolve Exam and Sitting dependencies;
+3. archive Classes before Programme Levels;
+4. archive Programme Levels before Programmes; and
+5. archive child Academic Units before their parent.
+
+An Academic Period remains blocked while exact Classes or relationships depend
+on it. Never present these operations to a user as destructive deletion.
+
+## Safe Retry and Diagnostics
+
+Create operations that declare optional idempotency should receive a unique
+`Idempotency-Key`. Reuse it only for a byte-equivalent business request after
+an ambiguous transport result. A different body with the same key is a
+conflict. Updates and archives without idempotency require a read-after-timeout
+before deciding whether to issue another mutation.
+
+Record route template, status, stable error code, request ID, and safe resource
+IDs. Do not log profiles, rosters, Invitation data, or free-form descriptions.
+Do not use a Class as a permission grant: enrollment records roster membership;
+Roles and scoped Role Bindings grant permissions.
