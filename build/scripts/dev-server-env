@@ -1,0 +1,69 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 2 ]; then
+	printf 'usage: %s SECRETS_FILE OUTPUT_FILE\n' "$0" >&2
+	exit 2
+fi
+
+secrets_file=$1
+output_file=$2
+
+if [ ! -f "$secrets_file" ]; then
+	printf 'missing development secrets file: %s\n' "$secrets_file" >&2
+	exit 1
+fi
+
+: "${PROCTOR_SERVER_LISTEN_ADDRESS:?missing PROCTOR_SERVER_LISTEN_ADDRESS}"
+: "${PROCTOR_SERVER_PUBLIC_URL:?missing PROCTOR_SERVER_PUBLIC_URL}"
+: "${PROCTOR_SERVER_WEBAPP_DIRECTORY:?missing PROCTOR_SERVER_WEBAPP_DIRECTORY}"
+: "${PROCTOR_DATABASE_DATA_SOURCE:?missing PROCTOR_DATABASE_DATA_SOURCE}"
+: "${PROCTOR_CACHE_REDIS_ADDRESSES:?missing PROCTOR_CACHE_REDIS_ADDRESSES}"
+: "${PROCTOR_VFS_S3_ENDPOINT:?missing PROCTOR_VFS_S3_ENDPOINT}"
+: "${PROCTOR_MAIL_SMTP_ADDRESS:?missing PROCTOR_MAIL_SMTP_ADDRESS}"
+: "${PROCTOR_METRICS_LISTEN_ADDRESS:?missing PROCTOR_METRICS_LISTEN_ADDRESS}"
+: "${PROCTOR_METRICS_TLS_CERTIFICATE_FILE:?missing PROCTOR_METRICS_TLS_CERTIFICATE_FILE}"
+: "${PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE:?missing PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE}"
+
+write_assignment() {
+	assignment_name=$1
+	assignment_value=$2
+	escaped_value=$(printf '%s' "$assignment_value" | sed "s/'/'\\\\''/g")
+	printf "%s='%s'\n" "$assignment_name" "$escaped_value"
+}
+
+mkdir -p "$(dirname "$output_file")"
+temporary_file=$output_file.tmp.$$
+trap 'rm -f "$temporary_file"' EXIT HUP INT TERM
+umask 077
+{
+	cat "$secrets_file"
+	write_assignment PROCTOR_SERVER_LISTEN_ADDRESS "$PROCTOR_SERVER_LISTEN_ADDRESS"
+	write_assignment PROCTOR_SERVER_PUBLIC_URL "$PROCTOR_SERVER_PUBLIC_URL"
+	write_assignment PROCTOR_SERVER_WEBAPP_DIRECTORY "$PROCTOR_SERVER_WEBAPP_DIRECTORY"
+	write_assignment PROCTOR_DATABASE_DATA_SOURCE "$PROCTOR_DATABASE_DATA_SOURCE"
+	write_assignment PROCTOR_CACHE_BACKEND redis
+	write_assignment PROCTOR_CACHE_NAMESPACE proctor-dev
+	write_assignment PROCTOR_CACHE_REDIS_ADDRESSES "$PROCTOR_CACHE_REDIS_ADDRESSES"
+	write_assignment PROCTOR_VFS_BACKEND s3
+	write_assignment PROCTOR_VFS_S3_ENDPOINT "$PROCTOR_VFS_S3_ENDPOINT"
+	write_assignment PROCTOR_VFS_S3_ACCESS_KEY proctorminio
+	write_assignment PROCTOR_VFS_S3_SECRET_KEY proctorminio-secret
+	write_assignment PROCTOR_VFS_S3_BUCKET proctor-dev
+	write_assignment PROCTOR_VFS_S3_REGION us-east-1
+	write_assignment PROCTOR_VFS_S3_SECURE false
+	write_assignment PROCTOR_MAIL_ENABLED true
+	write_assignment PROCTOR_MAIL_FROM_ADDRESS no-reply@proctor.local
+	write_assignment PROCTOR_MAIL_SMTP_ADDRESS "$PROCTOR_MAIL_SMTP_ADDRESS"
+	write_assignment PROCTOR_METRICS_ENABLED true
+	write_assignment PROCTOR_METRICS_LISTEN_ADDRESS "$PROCTOR_METRICS_LISTEN_ADDRESS"
+	write_assignment PROCTOR_METRICS_TLS_CERTIFICATE_FILE "$PROCTOR_METRICS_TLS_CERTIFICATE_FILE"
+	write_assignment PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE "$PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE"
+	write_assignment PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE true
+} >"$temporary_file"
+chmod 600 "$temporary_file"
+mv "$temporary_file" "$output_file"
+trap - EXIT HUP INT TERM

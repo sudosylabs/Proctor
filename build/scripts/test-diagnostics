@@ -1,0 +1,109 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -lt 1 ]; then
+	printf 'usage: %s COMMAND ROOT MODULE PACKAGE TEST OUTPUT_DIR [PROFILE]\n' "$0" >&2
+	exit 2
+fi
+
+command_name=$1
+shift
+
+case "$command_name" in
+	debug | trace)
+		if [ "$#" -ne 5 ]; then
+			printf 'usage: %s %s ROOT MODULE PACKAGE TEST OUTPUT_DIR\n' "$0" "$command_name" >&2
+			exit 2
+		fi
+		;;
+	profile)
+		if [ "$#" -ne 6 ]; then
+			printf 'usage: %s profile ROOT MODULE PACKAGE TEST OUTPUT_DIR PROFILE\n' "$0" >&2
+			exit 2
+		fi
+		profile=$6
+		;;
+	*)
+		printf 'unknown test diagnostic command: %s\n' "$command_name" >&2
+		exit 2
+		;;
+esac
+
+root=$1
+module=$2
+package=$3
+test_name=$4
+output_dir=$5
+
+case "$module" in
+	server | packages/cache | packages/mail | packages/vfs)
+		;;
+	*)
+		printf 'unsupported Go module %s; choose server, packages/cache, packages/mail, or packages/vfs\n' "$module" >&2
+		exit 2
+		;;
+esac
+
+case "$package" in
+	./*)
+		;;
+	*)
+		printf 'package must be module-relative and start with ./: %s\n' "$package" >&2
+		exit 2
+		;;
+esac
+
+case "$package" in
+	*...*)
+		printf 'diagnostic commands require one package, not a recursive ... pattern: %s\n' "$package" >&2
+		exit 2
+		;;
+esac
+
+case "$package" in
+	./.. | ./../* | */../* | */..)
+		printf 'package must stay within the selected Go module: %s\n' "$package" >&2
+		exit 2
+		;;
+esac
+
+mkdir -p "$output_dir"
+output_dir=$(cd "$output_dir" && pwd -P)
+cd "$root/$module"
+
+case "$command_name" in
+	debug)
+		: "${DLV_COMMAND:?missing DLV_COMMAND}"
+		exec "$DLV_COMMAND" test "$package" --output "$output_dir/debug.test" -- -test.run "$test_name" -test.count=1
+		;;
+	profile)
+		: "${GO_COMMAND:?missing GO_COMMAND}"
+		package_import=$("$GO_COMMAND" list -f '{{.ImportPath}}' "$package")
+		cd "$output_dir"
+		case "$profile" in
+			cpu)
+				exec "$GO_COMMAND" test -run "$test_name" -count=1 -outputdir "$output_dir" -cpuprofile "$output_dir/cpu.pprof" "$package_import"
+			;;
+			memory)
+				exec "$GO_COMMAND" test -run "$test_name" -count=1 -outputdir "$output_dir" -memprofile "$output_dir/memory.pprof" "$package_import"
+			;;
+			mutex)
+				exec "$GO_COMMAND" test -run "$test_name" -count=1 -outputdir "$output_dir" -mutexprofile "$output_dir/mutex.pprof" "$package_import"
+			;;
+			block)
+				exec "$GO_COMMAND" test -run "$test_name" -count=1 -outputdir "$output_dir" -blockprofile "$output_dir/block.pprof" "$package_import"
+			;;
+			*)
+				printf 'unsupported profile %s; choose cpu, memory, mutex, or block\n' "$profile" >&2
+				exit 2
+				;;
+		esac
+		;;
+	trace)
+		: "${GO_COMMAND:?missing GO_COMMAND}"
+		exec "$GO_COMMAND" test -run "$test_name" -count=1 -trace "$output_dir/trace.out" "$package"
+		;;
+esac

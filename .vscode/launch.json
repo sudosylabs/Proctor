@@ -1,0 +1,65 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Proctor server (repository DAP)",
+      "type": "go",
+      "debugAdapter": "dlv-dap",
+      "request": "launch",
+      "mode": "debug",
+      "host": "127.0.0.1",
+      "port": 2345,
+      "program": "${workspaceFolder}/server/cmd/proctor",
+      "cwd": "${workspaceFolder}",
+      "output": "${workspaceFolder}/.build/dev/diagnostics/server-dap",
+      "args": [
+        "serve",
+        "--config",
+        "${workspaceFolder}/.build/dev/config/local.json"
+      ],
+      "preLaunchTask": "Proctor: start DAP",
+      "showLog": false
+    },
+    {
+      "name": "Selected Go test",
+      "type": "go",
+      "debugAdapter": "dlv-dap",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}",
+      "output": "${workspaceFolder}/.build/dev/diagnostics/selected-test-dap",
+      "args": [
+        "-test.run",
+        "^${selectedText}$",
+        "-test.count=1"
+      ]
+    },
+    {
+      "name": "Go tests in current package",
+      "type": "go",
+      "debugAdapter": "dlv-dap",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}",
+      "output": "${workspaceFolder}/.build/dev/diagnostics/package-tests-dap",
+      "args": [
+        "-test.count=1"
+      ]
+    },
+    {
+      "name": "Hosted webapp (Chrome)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:8065",
+      "webRoot": "${workspaceFolder}/webapp"
+    },
+    {
+      "name": "Vite webapp (Chrome)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173",
+      "webRoot": "${workspaceFolder}/webapp",
+      "preLaunchTask": "Proctor: start Vite"
+    }
+  ]
+}

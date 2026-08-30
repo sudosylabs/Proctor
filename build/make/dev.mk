@@ -1,4 +1,4 @@
-.PHONY: dev-tools dev-doctor dev-secrets dev-config dev-state dev-seed webapp-build run run-server run-webapp dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
+.PHONY: dev-tools dev-doctor dev-secrets dev-config dev-server-env dev-state dev-seed webapp-build webapp-build-debug run run-server run-webapp debug-ready debug-server debug-server-dap debug-server-headless debug-test profile-test profile-open trace-test trace-open dev-up dev-down dev-reset dev-logs cluster-up run-cluster run-haserver cluster-down cluster-logs cluster-diagnostics cluster-smoke metrics-urls
 
 dev-tools: ## Validate the host development toolchain.
 	@"$(ROOT_DIR)/build/scripts/check-tools" "$(GO)" "$(NPM)" "$(DOCKER)" "$(JQ)" "$(CURL)"
@@ -23,7 +23,20 @@ dev-config:
 	@JQ_COMMAND="$(JQ)" "$(ROOT_DIR)/build/scripts/dev-config" "$(SERVER_DIR)/config/config.example.json" "$(DEV_CONFIG_DIR)/node-c.json" "/var/log/proctor/node-c/server.log" "/opt/proctor/webapp/dist"
 	@"$(ROOT_DIR)/build/scripts/dev-observability-targets" "$(DEV_DIR)/observability" "$(PROCTOR_METRICS_PORT)" 8067
 
-dev-state: dev-secrets dev-config
+dev-server-env: dev-secrets dev-config
+	@PROCTOR_SERVER_LISTEN_ADDRESS='127.0.0.1:$(PROCTOR_SERVER_PORT)' \
+		PROCTOR_SERVER_PUBLIC_URL='$(PROCTOR_SERVER_PUBLIC_URL)' \
+		PROCTOR_SERVER_WEBAPP_DIRECTORY='$(WEBAPP_DIR)/dist' \
+		PROCTOR_DATABASE_DATA_SOURCE='postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable' \
+		PROCTOR_CACHE_REDIS_ADDRESSES='127.0.0.1:$(PROCTOR_REDIS_PORT)' \
+		PROCTOR_VFS_S3_ENDPOINT='127.0.0.1:$(PROCTOR_MINIO_PORT)' \
+		PROCTOR_MAIL_SMTP_ADDRESS='127.0.0.1:$(PROCTOR_MAILPIT_SMTP_PORT)' \
+		PROCTOR_METRICS_LISTEN_ADDRESS='0.0.0.0:$(PROCTOR_METRICS_PORT)' \
+		PROCTOR_METRICS_TLS_CERTIFICATE_FILE='$(DEV_METRICS_CERT_FILE)' \
+		PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE='$(DEV_METRICS_KEY_FILE)' \
+		"$(ROOT_DIR)/build/scripts/dev-server-env" "$(DEV_ENV_FILE)" "$(DEV_SERVER_ENV_FILE)"
+
+dev-state: dev-server-env
 
 dev-seed: dev-tools dev-state ## Create or report the guarded synthetic local-development fixture.
 	@"$(ROOT_DIR)/build/scripts/dev-seed" \
@@ -34,6 +47,9 @@ dev-seed: dev-tools dev-state ## Create or report the guarded synthetic local-de
 webapp-build: webapp-install ## Compile the hosted webapp with matching build identity.
 	cd "$(WEBAPP_DIR)" && PROCTOR_BUILD_VERSION='$(VERSION)' PROCTOR_BUILD_COMMIT='$(COMMIT)' $(NPM) run build
 
+webapp-build-debug: webapp-install ## Compile the hosted webapp with the Go server's debugger-default identity.
+	cd "$(WEBAPP_DIR)" && PROCTOR_BUILD_VERSION='dev' PROCTOR_BUILD_COMMIT='unknown' $(NPM) run build
+
 dev-up: dev-tools dev-state ## Start and health-wait for persistent dependencies and observability.
 	@$(DEV_COMPOSE) up --detach --wait postgres redis minio mailpit
 	@$(DEV_COMPOSE) run --rm minio-init
@@ -43,30 +59,36 @@ dev-up: dev-tools dev-state ## Start and health-wait for persistent dependencies
 run: run-server ## Run the production-shaped single-node development lifecycle.
 
 run-server: dev-tools webapp-build dev-up ## Build the webapp, start dependencies, and run the server in the foreground.
-	@set -a; . "$(DEV_ENV_FILE)"; set +a; \
-	PROCTOR_SERVER_LISTEN_ADDRESS='127.0.0.1:$(PROCTOR_SERVER_PORT)' \
-	PROCTOR_SERVER_PUBLIC_URL='$(PROCTOR_SERVER_PUBLIC_URL)' \
-	PROCTOR_SERVER_WEBAPP_DIRECTORY='$(WEBAPP_DIR)/dist' \
-	PROCTOR_DATABASE_DATA_SOURCE='postgres://proctor:proctor@127.0.0.1:$(PROCTOR_POSTGRES_PORT)/proctor?sslmode=disable' \
-	PROCTOR_CACHE_BACKEND='redis' \
-	PROCTOR_CACHE_NAMESPACE='proctor-dev' \
-	PROCTOR_CACHE_REDIS_ADDRESSES='127.0.0.1:$(PROCTOR_REDIS_PORT)' \
-	PROCTOR_VFS_BACKEND='s3' \
-	PROCTOR_VFS_S3_ENDPOINT='127.0.0.1:$(PROCTOR_MINIO_PORT)' \
-	PROCTOR_VFS_S3_ACCESS_KEY='proctorminio' \
-	PROCTOR_VFS_S3_SECRET_KEY='proctorminio-secret' \
-	PROCTOR_VFS_S3_BUCKET='proctor-dev' \
-	PROCTOR_VFS_S3_REGION='us-east-1' \
-	PROCTOR_VFS_S3_SECURE='false' \
-	PROCTOR_MAIL_ENABLED='true' \
-	PROCTOR_MAIL_FROM_ADDRESS='no-reply@proctor.local' \
-	PROCTOR_MAIL_SMTP_ADDRESS='127.0.0.1:$(PROCTOR_MAILPIT_SMTP_PORT)' \
-	PROCTOR_METRICS_ENABLED='true' \
-	PROCTOR_METRICS_LISTEN_ADDRESS='0.0.0.0:$(PROCTOR_METRICS_PORT)' \
-	PROCTOR_METRICS_TLS_CERTIFICATE_FILE='$(DEV_METRICS_CERT_FILE)' \
-	PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE='$(DEV_METRICS_KEY_FILE)' \
-	PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE='true' \
-	exec $(GO) run $(GOFLAGS) -trimpath -ldflags '$(SERVER_LDFLAGS)' ./server/cmd/proctor serve --config "$(DEV_CONFIG_DIR)/local.json"
+	@$(DEV_SERVER_ENV) $(GO) run $(GOFLAGS) -trimpath -ldflags '$(SERVER_LDFLAGS)' ./server/cmd/proctor serve --config "$(DEV_CONFIG_DIR)/local.json"
+
+debug-ready: tools dev-tools webapp-build-debug dev-up ## Prepare the local stack and pinned debugger without starting a debug session.
+	@mkdir -p "$(DEV_DIAGNOSTICS_DIR)"
+
+debug-server: debug-ready ## Debug the local server interactively with Delve.
+	@$(DEV_SERVER_ENV) "$(DLV)" debug ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-interactive" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
+
+debug-server-dap: debug-ready ## Start a loopback-only Delve DAP server for VS Code or Neovim.
+	@printf 'Delve DAP listening on 127.0.0.1:%s\n' '$(PROCTOR_DAP_PORT)'
+	@$(DEV_SERVER_ENV) "$(DLV)" dap --listen="127.0.0.1:$(PROCTOR_DAP_PORT)"
+
+debug-server-headless: debug-ready ## Start a loopback-only legacy Delve server for GoLand remote attach.
+	@printf 'Delve headless server listening on 127.0.0.1:%s\n' '$(PROCTOR_DLV_PORT)'
+	@$(DEV_SERVER_ENV) "$(DLV)" debug --headless --listen="127.0.0.1:$(PROCTOR_DLV_PORT)" --api-version=2 --accept-multiclient ./server/cmd/proctor --output "$(DEV_DIAGNOSTICS_DIR)/server-headless" -- serve --config "$(DEV_CONFIG_DIR)/local.json"
+
+debug-test: tools ## Debug one package's tests (override DEBUG_MODULE, DEBUG_PACKAGE, and DEBUG_TEST).
+	@DLV_COMMAND="$(DLV)" $(TEST_DIAGNOSTICS) debug $(TEST_DIAGNOSTIC_CONTEXT)
+
+profile-test: ## Capture a test profile (DEBUG_PROFILE=cpu, memory, mutex, or block).
+	@GO_COMMAND="$(GO)" $(TEST_DIAGNOSTICS) profile $(TEST_DIAGNOSTIC_CONTEXT) "$(DEBUG_PROFILE)"
+
+profile-open: tools ## Inspect the selected test profile with the pinned pprof viewer.
+	@"$(PPROF)" "$(DEV_DIAGNOSTICS_DIR)/$(DEBUG_PROFILE).pprof"
+
+trace-test: ## Capture a Go execution trace for one package's tests.
+	@GO_COMMAND="$(GO)" $(TEST_DIAGNOSTICS) trace $(TEST_DIAGNOSTIC_CONTEXT)
+
+trace-open: tools ## Inspect the most recently captured test trace with the pinned viewer.
+	@"$(TRACE)" "$(DEV_DIAGNOSTICS_DIR)/trace.out"
 
 run-webapp: webapp-install ## Run Vite with HMR and proxy API/WebSocket traffic to Proctor.
 	cd "$(WEBAPP_DIR)" && PROCTOR_SERVER_DEV_URL='http://127.0.0.1:$(PROCTOR_SERVER_PORT)' $(NPM) run dev

@@ -56,7 +56,8 @@ yarn-error.log*
 .DS_Store
 webapp/test-results/
 *.pem
-.vscode/
+/.idea/
+*.iml
 tmp/
 
 # Local planning and decision-working material. Durable outcomes belong in

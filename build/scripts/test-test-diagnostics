@@ -1,0 +1,64 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s TEST_DIAGNOSTICS_SCRIPT\n' "$0" >&2
+	exit 2
+fi
+
+script=$1
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-test-diagnostics.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+
+mkdir -p "$fixture/server/app" "$fixture/bin"
+cat >"$fixture/bin/go" <<EOF
+#!/bin/sh
+if [ "\$1" = list ]; then
+	printf '%s\\n' 'example.test/server/app'
+	exit 0
+fi
+printf '%s\\n' "\$*" >'$fixture/go-args'
+EOF
+chmod +x "$fixture/bin/go"
+cat >"$fixture/bin/dlv" <<EOF
+#!/bin/sh
+printf '%s\\n' "\$*" >'$fixture/dlv-args'
+EOF
+chmod +x "$fixture/bin/dlv"
+
+GO_COMMAND="$fixture/bin/go" "$script" profile "$fixture" server ./app TestExample "$fixture/output" cpu
+if ! grep -q -- '-cpuprofile' "$fixture/go-args"; then
+	printf 'expected CPU profile invocation\n' >&2
+	exit 1
+fi
+profile_output=$(cd "$fixture/output" && pwd -P)
+if ! grep -Fq -- "-outputdir $profile_output" "$fixture/go-args"; then
+	printf 'expected the profile test binary under the diagnostics directory\n' >&2
+	exit 1
+fi
+if ! grep -Fq -- 'example.test/server/app' "$fixture/go-args"; then
+	printf 'expected profiling to use the resolved package import path after changing directories\n' >&2
+	exit 1
+fi
+DLV_COMMAND="$fixture/bin/dlv" "$script" debug "$fixture" server ./app TestExample "$fixture/output"
+if ! grep -q -- "--output $profile_output/debug.test" "$fixture/dlv-args"; then
+	printf 'expected Delve output under the diagnostics directory\n' >&2
+	exit 1
+fi
+if GO_COMMAND="$fixture/bin/go" "$script" trace "$fixture" unknown ./app TestExample "$fixture/output" >/dev/null 2>&1; then
+	printf 'expected an unknown module to fail\n' >&2
+	exit 1
+fi
+if GO_COMMAND="$fixture/bin/go" "$script" trace "$fixture" server ./... TestExample "$fixture/output" >/dev/null 2>&1; then
+	printf 'expected a recursive package to fail\n' >&2
+	exit 1
+fi
+if GO_COMMAND="$fixture/bin/go" "$script" trace "$fixture" server ./../outside TestExample "$fixture/output" >/dev/null 2>&1; then
+	printf 'expected a package outside the selected module to fail\n' >&2
+	exit 1
+fi
+
+printf 'test-diagnostics tests passed\n'

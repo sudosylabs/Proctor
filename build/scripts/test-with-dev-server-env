@@ -1,0 +1,32 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s WITH_DEV_SERVER_ENV_SCRIPT\n' "$0" >&2
+	exit 2
+fi
+
+script=$1
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-dev-server-env.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+
+printf '%s\n' \
+	'PROCTOR_METRICS_BEARER_TOKEN=test-token' \
+	'PROCTOR_SERVER_LISTEN_ADDRESS=127.0.0.1:8065' \
+	'PROCTOR_VFS_BACKEND=s3' >"$fixture/environment"
+chmod 600 "$fixture/environment"
+
+output=$(
+	"$script" "$fixture/environment" \
+		sh -c 'printf "%s|%s|%s" "$PROCTOR_SERVER_LISTEN_ADDRESS" "$PROCTOR_METRICS_BEARER_TOKEN" "$PROCTOR_VFS_BACKEND"'
+)
+
+if [ "$output" != '127.0.0.1:8065|test-token|s3' ]; then
+	printf 'unexpected development environment: %s\n' "$output" >&2
+	exit 1
+fi
+
+printf 'with-dev-server-env tests passed\n'

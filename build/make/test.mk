@@ -5,18 +5,24 @@ check: build-scripts-check webapp-check docs-check server-check ## Run the herme
 build-scripts-check:
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
+	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"
+	@"$(ROOT_DIR)/build/scripts/test-go-quality" "$(ROOT_DIR)/build/scripts/go-quality"
+	@"$(ROOT_DIR)/build/scripts/test-repository-toolchain" "$(ROOT_DIR)"
 	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"
 	@"$(ROOT_DIR)/build/scripts/test-dev-secrets" "$(ROOT_DIR)/build/scripts/dev-secrets" "$(ROOT_DIR)/build/dev/metrics-openssl.cnf"
 	@"$(ROOT_DIR)/build/scripts/test-dev-seed" "$(ROOT_DIR)/build/scripts/dev-seed"
+	@"$(ROOT_DIR)/build/scripts/test-dev-server-env" "$(ROOT_DIR)/build/scripts/dev-server-env"
+	@"$(ROOT_DIR)/build/scripts/test-with-dev-server-env" "$(ROOT_DIR)/build/scripts/with-dev-server-env"
+	@"$(ROOT_DIR)/build/scripts/test-test-diagnostics" "$(ROOT_DIR)/build/scripts/test-diagnostics"
 
 webapp-install:
-	cd "$(WEBAPP_DIR)" && $(NPM) ci
+	cd "$(WEBAPP_DIR)" && $(NPM_CI_DEV)
 
 webapp-check: webapp-install
 	cd "$(WEBAPP_DIR)" && $(NPM) run check
 
 docs-install:
-	cd "$(DOCS_SITE_DIR)" && $(NPM) ci
+	cd "$(DOCS_SITE_DIR)" && $(NPM_CI_DEV)
 
 docs-start: docs-install ## Preview the public documentation site.
 	cd "$(DOCS_SITE_DIR)" && $(NPM) start

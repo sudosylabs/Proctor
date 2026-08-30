@@ -1,0 +1,96 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Proctor: bootstrap",
+      "type": "shell",
+      "command": "make bootstrap",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Proctor: debug ready",
+      "type": "shell",
+      "command": "make debug-ready",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Proctor: start DAP",
+      "type": "shell",
+      "command": "make debug-server-dap",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "proctor-delve",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Delve DAP listening on ",
+          "endsPattern": "^DAP server listening at: "
+        }
+      }
+    },
+    {
+      "label": "Proctor: start Vite",
+      "type": "shell",
+      "command": "make run-webapp",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "proctor-vite",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^> .* dev$",
+          "endsPattern": "Local:.*http://127\\.0\\.0\\.1:5173"
+        }
+      }
+    },
+    {
+      "label": "Proctor: quality",
+      "type": "shell",
+      "command": "make quality",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": ["$go"]
+    },
+    {
+      "label": "Proctor: vulnerability scan",
+      "type": "shell",
+      "command": "make vulncheck",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": ["$go"]
+    },
+    {
+      "label": "Proctor: product check",
+      "type": "shell",
+      "command": "make check",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": ["$go", "$eslint-stylish"]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "editor.formatOnSave": false,
+  "files.eol": "\n",
+  "go.alternateTools": {
+    "dlv": "${workspaceFolder}/.build/bin/dlv",
+    "gopls": "${workspaceFolder}/.build/bin/gopls"
+  },
+  "go.lintOnSave": "off",
+  "go.toolsEnvVars": {
+    "GOFLAGS": "-buildvcs=false -mod=readonly",
+    "GOTOOLCHAIN": "go1.25.13",
+    "GOWORK": "${workspaceFolder}/go.work"
+  },
+  "go.toolsManagement.autoUpdate": false,
+  "go.useLanguageServer": true,
+  "eslint.workingDirectories": [
+    "./webapp"
+  ],
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  "[go.mod]": {
+    "editor.defaultFormatter": "golang.go"
+  },
+  "[go.work]": {
+    "editor.defaultFormatter": "golang.go"
+  }
+}

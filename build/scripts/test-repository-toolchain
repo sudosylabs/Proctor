@@ -1,0 +1,168 @@
+#!/bin/sh
+# Copyright 2026 SudoSylabs
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+	printf 'usage: %s REPOSITORY_ROOT\n' "$0" >&2
+	exit 2
+fi
+
+root=$1
+go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.work")
+go_host_os=$(GOTOOLCHAIN="go$go_version" go env GOHOSTOS)
+go_host_arch=$(GOTOOLCHAIN="go$go_version" go env GOHOSTARCH)
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/proctor-repository-toolchain.XXXXXX")
+trap 'rm -rf "$fixture"' EXIT HUP INT TERM
+{
+	printf 'include %s/Makefile\n' "$root"
+	printf '%s\n' 'print-proctor-toolchain: ; @printf "%s|%s|%s|%s|%s|%s\n" "$(GO_VERSION)" "$(GOTOOLCHAIN)" "$(GOWORK)" "$(GOFLAGS)" "$(GO_HOST_OS)" "$(GO_HOST_ARCH)"'
+	printf '%s\n' 'print-proctor-tools: ; @printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n" "$(TOOL_MODULE_DIR)" "$(TOOL_BIN_DIR)" "$(GOLANGCI_LINT)" "$(GOIMPORTS)" "$(GOPLS)" "$(GOVULNCHECK)" "$(DLV)" "$(PPROF)" "$(TRACE)"'
+	printf '%s\n' 'print-child-go-flags: ; @printf "%s\n" "$$GOFLAGS"'
+	printf '%s\n' 'print-child-go-work: ; @$(GO) env GOWORK'
+} >"$fixture/Makefile"
+
+ambient_result=$(env GO_VERSION=0.0.0 GOTOOLCHAIN=auto GOWORK=off GOFLAGS=-tags=personal \
+	GOOS=plan9 GOARCH=386 GO_HOST_OS=plan9 GO_HOST_ARCH=386 \
+	make --environment-overrides --no-print-directory --silent \
+		-f "$fixture/Makefile" print-proctor-toolchain)
+expected_result="$go_version|go$go_version|$root/go.work|-buildvcs=false -mod=readonly|$go_host_os|$go_host_arch"
+if [ "$ambient_result" != "$expected_result" ]; then
+	printf 'ambient Go settings changed repository authority: %s\n' "$ambient_result" >&2
+	exit 1
+fi
+
+ambient_tools=$(env TOOL_MODULE_DIR=/tmp/modules TOOL_BIN_DIR=/tmp/bin \
+	GOLANGCI_LINT=/tmp/golangci-lint GOIMPORTS=/tmp/goimports GOPLS=/tmp/gopls \
+	GOVULNCHECK=/tmp/govulncheck DLV=/tmp/dlv PPROF=/tmp/pprof TRACE=/tmp/trace \
+	make --environment-overrides --no-print-directory --silent \
+		-f "$fixture/Makefile" print-proctor-tools)
+expected_tools="$root/build/tools|$root/.build/bin|$root/.build/bin/golangci-lint|$root/.build/bin/goimports|$root/.build/bin/gopls|$root/.build/bin/govulncheck|$root/.build/bin/dlv|$root/.build/bin/pprof|$root/.build/bin/trace"
+if [ "$ambient_tools" != "$expected_tools" ]; then
+	printf 'ambient tool paths changed repository authority: %s\n' "$ambient_tools" >&2
+	exit 1
+fi
+
+child_go_flags=$(
+	unset GOFLAGS
+	make --no-print-directory --silent -f "$fixture/Makefile" print-child-go-flags
+)
+if [ "$child_go_flags" != '-buildvcs=false -mod=readonly' ]; then
+	printf 'repository Go flags were not exported to child tools: %s\n' "$child_go_flags" >&2
+	exit 1
+fi
+
+child_go_work=$(env GOWORK=off make --environment-overrides \
+	--no-print-directory --silent -f "$fixture/Makefile" print-child-go-work)
+if [ "$child_go_work" != "$root/go.work" ]; then
+	printf 'repository Go workspace was not exported to child tools: %s\n' "$child_go_work" >&2
+	exit 1
+fi
+
+explicit_result=$(make --no-print-directory --silent -f "$fixture/Makefile" \
+	GO_VERSION=1.25.0 GOTOOLCHAIN=local GOWORK=off GOFLAGS=-x print-proctor-toolchain)
+if [ "$explicit_result" != "1.25.0|local|off|-x|$go_host_os|$go_host_arch" ]; then
+	printf 'explicit command-line Go settings were not preserved: %s\n' "$explicit_result" >&2
+	exit 1
+fi
+
+tool_build=$(env GOOS=plan9 GOARCH=386 make --no-print-directory --dry-run \
+	-C "$root" tools)
+if ! printf '%s\n' "$tool_build" | grep -Fq "GOOS=\"$go_host_os\" GOARCH=\"$go_host_arch\""; then
+	printf 'tool installation did not normalize the host platform\n' >&2
+	exit 1
+fi
+if printf '%s\n' "$tool_build" | grep -Eq 'GOOS="plan9"|GOARCH="386"'; then
+	printf 'tool installation inherited an ambient cross-compilation platform\n' >&2
+	exit 1
+fi
+
+for editorconfig_pattern in '*.{css,js,json,jsonc,jsx,lua,mjs,mdx,scss,ts,tsx,yaml,yml}' \
+	'{go.mod,go.sum,go.work,go.work.sum}' 'Dockerfile*'; do
+	if ! grep -Fq "[$editorconfig_pattern]" "$root/.editorconfig"; then
+		printf 'EditorConfig is missing repository file coverage: %s\n' "$editorconfig_pattern" >&2
+		exit 1
+	fi
+done
+
+if ! grep -Fq "\"GOTOOLCHAIN\": \"go$go_version\"" "$root/.vscode/settings.json"; then
+	printf 'VS Code toolchain does not match go.work\n' >&2
+	exit 1
+fi
+if ! grep -Fq '"GOFLAGS": "-buildvcs=false -mod=readonly"' "$root/.vscode/settings.json"; then
+	printf 'VS Code Go flags do not match repository authority\n' >&2
+	exit 1
+fi
+if ! grep -Fq '"GOWORK": "${workspaceFolder}/go.work"' "$root/.vscode/settings.json"; then
+	printf 'VS Code Go workspace does not match repository authority\n' >&2
+	exit 1
+fi
+
+neovim_config=$root/contrib/editors/neovim/proctor.lua
+for expected in 'vim.fs.root(0, { "go.work" })' 'root .. "/go.work"' 'vim.lsp.config("proctor_gopls"' 'filetypes = { "go", "gomod", "gowork", "gotmpl" }' 'root_dir = function(bufnr, on_dir)' 'vim.fs.normalize(buffer_root) == root' 'vim.lsp.enable("proctor_gopls")' 'GOTOOLCHAIN = "go" .. go_version' 'GOFLAGS = "-buildvcs=false -mod=readonly"' 'GOWORK = root .. "/go.work"'; do
+	if ! grep -Fq "$expected" "$neovim_config"; then
+		printf 'Neovim toolchain configuration is incomplete: %s\n' "$expected" >&2
+		exit 1
+	fi
+done
+
+diagnostic_command=$(make --no-print-directory --dry-run -C "$root" \
+	DEBUG_TEST='^TestExactBehavior$$' debug-test)
+if ! printf '%s\n' "$diagnostic_command" | grep -Fq '"^TestExactBehavior$"'; then
+	printf 'Make did not preserve the exact-test end anchor\n' >&2
+	exit 1
+fi
+
+debug_command=$(make --no-print-directory --dry-run -C "$root" debug-ready)
+if ! printf '%s\n' "$debug_command" \
+	| grep -Fq "PROCTOR_BUILD_VERSION='dev' PROCTOR_BUILD_COMMIT='unknown'"; then
+	printf 'debug preparation did not build the webapp with debugger-default identity\n' >&2
+	exit 1
+fi
+if ! grep -Fq 'Version   = "dev"' "$root/server/app/version.go" \
+	|| ! grep -Fq 'Commit    = "unknown"' "$root/server/app/version.go"; then
+	printf 'debug webapp identity does not match the Go server defaults\n' >&2
+	exit 1
+fi
+
+interactive_debug=$(make --no-print-directory --dry-run -C "$root" debug-server)
+if ! printf '%s\n' "$interactive_debug" \
+	| grep -Fq -- "$root/.build/dev/diagnostics/server-interactive"; then
+	printf 'interactive Delve output is not isolated under the diagnostics directory\n' >&2
+	exit 1
+fi
+headless_debug=$(make --no-print-directory --dry-run -C "$root" debug-server-headless)
+if ! printf '%s\n' "$headless_debug" \
+	| grep -Fq -- "$root/.build/dev/diagnostics/server-headless"; then
+	printf 'headless Delve output is not isolated under the diagnostics directory\n' >&2
+	exit 1
+fi
+for editor_config in "$root/.vscode/launch.json" "$root/contrib/editors/neovim/proctor.lua"; do
+	if ! grep -Fq '.build/dev/diagnostics/server-dap' "$editor_config"; then
+		printf 'editor DAP output is not isolated under the diagnostics directory: %s\n' "$editor_config" >&2
+		exit 1
+	fi
+done
+
+mkdir -p "$fixture/webapp" "$fixture/docs"
+cat >"$fixture/npm" <<'EOF'
+#!/bin/sh
+printf '%s|%s|%s|%s\n' "${NODE_ENV-unset}" "${npm_config_omit-unset}" \
+	"${npm_config_production-unset}" "$*" >>"$NPM_LOG"
+EOF
+chmod +x "$fixture/npm"
+NPM_LOG="$fixture/npm.log" NODE_ENV=production npm_config_omit=dev \
+	npm_config_production=true make --no-print-directory --silent -C "$root" \
+	NPM="$fixture/npm" WEBAPP_DIR="$fixture/webapp" DOCS_SITE_DIR="$fixture/docs" \
+	webapp-install docs-install
+expected_npm_install='development|||ci --include=dev'
+if [ "$(sed -n '1p' "$fixture/npm.log")" != "$expected_npm_install" ] \
+	|| [ "$(sed -n '2p' "$fixture/npm.log")" != "$expected_npm_install" ] \
+	|| [ "$(wc -l <"$fixture/npm.log" | tr -d ' ')" != 2 ]; then
+	printf 'repository npm installs inherited production-only configuration\n' >&2
+	cat "$fixture/npm.log" >&2
+	exit 1
+fi
+
+printf 'repository-toolchain tests passed\n'

@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "editorconfig.editorconfig",
+    "golang.go",
+    "unifiedjs.vscode-mdx",
+    "dbaeumer.vscode-eslint",
+    "ms-playwright.playwright"
+  ]
+}
