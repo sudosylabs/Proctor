@@ -96,16 +96,13 @@ contain complete URLs, DOM text, request metadata, and screenshots. Review it
 locally and redact it before sharing. Never commit traces or screenshots
 captured from a non-synthetic environment.
 
-## Keep Debugging Tool-Neutral
+## Use the Repository Debugging Entry Points
 
-Use browser developer tools, focused tests, and the foreground Go server. The
-repository does not yet publish IDE-specific launch files or debugger recipes,
-because it has not defined one repository-owned Go and browser debugging
-contract.
-
-{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
-entry points before publishing IDE-specific launch files or debugger commands.
-Keep this guide tool-neutral until that contract exists. */}
+Use browser developer tools and Playwright traces for browser state. VS Code
+contributors can use the tracked hosted-webapp or Vite Chrome launch
+configuration. Use the repository's Delve targets when the failing request must
+be followed into Go code. The complete VS Code, GoLand, Neovim, CLI, profiling,
+and trace recipes are in [tooling and debugging](../tooling-and-debugging.mdx).
 
 ## Prove the Recovery
 

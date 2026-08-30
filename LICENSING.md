@@ -10,6 +10,15 @@ Proctor is a multi-module repository with licenses applied by directory.
   [`server/NOTICE`](server/NOTICE).
 - Reusable modules in [`packages/`](packages/) are licensed under the Apache
   License, version 2. Each module contains its own `LICENSE` and `NOTICE`.
+- Repository-owned development tooling under [`build/`](build/) and editor
+  examples under [`contrib/`](contrib/) are licensed under the GNU Affero
+  General Public License, version 3, unless a file declares another license.
+- Repository-owned documentation under [`docs/`](docs/), automation and editor
+  configuration under [`.github/`](.github/) and [`.vscode/`](.vscode/), and
+  root build or quality configuration such as `.editorconfig`,
+  `.golangci.yml`, `Makefile`, and the Go workspace files are licensed under
+  the GNU Affero General Public License, version 3, unless a file declares
+  another license.
 - Third-party dependencies remain under their respective licenses.
 
 Code copied or substantially adapted from another project must retain all

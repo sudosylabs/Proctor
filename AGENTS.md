@@ -11,15 +11,19 @@ One logical installation represents one educational institution. Several
 application nodes sharing authoritative state form one installation, not
 separate tenants.
 
-The repository is a monorepo with four independently versioned Go modules:
+The repository is a monorepo with four independently versioned product Go
+modules:
 
 - `github.com/sudosylabs/proctor/packages/cache`
 - `github.com/sudosylabs/proctor/packages/mail`
 - `github.com/sudosylabs/proctor/packages/vfs`
 - `github.com/sudosylabs/proctor/server`
 
-The root `go.work` connects them for repository development. Each module must
-also build and test independently.
+The root `go.work` connects the product modules for repository development.
+Each product module must also build and test independently. Non-product
+developer-tool pins live in the isolated `build/tools` and `build/tools/gopls`
+modules; they stay outside `go.work` so tool dependencies cannot affect product
+module graphs.
 
 ## Sources of truth
 

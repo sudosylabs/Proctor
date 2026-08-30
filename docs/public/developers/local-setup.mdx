@@ -37,7 +37,7 @@ Install these host tools before cloning:
 | Tool | Required version or behavior | Installation source |
 | --- | --- | --- |
 | Git | A current Git 2.x release | [Install Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) |
-| Go | Go 1.25 or newer; the workspace declares 1.25.4 | [Install Go](https://go.dev/doc/install) |
+| Go | The patched version declared by the root `go.work` | [Install Go](https://go.dev/doc/install) |
 | Node.js and npm | Prefer the pinned Node 22.22.0 in `webapp/.nvmrc`; Node 20.19+ within major 20, or Node 22.12 and newer, satisfies package metadata | [Download Node.js](https://nodejs.org/en/download) |
 | Docker | A running Docker Engine with the Compose plugin | [Docker Desktop for macOS](https://docs.docker.com/desktop/setup/install/mac-install/) or [Docker Engine for Linux](https://docs.docker.com/engine/install/) |
 | Shell utilities | POSIX `sh`, `make`, `jq`, `curl`, and `openssl` | Use the operating system's package manager |
@@ -100,6 +100,20 @@ Common first-run failures are straightforward:
   manager, then rerun the command.
 
 Do not continue until `make dev-tools` succeeds.
+
+Install the repository-pinned Go tools and locked JavaScript dependencies:
+
+```sh
+make bootstrap
+make tools-check
+```
+
+The Go binaries are written below ignored `.build/bin`; no global Go-tool
+installation is required. `bootstrap` is safe to rerun. Go's build cache and
+npm's download cache reduce repeated work, while the lockfiles keep each npm
+installation reproducible. See
+[tooling and debugging](./tooling-and-debugging.mdx) for the formatter, linter,
+vulnerability scanner, language server, debugger, and editor workflows.
 
 ## 4. Start the Single-Node Product
 

@@ -7,6 +7,18 @@ remain independently usable and do not depend on the product build.
 
 Run `make help` for the current command surface. The main lifecycles are:
 
+- `make bootstrap` validates the host and installs the repository-pinned Go
+  tools below `.build/bin` plus both locked npm dependency trees. The separate
+  `make tools` and `make tools-check` targets install and verify only the Go
+  toolchain described by `build/tools/go.mod` and
+  `build/tools/gopls/go.mod`.
+- `make fmt`, `make fmt-check`, and `make lint` apply or verify versioned and
+  unignored Go source against the formatting and new-finding static-analysis
+  policy. `make lint-config` verifies only the linter configuration;
+  `make lint-full` reports the pre-existing analyzer backlog without weakening
+  the changed-line gate. `make quality` combines read-only formatting and lint gates;
+  `make vulncheck` queries the current Go vulnerability database, and
+  `make security` combines linting with that live scan.
 - `make run-server` validates the host toolchain, installs and compiles the
   hosted webapp, generates ignored development configuration and secrets,
   starts health-checked PostgreSQL, Redis, MinIO, Mailpit, Prometheus, Grafana,
@@ -15,6 +27,12 @@ Run `make help` for the current command surface. The main lifecycles are:
   `make dev-down` to stop them or `make dev-reset` to remove their volumes.
 - `make run-webapp` runs Vite with HMR and proxies API/WebSocket traffic to an
   independently running server.
+- `make debug-server`, `make debug-server-dap`, and
+  `make debug-server-headless` run the same local server environment through
+  interactive Delve, loopback DAP, or loopback Delve API v2 respectively.
+  `make debug-test`, `make profile-test`, and `make trace-test` provide focused
+  package diagnostics below `.build/dev/diagnostics` without exposing a
+  production profiling endpoint.
 - `make dev-seed` uses only the public HTTP API and locally captured Mailpit
   invitations to create a guarded synthetic Institution, administrator, Exam
   Manager, Candidate, academic structure, Exam Revision, and future Sitting.
@@ -54,9 +72,13 @@ command-line value such as `make PROCTOR_POSTGRES_PORT=25432 run-server`, use an
 environment value when no local override exists, or place persistent local
 settings in the ignored root `config.override.mk`. Command-line values have
 highest priority, followed by `config.override.mk`, environment values, and
-tracked defaults.
+tracked defaults. The Go version, `GOTOOLCHAIN`, `GOWORK`, `GOFLAGS`,
+pinned-tool module and install directories, and individual pinned-tool paths
+are repository authority: they ignore ambient and `config.override.mk` values.
+Only an explicit Make command-line assignment can override those values for a
+deliberate experiment.
 
-All disposable state is below ignored `.build/dev`: generated full server
+All disposable runtime state is below ignored `.build/dev`: generated full server
 configuration, bootstrap and sealing keys, a development metrics certificate,
 Prometheus target discovery, log files, collector checkpoints, and guarded
 synthetic seed credentials and identifiers. No tracked configuration points at

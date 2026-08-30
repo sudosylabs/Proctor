@@ -47,6 +47,11 @@ const sidebars: SidebarsConfig = {
             },
             {
               type: 'doc',
+              id: 'developers/tooling-and-debugging',
+              label: 'Tooling and Debugging',
+            },
+            {
+              type: 'doc',
               id: 'developers/repository-boundaries',
               label: 'Repository Boundaries',
             },

@@ -14,6 +14,19 @@ with the product.
 
 ## The Verification Ladder
 
+### 0. Repository Standards
+
+Before interpreting a module failure, prove formatting and static analysis:
+
+```sh
+make quality
+```
+
+Run `make vulncheck` when Go source or dependencies change. It queries the
+current vulnerability database and is intentionally separate from the
+hermetic product gate. See [tooling and debugging](./tooling-and-debugging.mdx)
+for the exact tool ownership and focused diagnostic commands.
+
 ### 1. Focused Behavior
 
 Run the exact package and test while implementing:
@@ -123,7 +136,8 @@ node.
 ## Before Handoff
 
 1. Run `git diff --check`.
-2. Review generated output and ensure it came from the tracked source.
-3. Check the diff for secrets, local paths, snapshots, and unrelated changes.
-4. Run the highest relevant gate above.
-5. Report exactly what passed and any dependency-backed check that was not run.
+2. Run `make quality` for Go changes.
+3. Review generated output and ensure it came from the tracked source.
+4. Check the diff for secrets, local paths, snapshots, and unrelated changes.
+5. Run the highest relevant gate above.
+6. Report exactly what passed and any dependency-backed check that was not run.

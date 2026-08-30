@@ -22,6 +22,13 @@ For the root Make lifecycle, the highest-precedence value wins:
 3. an environment value; then
 4. the tracked default in `build/make/config.mk`.
 
+This precedence applies to operational settings such as ports, origins, and
+images. The Go version, `GOTOOLCHAIN`, `GOWORK`, `GOFLAGS`, pinned-tool module
+and install directories, and individual pinned-tool paths are repository
+authority. They ignore environment and `config.override.mk` values so a
+contributor's shell cannot silently change shared checks; only an explicit
+Make command-line value can override them for a deliberate experiment.
+
 Use the command line for one experiment:
 
 ```sh
@@ -81,6 +88,8 @@ HTTPS.
 | `PROCTOR_SERVER_PUBLIC_URL` | `http://localhost:8065` | Canonical single-node browser origin |
 | `PROCTOR_METRICS_PORT` | `8067` | Protected Proctor metrics listener |
 | `PROCTOR_CLUSTER_HTTP_PORT` | `18065` | HAProxy cluster gateway |
+| `PROCTOR_DAP_PORT` | `2345` | Loopback Delve DAP listener for VS Code and Neovim |
+| `PROCTOR_DLV_PORT` | `2346` | Loopback Delve API v2 listener for GoLand remote attach |
 | `PROCTOR_POSTGRES_PORT` | `15432` | PostgreSQL host binding |
 | `PROCTOR_REDIS_PORT` | `16379` | Redis host binding |
 | `PROCTOR_MINIO_PORT` | `19000` | MinIO S3 API |
@@ -115,13 +124,16 @@ PROCTOR_GRAFANA_IMAGE
 PROCTOR_LOKI_IMAGE
 PROCTOR_OTEL_IMAGE
 PROCTOR_HAPROXY_IMAGE
+PROCTOR_GO_IMAGE
 PROCTOR_RUNTIME_IMAGE
 PROCTOR_BUILDENV_IMAGE
 ```
 
 Override an image only for an intentional compatibility or upgrade test. Record
 the exact tag and digest in review evidence. A mutable tag alone does not prove
-which artifact passed.
+which artifact passed. `PROCTOR_GO_IMAGE` supplies the build and runtime builder
+base; keep its Go tag synchronized with the version in `go.work` and always
+pair that tag with its immutable digest.
 
 ## Understand Generated `.build/dev` State
 
@@ -130,7 +142,7 @@ generated secrets. The default ignored tree contains:
 
 | Path | Meaning | Safe to commit? |
 | --- | --- | --- |
-| `.build/dev/config/` | Full generated single-node and per-cluster-node server configuration | No |
+| `.build/dev/config/` | Generated single-node and per-cluster-node configuration, including the bundled local server environment | No |
 | `.build/dev/secrets/environment` | Bootstrap, sealing, and other development secret values | No |
 | `.build/dev/secrets/metrics-token` | Prometheus bearer credential | No |
 | `.build/dev/secrets/metrics-*.pem` | Local metrics certificate and private key | No |
@@ -140,6 +152,8 @@ generated secrets. The default ignored tree contains:
 | `.build/dev/otel/` | Collector file-read checkpoints | No |
 | `.build/dev/seed/credentials.json` | Random synthetic account credentials, mode `0600` | Never |
 | `.build/dev/seed/fixture.json` | Synthetic fixture identifiers, mode `0600` | No |
+| `.build/dev/diagnostics/` | Focused local test profiles and execution traces | No |
+| `.build/bin/` | Repository-pinned Go developer binaries | No |
 
 These files are outputs, not documentation or configuration authority. Change
 the tracked server example, build scripts, Make variables, or topology owner

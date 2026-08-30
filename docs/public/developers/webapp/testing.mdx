@@ -178,11 +178,10 @@ The complete gate verifies brand assets and design tokens, rejects stale API,
 localization, and route adapters, type-checks, lints, runs unit and browser
 tests, and builds the production bundle.
 
-{/* TODO(webapp-debugging): Define repository-owned Go and browser debugger
-entry points before publishing IDE-specific launch files or debugger commands. */}
-
-The debugger convention is intentionally unresolved. Use focused tests and
-browser developer tools without publishing editor-specific launch files as a
-repository standard.
+Use browser developer tools and Playwright traces for browser-only failures.
+The tracked VS Code browser launch configurations and the repository-owned Go
+debug entry points are documented in
+[tooling and debugging](../tooling-and-debugging.mdx). Keep the API server's
+public origin aligned with Vite when debugging an origin-sensitive flow.
 
 Continue with the [visual review guide](./visual-review.mdx).

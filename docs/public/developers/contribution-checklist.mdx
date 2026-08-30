@@ -87,7 +87,11 @@ At minimum before handoff:
 ```sh
 git diff --check
 git status --short
+make quality
 ```
+
+Run `make vulncheck` when Go source or module dependencies changed. The live
+database scan is separate from the hermetic product gate.
 
 For server or documentation boundary changes:
 

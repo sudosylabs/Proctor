@@ -1,0 +1,236 @@
+---
+title: Use the Repository Tooling and Debuggers
+description: Install Proctor's pinned Go tools, apply shared editor standards, debug the server and webapp, and capture focused test diagnostics.
+audience: developer
+maturity: preview
+slug: /developers/tooling-and-debugging/
+---
+
+# Use the Repository Tooling and Debuggers
+
+Proctor owns its development behavior at the repository boundary. Editors may
+present that behavior differently, but they use the same pinned binaries, Make
+targets, generated local state, ports, and quality configuration. A contributor
+can therefore change editors without changing what the repository considers
+formatted, lint-clean, vulnerable, or debuggable.
+
+## Install the Complete Development Environment
+
+After installing the host prerequisites from [local setup](./local-setup.mdx),
+run:
+
+```sh
+make bootstrap
+make tools-check
+```
+
+`bootstrap` validates Go, Node, Docker, and required shell utilities; installs
+the exact Go developer binaries under ignored `.build/bin`; and installs the
+locked webapp and documentation dependencies. It is safe to rerun. Go's build
+cache and npm's download cache reduce repeated work; the npm lockfiles make
+each clean installation reproducible. Repository install targets explicitly
+include development dependencies even when the invoking shell configures npm
+for production-only installs.
+
+The tool manifests at `build/tools/go.mod` and `build/tools/gopls/go.mod` are
+the version authority for external Go tools. `gopls` has an isolated tool graph
+because its Go-1.25-compatible release and the pinned linter require different
+revisions of `golang.org/x/tools`. The profile and trace viewers are built from
+the standard command sources in the exact Go toolchain selected by `go.work`.
+All of these binaries install into the same `.build/bin` directory.
+
+Use `make tools` when only the Go binaries are missing. Do not install an
+unversioned global `golangci-lint`, `gopls`, `govulncheck`, `goimports`, or
+`dlv` and assume it matches CI.
+
+## Apply the Shared Standards
+
+The repository separates concerns that editors often combine:
+
+| Concern | Repository authority |
+| --- | --- |
+| Encoding, line endings, indentation, final newline | `.editorconfig` and `.gitattributes` |
+| Go syntax and import grouping | `gofmt`, pinned `goimports`, and `.golangci.yml` |
+| Go static analysis, including `gosec` | pinned `golangci-lint` and `.golangci.yml` |
+| Reachable known Go vulnerabilities | pinned `govulncheck` against the current public database |
+| Go workspace selection | root `go.work` exported through repository and editor tool environments |
+| Go language intelligence | pinned `gopls` |
+| Go debugging | pinned Delve |
+| Go profile and trace inspection | viewers built from the pinned Go toolchain |
+
+Run the narrow gate that matches the work:
+
+```sh
+make fmt          # change versioned and unignored Go files in place
+make fmt-check    # read-only formatting gate
+make lint-config  # validate the linter configuration
+make lint         # new findings across all four product modules
+make lint-full    # complete legacy and new finding backlog
+make vulncheck    # live vulnerability database
+make quality      # fmt-check plus lint
+make security     # lint plus vulnerability scan
+make precommit    # build-script tests plus quality
+```
+
+The initial repository-wide scan exposes a large pre-existing analyzer backlog.
+The ordinary `lint` and CI targets therefore use golangci-lint's new-issue mode:
+changed Go lines cannot introduce findings, while `lint-full` keeps the legacy
+debt visible for deliberate cleanup. No baseline findings are hidden with
+source annotations. The existing module checks still run tests, race detection,
+and `go vet`; linting supplements those gates rather than replacing them.
+Changes to linter configuration, tool pins, or Go dependency manifests also
+exercise the configured analyzers against every product module without making
+the pre-existing backlog fatal.
+
+Locally, `lint` compares the complete feature branch with its merge-base on the
+checkout's tracked default branch, so findings from earlier feature commits
+remain in scope. CI supplies the exact pull-request or push base through
+`LINT_BASE_REV`. Set that variable explicitly only when a checkout has no
+discoverable `origin` default branch or local `main` reference.
+
+`govulncheck` is a separate scheduled and dependency-change CI workflow because
+its database changes independently of the source checkout and is therefore not
+hermetic. Each product module is scanned with `GOWORK=off` so workspace version
+selection cannot hide vulnerabilities in a module's standalone dependency graph.
+
+## Debug the Server Without an IDE
+
+For an interactive Delve terminal:
+
+```sh
+make debug-server
+```
+
+The target installs the pinned debugger, builds the webapp, generates local
+configuration and secrets, starts the health-checked dependencies, exports the
+same environment as `make run-server`, and launches the real
+`server/cmd/proctor` entry point. Breakpoints therefore observe the supported
+single-node runtime rather than a reduced mock. Debug preparation stamps the
+webapp with the Go server's debugger-default `dev/unknown` identity so the
+server's build-integrity check remains active and succeeds without optimized
+release linker flags.
+
+Delve pauses process execution at breakpoints. Requests can time out while the
+server is stopped; this is expected. Stop the debugger with
+<kbd>Control</kbd>+<kbd>C</kbd>. Dependency containers remain available until
+`make dev-down`. Repository launchers place temporary Delve executables under
+ignored `.build/dev/diagnostics`, including when a session is interrupted.
+
+## Use VS Code
+
+Review the checkout, open the repository root, grant normal VS Code workspace
+trust, and accept the tracked extension recommendations. Then run
+`make bootstrap` once and use **Go: Locate Configured Go Tools** to verify that
+`gopls` and `dlv` resolve below `.build/bin`.
+
+Choose a configuration from **Run and Debug**:
+
+- **Proctor server (repository DAP)** starts the repository DAP task on
+  `127.0.0.1:2345`, prepares the complete local stack, and launches the server;
+- **Selected Go test** and **Go tests in current package** use the pinned
+  Delve binary configured by workspace settings;
+- **Hosted webapp (Chrome)** attaches JavaScript debugging to a running
+  production-shaped server at port 8065; and
+- **Vite webapp (Chrome)** starts Vite and opens the HMR origin at port 5173.
+
+The Vite browser configuration expects the API server to be running. For an
+origin-sensitive flow, start that server with
+`PROCTOR_SERVER_PUBLIC_URL=http://127.0.0.1:5173` as described in
+[local setup](./local-setup.mdx).
+
+Workspace settings disable automatic Go-tool updates, point the Go extension
+at `.build/bin/gopls` and `.build/bin/dlv`, and give editor-owned Go processes
+the exact toolchain and workspace declared by `go.work`. Formatting on save is
+an editor convenience; `make fmt-check` remains the reviewable authority.
+
+The tracked tasks run repository code and the debugger can execute the selected
+program. Revoke normal VS Code workspace trust if the checkout later becomes
+untrusted.
+
+## Use GoLand
+
+GoLand uses its own code-intelligence engine, so it does not need `gopls` for
+navigation. Configure the project SDK with the Go version declared by the root
+`go.work`, then open the repository root so Go workspace support discovers the
+workspace and all four product modules. Use the root Make targets as external
+tools or run configurations for formatting, linting, tests, and vulnerability
+checks rather than duplicating them in IDE inspection settings.
+
+For server debugging:
+
+1. Run `make debug-server-headless` in a terminal.
+2. In **Run | Edit Configurations**, add a **Go Remote** configuration.
+3. Set the host to `127.0.0.1` and the port to `2346`. The Make target owns
+   Delve's API v2 selection; GoLand does not expose that as a Go Remote field.
+4. Start the Go Remote configuration and set breakpoints in the checkout.
+
+The Make target launches the real server and owns its environment; the GoLand
+configuration only attaches. Do not change the listener to `0.0.0.0` or expose
+it through a tunnel.
+
+## Use Neovim
+
+The tracked `contrib/editors/neovim/proctor.lua` example targets Neovim 0.11+
+and `nvim-dap`. Copy the relevant code into your reviewed personal
+configuration, then run:
+
+```sh
+make tools
+make debug-server-dap
+```
+
+The example starts the pinned `gopls` for the workspace and attaches
+`nvim-dap` to `127.0.0.1:2345`. It deliberately does not enable automatic
+repository-local Lua loading: a cloned repository must not silently execute
+editor configuration before the contributor reviews it.
+
+## Debug and Measure Focused Tests
+
+The diagnostic targets require one module-relative package; recursive `...`
+patterns are rejected so one artifact always corresponds to one test binary.
+For example:
+
+```sh
+make debug-test \
+  DEBUG_MODULE=server \
+  DEBUG_PACKAGE=./app \
+  DEBUG_TEST='^TestExactBehavior$$'
+
+make profile-test \
+  DEBUG_MODULE=server \
+  DEBUG_PACKAGE=./app \
+  DEBUG_TEST='^TestExactBehavior$$' \
+  DEBUG_PROFILE=cpu
+
+make profile-open DEBUG_PROFILE=cpu
+
+make trace-test \
+  DEBUG_MODULE=server \
+  DEBUG_PACKAGE=./app \
+  DEBUG_TEST='^TestExactBehavior$$'
+
+make trace-open
+```
+
+Profiles may select `cpu`, `memory`, `mutex`, or `block`. Generated profiles,
+retained test binaries, and traces stay under ignored `.build/dev/diagnostics`.
+They can include code paths, labels, and test data; review and redact them
+before sharing.
+
+Proctor does not expose Go `pprof` on the production metrics listener. Runtime
+profiling would require a separately designed, authenticated, bounded
+operational contract. The repository currently supports focused local test
+profiles and traces instead.
+
+## Keep Debug Listeners Local
+
+Both debugger servers bind to loopback by design. Delve grants control over a
+process and can execute code with that process's permissions; it is not an
+authenticated remote administration service. Never publish ports 2345 or
+2346, place them behind a shared ingress, or attach them to a production
+process.
+
+Change the local ports with `PROCTOR_DAP_PORT` and `PROCTOR_DLV_PORT` when two
+checkouts must run simultaneously. Update a personal editor attachment to the
+same value; do not edit the tracked launch files for a workstation-only
+preference.
