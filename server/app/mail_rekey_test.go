@@ -82,7 +82,8 @@ func (f *mailRekeyAuditFake) Fail(_ context.Context, id, code string) error {
 }
 
 func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testing.T) {
-	now := time.Now().UTC()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
+	wantCreatedAt := time.Date(2026, 9, 4, 12, 0, 0, 123456000, time.UTC)
 	oldKey := base64.StdEncoding.EncodeToString([]byte("old-mail-rekey-key-material-0001"))
 	newKey := base64.StdEncoding.EncodeToString([]byte("new-mail-rekey-key-material-0001"))
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024})
@@ -99,7 +100,9 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 		recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now }}
 	woke := 0
 	service.wake = func() { woke++ }
-	principal := mailTestPrincipal(now)
+	// Authentication restores durable Session timestamps; the service clock
+	// can still carry finer precision before creating the Job.
+	principal := mailTestPrincipal(model.TimeUTC(now))
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Minute))
 
@@ -112,7 +115,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 		persistence.input.AuditEventID != auditor.beginID || persistence.input.AuditAt != now.UnixMilli() ||
 		view.JobID != persistence.input.Job.ID || view.PrimaryKeyID != sealer.PrimaryKeyID() ||
 		view.RetiringKeyID != oldSealerKeyID(t, oldKey) || auditor.attempt.Operation != "start_rekey" ||
-		auditor.attempt.ScopeType != model.RoleScopeInstitution || woke != 1 {
+		auditor.attempt.ScopeType != model.RoleScopeInstitution || !view.CreatedAt.Equal(wantCreatedAt) || woke != 1 {
 		t.Fatalf("view=%#v input=%#v audit=%#v woke=%d", view, persistence.input, auditor.attempt, woke)
 	}
 	if len(authorizer.actions) != 1 || authorizer.actions[0] != model.ActionMailRekey {
@@ -142,7 +145,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 	if _, appErr = service.KeyState(context.Background(), NewInvocation(pat, model.RequestMetadata{})); !Is(appErr, "authentication.invalid_token") {
 		t.Fatalf("PAT key state error = %v", appErr)
 	}
-	weak := mailTestPrincipal(now)
+	weak := mailTestPrincipal(model.TimeUTC(now))
 	if _, appErr = service.StartRekey(context.Background(), NewInvocation(weak, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !Is(appErr, "authentication.strong_required") {
 		t.Fatalf("weak Session error = %v", appErr)
 	}
@@ -150,7 +153,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 		t.Fatalf("weak Session key state error = %v", appErr)
 	}
 	stale := principal
-	stale.AuthenticatedAt = now.Add(-time.Hour)
+	stale.AuthenticatedAt = model.TimeUTC(now.Add(-time.Hour))
 	stale.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Hour))
 	if _, appErr = service.StartRekey(context.Background(), NewInvocation(stale, model.RequestMetadata{}), oldSealerKeyID(t, oldKey)); !Is(appErr, "authentication.reauthentication_required") {
 		t.Fatalf("stale Session error = %v", appErr)
@@ -162,7 +165,7 @@ func TestStartMailRekeyRequiresStrongRecentSessionAndEnqueuesAuditedJob(t *testi
 
 func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T) {
 	t.Parallel()
-	now := time.Now().UTC()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	oldKey := base64.StdEncoding.EncodeToString([]byte("old-mail-rekey-key-material-0001"))
 	newKey := base64.StdEncoding.EncodeToString([]byte("new-mail-rekey-key-material-0001"))
 	sealer, err := secretseal.New(secretseal.Settings{EncryptionKey: newKey, DecryptionKeys: []string{oldKey}, MaximumPlaintext: 1024})
@@ -189,7 +192,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 			auditor := &mailRekeyAuditFake{beginID: model.NewId(), failErr: test.failErr}
 			service := &mailService{rekey: persistence, rekeyAudit: auditor, authorization: &mailAuthorizerFake{}, sealer: sealer,
 				recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now }, wake: func() { t.Fatal("failed rekey woke workers") }}
-			principal := mailTestPrincipal(now)
+			principal := mailTestPrincipal(model.TimeUTC(now))
 			principal.AuthenticationStrength = model.AuthenticationMultiFactor
 			principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
@@ -203,7 +206,7 @@ func TestStartMailRekeyCompletesConflictAndPersistenceFailureAudits(t *testing.T
 }
 
 func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testing.T) {
-	now := time.Now().UTC()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	primaryKeyID := "22222222222222222222222222222222"
 	retiringKeyID := "11111111111111111111111111111111"
 	command, _ := json.Marshal(MailRekeyCommandV1{PrimaryKeyID: primaryKeyID, RetiringKeyID: retiringKeyID})
@@ -231,7 +234,7 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 	authorizer := &mailAuthorizerFake{}
 	service := &mailService{rekeyJobs: persistence, authorization: authorizer,
 		recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now.Add(4 * time.Second) }}
-	principal := mailTestPrincipal(now)
+	principal := mailTestPrincipal(model.TimeUTC(now))
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
@@ -252,7 +255,7 @@ func TestGetMailRekeyStatusProjectsOnlyTypedProgressAndRetirementProof(t *testin
 }
 
 func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
-	now := time.Now().UTC()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
 	other, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
 		json.RawMessage(`{"user_id":"`+model.NewUserID().String()+`"}`), model.NewUserID().String(), now, now, 8)
 	if err != nil {
@@ -261,7 +264,7 @@ func TestGetMailRekeyStatusConcealsJobsOwnedByOtherDomains(t *testing.T) {
 	persistence := &mailRekeyStarterFake{job: other}
 	service := &mailService{rekeyJobs: persistence, authorization: &mailAuthorizerFake{},
 		recentAuthenticationTTL: 15 * time.Minute, now: func() time.Time { return now }}
-	principal := mailTestPrincipal(now)
+	principal := mailTestPrincipal(model.TimeUTC(now))
 	principal.AuthenticationStrength = model.AuthenticationMultiFactor
 	principal.MFACompletedAt = model.OptionalTimeFrom(now)
 
