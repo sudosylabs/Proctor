@@ -5,17 +5,29 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Validated server release version, without the v prefix.
+        type: string
+        default: ''
+      build-release:
+        description: Build Linux distribution archives after the quality gates.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
   group: proctor-ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   GOFLAGS: -buildvcs=false -mod=readonly
   GOPRIVATE: github.com/sudosylabs/proctor
+  GO_TEST: node ${{ github.workspace }}/build/ci/go-test.mjs
+  PROCTOR_TEST_REPORT_DIR: ${{ github.workspace }}/.build/ci
 
 jobs:
   quality:
@@ -23,32 +35,25 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            server/go.sum
-            packages/cache/go.sum
-            packages/mail/go.sum
-            packages/vfs/go.sum
-            build/tools/go.sum
-            build/tools/gopls/go.sum
+          token: ${{ github.token }}
       - name: Select linter comparison revision
         id: lint-base
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          revision=
-          if [ "$EVENT_NAME" = pull_request ]; then
+          if [ "$REF_TYPE" = tag ]; then
+            revision=$(git rev-parse 'HEAD^' 2>/dev/null || git rev-parse HEAD)
+          elif [ "$EVENT_NAME" = pull_request ]; then
             revision=$PULL_REQUEST_BASE
           elif [ "$EVENT_NAME" = push ]; then
             if ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
@@ -69,85 +74,89 @@ jobs:
         env:
           LINT_BASE_REV: ${{ steps.lint-base.outputs.revision }}
         run: make quality
+      - name: Verify CI tooling
+        run: node --test build/ci/*.test.mjs
 
   hermetic:
     name: Hermetic and independent modules
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            server/go.sum
-            packages/cache/go.sum
-            packages/mail/go.sum
-            packages/vfs/go.sum
-      - name: Set up Node
-        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: webapp/.nvmrc
-          cache: npm
-          cache-dependency-path: |
-            webapp/package-lock.json
-            docs/site/package-lock.json
+          token: ${{ github.token }}
+      - name: Install locked webapp dependencies
+        run: make webapp-install
+      - name: Install matching browsers and Linux dependencies
+        working-directory: webapp
+        run: npx --no-install playwright install --with-deps chromium firefox webkit
       - name: Run product gate
         run: make check
       - name: Verify independent modules
+        if: ${{ !cancelled() }}
         run: make independent-modules
+      - name: Retain tests, coverage, browser traces, and HTML reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hermetic-test-reports
+          path: .build/ci/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
 
   integration:
     name: Dependency-backed integration
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            server/go.sum
-            packages/cache/go.sum
-            packages/mail/go.sum
-            packages/vfs/go.sum
-      - name: Run integration suites
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          token: ${{ github.token }}
+      - name: Run server and reusable-adapter integration suites
         run: make integration
+      - name: Retain integration test and coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: integration-test-reports
+          path: .build/ci/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: warn
 
   cluster:
     name: Three-node certification
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            server/go.sum
-            packages/cache/go.sum
-            packages/mail/go.sum
-            packages/vfs/go.sum
-      - name: Set up Node
-        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: webapp/.nvmrc
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          token: ${{ github.token }}
       - name: Certify active-active development topology
         run: make cluster-smoke
-      - name: Print service logs after failure
+      - name: Retain service diagnostics after failure
         if: failure()
-        run: make cluster-diagnostics
+        run: |
+          mkdir -p .build/ci
+          make cluster-diagnostics > .build/ci/cluster.log 2>&1
+      - name: Upload cluster diagnostics
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: cluster-diagnostics
+          path: .build/ci/cluster.log
+          include-hidden-files: true
+          retention-days: 7
       - name: Stop cluster
         if: always()
         run: make cluster-down || true
@@ -155,34 +164,26 @@ jobs:
   release:
     name: Reproducible release artifacts
     needs: [quality, hermetic, integration, cluster]
+    if: ${{ github.event_name != 'push' || github.ref_type != 'tag' || inputs.build-release }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            server/go.sum
-            packages/cache/go.sum
-            packages/mail/go.sum
-            packages/vfs/go.sum
-      - name: Set up Node
-        uses: actions/setup-node@53b839b1c293c9a420562e712d90e3ea84a0d83f # v6.3.0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: webapp/.nvmrc
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          token: ${{ github.token }}
       - name: Build archives and checksums
-        run: make VERSION=0.0.0-ci.${{ github.run_id }} dist
+        env:
+          RELEASE_VERSION: ${{ inputs.version || format('0.0.0-ci.{0}', github.run_id) }}
+        run: make VERSION="$RELEASE_VERSION" dist
       - name: Upload release artifacts
-        uses: actions/upload-artifact@bbbca94d44d03d8e8a7d6c0251a0d6b8c6e0e972 # v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: proctor-linux-${{ github.sha }}
           path: |
             dist/*.tar.gz
             dist/SHA256SUMS
+          retention-days: 14
           if-no-files-found: error

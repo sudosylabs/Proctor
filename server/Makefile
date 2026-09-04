@@ -1,4 +1,5 @@
 SHELL := /bin/sh
+GO_TEST ?= go test
 COMPOSE := docker compose -f compose.yaml
 PROCTOR_POSTGRES_PORT ?= 15432
 PROCTOR_REDIS_PORT ?= 16379
@@ -19,7 +20,7 @@ export PROCTOR_POSTGRES_PORT PROCTOR_REDIS_PORT PROCTOR_MINIO_PORT PROCTOR_MAILP
 check: architecture i18n-check openapi-agreement test test-race vet
 
 architecture:
-	go test ./architecture
+	$(GO_TEST) ./architecture
 
 i18n-check:
 	go run ./cmd/ptool i18n check
@@ -31,17 +32,17 @@ openapi-check:
 	go run ./cmd/ptool openapi check
 
 openapi-validate: openapi-check
-	go test ./internal/openapidoc
-	go test ./httpapi -run 'OpenAPISchemaIsValid$$'
+	$(GO_TEST) ./internal/openapidoc
+	$(GO_TEST) ./httpapi -run 'OpenAPISchemaIsValid$$'
 
 openapi-agreement: openapi-validate
-	go test ./httpapi -run 'OpenAPI'
+	$(GO_TEST) ./httpapi -run 'OpenAPI'
 
 test:
-	go test ./...
+	$(GO_TEST) ./...
 
 test-race:
-	go test -race ./...
+	$(GO_TEST) -race ./...
 
 vet:
 	go vet ./...
@@ -60,6 +61,7 @@ package:
 	@test -f "$(WEBAPP_DIST_DIR)/webapp-build.json" || (echo 'webapp distribution is missing webapp-build.json; run the root package target' >&2; exit 2)
 	mkdir -p "$(PACKAGE_DIR)/config" "$(PACKAGE_DIR)/webapp/dist"
 	go build $(GO_BUILD_FLAGS) -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor" ./cmd/proctor
+	go build $(GO_BUILD_FLAGS) -ldflags '$(GO_LDFLAGS)' -o "$(PACKAGE_DIR)/proctor-healthcheck" ./cmd/proctor-healthcheck
 	cp config/config.example.json "$(PACKAGE_DIR)/config/config.example.json"
 	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
 	cp -R "$(WEBAPP_DIST_DIR)/." "$(PACKAGE_DIR)/webapp/dist"
@@ -121,7 +123,7 @@ integration-all:
 	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
 	PROCTOR_TEST_MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
 	PROCTOR_TEST_MAILPIT_HTTP_URL='$(PROCTOR_TEST_MAILPIT_HTTP_URL)' \
-		go test -tags=integration -p=1 ./... -count=1
+		$(GO_TEST) -tags=integration -p=1 ./... -count=1
 
 integration-postgres:
 	@set -eu; \
@@ -129,15 +131,15 @@ integration-postgres:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^(TestLocalCacheLayerConformance|TestRetryLayerConformance|TestTimerLayerConformance|TestInstitutionStore|TestAccessPolicyStore|TestBrowserAuthentication.*|TestDesktopAuthorization.*|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestMail(Store|MaintenanceRetentionAndSharedRateLimit|PrimaryKeyFenceSerializesEnqueueBeforeRekey)|TestExamAuthoringStore|TestExamSittingStore|TestExamAttempt(Store|AdmissionSerializesWithCompatibilityPolicyReplacement)|TestSession(Revocation|Expiry)AttemptFence|TestExecutionGrantStore|TestExamAttemptWorkspaceStore|TestExamSubmissionStore|TestExamIntegrityReviewStore|TestExamResourceStore|TestExamStarterWorkspaceStore|TestClassStore|TestInvitationStore|TestUserStore|TestUserSettingsStore|TestUserSettingsRequiredRowAndCascade|TestFileStore|TestFilePurgeCandidatesRespectPurposeReferencesAndLegalHolds|TestJobStore|TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation|TestClusterDiscoveryStore|TestClustered(ProfilePicturePublicationHasOneVisibleWinner|JobsDeduplicateOccurrencesAndClaimDistinctWork|JobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts|MailRekeyRecoversCheckpointAndRotatesFanoutBundle)|TestExternalIdentity(Store|AdmissionModes)|TestExternalLoginStateStore|TestPasswordCredentialStore|TestUserTokenStore|TestPersonalAccessTokenStore|TestMFAStore|TestSessionStores|TestAffiliationStore|TestAcademicUnitMemberStore|TestClassMemberStore|TestRoleStore|TestRoleBindingStore|TestAuditStore|TestInstallationStore|TestMigrationsRoundTrip|TestMembershipCanonicalIDConstraintsRejectNoncanonicalValues|TestInstitutionAcademicUnitCanonicalIDConstraints|TestProgrammeCanonicalIDConstraintsRejectNoncanonicalValues|TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues|TestUserIdentityRecoveryCanonicalIDConstraints|TestSessionCanonicalIDConstraintsRejectNoncanonicalValues|TestMFAPersonalAccessTokenCanonicalIDConstraints|TestMFAActivationRejectsCorruptionBeforeCommit|TestAuthorizationAuditCanonicalIDConstraintsRejectNoncanonicalValues|TestManagedFileCanonicalIDConstraints|TestJobCanonicalIDConstraintsRejectNoncanonicalValues|TestInstallationCanonicalIDConstraints|TestCanonicalIDConstraintCompleteness)$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^(TestLocalCacheLayerConformance|TestRetryLayerConformance|TestTimerLayerConformance|TestInstitutionStore|TestAccessPolicyStore|TestBrowserAuthentication.*|TestDesktopAuthorization.*|TestAcademicUnitStore|TestProgrammeStore|TestProgrammeLevelStore|TestAcademicPeriodStore|TestMail(Store|MaintenanceRetentionAndSharedRateLimit|PrimaryKeyFenceSerializesEnqueueBeforeRekey)|TestExamAuthoringStore|TestExamSittingStore|TestExamAttempt(Store|AdmissionSerializesWithCompatibilityPolicyReplacement)|TestSession(Revocation|Expiry)AttemptFence|TestExecutionGrantStore|TestExamAttemptWorkspaceStore|TestExamSubmissionStore|TestExamIntegrityReviewStore|TestExamResourceStore|TestExamStarterWorkspaceStore|TestClassStore|TestInvitationStore|TestUserStore|TestUserSettingsStore|TestUserSettingsRequiredRowAndCascade|TestFileStore|TestFilePurgeCandidatesRespectPurposeReferencesAndLegalHolds|TestJobStore|TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation|TestClusterDiscoveryStore|TestClustered(ProfilePicturePublicationHasOneVisibleWinner|JobsDeduplicateOccurrencesAndClaimDistinctWork|JobLeaseRecoveryFencesTheDeadNodeAndPreservesAttempts|MailRekeyRecoversCheckpointAndRotatesFanoutBundle)|TestExternalIdentity(Store|AdmissionModes)|TestExternalLoginStateStore|TestPasswordCredentialStore|TestUserTokenStore|TestPersonalAccessTokenStore|TestMFAStore|TestSessionStores|TestAffiliationStore|TestAcademicUnitMemberStore|TestClassMemberStore|TestRoleStore|TestRoleBindingStore|TestAuditStore|TestInstallationStore|TestMigrationsRoundTrip|TestMembershipCanonicalIDConstraintsRejectNoncanonicalValues|TestInstitutionAcademicUnitCanonicalIDConstraints|TestProgrammeCanonicalIDConstraintsRejectNoncanonicalValues|TestAcademicPeriodClassCanonicalIDConstraintsRejectNoncanonicalValues|TestUserIdentityRecoveryCanonicalIDConstraints|TestSessionCanonicalIDConstraintsRejectNoncanonicalValues|TestMFAPersonalAccessTokenCanonicalIDConstraints|TestMFAActivationRejectsCorruptionBeforeCommit|TestAuthorizationAuditCanonicalIDConstraintsRejectNoncanonicalValues|TestManagedFileCanonicalIDConstraints|TestJobCanonicalIDConstraintsRejectNoncanonicalValues|TestInstallationCanonicalIDConstraints|TestCanonicalIDConstraintCompleteness)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestCommandOutcomeStore$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestCommandOutcomeStore$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1; \
+		$(GO_TEST) -tags=integration ./cmd/proctor -run '^TestMigrateIntegration$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./app -run '^(Test(Authentication|AuthenticationFanoutFailure|BrowserCookieAuthentication|SessionManagement|AccountRecovery|PersonalAccessToken|MFA|CASExternalAuthentication|OIDCExternalAuthentication|ExamAuthoring)Integration|TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket|TestAccountAndAdministrativeSessionNoticesUseRealServerGraph|TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout|TestJobRunnerRecoversNodeLossAroundADurableDomainCommit|TestRecurringMaintenance(UsesOnePermanentOccurrenceAcrossNodesAndRestart|RecoversTransientProposalFailureWithoutRepeatingCompletion)|TestLocalUserCreationCommitsDefaultPictureIntent|TestUserSettings(ReadOwnIntegrationPreservesExactSource|UnsupportedFormatIsOpaqueAndReadOnlyAfterRollback|TwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint|UnknownOutcomeReconcilesByReadWithoutContentLeak)|TestAcademicMembershipAndUserAdministrationIntegration|TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests|TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence|TestBootstrapAndRoleAdministrationIntegration|TestPrivilegedAuditListingIsScopedAndDurablyAudited|TestAuthorizationResolvesCurrentAcademicHierarchy|TestPrincipalPermissionAndUserVisibilityPolicies)$$' -count=1; \
+		$(GO_TEST) -tags=integration ./app -run '^(Test(Authentication|AuthenticationFanoutFailure|BrowserCookieAuthentication|SessionManagement|AccountRecovery|PersonalAccessToken|MFA|CASExternalAuthentication|OIDCExternalAuthentication|ExamAuthoring)Integration|TestSessionExpiryEnforcementAcrossHTTPRefreshAndEstablishedWebSocket|TestAccountAndAdministrativeSessionNoticesUseRealServerGraph|TestAccessPolicyTwoNodePostgreSQLFenceAndSafeRevisionFanout|TestJobRunnerRecoversNodeLossAroundADurableDomainCommit|TestRecurringMaintenance(UsesOnePermanentOccurrenceAcrossNodesAndRestart|RecoversTransientProposalFailureWithoutRepeatingCompletion)|TestLocalUserCreationCommitsDefaultPictureIntent|TestUserSettings(ReadOwnIntegrationPreservesExactSource|UnsupportedFormatIsOpaqueAndReadOnlyAfterRollback|TwoNodePostgreSQLConvergencePublishesOnePrivateRefetchHint|UnknownOutcomeReconcilesByReadWithoutContentLeak)|TestAcademicMembershipAndUserAdministrationIntegration|TestInvitationBatchCommitsMixedRowsAndRecoversAcrossRequests|TestPasswordResetRequestRateLimitDoesNotDependOnAccountExistence|TestBootstrapAndRoleAdministrationIntegration|TestPrivilegedAuditListingIsScopedAndDurablyAudited|TestAuthorizationResolvesCurrentAcademicHierarchy|TestPrincipalPermissionAndUserVisibilityPolicies)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration . -run '^(TestFilePurgeStorageIntegrationOnLocalVFS|TestAttemptWorkspaceContentIntegrationOnLocalVFS)$$' -count=1
+		$(GO_TEST) -tags=integration . -run '^(TestFilePurgeStorageIntegrationOnLocalVFS|TestAttemptWorkspaceContentIntegrationOnLocalVFS)$$' -count=1
 
 integration-redis:
 	$(MAKE) -C ../packages/cache \
@@ -157,7 +159,7 @@ integration-s3:
 	VFS_S3_SECRET_KEY='proctorminio-secret' \
 	VFS_S3_SECURE='false' \
 	VFS_S3_CREATE_BUCKET='true' \
-		GOWORK=off go test ./s3 -run '^TestIntegrationConformance$$' -count=1; \
+		GOWORK=off $(GO_TEST) ./s3 -run '^TestIntegrationConformance$$' -count=1; \
 	cd ../../server; \
 	VFS_S3_ENDPOINT='$(PROCTOR_TEST_S3_ENDPOINT)' \
 	VFS_S3_BUCKET='proctor-test' \
@@ -165,14 +167,14 @@ integration-s3:
 	VFS_S3_SECRET_KEY='proctorminio-secret' \
 	VFS_S3_SECURE='false' \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration . -run '^(TestFilePurgeStorageIntegrationOnS3|TestAttemptWorkspaceContentIntegrationOnS3)$$' -count=1
+		$(GO_TEST) -tags=integration . -run '^(TestFilePurgeStorageIntegrationOnS3|TestAttemptWorkspaceContentIntegrationOnS3)$$' -count=1
 
 independent-modules:
 	@set -eu; \
 	for module in ../packages/cache ../packages/mail ../packages/vfs .; do \
 		(cd "$$module" && \
-			GOWORK=off go test ./... && \
-			GOWORK=off go test -race ./... && \
+			GOWORK=off $(GO_TEST) ./... && \
+			GOWORK=off $(GO_TEST) -race ./... && \
 			GOWORK=off go vet ./... && \
 			GOWORK=off go build ./...); \
 	done
@@ -185,23 +187,23 @@ phase-access-onboarding: check
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./app -run '^TestAccessAndOnboardingServerPhaseCertification$$' -count=1; \
+		$(GO_TEST) -tags=integration ./app -run '^TestAccessAndOnboardingServerPhaseCertification$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./app -run '^TestJobRunnerRecoversNodeLossAroundADurableDomainCommit$$' -count=1; \
+		$(GO_TEST) -tags=integration ./app -run '^TestJobRunnerRecoversNodeLossAroundADurableDomainCommit$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestAccessAndOnboardingDecoratedLayerConformance$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestAccessAndOnboardingDecoratedLayerConformance$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestBrowserAuthenticationMaintenanceIsBoundedAndMultiNodeSafe$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestBrowserAuthenticationMaintenanceIsBoundedAndMultiNodeSafe$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationExchangeSerializesWithConcurrentUserDisable$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossNodes$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestDesktopAuthorizationIssueCodeSerializesWithConcurrentUserDisableAcrossNodes$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^(TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder|TestDisabledSittingReconciliationAndInvitationAcceptanceUseUserSingletonClassOrder)$$' -count=1; \
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^(TestExamSittingReconciliationAndInvitationAcceptanceShareUserClassLockOrder|TestDisabledSittingReconciliationAndInvitationAcceptanceUseUserSingletonClassOrder)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./store/sqlstore -run '^TestMigrationsRoundTrip$$' -count=1
+		$(GO_TEST) -tags=integration ./store/sqlstore -run '^TestMigrationsRoundTrip$$' -count=1
 
 phase-transactional-mail: check integration-postgres independent-modules mail-templates-check mail-templates-test
 	@set -eu; \
@@ -210,12 +212,12 @@ phase-transactional-mail: check integration-postgres independent-modules mail-te
 	$(COMPOSE) up --detach --wait postgres mailpit; \
 	cd ../packages/mail; \
 	MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
-		GOWORK=off go test ./smtp -run '^TestIntegrationConformance$$' -count=1; \
+		GOWORK=off $(GO_TEST) ./smtp -run '^TestIntegrationConformance$$' -count=1; \
 	cd ../../server; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 	PROCTOR_TEST_MAIL_SMTP_ADDRESS='$(PROCTOR_TEST_MAIL_SMTP_ADDRESS)' \
 	PROCTOR_TEST_MAILPIT_HTTP_URL='$(PROCTOR_TEST_MAILPIT_HTTP_URL)' \
-		go test -tags=integration ./app -run '^TestTransactionalMailPhaseCertification$$' -count=1
+		$(GO_TEST) -tags=integration ./app -run '^TestTransactionalMailPhaseCertification$$' -count=1
 
 integration-providers:
 	@set -eu; \
@@ -223,17 +225,17 @@ integration-providers:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
-		go test -tags=integration ./app -run '^Test(CAS|OIDC)ExternalAuthenticationIntegration$$' -count=1
+		$(GO_TEST) -tags=integration ./app -run '^Test(CAS|OIDC)ExternalAuthenticationIntegration$$' -count=1
 
 integration-realtime:
 	@set -eu; \
 	cleanup() { $(COMPOSE) down --remove-orphans; }; \
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait postgres redis; \
-	go test -tags=integration ./cluster/memberlist -run '^(TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal|TestLateIncompatiblePeerIsRejectedByContinuousAdmission|TestAbruptStableIDRestartReclaimsDeadAddress|TestMemberlistKeyringSupportsRollingPrimaryRotation|TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup)$$' -count=1; \
+	$(GO_TEST) -tags=integration ./cluster/memberlist -run '^(TestAdmissionFailureWithdrawsBeforeRetryAndJoinFailureRemainsNonfatal|TestLateIncompatiblePeerIsRejectedByContinuousAdmission|TestAbruptStableIDRestartReclaimsDeadAddress|TestMemberlistKeyringSupportsRollingPrimaryRotation|TestMemberlistPeriodicallyDiscoversAndJoinsPeersAfterStartup)$$' -count=1; \
 	PROCTOR_TEST_DATABASE_URL='$(PROCTOR_TEST_DATABASE_URL)' \
 	PROCTOR_TEST_REDIS_ADDRESS='$(PROCTOR_TEST_REDIS_ADDRESS)' \
-		go test -tags=integration ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1
+		$(GO_TEST) -tags=integration ./app -run '^TestWebSocket(Integration|TwoNodeConformance)$$' -count=1
 
 conformance-postgres: integration-postgres
 

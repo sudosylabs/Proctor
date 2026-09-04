@@ -1,0 +1,38 @@
+name: Set up product toolchains
+description: Install the pinned Go and Node versions and read-only GitHub module authentication.
+inputs:
+  token:
+    description: Read-only token for this repository's private Go modules.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.work
+        cache-dependency-path: |
+          go.work.sum
+          server/go.sum
+          packages/cache/go.sum
+          packages/vfs/go.sum
+          build/tools/go.sum
+          build/tools/gopls/go.sum
+    - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      with:
+        node-version-file: webapp/.nvmrc
+        cache: npm
+        cache-dependency-path: |
+          webapp/package-lock.json
+          docs/site/package-lock.json
+    - name: Authenticate private module fetches without persisting credentials
+      shell: bash
+      env:
+        MODULE_TOKEN: ${{ inputs.token }}
+      run: |
+        authorization=$(printf 'x-access-token:%s' "$MODULE_TOKEN" | base64 -w0)
+        echo "::add-mask::$authorization"
+        {
+          echo 'GIT_CONFIG_COUNT=1'
+          echo 'GIT_CONFIG_KEY_0=http.https://github.com/.extraheader'
+          printf 'GIT_CONFIG_VALUE_0=AUTHORIZATION: basic %s\n' "$authorization"
+        } >> "$GITHUB_ENV"

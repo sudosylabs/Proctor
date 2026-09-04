@@ -117,3 +117,132 @@ release archiver normalizes ordering, ownership, permissions, and timestamps;
 `SOURCE_DATE_EPOCH` defaults to the source commit time. Release output must not
 already exist, avoiding accidental reuse of a directory containing operator
 configuration.
+
+## CI reports and failure diagnosis
+
+Pull requests and `main` run the hermetic, independent-module, integration,
+and three-node gates before building Linux archives. CI installs the exact
+Playwright browsers matching the webapp lockfile, including their Linux system
+dependencies. The existing browser suite checks the hosted interface against
+test fixtures; it is not production deployment or upgrade acceptance testing.
+`make integration` also runs the reusable cache Redis and mail SMTP conformance
+suites, each with its own dependency lifecycle.
+
+Ordinary module tests still use `go test` without a Node dependency. To collect
+the same Go reports locally, set an absolute report directory and explicitly
+select the runner, for example from the repository root:
+
+```sh
+PROCTOR_TEST_REPORT_DIR="$PWD/.build/ci" \
+  make -C server test GO_TEST="node $PWD/build/ci/go-test.mjs"
+```
+
+Each invocation retains its command, raw Go JSON events, stderr, JUnit report,
+atomic coverage profile, and summary in a separate directory. The runner
+preserves the test process's failure status and disables test-result caching.
+It also randomizes test order; the raw output retains the shuffle seed for
+reproduction. Setting `PROCTOR_TEST_REPORT_DIR` for the webapp enables Vitest
+JUnit/coverage and Playwright JUnit/HTML reports and failure traces. Coverage
+is reported without inventing an unmeasured minimum coverage gate.
+
+Failed CI runs retain the bounded report directory for 14 days, and failed
+cluster runs retain bounded service diagnostics for 7 days. Download these
+from the run's artifact panel. They may contain synthetic fixture data; treat
+them as internal diagnostics. Never expand uploads to the whole `.build`
+tree, which also contains development credentials and configuration. The
+separate vulnerability workflow runs on relevant changes, weekly, manually,
+and as a required release gate.
+
+## Activating signed releases
+
+The release workflow is deliberately inert until maintainers configure its
+protected `release` GitHub environment. No credentials or signing keys belong
+in the repository. Before the first release:
+
+1. Protect `main`, require the CI gates, and restrict creation, modification,
+   and deletion of release tags to release maintainers. Protect the `release`
+   environment with required reviewers and deployment-tag restrictions for
+   the four module prefixes below. Confirm that the repository's GitHub plan
+   supports those controls for its visibility; do not enable unattended
+   publication without equivalent protections.
+2. Provision an encrypted Cosign signing key outside CI. Store the private PEM
+   as environment secret `COSIGN_PRIVATE_KEY`, its nonempty password as
+   `COSIGN_PASSWORD`, and the trusted public PEM as environment variable
+   `COSIGN_PUBLIC_KEY`. Distribute that public key through an independently
+   trusted channel; a key downloaded alongside an artifact is not by itself
+   a trust anchor. Keep a backed-up key and a documented rotation owner.
+3. Permit the release job to publish GitHub Releases and GHCR packages with
+   its job token. Review the intended package visibility explicitly; the
+   workflow does not change repository or package visibility. Set environment
+   variable `RELEASES_ENABLED` to `true` only after these controls are ready.
+
+The current signing mode uses a stored key and a signing configuration with
+no public transparency-log, certificate, or timestamp services. This avoids
+publishing private repository release metadata into a public transparency
+log. It provides key-based integrity/authenticity, not keyless identity,
+trusted signing-time evidence, or public transparency. Moving to keyless
+signing is a separate policy choice. The pinned
+[Cosign signing and verification interfaces](https://docs.sigstore.dev/cosign/signing/signing_with_blobs/)
+are used to sign and verify a Sigstore bundle for the checksum manifest.
+
+## Cutting and consuming a release
+
+Release only a reviewed commit reachable from `main`, using one explicit,
+previously unused module tag:
+
+| Tag form | Published output |
+| --- | --- |
+| `server/v0.1.0` | Linux amd64/arm64 bundles, corresponding repository source, GHCR multi-platform image |
+| `packages/cache/v0.1.0` | Cache module source release and Go module version |
+| `packages/mail/v0.1.0` | Mail module source release and Go module version |
+| `packages/vfs/v0.1.0` | VFS module source release and Go module version |
+
+Versions are independent, not a coordinated monorepo version. Normal Go
+subdirectory tags make each module version addressable; private repositories
+still require consumer authentication and are not thereby published to the
+public Go proxy. A pushed Git tag is fetchable before its workflow completes;
+consumers must check the completed, signed release rather than treating tag
+existence as evidence that the gates passed. When changing a server dependency
+to a new reusable-module version, release that module first, then review the server's `go.mod`/`go.sum`
+update before tagging the server. Tags currently accept major 0 or 1 because
+none of these module paths has a `/v2` suffix. SemVer prereleases such as
+`server/v0.1.0-rc.1` are supported; moving aliases and build-metadata tags are
+not. The workflow never creates a Git tag or updates `latest`.
+
+The tag's exact commit passes the same CI and current vulnerability gates.
+For server releases, the image copies the already-built Linux archives,
+including the healthcheck helper, instead of recompiling the application.
+BuildKit attaches image provenance and an SBOM. The versioned image is
+`ghcr.io/sudosylabs/proctor:VERSION`; consumers should pin the immutable
+reference recorded in `image-digest.txt`.
+
+Every release includes corresponding source, `provenance.json`, `SHA256SUMS`,
+and `SHA256SUMS.sigstore.json`. The signed manifest covers every payload and
+the provenance file, which records the source commit and exact workflow run.
+This is signed release provenance, not a claim of a particular SLSA level.
+After downloading all assets, verify with the independently trusted public key
+before extracting or executing anything (Cosign v3):
+
+```sh
+cosign verify-blob --key /trusted/path/proctor-release.pub \
+  --insecure-ignore-tlog --bundle SHA256SUMS.sigstore.json SHA256SUMS
+sha256sum --check --strict SHA256SUMS
+# Server releases also publish a signature for the immutable image index:
+cosign verify --key /trusted/path/proctor-release.pub \
+  --insecure-ignore-tlog "$(cat image-digest.txt)"
+```
+
+The explicitly named transparency-log exception is necessary for this
+private, key-based policy; it does not disable cryptographic signature or
+checksum verification. Compare the signed provenance's repository, tag,
+commit, and run with the release you intended to install.
+
+A draft GitHub Release reserves the tag before registry publication; the draft
+becomes visible as a release only after signing and verification succeed.
+There is no cross-service transaction: a later failure can leave a draft and
+a registry image. Reruns deliberately refuse an existing draft/release and
+never clobber its assets. Inspect partial publication before taking recovery
+action; once an image or release has been distributed, use a new version
+instead of reusing its tag. Do not treat an image as trusted until its
+signature and the published manifest verify. Deployment acceptance, database
+rollback policy, and Linux self-upgrade orchestration are separate work.

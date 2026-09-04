@@ -1,0 +1,198 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'server/v*'
+      - 'packages/cache/v*'
+      - 'packages/mail/v*'
+      - 'packages/vfs/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: proctor-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: Validate release identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      server: ${{ steps.release.outputs.server }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      image: ${{ steps.release.outputs.image }}
+      source-tree: ${{ steps.release.outputs.source-tree }}
+      source-prefix: ${{ steps.release.outputs.source-prefix }}
+      source-archive: ${{ steps.release.outputs.source-archive }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: webapp/.nvmrc
+      - id: release
+        env:
+          RELEASE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node build/ci/release.mjs metadata
+
+  verify:
+    name: Release quality gates
+    needs: metadata
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+      build-release: ${{ needs.metadata.outputs.server == 'true' }}
+
+  security:
+    name: Release vulnerability gate
+    needs: metadata
+    uses: ./.github/workflows/security.yml
+
+  publish:
+    name: Sign and publish verified artifacts
+    needs: [metadata, verify, security]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      packages: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+      RELEASE_IMAGE: ${{ needs.metadata.outputs.image }}
+      RELEASE_ASSETS: ${{ github.workspace }}/.build/release-assets
+    steps:
+      - name: Require deliberate activation and signing configuration
+        env:
+          RELEASES_ENABLED: ${{ vars.RELEASES_ENABLED }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PUBLIC_KEY: ${{ vars.COSIGN_PUBLIC_KEY }}
+        run: |
+          test "$RELEASES_ENABLED" = true
+          test -n "$COSIGN_PRIVATE_KEY"
+          test -n "$COSIGN_PASSWORD"
+          test -n "$COSIGN_PUBLIC_KEY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: webapp/.nvmrc
+      - name: Recheck tag identity after environment approval
+        env:
+          RELEASE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: node build/ci/release.mjs metadata
+      - uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: v3.1.3
+      - name: Check the signing key against the independently pinned public key
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          COSIGN_PUBLIC_KEY: ${{ vars.COSIGN_PUBLIC_KEY }}
+        run: |
+          printf '%s\n' "$COSIGN_PUBLIC_KEY" > "$RUNNER_TEMP/release.pub"
+          cosign public-key --key env://COSIGN_PRIVATE_KEY > "$RUNNER_TEMP/derived.pub"
+          openssl pkey -pubin -in "$RUNNER_TEMP/release.pub" -outform DER -out "$RUNNER_TEMP/expected.der"
+          openssl pkey -pubin -in "$RUNNER_TEMP/derived.pub" -outform DER -out "$RUNNER_TEMP/derived.der"
+          cmp "$RUNNER_TEMP/expected.der" "$RUNNER_TEMP/derived.der"
+          # No OIDC, certificate, transparency-log, or timestamp services.
+          cosign signing-config create --out "$RUNNER_TEMP/private-signing.json"
+      - name: Download archives from this run's unprivileged build
+        if: needs.metadata.outputs.server == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: proctor-linux-${{ github.sha }}
+          path: ${{ env.RELEASE_ASSETS }}
+      - name: Verify archives and prepare the image context
+        if: needs.metadata.outputs.server == 'true'
+        run: |
+          cd "$RELEASE_ASSETS"
+          sha256sum --check --strict SHA256SUMS
+          for arch in amd64 arm64; do
+            mkdir -p "$RUNNER_TEMP/release-image/$arch"
+            tar -xzf "proctor-$RELEASE_VERSION-linux-$arch.tar.gz" -C "$RUNNER_TEMP/release-image/$arch"
+            test -x "$RUNNER_TEMP/release-image/$arch/proctor/proctor"
+            test -x "$RUNNER_TEMP/release-image/$arch/proctor/proctor-healthcheck"
+          done
+      - name: Archive the exact corresponding source
+        env:
+          SOURCE_TREE: ${{ needs.metadata.outputs.source-tree }}
+          SOURCE_PREFIX: ${{ needs.metadata.outputs.source-prefix }}
+          SOURCE_ARCHIVE: ${{ needs.metadata.outputs.source-archive }}
+        run: |
+          mkdir -p "$RELEASE_ASSETS"
+          git archive --format=tar --prefix="$SOURCE_PREFIX" "$SOURCE_TREE" | gzip -n > "$RELEASE_ASSETS/$SOURCE_ARCHIVE"
+      - name: Reserve a draft release without overwriting an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        if: needs.metadata.outputs.server == 'true'
+      - uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        if: needs.metadata.outputs.server == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the image built from the verified release binaries
+        if: needs.metadata.outputs.server == 'true'
+        id: image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: ${{ runner.temp }}/release-image
+          file: build/docker/Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.RELEASE_IMAGE }}:${{ env.RELEASE_VERSION }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.RELEASE_VERSION }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+      - name: Record the immutable image identity
+        if: needs.metadata.outputs.server == 'true'
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf '%s@%s\n' "$RELEASE_IMAGE" "$IMAGE_DIGEST" > "$RELEASE_ASSETS/image-digest.txt"
+      - name: Bind release files to the source and CI execution
+        run: node build/ci/release.mjs provenance "$RELEASE_ASSETS"
+      - name: Sign and verify the release manifest and image digest
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign-blob --yes --key env://COSIGN_PRIVATE_KEY \
+            --signing-config "$RUNNER_TEMP/private-signing.json" \
+            --bundle "$RELEASE_ASSETS/SHA256SUMS.sigstore.json" "$RELEASE_ASSETS/SHA256SUMS"
+          cosign verify-blob --key "$RUNNER_TEMP/release.pub" --insecure-ignore-tlog \
+            --bundle "$RELEASE_ASSETS/SHA256SUMS.sigstore.json" "$RELEASE_ASSETS/SHA256SUMS"
+          if [ -f "$RELEASE_ASSETS/image-digest.txt" ]; then
+            image=$(< "$RELEASE_ASSETS/image-digest.txt")
+            cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+              --signing-config "$RUNNER_TEMP/private-signing.json" "$image"
+            cosign verify --key "$RUNNER_TEMP/release.pub" --insecure-ignore-tlog "$image"
+          fi
+      - name: Publish only after every signature verifies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          gh release upload "$RELEASE_TAG" "$RELEASE_ASSETS"/*
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --latest=false

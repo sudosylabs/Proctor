@@ -29,4 +29,4 @@ cp "$root/LICENSING.md" "$package_dir/LICENSING.md"
 
 find "$package_dir" -type d -exec chmod 0755 {} +
 find "$package_dir" -type f -exec chmod 0644 {} +
-chmod 0755 "$package_dir/proctor"
+chmod 0755 "$package_dir/proctor" "$package_dir/proctor-healthcheck"

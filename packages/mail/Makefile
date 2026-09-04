@@ -1,4 +1,5 @@
 SHELL := /bin/sh
+GO_TEST ?= go test
 
 COMPOSE := docker compose -f compose.yaml
 MAIL_SMTP_PORT ?= 11025
@@ -13,10 +14,10 @@ export MAIL_HTTP_PORT
 check: test test-race vet
 
 test:
-	go test ./...
+	$(GO_TEST) ./...
 
 test-race:
-	go test -race ./...
+	$(GO_TEST) -race ./...
 
 vet:
 	go vet ./...
@@ -36,4 +37,4 @@ conformance-smtp:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait mailpit; \
 	MAIL_SMTP_ADDRESS=$(MAIL_SMTP_ADDRESS) \
-		go test ./smtp -run '^TestIntegrationConformance$$' -count=1
+		$(GO_TEST) ./smtp -run '^TestIntegrationConformance$$' -count=1

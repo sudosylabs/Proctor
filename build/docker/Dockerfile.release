@@ -1,0 +1,11 @@
+# syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+# The context is the extracted, CI-built Linux archives, never the source tree.
+# No source is rebuilt in the privileged publishing job.
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+ARG TARGETARCH
+WORKDIR /opt/proctor
+COPY --chown=65532:65532 ${TARGETARCH}/proctor/ ./
+USER 65532:65532
+EXPOSE 8065 8067 7946/tcp 7946/udp
+ENTRYPOINT ["/opt/proctor/proctor"]
+CMD ["serve", "--config", "/etc/proctor/config.json"]

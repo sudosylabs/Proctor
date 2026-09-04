@@ -3,6 +3,7 @@
 check: build-scripts-check webapp-check docs-check server-check ## Run the hermetic product gate.
 
 build-scripts-check:
+	@node --test "$(ROOT_DIR)"/build/ci/*.test.mjs
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"
@@ -34,8 +35,10 @@ docs-check: docs-install ## Validate and build the public documentation site.
 server-check:
 	$(MAKE) -C "$(SERVER_DIR)" check
 
-integration: ## Run all dependency-backed server integration suites.
+integration: ## Run dependency-backed server and reusable-module conformance suites.
 	$(MAKE) -C "$(SERVER_DIR)" integration-all integration-s3 integration-realtime
+	$(MAKE) -C "$(ROOT_DIR)/packages/cache" conformance-redis
+	$(MAKE) -C "$(ROOT_DIR)/packages/mail" conformance-smtp
 
 independent-modules: ## Verify every Go module outside workspace assistance.
 	$(MAKE) -C "$(SERVER_DIR)" independent-modules

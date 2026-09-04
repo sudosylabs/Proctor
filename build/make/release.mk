@@ -10,6 +10,7 @@ package: webapp-build ## Assemble the current-platform Proctor release directory
 
 package-verify: package ## Verify packaged identity, configuration, and hosted assets.
 	@test -x "$(PACKAGE_DIR)/proctor"
+	@test -x "$(PACKAGE_DIR)/proctor-healthcheck"
 	@test -f "$(PACKAGE_DIR)/config/config.example.json"
 	@test -f "$(PACKAGE_DIR)/webapp/dist/webapp-build.json"
 	@test -f "$(PACKAGE_DIR)/deploy/systemd/proctor.service"

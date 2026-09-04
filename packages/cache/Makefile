@@ -1,4 +1,5 @@
 SHELL := /bin/sh
+GO_TEST ?= go test
 
 COMPOSE := docker compose -f compose.yaml
 CACHE_REDIS_PORT ?= 16379
@@ -11,10 +12,10 @@ export CACHE_REDIS_PORT
 check: test test-race vet
 
 test:
-	go test ./...
+	$(GO_TEST) ./...
 
 test-race:
-	go test -race ./...
+	$(GO_TEST) -race ./...
 
 vet:
 	go vet ./...
@@ -34,4 +35,4 @@ conformance-redis:
 	trap cleanup EXIT INT TERM; \
 	$(COMPOSE) up --detach --wait redis; \
 	CACHE_REDIS_ADDRESS=$(CACHE_REDIS_ADDRESS) \
-		go test ./redis -count=1
+		$(GO_TEST) ./redis -count=1
