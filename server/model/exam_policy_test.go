@@ -109,7 +109,8 @@ func TestExamDraftApplyFocusLossPolicyHonorsExactBoundsAndPreservesConnectionLos
 
 func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
 	t.Parallel()
-	at := time.Now().UTC()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
+	wantUpdatedAt := time.Date(2026, 9, 4, 12, 0, 0, 123456000, time.UTC)
 	draft, err := NewExamDraft(NewExamID(), "Systems", "", DefaultExamPolicySet(), at)
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +135,7 @@ func TestExamDraftApplyFocusLossPolicyRejectsInvalidAndSkipsNoOp(t *testing.T) {
 		}
 	}
 	changed, err := draft.ApplyFocusLossPolicy(draft.Policy.FocusLoss, at.Add(time.Minute))
-	if err != nil || changed || draft.Revision != 1 || !draft.UpdatedAt.Equal(at) {
+	if err != nil || changed || draft.Revision != 1 || !draft.UpdatedAt.Equal(wantUpdatedAt) {
 		t.Fatalf("no-op = %v, %v, draft=%#v", changed, err, draft)
 	}
 }
