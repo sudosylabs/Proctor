@@ -78,7 +78,8 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 	if !bytes.Contains(response.Body.Bytes(), []byte(`"title":"Systems"`)) || bytes.Contains(response.Body.Bytes(), []byte("instructions_markdown")) || bytes.Contains(response.Body.Bytes(), []byte("policy")) {
 		t.Fatalf("unsafe list response = %s", response.Body.String())
 	}
-	before := time.Date(2026, 8, 13, 7, 6, 5, 432, time.UTC)
+	before := time.Date(2026, 8, 13, 7, 6, 5, 432123789, time.UTC)
+	wantBefore := time.Date(2026, 8, 13, 7, 6, 5, 432123000, time.UTC)
 	cursor, err := encodeExamCatalogCursor(examCatalogCursor{UpdatedAt: before.Format(time.RFC3339Nano), ExamID: examID.String()})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +88,7 @@ func TestExamHTTPListUsesBoundedCatalogQueryAndSummary(t *testing.T) {
 	second.Header.Set("Authorization", "Bearer credential")
 	secondResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(secondResponse, second)
-	if secondResponse.Code != http.StatusOK || !fake.list.BeforeUpdatedAt.Equal(before) || fake.list.BeforeExamID != examID {
+	if secondResponse.Code != http.StatusOK || !fake.list.BeforeUpdatedAt.Equal(wantBefore) || fake.list.BeforeExamID != examID {
 		t.Fatalf("catalog cursor forwarding = %d query=%#v body=%s", secondResponse.Code, fake.list, secondResponse.Body.String())
 	}
 	malformed := httptest.NewRequest(http.MethodGet, "/api/v1/exams?cursor=not-a-cursor", nil)
