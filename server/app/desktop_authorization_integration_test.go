@@ -146,6 +146,24 @@ func TestDesktopAuthorizationContinuesAcrossNodesAndCreatesAnOrdinaryRotatingSes
 		"htu": "https://proctor.example.edu/api/v1/auth/refresh",
 		"iat": time.Now().Unix(), "nonce": exchanged.DPoPNonce,
 	})
+	_, _, err = secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
+		RefreshToken: exchanged.Tokens.RefreshToken,
+		DPoP:         &application.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},
+	})
+	// The two test nodes have independent disposable caches, so the secondary
+	// challenges the primary's nonce before the client retries with fresh proof.
+	if !application.Is(err, "authentication.dpop.use_nonce") {
+		t.Fatalf("cross-node refresh error = %v, want nonce challenge", err)
+	}
+	refreshNonce, ok := application.DPoPChallengeNonce(err)
+	if !ok {
+		t.Fatal("cross-node refresh challenge did not provide a replacement nonce")
+	}
+	refreshProof = integrationDesktopDPoPProof(t, privateKey, publicJWK, map[string]any{
+		"jti": model.NewCredentialToken(), "htm": "POST",
+		"htu": "https://proctor.example.edu/api/v1/auth/refresh",
+		"iat": time.Now().Unix(), "nonce": refreshNonce,
+	})
 	rotatedSession, rotated, err := secondary.App.RefreshSession(ctx, application.Invocation{}, application.RefreshSessionCommand{
 		RefreshToken: exchanged.Tokens.RefreshToken,
 		DPoP:         &application.DPoPRequestProof{Proof: refreshProof, Method: "POST", Path: "/api/v1/auth/refresh"},

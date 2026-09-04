@@ -43,7 +43,9 @@ func TestUserSettingsStore(t *testing.T, ss store.Store) {
 	command := userSettingsCommand(user.ID, "replace-1", exact)
 	replaced, err := ss.UserSettings().Replace(ctx, &store.UserSettingsReplacement{
 		UserID: user.ID, Source: exact, FormatVersion: 1,
-		ExpectedRevision: document.Revision, NextRevision: nextRevision, UpdatedAt: replacedAt,
+		// Clock input may carry nanoseconds. The immediate result, stored document,
+		// and retained replay must agree at durable microsecond precision.
+		ExpectedRevision: document.Revision, NextRevision: nextRevision, UpdatedAt: replacedAt.Add(613 * time.Nanosecond),
 		AuditEvent: userSettingsAudit(user.ID, institution.ID, document.Revision, nextRevision, len(exact)),
 	}, command)
 	requireNoError(t, err)
