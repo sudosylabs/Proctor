@@ -1,0 +1,15 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the project root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/sudosylabs/Proctor/security/advisories/new
+    about: Report suspected vulnerabilities privately; never disclose them in a public issue.
+  - name: Read the contribution guide
+    url: https://github.com/sudosylabs/Proctor/blob/main/CONTRIBUTING.md
+    about: Review project scope, development workflow, DCO, licensing, and pull-request expectations.

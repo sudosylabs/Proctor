@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -22,6 +23,12 @@ import (
 const licenseHeaderRule = "---------------------------------------------------------------------------------------------"
 
 var (
+	originalCopyright = regexp.MustCompile(
+		`^Copyright \(c\) [0-9]{4}(?:-[0-9]{4}|-present)? .+\. All rights reserved\.$`,
+	)
+	modificationCopyright = regexp.MustCompile(
+		`^Modifications Copyright \(c\) [0-9]{4}(?:-[0-9]{4}|-present)? .+\. All rights reserved\.$`,
+	)
 	apacheMattermostFiles = map[string]struct{}{
 		"model/academic_unit_member.go":  {},
 		"model/audit_event.go":           {},
@@ -78,8 +85,9 @@ func TestServerCodeFilesHaveCanonicalLicenseHeaders(t *testing.T) {
 
 		expected := canonicalServerLicenseHeader(style, licenseID, mattermost)
 		contents = trimGoBuildConstraint(contents, name)
-		if !bytes.HasPrefix(contents, []byte(expected)) {
-			origin := "Sudosy"
+		if !bytes.HasPrefix(contents, []byte(expected)) &&
+			!hasCanonicalContributorLicenseHeader(contents, style, licenseID, mattermost) {
+			origin := "original"
 			if mattermost {
 				origin = "Mattermost-derived"
 			}
@@ -101,6 +109,67 @@ func TestServerCodeFilesHaveCanonicalLicenseHeaders(t *testing.T) {
 	sort.Strings(issues)
 	for _, issue := range issues {
 		t.Error(issue)
+	}
+}
+
+func TestContributorCopyrightLicenseHeadersRemainCanonical(t *testing.T) {
+	tests := []struct {
+		name       string
+		licenseID  string
+		mattermost bool
+		holderLine int
+		holder     string
+	}{
+		{
+			name:       "original AGPL source",
+			licenseID:  "AGPL-3.0-only",
+			holderLine: 1,
+			holder:     "Copyright (c) 2026 Example Contributor. All rights reserved.",
+		},
+		{
+			name:       "Mattermost-derived AGPL source",
+			licenseID:  "AGPL-3.0-only",
+			mattermost: true,
+			holderLine: 2,
+			holder:     "Modifications Copyright (c) 2026 Example Contributor. All rights reserved.",
+		},
+		{
+			name:       "Mattermost-derived Apache source",
+			licenseID:  "Apache-2.0",
+			mattermost: true,
+			holderLine: 2,
+			holder:     "Modifications Copyright (c) 2026 Example Contributor. All rights reserved.",
+		},
+		{
+			name:       "Go-derived BSD source",
+			licenseID:  "BSD-3-Clause",
+			holderLine: 2,
+			holder:     "Modifications Copyright (c) 2026 Example Contributor. All rights reserved.",
+		},
+	}
+
+	styles := []string{"slash", "hash", "sql", "html", "go-template"}
+	for _, test := range tests {
+		for _, style := range styles {
+			t.Run(test.name+"/"+style, func(t *testing.T) {
+				lines := canonicalServerLicenseHeaderLines(test.licenseID, test.mattermost)
+				lines[test.holderLine] = test.holder
+				header := formatServerLicenseHeader(style, lines)
+				if !hasCanonicalContributorLicenseHeader(
+					[]byte(header), style, test.licenseID, test.mattermost,
+				) {
+					t.Fatal("contributor-owned header was rejected")
+				}
+			})
+		}
+	}
+
+	lines := canonicalServerLicenseHeaderLines("AGPL-3.0-only", false)
+	lines[1] = "Copyright Example Contributor"
+	if hasCanonicalContributorLicenseHeader(
+		[]byte(formatServerLicenseHeader("slash", lines)), "slash", "AGPL-3.0-only", false,
+	) {
+		t.Fatal("malformed contributor copyright was accepted")
 	}
 }
 
@@ -200,6 +269,26 @@ func serverCodeHeaderStyle(name string) (string, bool) {
 }
 
 func canonicalServerLicenseHeader(style, licenseID string, mattermost bool) string {
+	lines := canonicalServerLicenseHeaderLines(licenseID, mattermost)
+	return formatServerLicenseHeader(style, lines)
+}
+
+func formatServerLicenseHeader(style string, lines []string) string {
+	switch style {
+	case "html":
+		return "<!--\n" + strings.Join(lines, "\n") + "\n-->"
+	case "go-template":
+		return "{{/*\n" + strings.Join(lines, "\n") + "\n*/}}"
+	case "hash":
+		return prefixedLicenseHeader(lines, "#")
+	case "sql":
+		return prefixedLicenseHeader(lines, "--")
+	default:
+		return prefixedLicenseHeader(lines, "//")
+	}
+}
+
+func canonicalServerLicenseHeaderLines(licenseID string, mattermost bool) []string {
 	lines := []string{licenseHeaderRule}
 	switch licenseID {
 	case "Apache-2.0":
@@ -235,19 +324,85 @@ func canonicalServerLicenseHeader(style, licenseID string, mattermost bool) stri
 		)
 	}
 	lines = append(lines, licenseHeaderRule)
+	return lines
+}
 
+func hasCanonicalContributorLicenseHeader(contents []byte, style, licenseID string, mattermost bool) bool {
+	lines, ok := serverLicenseHeaderLines(contents, style)
+	expected := canonicalServerLicenseHeaderLines(licenseID, mattermost)
+	if !ok || len(lines) != len(expected) {
+		return false
+	}
+
+	holderLine := 1
+	holderPattern := originalCopyright
+	if mattermost || licenseID == "Apache-2.0" || licenseID == "BSD-3-Clause" {
+		holderLine = 2
+		holderPattern = modificationCopyright
+	}
+	if !holderPattern.MatchString(lines[holderLine]) {
+		return false
+	}
+
+	lines[holderLine] = expected[holderLine]
+	return equalStringSlices(lines, expected)
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func serverLicenseHeaderLines(contents []byte, style string) ([]string, bool) {
+	text := string(contents)
 	switch style {
 	case "html":
-		return "<!--\n" + strings.Join(lines, "\n") + "\n-->"
+		return enclosedLicenseHeaderLines(text, "<!--\n", "\n-->")
 	case "go-template":
-		return "{{/*\n" + strings.Join(lines, "\n") + "\n*/}}"
-	case "hash":
-		return prefixedLicenseHeader(lines, "#")
-	case "sql":
-		return prefixedLicenseHeader(lines, "--")
-	default:
-		return prefixedLicenseHeader(lines, "//")
+		return enclosedLicenseHeaderLines(text, "{{/*\n", "\n*/}}")
 	}
+
+	prefix := "// "
+	if style == "hash" {
+		prefix = "# "
+	} else if style == "sql" {
+		prefix = "-- "
+	}
+
+	var lines []string
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(line, prefix) {
+			return nil, false
+		}
+		line = strings.TrimPrefix(line, prefix)
+		lines = append(lines, line)
+		if len(lines) > 1 && line == licenseHeaderRule {
+			return lines, true
+		}
+	}
+	return nil, false
+}
+
+func enclosedLicenseHeaderLines(text, opening, closing string) ([]string, bool) {
+	if !strings.HasPrefix(text, opening) {
+		return nil, false
+	}
+	end := strings.Index(text[len(opening):], closing)
+	if end < 0 {
+		return nil, false
+	}
+	lines := strings.Split(text[len(opening):len(opening)+end], "\n")
+	if len(lines) < 2 || lines[0] != licenseHeaderRule || lines[len(lines)-1] != licenseHeaderRule {
+		return nil, false
+	}
+	return lines, true
 }
 
 func prefixedLicenseHeader(lines []string, prefix string) string {

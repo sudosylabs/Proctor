@@ -1,0 +1,86 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the project root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+name: Bug report
+description: Report a reproducible problem in Proctor.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Proctor. Do not disclose vulnerabilities,
+        credentials, private institution data, student data, or exam answers here.
+        Use the private process in SECURITY.md for security reports.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Server or HTTP API
+        - Hosted web application
+        - Cache module
+        - Mail module
+        - VFS module
+        - Documentation
+        - Build, packaging, or CI
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the release version or source commit when known.
+      placeholder: server/v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Explain what happened and why it is a problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Explain what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide minimal steps using synthetic, non-sensitive data.
+      placeholder: |
+        1. Configure...
+        2. Start...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant OS, browser, deployment mode, and sanitized configuration.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Additional evidence
+      description: Add bounded logs or screenshots only after removing private and credential material.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: This report contains no undisclosed vulnerability or sensitive data.
+          required: true
+        - label: I agree to follow the Code of Conduct.
+          required: true

@@ -2,6 +2,9 @@
 
 Proctor is a multi-module repository with licenses applied by directory.
 
+- The repository-level [`LICENSE`](LICENSE) contains the default GNU Affero
+  General Public License, version 3. More specific module, directory, and
+  file-level declarations below override that default for their scope.
 - The combined server in [`server/`](server/) and its browser application in
   [`webapp/`](webapp/) are licensed under the GNU Affero
   General Public License, version 3. See [`server/LICENSE`](server/LICENSE).
@@ -19,6 +22,9 @@ Proctor is a multi-module repository with licenses applied by directory.
   `.golangci.yml`, `Makefile`, and the Go workspace files are licensed under
   the GNU Affero General Public License, version 3, unless a file declares
   another license.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) is adapted from Contributor
+  Covenant 3.0 and is licensed separately under CC-BY-SA-4.0 as declared in
+  that file.
 - Third-party dependencies remain under their respective licenses.
 
 ## File headers and copied source
@@ -37,6 +43,12 @@ does not replace a compatible Apache, BSD, MIT, or other notice retained on an
 individual file. Unmodified copies do not claim a Sudosy Labs modification
 copyright. Independently written files informed only by upstream behavior use
 the original Sudosy Labs header rather than an upstream copyright notice.
+
+External contributors retain copyright in their contributions and license
+them under the license governing the destination. Contribution does not assign
+copyright to Sudosy Labs. New contributor-owned files name their actual
+copyright holder; modifications preserve existing notices unless the governing
+license requires another notice.
 
 Code copied or substantially adapted from another project must retain all
 notices required by its governing license. Mattermost-derived server work must

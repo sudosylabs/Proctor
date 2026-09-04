@@ -44,8 +44,6 @@ dist
 /.nvmrc
 /.prettierignore
 /.prettierrc
-/LICENSE
-/README.md
 
 # Debug
 npm-debug.log*

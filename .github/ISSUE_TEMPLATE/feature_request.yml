@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the project root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+name: Feature proposal
+description: Propose a bounded outcome or capability for Proctor.
+title: "[Proposal]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem before prescribing an implementation. Large,
+        security-sensitive, or compatibility-affecting work should be agreed
+        with maintainers before implementation begins.
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Primary audience
+      options:
+        - Candidate
+        - Exam manager or teacher
+        - Institution administrator
+        - Operator
+        - API integrator
+        - Contributor
+        - Security reviewer
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or outcome
+      description: Who is affected, what can they not accomplish, and why does it matter?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe observable behavior without assuming a particular internal implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or smaller alternatives.
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Security, privacy, compatibility, or licensing considerations
+      description: Identify known consequences or write "None known."
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and pull requests for this proposal.
+          required: true
+        - label: I have not included credentials, private data, or exam answers.
+          required: true
+        - label: I agree to follow the Code of Conduct.
+          required: true
