@@ -17,7 +17,6 @@ updates:
       - /packages/mail
       - /packages/vfs
       - /build/tools
-      - /build/tools/gopls
     schedule:
       interval: weekly
       day: monday
@@ -26,6 +25,17 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
 
+  # gopls depends on matching x/tools internals. Upgrade its graph through
+  # gopls itself; independent transitive upgrades can break the pinned tool.
+  - package-ecosystem: gomod
+    directory: /build/tools/gopls
+    schedule:
+      interval: weekly
+      day: monday
+    allow:
+      - dependency-name: golang.org/x/tools/gopls
+        dependency-type: all
+
   - package-ecosystem: npm
     directories:
       - /webapp
@@ -33,6 +43,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # The webapp generator and docs compiler API still require TypeScript 5.
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
     groups:
       javascript-dependencies:
         patterns: ['*']
