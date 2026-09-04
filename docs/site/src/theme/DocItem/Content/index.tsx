@@ -2,17 +2,9 @@ import {useDoc} from '@docusaurus/plugin-content-docs/client';
 import OriginalDocItemContent from '@theme-original/DocItem/Content';
 import type {Props} from '@theme/DocItem/Content';
 import type {ReactNode} from 'react';
+import {audienceLabels} from '@site/navigation.mjs';
 
 import styles from './styles.module.css';
-
-const audienceLabels: Record<string, string> = {
-  everyone: 'All readers',
-  operator: 'Operator guide',
-  'institution-administrator': 'Institution administrator guide',
-  'security-reviewer': 'Security review guide',
-  developer: 'Developer guide',
-  'api-consumer': 'API consumer guide',
-};
 
 const maturityLabels: Record<string, string> = {
   available: 'Available',
@@ -36,7 +28,7 @@ export default function DocItemContent({children}: Props): ReactNode {
     <>
       {showGuideMeta ? (
         <aside aria-label="Guide scope and maturity" className={styles.meta}>
-          <span>{audienceLabels[audience] ?? audience}</span>
+          <span>{audienceLabels[audience as keyof typeof audienceLabels] ?? audience}</span>
           <span aria-hidden="true" className={styles.divider}>/</span>
           <span className={styles[maturity]}>
             <i aria-hidden="true" />

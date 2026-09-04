@@ -6,7 +6,7 @@ This private Docusaurus package renders the task-oriented content in
 remain authoritative for internal behavior.
 
 The current local build provides task-oriented navigation, public content
-validation, a deliberate operator-first reading shell, and a deterministic
+validation, contextual guide navigation, and a deterministic
 generated API reference. Publication, the production hostname, content
 licensing, versioning, analytics, and hosting remain explicit decisions to
 settle before deployment.
@@ -14,6 +14,25 @@ settle before deployment.
 The search dialog uses a generated local index covering authored public and API
 guides, canonical glossary terms, OpenAPI product areas, and every operation.
 It performs no remote request and sends no query off the page.
+
+## Navigation and reading layout
+
+Each guide owns one sidebar in `sidebars.ts`. Keep pages in task order within
+that guide; do not add another audience's page as a `doc` item. Cross-guide
+links belong in prose or global navigation so pagination stays within a guide.
+The guide title links to its overview and cannot be collapsed; deeper sections
+may collapse and Docusaurus opens the active page's ancestors automatically.
+
+`navigation.mjs` holds the shared guide destinations, short descriptions,
+reference links, and audience labels used by the homepage, navbar, search, and
+article metadata. Add a guide there and give it a sidebar owner in the same
+change. `npm run test:navigation` checks that every public page has exactly one
+owner, entry points resolve, and no audience falls back to an internal key.
+
+The layout adapter uses Docusaurus' configured base URL to distinguish the
+homepage from the reader. Scoped CSS owns reading widths; avoid selectors
+against generated CSS-module names. The homepage is a compact guide directory,
+not a second description of product architecture.
 
 The tracked [documentation visual-system reference](../../.agents/skills/docs-site/references/design-system.md)
 owns the brand palette, semantic colors, IBM Plex typography, spacing,
@@ -32,6 +51,7 @@ npm run test:glossary
 npm run generate:search
 npm run check:search
 npm run test:search
+npm run test:navigation
 npm run generate:technical-reference
 npm run check:technical-reference
 ```
@@ -131,6 +151,11 @@ the Proctor contract panel between each operation introduction and its request
 details. The local `ApiExplorer/MethodEndpoint` theme adapter presents the
 exact OpenAPI path without joining it to a display-only server URL. These
 adapters own presentation only; they never rewrite route or contract data.
+The `ApiExplorer/CodeTabs` adapter synchronizes the generator with the active
+language panel after Docusaurus restores a saved tab. Verify a page reload after
+selecting JavaScript or Python: the highlighted language must match the sample,
+not only after a fresh click. The configured variants are cURL, Fetch, and
+Requests; unsupported extra variants do not appear in the reader.
 `scripts/verify-openapi-reference.mjs` then proves that all operations,
 product-area tags, sidebar entries, and `x-proctor-*` declarations are present
 exactly once.

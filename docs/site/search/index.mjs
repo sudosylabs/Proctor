@@ -1,6 +1,7 @@
 import {readFile, readdir} from 'node:fs/promises';
 import {dirname, extname, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {audienceLabels} from '../navigation.mjs';
 
 const moduleRoot = dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = resolve(moduleRoot, '../../..');
@@ -72,15 +73,6 @@ async function walk(directory, skip) {
   }
   return files.sort();
 }
-
-const audienceLabels = {
-  everyone: 'Start',
-  operator: 'Operate',
-  'institution-administrator': 'Administer',
-  'security-reviewer': 'Review & secure',
-  developer: 'Develop',
-  'api-consumer': 'API guides',
-};
 
 async function authoredEntries(repoRoot) {
   const sources = [

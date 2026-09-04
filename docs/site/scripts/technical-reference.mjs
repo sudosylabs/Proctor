@@ -98,7 +98,7 @@ lines.push(
   '',
 );
 
-const generated = `${lines.join('\n')}\n`;
+const generated = `${lines.join('\n').trimEnd()}\n`;
 const check = process.argv.includes('--check');
 if (check) {
   const current = await readFile(outputPath, 'utf8').catch(() => '');

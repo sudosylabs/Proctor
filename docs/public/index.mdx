@@ -1,121 +1,71 @@
 ---
 title: Proctor documentation
-description: Operate, govern, secure, and integrate one self-hosted Proctor installation.
+description: Guides for using, operating, and developing Proctor, a self-hosted examination and proctoring platform.
 audience: everyone
 maturity: preview
 slug: /
 hide_title: true
 hide_table_of_contents: true
+displayed_sidebar: null
 pagination_next: null
 pagination_prev: null
 ---
 
 import Link from '@docusaurus/Link';
-import DocIcon from '@site/src/components/DocIcon';
-import LifecycleRibbon from '@site/src/components/LifecycleRibbon';
 import RoleGrid from '@site/src/components/RoleGrid';
 import styles from './index.module.css';
 
-<header className={styles.hero}>
-  <div className={styles.heroCopy}>
-    <div className={styles.scopeLine}>
-      <span className={styles.eyebrow}>Self-hosted examination infrastructure</span>
-      <span className={styles.preview}><i aria-hidden="true"></i> Contract preview</span>
-    </div>
-    <h1>Operate one institution with every rule in view.</h1>
+<header className={styles.intro}>
+  <div>
+    <h1>Proctor documentation</h1>
     <div className={styles.lede}>
-      Deploy Proctor, establish academic authority, review its security
-      boundaries, and integrate against a checked OpenAPI contract.
+      Guides for using, operating, and developing Proctor—an open-source,
+      self-hosted examination and proctoring platform.
     </div>
-    <div className={styles.actions}>
-      <Link className="button button--primary" to="/operator/">Plan a deployment</Link>
-      <Link className="button button--secondary" to="/api/">Inspect the API</Link>
-    </div>
-    <div className={styles.firstRead}>
-      New to the model? <Link to="/glossary/">Start with Installation and Institution.</Link>
+    <div className={styles.orientation}>
+      Each installation serves one institution. Start with the guide for the
+      work you need to do.
     </div>
   </div>
-
-  <aside className={styles.assurance} aria-label="Proctor assurance record">
-    <div className={styles.assuranceHeader}>
-      <span>Assurance record</span>
-      <code>DOC-FOUNDATION / CURRENT</code>
-    </div>
-    <dl>
-      <div>
-        <dt>Installation</dt>
-        <dd>Exactly one institution</dd>
-      </div>
-      <div>
-        <dt>Durable authority</dt>
-        <dd>PostgreSQL before transient effects</dd>
-      </div>
-      <div>
-        <dt>Scale model</dt>
-        <dd>One architecture from one node onward</dd>
-      </div>
-      <div>
-        <dt>Public contract</dt>
-        <dd>Every operation declares explicit assurance</dd>
-      </div>
-    </dl>
-    <div className={styles.assuranceFooter}><DocIcon name="check" /> Each statement links to a reviewed source.</div>
-  </aside>
+  <nav className={styles.quickStart} aria-label="Common tasks">
+    <h2>Common tasks</h2>
+    <ul>
+      <li><Link to="/account/access">Sign in or recover access</Link></li>
+      <li><Link to="/candidate/prepare-and-enter">Prepare for an exam</Link></li>
+      <li><Link to="/developers/local-setup">Set up a development environment</Link></li>
+    </ul>
+  </nav>
 </header>
 
-<section className={styles.homeSection} aria-labelledby="responsibility-title">
-  <div className={styles.sectionHeading}>
-    <span>Choose by responsibility</span>
-    <h2 id="responsibility-title">Begin where you hold authority</h2>
-    <div className={styles.sectionCopy}>
-      Documentation paths follow the work a reader controls—not the repository
-      tree or the interface that happens to expose it.
-    </div>
-  </div>
+<section className={styles.guides} aria-labelledby="guides-title">
+  <h2 id="guides-title">Find your guide</h2>
   <RoleGrid />
 </section>
 
-<LifecycleRibbon />
-
-<section className={styles.referenceSection} aria-labelledby="evidence-title">
-  <div className={styles.sectionHeading}>
-    <span>Reviewed evidence</span>
-    <h2 id="evidence-title">Read the explanation, then inspect the contract</h2>
-    <div className={styles.sectionCopy}>
-      Public guides explain tasks. Generated reference material and tracked
-      architecture documents preserve exact behavior.
+<section className={styles.reference} aria-labelledby="reference-title">
+  <div>
+    <h2 id="reference-title">Reference</h2>
+    <p>Look up a term, configuration option, or API operation.</p>
+  </div>
+  <dl>
+    <div>
+      <dt><Link to="/api/">API reference</Link></dt>
+      <dd>Request requirements, examples, schemas, and responses.</dd>
     </div>
-  </div>
-  <div className={styles.referenceGrid}>
-    <Link className={styles.referenceCard} to="/api/">
-      <span className={styles.cardLabel}>HTTP API</span>
-      <DocIcon className={styles.referenceIcon} name="api" size={32} />
-      <strong>OpenAPI reference</strong>
-      <span className={styles.cardDescription}>Authentication, idempotency, errors, examples, and all endpoint schemas.</span>
-      <DocIcon className={styles.referenceArrow} name="arrowRight" />
-    </Link>
-    <Link className={styles.referenceCard} to="/glossary/">
-      <span className={styles.cardLabel}>Canonical language</span>
-      <DocIcon className={styles.referenceIcon} name="glossary" size={32} />
-      <strong>Proctor glossary</strong>
-      <span className={styles.cardDescription}>Generated definitions with nearby vocabulary to avoid.</span>
-      <DocIcon className={styles.referenceArrow} name="arrowRight" />
-    </Link>
-    <a
-      className={styles.referenceCard}
-      href="https://github.com/sudosylabs/Proctor/tree/main/docs/architecture">
-      <span className={styles.cardLabel}>System design</span>
-      <DocIcon className={styles.referenceIcon} name="architecture" size={32} />
-      <strong>Architecture guide</strong>
-      <span className={styles.cardDescription}>Durable boundaries, rationale, and examination guarantees.</span>
-      <DocIcon className={styles.referenceArrow} name="external" />
-    </a>
-  </div>
+    <div>
+      <dt><Link to="/glossary/">Glossary</Link></dt>
+      <dd>Definitions of the terms used throughout these guides.</dd>
+    </div>
+    <div>
+      <dt><Link to="/reference/configuration">Configuration reference</Link></dt>
+      <dd>Server options, environment variables, and command-line usage.</dd>
+    </div>
+  </dl>
 </section>
 
 <Maturity state="preview">
-  Account, Candidate, Exam Manager, administrator, and operator paths describe
-  implemented server, hosted-browser, and API contracts. Where an authenticated
-  product interface is not present in this repository, guidance stays
-  UI-independent instead of inventing screens.
+  Proctor is in active development. These guides describe implemented behavior
+  and identify incomplete workflows. Where an authenticated product interface
+  is not yet present, guidance explains the underlying workflow without
+  inventing screens.
 </Maturity>

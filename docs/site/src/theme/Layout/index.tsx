@@ -1,4 +1,5 @@
 import {useLocation} from '@docusaurus/router';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import {useColorMode} from '@docusaurus/theme-common';
 import OriginalLayout from '@theme-original/Layout';
 import type {Props} from '@theme/Layout';
@@ -25,7 +26,8 @@ function ThemeColor(): null {
 
 export default function Layout({children, ...props}: Props): React.JSX.Element {
   const location = useLocation();
-  const isHome = location.pathname === '/';
+  const homePath = useBaseUrl('/');
+  const isHome = location.pathname.replace(/\/$/, '') === homePath.replace(/\/$/, '');
 
   return (
     <OriginalLayout {...props}>

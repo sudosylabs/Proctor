@@ -1,6 +1,7 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import {guides, referenceLinks} from './navigation.mjs';
 
 const config: Config = {
   title: 'Proctor Documentation',
@@ -106,9 +107,9 @@ const config: Config = {
   themeConfig: {
     // Keep the generated examples focused on the three client paths we test.
     languageTabs: [
-      {language: 'curl', variant: 'cURL'},
-      {language: 'javascript', variant: 'Fetch'},
-      {language: 'python', variant: 'Requests'},
+      {language: 'curl', variant: 'cURL', variants: ['cURL']},
+      {language: 'javascript', variant: 'Fetch', variants: ['Fetch']},
+      {language: 'python', variant: 'Requests', variants: ['Requests']},
     ],
     metadata: [
       {
@@ -129,15 +130,29 @@ const config: Config = {
         height: 28,
       },
       items: [
-        {to: '/operator/', label: 'Operate', position: 'left'},
         {
-          to: '/institution-admin/',
-          label: 'Administer',
+          type: 'dropdown',
+          label: 'Guides',
+          position: 'left',
+          items: guides.map(({label, sidebarId}) => ({
+            type: 'docSidebar',
+            label,
+            sidebarId,
+          })),
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'developerSidebar',
+          label: 'Developers',
           position: 'left',
         },
-        {to: '/security/', label: 'Secure', position: 'left'},
-        {to: '/developers/', label: 'Develop', position: 'left'},
-        {to: '/api/', label: 'API', position: 'left'},
+        {to: '/api/', label: 'API reference', position: 'left'},
+        {
+          type: 'dropdown',
+          label: 'Reference',
+          position: 'left',
+          items: referenceLinks,
+        },
         {
           href: 'https://github.com/sudosylabs/Proctor',
           label: 'GitHub',
@@ -156,6 +171,14 @@ const config: Config = {
         height: 25,
       },
       links: [
+        {
+          title: 'Use Proctor',
+          items: [
+            {label: 'Your account', to: '/account/'},
+            {label: 'Take an exam', to: '/candidate/'},
+            {label: 'Manage exams', to: '/exam-manager/'},
+          ],
+        },
         {
           title: 'Run Proctor',
           items: [

@@ -16,7 +16,7 @@ export const searchEntries = [
   {
     "id": "page:/account/access",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Account guide",
     "title": "Sign In and Recover Access",
     "description": "Use local, provider, Invitation, verification, and recovery journeys without confusing authentication with membership.",
     "href": "/account/access",
@@ -25,7 +25,7 @@ export const searchEntries = [
   {
     "id": "page:/account/desktop-authorization",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Account guide",
     "title": "Authorize Proctor Desktop",
     "description": "Understand the hosted browser handoff, explicit approval, registered key, DPoP proof, compatibility, and recovery boundaries.",
     "href": "/account/desktop-authorization",
@@ -34,7 +34,7 @@ export const searchEntries = [
   {
     "id": "page:/account/",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Account guide",
     "title": "Use Your Proctor Account",
     "description": "Choose the supported path for signing in, recovering access, securing sessions, or authorizing Proctor Desktop.",
     "href": "/account/",
@@ -43,7 +43,7 @@ export const searchEntries = [
   {
     "id": "page:/account/security",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Account guide",
     "title": "Secure Your Account",
     "description": "Protect authentication methods, MFA, Web and Desktop Sessions, Desktop Registrations, and Personal Access Tokens.",
     "href": "/account/security",
@@ -52,7 +52,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/browser-and-privacy",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Understand the Governed Browser and Activity Privacy",
     "description": "See what Browser Policy permits, what top-level activity is minimized, and what Proctor deliberately does not collect.",
     "href": "/candidate/browser-and-privacy",
@@ -61,7 +61,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Take an Exam With Proctor Desktop",
     "description": "Prepare a registered Desktop Session, enter one protected Attempt, keep work acknowledged, recover continuity, and submit safely.",
     "href": "/candidate/",
@@ -70,7 +70,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/prepare-and-enter",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Prepare and Enter an Attempt",
     "description": "Reach a compatible registered-key Desktop Session and understand the Attempt, Participation, Connection, and configuration created at admission.",
     "href": "/candidate/prepare-and-enter",
@@ -79,7 +79,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/released-result",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Read an Explicitly Released Result",
     "description": "Understand what Proctor can show after Review release and which private or academic information remains outside this projection.",
     "href": "/candidate/released-result",
@@ -88,7 +88,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/submit-and-recover",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Submit Safely and Recover From Blocks",
     "description": "Reconcile every submission fence, acknowledge corrections, recover from pause or Suspension, and understand terminal outcomes.",
     "href": "/candidate/submit-and-recover",
@@ -97,7 +97,7 @@ export const searchEntries = [
   {
     "id": "page:/candidate/workspace-and-continuity",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Candidate guide",
     "title": "Keep Work and Continuity Acknowledged",
     "description": "Distinguish local editing, remotely authoritative Workspace state, Connection liveness, Participation renewal, reconnect, and Suspension.",
     "href": "/candidate/workspace-and-continuity",
@@ -106,7 +106,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/cluster-development/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Exercise the Three-Node Development Cluster",
     "description": "Start, certify, inspect, degrade, and recover Proctor's tracked HA development topology.",
     "href": "/developers/cluster-development/",
@@ -115,7 +115,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/contribution-checklist/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Prepare a Contribution",
     "description": "Scope, implement, verify, review, and hand off a Proctor change while preserving unrelated work, licensing, and source authority.",
     "href": "/developers/contribution-checklist/",
@@ -124,7 +124,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/development-configuration/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Configure the Development Runtime",
     "description": "Override local ports, origins, images, and generated state without editing tracked topology files or committing secrets.",
     "href": "/developers/development-configuration/",
@@ -133,7 +133,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/documentation/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Contribute Documentation",
     "description": "Put Proctor guidance in the correct authority, maintain generated views, and verify public pages, API reference, terminology, and governed visuals.",
     "href": "/developers/documentation/",
@@ -142,7 +142,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/http-and-openapi/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Change HTTP and OpenAPI",
     "description": "Keep Proctor routes, DTOs, authentication requirements, public errors, authored YAML, generated JSON, and rendered API reference in agreement.",
     "href": "/developers/http-and-openapi/",
@@ -151,16 +151,16 @@ export const searchEntries = [
   {
     "id": "page:/developers/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop With Proctor",
     "description": "Set up Proctor, find the correct ownership boundary, make a focused change, and verify it with the repository's real gates.",
     "href": "/developers/",
-    "searchText": "develop with proctor set up proctor, find the correct ownership boundary, make a focused change, and verify it with the repository's real gates. develop with proctor proctor is one product repository with four independently versioned go modules, a server-hosted react application, and a separately built documentation site. this guide turns those boundaries into a contribution path: start the product, choose the owner of a change, use the nearest contract, and run checks in order of cost. the contributor environment, guarded synthetic fixture, module checks, api compiler, browser gates, and documentation build are implemented. production deployment guidance remains intentionally incomplete until its operator inputs are available. start here 1. prepare the local environment, install the pinned tooling and debugger setup, create the guarded synthetic fixture, and prove your first browser session. 2. tour the repository boundaries before deciding where a change belongs. 3. follow the workflow for the surface you are changing, then use the verification ladder before proposing the work. if the environment or a workflow fails, start with make dev-doctor . it is read-only and routes the first failing boundary to a focused diagnosis without erasing local state. choose the work you are doing goal start with finish with --- --- --- change domain or server behavior server workflow focused tests, server check, affected integration suite change a hosted browser flow webapp workflow generated adapters, browser matrix, webapp check change cache, mail, or vfs behavior reusable modules module conformance, race, vet, workspace-independent build add or change an http operation http and openapi openapi build, agreement, reference audit change durable data or sql persistence workflow store conformance, migration and postgresql integration tests change public or maintainer documentation documentation workflow affected generators, docs check, architecture gate diagnose a failing development workflow troubleshooting narrow reproduction, boundary check, original workflow prepare work for review contribution checklist clean diff and the highest relevant repository gate the deep server-development manual now follows a change from package placement and domain policy through store transactions, http/openapi, authorization and audit, jobs, mail, files, execution, realtime, clustering, runtime integration, and final review. its complete user settings slice is the recommended first reading exercise for a new server contributor. the hosted webapp-development manual follows a browser feature from server-owned route membership through credential-safe bootstrap, generated api and localization adapters, interaction state, accessibility, responsive presentation, and three-engine browser evidence. its complete password-reset slice is the recommended first reading exercise for a new webapp contributor. operate the development runtime need guide --- --- inspect postgresql, redis, minio, mail, metrics, dashboards, or logs local services prove three-node discovery, load balancing, and one-node recovery cluster development change ports, origins, image pins, or persistent local overrides development configuration install pinned tools, configure an editor, debug, profile, or trace tooling and debugging keep the authority in one place public guides explain tasks and consequences. the openapi yaml modules own the public http contract. component contracts and module readmes own non-obvious behavior at their boundary. code, tests, configuration, and command help remain the authority for implementation detail that can be discovered directly. when a change alters more than one of those authorities, update them together. do not solve drift by copying the same inventory into several documents. four rules that prevent expensive mistakes 1. choose ownership before abstraction. add a package or interface only for a stable responsibility with a real consumer. 2. keep policy inward. http, websocket, sql, redis, smtp, vfs, memberlist, and execution-host adapters do not own business rules. 3. commit before effects. durable state commits before cache invalidation, cluster fan-out, realtime publication, execution projection, or delivery. 4. verify the smallest honest surface first. a focused test gives fast feedback; the relevant module and product gates prove the complete boundary. reference sources - product build guide - server development guide - hosted webapp guide - http transport contract - openapi authoring guide - repository licensing"
+    "searchText": "develop with proctor set up proctor, find the correct ownership boundary, make a focused change, and verify it with the repository's real gates. develop with proctor proctor is one product repository with four independently versioned go modules, a server-hosted react application, and a separately built documentation site. this guide turns those boundaries into a contribution path: start the product, choose the owner of a change, use the nearest contract, and run checks in order of cost. the contributor environment, guarded synthetic fixture, module checks, api compiler, browser gates, and documentation build are implemented. production deployment guidance remains intentionally incomplete until its operator inputs are available. start here 1. prepare the local environment, install the pinned tooling and debugger setup, create the guarded synthetic fixture, and prove your first browser session. 2. tour the repository boundaries before deciding where a change belongs. 3. follow the workflow for the surface you are changing, then use the verification ladder before proposing the work. if the environment or a workflow fails, start with make dev-doctor . it is read-only and routes the first failing boundary to a focused diagnosis without erasing local state. choose the work you are doing goal start with finish with --- --- --- change domain or server behavior server workflow focused tests, server check, affected integration suite change a hosted browser flow webapp workflow generated adapters, browser matrix, webapp check change cache, mail, or vfs behavior reusable modules module conformance, race, vet, workspace-independent build add or change an http operation http and openapi openapi build, agreement, reference audit change durable data or sql persistence workflow store conformance, migration and postgresql integration tests change public or maintainer documentation documentation workflow affected generators, docs check, architecture gate diagnose a failing development workflow troubleshooting narrow reproduction, boundary check, original workflow prepare work for review contribution checklist clean diff and the highest relevant repository gate the deep server-development manual now follows a change from package placement and domain policy through store transactions, http/openapi, authorization and audit, jobs, mail, files, execution, realtime, clustering, runtime integration, and final review. its complete user settings slice is the recommended first reading exercise for a new server contributor. the hosted webapp-development manual follows a browser feature from server-owned route membership through credential-safe bootstrap, generated api and localization adapters, interaction state, accessibility, responsive presentation, and three-engine browser evidence. its complete password-reset slice is the recommended first reading exercise for a new webapp contributor. operate the development runtime need guide --- --- inspect postgresql, redis, minio, mail, metrics, dashboards, or logs local services prove three-node discovery, load balancing, and one-node recovery cluster development change ports, origins, image pins, or persistent local overrides development configuration choose a root or module-scoped build command make command reference install pinned tools, configure an editor, debug, profile, or trace tooling and debugging keep the authority in one place public guides explain tasks and consequences. the openapi yaml modules own the public http contract. component contracts and module readmes own non-obvious behavior at their boundary. code, tests, configuration, and command help remain the authority for implementation detail that can be discovered directly. when a change alters more than one of those authorities, update them together. do not solve drift by copying the same inventory into several documents. four rules that prevent expensive mistakes 1. choose ownership before abstraction. add a package or interface only for a stable responsibility with a real consumer. 2. keep policy inward. http, websocket, sql, redis, smtp, vfs, memberlist, and execution-host adapters do not own business rules. 3. commit before effects. durable state commits before cache invalidation, cluster fan-out, realtime publication, execution projection, or delivery. 4. verify the smallest honest surface first. a focused test gives fast feedback; the relevant module and product gates prove the complete boundary. reference sources - product build guide - server development guide - hosted webapp guide - http transport contract - openapi authoring guide - repository licensing"
   },
   {
     "id": "page:/developers/local-services/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Inspect Local Development Services",
     "description": "Understand, inspect, troubleshoot, and safely reset every service in Proctor's tracked local runtime.",
     "href": "/developers/local-services/",
@@ -169,16 +169,25 @@ export const searchEntries = [
   {
     "id": "page:/developers/local-setup/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Set Up Proctor for Local Development",
     "description": "Go from a clean contributor machine to a verified local Installation, synthetic development data, captured mail, and observable server.",
     "href": "/developers/local-setup/",
     "searchText": "set up proctor for local development go from a clean contributor machine to a verified local installation, synthetic development data, captured mail, and observable server. set up proctor for local development this is the shortest supported path from a clean machine to a local proctor installation you can sign in to and change. follow it once without substituting services or hand-editing generated configuration. the result is a realistic single-node server, not a reduced mock. at the end you will have: - a running proctor server and hosted webapp; - a synthetic institution, academic structure, exam manager, candidate, exam, published revision, and future sitting; - captured invitation mail in mailpit; and - live metrics, dashboards, and structured logs. 1. use a supported contributor environment environment support notes --- --- --- macos supported use docker desktop and a posix shell. both apple silicon and intel hosts use the repository's pinned multi-platform images. linux supported ci exercises ubuntu 24.04. other current distributions may work when docker engine and the required host tools are available. windows with wsl 2 supported work inside the linux distribution, keep the checkout in its linux filesystem, and enable docker desktop's wsl integration. native windows shell not supported the tracked make and build scripts require posix shell behavior. use wsl 2 instead of powershell or command prompt for repository commands. install these host tools before cloning: tool required version or behavior installation source --- --- --- git a current git 2.x release install git go the patched version declared by the root go.work install go node.js and npm prefer the pinned node 22.22.0 in webapp/.nvmrc ; node 20.19+ within major 20, or node 22.12 and newer, satisfies package metadata download node.js docker a running docker engine with the compose plugin docker desktop for macos or docker engine for linux shell utilities posix sh , make , jq , curl , and openssl use the operating system's package manager for windows, configure docker desktop with wsl 2 and clone below a linux path such as ~/src , not /mnt/c . native windows filesystem mounts make dependency installation and file watching needlessly slow. you do not need to install postgresql, redis, minio, mailpit, prometheus, grafana, loki, or the opentelemetry collector on the host. docker compose owns their local lifecycle. 2. fork and clone the repository create a fork in github when you intend to contribute changes. then clone your fork and retain the canonical repository as upstream : if you only need to inspect or build proctor, clone the canonical repository directly: all commands in this guide run from the repository root—the directory that contains makefile , go.work , server/ , packages/ , webapp/ , and docs/ . start a focused branch before editing: 3. prove the host toolchain run the repository-owned check: success is quiet: the command returns to the prompt with exit status zero. it checks go and node compatibility, npm, jq , curl , openssl , docker compose, and access to the running docker daemon. a failure names the first missing or unsupported capability. common first-run failures are straightforward: - docker daemon is not available : start docker desktop or the docker engine; - an unsupported node version: activate the version from webapp/.nvmrc ; - a missing jq , curl , or openssl : install it with the host package manager, then rerun the command. do not continue until make dev-tools succeeds. install the repository-pinned go tools and locked javascript dependencies: the go binaries are written below ignored .build/bin ; no global go-tool installation is required. bootstrap is safe to rerun. go's build cache and npm's download cache reduce repeated work, while the lockfiles keep each npm installation reproducible. see tooling and debugging for the formatter, linter, vulnerability scanner, language server, debugger, and editor workflows. 4. start the single-node product in terminal 1, run: the first run downloads pinned container images and installs locked webapp dependencies, so it takes longer than later starts. the command then: 1. compiles the server-hosted react webapp; 2. generates ignored development secrets and configuration without replacing secrets from an earlier run; 3. starts and health-checks postgresql, redis, minio, mailpit, prometheus, grafana, loki, and the opentelemetry collector; and 4. runs the go server in the foreground at http://localhost:8065 . the server is ready when its output contains a server started record with listen address set to 127.0.0.1:8065 . keep this terminal open. server shutdown logs and request failures remain visible here, while the same structured records are also written to .build/dev/logs/local/server.log . 5. verify liveness and readiness in terminal 2, check the process before creating any application state: expected responses are: liveness means the process can serve http. readiness additionally means the node has completed startup and may receive application traffic. use readiness, not liveness, when diagnosing a dependency or migration failure. you can also confirm that this is still a pristine installation: before the first bootstrap, the response is: 6. create the guarded development fixture with terminal 1 still running, execute in terminal 2: the seed uses the public http api and the invitation claims delivered to the local mailpit inbox. it never imports sql or bypasses authorization. it creates the synthetic northbridge university installation, then adds: - a system administrator; - the school of computing, bsc computer science, level 100, a rolling academic period, and one class; - ada lovelace as an academic unit member and exam manager; - samira okafor as a candidate in the class; and - an introduction to programming exam with a published revision and a sitting scheduled seven days ahead. successful output identifies two private local files: both files are ignored and mode 0600 . the credentials are randomly generated for this installation. to read only the administrator login in a private local terminal: that command prints a password. do not run it in recorded terminals, paste the result into an issue, or commit either seed file. the guardrails are deliberate: - only loopback proctor and mailpit urls are accepted; - an already initialized installation not created by this seed is refused; - an interrupted partial seed is refused rather than guessed forward; and - rerunning a completed seed reports the existing fixture without mutating it. if seeding stops after bootstrap or another mutation, use make dev-reset and start again. the generated in-progress marker explains this requirement. 7. sign in through the browser open http://localhost:8065/login and sign in with the administrator username and password from the local credentials file. a successful login reaches the authenticated session confirmation screen. you have now exercised the compiled webapp, password authentication, browser session cookie, postgresql-backed identity, and server-hosted route fallback. for role-specific work, the same credentials file contains the synthetic exam manager and candidate accounts: open mailpit at http://127.0.0.1:18025 and confirm that the exam manager and candidate invitation messages were captured. acceptance notices may follow as the durable delivery jobs complete. the messages contain only synthetic local data. 8. confirm telemetry print the maintained observability endpoints: open the proctor overview dashboard at http://127.0.0.1:13000/d/proctor-overview/proctor-overview in grafana. anonymous local access is read-only. within a few scrape intervals, the dashboard should show one ready proctor target. you can also query prometheus directly: for service-by-service checks and failure symptoms, use the local services handbook. 9. use vite for browser changes the hosted build at port 8065 is the correct first success. when changing browser source, keep the server running and start vite in terminal 3: open http://127.0.0.1:5173 . vite provides hot module replacement and proxies /api plus websocket traffic to http://127.0.0.1:8065 . some authentication, callback, and redirect flows bind state to the configured public origin. for those flows, restart terminal 1 with the vite origin: then browse only the matching vite url. a mismatched localhost and 127.0.0.1 , scheme, or port is a different origin and can invalidate an otherwise correct browser transaction. 10. stop or reset deliberately stop the foreground server with control + c . its dependency containers remain running so the next server start is fast. command what it does data outcome --- --- --- make dev-down stops dependency and observability containers preserves postgresql, minio, mailpit, grafana, and loki volumes, generated secrets, and seed files make run-server restarts the single-node lifecycle reuses preserved local state and generated secrets make dev-reset removes development containers, persistent volumes, and guarded seed files permanently deletes the local installation and synthetic credentials make dev-reset is intentionally destructive. use it for first-run testing, an interrupted seed, or a pre-release schema reset—not as the ordinary way to stop work. your first-success checkpoint before moving on, verify all of these statements: - make dev-tools succeeds; - both health endpoints return their expected json; - make dev-seed reports a ready fixture; - the administrator can sign in through the browser; - mailpit contains synthetic invitation mail; - prometheus reports the local proctor target and grafana opens the overview; - you know whether dev-down or dev-reset matches the state you want to keep. choose the next guide if you plan to… continue with… --- --- understand which package owns a change repository boundaries change application or domain behavior server workflow change browser behavior webapp workflow change an http operation http and openapi change sql or durable state persistence workflow run and inspect each dependency local services exercise three active nodes cluster development keep persistent local overrides development configuration decide which checks to run testing and verification"
   },
   {
+    "id": "page:/developers/make-commands/",
+    "kind": "guide",
+    "group": "Developer guide",
+    "title": "Make Command Reference",
+    "description": "Choose the supported root or module-scoped Make command, understand what it starts or changes, and avoid destructive targets.",
+    "href": "/developers/make-commands/",
+    "searchText": "make command reference choose the supported root or module-scoped make command, understand what it starts or changes, and avoid destructive targets. make command reference run product commands from the repository root. the root makefile is the supported interface for installing tools, running the local product, checking changes, exercising a cluster, and assembling release artifacts. make help is the exact list for the checkout in front of you. this page explains how those commands fit together and which ones change local state. targets omitted from make help are implementation steps, not a stable contributor interface. choose the right command first i need to… start with --- --- prepare a new checkout make bootstrap start the complete single-node product make run-server start only the hosted webapp with hot reload make run-webapp find why the local environment is unhealthy make dev-doctor run the normal product gate make check run the complete ci-facing gate make ci preview or verify documentation make docs-start or make docs-check exercise three active application nodes make run-cluster build and verify a local release directory make package-verify see every supported root target make help commands in this page use three kinds of effects: - read-only commands inspect or verify without intentionally changing source or durable development data; - generated-output commands install dependencies or write build, diagnostic, package, or generated files; and - runtime-state commands start, stop, populate, or delete local services. some verification commands install locked dependencies before checking them. they remain read-only with respect to authored source, but they can replace a local node modules tree or refresh ignored generated output. understand the root command surface the root makefile includes smaller, responsibility-specific files from build/make/ . inclusion creates one root command surface; it does not create a second command that must be run from build/ . for example, run make package at the repository root even though its recipe is maintained in build/make/release.mk . install and inspect the environment command what it does and changes --- --- make help prints the supported root targets and their current one-line descriptions. effect: read-only. make bootstrap validates the host, installs the pinned go tools, and installs the locked webapp and documentation dependencies. effect: generated output. make tools installs the go developer tools pinned by the isolated tool modules into .build/bin . effect: generated output. make tools-check verifies that every pinned go tool is installed at the expected version. effect: read-only. make dev-tools checks the required go, node, npm, docker, compose, jq , and curl commands. effect: read-only. make dev-doctor runs bounded checks of the host, generated artifacts, containers, and local health endpoints. it does not start or repair them. effect: read-only. use make bootstrap for first setup or after a pinned dependency changes. use make dev-doctor when an already-prepared environment stops behaving as expected. run the single-node product command what it does and changes --- --- make webapp-build installs locked webapp dependencies and builds the hosted application with the selected build identity. effect: generated output. make webapp-build-debug builds the hosted application with the server debugger's dev / unknown identity. effect: generated output. make dev-up creates development configuration and secrets, then starts postgresql, redis, minio, mailpit, and observability services. effect: runtime state. make run alias for the production-shaped make run-server lifecycle. effect: runtime state. make run-server builds the webapp, starts local dependencies, and runs the go server in the foreground. effect: runtime state. make run-webapp runs vite with hot reload and proxies api and websocket traffic to a separately running server. effect: runtime state. make dev-seed creates or reports the guarded synthetic institution, users, academic structure, exam, and sitting through the public api. effect: runtime state. make metrics-urls prints the local prometheus, grafana, and loki addresses. effect: read-only. make dev-logs follows dependency and observability logs until interrupted. effect: read-only. make dev-down stops the development services and preserves their volumes and generated state. effect: runtime state. make dev-reset stops the development services, deletes their persistent volumes, and removes guarded seed state. effect: destructive runtime state. make run-server owns the ordinary first-run sequence. do not start with make dev-up unless you deliberately want the dependencies without the application process. use local setup for the full first-success path and local services for the service boundaries. make dev-reset permanently deletes the local postgresql installation, minio objects, captured mailpit messages, observability history, and compose volumes. use make dev-down when you only need to stop work. format, analyze, and secure go code command what it does and changes --- --- make fmt applies gofmt and the pinned goimports to versioned and unignored go source. effect: modifies source. make fmt-check fails when eligible go source is not formatted. effect: read-only. make lint-config validates the pinned golangci-lint configuration without analyzing source. effect: read-only. make lint rejects findings introduced beyond the recorded go linter baseline. effect: read-only. make lint-full reports the complete existing and new go linter backlog. effect: read-only. make lint-fix applies safe automated fixes from the pinned linter suite. review its diff. effect: modifies source. make vulncheck scans every product go module against the current vulnerability database. it requires network access. effect: read-only. make quality runs fmt-check and the new-finding lint gate. effect: read-only. make security runs static analysis and the live vulnerability scan. effect: read-only. make precommit runs build-script checks plus the fast repository formatting and lint gates. effect: read-only. run make fmt intentionally, inspect the resulting diff, then use make quality before a broader product gate. the live vulnerability result can change when the external vulnerability database changes even when the checkout does not. test and verify the product command what it proves and changes --- --- make check build scripts, hosted webapp, documentation, server architecture, openapi agreement, localization, tests, race tests, and vet pass without dependency-backed integration suites. effect: read-only authored source; refreshes ignored dependencies and generated output. make docs-start installs locked docs dependencies and starts the docusaurus development server in the foreground. effect: generated output and runtime state. make docs-check validates openapi agreement, docs metadata and generators, typescript, and the production documentation build. effect: generated output. make integration runs the server's dependency-backed suites plus reusable redis-cache and smtp-mail conformance. effect: temporary runtime state. make independent-modules tests, race-tests, vets, and builds all four go modules with workspace assistance disabled. effect: read-only. make ci runs check , dependency-backed integration, independent-module verification, and release-package verification. effect: generated output and temporary runtime state. make check is the normal product-wide handoff gate. make ci is materially slower, starts dependency containers, and requires a fresh package output path. use the verification ladder to choose the smallest honest gate for a change. debug, profile, and trace command what it does --- --- make debug-ready prepares tools, the debugger-matched webapp, dependencies, and the diagnostics directory without starting delve. make debug-server runs the local server in an interactive delve terminal session. make debug-server-dap starts a loopback-only delve dap listener for vs code or neovim. make debug-server-headless starts a loopback-only delve api v2 listener for goland remote attach. make debug-test debugs one selected go test through delve. make profile-test captures a cpu, memory, mutex, or block profile for one selected go test. make profile-open opens the selected captured profile with the pinned pprof viewer. make trace-test captures an execution trace for one selected go test. make trace-open opens the most recently captured trace with the pinned trace viewer. select a focused test without editing a makefile: set debug profile to cpu , memory , mutex , or block for profile-test and profile-open . diagnostics are written below .build/dev/diagnostics . see tooling and debugging for editor attachment and listener-safety details. exercise the three-node topology command what it does and changes --- --- make cluster-up builds the runtime image and starts three application nodes, haproxy, shared dependencies, and observability. effect: runtime state. make run-cluster runs cluster-up , then follows gateway and application-node logs. effect: runtime state. make run-haserver mattermost-compatible alias for make run-cluster . prefer the proctor name in new guidance. effect: runtime state. make cluster-down stops the cluster topology without deleting its persistent data. effect: runtime state. make cluster-logs follows haproxy and application-node logs. effect: read-only. make cluster-diagnostics prints bounded container state and recent cluster logs for diagnosis. effect: read-only. make cluster-smoke checks readiness, metrics, peer discovery, build identity, gateway traffic, and one-node failure recovery. effect: temporary runtime state. the single-node and clustered workflows share the default compose project and authoritative state. do not run both at once against that default project. the cluster development guide explains the topology and the evidence produced by the smoke test. build packages, archives, and images command output and important behavior --- --- make package produces a current-platform release directory, defaulting to dist/proctor . refuses to reuse its output directory. make package-verify produces the same package and verifies executables, metadata, configuration, hosted assets, and build identity. it runs package first and therefore also requires a fresh output directory. make package-linux-amd64 produces a linux amd64 release directory below dist , cross-compiled with cgo disabled. make package-linux-arm64 produces a linux arm64 release directory below dist , cross-compiled with cgo disabled. make dist produces deterministic linux amd64/arm64 archives and sha256sums . both architecture package directories must be absent. make clean-dist removes the repository's complete dist directory. destructive: review anything under dist first. make buildenv builds the pinned go and node maintainer image through docker. make buildenv-check runs make check inside the pinned maintainer image with the checkout mounted at /workspace . make buildenv-shell opens an interactive shell in the pinned maintainer image with the checkout mounted at /workspace . make container builds the immutable, non-root proctor runtime image with the selected version, commit, and build time. make container-load compatibility alias for make container . prefer make container in new automation. package outputs deliberately refuse an existing destination. this protects an operator-owned configuration from being silently mixed into or overwritten by a new build. choose a new package dir , or inspect and remove obsolete output deliberately; do not turn the refusal into an automatic cleanup step. why package appears twice there are two targets named package , but they belong to different make invocations and have different responsibilities: command definition and responsibility --- --- make package defined in build/make/release.mk , which the root makefile includes. this is the public product workflow: it builds the hosted webapp, asks the server module to assemble the core application tree, then adds deployment support and build metadata. make -c server package defined in server/makefile . this is the lower-level server assembly: it compiles the binaries and copies the already-built webapp, configuration examples, licenses, and notices into a caller-selected directory. the root recipe invokes the server recipe with $(make) -c server package . make scopes target names to the current makefile, so these definitions do not override or merge with one another. use make package or make package-verify from the repository root for a complete product artifact. use make -c server package only when developing the packaging implementation itself: it expects a compatible webapp build to already exist and it does not add the root-owned deployment support or final build metadata. use module-scoped commands deliberately the -c option tells make to change directories before reading a makefile. it is part of the command's identity: these commands are not interchangeable. the first verifies the product; the second verifies only the server module; the third verifies only the reusable cache module. server need command --- --- complete hermetic server gate make -c server check dependency-direction and documentation architecture checks make -c server architecture server unit tests, race tests, vet, or build make -c server test , test-race , vet , or build rebuild or verify the openapi artifact make -c server openapi-build or openapi-check verify the openapi artifact and route agreement make -c server openapi-agreement run all tagged server integration tests make -c server integration-all run one dependency-backed boundary make -c server integration-postgres , integration-redis , integration-s3 , integration-providers , or integration-realtime generate and verify transactional-mail templates make -c server mail-templates-generate , mail-templates-check , or mail-templates-test render synthetic transactional-mail previews make -c server mail-preview output=/absolute/output/directory the server makefile also contains narrow component and phase gates used by maintainers and ci. prefer the task-specific developer guide over guessing a target from its name. reusable modules module commands --- --- cache hermetic gate: make -c packages/cache check . redis conformance: make -c packages/cache conformance-redis . mail hermetic gate: make -c packages/mail check . smtp conformance: make -c packages/mail conformance-smtp . vfs run gowork=off go test -race ./... and gowork=off go vet ./... from packages/vfs . the server s3 integration gate exercises the product boundary. vfs intentionally has no module makefile at present. do not infer that a root target with a similar name is its replacement. override a value without editing the build gnu make accepts a variable assignment with the invocation: frequently used selection variables are: variable used for --- --- debug module , debug package , debug test focused debugging, profiling, and tracing debug profile cpu , memory , mutex , or block profile selection package dir , dist dir package and archive destinations version , commit , build time , source date epoch artifact identity and reproducibility proctor runtime image , proctor buildenv image local docker image names proctor buildenv run flags additional deliberate docker arguments for maintainer-container runs ports, origins, service image pins, precedence, and persistent workstation overrides are documented in development configuration. repository-owned go and toolchain settings ignore ambient and file-based overrides; change them only with an explicit make command-line assignment for a deliberate experiment. before running an unfamiliar target 1. confirm your working directory and preserve any local authored changes. 2. read make help ; for a scoped target, inspect that module's makefile or owning developer guide. 3. check whether the command starts containers, writes generated output, or removes state. 4. supply paths and selection variables explicitly rather than editing the recipe for one workstation. 5. after a modifying command, review git status and the generated output before continuing. return to the developer guide to choose a change workflow or use the testing guide to select the correct verification gate."
+  },
+  {
     "id": "page:/developers/persistence/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Change Persistence and Migrations",
     "description": "Evolve Proctor Store contracts, PostgreSQL operations, constraints, caches, and the current pre-release schema baseline safely.",
     "href": "/developers/persistence/",
@@ -187,7 +196,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/repository-boundaries/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Understand Repository Boundaries",
     "description": "Choose the owning Proctor module or product surface without reversing dependency direction or duplicating contracts.",
     "href": "/developers/repository-boundaries/",
@@ -196,7 +205,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/reusable-modules/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Change a Reusable Go Module",
     "description": "Preserve the independent cache, mail, and VFS contracts while adding portable behavior or an adapter.",
     "href": "/developers/reusable-modules/",
@@ -205,7 +214,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server-workflow/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop the Proctor Server",
     "description": "Navigate the server architecture, place policy at the correct boundary, and deliver one verified behavior from domain model to public contract.",
     "href": "/developers/server-workflow/",
@@ -214,7 +223,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/architecture-composition/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Understand Server Architecture and Composition",
     "description": "Trace dependency direction, server.New construction, lifecycle ownership, readiness, and reverse shutdown without creating a second composition path.",
     "href": "/developers/server/architecture-composition/",
@@ -223,7 +232,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/attempt-continuity/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Attempt Continuity",
     "description": "Keep Participation renewal, database-time expiry, Connection teardown, corrections, Workspace recovery, and manager re-allow causally exact.",
     "href": "/developers/server/attempt-continuity/",
@@ -232,7 +241,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/authorization-errors-audit/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Authorize, Conceal, and Audit Server Behavior",
     "description": "Separate credential assurance from current action-and-resource authorization, expose only allowlisted failures, and make required audit durable.",
     "href": "/developers/server/authorization-errors-audit/",
@@ -241,7 +250,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/browser-activity-submission/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Browser Activity and Submission",
     "description": "Preserve privacy-minimized Browser Activity, explicit gaps, acknowledged Workspace fences, and one immutable terminal Submission.",
     "href": "/developers/server/browser-activity-submission/",
@@ -250,7 +259,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/desktop-trust-admission/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Desktop Trust and Candidate Admission",
     "description": "Preserve browser-mediated Desktop Authorization, DPoP request binding, compatibility policy, and the separate Participation admission boundary.",
     "href": "/developers/server/desktop-trust-admission/",
@@ -259,7 +268,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/domain-application/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Design Domain and Application Behavior",
     "description": "Put local invariants in domain models and actor-sensitive policy, authorization, coordination, and effects in focused application use cases.",
     "href": "/developers/server/domain-application/",
@@ -268,7 +277,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/files-execution/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Files, Workspaces, and Execution",
     "description": "Preserve PostgreSQL metadata authority while streaming opaque VFS bytes and projecting acknowledged Attempt Workspace state into replaceable execution hosts.",
     "href": "/developers/server/files-execution/",
@@ -277,7 +286,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/integrity-review-release/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Integrity Review and Result Release",
     "description": "Keep evidence collection, private manager interpretation, immutable finalization, and narrow candidate release as separate capabilities.",
     "href": "/developers/server/integrity-review-release/",
@@ -286,7 +295,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/jobs-mail/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Build Durable Jobs and Transactional Mail",
     "description": "Make finite background work and required product communication survive node loss, retry, cancellation, and multi-node claiming.",
     "href": "/developers/server/jobs-mail/",
@@ -295,7 +304,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/realtime-cluster-effects/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Realtime, Clustering, and Effects",
     "description": "Keep WebSocket connections bounded and node-local while using best-effort cluster propagation only after authoritative commits.",
     "href": "/developers/server/realtime-cluster-effects/",
@@ -304,7 +313,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/review-checklists/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Review a Server Change",
     "description": "Review a Proctor server slice at each changed boundary before running the broad repository gates.",
     "href": "/developers/server/review-checklists/",
@@ -313,7 +322,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/runtime-integrations/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop Runtime and External Integrations",
     "description": "Change configuration, CLI commands, external authentication, localization, logs, metrics, and lifecycle integrations without leaking infrastructure into application policy.",
     "href": "/developers/server/runtime-integrations/",
@@ -322,7 +331,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/server/user-settings-slice/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Trace a Complete User Settings Slice",
     "description": "Follow the implemented conditional User Settings replacement through model, application, Store, PostgreSQL, HTTP, OpenAPI, generated browser types, tests, and post-commit realtime.",
     "href": "/developers/server/user-settings-slice/",
@@ -331,16 +340,16 @@ export const searchEntries = [
   {
     "id": "page:/developers/testing/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Test and Verify Changes",
     "description": "Move from focused feedback to module, integration, architecture, browser, documentation, and complete CI gates without running everything blindly.",
     "href": "/developers/testing/",
-    "searchText": "test and verify changes move from focused feedback to module, integration, architecture, browser, documentation, and complete ci gates without running everything blindly. test and verify changes run checks in order of cost. the narrowest test should explain a local failure; the widest relevant gate should prove that the finished slice still composes with the product. the verification ladder 0. repository standards before interpreting a module failure, prove formatting and static analysis: run make vulncheck when go source or dependencies change. it queries the current vulnerability database and is intentionally separate from the hermetic product gate. see tooling and debugging for the exact tool ownership and focused diagnostic commands. 1. focused behavior run the exact package and test while implementing: use -race when concurrency or shared state is involved. keep pure isolated tests network-free and parallel where safe. 2. owning package or module surface complete local gate --- --- server make -c server check webapp npm --prefix webapp run check cache make -c packages/cache check mail make -c packages/mail check vfs gowork=off go test -race ./... and gowork=off go vet ./... from packages/vfs documentation make docs-check 3. dependency-backed behavior boundary command --- --- all tagged server integration tests make -c server integration-all postgresql store, migrations, and application behavior make -c server integration-postgres redis cache conformance make -c server integration-redis s3-compatible vfs and server file content make -c server integration-s3 cas and oidc application integration make -c server integration-providers websocket and two-node memberlist behavior make -c server integration-realtime these targets provision pinned dependencies, wait for health, and remove them after the test. if the requested service is unavailable, the test fails; it does not silently report success. 4. cross-module and product gates independent-modules runs test, race, vet, and build with gowork=off for all four go modules. the root check verifies build scripts, the webapp, documentation, and the hermetic server gate. use the complete ci-facing gate when the change warrants packaging and all dependency-backed suites: make ci also assembles and verifies a release-style package. release output must not already exist; the packaging targets refuse to reuse a directory that might contain operator configuration. match tests to risk change minimum additional evidence --- --- domain constructor or transition table-driven invariant and transition tests application authorization or audit allow, deny, concealment, stale authority, and audit-failure behavior named store operation shared conformance plus postgresql race/integration test cache, mail, vfs, cluster, or execution adapter reusable conformance and failure classification http resource dto, credential, assurance, problem details, result ordering, and openapi agreement websocket behavior authentication, subscription authorization, replay/resync, bounds, and backpressure job behavior claim, lease, checkpoint, retry, cancellation, process-loss, and retention behavior webapp interaction unit state coverage plus chromium, firefox, and webkit browser behavior documentation presentation generator checks, production build, desktop/mobile and light/dark browser review diagnose a cluster failure the three-node development certification is separate from ordinary unit and integration tests: after a failure, print bounded state and logs: the smoke target checks readiness, metrics, peer discovery, build identity, gateway traffic, and recovery while one node is stopped, then restores the node. keep tests trustworthy - prefer observable behavior over implementation call counts. - use small handwritten fakes for consumer-owned application ports. - use external-package tests for exported contracts; reserve same-package tests for important unexported mechanics. - make concurrency deterministic with synchronization, not sleeps. - keep fixtures synthetic and bounded. - never place credentials, student data, exam answers, mail bodies, workspace content, or operational identifiers in failure output. - do not weaken a conformance suite for one adapter; fix the adapter or make an optional capability explicit. before handoff 1. run git diff --check . 2. run make quality for go changes. 3. review generated output and ensure it came from the tracked source. 4. check the diff for secrets, local paths, snapshots, and unrelated changes. 5. run the highest relevant gate above. 6. report exactly what passed and any dependency-backed check that was not run."
+    "searchText": "test and verify changes move from focused feedback to module, integration, architecture, browser, documentation, and complete ci gates without running everything blindly. test and verify changes run checks in order of cost. the narrowest test should explain a local failure; the widest relevant gate should prove that the finished slice still composes with the product. use the make command reference when you need to compare the root product gates with module-scoped targets or check a command's effects. the verification ladder 0. repository standards before interpreting a module failure, prove formatting and static analysis: run make vulncheck when go source or dependencies change. it queries the current vulnerability database and is intentionally separate from the hermetic product gate. see tooling and debugging for the exact tool ownership and focused diagnostic commands. 1. focused behavior run the exact package and test while implementing: use -race when concurrency or shared state is involved. keep pure isolated tests network-free and parallel where safe. 2. owning package or module surface complete local gate --- --- server make -c server check webapp npm --prefix webapp run check cache make -c packages/cache check mail make -c packages/mail check vfs gowork=off go test -race ./... and gowork=off go vet ./... from packages/vfs documentation make docs-check 3. dependency-backed behavior boundary command --- --- all tagged server integration tests make -c server integration-all postgresql store, migrations, and application behavior make -c server integration-postgres redis cache conformance make -c server integration-redis s3-compatible vfs and server file content make -c server integration-s3 cas and oidc application integration make -c server integration-providers websocket and two-node memberlist behavior make -c server integration-realtime these targets provision pinned dependencies, wait for health, and remove them after the test. if the requested service is unavailable, the test fails; it does not silently report success. 4. cross-module and product gates independent-modules runs test, race, vet, and build with gowork=off for all four go modules. the root check verifies build scripts, the webapp, documentation, and the hermetic server gate. use the complete ci-facing gate when the change warrants packaging and all dependency-backed suites: make ci also assembles and verifies a release-style package. release output must not already exist; the packaging targets refuse to reuse a directory that might contain operator configuration. match tests to risk change minimum additional evidence --- --- domain constructor or transition table-driven invariant and transition tests application authorization or audit allow, deny, concealment, stale authority, and audit-failure behavior named store operation shared conformance plus postgresql race/integration test cache, mail, vfs, cluster, or execution adapter reusable conformance and failure classification http resource dto, credential, assurance, problem details, result ordering, and openapi agreement websocket behavior authentication, subscription authorization, replay/resync, bounds, and backpressure job behavior claim, lease, checkpoint, retry, cancellation, process-loss, and retention behavior webapp interaction unit state coverage plus chromium, firefox, and webkit browser behavior documentation presentation generator checks, production build, desktop/mobile and light/dark browser review diagnose a cluster failure the three-node development certification is separate from ordinary unit and integration tests: after a failure, print bounded state and logs: the smoke target checks readiness, metrics, peer discovery, build identity, gateway traffic, and recovery while one node is stopped, then restores the node. keep tests trustworthy - prefer observable behavior over implementation call counts. - use small handwritten fakes for consumer-owned application ports. - use external-package tests for exported contracts; reserve same-package tests for important unexported mechanics. - make concurrency deterministic with synchronization, not sleeps. - keep fixtures synthetic and bounded. - never place credentials, student data, exam answers, mail bodies, workspace content, or operational identifiers in failure output. - do not weaken a conformance suite for one adapter; fix the adapter or make an optional capability explicit. before handoff 1. run git diff --check . 2. run make quality for go changes. 3. review generated output and ensure it came from the tracked source. 4. check the diff for secrets, local paths, snapshots, and unrelated changes. 5. run the highest relevant gate above. 6. report exactly what passed and any dependency-backed check that was not run."
   },
   {
     "id": "page:/developers/tooling-and-debugging/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Use the Repository Tooling and Debuggers",
     "description": "Install Proctor's pinned Go tools, apply shared editor standards, debug the server and webapp, and capture focused test diagnostics.",
     "href": "/developers/tooling-and-debugging/",
@@ -349,7 +358,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/browser",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Browser Application",
     "description": "Diagnose hosted-build identity, Vite proxying, browser origins, generated-contract drift, browser tests, traces, and cross-browser failures.",
     "href": "/developers/troubleshooting/browser",
@@ -358,7 +367,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/cluster",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Cluster Failures",
     "description": "Diagnose gateway, node readiness, peer discovery, membership, cluster propagation, scrape targets, and one-node recovery in the local HA topology.",
     "href": "/developers/troubleshooting/cluster",
@@ -367,7 +376,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/data-content",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Data and Managed Content",
     "description": "Diagnose PostgreSQL, Redis, VFS, MinIO, migration, metadata, and object-byte failures without confusing authority with cache.",
     "href": "/developers/troubleshooting/data-content",
@@ -376,7 +385,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/http-access",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "HTTP Access and Authorization",
     "description": "Diagnose Problem Details, request correlation, credentials, CSRF, Origin, assurance, authorization, and concealed resources.",
     "href": "/developers/troubleshooting/http-access",
@@ -385,7 +394,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Diagnose Development Failures",
     "description": "Find the failing Proctor boundary, collect safe evidence, and recover the local environment without erasing useful state.",
     "href": "/developers/troubleshooting/",
@@ -394,7 +403,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/jobs-realtime",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Jobs and Realtime",
     "description": "Diagnose durable Job execution, attempts, leases, retries, cancellation, WebSocket delivery, replay, backpressure, and authoritative resynchronization.",
     "href": "/developers/troubleshooting/jobs-realtime",
@@ -403,7 +412,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/mail",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Transactional Mail",
     "description": "Diagnose committed mail intent, durable delivery work, rendering, SMTP acceptance, retry, suppression, and local Mailpit behavior.",
     "href": "/developers/troubleshooting/mail",
@@ -412,7 +421,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/troubleshooting/runtime-readiness",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Runtime and Readiness",
     "description": "Diagnose toolchain, container, dependency, port, startup, migration, and readiness failures in the local Proctor runtime.",
     "href": "/developers/troubleshooting/runtime-readiness",
@@ -421,7 +430,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp-workflow/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Develop the Hosted Webapp",
     "description": "Build an accessible browser feature without duplicating route, API, localization, authentication, or design-system authority.",
     "href": "/developers/webapp-workflow/",
@@ -430,7 +439,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/architecture-routing/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Understand Webapp Architecture and Routing",
     "description": "Trace a server-hosted browser page from the sealed route catalog through sanitized bootstrap, root orchestration, and feature presentation.",
     "href": "/developers/webapp/architecture-routing/",
@@ -439,7 +448,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/features-api-localization/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Own Features, API Calls, and Localization",
     "description": "Keep feature behavior cohesive while consuming generated HTTP and localization adapters and promoting only proven shared components.",
     "href": "/developers/webapp/features-api-localization/",
@@ -448,7 +457,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/password-reset-slice/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Trace a Complete Password-Reset Feature",
     "description": "Follow the implemented password-reset route through server-owned membership, credential-safe bootstrap, generated HTTP types, feature state, localization, components, and browser evidence.",
     "href": "/developers/webapp/password-reset-slice/",
@@ -457,7 +466,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/review-checklists/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Review a Hosted Webapp Change",
     "description": "Review a Proctor browser feature at each changed boundary before running generated-adapter, interaction, accessibility, browser, and production-build gates.",
     "href": "/developers/webapp/review-checklists/",
@@ -466,7 +475,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/states-forms-accessibility/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Design States, Forms, and Accessible Recovery",
     "description": "Make every real browser state explicit, preserve safe form recovery, and verify interaction across input methods, themes, zoom, and localization growth.",
     "href": "/developers/webapp/states-forms-accessibility/",
@@ -475,7 +484,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/testing/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Test the Hosted Webapp",
     "description": "Use focused unit evidence and three-engine Playwright scenarios to prove generated contracts, semantic state, interaction, accessibility, and responsive presentation.",
     "href": "/developers/webapp/testing/",
@@ -484,7 +493,7 @@ export const searchEntries = [
   {
     "id": "page:/developers/webapp/visual-review/",
     "kind": "guide",
-    "group": "Develop",
+    "group": "Developer guide",
     "title": "Review the Product Interface",
     "description": "Judge a hosted webapp change against Proctor's visual hierarchy, semantic state, interaction, responsive, theme, and accessibility contracts.",
     "href": "/developers/webapp/visual-review/",
@@ -493,7 +502,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/author-and-publish",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Author and Publish an Exam",
     "description": "Edit one revision-fenced Draft and publish a complete immutable Revision without exposing concurrent or protected content.",
     "href": "/exam-manager/author-and-publish",
@@ -502,7 +511,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/corrections-and-attempt-control",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Correct Live Content and Control Attempts",
     "description": "Apply one immutable live correction, require acknowledgement when needed, and distinguish Kick, Suspension, re-allow, and manager-ended Submission.",
     "href": "/exam-manager/corrections-and-attempt-control",
@@ -511,7 +520,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/execution-profile",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Choose an Execution Profile",
     "description": "Select whether an Exam offers an isolated Attempt Terminal, a verified image, and a bounded network mode.",
     "href": "/exam-manager/execution-profile",
@@ -520,7 +529,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/finalize-and-release",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Finalize the Review and Release the Result",
     "description": "Check completeness, freeze one bounded integrity inventory, and explicitly release only approved candidate-facing remarks.",
     "href": "/exam-manager/finalize-and-release",
@@ -529,7 +538,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Manage Exams",
     "description": "Author immutable examination delivery, operate Sittings, and review terminal Submissions without collapsing distinct lifecycle states.",
     "href": "/exam-manager/",
@@ -538,7 +547,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/resources-and-workspace",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Add Resources and a Starter Workspace",
     "description": "Keep read-only Exam Resources separate from initial writable code and freeze both into immutable Revisions.",
     "href": "/exam-manager/resources-and-workspace",
@@ -547,7 +556,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/sitting-operations",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Operate an Exam Sitting",
     "description": "Schedule one Revision for one Class, interpret candidate status at server time, and control the Sitting without confusing lifecycle actions.",
     "href": "/exam-manager/sitting-operations",
@@ -556,7 +565,7 @@ export const searchEntries = [
   {
     "id": "page:/exam-manager/submission-and-integrity-review",
     "kind": "guide",
-    "group": "Documentation",
+    "group": "Exam Manager guide",
     "title": "Inspect a Submission and Review Integrity",
     "description": "Read the immutable submitted work, distinguish provenance from suspicion, assess bounded evidence, and record non-academic dispositions.",
     "href": "/exam-manager/submission-and-integrity-review",
@@ -565,16 +574,16 @@ export const searchEntries = [
   {
     "id": "page:/",
     "kind": "guide",
-    "group": "Start",
+    "group": "All readers",
     "title": "Proctor documentation",
-    "description": "Operate, govern, secure, and integrate one self-hosted Proctor installation.",
+    "description": "Guides for using, operating, and developing Proctor, a self-hosted examination and proctoring platform.",
     "href": "/",
-    "searchText": "proctor documentation operate, govern, secure, and integrate one self-hosted proctor installation. self-hosted examination infrastructure contract preview operate one institution with every rule in view. deploy proctor, establish academic authority, review its security boundaries, and integrate against a checked openapi contract. plan a deployment inspect the api new to the model? start with installation and institution. assurance record doc-foundation / current installation exactly one institution durable authority postgresql before transient effects scale model one architecture from one node onward public contract every operation declares explicit assurance each statement links to a reviewed source. choose by responsibility begin where you hold authority documentation paths follow the work a reader controls—not the repository tree or the interface that happens to expose it. reviewed evidence read the explanation, then inspect the contract public guides explain tasks. generated reference material and tracked architecture documents preserve exact behavior. http api openapi reference authentication, idempotency, errors, examples, and all endpoint schemas. canonical language proctor glossary generated definitions with nearby vocabulary to avoid. system design architecture guide durable boundaries, rationale, and examination guarantees. account, candidate, exam manager, administrator, and operator paths describe implemented server, hosted-browser, and api contracts. where an authenticated product interface is not present in this repository, guidance stays ui-independent instead of inventing screens."
+    "searchText": "proctor documentation guides for using, operating, and developing proctor, a self-hosted examination and proctoring platform. proctor documentation guides for using, operating, and developing proctor—an open-source, self-hosted examination and proctoring platform. each installation serves one institution. start with the guide for the work you need to do. common tasks sign in or recover access prepare for an exam set up a development environment find your guide reference look up a term, configuration option, or api operation. api reference request requirements, examples, schemas, and responses. glossary definitions of the terms used throughout these guides. configuration reference server options, environment variables, and command-line usage. proctor is in active development. these guides describe implemented behavior and identify incomplete workflows. where an authenticated product interface is not yet present, guidance explains the underlying workflow without inventing screens."
   },
   {
     "id": "page:/institution-admin/academic-structure",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Build the Academic Structure",
     "description": "Model Academic Units, Programmes, Programme Levels, Academic Periods, and Classes with exact ownership and retained history.",
     "href": "/institution-admin/academic-structure",
@@ -583,7 +592,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/access-policy",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Govern Account Access",
     "description": "Change the revisioned Access Policy without removing the last administrator path or confusing policy with deployment capability.",
     "href": "/institution-admin/access-policy",
@@ -592,7 +601,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/audit-history",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Inspect Audit History",
     "description": "Review structural, identity, authority, and security-sensitive decisions through the caller's authorized scope.",
     "href": "/institution-admin/audit-history",
@@ -601,7 +610,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/imports-and-progression",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Run Imports and Student Progression",
     "description": "Review immutable CSV previews, commit independent rows, cancel safely, and retain membership history during transfer or progression.",
     "href": "/institution-admin/imports-and-progression",
@@ -610,7 +619,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Set Up an Institution",
     "description": "Understand the order for establishing Proctor's academic structure, identities, access policy, and scoped authority.",
     "href": "/institution-admin/",
@@ -619,7 +628,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/onboarding",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Invite People Into the Institution",
     "description": "Issue, replace, resend, revoke, and accept purpose-specific Invitations without placeholder accounts or email-based authority.",
     "href": "/institution-admin/onboarding",
@@ -628,7 +637,7 @@ export const searchEntries = [
   {
     "id": "page:/institution-admin/people-and-authority",
     "kind": "guide",
-    "group": "Administer",
+    "group": "Institution administrator guide",
     "title": "Manage People and Scoped Authority",
     "description": "Keep User identity, relationships, Roles, Role Bindings, account state, and current context separate.",
     "href": "/institution-admin/people-and-authority",
@@ -637,7 +646,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/configuration-and-secrets",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Configure Proctor and Protect Secrets",
     "description": "Create the active versioned configuration, apply process overrides safely, validate it, and keep each secret in its own purpose boundary.",
     "href": "/operator/configuration-and-secrets",
@@ -646,7 +655,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/health-and-observability",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Operate Health, Metrics, Logs, and Traces",
     "description": "Route by readiness, understand serving-lease failure, scrape every node safely, and diagnose failures without leaking private data.",
     "href": "/operator/health-and-observability",
@@ -655,7 +664,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Operate Proctor",
     "description": "Install and run the current Proctor runtime without mistaking pre-production examples for certified production procedures.",
     "href": "/operator/",
@@ -664,7 +673,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/maintenance-and-recovery",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Perform Maintenance and Bounded Recovery",
     "description": "Drain an application node, rotate Memberlist keys, recover administrator access offline, and handle the current pre-release database boundary.",
     "href": "/operator/maintenance-and-recovery",
@@ -673,7 +682,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/package-and-install",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Verify a Package and Install the Application",
     "description": "Build or receive a deterministic Proctor release, verify build identity and checksums, and install an immutable application payload.",
     "href": "/operator/package-and-install",
@@ -682,7 +691,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/pre-production-readiness",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Evaluate Pre-production Readiness",
     "description": "Verify the implemented runtime in a representative environment while keeping unsupported production claims explicitly blocked.",
     "href": "/operator/pre-production-readiness",
@@ -691,7 +700,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/systemd-and-container",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Run Proctor With Systemd or a Container",
     "description": "Preserve the tracked non-root, readiness, writable-path, and shutdown contracts in a host service or immutable container.",
     "href": "/operator/systemd-and-container",
@@ -700,7 +709,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/tls-and-proxy",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Configure TLS, Forwarding, and a Reverse Proxy",
     "description": "Select external termination, static TLS, or single-node Let's Encrypt while preserving canonical origins, redirects, WebSocket, and private cluster boundaries.",
     "href": "/operator/tls-and-proxy",
@@ -709,7 +718,7 @@ export const searchEntries = [
   {
     "id": "page:/operator/topology-and-dependencies",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Choose Topology and Assign Dependency Ownership",
     "description": "Run one node or several active nodes without confusing application redundancy with dependency availability or durable authority.",
     "href": "/operator/topology-and-dependencies",
@@ -718,7 +727,7 @@ export const searchEntries = [
   {
     "id": "page:/reference/command-line/",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Proctor Command-Line Reference",
     "description": "Checked operator-facing commands for serving, validating configuration, migrating, recovering administrator access, and identifying a build.",
     "href": "/reference/command-line/",
@@ -727,7 +736,7 @@ export const searchEntries = [
   {
     "id": "page:/reference/configuration/",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Deployment Configuration Reference",
     "description": "Understand Proctor's strict versioned JSON configuration, process-level overrides, validation, reload boundaries, and secret responsibilities.",
     "href": "/reference/configuration/",
@@ -736,7 +745,7 @@ export const searchEntries = [
   {
     "id": "page:/reference/environment-variables/",
     "kind": "guide",
-    "group": "Operate",
+    "group": "Operator guide",
     "title": "Environment Variable Reference",
     "description": "Generated inventory of the validated PROCTOR_ deployment overrides implemented by the server.",
     "href": "/reference/environment-variables/",
@@ -745,7 +754,7 @@ export const searchEntries = [
   {
     "id": "page:/glossary/",
     "kind": "glossary",
-    "group": "Start",
+    "group": "All readers",
     "title": "Proctor glossary",
     "description": "Canonical public definitions for Proctor domain terminology.",
     "href": "/glossary/",
@@ -754,7 +763,7 @@ export const searchEntries = [
   {
     "id": "page:/security/content-execution",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Content, Workspace, Submission, and Execution Security",
     "description": "Review semantic metadata authority, opaque byte storage, protected Workspace operations, immutable Submission access, and isolated execution projection.",
     "href": "/security/content-execution",
@@ -763,7 +772,7 @@ export const searchEntries = [
   {
     "id": "page:/security/credentials-authorization",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Credentials, Assurance, Authorization, and Audit",
     "description": "Map each credential class to its proof, assurance ceiling, authorization boundary, concealment behavior, and durable audit responsibility.",
     "href": "/security/credentials-authorization",
@@ -772,7 +781,7 @@ export const searchEntries = [
   {
     "id": "page:/security/data-privacy",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Data Classification, Privacy, and Diagnostics",
     "description": "Classify Proctor data, constrain where it may appear, and preserve privacy through logs, metrics, audit, realtime, screenshots, and support diagnostics.",
     "href": "/security/data-privacy",
@@ -781,7 +790,7 @@ export const searchEntries = [
   {
     "id": "page:/security/errors-limits-compatibility",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Errors, Limits, and Compatibility",
     "description": "Review safe Problem Details, concealment, input bounds, idempotency, client compatibility, and pre-release contract limits.",
     "href": "/security/errors-limits-compatibility",
@@ -790,7 +799,7 @@ export const searchEntries = [
   {
     "id": "page:/security/",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Review Proctor Security",
     "description": "Trace implemented controls and operator responsibilities across identity, authorization, data, content, execution, and deployment trust boundaries.",
     "href": "/security/",
@@ -799,7 +808,7 @@ export const searchEntries = [
   {
     "id": "page:/security/keys-network",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Keys, Certificates, and Network Boundaries",
     "description": "Assign key ownership, rotation responsibility, listener exposure, and outbound dependency trust for Proctor installations.",
     "href": "/security/keys-network",
@@ -808,7 +817,7 @@ export const searchEntries = [
   {
     "id": "page:/security/threat-model",
     "kind": "guide",
-    "group": "Review & secure",
+    "group": "Security review guide",
     "title": "Threat Model and Trust Boundaries",
     "description": "Identify protected assets, trusted components, untrusted inputs, attackers, and the controls that preserve one Proctor installation.",
     "href": "/security/threat-model",
@@ -817,7 +826,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/authentication",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Authentication and Assurance",
     "description": "Choose the correct Web, Desktop, automation, refresh, and Attempt credentials and satisfy the operation's assurance contract.",
     "href": "/api/guides/authentication",
@@ -826,7 +835,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/durable-operations",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Durable Jobs and Mail",
     "description": "Inspect and control Proctor's durable background work and mail delivery without exposing payloads or credentials.",
     "href": "/api/guides/durable-operations",
@@ -835,7 +844,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/errors",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Errors and Problem Details",
     "description": "Handle Proctor HTTP failures using RFC 9457 Problem Details and stable application error codes.",
     "href": "/api/guides/errors",
@@ -844,7 +853,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/getting-started",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Getting Started",
     "description": "Make your first Proctor API request and learn how the versioned contract is organized.",
     "href": "/api/guides/getting-started",
@@ -853,7 +862,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/idempotency",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Idempotency and Retries",
     "description": "Retry Proctor commands without duplicating durable mutations or external effects.",
     "href": "/api/guides/idempotency",
@@ -862,7 +871,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/limits-and-compatibility",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Limits and Compatibility",
     "description": "Design Proctor clients for bounded inputs, rate controls, the pre-release compatibility boundary, and safe observability.",
     "href": "/api/guides/limits-and-compatibility",
@@ -871,7 +880,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/pagination",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Pagination",
     "description": "Traverse Proctor collections safely with bounded opaque keyset cursors.",
     "href": "/api/guides/pagination",
@@ -880,7 +889,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/realtime",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Realtime and Replay",
     "description": "Connect to Proctor WebSocket events, authorize subscriptions, and recover from bounded replay gaps.",
     "href": "/api/guides/realtime",
@@ -889,7 +898,7 @@ export const searchEntries = [
   {
     "id": "page:/api/guides/uploads-and-content",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Uploads and Protected Content",
     "description": "Build strict multipart uploads and handle protected Proctor content safely.",
     "href": "/api/guides/uploads-and-content",
@@ -898,7 +907,7 @@ export const searchEntries = [
   {
     "id": "page:/api/",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Proctor API",
     "description": "Use Proctor's reviewed OpenAPI contract, explicit authentication metadata, and stable Problem Details errors.",
     "href": "/api/",
@@ -907,7 +916,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/academic-structure",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Build the Academic Structure",
     "description": "Create, verify, move, and archive Academic Units, Programmes, Programme Levels, Academic Periods, and Classes in ownership order.",
     "href": "/api/recipes/academic-structure",
@@ -916,16 +925,16 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/access-policy",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Change the Access Policy Safely",
     "description": "Inspect, preflight, and revision-fence an installation Access Policy change while preserving a usable administrator path.",
     "href": "/api/recipes/access-policy",
-    "searchText": "change the access policy safely inspect, preflight, and revision-fence an installation access policy change while preserving a usable administrator path. change the access policy safely the access policy is revisioned application data for one installation. it controls public registration, local login and credential enrollment, invitation admission, provider admission modes, and desktop authorization. it does not contain provider credentials, smtp configuration, institution profile data, or deployment capability. changing it is a three-step read, preflight, and replace workflow. preflight is advice against one observed state; the replacement transaction remains the authority. 1. read policy and deployment capabilities call get access policy with an authorized principal. retain the opaque policy id, current revision, complete policy fields, safe configured-provider capabilities, and bounded transition history. build a complete replacement document. do not patch from a stale form or omit fields that the operator did not edit. a provider may be selected only when it is present in the returned validated capability set; deployment configuration still owns issuer urls, client secrets, certificates, and claim mappings. omitting a configured provider from provider admissions disables its admission. an included provider accepts exactly one of three modes, each with a distinct consequence: - linked only accepts an already linked immutable provider subject; - invitation required admits an unlinked subject only inside a valid, purpose-bound invitation transaction; and - auto provision may create a relationship-free user only when validated provider eligibility also permits it. none of these modes grants membership, an affiliation, or a role binding. 2. preflight the exact proposed replacement call preflight access policy with a strong, recently authenticated interactive session, current csrf proof on cookie transport, the observed revision, the complete proposed policy, and the one-shot revoke existing sessions choice. review every blocker rather than reducing the response to one boolean. the server evaluates configured providers, invitation delivery, policy validity, and usable authentication paths for active system administrators. enabling an invitation-dependent mode can fail when durable mail delivery is unavailable. disabling a provider or local login can fail when that would remove the last usable administrator path. preflight makes no durable change and reserves neither the revision nor an administrator path. another administrator or node may change current state immediately afterward. 3. replace under the revision fence call replace access policy with the exact preflighted document, the expected revision, a fresh idempotency-key , strong recent session assurance, and csrf proof when using cookies. the authoritative transaction repeats every capability and lockout check. it serializes with path-removing credential, user, and system-administrator binding changes; records the attempt; advances the revision; and commits before cache invalidation, cluster fan-out, or the content-free realtime revision event. revoke existing sessions is not a persisted policy field. it is a one-shot transition choice. when true, sessions authenticated through methods newly disabled by this exact transition are revoked atomically; sessions using retained methods remain active. when false, the disabled method cannot create new sessions, but already established sessions keep their ordinary lifecycle. 4. verify the applied state read the policy again and require the returned revision and fields to match the replacement outcome. then verify one safe login path for each administrator method you intend to retain. do not use public discovery as the replacement receipt: discovery is a privacy-safe projection and may be transiently cached. if post-commit cache, realtime, or cluster publication reports a transient failure, the durable replacement still won. reread postgresql-backed policy through the api rather than submitting a compensating replacement from stale state. conflict and recovery rules result recovery --- --- revision conflict read the current policy, merge the human decision, preflight again, and use a new idempotency key. policy blocked preserve the current policy and repair the named administrator path, provider capability, or mail dependency first. idempotency in progress back off, then read the policy before replaying the exact same request and key. idempotency conflict the key was reused for different input; choose a fresh key only after reviewing the intended replacement. assurance required reauthenticate through a supported strong method; never substitute a personal access token. every administrator path is lost despite the invariant stop every node and use the documented offline host recovery; there is no network bypass route. for the person-facing consequences of method changes, read account access and recovery. for deployment-owned provider configuration, read configuration and secrets."
+    "searchText": "change the access policy safely inspect, preflight, and revision-fence an installation access policy change while preserving a usable administrator path. change the access policy safely the access policy is revisioned application data for one installation. it controls public registration, local login and credential enrollment, invitation admission, provider admission modes, and desktop authorization. it does not contain provider credentials, smtp configuration, institution profile data, or deployment capability. changing it is a three-step read, preflight, and replace workflow. preflight is advice against one observed state; the replacement transaction remains the authority. 1. read policy and deployment capabilities call get access policy with an authorized principal. retain the opaque policy id, current revision, complete policy fields, safe configured-provider capabilities, and bounded transition history. build a complete replacement document. do not patch from a stale form or omit fields that the operator did not edit. a provider may be selected only when it is present in the returned validated capability set; deployment configuration still owns issuer urls, client secrets, certificates, and claim mappings. omitting a configured provider from provider admissions disables its admission. an included provider accepts exactly one of three modes, each with a distinct consequence: - linked only accepts an already linked immutable provider subject; - invitation required admits an unlinked subject only inside a valid, purpose-bound invitation transaction; and - auto provision may create a relationship-free user only when validated provider eligibility also permits it. none of these modes grants membership, an affiliation, or a role binding. 2. preflight the exact proposed replacement call preflight access policy with a strong, recently authenticated interactive session, current csrf proof on cookie transport, the observed revision, the complete proposed policy, and the one-shot revoke existing sessions choice. review every blocker rather than reducing the response to one boolean. the server evaluates configured providers, invitation delivery, policy validity, and usable authentication paths for active system administrators. enabling an invitation-dependent mode can fail when durable mail delivery is unavailable. disabling a provider or local login can fail when that would remove the last usable administrator path. preflight makes no durable change and reserves neither the revision nor an administrator path. another administrator or node may change current state immediately afterward. 3. replace under the revision fence call replace access policy with the exact preflighted document, the expected revision, a fresh idempotency-key , strong recent session assurance, and csrf proof when using cookies. the authoritative transaction repeats every capability and lockout check. it serializes with path-removing credential, user, and system-administrator binding changes; records the attempt; advances the revision; and commits before cache invalidation, cluster fan-out, or the content-free realtime revision event. revoke existing sessions is not a persisted policy field. it is a one-shot transition choice. when true, sessions authenticated through methods newly disabled by this exact transition are revoked atomically; sessions using retained methods remain active. when false, the disabled method cannot create new sessions, but already established sessions keep their ordinary lifecycle. 4. verify the applied state read the policy again and require the returned revision and fields to match the replacement outcome. then verify one safe login path for each administrator method you intend to retain. do not use public discovery as the replacement receipt: discovery is a privacy-safe projection and may be transiently cached. if post-commit cache, realtime, or cluster publication reports a transient failure, the durable replacement still won. reread postgresql-backed policy through the api rather than submitting a compensating replacement from stale state. conflict and recovery rules result recovery --- --- revision conflict read the current policy, merge the human decision, preflight again, and use a new idempotency key. policy blocked preserve the current policy and repair the named administrator path, provider capability, or mail dependency first. idempotency in progress back off, then read the policy before replaying the exact same request and key. idempotency conflict the key was reused for different input; choose a fresh key only after reviewing the intended replacement. assurance required reauthenticate through a supported strong method; never substitute a personal access token. every administrator path is lost despite the invariant stop every node and use the documented offline host recovery; there is no network bypass route. for the person-facing consequences of method changes, read account access and recovery . for deployment-owned provider configuration, read configuration and secrets ."
   },
   {
     "id": "page:/api/recipes/account-entry-and-recovery",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Enter and Recover an Account",
     "description": "Register, sign in, verify an email address, rotate a Session, and recover a local account without leaking account state or weakening policy.",
     "href": "/api/recipes/account-entry-and-recovery",
@@ -934,7 +943,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/account-security",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Manage Account Security",
     "description": "Integrate MFA, authentication methods, Session review, Desktop Registration revocation, and Personal Access Tokens without weakening assurance.",
     "href": "/api/recipes/account-security",
@@ -943,7 +952,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/author-and-publish-exam",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Author and Publish an Exam",
     "description": "Create a revision-fenced Exam Draft, attach typed policies and protected material, govern Managers, and publish one complete immutable Revision.",
     "href": "/api/recipes/author-and-publish-exam",
@@ -952,7 +961,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/bootstrap-installation",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Bootstrap an Installation",
     "description": "Create the one Institution and first administrator for a new Proctor installation.",
     "href": "/api/recipes/bootstrap-installation",
@@ -961,7 +970,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/candidate-attempt",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Start, Continue, and Submit an Attempt",
     "description": "Coordinate candidate admission, protected Attempt requests, Workspace acknowledgements, reconnects, and submission.",
     "href": "/api/recipes/candidate-attempt",
@@ -970,7 +979,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/consume-audit",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Consume Audit History",
     "description": "Page through authorized Proctor audit history without treating it as an unbounded event export.",
     "href": "/api/recipes/consume-audit",
@@ -979,7 +988,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/desktop-authorization",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Implement Desktop Authorization",
     "description": "Exchange a hosted browser approval for a registered-key DPoP Desktop Session with exact origin, callback, PKCE, nonce, and compatibility checks.",
     "href": "/api/recipes/desktop-authorization",
@@ -988,7 +997,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/invite-and-link-users",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Invite and Link Users",
     "description": "Invite students and staff into exact scopes without confusing membership with authorization.",
     "href": "/api/recipes/invite-and-link-users",
@@ -997,7 +1006,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/manage-sitting",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Schedule and Manage a Sitting",
     "description": "Schedule one immutable Revision, operate its lifecycle, apply live corrections, read candidate status, and end or re-allow Attempts safely.",
     "href": "/api/recipes/manage-sitting",
@@ -1006,7 +1015,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/onboarding-imports-and-progression",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Run Onboarding Imports and Progression",
     "description": "Upload, validate, commit, monitor, cancel, and download bounded row outcomes without turning Jobs into authorization receipts.",
     "href": "/api/recipes/onboarding-imports-and-progression",
@@ -1015,7 +1024,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/review-and-release",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Review Integrity and Release a Result",
     "description": "Inspect immutable Submission state, assess bounded evidence, revision-fence non-academic decisions, finalize the inventory, and explicitly release the candidate projection.",
     "href": "/api/recipes/review-and-release",
@@ -1024,7 +1033,7 @@ export const searchEntries = [
   {
     "id": "page:/api/recipes/roles-and-scopes",
     "kind": "guide",
-    "group": "API guides",
+    "group": "API guide",
     "title": "Define Roles and Scoped Bindings",
     "description": "Create reusable action sets and bind them at Institution, Academic Unit, or Class scope without delegating broader authority.",
     "href": "/api/recipes/roles-and-scopes",

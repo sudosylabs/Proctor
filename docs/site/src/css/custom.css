@@ -77,8 +77,8 @@ textarea:focus-visible {
   align-items: center;
   color: color-mix(in srgb, var(--proctor-on-action) 82%, transparent);
   display: inline-flex;
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-size: var(--proctor-type-body-small-size);
+  font-weight: 500;
   height: calc(var(--ifm-navbar-height) - var(--proctor-stroke-component));
   padding: 0 var(--proctor-space-3);
   position: relative;
@@ -90,7 +90,7 @@ textarea:focus-visible {
   text-decoration: none;
 }
 
-.navbar__link::after {
+.navbar__link:not([aria-haspopup])::after {
   background: transparent;
   bottom: 0;
   content: "";
@@ -100,7 +100,7 @@ textarea:focus-visible {
   right: var(--proctor-space-3);
 }
 
-.navbar__link--active::after {
+.navbar__link--active:not([aria-haspopup])::after {
   background: var(--proctor-on-action);
 }
 
@@ -137,12 +137,37 @@ textarea:focus-visible {
   border-radius: var(--proctor-radius-card);
   box-shadow: var(--proctor-shadow);
   padding: var(--proctor-space-2);
+  min-width: 15rem;
 }
 
 .dropdown__link {
   border-radius: var(--proctor-radius-control);
   color: var(--proctor-ink-soft);
   font-size: var(--proctor-type-body-small-size);
+  line-height: var(--proctor-type-body-small-line);
+  padding: var(--proctor-space-2) var(--proctor-space-3);
+  white-space: normal;
+}
+
+.navbar__link[aria-haspopup]::after {
+  margin-left: var(--proctor-space-2);
+  top: 0;
+}
+
+.navbar a:focus-visible,
+.navbar button:focus-visible {
+  outline-color: var(--proctor-on-action);
+}
+
+.navbar .dropdown__menu a:focus-visible,
+.navbar dialog a:focus-visible,
+.navbar dialog button:focus-visible {
+  outline-color: var(--proctor-primary);
+}
+
+.navbar-sidebar__items a:focus-visible,
+.navbar-sidebar__items button:focus-visible {
+  outline-color: var(--proctor-primary);
 }
 
 .dropdown__link:hover,
@@ -170,8 +195,10 @@ textarea:focus-visible {
   color: var(--proctor-on-action);
 }
 
-.navbar-sidebar__back {
+.navbar .navbar-sidebar__back,
+.navbar .navbar-sidebar__back:hover {
   color: var(--proctor-ink);
+  background: var(--proctor-sidebar);
 }
 
 /* Left navigation */
@@ -182,7 +209,7 @@ textarea:focus-visible {
 }
 
 .theme-doc-sidebar-menu {
-  padding: var(--proctor-space-6) var(--proctor-space-4) var(--proctor-space-8);
+  padding: var(--proctor-space-5) var(--proctor-space-3) var(--proctor-space-8);
 }
 
 .menu {
@@ -194,8 +221,23 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-.theme-doc-sidebar-menu > .menu__list > .menu__list-item + .menu__list-item {
-  margin-top: var(--proctor-space-5);
+.theme-doc-sidebar-menu > .menu__list-item > .menu__list {
+  border-left: 0;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.theme-doc-sidebar-menu > .menu__list-item > .menu__list-item-collapsible > .menu__link {
+  color: var(--proctor-ink);
+  font-size: var(--proctor-type-body-size);
+  font-weight: 600;
+  margin-bottom: var(--proctor-space-3);
+  padding-block: var(--proctor-space-2);
+}
+
+.theme-doc-sidebar-menu > .menu__list-item > .menu__list-item-collapsible > .menu__link:not([aria-current="page"]) {
+  background: transparent;
+  border-left-color: transparent;
 }
 
 .menu__list-item-collapsible {
@@ -213,8 +255,8 @@ textarea:focus-visible {
 .menu__list-item-collapsible > .menu__link--sublist {
   color: var(--proctor-ink-muted);
   font-family: var(--ifm-font-family-base);
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: var(--proctor-type-body-small-size);
+  font-weight: 600;
   letter-spacing: 0.005em;
   padding-block: var(--proctor-space-1);
   text-transform: none;
@@ -244,10 +286,11 @@ textarea:focus-visible {
   border-left: var(--proctor-stroke-component) solid transparent;
   border-radius: 0;
   color: var(--proctor-ink-soft);
-  line-height: 1.38;
+  font-weight: 400;
+  line-height: 1.45;
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 0.44rem var(--proctor-space-3);
+  padding: var(--proctor-space-2) var(--proctor-space-3);
 }
 
 .menu__link:hover {
@@ -265,24 +308,10 @@ textarea:focus-visible {
 
 /* Main reading layout */
 
-[class*="docMainContainer"] {
-  max-width: none !important;
-  min-width: 0;
-}
-
-[class*="docMainContainer"] > .container {
-  max-width: 1512px;
-  padding-inline: clamp(var(--proctor-space-5), 2.5vw, var(--proctor-space-7));
-}
-
-[class*="docMainContainer"] > .container > .row > [class*="col"] {
-  min-width: 0;
-}
-
 .breadcrumbs {
   color: var(--proctor-ink-muted);
   font-size: var(--proctor-type-caption-size);
-  margin-bottom: var(--proctor-space-7);
+  margin-bottom: var(--proctor-space-6);
 }
 
 .breadcrumbs__item:not(:last-child)::after {
@@ -534,7 +563,7 @@ textarea:focus-visible {
 
 .table-of-contents {
   border-left: var(--proctor-stroke-hairline) solid var(--proctor-border);
-  font-size: 0.8rem;
+  font-size: var(--proctor-type-body-small-size);
   line-height: 1.45;
   margin-top: var(--proctor-space-7);
   padding: 0 0 0 var(--proctor-space-4);
@@ -554,6 +583,7 @@ textarea:focus-visible {
 .table-of-contents__link {
   color: var(--proctor-ink-muted);
   display: block;
+  overflow-wrap: anywhere;
   padding-block: 0.22rem;
 }
 
@@ -672,10 +702,6 @@ textarea:focus-visible {
   .theme-doc-sidebar-container {
     width: var(--doc-sidebar-width) !important;
   }
-
-  .reader [class*="docMainContainer"] .col:has(> div > article) {
-    max-width: 77%;
-  }
 }
 
 @media (max-width: 1180px) {
@@ -691,7 +717,7 @@ textarea:focus-visible {
     padding-inline: var(--proctor-space-2);
   }
 
-  .navbar__link::after {
+  .navbar__link:not([aria-haspopup])::after {
     left: var(--proctor-space-2);
     right: var(--proctor-space-2);
   }
@@ -700,10 +726,6 @@ textarea:focus-visible {
 @media (max-width: 996px) {
   .navbar__items:not(.navbar__items--right) > .navbar__item {
     display: none;
-  }
-
-  [class*="docMainContainer"] > .container {
-    padding-inline: var(--proctor-space-4);
   }
 
   .navbar__items--right > .navbar__item {
@@ -757,6 +779,17 @@ textarea:focus-visible {
 
   .pagination-nav {
     gap: var(--proctor-space-4);
+  }
+}
+
+@media (max-width: 360px) {
+  .navbar__logo {
+    height: 1.25rem;
+  }
+
+  .navbar__inner {
+    gap: var(--proctor-space-2);
+    padding-inline: var(--proctor-space-2);
   }
 }
 

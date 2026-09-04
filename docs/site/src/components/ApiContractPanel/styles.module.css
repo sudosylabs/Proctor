@@ -15,7 +15,7 @@
   justify-content: space-between;
 }
 
-.eyebrow {
+.panel .eyebrow {
   color: var(--proctor-primary-strong);
   font-family: var(--ifm-font-family-monospace);
   font-size: var(--proctor-type-caption-size);
@@ -25,7 +25,7 @@
   text-transform: uppercase;
 }
 
-.title {
+.panel .title {
   border: 0;
   color: var(--proctor-ink);
   font-size: var(--proctor-type-body-size);
@@ -87,7 +87,7 @@
   width: fit-content;
 }
 
-.errorList {
+.panel .errorList {
   display: grid;
   gap: var(--proctor-space-2);
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -96,8 +96,9 @@
   padding: 0;
 }
 
-.errorList li {
+.panel .errorList li {
   min-width: 0;
+  padding-left: 0;
 }
 
 .errorList code {

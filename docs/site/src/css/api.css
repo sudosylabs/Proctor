@@ -25,15 +25,15 @@ body .theme-doc-markdown:has(> .theme-api-markdown) {
 }
 
 .openapi__heading {
-  font-size: clamp(2.25rem, 4vw, 3.25rem) !important;
-  letter-spacing: -0.045em !important;
-  line-height: 1.02 !important;
+  font-size: clamp(2rem, 4vw, var(--proctor-type-heading-large-size)) !important;
+  letter-spacing: -0.022em !important;
+  line-height: var(--proctor-type-heading-large-line) !important;
   margin-bottom: var(--proctor-space-5) !important;
-  max-width: 16ch !important;
+  max-width: 22ch !important;
 }
 
 .openapi__method-endpoint {
-  align-items: center;
+  align-items: baseline;
   background: var(--proctor-code);
   border: var(--proctor-stroke-hairline) solid var(--proctor-border);
   border-radius: var(--proctor-radius-card);
@@ -71,9 +71,9 @@ body .theme-doc-markdown:has(> .theme-api-markdown) {
   line-height: 1.45;
   margin: 0 !important;
   min-width: 0;
-  overflow-x: auto;
+  overflow-wrap: anywhere;
   padding: 0;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .openapi__divider {

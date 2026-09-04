@@ -6,17 +6,26 @@
   display: none;
 }
 
-.home :global(.docMainContainer) {
+.shell :global(main) {
   max-width: none;
+  min-width: 0;
+}
+
+.shell :global(main > .container) {
+  max-width: 1440px;
+  padding-inline: clamp(var(--proctor-space-5), 2.5vw, var(--proctor-space-7));
+}
+
+.shell :global(main > .container > .row > .col) {
+  min-width: 0;
+}
+
+.home :global(main) {
   width: 100%;
 }
 
-.home :global(.docItemContainer) {
-  max-width: none;
-}
-
-.home :global(.container) {
-  max-width: 1280px;
+.home :global(main > .container) {
+  max-width: 1200px;
   padding-inline: clamp(var(--proctor-space-4), 4vw, var(--proctor-space-7));
 }
 
@@ -24,12 +33,12 @@
   max-width: 76ch;
 }
 
-.reader :global(.theme-doc-markdown > .apiItemContainer) {
+.reader :global(.theme-doc-markdown:has(> .theme-api-markdown)) {
   max-width: none;
 }
 
 @media (max-width: 996px) {
-  .home :global(.container) {
+  .shell :global(main > .container) {
     padding-inline: var(--proctor-space-4);
   }
 }

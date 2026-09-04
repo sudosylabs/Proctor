@@ -7,7 +7,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Integration Guides',
-      collapsed: false,
+      collapsed: true,
       items: [
         'guides/getting-started',
         'guides/authentication',
@@ -23,7 +23,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'End-to-End Recipes',
-      collapsed: false,
+      collapsed: true,
       items: [
         'recipes/bootstrap-installation',
         'recipes/account-entry-and-recovery',

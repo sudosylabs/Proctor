@@ -2,14 +2,12 @@ import Link from '@docusaurus/Link';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 
 import DocIcon from '@site/src/components/DocIcon';
+import {guides} from '@site/navigation.mjs';
 import {searchEntries, type SearchEntry} from '@site/src/generated/search-index';
 import styles from './styles.module.css';
 
 const recommendedRoutes = new Set([
-  '/operator/',
-  '/institution-admin/',
-  '/security/',
-  '/developers/',
+  ...guides.map((guide) => guide.to),
   '/api/',
   '/glossary/',
 ]);

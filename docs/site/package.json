@@ -21,6 +21,8 @@
     "generate:search": "node scripts/generate-search-index.mjs",
     "check:search": "node scripts/check-search-index.mjs",
     "test:search": "node --test search/index.test.mjs",
+    "test:navigation": "node --test navigation.test.mjs",
+    "test:make-reference": "node --test make-reference.test.mjs",
     "generate:technical-reference": "node scripts/technical-reference.mjs",
     "check:technical-reference": "node scripts/technical-reference.mjs --check",
     "generate:openapi": "npm run generate:openapi:spec && npm run generate:openapi:reference",
@@ -36,7 +38,7 @@
     "test:routes": "node --test scripts/authored-route-references.test.mjs",
     "validate:coverage": "node scripts/documentation-coverage.mjs",
     "test:coverage": "node --test scripts/documentation-coverage.test.mjs",
-    "validate": "npm run check:design-system && npm run test:design-system && npm run test:icons && npm run check:glossary && npm run test:glossary && npm run check:search && npm run test:search && npm run check:technical-reference && node scripts/validate-content.mjs && npm run validate:routes && npm run test:routes && npm run validate:coverage && npm run test:coverage && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
+    "validate": "npm run check:design-system && npm run test:design-system && npm run test:icons && npm run check:glossary && npm run test:glossary && npm run check:search && npm run test:search && npm run test:navigation && npm run test:make-reference && npm run check:technical-reference && node scripts/validate-content.mjs && npm run validate:routes && npm run test:routes && npm run validate:coverage && npm run test:coverage && npm run validate:assets && npm run test:assets && npm run test:openapi-audit && npm run test:openapi-reference && npm run test:codegen && npm run audit:openapi",
     "typecheck": "tsc --noEmit",
     "check": "npm run validate && npm run generate:openapi && npm run typecheck && docusaurus build"
   },
