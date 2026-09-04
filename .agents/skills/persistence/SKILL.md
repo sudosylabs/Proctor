@@ -79,7 +79,12 @@ interception is prohibited.
 
 SQL uses plural `snake_case` tables, `id` primary keys, `<entity>_id` foreign keys, meaning-specific `_at` columns, and deterministic constraint/index names. Vocabulary follows the repository `glossary` skill.
 
-Go uses UTC `time.Time`, PostgreSQL uses `timestamptz`, and HTTP uses RFC 3339. Optional lifecycle events are nullable fields such as `archived_at`, not integer zero sentinels.
+Go uses UTC `time.Time` truncated to microsecond precision, PostgreSQL uses
+`timestamptz`, and HTTP uses RFC 3339. Normalize domain clock input with
+`model.TimeUTC` and optional lifecycle instants with `model.OptionalTimeFrom`
+before comparisons and persistence so a database round trip preserves the
+instant; truncation never extends a deadline. Optional lifecycle events are
+nullable fields such as `archived_at`, not integer zero sentinels.
 
 Normal serving connects to PostgreSQL and applies every pending forward
 migration before constructing application consumers. Morph holds the named

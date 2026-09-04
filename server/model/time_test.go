@@ -29,6 +29,44 @@ func TestTimeUTCNormalizesLocation(t *testing.T) {
 	}
 }
 
+func TestTimeUTCPreservesDurablePrecision(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name        string
+		nanoseconds int
+		want        int
+	}{
+		{name: "exact microsecond", nanoseconds: 113537000, want: 113537000},
+		{name: "below half microsecond", nanoseconds: 113537123, want: 113537000},
+		{name: "above half microsecond", nanoseconds: 113537613, want: 113537000},
+		{name: "end of second", nanoseconds: 999999999, want: 999999000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			instant := time.Date(2026, 8, 8, 12, 0, 0, tc.nanoseconds, time.FixedZone("offset", 2*3600))
+			want := time.Date(2026, 8, 8, 10, 0, 0, tc.want, time.UTC)
+			got := TimeUTC(instant)
+			if got != want {
+				t.Fatalf("normalized time = %v, want %v", got, want)
+			}
+			if got.After(instant) || got != TimeUTC(got) {
+				t.Fatal("normalization must be idempotent and must not extend an instant")
+			}
+		})
+	}
+}
+
+func TestNowUTCUsesDurablePrecision(t *testing.T) {
+	t.Parallel()
+
+	before := TimeUTC(time.Now())
+	got := NowUTC()
+	after := time.Now()
+	if got.Location() != time.UTC || got.Nanosecond()%1000 != 0 || got.Before(before) || got.After(after) {
+		t.Fatalf("current domain time = %v, outside [%v, %v] or not UTC microseconds", got, before, after)
+	}
+}
+
 func TestMillisTimeRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -97,5 +135,50 @@ func TestOptionalTimeJSONRoundTrip(t *testing.T) {
 	}
 	if decoded.Valid {
 		t.Fatal("null must decode as absent")
+	}
+}
+
+func TestOptionalTimeUsesDurablePrecision(t *testing.T) {
+	t.Parallel()
+
+	instant := time.Date(2026, 8, 8, 12, 30, 0, 113537613, time.FixedZone("offset", 2*3600))
+	want := time.Date(2026, 8, 8, 10, 30, 0, 113537000, time.UTC)
+	for _, tc := range []struct {
+		name string
+		got  OptionalTime
+	}{
+		{name: "constructor", got: OptionalTimeFrom(instant)},
+		{name: "pointer", got: OptionalTimeFromPtr(&instant)},
+		{name: "normalization", got: (OptionalTime{Time: instant, Valid: true}).UTC()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.got.Valid || tc.got.Time != want {
+				t.Fatalf("optional time = %#v, want present %v", tc.got, want)
+			}
+		})
+	}
+
+	raw := OptionalTime{Time: instant, Valid: true}
+	if got := raw.Ptr(); got == nil || *got != want {
+		t.Fatalf("optional pointer = %v, want %v", got, want)
+	}
+	const formatted = "2026-08-08T10:30:00.113537Z"
+	if got := raw.FormatRFC3339(); got != formatted {
+		t.Fatalf("formatted optional time = %q, want %q", got, formatted)
+	}
+	data, err := json.Marshal(raw)
+	if err != nil || string(data) != `"`+formatted+`"` {
+		t.Fatalf("encoded optional time = %s, %v", data, err)
+	}
+	var decoded OptionalTime
+	if err := json.Unmarshal([]byte(`"2026-08-08T12:30:00.113537613+02:00"`), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.Valid || decoded.Time != want {
+		t.Fatalf("decoded optional time = %#v, want present %v", decoded, want)
+	}
+	zero := OptionalTimeFrom(time.Time{})
+	if !zero.Valid || zero.Time != (time.Time{}) {
+		t.Fatalf("present zero = %#v", zero)
 	}
 }

@@ -33,7 +33,8 @@ func assertHTTPProblem(t *testing.T, response *httptest.ResponseRecorder, status
 
 func TestResourceCursorContracts(t *testing.T) {
 	t.Parallel()
-	at := time.Date(2026, time.August, 24, 12, 34, 56, 789, time.UTC)
+	at := time.Date(2026, time.August, 24, 12, 34, 56, 123456789, time.UTC)
+	domainAt := time.Date(2026, time.August, 24, 12, 34, 56, 123456000, time.UTC)
 	auditID := model.NewAuditEventID().String()
 	mailID := model.NewMailDeliveryID().String()
 	jobID := model.NewJobID().String()
@@ -120,7 +121,7 @@ func TestResourceCursorContracts(t *testing.T) {
 			name: "Exam Sitting", encode: func() (string, error) {
 				return encodeExamSittingCursor(examSittingCursor{StartAt: at, ID: sittingID})
 			}, decode: func(raw string) (any, error) { return decodeExamSittingCursor(raw) },
-			want: examSittingCursor{StartAt: at, ID: sittingID}, plainKeyset: sittingID.String(),
+			want: examSittingCursor{StartAt: domainAt, ID: sittingID}, plainKeyset: sittingID.String(),
 			malformed: fmt.Sprintf(`{"version":1,"start_at":"invalid","id":%q}`, sittingID),
 		},
 		{
@@ -140,7 +141,7 @@ func TestResourceCursorContracts(t *testing.T) {
 			name: "Exam Attempt", encode: func() (string, error) {
 				return encodeExamAttemptManagerCursor(examAttemptManagerCursor{CreatedAt: at, ID: attemptID})
 			}, decode: func(raw string) (any, error) { return decodeExamAttemptManagerCursor(raw) },
-			want: examAttemptManagerCursor{CreatedAt: at, ID: attemptID}, plainKeyset: attemptID.String(),
+			want: examAttemptManagerCursor{CreatedAt: domainAt, ID: attemptID}, plainKeyset: attemptID.String(),
 			malformed: fmt.Sprintf(`{"version":1,"created_at":"invalid","id":%q}`, attemptID),
 		},
 		{
