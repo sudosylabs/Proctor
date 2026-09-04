@@ -75,7 +75,7 @@ bounded fatal recovery. The non-shipping fixture under `tests/fixtures` proves
 those rules in pinned Chromium, Firefox, and WebKit without becoming a hosted
 product route.
 
-Use Node.js 22 and the committed npm lockfile:
+Use the Node.js version pinned in `.nvmrc` and the committed npm lockfile:
 
 ```sh
 npm ci
