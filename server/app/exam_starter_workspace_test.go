@@ -29,7 +29,7 @@ func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *tes
 		t.Fatal(err)
 	}
 	examID, entryID := model.NewExamID(), model.NewStarterWorkspaceEntryID()
-	changedAt := time.Date(2026, 8, 15, 8, 30, 0, 123, time.UTC)
+	changedAt := time.Date(2026, 8, 15, 8, 30, 0, 123456789, time.UTC)
 	if err := (examStarterWorkspaceRealtimeEffects{realtime: realtime}).Changed(context.Background(), examID, entryID, 4, examworkspace.ChangeFileReplaced, changedAt); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestExamStarterWorkspaceRealtimeEffectContainsOnlySafeChangeMetadata(t *tes
 		t.Fatal(err)
 	}
 	if len(data) != 5 || data["exam_id"] != examID.String() || data["entry_id"] != entryID.String() ||
-		data["operation"] != "file_replaced" || data["draft_revision"] != float64(4) || data["changed_at"] != changedAt.Format(time.RFC3339Nano) {
+		data["operation"] != "file_replaced" || data["draft_revision"] != float64(4) || data["changed_at"] != "2026-08-15T08:30:00.123456Z" {
 		t.Fatalf("event data=%#v", data)
 	}
 	for _, forbidden := range []string{"path", "content", "sha256", "object_id"} {
