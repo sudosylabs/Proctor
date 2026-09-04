@@ -38,6 +38,9 @@ Load only the material relevant to the task:
 - Invoke
   [`$documentation-design`](.agents/skills/documentation-design/SKILL.md)
   before creating or reorganizing documentation, skills, or agent instructions.
+- Invoke [`$git-workflow`](.agents/skills/git-workflow/SKILL.md) before
+  planning or performing commits, branch or history edits, pushes, tags, or
+  pull requests.
 - Invoke
   [`$webapp-design-system`](.agents/skills/webapp-design-system/SKILL.md)
   before changing product presentation under `webapp/`. Docusaurus presentation
