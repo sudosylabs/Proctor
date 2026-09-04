@@ -1,5 +1,5 @@
 Proctor Server
-Copyright 2026 SudoSylabs
+Copyright (c) 2026 Sudosy Labs. All rights reserved.
 
 This product is licensed under the GNU Affero General Public License,
 version 3. See LICENSE.
@@ -7,8 +7,8 @@ version 3. See LICENSE.
 The initial server walking skeleton is an original implementation using the Go
 standard library. Later model, store, authentication, session, and API files
 substantially adapt eligible Mattermost source. Those files preserve the
-Mattermost copyright notice, identify their upstream source in-file, and are
-recorded below.
+Mattermost copyright notice, identify the adaptation in-file, and are recorded
+below with their exact upstream source.
 
 The cohesive configuration, platform, server, application, and test-helper flow
 was behaviorally compared with Mattermost revision
@@ -112,8 +112,9 @@ a1c0d9929856c8aba2b31f079340f00578eda803, under the BSD 3-Clause License:
 - acme/autocert/renewal.go;
 - LICENSE.
 
-The upstream copyright and license notice are preserved in those files and in
-`server/internal/autocert/LICENSE`. Proctor adds an explicitly closable manager:
+The upstream copyright and license notice are preserved in those files, in
+`server/internal/autocert/LICENSE`, and in the distributed
+`server/LICENSES/BSD-3-Clause.txt`. Proctor adds an explicitly closable manager:
 certificate issuance, deferred authorization cleanup, failed-issuance retry,
 and renewal work share a cancellable lifecycle, and Close waits for owned
 background work. The Proctor HTTP runtime additionally enforces its one exact

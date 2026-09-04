@@ -1,6 +1,10 @@
+// ---------------------------------------------------------------------------------------------
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
-// Copyright 2026 SudoSylabs
-// SPDX-License-Identifier: Apache-2.0
+// Modifications Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
+// SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 //
 // Adapted from Mattermost server/channels/db/assets.go for Proctor's embedded
 // PostgreSQL-only migrations.

@@ -21,10 +21,30 @@ Proctor is a multi-module repository with licenses applied by directory.
   another license.
 - Third-party dependencies remain under their respective licenses.
 
+## File headers and copied source
+
+Every comment-capable code, executable configuration, authored template, and
+tracked generated-code file carries a human-readable copyright and license
+notice together with an SPDX license identifier. Formats that cannot safely
+contain comments remain covered by this directory policy and the applicable
+license and notice files.
+
+Original server files use the Sudosy Labs AGPL-3.0-only header. A file copied
+or substantially adapted from another project keeps the upstream copyright
+first, places the Sudosy Labs modification copyright immediately below it, and
+declares the license that governs that file. The server's combined AGPL license
+does not replace a compatible Apache, BSD, MIT, or other notice retained on an
+individual file. Unmodified copies do not claim a Sudosy Labs modification
+copyright. Independently written files informed only by upstream behavior use
+the original Sudosy Labs header rather than an upstream copyright notice.
+
 Code copied or substantially adapted from another project must retain all
 notices required by its governing license. Mattermost-derived server work must
-also be recorded in [`server/NOTICE`](server/NOTICE) with its exact upstream
-repository, revision, and path.
+also identify the adaptation in-file and be recorded in
+[`server/NOTICE`](server/NOTICE) with its exact upstream repository, revision,
+path, governing license, and nature of the modifications. Complete license
+texts for compatible, separately licensed server source live under
+[`server/LICENSES/`](server/LICENSES/).
 
 Apache-licensed reusable packages must not contain implementation copied from
 AGPL, source-available, or commercial Mattermost code.

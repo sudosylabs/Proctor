@@ -1,3 +1,10 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
 SHELL := /bin/sh
 GO_TEST ?= go test
 COMPOSE := docker compose -f compose.yaml
@@ -66,6 +73,7 @@ package:
 	cp -R config/examples "$(PACKAGE_DIR)/config/examples"
 	cp -R "$(WEBAPP_DIST_DIR)/." "$(PACKAGE_DIR)/webapp/dist"
 	cp LICENSE NOTICE "$(PACKAGE_DIR)/"
+	cp -R LICENSES "$(PACKAGE_DIR)/LICENSES"
 	@test ! -e "$(PACKAGE_DIR)/config/config.json"
 
 mail-templates-install:

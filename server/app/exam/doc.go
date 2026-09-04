@@ -1,5 +1,9 @@
-// Copyright 2026 SudoSylabs
+// ---------------------------------------------------------------------------------------------
+// Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 
 // Package exam owns examination use-case policy behind the parent app.App
 // facade. An Exam is the stable authoring identity in one Academic Unit; its

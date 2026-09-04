@@ -1,3 +1,12 @@
+<!--
+---------------------------------------------------------------------------------------------
+Copyright (c) 2026 Sudosy Labs. All rights reserved.
+Licensed under the GNU Affero General Public License, version 3 only.
+See LICENSE in the server module root for license information.
+SPDX-License-Identifier: AGPL-3.0-only
+---------------------------------------------------------------------------------------------
+-->
+
 <mj-section background-color="#ffffff" padding="32px 24px 24px">
   <mj-column>
     <mj-image src="proctor-lockup.png" alt="Proctor" align="left" width="163px" height="32px" padding="0 0 28px" />

@@ -1,5 +1,9 @@
-// Copyright 2026 SudoSylabs
+// ---------------------------------------------------------------------------------------------
+// Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 
 import {createHash} from "node:crypto";
 import {fileURLToPath} from "node:url";
@@ -11,6 +15,19 @@ import mjml2html from "mjml";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const defaultRoot = path.resolve(scriptDirectory, "..");
+const generatedLicenseHeader = `<!--
+---------------------------------------------------------------------------------------------
+Copyright (c) 2026 Sudosy Labs. All rights reserved.
+Licensed under the GNU Affero General Public License, version 3 only.
+See LICENSE in the server module root for license information.
+SPDX-License-Identifier: AGPL-3.0-only
+---------------------------------------------------------------------------------------------
+-->
+`;
+
+function stripSourceLicenseHeaders(xml) {
+  return xml.replaceAll(generatedLicenseHeader.trim(), "");
+}
 
 async function filesWithExtension(directory, extension) {
   return (await readdir(directory, {withFileTypes: true}))
@@ -55,6 +72,7 @@ async function compileTemplate(root, sourceName) {
     includePath: root,
     validationLevel: "strict",
     minify: false,
+    preprocessors: [stripSourceLicenseHeaders],
   });
   const errors = result.errors ?? [];
   if (errors.length > 0) {
@@ -70,7 +88,7 @@ async function compileTemplate(root, sourceName) {
     .trim()}\n`;
   const outputHash = createHash("sha256").update(body).digest("hex");
   const header = `<!-- Code generated from ${sourceName} by mjml ${version}; DO NOT EDIT. Source digest: sha256:${sourceHash}. Output digest: sha256:${outputHash}. -->\n`;
-  return `${header}${body}`;
+  return `${generatedLicenseHeader}${header}${body}`;
 }
 
 export async function buildTemplates(root = defaultRoot) {

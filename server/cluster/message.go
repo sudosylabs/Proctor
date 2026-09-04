@@ -1,8 +1,12 @@
+// ---------------------------------------------------------------------------------------------
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
-// Copyright 2026 SudoSylabs
+// Modifications Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 //
-// This file contains a substantially modified adaptation of Mattermost's
+// This file contains substantially modified code adapted from Mattermost's
 // public cluster-message contract. See server/NOTICE for exact provenance.
 
 package cluster

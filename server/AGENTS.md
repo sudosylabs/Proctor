@@ -30,8 +30,9 @@ component contract:
   `integration` build tag and dedicated Make targets.
 - Use the real `server.New` graph through `testlib` for wiring confidence; do
   not create a second composition path.
-- Preserve AGPL notices and record exact upstream provenance in
-  [`NOTICE`](NOTICE) when adapting source.
+- Preserve the applicable file-level license header and upstream notices
+  described by [`LICENSING.md`](../LICENSING.md), and record exact upstream
+  provenance in [`NOTICE`](NOTICE) when adapting source.
 
 ## Verification
 

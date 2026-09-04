@@ -19,8 +19,10 @@ repository [`transactional-mail` skill](../../.agents/skills/transactional-mail/
 
 ## Typed properties
 
-Every MJML and text source starts with a non-rendering comment listing the
-exact private `server/app/mail` renderer properties it receives:
+Every MJML and text source starts with a non-rendering license header followed
+by a non-rendering comment listing the exact private `server/app/mail` renderer
+properties it receives. The generator emits the same license header in every
+tracked HTML result before its generated-file marker:
 
 - `.Copy.Subject`
 - `.Copy.Preheader`

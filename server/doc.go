@@ -1,5 +1,9 @@
-// Copyright 2026 SudoSylabs
+// ---------------------------------------------------------------------------------------------
+// Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 
 // Package server is Proctor's sole composition root and Node Runtime lifecycle
 // owner. Business policy remains in the application layer.

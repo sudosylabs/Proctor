@@ -1,3 +1,10 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See server/LICENSE in the project root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
 .PHONY: package package-verify package-linux-amd64 package-linux-arm64 dist clean-dist
 
 package: webapp-build ## Assemble the current-platform Proctor release directory.
@@ -14,6 +21,8 @@ package-verify: package ## Verify packaged identity, configuration, and hosted a
 	@test -f "$(PACKAGE_DIR)/config/config.example.json"
 	@test -f "$(PACKAGE_DIR)/webapp/dist/webapp-build.json"
 	@test -f "$(PACKAGE_DIR)/deploy/systemd/proctor.service"
+	@test -f "$(PACKAGE_DIR)/LICENSES/Apache-2.0.txt"
+	@test -f "$(PACKAGE_DIR)/LICENSES/BSD-3-Clause.txt"
 	@test -f "$(PACKAGE_DIR)/BUILD_METADATA"
 	@"$(PACKAGE_DIR)/proctor" version | grep -F '$(COMMIT)' >/dev/null
 

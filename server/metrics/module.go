@@ -1,5 +1,9 @@
-// Copyright 2026 SudoSylabs
+// ---------------------------------------------------------------------------------------------
+// Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
 
 // Package metrics owns the node-local Prometheus registry and scrape listener.
 // Consumers receive narrow recorders; no application use case depends on this

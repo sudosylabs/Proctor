@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See server/LICENSE in the project root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
 ARG GO_IMAGE
 FROM node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94 AS webapp
 WORKDIR /src
@@ -43,6 +51,7 @@ COPY --from=webapp --chown=65532:65532 /src/webapp/dist ./webapp/dist
 COPY --chown=65532:65532 server/config/config.example.json ./config/config.example.json
 COPY --chown=65532:65532 server/config/examples ./config/examples
 COPY --chown=65532:65532 server/LICENSE server/NOTICE ./
+COPY --chown=65532:65532 server/LICENSES ./LICENSES
 USER 65532:65532
 EXPOSE 8065 8067 7946/tcp 7946/udp
 ENTRYPOINT ["/opt/proctor/proctor"]

@@ -1,6 +1,13 @@
+// ---------------------------------------------------------------------------------------------
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
-// Copyright 2026 SudoSylabs
+// Modifications Copyright (c) 2026 Sudosy Labs. All rights reserved.
+// Licensed under the GNU Affero General Public License, version 3 only.
+// See LICENSE in the server module root for license information.
 // SPDX-License-Identifier: AGPL-3.0-only
+// ---------------------------------------------------------------------------------------------
+//
+// This package implementation is adapted from Mattermost's WebSocket runtime.
+// See server/NOTICE for exact provenance.
 //
 // Package websocket is the sibling transport module for Proctor's
 // authenticated WebSocket protocol.
