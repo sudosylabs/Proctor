@@ -22,7 +22,7 @@ func NullTimeFromOptional(value model.OptionalTime) sql.NullTime {
 	if !value.Valid {
 		return sql.NullTime{}
 	}
-	return sql.NullTime{Time: value.Time.UTC(), Valid: true}
+	return sql.NullTime{Time: model.TimeUTC(value.Time), Valid: true}
 }
 
 // OptionalTimeFromNullTime maps sql.NullTime onto OptionalTime.
@@ -38,7 +38,7 @@ func NullTimeFromTime(value time.Time) sql.NullTime {
 	if value.IsZero() {
 		return sql.NullTime{}
 	}
-	return sql.NullTime{Time: value.UTC(), Valid: true}
+	return sql.NullTime{Time: model.TimeUTC(value), Valid: true}
 }
 
 // TimeFromNullTime maps sql.NullTime onto time.Time. NULL becomes zero.
@@ -46,10 +46,10 @@ func TimeFromNullTime(value sql.NullTime) time.Time {
 	if !value.Valid {
 		return time.Time{}
 	}
-	return value.Time.UTC()
+	return model.TimeUTC(value.Time)
 }
 
-// UTCTime normalizes a non-zero time to UTC for row writes.
+// UTCTime normalizes a non-zero time to UTC microseconds for row writes.
 func UTCTime(value time.Time) time.Time {
 	return model.TimeUTC(value)
 }

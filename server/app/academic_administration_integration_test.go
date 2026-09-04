@@ -595,18 +595,25 @@ func TestAcademicMembershipAndUserAdministrationIntegration(t *testing.T) {
 		t.Fatalf("Class transition notices = %#v", classNotices)
 	}
 
-	events, err := persistence.Audit().List(
-		context.Background(),
-		store.AuditListOptions{Limit: 200, Visibility: store.AuditVisibilityScope{InstitutionWide: true}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	mutated := map[string]bool{}
-	for _, event := range events {
-		if event.Status == model.AuditStatusSuccess && len(event.Result) != 0 {
-			mutated[event.Action] = true
+	// Background work can push early mutations beyond the first page. Keep
+	// pages small enough that this assertion also exercises cursor traversal.
+	options := store.AuditListOptions{Limit: 20, Visibility: store.AuditVisibilityScope{InstitutionWide: true}}
+	for {
+		events, listErr := persistence.Audit().List(context.Background(), options)
+		if listErr != nil {
+			t.Fatal(listErr)
 		}
+		for _, event := range events {
+			if event.Status == model.AuditStatusSuccess && len(event.Result) != 0 {
+				mutated[event.Action] = true
+			}
+		}
+		if len(events) < options.Limit {
+			break
+		}
+		last := events[len(events)-1]
+		options.BeforeTime, options.BeforeId = last.CreatedAt.UnixMilli(), last.ID.String()
 	}
 	for _, action := range []model.Action{
 		model.ActionAcademicUnitManage,

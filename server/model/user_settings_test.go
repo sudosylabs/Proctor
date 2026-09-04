@@ -23,8 +23,9 @@ func TestNewUserSettingsDocumentCreatesCanonicalExactSource(t *testing.T) {
 	if document.Source != UserSettingsInitialSource || document.FormatVersion != UserSettingsFormatVersion1 {
 		t.Fatalf("document source/version = %q/%d", document.Source, document.FormatVersion)
 	}
-	if document.CreatedAt.Location() != time.UTC || !document.CreatedAt.Equal(at) || !document.UpdatedAt.Equal(at) {
-		t.Fatalf("document times = %v/%v, want UTC %v", document.CreatedAt, document.UpdatedAt, at)
+	want := time.Date(2026, time.August, 15, 11, 0, 0, 123456000, time.UTC)
+	if document.CreatedAt != want || document.UpdatedAt != want {
+		t.Fatalf("document times = %v/%v, want UTC microseconds %v", document.CreatedAt, document.UpdatedAt, want)
 	}
 	if !document.Revision.IsValid() {
 		t.Fatalf("document revision = %q, want valid opaque revision", document.Revision)

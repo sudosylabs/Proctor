@@ -635,7 +635,8 @@ func TestGetMissingDefaultRendersImmediatelyAndProposesDurableGeneration(t *test
 }
 
 func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *testing.T) {
-	at := time.Now()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 123456789, time.UTC)
+	wantAttachedAt := time.Date(2026, 9, 4, 12, 0, 0, 123456000, time.UTC)
 	user := &model.User{Username: "student", Email: "student@example.test"}
 	user.PrepareCreate(model.NewUserID(), at.Add(-time.Hour))
 	persistence := &pictureStoreFake{user: user}
@@ -653,7 +654,7 @@ func TestDefaultProfilePictureHandlerAttachesGeneratedRenditionsIdempotently(t *
 	if outcome.Kind != jobengine.OutcomeSucceeded || outcome.Err != nil || persistence.defaultPublication == nil || len(persistence.defaultPublication.Renditions) != 3 || persistence.defaultPublication.UserID != user.ID {
 		t.Fatalf("handler outcome/store = %#v / %#v", outcome, persistence)
 	}
-	if !persistence.defaultPublication.AttachedAt.Equal(at) || user.ProfilePictureChangedAt.Valid {
+	if !persistence.defaultPublication.AttachedAt.Equal(wantAttachedAt) || user.ProfilePictureChangedAt.Valid {
 		t.Fatalf("default attachment changed visible timestamp: %#v", persistence.defaultPublication)
 	}
 	attached := *user

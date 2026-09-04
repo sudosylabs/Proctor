@@ -81,7 +81,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		t.Fatal("accepted non-positive Draft revision")
 	}
 	sittingID := model.NewExamSittingID()
-	sittingChangedAt := time.Date(2026, 8, 14, 9, 5, 0, 123, time.UTC)
+	sittingChangedAt := time.Date(2026, 8, 14, 9, 5, 0, 123456789, time.UTC)
 	sittingScheduled, err := NewExamSittingScheduledEvent(examID, sittingID, model.ExamSittingScheduled, 1, sittingChangedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -90,14 +90,14 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		sittingScheduled.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
 		t.Fatalf("scheduled Sitting event = %#v", sittingScheduled)
 	}
-	if got := string(sittingScheduled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"scheduled","revision":1,"changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+	if got := string(sittingScheduled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"scheduled","revision":1,"changed_at":"2026-08-14T09:05:00.123456Z"}` {
 		t.Fatalf("scheduled Sitting data = %s", got)
 	}
 	sittingCanceled, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingCanceled, 2, sittingChangedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(sittingCanceled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"canceled","revision":2,"changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+	if got := string(sittingCanceled.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"canceled","revision":2,"changed_at":"2026-08-14T09:05:00.123456Z"}` {
 		t.Fatalf("canceled Sitting data = %s", got)
 	}
 	if _, err := NewExamSittingCanceledEvent(examID, sittingID, model.ExamSittingScheduled, 2, sittingChangedAt); err == nil {
@@ -112,7 +112,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		lifecycle.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
 		t.Fatalf("lifecycle Sitting event = %#v", lifecycle)
 	}
-	if got := string(lifecycle.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-14T11:05:00.000000123Z","changed_at":"2026-08-14T09:05:00.000000123Z"}` {
+	if got := string(lifecycle.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","state":"paused","revision":4,"reason_code":"manager_paused","scheduled_end_at":"2026-08-14T11:05:00.123456Z","changed_at":"2026-08-14T09:05:00.123456Z"}` {
 		t.Fatalf("lifecycle Sitting data = %s", got)
 	}
 	if _, err = NewExamSittingLifecycleChangedEvent(examID, sittingID, model.ExamSittingPaused, 4,
@@ -137,7 +137,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		t.Fatalf("sealing-completed lifecycle data = %s", got)
 	}
 	previousRevisionID, correctedRevisionID := model.NewExamRevisionID(), model.NewExamRevisionID()
-	correctedAt := time.Date(2026, 8, 14, 9, 5, 0, 123, time.UTC)
+	correctedAt := time.Date(2026, 8, 14, 9, 5, 0, 123456789, time.UTC)
 	corrected, err := NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, correctedRevisionID, 7, correctedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		corrected.Resource != (model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}) {
 		t.Fatalf("corrected Sitting event = %#v", corrected)
 	}
-	if got := string(corrected.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","previous_revision_id":"`+previousRevisionID.String()+`","revision_id":"`+correctedRevisionID.String()+`","sitting_revision":7,"effective_at":"2026-08-14T09:05:00.000000123Z"}` {
+	if got := string(corrected.Data); got != `{"exam_id":"`+examID.String()+`","exam_sitting_id":"`+sittingID.String()+`","previous_revision_id":"`+previousRevisionID.String()+`","revision_id":"`+correctedRevisionID.String()+`","sitting_revision":7,"effective_at":"2026-08-14T09:05:00.123456Z"}` {
 		t.Fatalf("corrected Sitting data = %s", got)
 	}
 	if _, err = NewExamSittingContentCorrectedEvent(examID, sittingID, previousRevisionID, previousRevisionID, 7, correctedAt); err == nil {
@@ -154,7 +154,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 	}
 	revisionID := model.NewExamRevisionID()
 	policyDigest := strings.Repeat("a", 64)
-	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123, time.UTC)
+	publishedAt := time.Date(2026, 8, 14, 9, 10, 0, 123456789, time.UTC)
 	published, err := NewExamRevisionPublishedEvent(revisionID, examID, 3, policyDigest, model.ExamRevisionPublicationStandard, publishedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -163,11 +163,11 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		published.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
 		t.Fatalf("published Revision event = %#v", published)
 	}
-	if got := string(published.Data); got != `{"exam_id":"`+examID.String()+`","revision_id":"`+revisionID.String()+`","number":3,"policy_digest":"`+policyDigest+`","kind":"standard","published_at":"2026-08-14T09:10:00.000000123Z"}` {
+	if got := string(published.Data); got != `{"exam_id":"`+examID.String()+`","revision_id":"`+revisionID.String()+`","number":3,"policy_digest":"`+policyDigest+`","kind":"standard","published_at":"2026-08-14T09:10:00.123456Z"}` {
 		t.Fatalf("published Revision data = %s", got)
 	}
 	workspaceEntryID := model.NewStarterWorkspaceEntryID()
-	workspaceChangedAt := time.Date(2026, 8, 14, 9, 15, 0, 123, time.UTC)
+	workspaceChangedAt := time.Date(2026, 8, 14, 9, 15, 0, 123456789, time.UTC)
 	workspaceChanged, err := NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "file_replaced", workspaceChangedAt)
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func TestExamAuthoringEventsHaveTypedSafePayloads(t *testing.T) {
 		workspaceChanged.Resource != (model.Resource{Type: model.ResourceExam, ID: examID.String()}) {
 		t.Fatalf("Starter Workspace event = %#v", workspaceChanged)
 	}
-	if got := string(workspaceChanged.Data); got != `{"exam_id":"`+examID.String()+`","entry_id":"`+workspaceEntryID.String()+`","operation":"file_replaced","draft_revision":8,"changed_at":"2026-08-14T09:15:00.000000123Z"}` {
+	if got := string(workspaceChanged.Data); got != `{"exam_id":"`+examID.String()+`","entry_id":"`+workspaceEntryID.String()+`","operation":"file_replaced","draft_revision":8,"changed_at":"2026-08-14T09:15:00.123456Z"}` {
 		t.Fatalf("Starter Workspace data = %s", got)
 	}
 	if _, err = NewExamStarterWorkspaceChangedEvent(examID, workspaceEntryID, 8, "path_and_checksum_changed", workspaceChangedAt); err == nil {
