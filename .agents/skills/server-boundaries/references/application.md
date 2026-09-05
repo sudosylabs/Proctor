@@ -73,6 +73,17 @@ Workspace aggregate and narrow audit, content, and realtime ports. None imports
 the parent application package or selects SQL, VFS, WebSocket, Jobs, or other
 infrastructure.
 
+Exam command shapes belong to the child service that owns their policy. When
+the public `app.App` entry point accepts the same shape, its established command
+name may alias that owned type instead of repeating fields and rebuilding the
+same command. Nested command shapes follow the same ownership rule. Sharing a
+command does not widen a deliberately narrower facade result or change optional
+input presence and collection-copy semantics. The facade retains meaningful
+boundary work: immutable call construction, defensive input copies, error
+concealment, and deliberate input or result transformations. Type sharing does
+not move normalization, authorization, audit, or effect timing out of the owning
+use case.
+
 The Attempt child also owns voluntary and actorless automatic Submission use
 cases plus protected manager inspection queries. Voluntary Submission crosses
 one named Store aggregate seam that revalidates current membership and

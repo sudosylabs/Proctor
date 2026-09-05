@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
 	apprealtime "github.com/sudosylabs/proctor/server/app/realtime"
@@ -22,44 +21,12 @@ import (
 type ExamResourceRecord = store.ExamResourceRecord
 type OpenedExamResource = examresource.Opened
 
-type CreateExamResourceCommand struct {
-	ExamID                           model.ExamID
-	ExpectedDraftRevision            int64
-	DisplayName, DescriptionMarkdown string
-	MediaType                        model.ExamResourceMediaType
-	Body                             io.Reader
-	Size                             int64
-	ExpectedSHA256, IdempotencyKey   string
-}
-type ReplaceExamResourceContentCommand struct {
-	ExamID                         model.ExamID
-	ResourceID                     model.ExamResourceID
-	ExpectedDraftRevision          int64
-	MediaType                      model.ExamResourceMediaType
-	Body                           io.Reader
-	Size                           int64
-	ExpectedSHA256, IdempotencyKey string
-}
-type EditExamResourceMetadataCommand struct {
-	ExamID                model.ExamID
-	ResourceID            model.ExamResourceID
-	ExpectedDraftRevision int64
-	DisplayName           *string
-	DescriptionMarkdown   *string
-	IdempotencyKey        string
-}
-type ReorderExamResourcesCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	ResourceIDs           []model.ExamResourceID
-	IdempotencyKey        string
-}
-type RemoveExamResourceCommand struct {
-	ExamID                model.ExamID
-	ResourceID            model.ExamResourceID
-	ExpectedDraftRevision int64
-	IdempotencyKey        string
-}
+type CreateExamResourceCommand = examresource.CreateCommand
+type ReplaceExamResourceContentCommand = examresource.ReplaceContentCommand
+type EditExamResourceMetadataCommand = examresource.EditMetadataCommand
+type ReorderExamResourcesCommand = examresource.ReorderCommand
+type RemoveExamResourceCommand = examresource.RemoveCommand
+
 type ListExamResourcesQuery struct{ ExamID model.ExamID }
 type OpenExamResourceQuery struct {
 	ExamID     model.ExamID
@@ -77,21 +44,21 @@ type examResourceUseCases interface {
 }
 
 func (a *App) CreateExamResource(ctx context.Context, invocation Invocation, c CreateExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Create(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.CreateCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, IdempotencyKey: c.IdempotencyKey})
+	result, err := a.examResources.Create(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) ReplaceExamResourceContent(ctx context.Context, invocation Invocation, c ReplaceExamResourceContentCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.ReplaceContent(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReplaceContentCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, MediaType: c.MediaType, Body: c.Body, Size: c.Size, ExpectedSHA256: c.ExpectedSHA256, IdempotencyKey: c.IdempotencyKey})
+	result, err := a.examResources.ReplaceContent(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocation, c EditExamResourceMetadataCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.EditMetadata(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.EditMetadataCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, DisplayName: c.DisplayName, DescriptionMarkdown: c.DescriptionMarkdown, IdempotencyKey: c.IdempotencyKey})
+	result, err := a.examResources.EditMetadata(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}
@@ -99,14 +66,15 @@ func (a *App) EditExamResourceMetadata(ctx context.Context, invocation Invocatio
 }
 
 func (a *App) ReorderExamResources(ctx context.Context, invocation Invocation, c ReorderExamResourcesCommand) ([]ExamResourceRecord, error) {
-	result, err := a.examResources.Reorder(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.ReorderCommand{ExamID: c.ExamID, ExpectedDraftRevision: c.ExpectedDraftRevision, ResourceIDs: append([]model.ExamResourceID(nil), c.ResourceIDs...), IdempotencyKey: c.IdempotencyKey})
+	c.ResourceIDs = append([]model.ExamResourceID(nil), c.ResourceIDs...)
+	result, err := a.examResources.Reorder(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
 	if err != nil {
 		return nil, examResourceError(err, true)
 	}
 	return result, nil
 }
 func (a *App) RemoveExamResource(ctx context.Context, invocation Invocation, c RemoveExamResourceCommand) (ExamResourceRecord, error) {
-	result, err := a.examResources.Remove(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), examresource.RemoveCommand{ExamID: c.ExamID, ResourceID: c.ResourceID, ExpectedDraftRevision: c.ExpectedDraftRevision, IdempotencyKey: c.IdempotencyKey})
+	result, err := a.examResources.Remove(ctx, examresource.NewCall(invocation.Principal(), invocation.RequestMetadata()), c)
 	if err != nil {
 		return ExamResourceRecord{}, examResourceError(err, true)
 	}

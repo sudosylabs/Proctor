@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
@@ -27,18 +26,7 @@ const (
 	ExamSittingCorrectionResourceReplacement = store.ExamCorrectionResourceReplacement
 )
 
-type StageExamSittingCorrectionResourceContentCommand struct {
-	ExamID         model.ExamID
-	SittingID      model.ExamSittingID
-	BaseRevisionID model.ExamRevisionID
-	Target         ExamSittingCorrectionResourceTarget
-	ResourceID     model.ExamResourceID
-	MediaType      model.ExamResourceMediaType
-	Body           io.Reader
-	Size           int64
-	ExpectedSHA256 string
-	IdempotencyKey string
-}
+type StageExamSittingCorrectionResourceContentCommand = examcorrection.StageResourceContentCommand
 
 type ExamSittingCorrectionResourceStage struct {
 	StageID    model.ExamCorrectionResourceStageID
@@ -49,36 +37,10 @@ type ExamSittingCorrectionResourceStage struct {
 	ExpiresAt  time.Time
 }
 
-type ExamSittingCorrectionInstructions struct {
-	Present  bool
-	Markdown string
-}
-
-type ExamSittingCorrectionBrowserPolicy struct {
-	Present bool
-	Policy  model.BrowserPolicy
-}
-
-type ExamSittingCorrectionResourceManifestItem struct {
-	ResourceID          model.ExamResourceID
-	DisplayName         string
-	DescriptionMarkdown string
-	StageID             model.ExamCorrectionResourceStageID
-}
-
-type ApplyExamSittingCorrectionCommand struct {
-	ExamID                    model.ExamID
-	SittingID                 model.ExamSittingID
-	ExpectedSittingRevision   int64
-	ExpectedCurrentRevisionID model.ExamRevisionID
-	Instructions              ExamSittingCorrectionInstructions
-	BrowserPolicy             ExamSittingCorrectionBrowserPolicy
-	Resources                 []ExamSittingCorrectionResourceManifestItem
-	CandidateSummary          string
-	AcknowledgementRequired   bool
-	PrivateReason             string
-	IdempotencyKey            string
-}
+type ExamSittingCorrectionInstructions = examcorrection.OptionalInstructions
+type ExamSittingCorrectionBrowserPolicy = examcorrection.OptionalBrowserPolicy
+type ExamSittingCorrectionResourceManifestItem = examcorrection.ResourceManifestItem
+type ApplyExamSittingCorrectionCommand = examcorrection.ApplyCommand
 
 type ExamSittingCorrectionResult struct {
 	ExamID             model.ExamID
@@ -97,11 +59,7 @@ type examCorrectionUseCases interface {
 }
 
 func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, invocation Invocation, command StageExamSittingCorrectionResourceContentCommand) (ExamSittingCorrectionResourceStage, error) {
-	result, err := a.examCorrections.StageResourceContent(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), examcorrection.StageResourceContentCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, BaseRevisionID: command.BaseRevisionID, Target: command.Target,
-		ResourceID: command.ResourceID, MediaType: command.MediaType, Body: command.Body, Size: command.Size,
-		ExpectedSHA256: command.ExpectedSHA256, IdempotencyKey: command.IdempotencyKey,
-	})
+	result, err := a.examCorrections.StageResourceContent(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingCorrectionResourceStage{}, examCorrectionError(err, true)
 	}
@@ -110,16 +68,9 @@ func (a *App) StageExamSittingCorrectionResourceContent(ctx context.Context, inv
 
 func (a *App) ApplyExamSittingCorrection(ctx context.Context, invocation Invocation, command ApplyExamSittingCorrectionCommand) (ExamSittingCorrectionResult, error) {
 	childResources := make([]examcorrection.ResourceManifestItem, len(command.Resources))
-	for index, item := range command.Resources {
-		childResources[index] = examcorrection.ResourceManifestItem{ResourceID: item.ResourceID, DisplayName: item.DisplayName, DescriptionMarkdown: item.DescriptionMarkdown, StageID: item.StageID}
-	}
-	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), examcorrection.ApplyCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedSittingRevision: command.ExpectedSittingRevision,
-		ExpectedCurrentRevisionID: command.ExpectedCurrentRevisionID, Instructions: examcorrection.OptionalInstructions{Present: command.Instructions.Present, Markdown: command.Instructions.Markdown},
-		BrowserPolicy: examcorrection.OptionalBrowserPolicy{Present: command.BrowserPolicy.Present, Policy: command.BrowserPolicy.Policy},
-		Resources:     childResources, CandidateSummary: command.CandidateSummary, AcknowledgementRequired: command.AcknowledgementRequired,
-		PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
-	})
+	copy(childResources, command.Resources)
+	command.Resources = childResources
+	result, err := a.examCorrections.Apply(ctx, examcorrection.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingCorrectionResult{}, examCorrectionError(err, true)
 	}
