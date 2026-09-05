@@ -10,7 +10,7 @@ both alternatives.
 
 The HTML presentation is a single light envelope: board `#F4F4F6`, white
 paper, ink `#161616`, violet `#5C00AA`, and the package-local lockup
-`proctor-lockup.png` (163×32, `alt="Proctor"`). It uses ordinary stacked
+`proctor-lockup.png` (200×39 display, `alt="Proctor"`). It uses ordinary stacked
 sections so clients render the same structure. Human prose still comes only
 from `../i18n`. Maintainers may restyle the MJML without changing delivery
 logic, but must retain the semantic reading order, complete text equivalent,

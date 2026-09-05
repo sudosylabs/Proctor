@@ -7,10 +7,10 @@ SPDX-License-Identifier: AGPL-3.0-only
 ---------------------------------------------------------------------------------------------
 -->
 
-<mj-section background-color="#ffffff" padding="32px 24px 24px">
+<mj-section background-color="#ffffff" padding="52px 56px 48px">
   <mj-column>
-    <mj-image src="proctor-lockup.png" alt="Proctor" align="left" width="163px" height="32px" padding="0 0 28px" />
-    <mj-text font-size="22px" line-height="28px" font-weight="500" padding="0 0 16px">
+    <mj-image src="proctor-lockup.png" alt="Proctor" align="left" width="200px" height="39px" padding="0 0 40px" />
+    <mj-text font-size="26px" line-height="34px" font-weight="500" padding="0 0 24px">
       {{.Copy.Heading}}
     </mj-text>
     <mj-text padding="0">
@@ -20,7 +20,7 @@ SPDX-License-Identifier: AGPL-3.0-only
     <mj-button href="{{.ActionURL}}" align="left">
       {{.Copy.ActionLabel}}
     </mj-button>
-    <mj-text color="#5C5C5C" font-size="13px" line-height="20px" padding="12px 0 0">
+    <mj-text color="#5C5C5C" font-size="13px" line-height="20px" padding="16px 0 0">
       <a href="{{.ActionURL}}">{{.ActionURL}}</a>
     </mj-text>
     <mj-raw>{{end}}</mj-raw>

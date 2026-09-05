@@ -7,28 +7,38 @@ SPDX-License-Identifier: AGPL-3.0-only
 ---------------------------------------------------------------------------------------------
 -->
 
-<mj-section background-color="#ffffff" padding="0 24px 8px">
+<mj-section background-color="#ffffff" padding="0 56px 48px">
   <mj-column>
     <mj-table cellpadding="0" cellspacing="0" width="100%" padding="0">
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ClassTransition.PreviousClassLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;word-break:break-word">{{.ClassTransition.PreviousClassDisplayName}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.ClassTransition.PreviousClassLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;word-break:break-word;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.ClassTransition.PreviousClassDisplayName}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ClassTransition.NewClassLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;word-break:break-word">{{.ClassTransition.ClassDisplayName}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.ClassTransition.NewClassLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;word-break:break-word;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.ClassTransition.ClassDisplayName}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ClassTransition.StartsAtLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.ClassTransition.StartsAt}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.ClassTransition.StartsAtLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-variant-numeric:tabular-nums;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.ClassTransition.StartsAt}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ClassTransition.EndsAtLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.ClassTransition.EndsAt}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.ClassTransition.EndsAtLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-variant-numeric:tabular-nums;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.ClassTransition.EndsAt}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.ClassTransition.TimezoneLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.ClassTransition.Timezone}}</td>
+        <td style="padding:16px 0">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.ClassTransition.TimezoneLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.ClassTransition.Timezone}}</div>
+        </td>
       </tr>
     </mj-table>
   </mj-column>
