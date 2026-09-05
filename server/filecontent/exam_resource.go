@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -374,26 +373,6 @@ func validateExactImageEnvelope(file io.ReadSeeker, mediaType model.ExamResource
 			return ErrInvalidExamResourceContent
 		}
 	default:
-		return ErrInvalidExamResourceContent
-	}
-	return nil
-}
-
-func validateExamResourceJSON(file io.ReadSeeker) error {
-	if err := validateExamResourceUTF8(file); err != nil {
-		return err
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(file)
-	decoder.UseNumber()
-	var document any
-	if err := decoder.Decode(&document); err != nil {
-		return ErrInvalidExamResourceContent
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return ErrInvalidExamResourceContent
 	}
 	return nil

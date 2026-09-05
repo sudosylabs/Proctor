@@ -237,7 +237,9 @@ Resource processing reads at most the declared byte size plus one excess byte
 into its private spool before rejecting a size mismatch. Validation preserves
 exact authored bytes. JSON Resources contain one complete JSON value and permit
 duplicate object keys, arbitrary numeric precision, and escaped unpaired Unicode
-surrogates; raw invalid UTF-8 and NUL remain rejected.
+surrogates; raw invalid UTF-8 and NUL remain rejected. JSON syntax validation
+retains only a fixed read buffer and at most 10,000 nested container states,
+without materializing values or allocating per document member.
 
 Cancellation is observed between bounded spool reads and rewinds and before a
 completed rendition is returned. Synchronous codec or parser CPU work may still

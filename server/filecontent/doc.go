@@ -30,7 +30,8 @@
 // work. The permit stays held until synchronous processing returns, including
 // after cancellation; the limit bounds operation count, not aggregate memory.
 // Resource validation checks cancellation between bounded spool reads and
-// rewinds. Synchronous codec CPU work remains
+// rewinds. JSON syntax uses a fixed buffer and bounded nesting state, without
+// materializing authored values. Synchronous codec CPU work remains
 // non-interruptible; an observed cancellation returns no complete rendition.
 // Exact reads, deletion, and streaming Workspace or onboarding operations do
 // not consume this processing capacity. Content starts no goroutines and
