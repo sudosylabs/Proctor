@@ -128,7 +128,7 @@ export async function authenticateDesktopAuthorizationSession(
     const { data, error, response } = await apiClient.POST(
       "/api/v1/auth/desktop/authorizations/authenticate/session",
     );
-    if (response.status === 200 && validServerContext(data)) {
+    if (response.status === 200 && validServerContext(data) && data.state === "authenticated") {
       return {
         kind: "authenticated",
         context: projectContext(data, installation),
@@ -164,7 +164,7 @@ export async function authenticateDesktopAuthorizationLocally(
         },
       },
     );
-    if (response.status === 200 && validServerContext(data)) {
+    if (response.status === 200 && validServerContext(data) && data.state === "authenticated") {
       return {
         kind: "authenticated",
         context: projectContext(data, installation),
@@ -203,7 +203,8 @@ export async function approveDesktopAuthorization(
       "/api/v1/auth/desktop/authorizations/approve",
       { body: { state } },
     );
-    if (response.status === 200 && typeof data?.redirect_url === "string") {
+    if (response.status === 200 && isRecord(data) && positiveMilliseconds(data.expires_at) &&
+      validApprovalRedirect(data.redirect_url, state)) {
       return { kind: "approved", redirectURL: data.redirect_url };
     }
     return desktopFailure(error);
@@ -251,22 +252,60 @@ function validServerContext(value: unknown): value is ServerContext {
     return false;
   }
   if (
-    typeof value.device_name !== "string" ||
-    typeof value.expires_at !== "number" ||
+    !boundedString(value.device_name, 128) ||
+    !positiveMilliseconds(value.expires_at) ||
     typeof value.local_login_enabled !== "boolean" ||
-    !Array.isArray(value.external_providers)
+    !Array.isArray(value.external_providers) || value.external_providers.length > 64 ||
+    !value.external_providers.every(validProvider) ||
+    new Set(value.external_providers.map((provider) => provider.id)).size !== value.external_providers.length
   ) {
     return false;
   }
   if (value.state === "authenticated") {
     return (
       isRecord(value.account) &&
-      typeof value.account.id === "string" &&
-      typeof value.account.username === "string" &&
-      typeof value.account.display_name === "string"
+      boundedString(value.account.id, 64, true) &&
+      boundedString(value.account.username, 128, true) &&
+      boundedString(value.account.display_name, 256)
     );
   }
   return value.account === undefined;
+}
+
+function boundedString(value: unknown, maximum: number, required = false): value is string {
+  return typeof value === "string" && (!required || value.trim() !== "") && [...value].length <= maximum;
+}
+
+function positiveMilliseconds(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function validProvider(value: unknown): value is DesktopAuthorizationProvider {
+  return isRecord(value) && typeof value.id === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value.id) &&
+    boundedString(value.display_name, 128, true) && boundedString(value.type, 64, true);
+}
+
+// The server owns the registered callback. The browser accepts only the same
+// narrow loopback protocol and the exact state it is approving.
+function validApprovalRedirect(value: unknown, state: string): value is string {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  // The server preserves a valid decimal port, including leading zeroes.
+  // Check the exact loopback spelling without relying on URL's port rewriting.
+  const callbackBase = /^http:\/\/(?:127\.0\.0\.1|\[::1\]):[0-9]+\//.exec(value)?.[0];
+  if (callbackBase === undefined) return false;
+  try {
+    const url = new URL(value);
+    const path = url.pathname.slice(1);
+    const code = url.searchParams.get("code");
+    return url.protocol === "http:" && (url.hostname === "127.0.0.1" || url.hostname === "[::1]") &&
+      Number(url.port) >= 49152 && Number(url.port) <= 65535 && url.username === "" && url.password === "" &&
+      url.hash === "" && /^[A-Za-z0-9_-]{43}$/.test(path) && code !== null && /^[A-Za-z0-9_-]{43}$/.test(code) &&
+      url.searchParams.getAll("code").length === 1 && url.searchParams.getAll("state").length === 1 &&
+      url.searchParams.get("state") === state && [...url.searchParams.keys()].length === 2 &&
+      value === `${callbackBase}${path}?${url.searchParams.toString()}`;
+  } catch {
+    return false;
+  }
 }
 
 function desktopAuthenticationFailure(
