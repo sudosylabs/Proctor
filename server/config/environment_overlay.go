@@ -422,6 +422,12 @@ var environmentOverrideCatalog = []environmentOverride{
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_PASSWORD_MINIMUM_LENGTH", func(cfg *Config) *int {
 		return &cfg.Authentication.Password.MinimumLength
 	}),
+	intEnvironmentOverride("PROCTOR_AUTHENTICATION_PASSWORD_MAXIMUM_CONCURRENT_OPERATIONS", func(cfg *Config) *int {
+		return &cfg.Authentication.Password.MaximumConcurrentOperations
+	}),
+	intEnvironmentOverride("PROCTOR_FILE_CONTENT_MAXIMUM_CONCURRENT_OPERATIONS", func(cfg *Config) *int {
+		return &cfg.FileContent.MaximumConcurrentOperations
+	}),
 	intEnvironmentOverride("PROCTOR_AUTHENTICATION_PASSWORD_MAXIMUM_LENGTH", func(cfg *Config) *int {
 		return &cfg.Authentication.Password.MaximumLength
 	}),

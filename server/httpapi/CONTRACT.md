@@ -10,6 +10,15 @@ User profiles, account enablement, administrative Session operations, Role
 administration, Role Binding administration, Audit listing, and installation
 bootstrap without weakening existing contracts.
 
+Routes that perform password hashing or verification, Resource content
+validation, or profile-picture processing declare `service.busy`. A full
+node-local work pool rejects expensive work immediately with status 503 and
+`Retry-After: 1`, without issuing the requested credential or publishing the
+requested content. Clients preserve any required idempotency key when retrying;
+an Upload Lease or correction stage reserved before content admission remains
+subject to its existing retry and cleanup rules. Refusals use bounded metrics
+rather than one error log per request and do not change readiness.
+
 Use the Academic Unit slice as the conceptual pattern for later capabilities:
 
 - define request and response DTOs in the owning transport file;
@@ -91,6 +100,24 @@ OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
 (503). Their declaration is an additive documentation correction for existing
 runtime behavior, not a new failure mode.
 
+## Browser request acceptance
+
+Before authentication or application work, unsafe requests reject a present
+Origin that differs from the configured public origin and reject cross-site,
+same-site, malformed, or repeated Fetch Metadata. Host and forwarded headers
+cannot authorize a browser origin. Native clients may omit browser headers.
+Public routes return `request.invalid`; credential-protected routes use the
+existing `authentication.csrf.invalid` response. Ordinary cookie mutations
+still require their signed double-submit proof.
+
+JSON bodies require exactly one `Content-Type: application/json`, optionally
+with `charset=utf-8`. Missing types, form/text media types, duplicate types,
+and unsupported parameters are rejected before decoding. Multipart and binary
+protocol operations retain their own media contracts. GET, HEAD, and OPTIONS
+remain available for safe navigation; existing CAS and OIDC GET callbacks
+retain their one-use state and browser-binding checks. A future cross-site
+provider POST requires an explicit protocol design rather than a global bypass.
+
 ## Access Policy and public discovery
 
 `GET /api/v1/discovery` is the versioned, unauthenticated, same-origin server
@@ -168,8 +195,10 @@ Web Session and normal session-mutation CSRF proof. Every response is
 `Cache-Control: no-store`; the other hosted operations require the scoped
 Desktop authorization browser cookie.
 
-Start accepts only an exact IP-literal loopback callback, high-entropy state,
-and an S256 challenge. The returned hosted authorization URL carries the
+Start accepts only an exact IP-literal loopback callback of at most 1024 bytes,
+high-entropy state, and an S256 challenge. The decimal ephemeral port may retain
+leading zeroes; browser validation preserves that registered spelling. The
+returned hosted authorization URL carries the
 transaction handle and state in its query and a separate one-use browser proof
 in its fragment. The hosted bootstrap removes the fragment and handle from
 history before binding them once to a host-only, HttpOnly, SameSite=Lax cookie

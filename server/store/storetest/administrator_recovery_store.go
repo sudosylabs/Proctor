@@ -91,7 +91,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 		CredentialID: pendingMFA.ID.String(), UserID: installed.Administrator.ID.String(), TimeStep: 451,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
-		SessionID:     preservedSession.ID.String(), At: mfaAt, AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
+		SessionID:     preservedSession.ID.String(), At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
 		Notice: mfaNotice,
 	})
 	requireNoError(t, err)
@@ -111,6 +111,7 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 	after, err := ss.PasswordCredential().GetByUser(ctx, installed.Administrator.ID.String())
 	requireNoError(t, err)
 	if after.PasswordHash != input.RotatePasswordHash || after.PasswordHash == before.PasswordHash ||
+		after.Revision != before.Revision+1 ||
 		!after.PasswordChangedAt.After(before.PasswordChangedAt) {
 		t.Fatalf("password credential before=%#v after=%#v", before, after)
 	}

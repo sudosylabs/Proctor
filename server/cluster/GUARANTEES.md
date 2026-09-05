@@ -20,10 +20,10 @@ used by recovery tests.
    authorization invalidation, and realtime fan-out must tolerate duplicates,
    finish bounded local work, and avoid durable or network work on the
    Memberlist receive path.
-5. **Authoritative state is PostgreSQL.** Session validity, account enablement,
-   role bindings, and permissions are decided from durable stores (and
-   reconstructible caches with bounded TTLs), not from whether a cluster
-   message arrived.
+5. **Authoritative state is PostgreSQL.** Each new Session authentication
+   resolves the current credential, Session, and User from durable stores;
+   each authorization decision resolves current role bindings and permissions.
+   Positive authentication snapshots and cluster delivery never grant access.
 6. **Discovery is not a message bus.** PostgreSQL discovery rows advertise join
    addresses and protocol ranges only; they never carry application event
    payloads.
@@ -63,21 +63,29 @@ used by recovery tests.
     usable. The context bounds graceful leave and withdrawal; exhaustion is
     observable after owned work is safe. Withdrawal failure is diagnostic-only.
 
-## Authentication cache expiry
+## Authoritative Session authentication
 
-Access-credential authentication may cache a resolved principal snapshot under
-the `authentication/access/` key namespace. The entry TTL is the remaining time
-until the earliest of:
+Every new Session access-credential authentication reads the current credential,
+Session, and active User from PostgreSQL before establishing a Principal.
+An authentication that begins after Session revocation, credential rotation,
+or account disablement commits cannot accept the old authority, even if local
+cache deletion fails or no peer receives the invalidation. A required Store
+read failure denies authentication; a previously accepted cache snapshot is
+never a fallback. This trades the previous cache hit path for authoritative
+database reads on each request.
 
-- the access credential’s `expires_at`;
-- the session’s idle expiry (`idle_expires_at`);
-- the session’s absolute expiry (`expires_at`).
+Authentication no longer creates or consumes positive snapshots under
+`authentication/access/`. Existing peer invalidation messages still delete
+that namespace so entries left by an earlier process can be discarded, and
+Session activity writes retain their disposable debounce cache. Neither effect
+decides access. Every serving node must run this behavior for the guarantee to
+hold installation-wide.
 
-A successful cache hit still re-checks `Session.IsExpiredAt` (including
-`revoked_at`) and user activity before accepting the principal. Cluster
-invalidation deletes those keys best-effort; when a delete is lost, correctness
-returns on the next cache miss, process restart, or when the encoded session
-state is already expired.
+Established WebSockets retain their immutable Principal and periodically
+revalidate the current Session and User, plus the Registration for a registered
+Desktop Principal. Revocation messages attempt earlier local and peer closes.
+Refresh rotation alone does not recall an already established WebSocket's
+Principal; its Session remains the long-lived authority.
 
 Authorization decisions are never cached: each `Can` / `Authorize` call
 resolves active role bindings from PostgreSQL.
@@ -85,10 +93,11 @@ resolves active role bindings from PostgreSQL.
 ## Non-guarantees
 
 1. Every peer receives every security invalidation promptly.
-2. A node with a still-valid cache entry becomes unauthorized the instant a
-   peer commits a revocation if the invalidation message is lost. Recovery
-   occurs when the cache entry expires, is deleted, or is reconstructed from
-   PostgreSQL after a miss.
+2. Revocation recalls an in-flight request whose authentication began before
+   commit, or immediately closes an established WebSocket when its notification
+   is lost. Periodic Session revalidation closes the connection after rejection
+   or a failed required Store read; realtime event delivery is not an atomic
+   part of revocation.
 3. WebSocket subscribers always observe every state-change event. Clients must
    tolerate loss and resynchronize authoritative state over HTTP when needed.
 4. Node churn, partition, or restart preserves in-flight best-effort messages.
@@ -97,7 +106,7 @@ resolves active role bindings from PostgreSQL.
 
 | Condition | Recovery |
 | --- | --- |
-| Missed session revocation message | Access credential resolution falls back to store after cache miss/TTL; revoked credentials are absent or sessions report revoked/expired. |
+| Missed session revocation message | The next new authentication reads current Store state and rejects; an established WebSocket closes on its next failed Session revalidation. |
 | Missed authorization invalidation | Authorization is not session-cached; each decision resolves current roles from PostgreSQL. |
 | Missed realtime event | Clients fetch current state; local replay/resync covers connection-local loss only. |
 | Node stop and later start | Graceful stop withdraws the lease best-effort; a newly constructed transport advertises and joins current seeds; periodic rediscovery repairs startup isolation and later churn. |
@@ -107,7 +116,7 @@ resolves active role bindings from PostgreSQL.
 
 - `server/cluster/memberlist` recovery tests: rejoin after churn, duplicate
   self-targeted delivery, lost-broadcast then later delivery.
-- `server/app` cluster recovery tests: missed session invalidation + cache miss,
+- `server/app` cluster recovery tests: missed session invalidation with a warm cache,
   duplicate session revocation, current-state authorization after binding end
-  without cluster fan-out, expired cached sessions, duplicate peer realtime
+  without cluster fan-out, authoritative Session expiry, duplicate peer realtime
   publication without rebroadcast.

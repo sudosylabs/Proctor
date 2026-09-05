@@ -531,6 +531,22 @@ func TestGetRequiresOverrideWhenManagerMembershipWasRevoked(t *testing.T) {
 	}
 }
 
+func TestGetStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
+	t.Parallel()
+	fixture := newAuthoringFixture(t)
+	fixture.persistence.actorIsManager = true
+	failure := errors.New("membership unavailable")
+	fixture.memberships.err = failure
+	_, err := fixture.service.Get(context.Background(), fixture.call, fixture.examID)
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.unavailable" || !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want unavailable membership failure", err)
+	}
+	if want := []string{"store.access", "membership"}; !reflect.DeepEqual(*fixture.order, want) {
+		t.Fatalf("order = %v, want %v", *fixture.order, want)
+	}
+}
+
 func TestCallClonesCredentialScopes(t *testing.T) {
 	t.Parallel()
 	principal := testPrincipal(model.NewUserID())
@@ -640,11 +656,15 @@ type membershipsFake struct {
 	order       *[]string
 	items       []*model.AcademicUnitMember
 	itemsByUser map[string][]*model.AcademicUnitMember
+	lookup      func(string, time.Time) ([]*model.AcademicUnitMember, error)
 	err         error
 }
 
-func (f *membershipsFake) ListActiveByUser(_ context.Context, userID string, _ int64) ([]*model.AcademicUnitMember, error) {
+func (f *membershipsFake) ListActiveByUser(_ context.Context, userID string, at time.Time) ([]*model.AcademicUnitMember, error) {
 	*f.order = append(*f.order, "membership")
+	if f.lookup != nil {
+		return f.lookup(userID, at)
+	}
 	if items, ok := f.itemsByUser[userID]; ok {
 		return items, f.err
 	}

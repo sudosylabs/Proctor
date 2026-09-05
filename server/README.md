@@ -632,8 +632,9 @@ Set `Cluster.Backend` to `memberlist` and give every process a unique stable
 `Cluster.NodeID` for a multi-node installation. Memberlist uses encrypted
 gossip membership, PostgreSQL discovery heartbeats for bootstrap seeds, and
 best-effort direct peer messaging. There is no durable cluster delivery class:
-session and authorization correctness recover from PostgreSQL and bounded
-authentication-cache TTLs when messages are delayed or lost. Handlers must be
+each new Session authentication and authorization decision reads current
+PostgreSQL state even when messages are delayed or lost. Established WebSockets
+also revalidate Session state periodically. Handlers must be
 idempotent under duplicates. Discovery is continuous: an isolated node
 periodically re-lists compatible leases and retries a bounded rotating seed
 batch without adding another lifecycle goroutine. Peer metadata advertises the

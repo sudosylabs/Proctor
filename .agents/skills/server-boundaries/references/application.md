@@ -84,6 +84,16 @@ concealment, and deliberate input or result transformations. Type sharing does
 not move normalization, authorization, audit, or effect timing out of the owning
 use case.
 
+The `app/exam/manageraccess` leaf owns the shared current Exam Manager and exact
+Academic Unit membership rule used to select ordinary or explicit override
+Actions. It receives the caller's access projection and time, performs the
+current membership lookup through its narrow port, and returns the selected
+Action or lookup failure. It does not grant permission: each use case retains
+input and projection validation, its precise Resource and authoritative
+authorization call, error presentation, audit timing, and named Store command.
+The same exact-unit membership check supports Exam creation and Manager-target
+eligibility without implying either role permission or a Manager relationship.
+
 The Attempt child also owns voluntary and actorless automatic Submission use
 cases plus protected manager inspection queries. Voluntary Submission crosses
 one named Store aggregate seam that revalidates current membership and

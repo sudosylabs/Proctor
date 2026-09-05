@@ -167,6 +167,23 @@ func TestPublicRegistrationMailAndPersistenceFailuresCreateNoPartialApplicationS
 	}
 }
 
+func TestPublicRegistrationPasswordWorkFailuresStopBeforeMailAndPersistence(t *testing.T) {
+	testPasswordHashFailures(t, "authentication.registration.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+		persistence := &publicRegistrationStoreFake{}
+		mail := &publicRegistrationMailFake{enabled: true}
+		service := newTestPublicRegistrationService(t, persistence, mail, time.Now())
+		service.hasher = hasher
+		err := service.Register(ctx, Invocation{}, RegisterLocalUserCommand{
+			Username: "student", Email: "student@example.edu", FirstName: "New", LastName: "Student",
+			Password: "correct horse battery staple", Source: "192.0.2.33",
+		})
+		if persistence.input != nil || mail.prepareCalls != 0 {
+			t.Fatal("failed password work reached registration mail or persistence")
+		}
+		return err
+	})
+}
+
 func TestPublicRegistrationRejectsAnInvalidPasswordBeforeMailOrPersistence(t *testing.T) {
 	t.Parallel()
 
@@ -320,9 +337,9 @@ func (f publicRegistrationInstitutionFake) InstitutionID(context.Context) (model
 
 type registrationPasswordHasherFake struct{}
 
-func (*registrationPasswordHasherFake) Hash(password string) (string, error) {
+func (*registrationPasswordHasherFake) Hash(_ context.Context, password string) (string, error) {
 	if password == "" {
-		return "", errors.New("empty password")
+		return "", NewError("authentication.password.invalid")
 	}
 	return "$argon2id$registration-test", nil
 }

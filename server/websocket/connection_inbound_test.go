@@ -156,6 +156,7 @@ type inboundReadResult struct {
 type inboundTestSocket struct {
 	reads         chan inboundReadResult
 	readDeadlines chan time.Time
+	pongInstalled chan struct{}
 	closed        chan struct{}
 	closeOnce     sync.Once
 
@@ -170,6 +171,7 @@ func newInboundTestSocket() *inboundTestSocket {
 	return &inboundTestSocket{
 		reads:         make(chan inboundReadResult, 8),
 		readDeadlines: make(chan time.Time, 8),
+		pongInstalled: make(chan struct{}, 1),
 		closed:        make(chan struct{}),
 	}
 }
@@ -189,6 +191,7 @@ func (s *inboundTestSocket) SetPongHandler(handler func(string) error) {
 	s.mu.Lock()
 	s.pongHandler = handler
 	s.mu.Unlock()
+	s.pongInstalled <- struct{}{}
 }
 
 func (s *inboundTestSocket) ReadJSON(value any) error {
@@ -340,6 +343,7 @@ func TestConnectionRuntimePongExtendsReadDeadline(t *testing.T) {
 	initial := time.Date(2026, time.August, 12, 18, 0, 0, 0, time.UTC)
 	clock := newRuntimeTestClock(initial)
 	socket := newInboundTestSocket()
+	t.Cleanup(func() { _ = socket.Close() })
 	runtime := newInboundRuntime(&inboundTestApplication{}, socket, clock)
 	done := make(chan struct{})
 	go func() {
@@ -349,6 +353,13 @@ func TestConnectionRuntimePongExtendsReadDeadline(t *testing.T) {
 
 	if deadline := <-socket.readDeadlines; !deadline.Equal(initial.Add(pongWait)) {
 		t.Fatalf("initial read deadline = %s, want %s", deadline, initial.Add(pongWait))
+	}
+	// The initial deadline is published before handler installation. Wait for
+	// the actual setup step instead of relying on goroutine scheduling.
+	select {
+	case <-socket.pongInstalled:
+	case <-time.After(time.Second):
+		t.Fatal("runtime did not install a pong handler")
 	}
 	socket.mu.Lock()
 	if socket.readLimit != MaxMessageBytes {

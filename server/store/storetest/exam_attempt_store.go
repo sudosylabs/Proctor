@@ -575,7 +575,7 @@ func TestSessionExpiryAttemptFence(t *testing.T, ss store.Store) {
 		ctx,
 		fixture.session.ID.String(),
 		fixture.candidate.ID.String(),
-		model.MillisFromTime(fixture.session.IdleExpiresAt.Add(time.Second)),
+		fixture.session.IdleExpiresAt.Add(time.Second),
 	)
 	requireNoError(t, err)
 	if expired == nil || !expired.Expired || expired.Session == nil ||
@@ -1054,7 +1054,7 @@ func saveRegisteredDesktopSession(t *testing.T, ctx context.Context, ss store.St
 	transaction, handle, proof, state, verifier := newDesktopAuthorizationTransaction(now, institutionID)
 	_, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
 	requireNoError(t, err)
-	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state, userID)
+	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss, handle, proof, state, userID)
 	code := model.NewCredentialToken()
 	issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institutionID, userID, "exam-attempt-session-issue")
 	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{

@@ -42,7 +42,7 @@ type RevokeUserSessionsCommand struct {
 type sessionAdministrationStore interface {
 	Get(context.Context, string) (*model.Session, error)
 	ListByUser(context.Context, string) ([]*model.Session, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
+	ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error)
 	RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error)
 	RevokeAllForUserWithAudit(context.Context, *store.UserSessionsRevocation) (*store.UserSessionsRevocationResult, error)
 }
@@ -111,7 +111,7 @@ func (s *sessionAdministrationService) List(
 	if query.IncludeRevoked {
 		sessions, err = s.sessions.ListByUser(ctx, userID)
 	} else {
-		sessions, err = s.sessions.ListActiveByUser(ctx, userID, s.now().UnixMilli())
+		sessions, err = s.sessions.ListActiveByUser(ctx, userID, model.TimeUTC(s.now()))
 	}
 	if err != nil {
 		return nil, sessionAdministrationError(err)

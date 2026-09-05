@@ -975,9 +975,42 @@ func TestInvitationAcceptanceCommitsWithTerminalNoticeWhenMailIsDisabled(t *test
 	}
 }
 
+func TestInvitationPasswordWorkFailuresStopBeforeAcceptance(t *testing.T) {
+	for _, purpose := range []model.InvitationPurpose{model.InvitationPurposeStudentClass, model.InvitationPurposeTeacherAcademicUnit} {
+		t.Run(string(purpose), func(t *testing.T) {
+			testPasswordHashFailures(t, "invitation.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+				raw := model.NewCredentialToken()
+				invitation := &model.Invitation{Purpose: purpose, ClaimHash: model.HashInvitationClaim(raw), TargetEmail: "invited@example.edu"}
+				persistence := &invitationStoreFake{invitation: invitation}
+				mail := &invitationMailPreparerFake{}
+				service := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+					&invitationAuthorizerFake{}, mail, time.Now())
+				service.hasher = hasher
+				var result *InvitationAcceptanceView
+				var err error
+				if purpose == model.InvitationPurposeStudentClass {
+					result, err = service.AcceptStudentClass(ctx, Invocation{}, AcceptStudentClassInvitationCommand{
+						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
+					})
+				} else {
+					result, err = service.AcceptTeacherAcademicUnit(ctx, Invocation{}, AcceptTeacherAcademicUnitInvitationCommand{
+						Claim: raw, Username: "invited", Password: "correct horse battery staple", Source: "192.0.2.36",
+					})
+				}
+				if result != nil || persistence.accepted != nil || persistence.teacherAccepted != nil || mail.directJobType != "" {
+					t.Fatal("failed password work accepted an Invitation or prepared mail")
+				}
+				return err
+			})
+		})
+	}
+}
+
 type invitationHasherFake struct{}
 
-func (invitationHasherFake) Hash(value string) (string, error) { return "encoded:" + value, nil }
+func (invitationHasherFake) Hash(_ context.Context, value string) (string, error) {
+	return "encoded:" + value, nil
+}
 
 type invitationAttemptLimiterFake struct{}
 

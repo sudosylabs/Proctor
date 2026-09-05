@@ -9,6 +9,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	now := time.UnixMilli(10_000)
 	passwords := &authenticationMethodPasswordStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
-	hasher, err := newPasswordHasher(testPasswordPolicy())
+	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +90,43 @@ func TestAuthenticationMethodEnrollmentRequiresStrongRecentAndPreparesHashOnly(t
 	}
 }
 
+func TestPasswordEnrollmentRejectsWorkBeforeAuditAndPersistence(t *testing.T) {
+	now := time.UnixMilli(10_000)
+	passwords := &authenticationMethodPasswordStoreFake{}
+	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
+	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := newAuthenticationMethodService(passwords,
+		&authenticationMethodIdentityStoreFake{}, externalProviderSourceSet{}, &accessPolicyCapabilitiesFake{},
+		hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal := userSettingsSessionPrincipal(now)
+	principal.AuthenticationStrength = model.AuthenticationMultiFactor
+	principal.MFACompletedAt = model.OptionalTimeFrom(now)
+	invocation := NewInvocation(principal, model.RequestMetadata{})
+	saturatePasswordWork(t, hasher)
+	if err := service.enrollPassword(context.Background(), invocation, "correct horse battery staple"); !Is(err, "service.busy") {
+		t.Fatalf("saturated enrollment = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := service.enrollPassword(ctx, invocation, "correct horse battery staple"); !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled enrollment = %v", err)
+	}
+	if passwords.enroll != nil || audit.attempt.Operation != "" {
+		t.Fatal("rejected password work reached audit or credential mutation")
+	}
+}
+
 func TestAuthenticationMethodRemovalPassesCapabilitiesAndExactIdentity(t *testing.T) {
 	now := time.UnixMilli(20_000)
 	identities := &authenticationMethodIdentityStoreFake{}
 	audit := &accessPolicyAuditFake{beginID: model.NewAuditEventID().String()}
-	hasher, _ := newPasswordHasher(testPasswordPolicy())
+	hasher, _ := newPasswordHasher(testPasswordPolicy(), nil)
 	capabilities := &accessPolicyCapabilitiesFake{snapshot: AccessPolicyCapabilitySnapshot{Providers: []AccessPolicyProviderCapability{{Descriptor: model.ExternalAuthenticationProvider{Id: "campus"}}}}}
 	service, err := newAuthenticationMethodService(&authenticationMethodPasswordStoreFake{}, identities,
 		externalProviderSourceSet{}, capabilities, hasher, audit, &authenticationMethodEffectsFake{}, 15*time.Minute, func() time.Time { return now })

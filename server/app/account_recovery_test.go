@@ -464,6 +464,28 @@ func TestAccountTokenCompletionRejectsMalformedCredentialGenerically(t *testing.
 	}
 }
 
+func TestPasswordResetWorkFailuresDoNotConsumeResetToken(t *testing.T) {
+	testPasswordHashFailures(t, "authentication.account_recovery.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+		consumed := false
+		tokens := &accountTokenStoreFake{consumeReset: func(string, string, int64, *model.AuditEvent) (*store.PasswordResetResult, error) {
+			consumed = true
+			return nil, errors.New("password reset should not be reached")
+		}}
+		application := newAccountTokenTestApp(t, accountTokenTestDependencies{
+			users: &accountTokenUserStoreFake{}, passwords: &accountTokenPasswordStoreFake{}, tokens: tokens,
+			institution: &model.Institution{ID: model.NewInstitutionID()},
+			mailer:      &accountTokenMailerFake{enabled: true}, hasher: hasher,
+		})
+		user, err := application.CompletePasswordReset(ctx, Invocation{}, CompletePasswordResetCommand{
+			Token: accountTokenTestRawToken, Password: "correct horse battery staple", Source: "192.0.2.34",
+		})
+		if user != nil || consumed || tokens.event != nil {
+			t.Fatal("failed password work reached password reset mutation")
+		}
+		return err
+	})
+}
+
 const accountTokenTestRawToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 type accountTokenTestDependencies struct {
@@ -683,7 +705,7 @@ type accountTokenHasherFake struct {
 	err  error
 }
 
-func (f accountTokenHasherFake) Hash(string) (string, error) { return f.hash, f.err }
+func (f accountTokenHasherFake) Hash(context.Context, string) (string, error) { return f.hash, f.err }
 
 type accountTokenEffectsFake struct {
 	called func(string, []string, []string)

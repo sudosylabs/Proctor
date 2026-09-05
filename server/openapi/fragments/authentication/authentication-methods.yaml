@@ -48,6 +48,7 @@ paths:
         - Authentication
       x-proctor-auth: strong_recent_session_required
       x-proctor-error-codes:
+        - service.busy
         - authentication.required
         - authentication.invalid_token
         - authentication.credential_ambiguous

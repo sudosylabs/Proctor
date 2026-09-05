@@ -52,7 +52,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 
 	persistence := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
-	hasher, err := newPasswordHasher(testPasswordPolicy())
+	hasher, err := newPasswordHasher(testPasswordPolicy(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

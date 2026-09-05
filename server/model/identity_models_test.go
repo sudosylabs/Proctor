@@ -432,6 +432,14 @@ func TestIdentityModelsTypedLifecycle(t *testing.T) {
 	if err := credential.Validate(); err != nil {
 		t.Fatalf("PasswordCredential.Validate() = %v", err)
 	}
+	if credential.Revision != 1 {
+		t.Fatalf("initial password revision = %d, want 1", credential.Revision)
+	}
+	credential.Revision = 0
+	if err := credential.Validate(); err == nil {
+		t.Fatal("password credential accepted a missing revision")
+	}
+	credential.Revision = 1
 
 	identity := &ExternalIdentity{
 		UserID: userID, Provider: "OIDC", Subject: "opaque-subject",

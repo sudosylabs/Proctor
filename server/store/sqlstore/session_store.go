@@ -108,12 +108,18 @@ func newSQLSessionStore(sqlStore *SQLStore) store.SessionStore {
 
 func (s SQLSessionStore) Save(
 	ctx context.Context,
-	session *model.Session,
-	credentials []*model.SessionCredential,
-	maximumActive int,
+	input *store.SessionCreation,
 ) (*model.Session, []*model.SessionCredential, error) {
-	if session == nil {
+	if input == nil || input.Session == nil {
 		return nil, nil, store.NewErrInvalidInput("session", "value", nil)
+	}
+	session, credentials, maximumActive := input.Session, input.Credentials, input.MaximumActive
+	if session.AuthenticationMethod == "password" {
+		if !input.PasswordProof.IsValid() {
+			return nil, nil, store.ErrPasswordCredentialChanged
+		}
+	} else if input.PasswordProof != (store.PasswordCredentialProof{}) {
+		return nil, nil, store.NewErrInvalidInput("session", "password_proof", nil)
 	}
 	if !session.ID.IsZero() {
 		return nil, nil, store.NewErrInvalidInput("session", "id", session.ID.String())
@@ -141,6 +147,11 @@ func (s SQLSessionStore) Save(
 		}
 		if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
 			return nil, err
+		}
+		if candidate.AuthenticationMethod == "password" {
+			if err := requireCurrentPasswordProof(ctx, tx, candidate.UserID, input.PasswordProof); err != nil {
+				return nil, err
+			}
 		}
 		var activeAttempt bool
 		if err := tx.Get(ctx, &activeAttempt, `SELECT EXISTS(SELECT 1 FROM exam_attempts WHERE candidate_user_id=? AND state='active')`, candidate.UserID.String()); err != nil {
@@ -308,9 +319,9 @@ func (s SQLSessionStore) ListByUser(ctx context.Context, userID string) ([]*mode
 func (s SQLSessionStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
-	now int64,
+	now time.Time,
 ) ([]*model.Session, error) {
-	at := model.TimeFromMillis(now)
+	at := model.TimeUTC(now)
 	query := s.sessionsQuery.
 		Where(sq.Eq{
 			"sessions.user_id":     userID,
@@ -342,11 +353,11 @@ func (s SQLSessionStore) ListActiveByUser(
 func (s SQLSessionStore) UpdateActivity(
 	ctx context.Context,
 	id string,
-	lastActivityAt int64,
-	idleExpiresAt int64,
+	lastActivityAt time.Time,
+	idleExpiresAt time.Time,
 ) error {
-	activityAt := model.TimeFromMillis(lastActivityAt)
-	idleAt := model.TimeFromMillis(idleExpiresAt)
+	activityAt := model.TimeUTC(lastActivityAt)
+	idleAt := model.TimeUTC(idleExpiresAt)
 	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE sessions
 		   SET updated_at = GREATEST(updated_at, ?),
@@ -392,12 +403,12 @@ func (s SQLSessionStore) EnforceExpiry(
 	ctx context.Context,
 	id string,
 	userID string,
-	atMillis int64,
+	at time.Time,
 ) (*store.SessionExpiryEnforcementResult, error) {
-	if !model.IsValidId(id) || !model.IsValidId(userID) || atMillis <= 0 {
+	at = model.TimeUTC(at)
+	if !model.IsValidId(id) || !model.IsValidId(userID) || !at.After(time.Unix(0, 0)) {
 		return nil, store.NewErrInvalidInput("session", "expiry", nil)
 	}
-	at := model.TimeFromMillis(atMillis)
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "session expiry enforcement", func(ctx context.Context, tx *sqlxTxWrapper) (*store.SessionExpiryEnforcementResult, error) {
 		if err := lockUserSessions(ctx, tx, userID); err != nil {
 			return nil, err
@@ -423,8 +434,8 @@ func (s SQLSessionStore) EnforceExpiry(
 		if !session.IsExpiredAt(at) {
 			return &store.SessionExpiryEnforcementResult{Session: session}, nil
 		}
-		hashes, err := revokeOneUserSession(
-			ctx, tx, id, userID, atMillis, model.SessionRevocationExpired,
+		hashes, err := revokeOneUserSessionAt(
+			ctx, tx, id, userID, at, model.SessionRevocationExpired,
 		)
 		if err != nil {
 			return nil, err
@@ -669,7 +680,18 @@ func revokeOneUserSession(
 	revokedAt int64,
 	reason model.SessionRevocationReason,
 ) ([]string, error) {
-	at := model.TimeFromMillis(revokedAt)
+	return revokeOneUserSessionAt(ctx, tx, id, userID, model.TimeFromMillis(revokedAt), reason)
+}
+
+func revokeOneUserSessionAt(
+	ctx context.Context,
+	tx sqlxExecutor,
+	id string,
+	userID string,
+	at time.Time,
+	reason model.SessionRevocationReason,
+) ([]string, error) {
+	at = model.TimeUTC(at)
 	var matchedSessionID string
 	if err := tx.Get(ctx, &matchedSessionID, `
 		SELECT id

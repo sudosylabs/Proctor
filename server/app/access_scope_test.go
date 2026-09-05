@@ -492,6 +492,80 @@ func TestAccessControlGrantsExamCreateOverrideThroughInstitutionScope(t *testing
 	}
 }
 
+func TestAccessControlUsesNativeRoleBindingDecisionTime(t *testing.T) {
+	t.Parallel()
+
+	institutionID, unitID := model.NewInstitutionID(), model.NewAcademicUnitID()
+	userID, roleID := model.NewUserID(), model.NewRoleID()
+	start := time.Date(2026, 9, 5, 12, 0, 0, 123200000, time.FixedZone("offset", 3600))
+	end := start.Add(time.Second + 500*time.Microsecond)
+	binding := &model.RoleBinding{
+		RoleID: roleID, UserID: userID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institutionID.String(), StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
+	}
+	principal := model.Principal{
+		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
+		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
+		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
+		AuthenticatedAt: start.Add(-time.Hour), ClientType: model.SessionClientWeb,
+	}
+	for _, test := range []struct {
+		name string
+		at   time.Time
+		want bool
+	}{
+		{name: "before start", at: start.Add(-time.Microsecond)},
+		{name: "at start", at: start, want: true},
+		{name: "before end", at: end.Add(-time.Microsecond), want: true},
+		{name: "submicrosecond before end", at: end.Add(-time.Nanosecond), want: true},
+		{name: "at end", at: end},
+		{name: "after end within millisecond", at: end.Add(time.Microsecond)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolver, err := newAccessScopeResolver(
+				&accessInstitutionStoreFake{institution: &model.Institution{ID: institutionID}},
+				&accessAcademicUnitStoreFake{ancestors: map[string][]*model.AcademicUnit{
+					unitID.String(): {{ID: unitID, InstitutionID: institutionID}},
+				}},
+				&accessClassStoreFake{}, &accessUserStoreFake{}, &accessClassMemberStoreFake{},
+				&accessExamAuthoringStoreFake{}, &accessExamSittingStoreFake{}, &accessExamSubmissionStoreFake{},
+				&accessAcademicPeriodStoreFake{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			bindings := &accessRoleBindingStoreFake{lookup: func(at time.Time) ([]*model.RoleBinding, error) {
+				if binding.IsActiveAt(at) {
+					return []*model.RoleBinding{binding}, nil
+				}
+				return nil, nil
+			}}
+			authorization, err := newAccessControlService(
+				&accessRoleStoreFake{roles: []*model.Role{{ID: roleID, Permissions: []string{string(model.ActionAcademicUnitView)}}}},
+				bindings, resolver, accessDecisionAuditFake{},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			authorization.now = func() time.Time { return test.at }
+			allowed, err := authorization.Can(context.Background(), principal, model.ActionAcademicUnitView,
+				model.Resource{Type: model.ResourceAcademicUnit, ID: unitID.String()})
+			if err != nil || allowed != test.want {
+				t.Fatalf("Can = %v, %v; want %v", allowed, err, test.want)
+			}
+			scope, err := authorization.authorizedScopesAt(context.Background(), principal,
+				model.ActionAcademicUnitView, model.ResourceAcademicUnit, test.at)
+			if err != nil || scope.InstitutionWide != test.want {
+				t.Fatalf("authorizedScopesAt = %#v, %v; want institution-wide %v", scope, err, test.want)
+			}
+			wantAt := model.TimeUTC(test.at)
+			if !reflect.DeepEqual(bindings.activeAt, []time.Time{wantAt, wantAt}) {
+				t.Fatalf("binding decision times = %v, want %v twice", bindings.activeAt, wantAt)
+			}
+		})
+	}
+}
+
 func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 	t.Parallel()
 
@@ -551,7 +625,7 @@ func TestAccessScopeConstraintsAreBoundedAndRespectPATCeiling(t *testing.T) {
 func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 8, 18, 12, 0, 0, 123456789, time.FixedZone("offset", 3600))
 	institutionID := model.NewInstitutionID()
 	unitID := model.NewAcademicUnitID()
 	userID := model.NewUserID()
@@ -568,21 +642,26 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 	if err != nil {
 		t.Fatal(err)
 	}
+	bindings := &accessRoleBindingStoreFake{bindings: []*model.RoleBinding{
+		{RoleID: userViewRoleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String()},
+		{RoleID: classMembersRoleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()},
+	}}
 	authorization, err := newAccessControlService(
 		&accessRoleStoreFake{roles: []*model.Role{
 			{ID: userViewRoleID, Permissions: []string{string(model.ActionUserView)}},
 			{ID: classMembersRoleID, Permissions: []string{string(model.ActionClassMembersView)}},
 		}},
-		&accessRoleBindingStoreFake{bindings: []*model.RoleBinding{
-			{RoleID: userViewRoleID, UserID: userID, ScopeType: model.RoleScopeAcademicUnit, ScopeID: unitID.String()},
-			{RoleID: classMembersRoleID, UserID: userID, ScopeType: model.RoleScopeInstitution, ScopeID: institutionID.String()},
-		}},
+		bindings,
 		resolver, accessDecisionAuditFake{},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	authorization.now = func() time.Time { return now }
+	clockCalls := 0
+	authorization.now = func() time.Time {
+		clockCalls++
+		return now.Add(time.Duration(clockCalls-1) * time.Microsecond)
+	}
 	principal := model.Principal{
 		UserID: userID, CredentialID: model.PrincipalCredentialID(model.NewId()),
 		CredentialType: model.CredentialSessionAccess, SessionID: model.NewSessionID(),
@@ -597,8 +676,12 @@ func TestUserVisibilityScopeKeepsRelationshipAndClassMemberAuthoritySeparate(t *
 	if visibility.InstitutionWide || !visibility.ClassMemberInstitutionWide ||
 		!reflect.DeepEqual(visibility.AcademicUnitRootIDs, []string{unitID.String()}) ||
 		len(visibility.ClassMemberAcademicUnitRootIDs) != 0 || len(visibility.ClassIDs) != 0 ||
-		visibility.ActiveAt != now.UnixMilli() {
+		!visibility.ActiveAt.Equal(model.TimeUTC(now)) {
 		t.Fatalf("user visibility = %#v", visibility)
+	}
+	wantAt := model.TimeUTC(now)
+	if clockCalls != 1 || !reflect.DeepEqual(bindings.activeAt, []time.Time{wantAt, wantAt}) {
+		t.Fatalf("clock calls/binding decision times = %d/%v, want one clock call and %v twice", clockCalls, bindings.activeAt, wantAt)
 	}
 }
 
@@ -926,9 +1009,15 @@ func (s *accessRoleStoreFake) GetByIds(context.Context, []string) ([]*model.Role
 type accessRoleBindingStoreFake struct {
 	store.RoleBindingStore
 	bindings []*model.RoleBinding
+	activeAt []time.Time
+	lookup   func(time.Time) ([]*model.RoleBinding, error)
 }
 
-func (s *accessRoleBindingStoreFake) ListActiveByUser(context.Context, string, int64) ([]*model.RoleBinding, error) {
+func (s *accessRoleBindingStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.RoleBinding, error) {
+	s.activeAt = append(s.activeAt, at)
+	if s.lookup != nil {
+		return s.lookup(at)
+	}
 	return s.bindings, nil
 }
 

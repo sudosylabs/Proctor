@@ -314,10 +314,10 @@ func (s SQLUserStore) List(
 			len(options.Visibility.ClassMemberAcademicUnitRootIDs) == 0 && !options.Visibility.ClassMemberInstitutionWide {
 			query = query.Where("FALSE")
 		} else {
-			if options.Visibility.ActiveAt <= 0 {
+			if options.Visibility.ActiveAt.IsZero() {
 				return nil, store.NewErrInvalidInput("user", "visibility_active_at", nil)
 			}
-			activeAt := model.TimeFromMillis(options.Visibility.ActiveAt)
+			activeAt := model.TimeUTC(options.Visibility.ActiveAt)
 			query = query.Prefix(`WITH RECURSIVE user_allowed_units AS (
 				SELECT id FROM academic_units WHERE id = ANY(?) AND archived_at IS NULL
 				UNION ALL SELECT child.id FROM academic_units child
@@ -599,7 +599,7 @@ func (s SQLUserStore) MatchVisibility(
 	userID string,
 	visibility store.UserVisibilityScope,
 ) (store.UserVisibilityMatch, error) {
-	if !model.IsValidId(userID) || visibility.InstitutionWide || visibility.ActiveAt <= 0 ||
+	if !model.IsValidId(userID) || visibility.InstitutionWide || visibility.ActiveAt.IsZero() ||
 		len(visibility.ClassIDs)+len(visibility.AcademicUnitRootIDs)+len(visibility.ClassMemberAcademicUnitRootIDs) > 256 ||
 		!validVisibilityIDs(visibility.ClassIDs) ||
 		!validVisibilityIDs(visibility.AcademicUnitRootIDs) ||
@@ -703,7 +703,7 @@ func (s SQLUserStore) MatchVisibility(
 		FROM matches CROSS JOIN input i
 		JOIN users u ON u.id = i.user_id AND u.archived_at IS NULL AND u.disabled_at IS NULL
 		ORDER BY matches.priority, matches.scope_id
-		LIMIT 1`, userID, model.TimeFromMillis(visibility.ActiveAt),
+		LIMIT 1`, userID, model.TimeUTC(visibility.ActiveAt),
 		pq.Array(visibility.AcademicUnitRootIDs), pq.Array(visibility.ClassMemberAcademicUnitRootIDs),
 		pq.Array(visibility.ClassIDs), visibility.ClassMemberInstitutionWide)
 	if errors.Is(err, sql.ErrNoRows) {

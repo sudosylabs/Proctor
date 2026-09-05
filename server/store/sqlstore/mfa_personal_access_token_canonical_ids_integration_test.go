@@ -102,14 +102,14 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		Username: "mfa-corruption", Email: "mfa-corruption@example.edu", DisplayName: "MFA Corruption",
 	})
 	now := model.NowUTC()
-	session, _, err := persistence.Session().Save(ctx, &model.Session{
+	session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
 	}, []*model.SessionCredential{
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken("mfa-corruption-access"), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken("mfa-corruption-refresh"), ExpiresAt: now.Add(2 * time.Hour)},
-	}, 10)
+	}, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
 		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 1,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
-		SessionID:     session.ID.String(), At: activationAt, AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
+		SessionID:     session.ID.String(), At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
 	})
 	var persisted *persistedStateError
 	if !errors.As(err, &persisted) || persisted.Entity != "mfa_credential" || persisted.Field != "encrypted_secret" {

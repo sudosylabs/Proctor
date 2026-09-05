@@ -602,6 +602,7 @@ func testPasswordResetRevokesSessionsAndAudits(t *testing.T, ss store.Store) {
 	requireNoError(t, err)
 	transitionAt := result.Token.ConsumedAt.Time
 	if result.PasswordCredential.ID != credential.ID ||
+		result.PasswordCredential.Revision != credential.Revision+1 ||
 		result.PasswordCredential.PasswordHash != "new-encoded-password-hash" ||
 		!result.Token.ConsumedAt.Valid || !result.PasswordCredential.PasswordChangedAt.Equal(transitionAt) ||
 		len(result.RevokedSessions) != 1 ||

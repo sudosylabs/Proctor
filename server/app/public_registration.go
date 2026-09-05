@@ -43,7 +43,7 @@ type publicRegistrationInstitution interface {
 }
 
 type publicRegistrationPasswordHasher interface {
-	Hash(string) (string, error)
+	Hash(context.Context, string) (string, error)
 }
 
 // publicRegistrationVerificationPreparer exposes only the one frozen
@@ -120,9 +120,9 @@ func (s *publicRegistrationService) Register(ctx context.Context, invocation Inv
 	if err != nil {
 		return NewError("authentication.registration.invalid").Wrap(err)
 	}
-	passwordHash, err := s.hasher.Hash(command.Password)
+	passwordHash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
-		return NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		return passwordHashError(err, "authentication.registration.unavailable")
 	}
 	credential := &model.PasswordCredential{UserID: user.ID, PasswordHash: passwordHash}
 	credential.PrepareCreate(model.NewPasswordCredentialID(), at)

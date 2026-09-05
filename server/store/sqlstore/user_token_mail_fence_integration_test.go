@@ -19,6 +19,137 @@ import (
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
+func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	persistence, institution, user, password := passwordProofFixture(t, ctx)
+	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE access_policies
+		SET provider_admissions=jsonb_build_object('campus-cas', ?::text) WHERE singleton=1`, string(model.ProviderAdmissionLinkedOnly)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
+		UserID: user.ID, Provider: "campus-cas", Subject: "password-reset-removal",
+		LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: user.ID, Action: string(model.ActionExternalIdentityManage),
+		Resource:  model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
+		NodeID: "password-reset-removal-order",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion := passwordProofReset(t, ctx, persistence, institution, user)
+	controllerPID, release := pausePasswordProofWrite(t, ctx, persistence, true)
+	type resetOutcome struct {
+		result *store.PasswordResetResult
+		err    error
+	}
+	resetDone := make(chan resetOutcome, 1)
+	go func() {
+		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
+		resetDone <- resetOutcome{result: result, err: err}
+	}()
+	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
+	removal := &store.PasswordCredentialRemoval{
+		UserID: user.ID, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
+		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
+	}
+	type removalOutcome struct {
+		result *store.AuthenticationMethodMutationResult
+		err    error
+	}
+	removed := make(chan removalOutcome, 1)
+	go func() {
+		result, err := persistence.PasswordCredential().RemoveWithAudit(ctx, removal)
+		removed <- removalOutcome{result: result, err: err}
+	}()
+	// The old reset order held the User row before acquiring this Session
+	// fence: removal would own the fence and block on the User instead.
+	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
+	release()
+	reset, remove := <-resetDone, <-removed
+	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
+		t.Fatalf("reset before removal = %#v, %v", reset.result, reset.err)
+	}
+	if remove.err != nil || remove.result == nil || remove.result.PasswordCredential == nil {
+		t.Fatalf("removal after reset = %#v, %v", remove.result, remove.err)
+	}
+	credential := remove.result.PasswordCredential
+	if !credential.ArchivedAt.Valid || credential.Revision != password.Revision+1 || credential.PasswordHash != completion.PasswordHash {
+		t.Fatal("removal did not archive the password produced by the preceding reset")
+	}
+	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("password remained active after removal: %v", err)
+	}
+	terminal, err := persistence.Audit().Get(ctx, audit.ID.String())
+	if err != nil || terminal.Status != model.AuditStatusSuccess {
+		t.Fatalf("removal audit = %#v, %v", terminal, err)
+	}
+}
+
+func TestPasswordResetSerializesWithResetTokenReissue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	persistence, institution, user, password := passwordProofFixture(t, ctx)
+	completion := passwordProofReset(t, ctx, persistence, institution, user)
+	next := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
+	next.PrepareCreate(model.NewUserTokenID(), model.NowUTC())
+	occurrence, delivery, job := authenticationPolicyTestMail(t, next.UserID, model.MailOccurrenceID(next.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityPasswordReset, model.JobTypeMailDeliverCredential,
+		next.CreatedAt, next.ExpiresAt)
+	issue := &store.UserTokenMailIssue{Token: next, Occurrence: occurrence, Delivery: delivery, Job: job,
+		AuditEvent: authenticationPolicyTestAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String())}
+	controllerPID, release := pausePasswordProofWrite(t, ctx, persistence, true)
+	type resetOutcome struct {
+		result *store.PasswordResetResult
+		err    error
+	}
+	resetDone := make(chan resetOutcome, 1)
+	go func() {
+		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
+		resetDone <- resetOutcome{result: result, err: err}
+	}()
+	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
+	type issueOutcome struct {
+		token *model.UserToken
+		err   error
+	}
+	issued := make(chan issueOutcome, 1)
+	go func() {
+		token, err := persistence.UserToken().Issue(ctx, issue)
+		issued <- issueOutcome{token: token, err: err}
+	}()
+	// Reissue must wait on the token-purpose fence already held by reset,
+	// before taking the User or credential rows.
+	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
+	release()
+	reset, reissued := <-resetDone, <-issued
+	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
+		t.Fatalf("reset before token reissue = %#v, %v", reset.result, reset.err)
+	}
+	if reissued.err != nil || reissued.token == nil || reissued.token.ID != next.ID {
+		t.Fatalf("token reissue after reset = %#v, %v", reissued.token, reissued.err)
+	}
+	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	if err != nil || current.Revision != password.Revision+1 || current.PasswordHash != completion.PasswordHash {
+		t.Fatalf("token reissue changed reset password: %v", err)
+	}
+	retained, err := persistence.UserToken().Get(ctx, reset.result.Token.ID)
+	if err != nil || !retained.ConsumedAt.Valid {
+		t.Fatalf("token reissue lost preceding consumption: %v", err)
+	}
+	active, err := persistence.UserToken().GetByHash(ctx, next.TokenHash, model.UserTokenPasswordReset)
+	if err != nil || active.ArchivedAt.Valid || active.ConsumedAt.Valid {
+		t.Fatalf("new reset token is not active after reissue: %v", err)
+	}
+}
+
 func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -67,7 +198,7 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	session, _, err = persistence.Session().Save(ctx, session, sessionCredentials, 10)
+	session, _, err = persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}

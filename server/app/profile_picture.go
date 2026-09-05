@@ -51,6 +51,8 @@ type DefaultProfilePictureGenerationFiles interface {
 	GenerateAndStoreDefaultProfilePicture(context.Context, model.FileRevisionID, string, time.Time) ([]model.FileRendition, error)
 }
 
+type profilePictureWorkCapacity interface{ WorkCapacityExceeded() }
+
 type RenderedProfilePicture struct {
 	Body      io.ReadCloser
 	MediaType string
@@ -245,6 +247,10 @@ func (s *profilePictureUploadService) Upload(ctx context.Context, invocation Inv
 	}
 	renditions, err := s.content.NormalizeAndStoreProfilePicture(ctx, revision.ID, command.Body, command.Size, at)
 	if err != nil {
+		var capacity profilePictureWorkCapacity
+		if errors.As(err, &capacity) {
+			return nil, NewError("service.busy").Wrap(err)
+		}
 		if errors.Is(err, ErrInvalidProfilePicture) {
 			return nil, NewError("profile_picture.invalid").Wrap(err)
 		}
@@ -453,6 +459,10 @@ func (s *profilePictureReadService) Get(ctx context.Context, invocation Invocati
 		if store.IsNotFound(err) && user.CustomProfilePictureFileID.IsZero() && user.DefaultProfilePictureFileID.IsZero() {
 			rendered, renderErr := s.fallback.RenderDefaultProfilePicture(ctx, user.DefaultProfilePictureSeed, query.Size)
 			if renderErr != nil {
+				var capacity profilePictureWorkCapacity
+				if errors.As(renderErr, &capacity) {
+					return nil, NewError("service.busy").Wrap(renderErr)
+				}
 				return nil, NewError("profile_picture.unavailable").Wrap(renderErr)
 			}
 			if s.defaultJobs != nil {

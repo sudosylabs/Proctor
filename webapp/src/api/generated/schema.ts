@@ -705,7 +705,7 @@ export interface paths {
         put?: never;
         /**
          * Create an interactive session
-         * @description Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong.
+         * @description Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong. Requires Content-Type application/json, optionally with charset=utf-8. Cross-origin browser requests and invalid media types return request.invalid before credential verification or cookie issuance; native clients may omit browser origin headers.
          */
         post: operations["login"];
         delete?: never;
@@ -5634,7 +5634,10 @@ export interface components {
         DesktopAuthorizationStartRequest: {
             /** @enum {string} */
             architecture: "arm64" | "x64";
-            /** Format: uri */
+            /**
+             * Format: uri
+             * @description Exact HTTP loopback URL using 127.0.0.1 or [::1], a decimal port from 49152 through 65535, and one random token path. Leading zeroes in a valid port are preserved. No query, fragment, or user information is accepted.
+             */
             callback_url: string;
             code_challenge: string;
             desktop_build_id: string;
@@ -9554,10 +9557,12 @@ export interface components {
             };
             content?: never;
         };
-        /** @description Service unavailable */
+        /** @description Service unavailable. The service.busy code means this node's bounded password or content-processing capacity is currently full. No password proof or completed content publication is issued by that refused operation; retry after the indicated delay, preserving any required idempotency key. */
         ServiceUnavailable: {
             headers: {
                 "Cache-Control": components["headers"]["NoStore"];
+                /** @description Present with value 1 for service.busy. Wait at least this many seconds before retrying the operation. */
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {
@@ -12222,6 +12227,7 @@ export interface operations {
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     endClassMember: {

@@ -65,6 +65,9 @@ type Module struct {
 	httpRequests            *prometheus.CounterVec
 	httpDuration            *prometheus.HistogramVec
 	httpInFlight            prometheus.Gauge
+	workActive              *prometheus.GaugeVec
+	workRejected            *prometheus.CounterVec
+	workDuration            *prometheus.HistogramVec
 	httpRequestBytes        *prometheus.HistogramVec
 	httpResponseBytes       *prometheus.HistogramVec
 	storeDuration           *prometheus.HistogramVec
@@ -143,6 +146,14 @@ type Module struct {
 func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, error) {
 	registry := prometheus.NewRegistry()
 	module := &Module{settings: settings, registry: registry, errorLog: sources.ErrorLog, failures: make(chan error, 1), closeDone: make(chan struct{})}
+	module.workActive = prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "work", Name: "active", Help: "Expensive operations currently admitted on this node."}, []string{"pool"})
+	module.workRejected = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "work", Name: "rejected_total", Help: "Expensive operations refused because their node-local pool was full."}, []string{"pool"})
+	module.workDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "work", Name: "duration_seconds", Help: "Duration of admitted expensive operations, including failed operations.", Buckets: prometheus.DefBuckets}, []string{"pool"})
+	for _, pool := range []string{"password", "file_content"} {
+		module.workActive.WithLabelValues(pool)
+		module.workRejected.WithLabelValues(pool)
+		module.workDuration.WithLabelValues(pool)
+	}
 	module.httpRequests = prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "proctor", Subsystem: "http", Name: "requests_total", Help: "Completed public HTTP requests."}, []string{"route", "method", "status_class"})
 	module.httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Namespace: "proctor", Subsystem: "http", Name: "request_duration_seconds", Help: "Public HTTP request duration.", Buckets: prometheus.DefBuckets}, []string{"route", "method"})
 	module.httpInFlight = prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "proctor", Subsystem: "http", Name: "in_flight_requests", Help: "Public HTTP requests currently executing."})
@@ -230,7 +241,7 @@ func New(settings config.Metrics, build BuildInfo, sources Sources) (*Module, er
 		module.redisOperations, module.redisDuration,
 		module.smtpOperations, module.smtpDuration, module.smtpMessages, module.smtpRecipients, module.smtpBytes,
 		module.mailDeliveries, module.mailAttempts, module.mailProcessingLatency, module.mailQueueCount, module.mailQueueOldest, module.mailQueueTruncated, module.mailHealth,
-		module.applicationEvents,
+		module.applicationEvents, module.workActive, module.workRejected, module.workDuration,
 	)
 	if sources.Database != nil {
 		registerDatabaseCollectors(registry, sources.Database)

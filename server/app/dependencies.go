@@ -83,6 +83,7 @@ type Dependencies struct {
 	LoopbackHTTPDevelopment bool
 
 	Password                PasswordPolicy
+	PasswordWorkRecorder    PasswordWorkRecorder
 	Sessions                SessionPolicy
 	LoginRateLimit          LoginRateLimitPolicy
 	BootstrapProtection     BootstrapProtectionPolicy
@@ -106,13 +107,22 @@ type jobRecorder interface {
 // PasswordPolicy is the immutable password-hashing projection composition
 // supplies so password code does not import deployment config.
 type PasswordPolicy struct {
-	MinimumLength    int
-	MaximumLength    int
-	ArgonMemoryKiB   int
-	ArgonIterations  int
-	ArgonParallelism int
-	ArgonSaltBytes   int
-	ArgonKeyBytes    int
+	MinimumLength               int
+	MaximumLength               int
+	ArgonMemoryKiB              int
+	ArgonIterations             int
+	ArgonParallelism            int
+	ArgonSaltBytes              int
+	ArgonKeyBytes               int
+	MaximumConcurrentOperations int
+}
+
+// PasswordWorkRecorder observes bounded runtime password work. Implementations
+// must be concurrency-safe and return promptly; nil disables recording.
+type PasswordWorkRecorder interface {
+	Started()
+	Finished(time.Duration)
+	Rejected()
 }
 
 // AccountRecoveryPolicy is the operator projection for email verification and

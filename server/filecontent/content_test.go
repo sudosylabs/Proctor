@@ -26,7 +26,7 @@ func TestContentStoresAndOpensAnExactRenditionAtTheCompatiblePrivateKey(t *testi
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := backend.open(t)
-			content, err := New(filesystem)
+			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -61,7 +61,7 @@ func TestContentStoresAndOpensAnExactRenditionAtTheCompatiblePrivateKey(t *testi
 func TestContentClassifiesStorageConflictsWithoutExposingPrivateKeys(t *testing.T) {
 	t.Parallel()
 
-	content, err := New(memoryvfs.New())
+	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestContentClassifiesStorageConflictsWithoutExposingPrivateKeys(t *testing.
 func TestContentLeavesAnOversizedAbandonedRevisionUntouched(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,7 +112,7 @@ func TestContentLeavesAnOversizedAbandonedRevisionUntouched(t *testing.T) {
 func TestContentPurgesOnlyOneAbandonedRevisionPrefixIdempotently(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -146,7 +146,7 @@ func TestContentPurgesOnlyOneAbandonedRevisionPrefixIdempotently(t *testing.T) {
 func TestContentRemovesAKnownRenditionManifestIdempotently(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -181,7 +181,7 @@ func TestContentRetriesAKnownManifestAfterAPartialBackendFailure(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := &removeFailureVFS{FileSystem: backend.open(t), failOnCall: 2}
-			content, err := New(filesystem)
+			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

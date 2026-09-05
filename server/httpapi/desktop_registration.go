@@ -50,6 +50,7 @@ func desktopRegistrationResource(application DesktopRegistrations) resource {
 		"desktop-registrations",
 		sessionRoute(http.MethodGet, collection, sessionErrors, module.list),
 		strongRecentSessionRoute(http.MethodDelete, item, append(sessionErrors,
+			"authentication.csrf.invalid",
 			"authentication.strong_required", "authentication.reauthentication_required",
 			"request.invalid", "resource.not_found", "audit.unavailable"), module.revoke),
 	)

@@ -374,6 +374,24 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 	}
 }
 
+func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
+	t.Parallel()
+	fixture := newFixture(t)
+	failure := errors.New("membership unavailable")
+	fixture.memberships.err = failure
+	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
+		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
+		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.sitting.unavailable" || !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want unavailable membership failure", err)
+	}
+	if fixture.authorizer.action != "" || fixture.persistence.schedule != nil || fixture.auditor.operation != "" {
+		t.Fatalf("membership failure continued: action=%q schedule=%#v audit=%q", fixture.authorizer.action, fixture.persistence.schedule, fixture.auditor.operation)
+	}
+}
+
 func TestReplayedCommandsDoNotPublishEffects(t *testing.T) {
 	t.Parallel()
 	fixture := newFixture(t)
@@ -828,10 +846,10 @@ func (fake *accessFake) Access(context.Context, model.ExamID, model.UserID) (*st
 type membershipsFake struct {
 	items []*model.AcademicUnitMember
 	err   error
-	at    int64
+	at    time.Time
 }
 
-func (fake *membershipsFake) ListActiveByUser(_ context.Context, _ string, at int64) ([]*model.AcademicUnitMember, error) {
+func (fake *membershipsFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.AcademicUnitMember, error) {
 	fake.at = at
 	return fake.items, fake.err
 }

@@ -55,7 +55,7 @@ func TestContentStoresCanonicalProfilePictureRenditionsWithoutUpscaling(t *testi
 	}
 	for _, backend := range profileContentBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := filecontent.New(backend.open(t))
+			content, err := filecontent.New(backend.open(t), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -111,7 +111,7 @@ func TestContentLeavesAnUncertainProfilePictureWriteForBoundedRecovery(t *testin
 	t.Parallel()
 
 	backend := &uncertainWriteVFS{FileSystem: memoryvfs.New(), failOnCall: 2}
-	content, err := filecontent.New(backend)
+	content, err := filecontent.New(backend, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 			if err := test.encode(&input); err != nil {
 				t.Fatal(err)
 			}
-			content, err := filecontent.New(memoryvfs.New())
+			content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -190,7 +190,7 @@ func TestContentAcceptsSupportedProfilePictureFormatsAndRejectsOversizedDimensio
 	if err := png.Encode(&input, oversized); err != nil {
 		t.Fatal(err)
 	}
-	content, err := filecontent.New(memoryvfs.New())
+	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestContentAppliesEXIFOrientationBeforeProfilePictureCropping(t *testing.T)
 		t.Fatal(err)
 	}
 	oriented := jpegWithEXIFOrientation(t, encoded.Bytes(), 6)
-	content, err := filecontent.New(memoryvfs.New())
+	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func jpegWithEXIFOrientation(t *testing.T, jpegBytes []byte, orientation uint16)
 func TestDefaultProfilePictureVersionOneMatchesGoldenAndStoredBytes(t *testing.T) {
 	t.Parallel()
 
-	content, err := filecontent.New(memoryvfs.New())
+	content, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -48,12 +48,12 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	localSession, localCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	savedLocal, _, err := persistence.Session().Save(ctx, localSession, localCredentials, 10)
+	savedLocal, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, localSession, localCredentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
 	externalSession, externalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
-	savedExternal, _, err := persistence.Session().Save(ctx, externalSession, externalCredentials, 10)
+	savedExternal, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, externalSession, externalCredentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +89,11 @@ func TestAuthenticationTerminalCommitsRecheckCurrentAccessPolicy(t *testing.T) {
 	}
 
 	blockedLocal, blockedLocalCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	if _, _, err = persistence.Session().Save(ctx, blockedLocal, blockedLocalCredentials, 10); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+	if _, _, err = persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, blockedLocal, blockedLocalCredentials, 10)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled local session error = %v", err)
 	}
 	blockedExternal, blockedExternalCredentials := authenticationPolicyTestSession(user.ID, "oidc", "campus", identity.ID)
-	if _, _, err = persistence.Session().Save(ctx, blockedExternal, blockedExternalCredentials, 10); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+	if _, _, err = persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, blockedExternal, blockedExternalCredentials, 10)); !errors.Is(err, store.ErrAuthenticationMethodDisabled) {
 		t.Fatalf("disabled provider session error = %v", err)
 	}
 	blockedIssue := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,

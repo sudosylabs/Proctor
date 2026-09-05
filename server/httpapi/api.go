@@ -35,6 +35,7 @@ type API struct {
 	metrics                 Metrics
 	localizer               Localizer
 	cookies                 browserCookies
+	browserRequests         browserRequestPolicy
 	recentAuthenticationTTL time.Duration
 	routes                  []Route
 	routeMatchers           []routeMatcher
@@ -74,6 +75,10 @@ func New(options Options) (*API, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure browser cookies: %w", err)
 	}
+	browserRequests, err := newBrowserRequestPolicy(options.PublicURL)
+	if err != nil {
+		return nil, fmt.Errorf("configure browser request policy: %w", err)
+	}
 	applications, err := resolveResourceApplications(options)
 	if err != nil {
 		return nil, err
@@ -85,6 +90,7 @@ func New(options Options) (*API, error) {
 		metrics:                 options.Metrics,
 		localizer:               options.Localizer,
 		cookies:                 cookies,
+		browserRequests:         browserRequests,
 		recentAuthenticationTTL: options.RecentAuthenticationTTL,
 		webSocket:               options.WebSocket,
 		maxBodyBytes:            options.MaxBodyBytes,

@@ -103,7 +103,7 @@ func desktopAuthorizationResource(application DesktopAuthorization, cookies brow
 		publicRoute(http.MethodPost, appendRoutePath(base, literal("bind")), errors, m.bind),
 		publicRoute(http.MethodGet, appendRoutePath(base, literal("context")), errors, m.context),
 		sessionRoute(http.MethodPost, appendRoutePath(base, literal("authenticate"), literal("session")), sessionAuthenticationMutationErrorCodes(errors...), m.authenticateSession),
-		publicRoute(http.MethodPost, appendRoutePath(base, literal("authenticate"), literal("password")), append(errors, "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code", "authentication.mfa.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable"), m.authenticateLocal),
+		publicRoute(http.MethodPost, appendRoutePath(base, literal("authenticate"), literal("password")), append(errors, "service.busy", "authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code", "authentication.mfa.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable"), m.authenticateLocal),
 		protocolRoute("desktop-authorization-external-login", RouteProtocolRedirect, AuthPublic, http.MethodGet,
 			appendRoutePath(base, literal("authenticate"), literal("providers"), providerID("provider_id"), literal("login")),
 			append(errors, "authentication.external.provider_not_found", "authentication.external.request.invalid", "authentication.external.unavailable", "authentication.rate_limited", "authentication.rate_limit_unavailable"), m.authenticateExternal),

@@ -24,7 +24,7 @@ func TestExamSittingCorrectionOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "POST " + stages, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,
 				SuccessStatus: "201", SuccessRef: "#/components/responses/ExamSittingCorrectionResourceStageCreated", SuccessSchema: "ExamSittingCorrectionResourceStageResponse",
-				PublicErrorCodes: examSittingCorrectionContractCodes("exam.sitting.correction.invalid_content", "exam.sitting.correction.stage_invalid"),
+				PublicErrorCodes: examSittingCorrectionContractCodes("service.busy", "exam.sitting.correction.invalid_content", "exam.sitting.correction.stage_invalid"),
 			},
 			{
 				Key: "POST " + corrections, Auth: AuthPrincipalRequired, Idempotency: IdempotencyRequired,

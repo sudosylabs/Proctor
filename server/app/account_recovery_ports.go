@@ -18,7 +18,7 @@ import (
 )
 
 type accountTokenPasswordHasher interface {
-	Hash(string) (string, error)
+	Hash(context.Context, string) (string, error)
 }
 
 type accountTokenAudit interface {

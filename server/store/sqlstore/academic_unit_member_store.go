@@ -29,7 +29,8 @@ type SQLAcademicUnitMemberStore struct {
 	query sq.SelectBuilder
 }
 
-// academicUnitMemberRow is the legacy integer-millisecond column layout.
+// academicUnitMemberRow maps native PostgreSQL timestamps and nullable lifecycle
+// fields onto a validated domain Academic Unit Member.
 type academicUnitMemberRow struct {
 	ID             string       `db:"id"`
 	CreatedAt      time.Time    `db:"created_at"`
@@ -240,9 +241,9 @@ func (s SQLAcademicUnitMemberStore) ListByAcademicUnit(
 func (s SQLAcademicUnitMemberStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
-	at int64,
+	at time.Time,
 ) ([]*model.AcademicUnitMember, error) {
-	activeAt := model.TimeFromMillis(at)
+	activeAt := model.TimeUTC(at)
 	return s.selectMembers(ctx, s.query.Where(sq.Eq{
 		"academic_unit_members.user_id":     userID,
 		"academic_unit_members.archived_at": nil,

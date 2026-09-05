@@ -161,6 +161,22 @@ separate; activity writes are debounced; concurrency is bounded; users can
 list and revoke sessions; account and credential security changes can revoke
 all sessions. Authorization always resolves current role bindings.
 
+Every new Session authentication resolves its current credential, Session, and
+active User through authoritative Store reads and fails closed if a required
+read fails. Positive authentication snapshots cannot grant access after a
+committed revocation or account disablement. Activity debounce and best-effort
+connection closure remain transient effects. The precise post-commit guarantee and the
+limits for in-flight requests and established WebSockets are defined in
+[Cluster delivery guarantees](../../../../server/cluster/GUARANTEES.md#authoritative-session-authentication).
+
+Credential expiry decisions use one UTC instant at PostgreSQL microsecond
+precision through the application and Store. Session access, refresh rotation,
+activity updates, Personal Access Token resolution, pending MFA activation,
+and MFA Session upgrades reject at the deadline itself. Convert legacy wire,
+notice, and audit timestamps at their owning projection; they must not round
+the instant used for a credential validity decision. TOTP time steps remain
+protocol counters rather than domain timestamps.
+
 Electron/web sessions use host-only HttpOnly cookies. Production cookies are
 Secure and SameSite=Lax; the refresh cookie is scoped to its endpoint. Unsafe
 cookie-authenticated requests use a rotating signed double-submit CSRF token.
@@ -194,6 +210,30 @@ reissue also suppresses the prior unsent delivery. Password-reset requests
 return a generic accepted response; successful completion atomically changes
 the password, revokes all sessions, consumes the token, records the terminal
 audit, and queues only the password-changed security notice.
+
+Password proof names the verified Password Credential and its revision. Every
+password reset or offline password rotation advances that revision, including
+replacement with the same password. A work-factor rehash changes only the
+encoded hash and update time, conditional on the credential, revision, and hash
+that were verified; it never changes the password-change time. A competing
+credential write fails the rehash with the ordinary generic login rejection.
+Password hashing and credential generation occur before persistence locks.
+
+Ordinary Session creation and every Desktop Authorization authentication,
+approval, and exchange recheck current password proof. Password reset takes the
+same per-User Session lock before locking the token, User, or credential rows.
+If Session creation commits first, reset revokes that Session; if reset commits
+first, the old proof cannot create a Session. Removal and re-enrollment also
+invalidate old proof through the credential identity. A reset therefore rejects
+unfinished authentication based on the earlier password, including pending
+Desktop handoffs, while preserving each flow's generic public failure.
+
+Reusing a Web Session for Desktop Authorization atomically rechecks that exact
+Session and its access credential, including ownership, revocation, and expiry.
+The Store derives authentication context from the current Session and captures
+the current password proof when applicable; an earlier Principal snapshot does
+not authorize a new handoff after reset. The proof remains private to the
+durable handoff and never enters a browser projection.
 
 ## MFA
 

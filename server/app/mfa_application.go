@@ -106,7 +106,7 @@ func (s *mfaApplicationService) GetStatus(
 	}
 	status := &MFAStatus{
 		Enabled:          credential.IsActive(),
-		Pending:          credential.IsPendingAt(s.now()),
+		Pending:          credential.IsPendingAt(model.TimeUTC(s.now())),
 		PendingExpiresAt: credential.PendingExpiresAt,
 	}
 	if status.Enabled {
@@ -148,7 +148,7 @@ func (s *mfaApplicationService) Setup(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
-	now := s.now()
+	now := model.TimeUTC(s.now())
 	candidate := &model.MFACredential{
 		UserID: principal.UserID, State: model.MFAStatePending,
 		EncryptedSecret: sealed.encoded, EncryptionKeyID: sealed.keyID,
@@ -199,7 +199,7 @@ func (s *mfaApplicationService) Activate(
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
-	now := model.TimeFromMillis(s.now().UnixMilli())
+	now := model.TimeUTC(s.now())
 	if !credential.IsPendingAt(now) {
 		return nil, mfaInvalidCodeError("ActivateMFA")
 	}
@@ -217,8 +217,10 @@ func (s *mfaApplicationService) Activate(
 	if err != nil {
 		return nil, authenticationUnavailable(err)
 	}
+	// The frozen notice retains its existing millisecond timestamp contract;
+	// the credential and Session expiry decision uses the native instant.
 	prepared, appErr := s.prepareSecurityNotice(
-		ctx, principal.UserID, appmail.MFANoticeEnabled, now,
+		ctx, principal.UserID, appmail.MFANoticeEnabled, model.TimeFromMillis(now.UnixMilli()),
 	)
 	if appErr != nil {
 		return nil, appErr
@@ -235,7 +237,7 @@ func (s *mfaApplicationService) Activate(
 	}
 	activated, err := s.credentials.Activate(ctx, &store.MFAActivationMutation{
 		CredentialID: credential.ID.String(), UserID: principal.UserID.String(), TimeStep: timeStep,
-		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID.String(), At: now.UnixMilli(),
+		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID.String(), At: now,
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
 	if err != nil {
@@ -268,7 +270,7 @@ func (s *mfaApplicationService) Challenge(
 	if appErr != nil {
 		return nil, appErr
 	}
-	now := s.now()
+	now := model.TimeUTC(s.now())
 	if appErr := s.consumeSecondFactor(
 		ctx, principal.UserID.String(), command.Code, now,
 	); appErr != nil {
@@ -284,7 +286,7 @@ func (s *mfaApplicationService) Challenge(
 		return nil, appErr
 	}
 	hashes, err := s.credentials.UpgradeSession(
-		ctx, principal.SessionID.String(), principal.UserID.String(), now.UnixMilli(),
+		ctx, principal.SessionID.String(), principal.UserID.String(), now,
 	)
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, "ChallengeMFA.upgrade", err)

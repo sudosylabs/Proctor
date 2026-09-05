@@ -44,6 +44,7 @@ paths:
         - Invitations and onboarding
       x-proctor-auth: public
       x-proctor-error-codes:
+        - service.busy
         - request.invalid
         - authentication.rate_limited
         - authentication.rate_limit_unavailable

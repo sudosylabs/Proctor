@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -133,10 +134,6 @@ type ExecutionProfileCatalog interface {
 	Supports(context.Context, model.ExecutionProfile) (bool, error)
 }
 
-type memberships interface {
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-}
-
 type users interface {
 	Get(context.Context, string) (*model.User, error)
 }
@@ -164,7 +161,7 @@ type ManagerMailPreparer interface {
 
 type Authoring struct {
 	persistence store.ExamAuthoringStore
-	memberships memberships
+	memberships manageraccess.Memberships
 	users       users
 	mail        ManagerMailPreparer
 	authorizer  Authorizer
@@ -177,7 +174,7 @@ type Authoring struct {
 	newID       func() model.ExamID
 }
 
-func NewAuthoring(persistence store.ExamAuthoringStore, memberships memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, outcomes CommandOutcomes, profiles ExecutionProfileCatalog, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
+func NewAuthoring(persistence store.ExamAuthoringStore, memberships manageraccess.Memberships, users users, mail ManagerMailPreparer, authorizer Authorizer, auditor Auditor, outcomes CommandOutcomes, profiles ExecutionProfileCatalog, effects Effects, failures EffectFailures, now func() time.Time, newID func() model.ExamID) (*Authoring, error) {
 	if persistence == nil || memberships == nil || users == nil || mail == nil || authorizer == nil || auditor == nil || outcomes == nil || profiles == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("exam authoring dependencies are required")
 	}
@@ -217,7 +214,7 @@ func (a *Authoring) Create(ctx context.Context, call Call, command CreateCommand
 	if err != nil {
 		return View{}, invalidCause("manager", err)
 	}
-	ordinary, err := a.hasCurrentMembership(ctx, principal.UserID, command.AcademicUnitID, at)
+	ordinary, err := manageraccess.HasCurrentMembership(ctx, a.memberships, principal.UserID, command.AcademicUnitID, at)
 	if err != nil {
 		return View{}, unavailable(err)
 	}
@@ -718,37 +715,11 @@ func cloneStringPointer(value *string) *string {
 }
 
 func (a *Authoring) actionForAccess(ctx context.Context, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
-	return actionForAccess(ctx, a.memberships, userID, access, at, ordinaryAction, overrideAction)
-}
-
-func actionForAccess(ctx context.Context, memberships memberships, userID model.UserID, access *store.ExamAccessSnapshot, at time.Time, ordinaryAction, overrideAction model.Action) (model.Action, error) {
-	if access.ActorIsManager {
-		ordinary, err := hasCurrentMembership(ctx, memberships, userID, access.Exam.AcademicUnitID, at)
-		if err != nil {
-			return "", unavailable(err)
-		}
-		if ordinary {
-			return ordinaryAction, nil
-		}
-	}
-	return overrideAction, nil
-}
-
-func (a *Authoring) hasCurrentMembership(ctx context.Context, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
-	return hasCurrentMembership(ctx, a.memberships, userID, unitID, at)
-}
-
-func hasCurrentMembership(ctx context.Context, memberships memberships, userID model.UserID, unitID model.AcademicUnitID, at time.Time) (bool, error) {
-	items, err := memberships.ListActiveByUser(ctx, userID.String(), model.MillisFromTime(at))
+	action, err := manageraccess.SelectAction(ctx, a.memberships, userID, access, at, ordinaryAction, overrideAction)
 	if err != nil {
-		return false, err
+		return "", unavailable(err)
 	}
-	for _, item := range items {
-		if item != nil && item.AcademicUnitID == unitID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return action, nil
 }
 
 func project(snapshot *store.ExamAuthoringSnapshot) View {

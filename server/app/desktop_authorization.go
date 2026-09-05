@@ -324,6 +324,7 @@ func (s *desktopAuthorizationService) AuthenticateSession(ctx context.Context, i
 		return nil, NewError("authentication.desktop_authorization.invalid")
 	}
 	result, err := s.authenticate(ctx, command.Binding, store.DesktopAuthorizationAuthentication{
+		SourceSessionID: principal.SessionID, SourceCredentialID: model.SessionCredentialID(principal.CredentialID),
 		UserID: principal.UserID, AuthenticationMethod: principal.AuthenticationMethod,
 		AuthenticationProviderID: principal.AuthenticationProviderID, ExternalIdentityID: principal.ExternalIdentityID,
 		AuthenticationStrength: principal.AuthenticationStrength, AuthenticatedAt: principal.AuthenticatedAt.UnixMilli(),
@@ -347,7 +348,8 @@ func (s *desktopAuthorizationService) AuthenticateLocal(ctx context.Context, com
 		return nil, err
 	}
 	result, err := s.authenticate(ctx, command.Binding, store.DesktopAuthorizationAuthentication{
-		UserID: proof.User.ID, AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
+		PasswordProof: proof.PasswordProof,
+		UserID:        proof.User.ID, AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
 		AuthenticatedAt: proof.AuthenticatedAt, MFACompletedAt: proof.MFACompletedAt,
 	})
 	if err != nil {
@@ -620,7 +622,7 @@ func desktopAuthorizationRedirectURL(callback, code, state string) (string, erro
 }
 
 func desktopAuthorizationStoreError(err error) *Error {
-	if store.IsNotFound(err) || errors.Is(err, store.ErrAuthenticationMethodDisabled) {
+	if store.IsNotFound(err) || errors.Is(err, store.ErrAuthenticationMethodDisabled) || errors.Is(err, store.ErrPasswordCredentialChanged) {
 		return NewError("authentication.desktop_authorization.rejected")
 	}
 	var conflict *store.ErrConflict

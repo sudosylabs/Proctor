@@ -24,9 +24,13 @@ import (
 
 func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("SaveResolveAndList", func(t *testing.T) { testSessionSaveResolveAndList(t, ss) })
+	t.Run("PasswordProofFencesCreationAndSurvivesRehash", func(t *testing.T) {
+		testSessionPasswordProof(t, ss)
+	})
 	t.Run("MaximumActive", func(t *testing.T) { testSessionMaximumActive(t, ss) })
 	t.Run("UpdateActivity", func(t *testing.T) { testSessionUpdateActivity(t, ss) })
 	t.Run("EnforceExpiry", func(t *testing.T) { testSessionEnforceExpiry(t, ss) })
+	t.Run("NativeTimeBoundaries", func(t *testing.T) { testSessionNativeTimeBoundaries(t, ss) })
 	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
 	t.Run("RevokeWithAudit", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
@@ -42,15 +46,62 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	})
 }
 
+func testSessionPasswordProof(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	user := saveUser(t, ctx, ss)
+	proof := testPasswordProof(t, ctx, ss, user.ID)
+	for _, test := range []struct {
+		name  string
+		proof store.PasswordCredentialProof
+	}{
+		{name: "missing"},
+		{name: "credential", proof: store.PasswordCredentialProof{ID: model.NewPasswordCredentialID(), Revision: proof.Revision}},
+		{name: "revision", proof: store.PasswordCredentialProof{ID: proof.ID, Revision: proof.Revision + 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session, credentials, _ := newSession(user.ID.String())
+			_, _, err := ss.Session().Save(ctx, &store.SessionCreation{
+				Session: session, Credentials: credentials, MaximumActive: 10, PasswordProof: test.proof,
+			})
+			if !errors.Is(err, store.ErrPasswordCredentialChanged) {
+				t.Fatalf("Save(stale password proof) = %v", err)
+			}
+		})
+	}
+	remaining, err := ss.Session().ListByUser(ctx, user.ID.String())
+	requireNoError(t, err)
+	if len(remaining) != 0 {
+		t.Fatalf("failed password proof created %d Sessions", len(remaining))
+	}
+	credential, err := ss.PasswordCredential().GetByUser(ctx, user.ID.String())
+	requireNoError(t, err)
+	requireNoError(t, ss.PasswordCredential().Rehash(ctx, &store.PasswordCredentialRehash{
+		ID: credential.ID, UserID: user.ID, ExpectedRevision: credential.Revision,
+		ExpectedHash: credential.PasswordHash, PasswordHash: "encoded-rehashed-session-password",
+	}))
+	session, credentials, _ := newSession(user.ID.String())
+	_, _, err = ss.Session().Save(ctx, &store.SessionCreation{
+		Session: session, Credentials: credentials, MaximumActive: 10, PasswordProof: proof,
+	})
+	requireNoError(t, err)
+}
+
 func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	active, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	for _, invalidAt := range []time.Time{{}, time.Unix(0, 0), time.Unix(-1, 0)} {
+		_, err := ss.Session().EnforceExpiry(ctx, active.ID.String(), user.ID.String(), invalidAt)
+		var invalid *store.ErrInvalidInput
+		if !errors.As(err, &invalid) {
+			t.Fatalf("EnforceExpiry(%v) error = %v, want invalid input", invalidAt, err)
+		}
+	}
 	beforeExpiry, err := ss.Session().EnforceExpiry(
 		ctx,
 		active.ID.String(),
 		user.ID.String(),
-		model.MillisFromTime(active.IdleExpiresAt.Add(-time.Millisecond)),
+		active.IdleExpiresAt.Add(-time.Millisecond),
 	)
 	requireNoError(t, err)
 	if beforeExpiry.Expired || beforeExpiry.Session == nil || beforeExpiry.Session.ID != active.ID ||
@@ -59,7 +110,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 	}
 
 	expired, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.MillisFromTime(expired.IdleExpiresAt.Add(time.Second))
+	at := expired.IdleExpiresAt.Add(time.Second)
 	result, err := ss.Session().EnforceExpiry(
 		ctx,
 		expired.ID.String(),
@@ -67,7 +118,7 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 		at,
 	)
 	requireNoError(t, err)
-	if !result.Expired || result.Session == nil || result.Session.RevokedAt.Millis() != at ||
+	if !result.Expired || result.Session == nil || !result.Session.RevokedAt.Time.Equal(at) ||
 		result.Session.RevocationReason != model.SessionRevocationExpired || len(result.TokenHashes) != 2 {
 		t.Fatalf("EnforceExpiry(deadline) = %#v", result)
 	}
@@ -79,11 +130,11 @@ func testSessionEnforceExpiry(t *testing.T, ss store.Store) {
 			ctx, model.HashToken(token.raw), token.kind,
 		)
 		requireNoError(t, resolveErr)
-		if credential.RevokedAt.Millis() != at || resolved.RevokedAt.Millis() != at {
+		if !credential.RevokedAt.Time.Equal(at) || !resolved.RevokedAt.Time.Equal(at) {
 			t.Fatalf("expired credential/session = %#v / %#v", credential, resolved)
 		}
 	}
-	if _, err = ss.Session().EnforceExpiry(ctx, expired.ID.String(), user.ID.String(), at+1); !store.IsNotFound(err) {
+	if _, err = ss.Session().EnforceExpiry(ctx, expired.ID.String(), user.ID.String(), at.Add(time.Microsecond)); !store.IsNotFound(err) {
 		t.Fatalf("repeated EnforceExpiry() error = %v", err)
 	}
 }
@@ -109,12 +160,12 @@ func testSessionSaveResolveAndList(t *testing.T, ss store.Store) {
 	if len(list) != 1 || list[0].ID != session.ID {
 		t.Fatalf("ListByUser() = %#v", list)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), model.MillisFromTime(session.CreatedAt))
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), session.CreatedAt)
 	requireNoError(t, err)
 	if len(active) != 1 || active[0].ID != session.ID {
 		t.Fatalf("ListActiveByUser(active) = %#v", active)
 	}
-	active, err = ss.Session().ListActiveByUser(ctx, user.ID.String(), model.MillisFromTime(session.ExpiresAt))
+	active, err = ss.Session().ListActiveByUser(ctx, user.ID.String(), session.ExpiresAt)
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("ListActiveByUser(expired) = %#v", active)
@@ -126,7 +177,7 @@ func testSessionMaximumActive(t *testing.T, ss store.Store) {
 	user := saveUser(t, ctx, ss)
 	saveSession(t, ctx, ss, user.ID.String(), 1)
 	session, credentials, _ := newSession(user.ID.String())
-	_, _, err := ss.Session().Save(ctx, session, credentials, 1)
+	_, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, 1))
 	var conflict *store.ErrConflict
 	if !errors.As(err, &conflict) || conflict.Constraint != "sessions_maximum_per_user" {
 		t.Fatalf("second active session error = %v", err)
@@ -137,12 +188,12 @@ func testSessionUpdateActivity(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.MillisFromTime(session.LastActivityAt) + 1_000
-	idle := at + int64(time.Hour/time.Millisecond)
+	at := session.LastActivityAt.Add(time.Second)
+	idle := at.Add(time.Hour)
 	requireNoError(t, ss.Session().UpdateActivity(ctx, session.ID.String(), at, idle))
 	got, err := ss.Session().Get(ctx, session.ID.String())
 	requireNoError(t, err)
-	if model.MillisFromTime(got.LastActivityAt) != at || model.MillisFromTime(got.IdleExpiresAt) != idle {
+	if !got.LastActivityAt.Equal(at) || !got.IdleExpiresAt.Equal(idle) {
 		t.Fatalf("UpdateActivity() session = %#v", got)
 	}
 }
@@ -178,7 +229,7 @@ func testSessionRevoke(t *testing.T, ss store.Store) {
 	if credential.RevokedAt.Millis() != at || got.RevokedAt.Millis() != at || got.RevocationReason != model.SessionRevocationUserLogout {
 		t.Fatalf("revoked credential=%#v session=%#v", credential, got)
 	}
-	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), at)
+	active, err := ss.Session().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(at))
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("revoked session remained active: %#v", active)
@@ -374,7 +425,7 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	now := model.MillisFromTime(session.CreatedAt) + 1_000
+	now := session.CreatedAt.Add(time.Second)
 	newAccessRaw := model.NewCredentialToken()
 	newRefreshRaw := model.NewCredentialToken()
 	rotation, err := ss.SessionCredential().RotateRefresh(
@@ -382,14 +433,14 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 		model.HashToken(raw.refresh),
 		&model.SessionCredential{
 			TokenHash: model.HashToken(newAccessRaw),
-			ExpiresAt: model.TimeFromMillis(now + int64((15*time.Minute)/time.Millisecond)),
+			ExpiresAt: now.Add(15 * time.Minute),
 		},
 		&model.SessionCredential{
 			TokenHash: model.HashToken(newRefreshRaw),
 			ExpiresAt: session.ExpiresAt,
 		},
 		now,
-		min(now+int64((24*time.Hour)/time.Millisecond), model.MillisFromTime(session.ExpiresAt)),
+		now.Add(24*time.Hour),
 	)
 	requireNoError(t, err)
 	if rotation.ReplayDetected ||
@@ -404,27 +455,27 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 		model.SessionCredentialAccess,
 	)
 	requireNoError(t, err)
-	if oldAccess.RevokedAt.Millis() != now {
+	if !oldAccess.RevokedAt.Time.Equal(now) {
 		t.Fatalf("old access credential = %#v", oldAccess)
 	}
 
-	replayAt := now + 100
+	replayAt := now.Add(100 * time.Millisecond)
 	replay, err := ss.SessionCredential().RotateRefresh(
 		ctx,
 		model.HashToken(raw.refresh),
 		&model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
-			ExpiresAt: model.TimeFromMillis(replayAt + int64((15*time.Minute)/time.Millisecond)),
+			ExpiresAt: replayAt.Add(15 * time.Minute),
 		},
 		&model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: session.ExpiresAt,
 		},
 		replayAt,
-		model.MillisFromTime(session.ExpiresAt),
+		session.ExpiresAt,
 	)
 	requireNoError(t, err)
-	if !replay.ReplayDetected || replay.Session.RevokedAt.Millis() != replayAt {
+	if !replay.ReplayDetected || !replay.Session.RevokedAt.Time.Equal(replayAt) {
 		t.Fatalf("replay rotation = %#v", replay)
 	}
 	newAccess, replayedSession, err := ss.SessionCredential().GetSessionByTokenHash(
@@ -433,7 +484,7 @@ func testSessionRotateAndDetectReplay(t *testing.T, ss store.Store) {
 		model.SessionCredentialAccess,
 	)
 	requireNoError(t, err)
-	if newAccess.RevokedAt.Millis() != replayAt || replayedSession.RevokedAt.Millis() != replayAt {
+	if !newAccess.RevokedAt.Time.Equal(replayAt) || !replayedSession.RevokedAt.Time.Equal(replayAt) {
 		t.Fatalf("replay did not revoke family: credential=%#v session=%#v", newAccess, replayedSession)
 	}
 }
@@ -442,24 +493,24 @@ func testSessionRotateEnforcesSessionExpiry(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	at := model.MillisFromTime(session.IdleExpiresAt.Add(time.Second))
+	at := session.IdleExpiresAt.Add(time.Second)
 	rotation, err := ss.SessionCredential().RotateRefresh(
 		ctx,
 		model.HashToken(raw.refresh),
 		&model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
-			ExpiresAt: model.TimeFromMillis(at + int64((15*time.Minute)/time.Millisecond)),
+			ExpiresAt: at.Add(15 * time.Minute),
 		},
 		&model.SessionCredential{
 			TokenHash: model.HashToken(model.NewCredentialToken()),
 			ExpiresAt: session.ExpiresAt,
 		},
 		at,
-		model.MillisFromTime(session.ExpiresAt),
+		session.ExpiresAt,
 	)
 	requireNoError(t, err)
 	if !rotation.Expired || rotation.ReplayDetected || rotation.Session == nil ||
-		rotation.Session.RevokedAt.Millis() != at ||
+		!rotation.Session.RevokedAt.Time.Equal(at) ||
 		rotation.Session.RevocationReason != model.SessionRevocationExpired ||
 		rotation.AccessCredential != nil || rotation.RefreshCredential != nil ||
 		len(rotation.RevokedAccessHashes) != 2 {
@@ -471,7 +522,7 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	now := model.MillisFromTime(session.CreatedAt) + 1_000
+	now := session.CreatedAt.Add(time.Second)
 
 	type result struct {
 		rotation *store.SessionRotation
@@ -487,14 +538,14 @@ func testSessionConcurrentRefreshReplay(t *testing.T, ss store.Store) {
 				model.HashToken(raw.refresh),
 				&model.SessionCredential{
 					TokenHash: model.HashToken(model.NewCredentialToken()),
-					ExpiresAt: model.TimeFromMillis(now + int64((15*time.Minute)/time.Millisecond)),
+					ExpiresAt: now.Add(15 * time.Minute),
 				},
 				&model.SessionCredential{
 					TokenHash: model.HashToken(model.NewCredentialToken()),
 					ExpiresAt: session.ExpiresAt,
 				},
 				now,
-				min(now+int64((24*time.Hour)/time.Millisecond), model.MillisFromTime(session.ExpiresAt)),
+				now.Add(24*time.Hour),
 			)
 			results <- result{rotation: rotation, err: err}
 		}()
@@ -526,8 +577,8 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
 	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
-	rotateAt := model.MillisFromTime(session.CreatedAt) + 1_000
-	revokeAt := rotateAt + 100
+	rotateAt := session.CreatedAt.Add(time.Second)
+	revokeAt := rotateAt.Add(100 * time.Millisecond).UnixMilli()
 	newAccessRaw := model.NewCredentialToken()
 	start := make(chan struct{})
 	rotationResult := make(chan error, 1)
@@ -540,14 +591,14 @@ func testSessionConcurrentRefreshAndRevokeAll(t *testing.T, ss store.Store) {
 			model.HashToken(raw.refresh),
 			&model.SessionCredential{
 				TokenHash: model.HashToken(newAccessRaw),
-				ExpiresAt: model.TimeFromMillis(rotateAt + int64((15*time.Minute)/time.Millisecond)),
+				ExpiresAt: rotateAt.Add(15 * time.Minute),
 			},
 			&model.SessionCredential{
 				TokenHash: model.HashToken(model.NewCredentialToken()),
 				ExpiresAt: session.ExpiresAt,
 			},
 			rotateAt,
-			min(rotateAt+int64((24*time.Hour)/time.Millisecond), model.MillisFromTime(session.ExpiresAt)),
+			rotateAt.Add(24*time.Hour),
 		)
 		rotationResult <- err
 	}()
@@ -643,7 +694,30 @@ func saveSession(
 ) (*model.Session, []*model.SessionCredential, rawSessionCredentials) {
 	t.Helper()
 	session, credentials, raw := newSession(userID)
-	savedSession, savedCredentials, err := ss.Session().Save(ctx, session, credentials, maximum)
+	savedSession, savedCredentials, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, session, credentials, maximum))
 	requireNoError(t, err)
 	return savedSession, savedCredentials, raw
+}
+
+func testSessionCreation(t *testing.T, ctx context.Context, ss store.Store, session *model.Session,
+	credentials []*model.SessionCredential, maximum int,
+) *store.SessionCreation {
+	t.Helper()
+	input := &store.SessionCreation{Session: session, Credentials: credentials, MaximumActive: maximum}
+	if session.AuthenticationMethod == "password" {
+		input.PasswordProof = testPasswordProof(t, ctx, ss, session.UserID)
+	}
+	return input
+}
+
+func testPasswordProof(t *testing.T, ctx context.Context, ss store.Store, userID model.UserID) store.PasswordCredentialProof {
+	t.Helper()
+	credential, err := ss.PasswordCredential().GetByUser(ctx, userID.String())
+	if store.IsNotFound(err) {
+		credential, err = ss.PasswordCredential().Save(ctx, &model.PasswordCredential{
+			UserID: userID, PasswordHash: "encoded-session-fixture-password",
+		})
+	}
+	requireNoError(t, err)
+	return store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision}
 }

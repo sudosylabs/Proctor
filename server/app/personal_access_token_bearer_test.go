@@ -19,7 +19,7 @@ import (
 func TestPersonalAccessTokenBearerResolverPreservesCredentialCeilings(t *testing.T) {
 	t.Parallel()
 
-	at := time.Date(2026, 8, 12, 13, 0, 0, 0, time.UTC)
+	at := time.Date(2026, 8, 12, 13, 0, 0, 123456789, time.FixedZone("test", 2*60*60))
 	raw := model.NewCredentialToken()
 	unitID := model.NewAcademicUnitID()
 	token := personalAccessTokenForTest(model.NewUserID(), at.Add(-time.Minute))
@@ -45,8 +45,8 @@ func TestPersonalAccessTokenBearerResolverPreservesCredentialCeilings(t *testing
 	if persistence.hash != model.HashToken(raw) || persistence.hash == raw {
 		t.Fatalf("resolved hash = %q", persistence.hash)
 	}
-	if persistence.at != at.UnixMilli() || persistence.updateInterval != (5*time.Minute).Milliseconds() {
-		t.Fatalf("resolve timing = %d/%d", persistence.at, persistence.updateInterval)
+	if !persistence.at.Equal(model.TimeUTC(at)) || persistence.at.Location() != time.UTC || persistence.updateInterval != 5*time.Minute {
+		t.Fatalf("resolve timing = %s/%s", persistence.at, persistence.updateInterval)
 	}
 	if principal.CredentialType != model.CredentialPersonalAccessToken ||
 		principal.CredentialID.String() != token.ID.String() ||
@@ -70,15 +70,15 @@ type personalAccessTokenResolutionStoreFake struct {
 	store.PersonalAccessTokenStore
 	resolution     *store.PersonalAccessTokenResolution
 	hash           string
-	at             int64
-	updateInterval int64
+	at             time.Time
+	updateInterval time.Duration
 }
 
 func (s *personalAccessTokenResolutionStoreFake) Resolve(
 	_ context.Context,
 	hash string,
-	at int64,
-	updateInterval int64,
+	at time.Time,
+	updateInterval time.Duration,
 ) (*store.PersonalAccessTokenResolution, error) {
 	s.hash, s.at, s.updateInterval = hash, at, updateInterval
 	return s.resolution, nil

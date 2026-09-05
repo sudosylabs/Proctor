@@ -30,7 +30,7 @@ func TestBootstrapOpenAPIAgreesWithRuntime(t *testing.T) {
 				PublicErrorCodes: []string{
 					"request.invalid", "installation.already_initialized", "installation.unavailable",
 					"installation.bootstrap_denied",
-					"authentication.password.invalid", "authentication.rate_limited",
+					"authentication.password.invalid", "service.busy", "authentication.rate_limited",
 				},
 			},
 		},

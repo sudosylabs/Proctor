@@ -85,6 +85,56 @@ func TestAddManagerChecksEligibilityBeforeAuditedAtomicMutation(t *testing.T) {
 		fmt.Sprintf(`{"exam_id":%q,"user_id":%q,"expected_exam_revision":1}`, fixture.examID, target))
 }
 
+func TestAddManagerUsesNativeMembershipDecisionAndLegacyMutationTime(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	decisionAt := time.Date(2026, 9, 5, 12, 0, 0, 123700789, time.FixedZone("offset", 3600))
+	boundary := model.TimeUTC(decisionAt)
+	fixture.service.now = func() time.Time { return decisionAt }
+	fixture.persistence.actorIsManager = true
+	target := model.NewUserID()
+	fixture.users.user = activeTestUser(target)
+	fixture.users.users = map[string]*model.User{
+		fixture.userID.String(): activeTestUser(fixture.userID),
+		target.String():         fixture.users.user,
+	}
+	memberships := map[string]*model.AcademicUnitMember{
+		fixture.userID.String(): {
+			AcademicUnitID: fixture.unitID, UserID: fixture.userID,
+			StartsAt: boundary.Add(-time.Hour), EndsAt: model.OptionalTimeFrom(boundary),
+		},
+		target.String(): {AcademicUnitID: fixture.unitID, UserID: target, StartsAt: boundary},
+	}
+	checked := make(map[string]time.Time)
+	fixture.memberships.lookup = func(userID string, at time.Time) ([]*model.AcademicUnitMember, error) {
+		checked[userID] = at
+		if membership := memberships[userID]; membership != nil && membership.IsActiveAt(at) {
+			return []*model.AcademicUnitMember{membership}, nil
+		}
+		return nil, nil
+	}
+
+	_, err := fixture.service.AddManager(context.Background(), fixture.call, AddManagerCommand{
+		ExamID: fixture.examID, UserID: target, ExpectedExamRevision: 1, IdempotencyKey: "precise-manager-time",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fixture.authorizer.action != model.ActionExamManageOverride || fixture.auditor.value["target_eligible"] != true {
+		t.Fatalf("expired actor/new target authorization = %s/%#v", fixture.authorizer.action, fixture.auditor.value)
+	}
+	if len(checked) != 2 || checked[fixture.userID.String()] != boundary || checked[target.String()] != boundary {
+		t.Fatalf("membership decision times = %v, want actor and target at %v", checked, boundary)
+	}
+	mutation := fixture.persistence.managerMutation
+	wantMillis := decisionAt.UnixMilli()
+	if mutation == nil || !mutation.ManagerOverride || mutation.ChangedAt != wantMillis || mutation.AuditAt != wantMillis {
+		t.Fatalf("legacy mutation times = %#v, want %d", mutation, wantMillis)
+	}
+	if len(fixture.mail.requests) != 1 || fixture.mail.requests[0].ActionAt != time.UnixMilli(wantMillis).UTC() {
+		t.Fatalf("legacy mail action time = %#v", fixture.mail.requests)
+	}
+}
+
 func TestAddManagerRejectsInactiveOrUnrelatedTargetBeforeAudit(t *testing.T) {
 	for _, test := range []struct {
 		name       string

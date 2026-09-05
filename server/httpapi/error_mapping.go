@@ -33,6 +33,7 @@ type applicationErrorMapping struct {
 // application codes. Each capability registers its reviewed public codes;
 // an unmapped code fails safe as a generic 500.
 var applicationErrorMappings = map[string]applicationErrorMapping{
+	"service.busy":                                                {status: http.StatusServiceUnavailable},
 	"authentication.invalid_credentials":                          {status: http.StatusUnauthorized},
 	"authentication.invalid_token":                                {status: http.StatusUnauthorized},
 	"authentication.credential_ambiguous":                         {status: http.StatusBadRequest},

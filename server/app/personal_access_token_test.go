@@ -289,14 +289,14 @@ func TestPersonalAccessTokenAdministrationUsesControlledClockForStateChanges(t *
 func TestPersonalAccessTokenAdministrationRequiresRecentSessionForCreationAndEnablement(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 8, 12, 12, 0, 0, 123701000, time.FixedZone("test", 2*60*60))
 	userID := model.NewUserID()
 	tokens := &personalAccessTokenStoreFake{events: &[]string{}}
 	service := mustPersonalAccessTokenAdministrationService(
 		t, tokens, &personalAccessTokenAcademicUnitStoreFake{},
 		&personalAccessTokenInstitutionStoreFake{}, &personalAccessTokenAuditorFake{}, now,
 	)
-	stale := personalAccessTokenSessionPrincipal(userID, now.Add(-time.Hour))
+	stale := personalAccessTokenSessionPrincipal(userID, now.Add(-15*time.Minute-time.Microsecond))
 	invocation := NewInvocation(stale, model.RequestMetadata{})
 
 	_, err := service.Create(context.Background(), invocation, CreatePersonalAccessTokenCommand{})

@@ -293,7 +293,9 @@ type invitationAuthorizer interface {
 	CanDelegateActionsAtScope(context.Context, Invocation, []string, model.RoleScopeType, string) error
 	Visibility(context.Context, Invocation, model.Action) (store.InvitationVisibilityScope, error)
 }
-type invitationPasswordHasher interface{ Hash(string) (string, error) }
+type invitationPasswordHasher interface {
+	Hash(context.Context, string) (string, error)
+}
 type invitationAttemptLimiter interface {
 	Check(context.Context, string, string) error
 }
@@ -1833,9 +1835,9 @@ func (s *invitationService) acceptStudentClassByClaimHash(ctx context.Context, i
 	if timezone == "" {
 		timezone = invitation.Suggestions.Timezone
 	}
-	hash, err := s.hasher.Hash(command.Password)
+	hash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
-		return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		return nil, passwordHashError(err, "invitation.unavailable")
 	}
 	user, defaultJob, err := prepareUserDefaultProfilePictureJob(&model.User{Username: command.Username, Email: invitation.TargetEmail,
 		EmailVerified: true, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName,
@@ -1907,9 +1909,9 @@ func (s *invitationService) acceptTeacherAcademicUnitByClaimHash(ctx context.Con
 	if timezone == "" {
 		timezone = invitation.Suggestions.Timezone
 	}
-	hash, err := s.hasher.Hash(command.Password)
+	hash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
-		return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		return nil, passwordHashError(err, "invitation.unavailable")
 	}
 	user, defaultJob, err := prepareUserDefaultProfilePictureJob(&model.User{Username: command.Username, Email: invitation.TargetEmail,
 		EmailVerified: true, DisplayName: command.DisplayName, FirstName: command.FirstName, LastName: command.LastName,

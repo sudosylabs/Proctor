@@ -97,7 +97,7 @@ func testExamManagersAndOwnership(t *testing.T, ss store.Store) {
 	if addedLater.Exam.Revision != 5 {
 		t.Fatalf("later Manager = %#v", addedLater)
 	}
-	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID.String(), model.MillisFromTime(at.Add(8*time.Minute)))
+	memberships, err := ss.AcademicUnitMember().ListActiveByUser(ctx, later.ID.String(), at.Add(8*time.Minute))
 	requireNoError(t, err)
 	if len(memberships) != 1 {
 		t.Fatalf("later memberships = %#v", memberships)

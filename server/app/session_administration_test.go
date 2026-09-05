@@ -31,6 +31,7 @@ type sessionAdministrationStoreFake struct {
 	listErr         error
 	revokeErr       error
 	revokeAllErr    error
+	listedAt        time.Time
 }
 
 func (s *sessionAdministrationStoreFake) Get(context.Context, string) (*model.Session, error) {
@@ -43,7 +44,8 @@ func (s *sessionAdministrationStoreFake) ListByUser(context.Context, string) ([]
 	return s.list, s.listErr
 }
 
-func (s *sessionAdministrationStoreFake) ListActiveByUser(context.Context, string, int64) ([]*model.Session, error) {
+func (s *sessionAdministrationStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.Session, error) {
+	s.listedAt = at
 	*s.events = append(*s.events, "list-active")
 	return s.list, s.listErr
 }
@@ -99,14 +101,16 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	events := []string{}
 	userID := model.NewId()
 	session := &model.Session{ID: model.NewSessionID(), UserID: model.UserID(userID)}
+	at := time.Date(2026, 8, 12, 9, 30, 0, 123_456_789, time.FixedZone("offset", 7200))
+	persistence := &sessionAdministrationStoreFake{events: &events, list: []*model.Session{session}}
 	service := newSessionAdministrationService(
-		&sessionAdministrationStoreFake{events: &events, list: []*model.Session{session}},
+		persistence,
 		&sessionAdministrationUserStoreFake{events: &events, user: sessionAdministrationTestUser(userID)},
 		&sessionAdministrationAuthorizerFake{events: &events},
 		&institutionAuditorFake{events: &events},
 		&securityNoticeMailerFake{events: &events},
 		&sessionAdministrationEffectsFake{events: &events},
-		func() time.Time { return time.UnixMilli(500) },
+		func() time.Time { return at },
 	)
 	got, err := service.List(context.Background(), Invocation{}, ListUserSessionsQuery{UserID: userID})
 	if err != nil {
@@ -118,6 +122,9 @@ func TestAdminSessionListAuthorizesThenReads(t *testing.T) {
 	want := []string{"authorize-view", "list-active"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
+	}
+	if !persistence.listedAt.Equal(model.TimeUTC(at)) || persistence.listedAt.Location() != time.UTC {
+		t.Fatalf("active Session listing time = %v, want %v", persistence.listedAt, model.TimeUTC(at))
 	}
 }
 

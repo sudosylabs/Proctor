@@ -52,6 +52,22 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 	assertStoreBoundaryCommand(t, fixture.persistence.idempotency, wantIdempotency)
 }
 
+func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	failure := errors.New("membership unavailable")
+	fixture.service.memberships = fakeMemberships{err: failure}
+	_, err := fixture.service.CreateDirectory(context.Background(), fixture.call, CreateDirectoryCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "src", IdempotencyKey: "test-key",
+	})
+	if faultCode(err) != "exam.starter_workspace.unavailable" || !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want unavailable membership failure", err)
+	}
+	if fixture.authorizer.called || fixture.auditor.values != nil || fixture.persistence.mutation != nil {
+		t.Fatalf("membership failure continued: authorizer=%#v audit=%#v mutation=%#v", fixture.authorizer, fixture.auditor, fixture.persistence.mutation)
+	}
+}
+
 func TestServiceDoesNotDeleteOrReclaimAStagedObjectAfterUnknownFinalize(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
@@ -358,10 +374,13 @@ func (f *fakeWorkspaceStore) ReleaseObjectCleanup(context.Context, model.Starter
 	return nil
 }
 
-type fakeMemberships struct{ unitID model.AcademicUnitID }
+type fakeMemberships struct {
+	unitID model.AcademicUnitID
+	err    error
+}
 
-func (f fakeMemberships) ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error) {
-	return []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}, nil
+func (f fakeMemberships) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
+	return []*model.AcademicUnitMember{{AcademicUnitID: f.unitID}}, f.err
 }
 
 type fakeWorkspaceAuthorizer struct{ called bool }

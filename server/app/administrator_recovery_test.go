@@ -45,6 +45,24 @@ func TestAdministratorRecoveryHashesPrivatePasswordBeforeNamedAggregate(t *testi
 	}
 }
 
+func TestAdministratorRecoveryPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
+	testPasswordHashFailures(t, "administrator_recovery.failed", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+		events := []string{}
+		persistence := &installationStoreFake{events: &events}
+		service := newBootstrapService(persistence, hasher,
+			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
+			bootstrapProtection(), "node-recovery", time.Now)
+		result, err := service.RecoverAdministratorAccess(ctx, AdministratorRecoveryCommand{
+			InstitutionID: model.NewInstitutionID().String(), UserID: model.NewUserID().String(),
+			Password: "correct horse battery staple",
+		})
+		if result != nil || persistence.recoveryInput != nil || len(events) != 0 {
+			t.Fatal("failed password work reached offline administrator recovery")
+		}
+		return err
+	})
+}
+
 func TestAdministratorRecoveryRejectsInvalidCommandBeforeHashing(t *testing.T) {
 	t.Parallel()
 	events := []string{}

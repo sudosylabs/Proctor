@@ -287,6 +287,7 @@ const (
 	methodSetDisabled                               methodName = "set_disabled"
 	methodSetDisabledWithAudit                      methodName = "set_disabled_with_audit"
 	methodUpdate                                    methodName = "update"
+	methodRehash                                    methodName = "rehash"
 	methodUpdateDraft                               methodName = "update_draft"
 	methodFinalize                                  methodName = "finalize"
 	methodRelease                                   methodName = "release"

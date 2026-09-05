@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -146,6 +147,7 @@ func (s *pictureStoreFake) RemoveProfilePictureWithAudit(_ context.Context, inpu
 
 type pictureContentFake struct {
 	normalized      bool
+	workErr         error
 	events          *[]string
 	openedRevision  model.FileRevisionID
 	openedRendition model.FileRenditionID
@@ -218,6 +220,9 @@ func (s *pictureContentFake) normalizeAndStoreProfilePicture(_ context.Context, 
 	if s.events != nil {
 		*s.events = append(*s.events, "normalize")
 	}
+	if s.workErr != nil {
+		return nil, s.workErr
+	}
 	result := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, err := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", size), "image/webp", 10, 20, 20, strings.Repeat("a", 64), at)
@@ -229,6 +234,9 @@ func (s *pictureContentFake) normalizeAndStoreProfilePicture(_ context.Context, 
 	return result, nil
 }
 func (s *pictureContentFake) generateAndStoreDefaultProfilePicture(_ context.Context, revisionID model.FileRevisionID, _ string, at time.Time) ([]model.FileRendition, error) {
+	if s.workErr != nil {
+		return nil, s.workErr
+	}
 	result := make([]model.FileRendition, 0, 3)
 	for _, size := range []int{128, 256, 512} {
 		rendition, err := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", size), "image/webp", 10, size, size, strings.Repeat("d", 64), at)
@@ -240,6 +248,9 @@ func (s *pictureContentFake) generateAndStoreDefaultProfilePicture(_ context.Con
 	return result, nil
 }
 func (s *pictureContentFake) renderDefaultProfilePicture(context.Context, string, int) (*RenderedProfilePicture, error) {
+	if s.workErr != nil {
+		return nil, s.workErr
+	}
 	return &RenderedProfilePicture{Body: io.NopCloser(strings.NewReader("default")), MediaType: "image/webp", Size: 7, SHA256: strings.Repeat("d", 64)}, nil
 }
 func (s *pictureContentFake) openProfilePictureRendition(_ context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID) (io.ReadCloser, error) {
@@ -631,6 +642,58 @@ func TestGetMissingDefaultRendersImmediatelyAndProposesDurableGeneration(t *test
 	defer content.Body.Close()
 	if content.ETag != `"`+strings.Repeat("d", 64)+`"` || content.Size != 7 || jobs.count != 1 || jobs.userID != user.ID || user.ProfilePictureChangedAt.Valid {
 		t.Fatalf("fallback = %#v jobs=%#v user=%#v", content, jobs, user)
+	}
+}
+
+type pictureCapacityError struct{}
+
+func (pictureCapacityError) Error() string         { return "content capacity is unavailable" }
+func (pictureCapacityError) WorkCapacityExceeded() {}
+
+func TestProfilePictureCapacityRefusalDoesNotPublishOrProposeMoreWork(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"upload", "fallback", "default generation"} {
+		t.Run(operation, func(t *testing.T) {
+			user := &model.User{Username: "student", Email: "student@example.test"}
+			user.PrepareCreate(model.NewUserID(), time.Now())
+			events := []string{}
+			persistence := &pictureStoreFake{user: user, events: &events}
+			jobs := &profilePictureDefaultJobsFake{}
+			effects := &profilePictureEffectsFake{events: &events}
+			auditor := &profilePictureAuditorFake{events: &events}
+			capacity := pictureCapacityError{}
+			content := &pictureContentFake{events: &events, workErr: fmt.Errorf("processing: %w", capacity)}
+			service := newProfilePictureServiceForTest(persistence, persistence, content, &userProfileAuthorizerFake{events: &events}, auditor, effects, &profilePictureEffectFailuresFake{}, jobs, time.Now)
+			invocation := NewInvocation(model.Principal{UserID: user.ID}, model.RequestMetadata{})
+			var err error
+			switch operation {
+			case "upload":
+				_, err = service.Upload(context.Background(), invocation, UploadProfilePictureCommand{UserID: user.ID.String(), Body: strings.NewReader("image"), Size: 5})
+			case "fallback":
+				_, err = service.Get(context.Background(), invocation, GetProfilePictureQuery{UserID: user.ID.String(), Size: 256})
+			case "default generation":
+				command, encodeErr := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+				if encodeErr != nil {
+					t.Fatal(encodeErr)
+				}
+				job, jobErr := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1, command, user.ID.String(), time.Now(), time.Now(), 8)
+				if jobErr != nil {
+					t.Fatal(jobErr)
+				}
+				handler := appjobs.NewDefaultProfilePictureDescriptor(jobDefaultProfilePictureGenerator{service: service}).Handler
+				outcome := handler.Run(context.Background(), jobengine.Execution{Job: job})
+				if outcome.Kind != jobengine.OutcomeRetryableFailure || outcome.PublicErrorCode != "dependency.unavailable" {
+					t.Fatalf("default generation did not retain its retry path: %#v", outcome)
+				}
+				err = outcome.Err
+			}
+			if !errors.Is(err, capacity) || operation != "default generation" && !Is(err, "service.busy") {
+				t.Fatalf("capacity outcome=%v", err)
+			}
+			if persistence.publication != nil || persistence.defaultPublication != nil || jobs.count != 0 || !effects.change.UserID.IsZero() || auditor.operation != "" {
+				t.Fatalf("capacity refusal published state or more work: store=%#v jobs=%#v effect=%#v audit=%#v", persistence, jobs, effects.change, auditor)
+			}
+		})
 	}
 }
 

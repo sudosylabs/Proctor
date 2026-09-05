@@ -254,7 +254,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 		publicRoute(
 			http.MethodPost, apiPath(literal("auth"), literal("register")),
 			[]string{
-				"request.invalid", "authentication.password.invalid", "authentication.registration.invalid",
+				"request.invalid", "authentication.password.invalid", "service.busy", "authentication.registration.invalid",
 				"authentication.registration.invitation_required", "authentication.registration.unavailable",
 				"authentication.rate_limited", "authentication.rate_limit_unavailable",
 			},
@@ -294,7 +294,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 			http.MethodPost,
 			apiPath(literal("auth"), literal("password-reset"), literal("complete")),
 			[]string{
-				"request.invalid", "authentication.password.invalid", "authentication.rate_limited",
+				"request.invalid", "authentication.password.invalid", "service.busy", "authentication.rate_limited",
 				"authentication.rate_limit_unavailable", "authentication.account_token.invalid",
 				"authentication.account_recovery.unavailable",
 			},
@@ -324,7 +324,7 @@ func (module authenticationResourceModule) register(request operationRequest) (o
 
 func authenticationLoginErrorCodes() []string {
 	return []string{
-		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid",
+		"request.invalid", "authentication.client_type.invalid", "authentication.password.invalid", "service.busy",
 		"authentication.invalid_credentials", "authentication.mfa.required", "authentication.mfa.invalid_code",
 		"authentication.mfa.unavailable",
 		"authentication.sessions.maximum_reached", "authentication.desktop_authorization.account_session_locked", "authentication.rate_limited",
@@ -603,6 +603,9 @@ func credentialSourceFromContext(ctx context.Context) credentialSource {
 }
 
 func decodeRequestJSON(request *http.Request, target any) error {
+	if err := requireJSONMediaType(request); err != nil {
+		return err
+	}
 	if request.Body == nil {
 		return errors.New("request body is required")
 	}
@@ -666,6 +669,11 @@ func applicationErrorCode(err error) string {
 func applicationErrorRequiresLogging(err error) bool {
 	var failure applicationFailure
 	if errors.As(err, &failure) {
+		// Capacity refusals are expected overload outcomes counted by the owning
+		// work pool. Logging each refusal would amplify a request burst.
+		if failure.Code() == "service.busy" {
+			return false
+		}
 		mapping, ok := applicationErrorMappings[failure.Code()]
 		return !ok || mapping.status >= http.StatusInternalServerError
 	}

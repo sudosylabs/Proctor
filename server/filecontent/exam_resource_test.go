@@ -11,6 +11,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,7 +34,7 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		backend := backend
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -46,6 +48,7 @@ func TestExamResourceContentStoresAndOpensExactVerifiedBytes(t *testing.T) {
 				{"markdown", model.ExamResourceMediaMarkdown, "# Reference\n"},
 				{"csv", model.ExamResourceMediaCSV, "name,value\nalpha,1\n"},
 				{"json", model.ExamResourceMediaJSON, `{"language":"go"}`},
+				{"authored json", model.ExamResourceMediaJSON, " \n" + `{"n":1e999999,"duplicate":1,"duplicate":2,"escaped":"\ud800"}` + "\n"},
 				{"pdf", model.ExamResourceMediaPDF, string(validPDF)},
 			} {
 				t.Run(test.name, func(t *testing.T) {
@@ -76,7 +79,7 @@ func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) 
 	t.Parallel()
 
 	for _, filesystem := range []vfspkg.FileSystem{memoryvfs.New(), &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}} {
-		content, err := New(filesystem)
+		content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +117,7 @@ func TestExamResourceContentStoresAtPreallocatedRenditionIdentity(t *testing.T) 
 func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *testing.T) {
 	t.Parallel()
 	filesystem := memoryvfs.New()
-	content, _ := New(filesystem)
+	content, _ := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 	pseudoPDF := []byte("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n")
 	compressedActivePDF := testExamResourcePDF(t, func(xRefTable *pdfmodel.XRefTable, root types.Dict) {
 		script, err := xRefTable.NewStreamDictForBuf([]byte("app.alert('unsafe')"))
@@ -174,7 +177,7 @@ func TestExamResourceContentRejectsUnverifiedOrUnboundedInputBeforeStorage(t *te
 func TestExamResourceContentReadsAndWritesThroughBoundedBuffers(t *testing.T) {
 	privateTemp := t.TempDir()
 	t.Setenv("TMPDIR", privateTemp)
-	content, err := New(memoryvfs.New())
+	content, err := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +212,7 @@ func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			privateTemp := t.TempDir()
 			t.Setenv("TMPDIR", privateTemp)
-			content, err := New(test.filesystem)
+			content, err := New(test.filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -230,12 +233,235 @@ func TestExamResourceContentRemovesPrivateSpoolAfterEveryOutcome(t *testing.T) {
 
 func TestExamResourceContentRejectsDeclaredOversizeWithoutReading(t *testing.T) {
 	t.Parallel()
-	content, _ := New(memoryvfs.New())
+	content, _ := New(memoryvfs.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	reader := &panicReader{}
 	_, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, reader, model.ExamResourceMaximumBytes+1, time.Now().UTC())
 	if !errors.Is(err, ErrInvalidExamResourceContent) {
 		t.Fatalf("error = %v", err)
 	}
+}
+
+func TestExamResourceContentStopsAtFirstByteBeyondDeclaredSize(t *testing.T) {
+	privateTemp := t.TempDir()
+	t.Setenv("TMPDIR", privateTemp)
+	filesystem := &contentWorkVFS{FileSystem: memoryvfs.New()}
+	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const inputSize = 64 << 10
+	for _, declared := range []int64{0, 5, examResourceCopyBuffer} {
+		body := &boundedExamResourceReader{remaining: inputSize, maximumRequest: examResourceCopyBuffer}
+		rendition, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, body, declared, time.Unix(1, 0))
+		if !errors.Is(err, ErrInvalidExamResourceContent) || rendition != (model.FileRendition{}) {
+			t.Fatalf("declared=%d: rendition=%#v error=%v", declared, rendition, err)
+		}
+		if consumed := inputSize - body.remaining; consumed != declared+1 {
+			t.Fatalf("declared=%d: consumed=%d, want first excess byte only", declared, consumed)
+		}
+	}
+	if filesystem.writes.Load() != 0 {
+		t.Fatal("mismatched bodies reached storage")
+	}
+	assertExamResourceSpoolRemoved(t, privateTemp)
+	if _, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("notes"), 5, time.Unix(1, 0)); err != nil {
+		t.Fatalf("capacity was not released after size rejection: %v", err)
+	}
+}
+
+func TestExamResourceValidationObservesCancellationBetweenBoundedReads(t *testing.T) {
+	var imageBody bytes.Buffer
+	if err := png.Encode(&imageBody, image.NewNRGBA(image.Rect(0, 0, 16, 16))); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name       string
+		media      model.ExamResourceMediaType
+		body       string
+		cancelPass int
+	}{
+		{"text", model.ExamResourceMediaText, strings.Repeat("a", 64<<10), 1},
+		{"markdown", model.ExamResourceMediaMarkdown, strings.Repeat("a", 64<<10), 1},
+		{"json UTF-8", model.ExamResourceMediaJSON, `"` + strings.Repeat("a", 64<<10) + `"`, 1},
+		{"json string syntax", model.ExamResourceMediaJSON, `"` + strings.Repeat("a", 64<<10) + `"`, 2},
+		{"json number syntax", model.ExamResourceMediaJSON, "1" + strings.Repeat("0", 64<<10), 2},
+		{"json array syntax", model.ExamResourceMediaJSON, "[" + strings.Repeat("0,", 32<<10) + "0]", 2},
+		{"json trailing whitespace", model.ExamResourceMediaJSON, "null" + strings.Repeat(" ", 64<<10), 2},
+		{"CSV UTF-8", model.ExamResourceMediaCSV, strings.Repeat("name,value\n", 8<<10), 1},
+		{"CSV records", model.ExamResourceMediaCSV, strings.Repeat("name,value\n", 8<<10), 2},
+		{"image configuration", model.ExamResourceMediaPNG, imageBody.String(), 1},
+		{"image decode", model.ExamResourceMediaPNG, imageBody.String(), 2},
+		{"PDF read", model.ExamResourceMediaPDF, string(testExamResourcePDF(t, nil)), 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			body := &cancelledValidationReader{ReadSeeker: strings.NewReader(test.body), cancel: cancel, cancelPass: test.cancelPass, pass: 1}
+			err := validateExamResource(ctx, body, test.media, int64(len(test.body)))
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("error=%v, want cancellation", err)
+			}
+			if body.cancelledReads != 1 || body.cancelledBytes > examResourceCopyBuffer || body.afterCancelReads != 0 || body.afterCancelSeeks != 0 {
+				t.Fatalf("cancellation boundary: reads=%d bytes=%d later reads=%d later seeks=%d", body.cancelledReads, body.cancelledBytes, body.afterCancelReads, body.afterCancelSeeks)
+			}
+		})
+	}
+}
+
+func TestExamResourceUTF8SignaturePrefixKeepsConstantAllocations(t *testing.T) {
+	allocations := func(runes int) float64 {
+		body := `"` + strings.Repeat("😀", runes) + `"`
+		return testing.AllocsPerRun(3, func() {
+			if err := validateExamResourceUTF8(strings.NewReader(body)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	small, large := allocations(8), allocations(16<<10)
+	if large > small+1 {
+		t.Fatalf("UTF-8 prefix allocations grew with content: small=%g large=%g", small, large)
+	}
+}
+
+func TestExamResourceUTF8PreservesSignatureRejection(t *testing.T) {
+	t.Parallel()
+	for _, signature := range []string{"MZ", "PK\x03\x04", "\x7fELF", "#!"} {
+		for _, leading := range []string{"", " \n\t", "\u2003"} {
+			body := leading + signature + strings.Repeat("😀", 8)
+			if err := validateExamResourceUTF8(strings.NewReader(body)); !errors.Is(err, ErrInvalidExamResourceContent) {
+				t.Fatalf("signature=%q: error=%v", signature, err)
+			}
+		}
+	}
+	for _, body := range []string{"", " \u2003", "😀MZ", "😀PK\x03\x04", "😀\x7fELF", "😀#!"} {
+		if err := validateExamResourceUTF8(strings.NewReader(body)); err != nil {
+			t.Fatalf("ordinary UTF-8 content was rejected: %v", err)
+		}
+	}
+}
+
+func TestExamResourceContentCancellationReturnsNoRenditionAndReleasesResources(t *testing.T) {
+	for _, outcome := range []string{"upload completed", "write succeeded", "write acknowledgement lost", "matching replay read", "mismatched replay metadata"} {
+		t.Run(outcome, func(t *testing.T) {
+			privateTemp := t.TempDir()
+			t.Setenv("TMPDIR", privateTemp)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			filesystem := &cancelledExamResourceVFS{FileSystem: memoryvfs.New(), cancel: cancel, outcome: outcome}
+			recorder := &contentWorkRecorder{}
+			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 1}, recorder)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body io.Reader = strings.NewReader("[0]")
+			if outcome == "upload completed" {
+				body = &cancelledExamResourceBody{ReadCloser: io.NopCloser(body), cancel: cancel}
+			}
+			rendition, err := content.StoreExamResource(ctx, model.NewFileRevisionID(), model.ExamResourceMediaJSON, body, 3, time.Unix(1, 0))
+			if !errors.Is(err, context.Canceled) || rendition != (model.FileRendition{}) {
+				t.Fatalf("cancelled rendition=%#v error=%v", rendition, err)
+			}
+			if recorder.active.Load() != 0 || recorder.finished.Load() != 1 {
+				t.Fatal("cancelled operation retained its processing permit")
+			}
+			assertExamResourceSpoolRemoved(t, privateTemp)
+			filesystem.cancel = nil
+			filesystem.outcome = "write succeeded"
+			if _, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaJSON, strings.NewReader("[0]"), 3, time.Unix(1, 0)); err != nil {
+				t.Fatalf("capacity was not released after cancellation: %v", err)
+			}
+		})
+	}
+}
+
+func assertExamResourceSpoolRemoved(t *testing.T, directory string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("private spool remains: entries=%v error=%v", entries, err)
+	}
+}
+
+type cancelledValidationReader struct {
+	io.ReadSeeker
+	cancel           context.CancelFunc
+	cancelPass       int
+	pass             int
+	readInPass       bool
+	cancelled        bool
+	cancelledReads   int
+	cancelledBytes   int
+	afterCancelReads int
+	afterCancelSeeks int
+}
+
+func (r *cancelledValidationReader) Read(body []byte) (int, error) {
+	if r.cancelled {
+		r.afterCancelReads++
+	}
+	r.readInPass = true
+	n, err := r.ReadSeeker.Read(body)
+	if r.pass == r.cancelPass {
+		r.cancelledReads++
+		r.cancelledBytes += n
+		r.cancelled = true
+		r.cancel()
+	}
+	return n, err
+}
+
+func (r *cancelledValidationReader) Seek(offset int64, whence int) (int64, error) {
+	if r.cancelled {
+		r.afterCancelSeeks++
+	}
+	if offset == 0 && whence == io.SeekStart && r.readInPass {
+		r.pass++
+		r.readInPass = false
+	}
+	return r.ReadSeeker.Seek(offset, whence)
+}
+
+type cancelledExamResourceVFS struct {
+	vfspkg.FileSystem
+	cancel  context.CancelFunc
+	outcome string
+}
+
+func (f *cancelledExamResourceVFS) Write(ctx context.Context, path string, body io.Reader, options vfspkg.WriteOptions) (vfspkg.Info, error) {
+	info, err := f.FileSystem.Write(ctx, path, body, options)
+	if err != nil {
+		return info, err
+	}
+	if f.cancel != nil && f.outcome != "matching replay read" && f.outcome != "mismatched replay metadata" {
+		f.cancel()
+	}
+	if f.outcome != "write succeeded" {
+		return info, errors.New("write acknowledgement lost")
+	}
+	return info, nil
+}
+
+func (f *cancelledExamResourceVFS) Open(ctx context.Context, path string, options vfspkg.OpenOptions) (*vfspkg.File, error) {
+	file, err := f.FileSystem.Open(ctx, path, options)
+	if err == nil && f.outcome == "matching replay read" {
+		file.Body = &cancelledExamResourceBody{ReadCloser: file.Body, cancel: f.cancel}
+	}
+	if err == nil && f.outcome == "mismatched replay metadata" {
+		file.Info.Size++
+		f.cancel()
+	}
+	return file, err
+}
+
+type cancelledExamResourceBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *cancelledExamResourceBody) Read(body []byte) (int, error) {
+	n, err := b.ReadCloser.Read(body)
+	b.cancel()
+	return n, err
 }
 
 type panicReader struct{}

@@ -39,7 +39,15 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || body == nil || size == 0 || size < -1 || size > maximumProfilePictureBytes {
 		return nil, app.ErrInvalidProfilePicture
 	}
-	raw, err := io.ReadAll(io.LimitReader(body, maximumProfilePictureBytes+1))
+	finish, err := c.beginWork(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	raw, err := io.ReadAll(io.LimitReader(workReader{ctx: ctx, reader: body}, maximumProfilePictureBytes+1))
+	if cancellation := ctx.Err(); cancellation != nil {
+		return nil, cancellation
+	}
 	if err != nil || int64(len(raw)) > maximumProfilePictureBytes || (size >= 0 && int64(len(raw)) != size) {
 		return nil, app.ErrInvalidProfilePicture
 	}
@@ -47,7 +55,13 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	if err != nil || (format != "png" && format != "jpeg" && format != "webp") || configuration.Width <= 0 || configuration.Height <= 0 || configuration.Width > 4096 || configuration.Height > 4096 {
 		return nil, app.ErrInvalidProfilePicture
 	}
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
 	imageValue, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
+	if cancellation := ctx.Err(); cancellation != nil {
+		return nil, cancellation
+	}
 	if err != nil || imageValue.Bounds().Dx() <= 0 || imageValue.Bounds().Dy() <= 0 || imageValue.Bounds().Dx() > maximumProfilePicturePixels/imageValue.Bounds().Dy() {
 		return nil, app.ErrInvalidProfilePicture
 	}
@@ -55,14 +69,23 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	square := imaging.CropCenter(imageValue, squareSize, squareSize)
 	renditions := make([]model.FileRendition, 0, len(profilePictureSizes))
 	for _, target := range profilePictureSizes {
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
 		dimension := min(target, squareSize)
 		normalized := square
 		if dimension < squareSize {
 			normalized = imaging.Resize(square, dimension, dimension, imaging.Lanczos)
 		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
 		var encoded bytes.Buffer
 		if err = nativewebp.Encode(&encoded, normalized, &nativewebp.Options{CompressionLevel: nativewebp.DefaultCompression}); err != nil {
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
+			return nil, err
+		}
+		if err = ctx.Err(); err != nil {
 			return nil, err
 		}
 		checksum := fmt.Sprintf("%x", sha256.Sum256(encoded.Bytes()))
@@ -83,11 +106,25 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 // GenerateAndStoreDefaultProfilePicture stores version-one deterministic
 // default-picture renditions for a stable per-user seed.
 func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, revisionID model.FileRevisionID, seed string, at time.Time) ([]model.FileRendition, error) {
+	if c == nil || c.filesystem == nil || !revisionID.IsValid() {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	finish, err := c.beginWork(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
 	renditions := make([]model.FileRendition, 0, len(profilePictureSizes))
 	for _, target := range profilePictureSizes {
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
 		encoded, checksum, err := renderDefaultProfilePictureV1(seed, target)
 		if err != nil {
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
+			return nil, err
+		}
+		if err = ctx.Err(); err != nil {
 			return nil, err
 		}
 		rendition, err := model.NewFileRendition(model.NewFileRenditionID(), revisionID, fmt.Sprintf("profile_%d", target), "image/webp", int64(len(encoded)), target, target, checksum, at)
@@ -105,9 +142,23 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 }
 
 // RenderDefaultProfilePicture renders an unpersisted version-one fallback.
-func (c *Content) RenderDefaultProfilePicture(_ context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
+func (c *Content) RenderDefaultProfilePicture(ctx context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
+	if c == nil || c.filesystem == nil {
+		return nil, app.ErrInvalidProfilePicture
+	}
+	finish, err := c.beginWork(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
 	encoded, checksum, err := renderDefaultProfilePictureV1(seed, size)
 	if err != nil {
+		return nil, err
+	}
+	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
 	return &app.RenderedProfilePicture{Body: io.NopCloser(bytes.NewReader(encoded)), MediaType: "image/webp", Size: int64(len(encoded)), SHA256: checksum}, nil

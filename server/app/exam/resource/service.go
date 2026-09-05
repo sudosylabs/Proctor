@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -59,9 +60,6 @@ type AccessStore interface {
 	Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error)
 	Get(context.Context, model.ExamID, model.UserID) (*store.ExamAuthoringSnapshot, error)
 }
-type Memberships interface {
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-}
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
@@ -84,6 +82,8 @@ type FileContent interface {
 type invalidContentError interface {
 	InvalidExamResourceContent()
 }
+
+type workCapacityError interface{ WorkCapacityExceeded() }
 
 type CreateCommand struct {
 	ExamID                           model.ExamID
@@ -141,7 +141,7 @@ func cloneStringPointer(value *string) *string {
 type Service struct {
 	persistence   store.ExamResourceStore
 	access        AccessStore
-	memberships   Memberships
+	memberships   manageraccess.Memberships
 	authorizer    Authorizer
 	auditor       Auditor
 	effects       Effects
@@ -154,7 +154,7 @@ type Service struct {
 	newLeaseID    func() model.UploadLeaseID
 }
 
-func New(persistence store.ExamResourceStore, access AccessStore, memberships Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content FileContent, now func() time.Time, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID) (*Service, error) {
+func New(persistence store.ExamResourceStore, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content FileContent, now func() time.Time, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID) (*Service, error) {
 	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || content == nil || now == nil || newResourceID == nil || newEntryID == nil || newRevisionID == nil || newLeaseID == nil {
 		return nil, errors.New("exam resource dependencies are required")
 	}
@@ -514,34 +514,22 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	if access == nil || access.Exam == nil {
 		return authorizationDecision{}, unavailable(errors.New("missing access"))
 	}
-	ordinary := false
+	var at time.Time
 	if access.ActorIsManager {
-		members, memberErr := s.memberships.ListActiveByUser(ctx, principal.UserID.String(), model.MillisFromTime(s.now()))
-		if memberErr != nil {
-			return authorizationDecision{}, unavailable(memberErr)
-		}
-		for _, member := range members {
-			if member != nil && member.AcademicUnitID == access.Exam.AcademicUnitID {
-				ordinary = true
-				break
-			}
-		}
+		at = s.now()
 	}
-	action := model.ActionExamView
+	ordinaryAction, overrideAction := model.ActionExamView, model.ActionExamViewOverride
 	if manage {
-		action = model.ActionExamManage
+		ordinaryAction, overrideAction = model.ActionExamManage, model.ActionExamManageOverride
 	}
-	if !ordinary {
-		if manage {
-			action = model.ActionExamManageOverride
-		} else {
-			action = model.ActionExamViewOverride
-		}
+	action, err := manageraccess.SelectAction(ctx, s.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	if err != nil {
+		return authorizationDecision{}, unavailable(err)
 	}
 	if err = s.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()}); err != nil {
 		return authorizationDecision{}, err
 	}
-	return authorizationDecision{override: !ordinary, academicUnitID: access.Exam.AcademicUnitID}, nil
+	return authorizationDecision{override: action == overrideAction, academicUnitID: access.Exam.AcademicUnitID}, nil
 }
 
 // currentActiveDraft permits an unaudited no-op only after a bounded
@@ -582,6 +570,10 @@ func invalidCause(field string, cause error) error {
 }
 func unavailable(cause error) error { return &Fault{Code: "exam.resource.unavailable", Cause: cause} }
 func mapContent(err error) error {
+	var capacity workCapacityError
+	if errors.As(err, &capacity) {
+		return &Fault{Code: "service.busy", Cause: err}
+	}
 	var invalidContent invalidContentError
 	if errors.As(err, &invalidContent) {
 		return &Fault{Code: "exam.resource.invalid_content", Cause: err}

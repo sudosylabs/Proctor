@@ -10,7 +10,7 @@ info:
   title: Proctor Server API
   version: 1.0.0
   description: >-
-    The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures.
+    The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures. JSON request bodies require one Content-Type of application/json, optionally with charset=utf-8. Unsafe browser requests must use the configured public origin; conflicting Origin or Fetch Metadata headers are rejected before authentication. Native clients may omit browser headers. Cookie-authenticated mutations also require their signed CSRF proof. CAS and OIDC GET callbacks retain their purpose-specific state and browser-binding checks.
 servers:
   - url: /
 tags:

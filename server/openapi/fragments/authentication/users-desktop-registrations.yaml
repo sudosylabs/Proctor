@@ -42,7 +42,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/DesktopRegistrationID'
       x-proctor-auth: strong_recent_session_required
-      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.strong_required, authentication.reauthentication_required, request.invalid, resource.not_found, audit.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
+      x-proctor-error-codes: [authentication.required, authentication.invalid_token, authentication.credential_ambiguous, desktop_registration.unavailable, authentication.csrf.invalid, authentication.strong_required, authentication.reauthentication_required, request.invalid, resource.not_found, audit.unavailable, authentication.dpop.invalid, authentication.dpop.replayed, authentication.dpop.use_nonce, authentication.dpop.unavailable]
       x-proctor-idempotency: none
       security:
         - bearerAuth: []

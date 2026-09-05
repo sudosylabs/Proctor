@@ -12,6 +12,11 @@ import (
 	"errors"
 )
 
+// Access-key deletion retains the peer invalidation contract and clears
+// snapshots left by an older process. Current authentication never reads or
+// writes positive entries in this namespace.
+const authenticationCachePrefix = "authentication/access/"
+
 type authenticationInvalidator interface {
 	InvalidateAccessCredentials(context.Context, []string)
 	InvalidateSessionActivity(context.Context, []string)

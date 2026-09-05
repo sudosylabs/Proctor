@@ -68,8 +68,15 @@ type DesktopAuthorizationContext struct {
 
 // DesktopAuthorizationAuthentication binds one proved identity to the exact
 // browser transaction. The Store rechecks active User, authentication policy,
-// external-identity provenance, and the active-Attempt Session lock together.
+// external-identity provenance, password proof, and the active-Attempt Session
+// lock together. Reusing a Web Session requires its exact live access credential;
+// the Store derives the authentication context from that Session. Otherwise a
+// local authentication supplies PasswordProof and an external one supplies its
+// exact External Identity. Source Session and direct password proof cannot mix.
 type DesktopAuthorizationAuthentication struct {
+	PasswordProof            PasswordCredentialProof
+	SourceSessionID          model.SessionID
+	SourceCredentialID       model.SessionCredentialID
 	BindingHash              string
 	TransactionID            model.BrowserAuthenticationTransactionID
 	UserID                   model.UserID

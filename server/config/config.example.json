@@ -118,6 +118,9 @@
       "Secure": true
     }
   },
+  "FileContent": {
+    "MaximumConcurrentOperations": 2
+  },
   "Execution": {
     "Enabled": false,
     "DialTimeout": "10s",
@@ -130,6 +133,7 @@
       "DevelopmentMode": true
     },
     "Password": {
+      "MaximumConcurrentOperations": 2,
       "MinimumLength": 12,
       "MaximumLength": 128,
       "ArgonMemoryKiB": 65536,

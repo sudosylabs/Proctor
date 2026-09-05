@@ -126,6 +126,25 @@ The composition root translates configuration into small immutable application
 policies or explicit dynamic ports. Application services never receive the
 whole `config.Config` or `config.Store`.
 
+`Authentication.Password.MaximumConcurrentOperations` and
+`FileContent.MaximumConcurrentOperations` independently bound expensive work
+on each node. Both default to two, must be positive, and require restart.
+Their environment overrides are
+`PROCTOR_AUTHENTICATION_PASSWORD_MAXIMUM_CONCURRENT_OPERATIONS` and
+`PROCTOR_FILE_CONTENT_MAXIMUM_CONCURRENT_OPERATIONS`. Password hashing,
+verification, and dummy verification share the password limit; Resource
+content validation, profile-picture normalization, and default-picture
+generation/rendering share the content limit. A full pool refuses work
+immediately without an in-memory waiting queue. Ordinary streaming Workspace
+operations, exact content reads, and deletion retain their own bounds.
+
+These are concurrent-operation limits, not hard memory budgets. Stored
+password hashes retain their validated work factors, which can exceed the
+current generation policy. Operators should measure their workloads and size
+each node for the admitted work plus normal runtime overhead. Each permit is
+held until synchronous processing returns, even when the caller cancels; a
+request cancellation cannot stop an Argon or codec call already in progress.
+
 Runtime reconfiguration is capability-specific. Logging and the external
 provider registry reconfigure dynamically; listener addresses, HTTP limits,
 cluster backend, node identity, and the execution-host catalog require restart. Structural validation and

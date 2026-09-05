@@ -411,12 +411,12 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 	user := saveIntegrationUser(t, ctx, persistence, &model.User{Username: "desktop-session-limit", Email: "desktop-session-limit@example.edu"})
 	created, code, state, verifier := issueDesktopAuthorizationForSQLTest(t, ctx, persistence, institution.ID, user.ID)
 	now := model.NowUTC()
-	existing, _, err := persistence.Session().Save(ctx, &model.Session{UserID: user.ID, ClientType: model.SessionClientWeb,
+	existing, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour)}, []*model.SessionCredential{
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(2 * time.Hour)},
-	}, 10)
+	}, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,6 +438,122 @@ func TestDesktopAuthorizationMaximumActiveSessionConflictDoesNotConsumeCode(t *t
 	result, err := persistence.BrowserAuthentication().Exchange(ctx, exchange)
 	if err != nil || result == nil || result.Session == nil {
 		t.Fatalf("Exchange after freeing slot did not retain code %s = %#v, %v", created.ID, result, err)
+	}
+}
+
+func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
+	ctx := context.Background()
+	persistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "desktop-source-proof", DisplayName: "Desktop Source Proof"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"live", "revoked session", "expired session", "idle expired session", "revoked credential", "expired credential", "rotated credential", "other Session credential", "refresh credential"} {
+		t.Run(name, func(t *testing.T) {
+			user := saveIntegrationUser(t, ctx, persistence, &model.User{
+				Username: "source-" + model.NewId(), Email: model.NewId() + "@source.example.edu",
+			})
+			session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
+			session.AuthenticationStrength = model.AuthenticationMultiFactor
+			session.AuthenticatedAt = model.NowUTC().Add(-2 * time.Minute)
+			session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt.Add(time.Minute))
+			creation := sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10)
+			source, savedCredentials, err := persistence.Session().Save(ctx, creation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var access, refresh *model.SessionCredential
+			for _, credential := range savedCredentials {
+				if credential.Kind == model.SessionCredentialAccess {
+					access = credential
+				} else {
+					refresh = credential
+				}
+			}
+			if access == nil || refresh == nil {
+				t.Fatal("source Session fixture has no credential pair")
+			}
+			transaction, handle, proof, state, _ := desktopAuthorizationTransactionForSQLTest(model.NowUTC(), institution.ID)
+			if _, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction); err != nil {
+				t.Fatal(err)
+			}
+			binding, err := bindDesktopAuthorizationForSQLTest(ctx, persistence, handle, proof, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := &store.DesktopAuthorizationAuthentication{
+				BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
+				AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
+				SourceSessionID: source.ID, SourceCredentialID: access.ID,
+				Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+			}
+			switch name {
+			case "revoked session":
+				_, err = persistence.Session().Revoke(ctx, source.ID.String(), user.ID.String(), model.GetMillis(), model.SessionRevocationUserSession)
+			case "expired session":
+				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET expires_at=statement_timestamp(),idle_expires_at=statement_timestamp() WHERE id=?`, source.ID.String())
+			case "idle expired session":
+				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions SET idle_expires_at=clock_timestamp() WHERE id=?`, source.ID.String())
+			case "revoked credential":
+				_, err = persistence.GetMaster().Exec(ctx, `UPDATE session_credentials SET revoked_at=clock_timestamp() WHERE id=?`, access.ID.String())
+			case "expired credential":
+				_, err = persistence.GetMaster().Exec(ctx, `UPDATE session_credentials SET expires_at=clock_timestamp() WHERE id=?`, access.ID.String())
+			case "rotated credential":
+				now := model.TimeUTC(time.Now())
+				_, err = persistence.SessionCredential().RotateRefresh(ctx, refresh.TokenHash,
+					&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(time.Minute)},
+					&model.SessionCredential{TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: source.ExpiresAt},
+					now, now.Add(time.Hour))
+			case "other Session credential":
+				otherSession, otherCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
+				_, otherSavedCredentials, saveErr := persistence.Session().Save(ctx,
+					sessionCreationForSQLTest(t, ctx, persistence, otherSession, otherCredentials, 10))
+				err = saveErr
+				for _, credential := range otherSavedCredentials {
+					if credential.Kind == model.SessionCredentialAccess {
+						input.SourceCredentialID = credential.ID
+					}
+				}
+			case "refresh credential":
+				input.SourceCredentialID = refresh.ID
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
+			if name != "live" {
+				if result != nil || !store.IsNotFound(err) {
+					t.Fatalf("AuthenticateDesktopAuthorization(%s) = %#v, %v", name, result, err)
+				}
+				current, contextErr := persistence.BrowserAuthentication().GetDesktopAuthorizationContext(ctx, input.BindingHash)
+				if contextErr != nil || current.State != model.BrowserAuthenticationStateBound || !current.UserID.IsZero() {
+					t.Fatalf("rejected source changed browser transaction = %#v, %v", current, contextErr)
+				}
+				return
+			}
+			if err != nil || result == nil || result.Denied {
+				t.Fatalf("AuthenticateDesktopAuthorization(live) = %#v, %v", result, err)
+			}
+			var stored browserAuthenticationRow
+			if err = persistence.GetMaster().Get(ctx, &stored, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions WHERE id=?`, transaction.ID.String()); err != nil {
+				t.Fatal(err)
+			}
+			authenticated, err := stored.model()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if authenticated.AuthenticationStrength != source.AuthenticationStrength ||
+				!authenticated.AuthenticatedAt.Time.Equal(model.TimeFromMillis(source.AuthenticatedAt.UnixMilli())) ||
+				!authenticated.MFACompletedAt.Time.Equal(model.TimeFromMillis(source.MFACompletedAt.Millis())) ||
+				authenticated.PasswordCredentialID != creation.PasswordProof.ID ||
+				authenticated.PasswordCredentialRevision != creation.PasswordProof.Revision {
+				t.Fatal("Desktop authentication did not derive current assurance and password proof from the live source Session")
+			}
+			if input.AuthenticationStrength != model.AuthenticationSingleFactor || input.PasswordProof.IsValid() {
+				t.Fatal("Desktop authentication mutated the caller's source proof")
+			}
+		})
 	}
 }
 
@@ -530,12 +646,15 @@ func TestDesktopAuthorizationRetentionTerminalizesEveryLiveStateAndPurgesSafeMet
 	if _, err = persistence.BrowserAuthentication().CreateDesktopAuthorization(ctx, exchanged); err != nil {
 		t.Fatal(err)
 	}
+	passwordProof := passwordProofForSQLTest(t, ctx, persistence, user.ID)
 	if _, err = persistence.GetMaster().Exec(ctx, `UPDATE browser_authentication_transactions
 		SET state='exchanged', handle_hash=NULL, browser_proof_hash=NULL, state_hash=NULL, callback_url=NULL,
 		    code_challenge=NULL, proposed_public_jwk=NULL, proposed_key_thumbprint=NULL, desktop_release=NULL,
 		    desktop_build_id=NULL, desktop_platform=NULL, desktop_architecture=NULL, desktop_realtime_protocol=NULL,
 		    user_id=?, authentication_method='password', authentication_strength='single_factor',
-		    authenticated_at=created_at, exchanged_at=updated_at WHERE id=?`, user.ID.String(), exchanged.ID.String()); err != nil {
+		    password_credential_id=?, password_credential_revision=?,
+		    authenticated_at=created_at, exchanged_at=updated_at WHERE id=?`,
+		user.ID.String(), passwordProof.ID.String(), passwordProof.Revision, exchanged.ID.String()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -665,8 +784,13 @@ func bindAndAuthenticateDesktopAuthorizationForSQLTest(t *testing.T, ctx context
 	if err != nil {
 		t.Fatal(err)
 	}
+	var passwordProof store.PasswordCredentialProof
+	if method == "password" {
+		passwordProof = passwordProofForSQLTest(t, ctx, persistence, userID)
+	}
 	result, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx,
 		&store.DesktopAuthorizationAuthentication{BindingHash: model.HashToken(binding), UserID: userID,
+			PasswordProof:        passwordProof,
 			AuthenticationMethod: method, AuthenticationProviderID: providerID, ExternalIdentityID: identityID,
 			AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(), Capabilities: capabilities})
 	if err != nil || result == nil || result.Denied {

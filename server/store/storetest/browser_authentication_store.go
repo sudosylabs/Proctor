@@ -105,7 +105,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	if saved.ID != transaction.ID || saved.ExpiresAt.IsZero() {
 		t.Fatalf("Create() = %#v", saved)
 	}
-	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state, user.ID)
+	binding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss, handle, proof, state, user.ID)
 
 	expiredCreatedAt := now.Add(-10 * time.Minute)
 	expiredPending, expiredHandle, expiredProof, expiredState, _ := newDesktopAuthorizationTransaction(expiredCreatedAt, institution.ID)
@@ -290,7 +290,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	disabledTransaction, disabledHandle, disabledProof, disabledState, disabledVerifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	_, err = ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, disabledTransaction)
 	requireNoError(t, err)
-	disabledBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), disabledHandle, disabledProof, disabledState, disabledUser.ID)
+	disabledBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss, disabledHandle, disabledProof, disabledState, disabledUser.ID)
 	disabledCode := model.NewCredentialToken()
 	disabledIssueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, disabledUser.ID, "issue-disabled-user")
 	_, err = ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
@@ -316,6 +316,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 	rejectedBinding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), rejectedHandle, rejectedProof, rejectedState)
 	_, err = ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 		BindingHash: model.HashToken(rejectedBinding), UserID: disabledUser.ID,
+		PasswordProof:        testPasswordProof(t, ctx, ss, disabledUser.ID),
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt: model.GetMillis(),
 		Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
@@ -355,7 +356,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		issuedTransaction, issuedHandle, issuedProof, issuedState, issuedVerifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 		_, createErr := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, issuedTransaction)
 		requireNoError(t, createErr)
-		issuedBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss.BrowserAuthentication(),
+		issuedBinding := bindAndAuthenticateDesktopAuthorization(t, ctx, ss,
 			issuedHandle, issuedProof, issuedState, fixture.candidate.ID)
 		issuedCode := model.NewCredentialToken()
 		issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, fixture.candidate.ID, "issue-before-attempt")
@@ -389,6 +390,7 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 		authenticated, authenticationErr := ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx,
 			&store.DesktopAuthorizationAuthentication{
 				BindingHash: model.HashToken(pendingBinding), UserID: fixture.candidate.ID,
+				PasswordProof:        testPasswordProof(t, ctx, ss, fixture.candidate.ID),
 				AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 				AuthenticatedAt: model.GetMillis(),
 				Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
@@ -436,13 +438,15 @@ func bindDesktopAuthorization(t *testing.T, ctx context.Context, persistence sto
 	return binding
 }
 
-func bindAndAuthenticateDesktopAuthorization(t *testing.T, ctx context.Context, persistence store.BrowserAuthenticationStore,
+func bindAndAuthenticateDesktopAuthorization(t *testing.T, ctx context.Context, ss store.Store,
 	handle, proof, state string, userID model.UserID,
 ) string {
 	t.Helper()
+	persistence := ss.BrowserAuthentication()
 	binding := bindDesktopAuthorization(t, ctx, persistence, handle, proof, state)
 	result, err := persistence.AuthenticateDesktopAuthorization(ctx, &store.DesktopAuthorizationAuthentication{
 		BindingHash: model.HashToken(binding), UserID: userID, AuthenticationMethod: "password",
+		PasswordProof:          testPasswordProof(t, ctx, ss, userID),
 		AuthenticationStrength: model.AuthenticationSingleFactor, AuthenticatedAt: model.GetMillis(),
 		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 	})

@@ -16,6 +16,7 @@ paths:
         - Authentication
       x-proctor-auth: public
       x-proctor-error-codes:
+        - service.busy
         - request.invalid
         - authentication.password.invalid
         - authentication.registration.invalid
