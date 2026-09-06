@@ -277,8 +277,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         .filter((link) => link.media === "" || matchMedia(link.media).matches)
         .map((link) => new URL(link.href).pathname),
     );
-    const expectedMark =
-      colorScheme === "dark" ? "proctor-mark-white" : "proctor-mark";
+    const expectedMark = `proctor-favicon-${colorScheme}`;
     expect(activeFavicons).toHaveLength(2);
     expect(activeFavicons.every((href) => href.includes(expectedMark))).toBe(
       true,

@@ -1,9 +1,16 @@
-.PHONY: check build-scripts-check webapp-install webapp-check docs-install docs-start docs-check server-check integration independent-modules ci
+.PHONY: check brand-check brand-copy build-scripts-check webapp-install webapp-check docs-install docs-start docs-check server-check integration independent-modules ci
 
-check: build-scripts-check webapp-check docs-check server-check ## Run the hermetic product gate.
+check: brand-check build-scripts-check webapp-check docs-check server-check ## Run the hermetic product gate.
+
+brand-check: ## Check package-local copies against approved brand artwork.
+	@node "$(ROOT_DIR)/build/brand-assets.mjs" check
+
+brand-copy: ## Copy approved artwork into its owning packages for review.
+	@node "$(ROOT_DIR)/build/brand-assets.mjs" copy
 
 build-scripts-check:
 	@node --test "$(ROOT_DIR)"/build/ci/*.test.mjs
+	@node --test "$(ROOT_DIR)/build/brand-assets.test.mjs"
 	@for script in "$(ROOT_DIR)"/build/scripts/*; do sh -n "$$script"; done
 	@"$(ROOT_DIR)/build/scripts/test-check-tools" "$(ROOT_DIR)/build/scripts/check-tools"
 	@"$(ROOT_DIR)/build/scripts/test-check-go-tools" "$(ROOT_DIR)/build/scripts/check-go-tools"

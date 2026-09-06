@@ -308,8 +308,9 @@ the interface icon grammar. CSS indicators that express a component's
 structure or progress also remain owned by that component rather than being
 approximated by a glyph.
 Webapp-owned copies and their provenance are governed beside the assets in
-[`src/assets/brand`](./src/assets/brand/README.md); product code never imports
-the repository masters directly.
+[`src/assets/brand`](./src/assets/brand/README.md). Product code and package
+tooling use only these local copies; their review manifest records accepted
+content and dimensions.
 
 Meaningful images have intrinsic dimensions, alternative text, and a governed
 same-origin source. Decorative imagery is exceptional in the operational
@@ -336,10 +337,10 @@ not instructions to fill every viewport.
 
 The initial access-page family gives the governed Proctor lockup clear space
 without an adjacent decorative rule. An effective light-scheme product theme
-uses the purple-mark, ink-wordmark lockup; an effective dark-scheme product
-theme uses the purple-mark, white-wordmark lockup. The standalone browser
-favicon intentionally remains a browser-chrome policy that follows the system
-preference: purple mark for system light and white mark for system dark. An
+uses the flat purple-mark, ink-wordmark lockup; an effective dark-scheme product
+theme uses the flat purple-mark, white-wordmark lockup. The transparent 2.5D
+browser favicon remains a browser-chrome policy that follows the system
+preference: purple for system light and ivory with lilac for system dark. An
 explicit product theme does not rewrite that favicon choice. The black mark is
 not a product-webapp asset.
 

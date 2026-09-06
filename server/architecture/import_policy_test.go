@@ -275,6 +275,7 @@ var dependencyRules = []dependencyRule{
 		name:           "mail application",
 		sources:        []pathPattern{subtree(serverModule + "/app/mail")},
 		deniedStandard: standardInfrastructureExceptFS,
+		thirdParty:     only(exact("golang.org/x/net/html")),
 		project: only(
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),

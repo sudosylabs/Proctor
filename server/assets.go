@@ -17,7 +17,7 @@ import (
 // Runtime assets stay embedded without turning their source directories into
 // Go packages.
 //
-//go:embed i18n/*.json templates/*.html templates/*.txt
+//go:embed i18n/*.json templates/*.html templates/*.txt templates/*.png
 var runtimeAssets embed.FS
 
 func runtimeAssetDirectory(name string) (fs.FS, error) {

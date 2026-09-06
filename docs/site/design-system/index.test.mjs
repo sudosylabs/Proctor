@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {readFile, readdir} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
@@ -11,7 +12,7 @@ import {
   renderDesignTokenCSS,
 } from './index.mjs';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('the tracked design-system adapter is current and valid', async () => {
   assert.deepEqual(await auditDesignSystem(), []);
@@ -38,27 +39,31 @@ test('retired illustration systems are no longer accepted', () => {
   );
 });
 
-test('documentation brand copies match their canonical masters', async () => {
-  const [canonicalWordmark, docsWordmark, canonicalDarkMark, docsDarkMark] =
-    await Promise.all([
-      readFile(
-        resolve(repoRoot, 'assets/brand/lockup/proctor-docs-lockup-white.svg'),
-        'utf8',
-      ),
-      readFile(
-        resolve(
-          repoRoot,
-          'docs/site/static/img/brand/proctor-docs-lockup-white.svg',
-        ),
-        'utf8',
-      ),
-      readFile(resolve(repoRoot, 'assets/brand/mark/proctor-mark-black.svg'), 'utf8'),
-      readFile(
-        resolve(repoRoot, 'docs/site/static/img/brand/proctor-mark-dark.svg'),
-        'utf8',
-      ),
-    ]);
+test('documentation ships only the reviewed local brand assets', async () => {
+  const brandDirectory = resolve(siteRoot, 'static/img/brand');
+  const expectedDigests = {
+    'proctor-docs-lockup-white.svg':
+      'ddd47cdd882006acb919a7bdb80b2098d4409800ea76c9f1900d89405bfed604',
+    'proctor-favicon-dark.svg':
+      'dbef0c418cd7fcb8bfda37824f15513e2ae57c09bed8553f351ba68ab1387617',
+    'proctor-favicon-light-32.png':
+      '8ddc9e10b52121abff7b9c356023587f7fa9b10b4d46ffa853947fc5f23fe69d',
+    'proctor-favicon-light.svg':
+      'a7a43a34b58c0da5e3247cc611f19168a2d4dc7d7ce416c076d1169ef356e4fb',
+  };
+  assert.deepEqual(
+    (await readdir(brandDirectory)).sort(),
+    Object.keys(expectedDigests).sort(),
+  );
 
-  assert.equal(docsWordmark, canonicalWordmark);
-  assert.equal(docsDarkMark, canonicalDarkMark);
+  await Promise.all(
+    Object.entries(expectedDigests).map(async ([name, expectedDigest]) => {
+      const contents = await readFile(resolve(brandDirectory, name));
+      assert.equal(
+        createHash('sha256').update(contents).digest('hex'),
+        expectedDigest,
+        `reviewed documentation asset ${name} changed`,
+      );
+    }),
+  );
 });

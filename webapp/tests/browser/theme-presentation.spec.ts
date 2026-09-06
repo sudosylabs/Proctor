@@ -94,8 +94,7 @@ for (const themeCase of [
       ]);
     }
 
-    const expectedFavicon =
-      themeCase.system === "dark" ? "proctor-mark-white" : "proctor-mark";
+    const expectedFavicon = `proctor-favicon-${themeCase.system}`;
     expect(presentation.activeFavicons).toHaveLength(2);
     expect(
       presentation.activeFavicons.every((href) =>

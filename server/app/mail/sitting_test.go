@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,6 +59,9 @@ func TestSittingComposerFreezesAndSelectsRecipientLocales(t *testing.T) {
 			t.Fatalf("PrepareRecipient(%q): %v", test.locale, prepareErr)
 		}
 		payload := openSittingTestPayload(t, sealer, delivery)
+		if !strings.Contains(payload.HTML, `src="cid:`+testLockupCID+`"`) {
+			t.Fatal("fan-out changed the immutable logo reference")
+		}
 		if payload.Subject != test.wantSubject {
 			t.Fatalf("PrepareRecipient(%q) subject = %q, want %q", test.locale, payload.Subject, test.wantSubject)
 		}
@@ -77,7 +81,7 @@ func (localizedSittingRenderer) Render(request RenderRequest) (FrozenContent, er
 	}
 	key, locale := request.Key, request.Locale
 	return FrozenContent{Subject: locale + ":" + string(key), Text: locale + ":" + details.ExamTitle,
-		HTML: "<p>" + locale + ":" + details.ExamTitle + "</p>"}, nil
+		HTML: `<img src="cid:` + testLockupCID + `"><p>` + locale + ":" + details.ExamTitle + "</p>"}, nil
 }
 
 type sittingSenderFake struct {

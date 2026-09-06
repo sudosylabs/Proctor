@@ -138,6 +138,10 @@ func newRenderer(files fs.FS, localizer *localization.Localizer, validateComplet
 	if files == nil || localizer == nil {
 		return nil, errors.New("mail renderer dependencies are invalid")
 	}
+	assets, err := NewInlineAssets(files)
+	if err != nil {
+		return nil, fmt.Errorf("load mail inline assets: %w", err)
+	}
 	renderer := &templateRenderer{
 		localizer: localizer,
 		html:      make(map[model.MailTemplateKey]*htmltemplate.Template),
@@ -153,6 +157,10 @@ func newRenderer(files fs.FS, localizer *localization.Localizer, validateComplet
 		htmlSource, err := fs.ReadFile(files, name+".html")
 		if err != nil {
 			return nil, fmt.Errorf("read HTML mail template %q: %w", key, err)
+		}
+		images, err := assets.ForHTML(string(htmlSource))
+		if err != nil || len(images) != 1 {
+			return nil, fmt.Errorf("mail template %q must reference one released inline logo", key)
 		}
 		htmlValue, err := htmltemplate.New(name).Option("missingkey=error").Parse(string(htmlSource))
 		if err != nil {

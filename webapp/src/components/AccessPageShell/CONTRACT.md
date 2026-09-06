@@ -12,7 +12,7 @@ buttons, notices, headings, Institution content, navigation decisions, or
 document metadata. Feature pages provide all visible localized copy and retain
 their own state semantics.
 
-The shell renders a canonical Proctor lockup rather than reconstructing one
+The shell renders a flat Proctor lockup rather than reconstructing one
 from the standalone mark and live text. It consumes the shared effective
 product theme: a light-scheme theme uses the purple mark with ink wordmark and
 a dark-scheme theme uses the purple mark with white wordmark. It does not query

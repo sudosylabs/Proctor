@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
@@ -42,14 +43,28 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 	if bytes.Contains(firstIndex, []byte("@")) {
 		t.Fatal("preview index appears to contain a production-like email address")
 	}
+	wantImage, err := os.ReadFile("../../templates/proctor-lockup-25d-v1.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, output := range []string{first, second} {
+		image, err := os.ReadFile(filepath.Join(output, "proctor-lockup-25d-v1.png"))
+		if err != nil || !bytes.Equal(image, wantImage) {
+			t.Fatalf("preview image differs from released mail asset: %v", err)
+		}
+	}
 	keys := model.AllMailTemplateKeys()
 	if len(keys) != 44 {
 		t.Fatalf("preview catalog keys = %d, want 44", len(keys))
 	}
 	for _, catalogKey := range keys {
 		key := string(catalogKey)
-		if _, err := os.Stat(filepath.Join(first, key+".html")); err != nil {
+		body, err := os.ReadFile(filepath.Join(first, key+".html"))
+		if err != nil {
 			t.Fatalf("%s HTML preview: %v", key, err)
+		}
+		if !strings.Contains(string(body), `src="proctor-lockup-25d-v1.png"`) || strings.Contains(string(body), `src="cid:`) {
+			t.Fatalf("%s preview image does not resolve locally", key)
 		}
 		if _, err := os.Stat(filepath.Join(first, key+".txt")); err != nil {
 			t.Fatalf("%s text preview: %v", key, err)

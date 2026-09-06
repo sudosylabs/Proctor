@@ -46,6 +46,7 @@ async function sourceDigest(root, sourceName) {
   const inputs = [
     sourceName,
     ...partialNames.map((name) => path.posix.join("partials", name)),
+    ...await filesWithExtension(root, ".png"),
     "package.json",
     "package-lock.json",
   ];
