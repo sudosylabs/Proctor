@@ -1392,6 +1392,10 @@ type UserTokenMailIssue struct {
 // UserEmailChange is the named transition that replaces the account address,
 // invalidates prior verification credentials, and commits the new verification
 // credential plus frozen old/new-address notifications atomically.
+// New credential, mail, and Job timestamps and deadlines use one database
+// instant. Existing User and superseded token lifecycle timestamps never move
+// backward; their creation times and superseded token expiries are preserved.
+// Those lifecycle bounds do not shift the new credential or delivery deadlines.
 type UserEmailChange struct {
 	UserID                                    model.UserID
 	ExpectedRevision                          int64

@@ -134,10 +134,12 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err = tx.Select(ctx, &priorIDs, `SELECT id FROM user_tokens WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("lock prior email tokens: %w", err)
 		}
-		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=?,archived_at=? WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
+		// Existing lifecycle times can lead the database clock. Preserve their
+		// ordering without moving the new credential or mail deadlines forward.
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at,?),archived_at=GREATEST(updated_at,?) WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("invalidate prior email tokens: %w", err)
 		}
-		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,mail_eligibility_revision=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
 		if err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}

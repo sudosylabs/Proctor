@@ -211,6 +211,13 @@ return a generic accepted response; successful completion atomically changes
 the password, revokes all sessions, consumes the token, records the terminal
 audit, and queues only the password-changed security notice.
 
+Email changes preserve prepared User lifecycle history, including imported
+timestamps ahead of the database clock. User updates and superseded token
+archival cannot move existing lifecycle metadata backwards. Those metadata
+floors never determine credential validity: one PostgreSQL instant establishes
+the replacement token and frozen mail lifetimes, and superseded credentials
+become unusable atomically regardless of their archival timestamp.
+
 Password proof names the verified Password Credential and its revision. Every
 password reset or offline password rotation advances that revision, including
 replacement with the same password. A work-factor rehash changes only the
