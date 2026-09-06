@@ -173,7 +173,8 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
-		if err := resolveDesktopAuthenticationProof(ctx, tx, input); err != nil {
+		source, err := resolveDesktopAuthenticationProof(ctx, tx, input)
+		if err != nil {
 			return nil, err
 		}
 		if err := requireExactExternalIdentity(ctx, tx, input.UserID, input.AuthenticationProviderID, input.ExternalIdentityID); err != nil {
@@ -210,26 +211,47 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 			}
 			return &store.DesktopAuthorizationAuthenticationResult{Denied: true}, nil
 		}
-		result, err := tx.Exec(ctx, `UPDATE browser_authentication_transactions
+		// Fresh local proof gets one database authentication instant. Provider
+		// history can only move back to that instant; Session history stays exact.
+		authenticatedAt := model.TimeFromMillis(input.AuthenticatedAt)
+		mfaCompletedAt := model.OptionalTimeFromMillis(input.MFACompletedAt)
+		if source != nil {
+			authenticatedAt, mfaCompletedAt = source.AuthenticatedAt, source.MFACompletedAt
+		}
+		freshPassword := source == nil && input.AuthenticationMethod == "password"
+		// A User row lock above may outlast a previously checked source proof.
+		// Recheck all source deadlines against this same transition instant.
+		var authenticated browserAuthenticationRow
+		err = tx.Get(ctx, &authenticated, `UPDATE browser_authentication_transactions
 		   SET updated_at=authenticated.at,state='authenticated',user_id=?,authentication_method=?,
 		       authentication_provider_id=NULLIF(?,''),external_identity_id=NULLIF(?,''),
 		       password_credential_id=NULLIF(?,''),password_credential_revision=NULLIF(?,0),authentication_strength=?,
-		       authenticated_at=?,mfa_completed_at=?
+		       authenticated_at=CASE WHEN ? THEN authenticated.at WHEN ? THEN ?::timestamptz
+		                             ELSE LEAST(?::timestamptz,authenticated.at) END,
+		       mfa_completed_at=CASE WHEN ? THEN NULL WHEN ? THEN authenticated.at WHEN ? THEN ?::timestamptz
+		                             ELSE LEAST(?::timestamptz,authenticated.at) END
 		  FROM (SELECT clock_timestamp() AS at) AS authenticated
 		 WHERE purpose='desktop_authorization' AND state='bound' AND `+selector+`=?
-		   AND created_at<=authenticated.at AND expires_at>authenticated.at`,
+		   AND created_at<=authenticated.at AND expires_at>authenticated.at
+		   AND (? OR EXISTS (
+		       SELECT 1 FROM sessions source JOIN session_credentials credential ON credential.session_id=source.id
+		        WHERE source.id=? AND source.user_id=? AND source.client_type='web'
+		          AND source.archived_at IS NULL AND source.revoked_at IS NULL
+		          AND source.expires_at>authenticated.at AND source.idle_expires_at>authenticated.at
+		          AND credential.id=? AND credential.kind='access'
+		          AND credential.archived_at IS NULL AND credential.revoked_at IS NULL
+		          AND credential.expires_at>authenticated.at))
+		 RETURNING `+browserAuthenticationColumns,
 			input.UserID.String(), input.AuthenticationMethod, input.AuthenticationProviderID, input.ExternalIdentityID.String(),
-			input.PasswordProof.ID.String(), input.PasswordProof.Revision, input.AuthenticationStrength, model.TimeFromMillis(input.AuthenticatedAt),
-			NullTimeFromOptional(model.OptionalTimeFromMillis(input.MFACompletedAt)), selectorValue)
+			input.PasswordProof.ID.String(), input.PasswordProof.Revision, input.AuthenticationStrength,
+			freshPassword, source != nil, authenticatedAt, authenticatedAt,
+			!mfaCompletedAt.Valid, freshPassword, source != nil, NullTimeFromOptional(mfaCompletedAt), NullTimeFromOptional(mfaCompletedAt),
+			selectorValue, source == nil, input.SourceSessionID.String(), input.UserID.String(), input.SourceCredentialID.String())
 		if err != nil {
 			return nil, translateError("browser_authentication_transaction", "binding", err)
 		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("read desktop authorization authentication: %w", err)
-		}
-		if affected != 1 {
-			return nil, store.NewErrNotFound("browser_authentication_transaction", "binding")
+		if _, err = authenticated.model(); err != nil {
+			return nil, err
 		}
 		return &store.DesktopAuthorizationAuthenticationResult{}, nil
 	})
@@ -808,7 +830,8 @@ func (s SQLBrowserAuthenticationStore) ResolveDesktopAuthorizationExchange(ctx c
 // Session reuse derives current assurance from durable state, never a previously
 // resolved Principal. Direct password authentication instead supplies the exact
 // credential revision verified before entering this transaction.
-func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecutor, input *store.DesktopAuthorizationAuthentication) error {
+func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecutor, input *store.DesktopAuthorizationAuthentication) (*model.Session, error) {
+	var source *model.Session
 	if input.SourceSessionID.IsValid() {
 		var row sessionRow
 		if err := executor.Get(ctx, &row, `SELECT `+strings.Join(sessionSliceColumns(), ",")+`
@@ -820,20 +843,19 @@ func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecuto
 		   AND credential.archived_at IS NULL AND credential.revoked_at IS NULL
 		   AND credential.expires_at>clock_timestamp()`,
 			input.SourceSessionID.String(), input.UserID.String(), input.SourceCredentialID.String()); err != nil {
-			return translateError("session", "desktop_authentication", err)
+			return nil, translateError("session", "desktop_authentication", err)
 		}
 		session, err := row.model()
 		if err != nil {
-			return err
+			return nil, err
 		}
+		source = session
 		input.AuthenticationMethod = session.AuthenticationMethod
 		input.AuthenticationProviderID = session.AuthenticationProviderID
 		input.ExternalIdentityID = session.ExternalIdentityID
 		input.AuthenticationStrength = session.AuthenticationStrength
-		input.AuthenticatedAt = session.AuthenticatedAt.UnixMilli()
-		input.MFACompletedAt = session.MFACompletedAt.Millis()
 		if err := requireDesktopAuthenticationPath(ctx, executor, input.AuthenticationMethod, input.AuthenticationProviderID, input.Capabilities); err != nil {
-			return err
+			return nil, err
 		}
 		if session.AuthenticationMethod == "password" {
 			var current struct {
@@ -842,17 +864,19 @@ func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecuto
 			}
 			if err := executor.Get(ctx, &current, `SELECT id, revision FROM password_credentials WHERE user_id=? AND archived_at IS NULL`, input.UserID.String()); err != nil {
 				if err == sql.ErrNoRows {
-					return store.ErrPasswordCredentialChanged
+					return nil, store.ErrPasswordCredentialChanged
 				}
-				return fmt.Errorf("resolve session password proof: %w", err)
+				return nil, fmt.Errorf("resolve session password proof: %w", err)
 			}
 			input.PasswordProof = store.PasswordCredentialProof{ID: model.PasswordCredentialID(current.ID), Revision: current.Revision}
 		}
 	}
 	if input.AuthenticationMethod == "password" {
-		return requireCurrentPasswordProof(ctx, executor, input.UserID, input.PasswordProof)
+		if err := requireCurrentPasswordProof(ctx, executor, input.UserID, input.PasswordProof); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return source, nil
 }
 
 func requireDesktopAuthenticationPath(ctx context.Context, executor sqlxExecutor, method, providerID string, capabilities store.AccessDeploymentCapabilities) error {

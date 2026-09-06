@@ -73,6 +73,12 @@ type DesktopAuthorizationContext struct {
 // the Store derives the authentication context from that Session. Otherwise a
 // local authentication supplies PasswordProof and an external one supplies its
 // exact External Identity. Source Session and direct password proof cannot mix.
+// Fresh password authentication and MFA use the Store's transition instant.
+// External authentication and MFA retain their asserted history, capped at that
+// instant when the provider clock is ahead. Session reuse preserves the exact
+// stored authentication and MFA instants and rechecks Session and access-proof
+// expiry at the transition. An inconsistent resulting state rolls back. None
+// of these operations extend the browser transaction's original deadline.
 type DesktopAuthorizationAuthentication struct {
 	PasswordProof            PasswordCredentialProof
 	SourceSessionID          model.SessionID

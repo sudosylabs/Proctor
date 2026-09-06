@@ -449,15 +449,18 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"live", "revoked session", "expired session", "idle expired session", "revoked credential", "expired credential", "rotated credential", "other Session credential", "refresh credential"} {
+	for _, name := range []string{"live", "future authentication", "revoked session", "expired session", "idle expired session", "revoked credential", "expired credential", "rotated credential", "other Session credential", "refresh credential"} {
 		t.Run(name, func(t *testing.T) {
 			user := saveIntegrationUser(t, ctx, persistence, &model.User{
 				Username: "source-" + model.NewId(), Email: model.NewId() + "@source.example.edu",
 			})
 			session, credentials := authenticationPolicyTestSession(user.ID, "password", "", "")
 			session.AuthenticationStrength = model.AuthenticationMultiFactor
-			session.AuthenticatedAt = model.NowUTC().Add(-2 * time.Minute)
-			session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt.Add(time.Minute))
+			session.AuthenticatedAt = model.NowUTC().Add(-2 * time.Minute).Truncate(time.Millisecond).Add(321 * time.Microsecond)
+			session.MFACompletedAt = model.OptionalTimeFrom(session.AuthenticatedAt.Add(time.Minute + 123*time.Microsecond))
+			if name == "future authentication" {
+				session.AuthenticationStrength, session.MFACompletedAt = model.AuthenticationSingleFactor, model.OptionalTime{}
+			}
 			creation := sessionCreationForSQLTest(t, ctx, persistence, session, credentials, 10)
 			source, savedCredentials, err := persistence.Session().Save(ctx, creation)
 			if err != nil {
@@ -489,6 +492,12 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 				Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 			}
 			switch name {
+			case "future authentication":
+				_, err = persistence.GetMaster().Exec(ctx, `UPDATE sessions
+					SET created_at=created_at+interval '1 hour',updated_at=updated_at+interval '1 hour',
+					    authenticated_at=authenticated_at+interval '1 hour',last_activity_at=last_activity_at+interval '1 hour',
+					    idle_expires_at=idle_expires_at+interval '1 hour',expires_at=expires_at+interval '1 hour'
+					WHERE id=?`, source.ID.String())
 			case "revoked session":
 				_, err = persistence.Session().Revoke(ctx, source.ID.String(), user.ID.String(), model.GetMillis(), model.SessionRevocationUserSession)
 			case "expired session":
@@ -521,9 +530,15 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if name == "future authentication" {
+				future, getErr := persistence.Session().Get(ctx, source.ID.String())
+				if getErr != nil || future.Validate() != nil {
+					t.Fatalf("future-clock source Session is not otherwise valid: %v", getErr)
+				}
+			}
 			result, err := persistence.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
 			if name != "live" {
-				if result != nil || !store.IsNotFound(err) {
+				if result != nil || err == nil || (name != "future authentication" && !store.IsNotFound(err)) {
 					t.Fatalf("AuthenticateDesktopAuthorization(%s) = %#v, %v", name, result, err)
 				}
 				current, contextErr := persistence.BrowserAuthentication().GetDesktopAuthorizationContext(ctx, input.BindingHash)
@@ -544,8 +559,8 @@ func TestDesktopAuthorizationRevalidatesSourceWebSessionProof(t *testing.T) {
 				t.Fatal(err)
 			}
 			if authenticated.AuthenticationStrength != source.AuthenticationStrength ||
-				!authenticated.AuthenticatedAt.Time.Equal(model.TimeFromMillis(source.AuthenticatedAt.UnixMilli())) ||
-				!authenticated.MFACompletedAt.Time.Equal(model.TimeFromMillis(source.MFACompletedAt.Millis())) ||
+				!authenticated.AuthenticatedAt.Time.Equal(source.AuthenticatedAt) ||
+				!authenticated.MFACompletedAt.Time.Equal(source.MFACompletedAt.Time) ||
 				authenticated.PasswordCredentialID != creation.PasswordProof.ID ||
 				authenticated.PasswordCredentialRevision != creation.PasswordProof.Revision {
 				t.Fatal("Desktop authentication did not derive current assurance and password proof from the live source Session")

@@ -75,6 +75,63 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			})
 		}
 	})
+	t.Run("FreshPasswordAuthenticationUsesStoreClock", func(t *testing.T) {
+		for _, test := range []struct {
+			name     string
+			skew     time.Duration
+			strength model.AuthenticationStrength
+		}{
+			{name: "past single factor", skew: -2 * time.Hour, strength: model.AuthenticationSingleFactor},
+			{name: "future single factor", skew: 2 * time.Hour, strength: model.AuthenticationSingleFactor},
+			{name: "past multi factor", skew: -2 * time.Hour, strength: model.AuthenticationMultiFactor},
+			{name: "future multi factor", skew: 2 * time.Hour, strength: model.AuthenticationMultiFactor},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				user := saveUser(t, ctx, ss)
+				transaction, handle, proof, state, verifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
+				created, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
+				requireNoError(t, err)
+				binding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state)
+				input := &store.DesktopAuthorizationAuthentication{
+					BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
+					PasswordProof: testPasswordProof(t, ctx, ss, user.ID), AuthenticationStrength: test.strength,
+					AuthenticatedAt: model.GetMillis() + test.skew.Milliseconds(),
+					Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
+				}
+				if test.strength == model.AuthenticationMultiFactor {
+					input.MFACompletedAt = input.AuthenticatedAt
+				}
+				authenticated, err := ss.BrowserAuthentication().AuthenticateDesktopAuthorization(ctx, input)
+				requireNoError(t, err)
+				if authenticated == nil || authenticated.Denied {
+					t.Fatalf("AuthenticateDesktopAuthorization() = %#v", authenticated)
+				}
+				code := model.NewCredentialToken()
+				issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "clock-issue")
+				issued, err := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
+					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
+					ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: input.Capabilities,
+					AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
+				})
+				requireNoError(t, err)
+				if issued.CodeExpiresAt.After(created.ExpiresAt) {
+					t.Fatal("code outlives its browser transaction")
+				}
+				exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "clock-exchange")
+				result, err := ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), code, state, verifier, exchangeAudit))
+				requireNoError(t, err)
+				if result == nil || result.Session == nil || result.Session.AuthenticationStrength != test.strength ||
+					result.Session.AuthenticatedAt.Before(created.ExpiresAt.Add(-transaction.Lifetime)) ||
+					result.Session.AuthenticatedAt.After(result.Session.CreatedAt) {
+					t.Fatal("Desktop Session did not retain fresh Store-clock authentication")
+				}
+				if test.strength == model.AuthenticationMultiFactor &&
+					(!result.Session.MFACompletedAt.Valid || !result.Session.MFACompletedAt.Time.Equal(result.Session.AuthenticatedAt)) {
+					t.Fatal("fresh MFA did not retain the authentication transition instant")
+				}
+			})
+		}
+	})
 	shortLifetime := 90 * time.Second
 	short, _, _, _, _ := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 	short.Lifetime = shortLifetime

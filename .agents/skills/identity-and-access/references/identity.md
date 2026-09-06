@@ -242,6 +242,15 @@ the current password proof when applicable; an earlier Principal snapshot does
 not authorize a new handoff after reset. The proof remains private to the
 durable handoff and never enters a browser projection.
 
+Desktop authentication uses the PostgreSQL transition instant for fresh local
+password proof. External authentication retains older asserted authentication
+and MFA instants; future assertions are capped at that transition instant.
+Session reuse preserves the exact persisted authentication and MFA instants
+without refreshing assurance or rounding to milliseconds. Inconsistent future
+Session provenance fails atomically. The resulting handoff must satisfy its
+persisted invariants before commit; authentication timestamps never extend
+transaction or credential deadlines.
+
 ## MFA
 
 The principal records authentication strength and completion time. Sensitive
