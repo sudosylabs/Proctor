@@ -35,6 +35,7 @@ type passwordCredentialRow struct {
 	UpdatedAt         time.Time    `db:"updated_at"`
 	ArchivedAt        sql.NullTime `db:"archived_at"`
 	UserID            string       `db:"user_id"`
+	Revision          int64        `db:"revision"`
 	PasswordHash      string       `db:"password_hash"`
 	PasswordChangedAt time.Time    `db:"password_changed_at"`
 }
@@ -46,6 +47,7 @@ func passwordCredentialSliceColumns() []string {
 		"password_credentials.updated_at",
 		"password_credentials.archived_at",
 		"password_credentials.user_id",
+		"password_credentials.revision",
 		"password_credentials.password_hash",
 		"password_credentials.password_changed_at",
 	}
@@ -90,10 +92,10 @@ func insertPasswordCredential(
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO password_credentials (
 			id, created_at, updated_at, archived_at, user_id,
-			password_hash, password_changed_at
+			revision, password_hash, password_changed_at
 		) VALUES (
 			:id, :created_at, :updated_at, :archived_at, :user_id,
-			:password_hash, :password_changed_at
+			:revision, :password_hash, :password_changed_at
 		)`, &row); err != nil {
 		return fmt.Errorf(
 			"save password credential: %w",
@@ -118,36 +120,31 @@ func (s SQLPasswordCredentialStore) GetByUser(
 	return row.model()
 }
 
-func (s SQLPasswordCredentialStore) Update(
+func (s SQLPasswordCredentialStore) Rehash(
 	ctx context.Context,
-	credential *model.PasswordCredential,
-) (*model.PasswordCredential, error) {
-	if credential == nil {
-		return nil, store.NewErrInvalidInput("password_credential", "value", nil)
-	}
-	candidate := *credential
-	candidate.PrepareUpdate(model.NowUTC())
-	if err := candidate.Validate(); err != nil {
-		return nil, err
+	input *store.PasswordCredentialRehash,
+) error {
+	if input == nil || !input.ID.IsValid() || !input.UserID.IsValid() || input.ExpectedRevision < 1 ||
+		!model.IsValidPasswordHash(input.ExpectedHash) || !model.IsValidPasswordHash(input.PasswordHash) {
+		return store.NewErrInvalidInput("password_credential", "rehash", nil)
 	}
 
-	row := newPasswordCredentialRow(&candidate)
-	result, err := s.GetMaster().NamedExec(ctx, `
+	result, err := s.GetMaster().Exec(ctx, `
 		UPDATE password_credentials
-		   SET updated_at = :updated_at,
-		       password_hash = :password_hash,
-		       password_changed_at = :password_changed_at
-		 WHERE id = :id AND user_id = :user_id AND archived_at IS NULL`, &row)
+		   SET updated_at = GREATEST(updated_at, statement_timestamp()), password_hash = ?
+		 WHERE id = ? AND user_id = ? AND password_hash = ? AND revision = ? AND archived_at IS NULL`,
+		input.PasswordHash, input.ID.String(), input.UserID.String(), input.ExpectedHash, input.ExpectedRevision)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"update password credential: %w",
-			translateError("password_credential", candidate.ID.String(), err),
-		)
+		return fmt.Errorf("rehash password credential: %w", err)
 	}
-	if err := requireAffected(result, "password_credential", candidate.ID.String()); err != nil {
-		return nil, err
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read password rehash outcome: %w", err)
 	}
-	return &candidate, nil
+	if affected != 1 {
+		return store.ErrPasswordCredentialChanged
+	}
+	return nil
 }
 
 func newPasswordCredentialRow(credential *model.PasswordCredential) passwordCredentialRow {
@@ -157,6 +154,7 @@ func newPasswordCredentialRow(credential *model.PasswordCredential) passwordCred
 		UpdatedAt:         UTCTime(credential.UpdatedAt),
 		ArchivedAt:        NullTimeFromOptional(credential.ArchivedAt),
 		UserID:            credential.UserID.String(),
+		Revision:          credential.Revision,
 		PasswordHash:      credential.PasswordHash,
 		PasswordChangedAt: UTCTime(credential.PasswordChangedAt),
 	}
@@ -177,6 +175,7 @@ func (row passwordCredentialRow) model() (*model.PasswordCredential, error) {
 		UpdatedAt:         row.UpdatedAt.UTC(),
 		ArchivedAt:        OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:            userID,
+		Revision:          row.Revision,
 		PasswordHash:      row.PasswordHash,
 		PasswordChangedAt: row.PasswordChangedAt.UTC(),
 	}
@@ -187,3 +186,22 @@ func (row passwordCredentialRow) model() (*model.PasswordCredential, error) {
 }
 
 var _ store.PasswordCredentialStore = (*SQLPasswordCredentialStore)(nil)
+
+// The caller holds the per-User Session lock, also held by reset and removal.
+// Rehash does not advance Revision, so a work-factor upgrade cannot invalidate
+// independently collected proof of the same password.
+func requireCurrentPasswordProof(ctx context.Context, executor sqlxExecutor, userID model.UserID, proof store.PasswordCredentialProof) error {
+	if !proof.IsValid() {
+		return store.ErrPasswordCredentialChanged
+	}
+	var current bool
+	if err := executor.Get(ctx, &current, `SELECT EXISTS(
+		SELECT 1 FROM password_credentials WHERE id=? AND user_id=? AND revision=? AND archived_at IS NULL
+	)`, proof.ID.String(), userID.String(), proof.Revision); err != nil {
+		return fmt.Errorf("check password proof: %w", err)
+	}
+	if !current {
+		return store.ErrPasswordCredentialChanged
+	}
+	return nil
+}

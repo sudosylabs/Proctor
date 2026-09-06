@@ -175,6 +175,7 @@ func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) 
 	module := mailResourceModule{mail: fake}
 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111"}`))
+	request.Header.Set("Content-Type", "application/json")
 	result, err := module.startRekey(operationRequest{request: request})
 	if err != nil || result.status != http.StatusAccepted || len(fake.rekeys) != 1 ||
 		fake.rekeys[0] != "11111111111111111111111111111111" {
@@ -187,6 +188,7 @@ func TestMailRekeyAcceptsOnlyAKeyIdentityAndProjectsSafeOperation(t *testing.T) 
 	}
 	invalid, _ := http.NewRequest(http.MethodPost, "/api/v1/mail/rekey",
 		bytes.NewBufferString(`{"retiring_key_id":"11111111111111111111111111111111","encryption_key":"secret"}`))
+	invalid.Header.Set("Content-Type", "application/json")
 	if _, err = module.startRekey(operationRequest{request: invalid}); !application.Is(err, "request.invalid") || len(fake.rekeys) != 1 {
 		t.Fatalf("secret-bearing rekey body error = %v calls=%#v", err, fake.rekeys)
 	}

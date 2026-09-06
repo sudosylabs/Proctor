@@ -98,7 +98,7 @@ paths:
       description: Validates local credentials and any required MFA code only for the browser-bound Desktop transaction, without creating a Web Session or approving the Desktop request.
       tags: [Authentication]
       x-proctor-auth: public
-      x-proctor-error-codes: [request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.invalid_credentials, authentication.mfa.required, authentication.mfa.invalid_code, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
+      x-proctor-error-codes: [service.busy, request.invalid, authentication.desktop_authorization.invalid, authentication.desktop_authorization.rejected, authentication.desktop_authorization.unavailable, authentication.desktop_authorization.account_session_locked, authentication.invalid_credentials, authentication.mfa.required, authentication.mfa.invalid_code, authentication.mfa.unavailable, authentication.rate_limited, authentication.rate_limit_unavailable]
       x-proctor-idempotency: none
       security: []
       requestBody: {$ref: '#/components/requestBodies/DesktopAuthorizationLocalAuthentication'}
@@ -334,7 +334,11 @@ components:
       additionalProperties: false
       required: [callback_url, state, code_challenge, public_jwk, desktop_release, desktop_build_id, platform, architecture, realtime_protocol]
       properties:
-        callback_url: {type: string, format: uri}
+        callback_url:
+          type: string
+          format: uri
+          maxLength: 1024
+          description: Exact HTTP loopback URL using 127.0.0.1 or [::1], a decimal port from 49152 through 65535, and one random token path. Leading zeroes in a valid port are preserved. No query, fragment, or user information is accepted.
         state: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
         code_challenge: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}
         device_id: {type: string, maxLength: 128}

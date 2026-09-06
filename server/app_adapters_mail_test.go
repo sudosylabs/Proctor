@@ -8,9 +8,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,3 +97,102 @@ func TestProductionMailTelemetryRetainsBoundedSafeMetrics(t *testing.T) {
 		t.Fatalf("drained queue remained in snapshot: %#v", reader.Snapshot().Queues)
 	}
 }
+
+func TestAccountMailerAdapterEmbedsFrozenLogoWithoutRewritingHTML(t *testing.T) {
+	t.Parallel()
+	files, err := runtimeAssetDirectory("templates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets, err := appmail.NewInlineAssets(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localizer, err := NewEmbeddedLocalizer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer, err := appmail.NewRenderer(files, localizer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := renderer.Render(appmail.RenderRequest{Key: model.MailTemplateSystemTest, Locale: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &inlineRecordingMailer{}
+	adapter := accountMailerAdapter{mailer: transport, assets: assets}
+	outbound := appmail.Outbound{From: appmail.Address{Address: "from@example.test"}, To: appmail.Address{Address: "to@example.test"},
+		EnvelopeFrom: "from@example.test", Subject: content.Subject, Text: content.Text, HTML: content.HTML,
+		MessageID: "<fixed@example.test>", Date: time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)}
+	for range 2 {
+		if _, sendErr := adapter.Send(t.Context(), outbound); sendErr != nil {
+			t.Fatal(sendErr)
+		}
+	}
+	if len(transport.messages) != 2 {
+		t.Fatal("transport did not receive both attempts")
+	}
+	want, err := files.Open("proctor-lockup-25d-v1.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer want.Close()
+	wantBytes, err := io.ReadAll(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range transport.messages {
+		if message.HTML != outbound.HTML || message.MessageID != outbound.MessageID || len(message.Attachments) != 1 {
+			t.Fatal("adapter rewrote frozen content or omitted its inline image")
+		}
+		image := message.Attachments[0]
+		if !image.Inline || image.ContentType != "image/png" || !bytes.Equal(image.Data, wantBytes) ||
+			!strings.Contains(message.HTML, `src="cid:`+image.ContentID+`"`) {
+			t.Fatal("inline image does not match the frozen HTML")
+		}
+		composer, err := mailpkg.NewComposer(mailpkg.ComposerConfig{MessageIDDomain: "example.test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		delivery, err := composer.Compose(message)
+		if err != nil || !bytes.Contains(delivery.Data, []byte("multipart/related")) ||
+			!bytes.Contains(delivery.Data, []byte("<"+image.ContentID+">")) {
+			t.Fatalf("composed message omitted related image: %v", err)
+		}
+	}
+}
+
+func TestAccountMailerAdapterRejectsUnknownImageBeforeSending(t *testing.T) {
+	t.Parallel()
+	files, err := runtimeAssetDirectory("templates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets, err := appmail.NewInlineAssets(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &inlineRecordingMailer{}
+	adapter := accountMailerAdapter{mailer: transport, assets: assets}
+	outcome, err := adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="cid:missing">`})
+	if err == nil || outcome != appmail.TransportPermanent || len(transport.messages) != 0 {
+		t.Fatalf("unknown image reached transport: %s, %v", outcome, err)
+	}
+	if _, err := adapter.Send(context.Background(), appmail.Outbound{HTML: `<img src="proctor-lockup.png">`}); err != nil ||
+		len(transport.messages) != 1 || len(transport.messages[0].Attachments) != 0 {
+		t.Fatalf("legacy frozen message was rejected or received different artwork: %v", err)
+	}
+}
+
+type inlineRecordingMailer struct{ messages []mailpkg.Message }
+
+func (*inlineRecordingMailer) Enabled() bool { return true }
+func (*inlineRecordingMailer) From() mailpkg.Address {
+	return mailpkg.Address{Address: "from@example.test"}
+}
+func (m *inlineRecordingMailer) Send(_ context.Context, message mailpkg.Message) (mailpkg.Receipt, error) {
+	m.messages = append(m.messages, message)
+	return mailpkg.Receipt{}, nil
+}
+func (*inlineRecordingMailer) Test(context.Context) error { return nil }

@@ -259,7 +259,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID.String(),
-		model.GetMillis(),
+		model.NowUTC(),
 	)
 	if err != nil || len(sessions) != 1 ||
 		sessions[0].AuthenticationMethod !=
@@ -328,7 +328,7 @@ func TestOIDCExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("OIDC invitation admission package: affiliations=%#v memberships=%#v bindings=%#v",
 			invitedAffiliations, invitedMemberships, invitedBindings)
 	}
-	invitedSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitedUser.ID.String(), model.GetMillis())
+	invitedSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitedUser.ID.String(), model.NowUTC())
 	if err != nil || len(invitedSessions) != 0 {
 		t.Fatalf("OIDC Invitation proof created an ordinary Session = %#v, %v", invitedSessions, err)
 	}

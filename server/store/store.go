@@ -1107,7 +1107,9 @@ type UserVisibilityScope struct {
 	ClassMemberInstitutionWide     bool
 	ClassMemberAcademicUnitRootIDs []string
 	ClassIDs                       []string
-	ActiveAt                       int64
+	// ActiveAt is the UTC microsecond decision time shared with current role
+	// authorization. Visibility anchors include their start and exclude their end.
+	ActiveAt time.Time
 }
 
 // UserVisibilityMatch identifies the authorized scope through which one User
@@ -1390,6 +1392,10 @@ type UserTokenMailIssue struct {
 // UserEmailChange is the named transition that replaces the account address,
 // invalidates prior verification credentials, and commits the new verification
 // credential plus frozen old/new-address notifications atomically.
+// New credential, mail, and Job timestamps and deadlines use one database
+// instant. Existing User and superseded token lifecycle timestamps never move
+// backward; their creation times and superseded token expiries are preserved.
+// Those lifecycle bounds do not shift the new credential or delivery deadlines.
 type UserEmailChange struct {
 	UserID                                    model.UserID
 	ExpectedRevision                          int64
@@ -2038,6 +2044,7 @@ type PersonalAccessTokenRevocation struct {
 
 // PersonalAccessTokenStore persists hashed, explicitly scoped credentials.
 // Resolve is authoritative and also performs the debounced last-used update.
+// Decision instants use UTC microsecond precision; expiry is exclusive.
 type PersonalAccessTokenStore interface {
 	PrepareMutation(context.Context, *PersonalAccessTokenMutationPreparation) (*PreparedPersonalAccessTokenMutation, error)
 	FailMutation(context.Context, *PersonalAccessTokenMutationFailure) error
@@ -2045,7 +2052,7 @@ type PersonalAccessTokenStore interface {
 	Create(context.Context, *PersonalAccessTokenCreationMutation) (*PersonalAccessTokenMutationResult, error)
 	Get(context.Context, string) (*model.PersonalAccessToken, error)
 	ListByUser(context.Context, string) ([]*model.PersonalAccessToken, error)
-	Resolve(context.Context, string, int64, int64) (*PersonalAccessTokenResolution, error)
+	Resolve(context.Context, string, time.Time, time.Duration) (*PersonalAccessTokenResolution, error)
 	ChangeState(context.Context, *PersonalAccessTokenStateMutation) (*PersonalAccessTokenMutationResult, error)
 	RevokeWithAudit(context.Context, *PersonalAccessTokenRevocation) (*PersonalAccessTokenMutationResult, error)
 }
@@ -2075,7 +2082,7 @@ type MFAActivationMutation struct {
 	TimeStep      int64
 	RecoveryCodes []*model.MFARecoveryCode
 	SessionID     string
-	At            int64
+	At            time.Time
 	AuditEventID  string
 	AuditAt       int64
 	Notice        MFASecurityNotice
@@ -2100,12 +2107,14 @@ type MFADisablement struct {
 
 // MFAStore owns the encrypted TOTP credential, hashed recovery codes, replay
 // prevention, and the session-strength changes coupled to MFA lifecycle.
+// Activation and Session upgrade use UTC microsecond decision instants and
+// reject a pending credential or Session exactly at its expiry.
 type MFAStore interface {
 	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
 	GetByUser(context.Context, string) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
 	ConsumeSecondFactor(context.Context, string, int64, string, int64) error
-	UpgradeSession(context.Context, string, string, int64) ([]string, error)
+	UpgradeSession(context.Context, string, string, time.Time) ([]string, error)
 	ReplaceRecoveryCodes(context.Context, *MFARecoveryCodesRegeneration) error
 	CountRecoveryCodes(context.Context, string) (int, error)
 	Disable(context.Context, *MFADisablement) (*MFADisableResult, error)
@@ -2174,7 +2183,9 @@ type AcademicUnitMemberStore interface {
 	Get(context.Context, string) (*model.AcademicUnitMember, error)
 	ListByUser(context.Context, string) ([]*model.AcademicUnitMember, error)
 	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
+	// Archived memberships are excluded; no active memberships is an empty list.
+	ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)
 	End(context.Context, string, int64, int64) (*model.AcademicUnitMember, error)
 }
 
@@ -2231,10 +2242,33 @@ type ClassMemberStore interface {
 type PasswordCredentialStore interface {
 	Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
 	GetByUser(context.Context, string) (*model.PasswordCredential, error)
-	Update(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error)
+	Rehash(context.Context, *PasswordCredentialRehash) error
 	EnrollWithAudit(context.Context, *PasswordCredentialEnrollment) (*AuthenticationMethodMutationResult, error)
 	RemoveWithAudit(context.Context, *PasswordCredentialRemoval) (*AuthenticationMethodMutationResult, error)
 }
+
+// PasswordCredentialRehash upgrades only the active credential whose encoded
+// hash was verified. It preserves PasswordChangedAt and the password revision.
+// A competing rehash, reset, removal, or replacement returns
+// ErrPasswordCredentialChanged without writing anything. Unknown commit outcomes
+// must not be retried automatically. Hashing occurs before this operation.
+type PasswordCredentialRehash struct {
+	ID               model.PasswordCredentialID
+	UserID           model.UserID
+	ExpectedHash     string
+	ExpectedRevision int64
+	PasswordHash     string
+}
+
+// PasswordCredentialProof identifies the password that was verified without
+// transporting its encoded hash. It is valid only while ID and Revision still
+// identify the User's active credential at the consuming transaction's commit.
+type PasswordCredentialProof struct {
+	ID       model.PasswordCredentialID
+	Revision int64
+}
+
+func (p PasswordCredentialProof) IsValid() bool { return p.ID.IsValid() && p.Revision > 0 }
 
 type PasswordCredentialEnrollment struct {
 	Credential   *model.PasswordCredential
@@ -2308,18 +2342,15 @@ type UserSessionsRevocationResult struct {
 }
 
 // SessionStore persists sessions and owns atomic session lifecycle changes.
+// Active reads, activity updates, and expiry enforcement share UTC microsecond
+// decision instants. A Session is inactive at either expiry deadline.
 type SessionStore interface {
-	Save(
-		context.Context,
-		*model.Session,
-		[]*model.SessionCredential,
-		int,
-	) (*model.Session, []*model.SessionCredential, error)
+	Save(context.Context, *SessionCreation) (*model.Session, []*model.SessionCredential, error)
 	Get(context.Context, string) (*model.Session, error)
 	ListByUser(context.Context, string) ([]*model.Session, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.Session, error)
-	UpdateActivity(context.Context, string, int64, int64) error
-	EnforceExpiry(context.Context, string, string, int64) (*SessionExpiryEnforcementResult, error)
+	ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error)
+	UpdateActivity(context.Context, string, time.Time, time.Time) error
+	EnforceExpiry(context.Context, string, string, time.Time) (*SessionExpiryEnforcementResult, error)
 	Revoke(context.Context, string, string, int64, model.SessionRevocationReason) ([]string, error)
 	RevokeWithAudit(context.Context, *SessionRevocation) (*SessionRevocationResult, error)
 	RevokeAllForUser(
@@ -2329,6 +2360,19 @@ type SessionStore interface {
 		model.SessionRevocationReason,
 	) ([]*model.Session, []string, error)
 	RevokeAllForUserWithAudit(context.Context, *UserSessionsRevocation) (*UserSessionsRevocationResult, error)
+}
+
+// SessionCreation creates one Session and its credentials atomically. Password
+// authentication requires current PasswordProof; external authentication forbids
+// it. Creation and password reset/removal serialize on the same per-User lock:
+// either creation commits first and reset revokes it, or stale proof is rejected
+// with ErrPasswordCredentialChanged. Credential generation and password hashing
+// occur before this operation.
+type SessionCreation struct {
+	Session       *model.Session
+	Credentials   []*model.SessionCredential
+	MaximumActive int
+	PasswordProof PasswordCredentialProof
 }
 
 type SessionRotation struct {
@@ -2364,7 +2408,8 @@ type DesktopRegistrationStore interface {
 }
 
 // SessionCredentialStore resolves bearer credentials and atomically rotates
-// refresh credentials with replay detection.
+// refresh credentials with replay detection. Rotation compares the supplied
+// UTC microsecond instant against exclusive credential and Session deadlines.
 type SessionCredentialStore interface {
 	GetSessionByTokenHash(
 		context.Context,
@@ -2376,8 +2421,8 @@ type SessionCredentialStore interface {
 		string,
 		*model.SessionCredential,
 		*model.SessionCredential,
-		int64,
-		int64,
+		time.Time,
+		time.Time,
 	) (*SessionRotation, error)
 }
 
@@ -2461,7 +2506,9 @@ type RoleBindingStore interface {
 	ListByUser(context.Context, string) ([]*model.RoleBinding, error)
 	ListVisibleByUser(context.Context, string, UserVisibilityScope) ([]*model.RoleBinding, error)
 	ListByScope(context.Context, model.RoleScopeType, string) ([]*model.RoleBinding, error)
-	ListActiveByUser(context.Context, string, int64) ([]*model.RoleBinding, error)
+	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
+	// Archived bindings are excluded; no active bindings is an empty list.
+	ListActiveByUser(context.Context, string, time.Time) ([]*model.RoleBinding, error)
 	End(context.Context, string, int64) (*model.RoleBinding, error)
 	EndWithAudit(context.Context, *RoleBindingEnd) (*model.RoleBinding, error)
 }

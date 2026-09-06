@@ -21,7 +21,7 @@ import (
 
 func TestOnboardingImportContentStagesOpensAndRemovesPrivateObject(t *testing.T) {
 	t.Parallel()
-	content, err := New(memory.New())
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestOnboardingImportContentStagesOpensAndRemovesPrivateObject(t *testing.T)
 
 func TestOnboardingImportContentListsStaleFilesForOrphanReconciliation(t *testing.T) {
 	t.Parallel()
-	content, err := New(memory.New())
+	content, err := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestOnboardingImportContentListsStaleFilesForOrphanReconciliation(t *testin
 
 func TestOnboardingImportContentDeletesOverLimitObject(t *testing.T) {
 	t.Parallel()
-	content, _ := New(memory.New())
+	content, _ := New(memory.New(), Policy{MaximumConcurrentOperations: 2}, nil)
 	id := model.NewOnboardingImportID()
 	if _, _, err := content.StageOnboardingImport(context.Background(), id, strings.NewReader("12345"), 4); !errors.Is(err, ErrOnboardingImportTooLarge) {
 		t.Fatalf("error = %v", err)

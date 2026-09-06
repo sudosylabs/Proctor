@@ -127,13 +127,16 @@ func (s SQLMFAStore) Activate(
 	ctx context.Context,
 	input *store.MFAActivationMutation,
 ) (*store.MFAActivationResult, error) {
-	if input == nil || !model.IsValidId(input.CredentialID) || !model.IsValidId(input.UserID) ||
-		!model.IsValidId(input.SessionID) || input.TimeStep <= 0 || input.At <= 0 ||
+	if input == nil {
+		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
+	}
+	at := model.TimeUTC(input.At)
+	if !model.IsValidId(input.CredentialID) || !model.IsValidId(input.UserID) ||
+		!model.IsValidId(input.SessionID) || input.TimeStep <= 0 || !at.After(time.Unix(0, 0)) ||
 		!model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 ||
 		len(input.RecoveryCodes) == 0 || len(input.RecoveryCodes) > model.MFARecoveryCodeMaxCount {
 		return nil, store.NewErrInvalidInput("mfa_credential", "activate", nil)
 	}
-	at := model.TimeFromMillis(input.At)
 	prepared, err := prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
 	if err != nil {
 		return nil, err
@@ -144,7 +147,7 @@ func (s SQLMFAStore) Activate(
 		input.Notice.Delivery,
 		input.Notice.Job,
 		model.MailTemplateIdentityMFAEnabled,
-		input.At,
+		input.At.UnixMilli(),
 	)
 	if err != nil {
 		return nil, err
@@ -193,7 +196,7 @@ func (s SQLMFAStore) Activate(
 				return nil, err
 			}
 		}
-		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID, input.UserID, input.At)
+		session, err := upgradeSessionAuthentication(ctx, tx, input.SessionID, input.UserID, at)
 		if err != nil {
 			return nil, err
 		}
@@ -285,9 +288,10 @@ func (s SQLMFAStore) UpgradeSession(
 	ctx context.Context,
 	sessionID string,
 	userID string,
-	now int64,
+	now time.Time,
 ) ([]string, error) {
-	if !model.IsValidId(sessionID) || !model.IsValidId(userID) || now <= 0 {
+	now = model.TimeUTC(now)
+	if !model.IsValidId(sessionID) || !model.IsValidId(userID) || !now.After(time.Unix(0, 0)) {
 		return nil, store.NewErrInvalidInput("session", "upgrade_mfa", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "session MFA upgrade", func(ctx context.Context, tx *sqlxTxWrapper) ([]string, error) {
@@ -568,9 +572,9 @@ func upgradeSessionAuthentication(
 	executor sqlxExecutor,
 	sessionID string,
 	userID string,
-	now int64,
+	now time.Time,
 ) (*model.Session, error) {
-	at := model.TimeFromMillis(now)
+	at := model.TimeUTC(now)
 	var row sessionRow
 	if err := executor.Get(ctx, &row, `
 		UPDATE sessions

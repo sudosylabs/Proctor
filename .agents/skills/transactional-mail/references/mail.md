@@ -110,7 +110,7 @@ with representative typed data. A deterministic preview command renders all
 templates and an index into a caller-selected directory without production
 data or mail delivery. `server/templates` is likewise an asset and
 build-tooling directory, not a Go package. The root privately embeds generated
-HTML and authored text, then `server/app/mail` parses and validates them when
+HTML, authored text, and released PNGs, then `server/app/mail` validates them when
 its renderer is constructed; production composition constructs that renderer
 before readiness. Edits require regeneration, rebuild, and restart. The exact
 source layout, property contract, generation, freshness, and preview commands
@@ -121,6 +121,14 @@ Template-local install, generation, freshness, and test targets live in
 
 Messages use UTF-8 multipart alternatives with authored text first and HTML
 second. Only versioned Proctor-owned inline Content-ID assets are permitted.
+Inline image identities contain their byte digest and are frozen in the HTML.
+The mail-owned catalog retains every released image version unchanged; startup
+validates its bytes and production template references. The root transport
+adapter attaches the exact referenced version, so retries and frozen fan-out
+never switch to a mutable current logo. Browser previews materialize the same
+images locally. Legacy frozen relative-image HTML is preserved without
+substituting new artwork.
+
 External images, remote fonts, tracking pixels, ordinary attachments, read
 receipts, and unsubscribe headers are forbidden. Generated mail includes
 `Auto-Submitted: auto-generated` and `X-Auto-Response-Suppress: All`.

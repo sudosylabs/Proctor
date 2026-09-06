@@ -133,6 +133,8 @@ checkout does not.
 | Command | What it proves and changes |
 | --- | --- |
 | `make check` | Build scripts, hosted webapp, documentation, server architecture, OpenAPI agreement, localization, tests, race tests, and vet pass without dependency-backed integration suites. **Effect:** read-only authored source; refreshes ignored dependencies and generated output. |
+| `make brand-check` | Verifies that package-owned artwork copies match the approved brand files. **Effect:** read-only. |
+| `make brand-copy` | Refreshes the declared package-owned artwork copies from the approved brand files. Review the copied files and local digests, then run `make brand-check` and the affected package checks. **Effect:** **modifies source.** |
 | `make docs-start` | Installs locked docs dependencies and starts the Docusaurus development server in the foreground. **Effect:** generated output and runtime state. |
 | `make docs-check` | Validates OpenAPI agreement, docs metadata and generators, TypeScript, and the production documentation build. **Effect:** generated output. |
 | `make integration` | Runs the server's dependency-backed suites plus reusable Redis-cache and SMTP-mail conformance. **Effect:** temporary runtime state. |

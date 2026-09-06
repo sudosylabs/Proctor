@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	vfspkg "github.com/sudosylabs/proctor/packages/vfs"
 	"github.com/sudosylabs/proctor/server/model"
@@ -27,14 +28,34 @@ var ErrPurgeLimit = errors.New("file content: abandoned revision exceeds purge l
 // Content stores and opens immutable File Revision renditions over VFS.
 type Content struct {
 	filesystem vfspkg.FileSystem
+	work       chan struct{}
+	recorder   WorkRecorder
 }
 
-// New constructs stateless File Content over a root-owned VFS.
-func New(filesystem vfspkg.FileSystem) (*Content, error) {
+// Policy bounds expensive content processing within one application node.
+// It limits concurrent operations, not their aggregate memory consumption.
+type Policy struct {
+	MaximumConcurrentOperations int
+}
+
+// WorkRecorder receives bounded node-local processing measurements. Methods
+// must be safe for concurrent use and return promptly. A nil recorder is valid.
+type WorkRecorder interface {
+	Started()
+	Finished(time.Duration)
+	Rejected()
+}
+
+// New constructs File Content over a root-owned VFS with an independent,
+// non-queueing processing limit shared by its expensive content pipelines.
+func New(filesystem vfspkg.FileSystem, policy Policy, recorder WorkRecorder) (*Content, error) {
 	if filesystem == nil {
 		return nil, errors.New("file content VFS is required")
 	}
-	return &Content{filesystem: filesystem}, nil
+	if policy.MaximumConcurrentOperations <= 0 {
+		return nil, errors.New("file content maximum concurrent operations must be positive")
+	}
+	return &Content{filesystem: filesystem, work: make(chan struct{}, policy.MaximumConcurrentOperations), recorder: recorder}, nil
 }
 
 func (c *Content) storeRendition(ctx context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, body io.Reader, size int64) error {

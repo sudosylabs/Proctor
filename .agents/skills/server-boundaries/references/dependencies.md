@@ -13,6 +13,7 @@ model ← app/realtime ← {app, websocket}
 {model, store, secretseal, app/exam, localization} ← app/mail ← app
 localization ← {httpapi, websocket}
 app/exam/safemarkdown ← {app/exam/attempt, app/exam/review}
+app/exam/manageraccess ← {app/exam, app/exam/resource, app/exam/workspace, app/exam/correction, app/exam/sitting}
 secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
 {localization, app/mail, cmd/proctor/commands, httpapi, websocket} ← cmd/ptool
@@ -48,6 +49,7 @@ inside `app/` are application-owned modules, not transports.
 | `app/exam` | `model`, bounded `store` contracts, standard library, consumer-owned ports, `app/idempotency`, and explicitly shared leaf packages such as `app/exam/safemarkdown` | parent `app`, transports, platform, concrete adapters |
 | `app/execution` | `model`, the bounded Execution Grant store, standard library, and consumer-owned host/content ports | parent `app`, execenv, transports, platform, concrete adapters |
 | `app/exam/safemarkdown` | Standard library | model, store, parent `app`, transports, concrete adapters |
+| `app/exam/manageraccess` | `model`, bounded Store access projection, narrow membership port, standard library | parent `app` or `app/exam`, sibling use cases, transports, concrete adapters |
 | `app/mail` | `model`, bounded `store` mail records, `secretseal`, `localization`, the Exam Manager preparation contract, standard-library templating, and consumer-owned sending ports | parent `app`, transports, platform, SQL, configuration, concrete adapters |
 | `secretseal` | Standard library cryptography and encoding | model, persistence, configuration, transports, concrete adapters |
 | `localization` | Standard library, caller-supplied catalog filesystems, and the CLDR-aware localization engine | application, domain, persistence, transports, concrete adapters |
@@ -79,6 +81,14 @@ limited to `app/exam`, `app/exam/attempt`, `app/exam/correction`,
 `app/exam/resource`, `app/exam/review`, `app/exam/sitting`, and
 `app/exam/workspace`; those command owners retain operation names and semantic
 fingerprints rather than moving policy into the leaf.
+
+The shared Exam Manager eligibility leaf is consumed only by `app/exam`,
+`app/exam/resource`, `app/exam/workspace`, `app/exam/correction`, and
+`app/exam/sitting`. It selects between caller-owned ordinary and override
+Actions using the current Manager relationship and exact Academic Unit
+membership. The use-case owners retain projection validation, authoritative
+authorization against their precise Resource, error presentation, audit,
+and named transaction intent.
 
 ## Reusable capability boundaries
 

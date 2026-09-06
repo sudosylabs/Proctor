@@ -74,13 +74,13 @@ func TestBootstrapResourceStrictDecodeAndDeclaredFailureThroughKernel(t *testing
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
 
 	invalid := httptest.NewRecorder()
-	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"unknown":true}`)))
+	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"unknown":true}`)))
 	if invalid.Code != http.StatusBadRequest || !bytes.Contains(invalid.Body.Bytes(), []byte(`"code":"request.invalid"`)) {
 		t.Fatalf("strict bootstrap decode = %d %s", invalid.Code, invalid.Body.String())
 	}
 
 	failure := httptest.NewRecorder()
-	httpAPI.ServeHTTP(failure, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret","bootstrap_secret":"deployment-secret"}`)))
+	httpAPI.ServeHTTP(failure, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(`{"institution":{"name":"northbridge","display_name":"Northbridge"},"administrator":{"username":"admin","email":"admin@example.edu"},"password":"secret","bootstrap_secret":"deployment-secret"}`)))
 	if failure.Code != http.StatusInternalServerError || !bytes.Contains(failure.Body.Bytes(), []byte(`"code":"installation.unavailable"`)) {
 		t.Fatalf("bootstrap failure = %d %s", failure.Code, failure.Body.String())
 	}
@@ -121,7 +121,7 @@ func TestBootstrapDeniedDoesNotEchoSecretOrAccountDetail(t *testing.T) {
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, bootstrapResource(bootstrap))
 	const secret = "wrong-secret-material-that-must-not-be-echoed"
 	response := httptest.NewRecorder()
-	httpAPI.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(
+	httpAPI.ServeHTTP(response, newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewBufferString(
 		`{"institution":{"name":"northbridge","display_name":"Northbridge"},`+
 			`"administrator":{"username":"admin","email":"admin@example.edu"},`+
 			`"password":"password","bootstrap_secret":"`+secret+`"}`,
@@ -197,7 +197,7 @@ func TestBootstrapUsesApplicationCommand(t *testing.T) {
 		"password":         "correct-horse-battery",
 		"bootstrap_secret": "deployment-bootstrap-secret",
 	})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/bootstrap", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.RemoteAddr = "127.0.0.1:1234"
 	response := httptest.NewRecorder()

@@ -771,6 +771,7 @@ CREATE TABLE password_credentials (
     updated_at timestamptz NOT NULL,
     archived_at timestamptz,
     user_id varchar(26) NOT NULL REFERENCES users(id),
+    revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
     password_hash varchar(1024) NOT NULL,
     password_changed_at timestamptz NOT NULL,
     CONSTRAINT password_credentials_lifecycle_check CHECK (updated_at >= created_at)
@@ -3086,6 +3087,8 @@ CREATE TABLE browser_authentication_transactions (
     expires_at timestamptz NOT NULL,
     user_id varchar(26) REFERENCES users(id),
     authentication_method varchar(64),
+    password_credential_id varchar(26) REFERENCES password_credentials(id),
+    password_credential_revision bigint,
     authentication_provider_id varchar(64),
 	external_identity_id varchar(26) REFERENCES external_identities(id),
     authentication_strength varchar(32),
@@ -3099,6 +3102,15 @@ CREATE TABLE browser_authentication_transactions (
     exchanged_at timestamptz,
     completed_at timestamptz,
     expired_at timestamptz,
+    CONSTRAINT browser_authentication_transactions_password_proof_check CHECK (
+        (authentication_method IS NOT DISTINCT FROM 'password' AND
+         password_credential_id IS NOT NULL AND password_credential_revision IS NOT NULL AND password_credential_revision > 0) OR
+        (authentication_method IS DISTINCT FROM 'password' AND
+         password_credential_id IS NULL AND password_credential_revision IS NULL)
+    ),
+    CONSTRAINT browser_authentication_transactions_password_credential_id_canonical_check CHECK (
+        password_credential_id IS NULL OR password_credential_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
+    ),
     CONSTRAINT browser_authentication_transactions_lifecycle_check CHECK (
         updated_at >= created_at AND expires_at > created_at AND expires_at <= created_at + interval '5 minutes'
     ),

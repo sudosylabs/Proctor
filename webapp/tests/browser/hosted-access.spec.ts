@@ -133,6 +133,7 @@ async function mockDesktopAuthorization(
 ) {
   let authenticated = false;
   let bindings = 0;
+  let sessionProofs = 0;
   const context = () => ({
     state: authenticated ? "authenticated" : "bound",
     ...(authenticated
@@ -172,6 +173,7 @@ async function mockDesktopAuthorization(
   await page.route(
     "**/api/v1/auth/desktop/authorizations/authenticate/session",
     async (route) => {
+      sessionProofs += 1;
       if (!currentSession) {
         await route.fulfill({
           status: 401,
@@ -201,6 +203,9 @@ async function mockDesktopAuthorization(
     },
     bindingCount() {
       return bindings;
+    },
+    sessionProofCount() {
+      return sessionProofs;
     },
   };
 }
@@ -272,8 +277,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         .filter((link) => link.media === "" || matchMedia(link.media).matches)
         .map((link) => new URL(link.href).pathname),
     );
-    const expectedMark =
-      colorScheme === "dark" ? "proctor-mark-white" : "proctor-mark";
+    const expectedMark = `proctor-favicon-${colorScheme}`;
     expect(activeFavicons).toHaveLength(2);
     expect(activeFavicons.every((href) => href.includes(expectedMark))).toBe(
       true,
@@ -929,6 +933,12 @@ test("Desktop authorization approves the exact sanitized request", async ({
   page,
 }) => {
   const fixtureRequest = defaultDesktopAuthorization;
+  const loopbackRedirect = `http://127.0.0.1:055000/${"A".repeat(43)}?code=${"B".repeat(43)}&state=${fixtureRequest.state}`;
+  const browserRedirect = new URL(loopbackRedirect).href;
+  await page.route(browserRedirect, (route) => route.fulfill({
+    contentType: "text/html",
+    body: "<h1>Desktop authorization received</h1>",
+  }));
   await mockDiscovery(page, {
     ...defaultDiscovery,
     institution: {
@@ -950,7 +960,7 @@ test("Desktop authorization approves the exact sanitized request", async ({
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          redirect_url: `${canonicalOrigin}/authorization/complete`,
+          redirect_url: loopbackRedirect,
           expires_at: Date.now() + 60_000,
         }),
       });
@@ -1004,9 +1014,9 @@ test("Desktop authorization approves the exact sanitized request", async ({
   }
   await page.getByRole("button", { name: "Continue to desktop" }).click();
 
-  await expect(page).toHaveURL(`${canonicalOrigin}/authorization/complete`);
+  await expect(page).toHaveURL(browserRedirect);
   await expect(
-    page.getByRole("heading", { name: "You’re signed in" }),
+    page.getByRole("heading", { name: "Desktop authorization received" }),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText("private-browser-proof");
 });
@@ -1150,6 +1160,57 @@ test("Desktop confirmation can return to account selection", async ({ page }) =>
     page.getByRole("heading", { name: "Sign in to continue in Proctor Desktop" }),
   ).toBeVisible();
   await expect(page.getByLabel("Email or username")).toBeVisible();
+});
+
+test("Desktop reset recovery removes the old account and does not reuse the Web Session", async ({ page }) => {
+  await mockDiscovery(page);
+  const desktop = await mockDesktopAuthorization(page);
+  let contexts = 0;
+  await page.route("**/api/v1/auth/desktop/authorizations/context", async (route) => {
+    contexts += 1;
+    if (contexts === 2) {
+      await route.fulfill({ status: 503, body: "unavailable" });
+    } else await route.fallback();
+  });
+  await page.route("**/api/v1/auth/desktop/authorizations/account/reset", async (route) => {
+    desktop.reset();
+    await route.fulfill({ status: 204 });
+  });
+  await page.goto("/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof");
+  await page.getByRole("button", { name: "Use another account" }).click();
+  await expect(page.getByRole("heading", { name: "The request can’t be checked" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to desktop" })).toHaveCount(0);
+  await expect(page.getByText(defaultDesktopAuthorization.account.username, { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to continue in Proctor Desktop" })).toBeFocused();
+  expect(desktop.sessionProofCount()).toBe(1);
+  expect(desktop.bindingCount()).toBe(1);
+});
+
+test("Desktop local authentication disables competing actions until completion", async ({ page }) => {
+  await mockDiscovery(page);
+  const desktop = await mockDesktopAuthorization(page, { currentSession: false });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let submissions = 0;
+  await page.route("**/api/v1/auth/desktop/authorizations/authenticate/password", async (route) => {
+    submissions += 1;
+    await held;
+    desktop.authenticate();
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      state: "authenticated", account: defaultDesktopAuthorization.account, device_name: "Exam laptop",
+      expires_at: Date.now() + 300_000, local_login_enabled: false, external_providers: [],
+    }) });
+  });
+  await page.goto("/authorize/desktop?request=desktop-handle&state=desktop-state#proof=private-browser-proof");
+  await page.getByLabel("Email or username").fill("student");
+  await page.locator("#desktop-password").fill("private-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel request", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Continue with/ })).toBeDisabled();
+  release();
+  await expect(page.getByRole("heading", { name: "Continue in Proctor Desktop" })).toBeVisible();
+  expect(submissions).toBe(1);
 });
 
 test("Desktop authentication reports an active Exam Session lock safely", async ({

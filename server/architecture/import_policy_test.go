@@ -275,6 +275,7 @@ var dependencyRules = []dependencyRule{
 		name:           "mail application",
 		sources:        []pathPattern{subtree(serverModule + "/app/mail")},
 		deniedStandard: standardInfrastructureExceptFS,
+		thirdParty:     only(exact("golang.org/x/net/html")),
 		project: only(
 			exact(serverModule+"/model"),
 			exact(serverModule+"/store"),
@@ -293,15 +294,37 @@ var dependencyRules = []dependencyRule{
 		),
 	},
 	{
-		name: "exam idempotency consumers",
+		name:           "exam manager access",
+		sources:        []pathPattern{exact(serverModule + "/app/exam/manageraccess")},
+		deniedStandard: standardInfrastructure,
+		project: only(
+			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
+		),
+	},
+	{
+		name: "exam manager access consumers",
 		sources: []pathPattern{
 			exact(serverModule + "/app/exam"),
-			exact(serverModule + "/app/exam/attempt"),
 			exact(serverModule + "/app/exam/correction"),
 			exact(serverModule + "/app/exam/resource"),
-			exact(serverModule + "/app/exam/review"),
 			exact(serverModule + "/app/exam/sitting"),
 			exact(serverModule + "/app/exam/workspace"),
+		},
+		deniedStandard: standardInfrastructure,
+		project: only(
+			exact(serverModule+"/app/idempotency"),
+			exact(serverModule+"/app/exam/manageraccess"),
+			exact(serverModule+"/model"),
+			exact(serverModule+"/store"),
+			exact(serverModule+"/app/exam/safemarkdown"),
+		),
+	},
+	{
+		name: "exam idempotency consumers",
+		sources: []pathPattern{
+			exact(serverModule + "/app/exam/attempt"),
+			exact(serverModule + "/app/exam/review"),
 		},
 		deniedStandard: standardInfrastructure,
 		project: only(
@@ -554,6 +577,8 @@ func TestDependencyRulePrecedence(t *testing.T) {
 	}{
 		{packagePath: serverModule + "/app/jobs", wantRule: "concrete jobs"},
 		{packagePath: serverModule + "/app/idempotency", wantRule: "idempotency application"},
+		{packagePath: serverModule + "/app/exam/manageraccess", wantRule: "exam manager access"},
+		{packagePath: serverModule + "/app/exam", wantRule: "exam manager access consumers"},
 		{packagePath: serverModule + "/app/exam/review", wantRule: "exam idempotency consumers"},
 		{packagePath: serverModule + "/app/exam/safemarkdown", wantRule: "exam application"},
 		{packagePath: serverModule + "/store/sqlstore", wantRule: "SQL store adapter"},
@@ -598,6 +623,31 @@ func TestExamIdempotencyConsumerAllowlist(t *testing.T) {
 	}
 	if !forbiddenImport(serverModule+"/app/exam/attempt/internal", serverModule+"/app/idempotency") {
 		t.Error("descendant of a listed Exam command owner can import the shared idempotency leaf")
+	}
+}
+
+func TestExamManagerAccessBoundary(t *testing.T) {
+	t.Parallel()
+	leaf := serverModule + "/app/exam/manageraccess"
+	for _, consumer := range []string{"/app/exam", "/app/exam/correction", "/app/exam/resource", "/app/exam/sitting", "/app/exam/workspace"} {
+		if forbiddenImport(serverModule+consumer, leaf) {
+			t.Errorf("%s cannot import the shared Manager eligibility policy", consumer)
+		}
+	}
+	for _, consumer := range []string{"/app/exam/attempt", "/app/exam/review", "/app/exam/resource/internal"} {
+		if !forbiddenImport(serverModule+consumer, leaf) {
+			t.Errorf("unlisted consumer %s can import the shared Manager eligibility policy", consumer)
+		}
+	}
+	for _, dependency := range []string{"/model", "/store"} {
+		if forbiddenImport(leaf, serverModule+dependency) {
+			t.Errorf("Manager eligibility policy cannot import %s", dependency)
+		}
+	}
+	for _, dependency := range []string{"/app", "/app/exam", "/app/exam/resource", "/app/idempotency", "/store/sqlstore"} {
+		if !forbiddenImport(leaf, serverModule+dependency) {
+			t.Errorf("Manager eligibility policy can import forbidden dependency %s", dependency)
+		}
 	}
 }
 

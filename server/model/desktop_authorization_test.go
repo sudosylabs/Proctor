@@ -19,10 +19,18 @@ func TestDesktopAuthorizationLoopbackCallbackValidation(t *testing.T) {
 	t.Parallel()
 
 	randomPath := NewCredentialToken()
+	// Decimal ports may retain leading zeroes, but the complete registered
+	// callback leaves bounded room for the terminal code and state query.
+	callbackPrefix := "http://127.0.0.1:"
+	callbackSuffix := "55000/" + randomPath
+	maximumCallback := callbackPrefix + strings.Repeat("0", DesktopAuthorizationCallbackMaximumBytes-len(callbackPrefix)-len(callbackSuffix)) + callbackSuffix
 	for _, callback := range []string{
 		"http://127.0.0.1:49152/" + randomPath,
 		"http://[::1]:61843/" + randomPath,
 		"http://127.0.0.1:65535/" + randomPath,
+		"http://127.0.0.1:055000/" + randomPath,
+		"http://[::1]:055000/" + randomPath,
+		maximumCallback,
 	} {
 		if err := ValidateDesktopAuthorizationCallback(callback); err != nil {
 			t.Errorf("valid callback %q: %v", callback, err)
@@ -30,6 +38,7 @@ func TestDesktopAuthorizationLoopbackCallbackValidation(t *testing.T) {
 	}
 
 	invalid := []string{
+		callbackPrefix + "0" + strings.TrimPrefix(maximumCallback, callbackPrefix),
 		"http://localhost:49152/" + randomPath,
 		"http://127.0.0.2:49152/" + randomPath,
 		"http://192.0.2.1:49152/" + randomPath,
@@ -203,6 +212,58 @@ func TestBrowserAuthenticationTransactionExpiryDestroysProofsAtAuthoritativeDead
 		issued.CallbackURL != "" || issued.CodeChallenge != "" || !issued.UserID.IsValid() ||
 		!issued.ExpiredAt.Time.Equal(at.Add(time.Minute)) {
 		t.Fatalf("expired issued-code transaction retained proofs or lost safe metadata: %#v", issued)
+	}
+}
+
+func TestDesktopAuthorizationPasswordProofMatchesAuthenticationState(t *testing.T) {
+	t.Parallel()
+	at := TimeUTC(time.Now())
+	password := pendingDesktopAuthorizationTransaction(at)
+	prepareAuthenticatedTransactionFixture(password, at, AuthenticationSingleFactor)
+	password.AuthenticationMethod = "password"
+	password.AuthenticationProviderID, password.ExternalIdentityID = "", ""
+	password.PasswordCredentialID, password.PasswordCredentialRevision = NewPasswordCredentialID(), 1
+	if err := password.Validate(); err != nil {
+		t.Fatalf("valid password proof: %v", err)
+	}
+	for _, state := range []BrowserAuthenticationState{BrowserAuthenticationStateAuthenticated, BrowserAuthenticationStateExpired} {
+		t.Run(string(state), func(t *testing.T) {
+			for _, test := range []struct {
+				name   string
+				mutate func(*BrowserAuthenticationTransaction)
+			}{
+				{name: "missing credential", mutate: func(value *BrowserAuthenticationTransaction) { value.PasswordCredentialID = "" }},
+				{name: "missing revision", mutate: func(value *BrowserAuthenticationTransaction) { value.PasswordCredentialRevision = 0 }},
+				{name: "negative revision", mutate: func(value *BrowserAuthenticationTransaction) { value.PasswordCredentialRevision = -1 }},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					candidate := *password
+					if state == BrowserAuthenticationStateExpired {
+						prepareExpiredTransactionFixture(&candidate)
+					}
+					test.mutate(&candidate)
+					if err := candidate.Validate(); err == nil {
+						t.Fatal("password authentication without complete proof was accepted")
+					}
+				})
+			}
+		})
+	}
+	for _, state := range []BrowserAuthenticationState{BrowserAuthenticationStatePending, BrowserAuthenticationStateExpired} {
+		candidate := pendingDesktopAuthorizationTransaction(at)
+		if state == BrowserAuthenticationStateExpired {
+			prepareExpiredTransactionFixture(candidate)
+		}
+		candidate.PasswordCredentialID, candidate.PasswordCredentialRevision = NewPasswordCredentialID(), 1
+		if err := candidate.Validate(); err == nil {
+			t.Errorf("%s transaction retained password proof without an authenticated User", state)
+		}
+	}
+	external := pendingDesktopAuthorizationTransaction(at)
+	prepareAuthenticatedTransactionFixture(external, at, AuthenticationSingleFactor)
+	external.PasswordCredentialID, external.PasswordCredentialRevision = NewPasswordCredentialID(), 1
+	if err := external.Validate(); err == nil {
+		t.Fatal("external authentication accepted password proof")
 	}
 }
 

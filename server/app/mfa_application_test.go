@@ -26,7 +26,7 @@ import (
 func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 8, 12, 10, 15, 0, 0, time.UTC)
+	now := time.Date(2026, 8, 12, 10, 15, 0, 123456789, time.FixedZone("test", 2*60*60))
 	principal := mfaTestPrincipal(now, model.AuthenticationSingleFactor)
 	events := []string{}
 	persistence := &mfaApplicationStoreFake{
@@ -51,6 +51,9 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 
 	if _, err := application.ChallengeMFA(context.Background(), invocation, command); err != nil {
 		t.Fatal(err)
+	}
+	if persistence.upgradedAt != model.TimeUTC(now) {
+		t.Fatalf("Session upgrade instant = %s, want %s", persistence.upgradedAt, model.TimeUTC(now))
 	}
 	if _, err := application.ChallengeMFA(context.Background(), invocation, command); !Is(err, "authentication.mfa.invalid_code") {
 		t.Fatalf("replayed challenge error = %v, want authentication.mfa.invalid_code", err)
@@ -374,6 +377,7 @@ type mfaApplicationStoreFake struct {
 	hashes         []string
 	consumed       bool
 	upgradeCalls   int
+	upgradedAt     time.Time
 	credentialGets int
 	activation     *store.MFAActivationMutation
 	regeneration   *store.MFARecoveryCodesRegeneration
@@ -416,8 +420,9 @@ func (s *mfaApplicationStoreFake) ConsumeSecondFactor(context.Context, string, i
 	return nil
 }
 
-func (s *mfaApplicationStoreFake) UpgradeSession(context.Context, string, string, int64) ([]string, error) {
+func (s *mfaApplicationStoreFake) UpgradeSession(_ context.Context, _, _ string, at time.Time) ([]string, error) {
 	s.upgradeCalls++
+	s.upgradedAt = at
 	s.appendEvent("upgrade")
 	return append([]string(nil), s.hashes...), nil
 }

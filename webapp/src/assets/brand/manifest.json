@@ -1,0 +1,46 @@
+{
+  "assets": [
+    {
+      "file": "proctor-apple-touch-icon-180.png",
+      "sha256": "cc6f2e22de458fa89045772bb4e2803afeb76f45220c928a646df551d7514643",
+      "width": 180,
+      "height": 180
+    },
+    {
+      "file": "proctor-favicon-dark-32.png",
+      "sha256": "be6720173e762ac8a9410eee785754d81376715db02e35884180e4a7315c60c1",
+      "width": 32,
+      "height": 32
+    },
+    {
+      "file": "proctor-favicon-dark.svg",
+      "sha256": "dbef0c418cd7fcb8bfda37824f15513e2ae57c09bed8553f351ba68ab1387617",
+      "width": 593,
+      "height": 593
+    },
+    {
+      "file": "proctor-favicon-light-32.png",
+      "sha256": "8ddc9e10b52121abff7b9c356023587f7fa9b10b4d46ffa853947fc5f23fe69d",
+      "width": 32,
+      "height": 32
+    },
+    {
+      "file": "proctor-favicon-light.svg",
+      "sha256": "a7a43a34b58c0da5e3247cc611f19168a2d4dc7d7ce416c076d1169ef356e4fb",
+      "width": 593,
+      "height": 593
+    },
+    {
+      "file": "proctor-lockup-purple-white.svg",
+      "sha256": "78440824573f68970786fdc110859588d9f52dac2fd21a9df728f0a73fde6f82",
+      "width": 896,
+      "height": 176
+    },
+    {
+      "file": "proctor-lockup.svg",
+      "sha256": "136a2a4e3e53f0cb95d045a3d1f34d3cdb2fd453df0a95ea5059b97cd1483c8d",
+      "width": 896,
+      "height": 176
+    }
+  ]
+}

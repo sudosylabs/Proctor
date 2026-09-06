@@ -25,11 +25,14 @@ func IsValidPasswordHash(value string) bool {
 // PasswordHash is deliberately excluded from JSON. Soft archive uses
 // ArchivedAt.
 type PasswordCredential struct {
-	ID                PasswordCredentialID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	ArchivedAt        OptionalTime
-	UserID            UserID
+	ID         PasswordCredentialID
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	ArchivedAt OptionalTime
+	UserID     UserID
+	// Revision advances on password replacement, but not a work-factor rehash.
+	// Together with ID it invalidates proof from a superseded password.
+	Revision          int64
 	PasswordHash      string `json:"-"`
 	PasswordChangedAt time.Time
 }
@@ -40,6 +43,7 @@ func (pc *PasswordCredential) PrepareCreate(id PasswordCredentialID, at time.Tim
 		return
 	}
 	pc.ID = id
+	pc.Revision = 1
 	at = TimeUTC(at)
 	pc.CreatedAt = at
 	pc.UpdatedAt = at
@@ -77,6 +81,9 @@ func (pc *PasswordCredential) Validate() error {
 	}
 	if !pc.UserID.IsValid() {
 		return invalidModelError(where, "password_credential", "user_id", "must be a valid identifier", details)
+	}
+	if pc.Revision < 1 {
+		return invalidModelError(where, "password_credential", "revision", "must be positive", details)
 	}
 	if !IsValidPasswordHash(pc.PasswordHash) {
 		return invalidModelError(where, "password_credential", "password_hash", "has an invalid length", details)

@@ -1004,7 +1004,7 @@ func TestExamCorrectionStore(t *testing.T) {
 func examCorrectionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamCorrectionSQLProbe {
 	t.Helper()
 	filesystem := memoryvfs.New()
-	content, err := filecontent.New(filesystem)
+	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1154,7 +1154,7 @@ func TestExamRevisionPublishedBytesSurviveDraftReplacementAndCleanup(t *testing.
 	persistence := openTestStore(t)
 	resetTestStore(t, persistence)
 	filesystem := memoryvfs.New()
-	content, err := filecontent.New(filesystem)
+	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

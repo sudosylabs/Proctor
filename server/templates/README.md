@@ -10,12 +10,34 @@ both alternatives.
 
 The HTML presentation is a single light envelope: board `#F4F4F6`, white
 paper, ink `#161616`, violet `#5C00AA`, and the package-local lockup
-`proctor-lockup.png` (163×32, `alt="Proctor"`). It uses ordinary stacked
+`proctor-lockup-25d-v1.png` (600×118 transparent PNG, 200×39 display,
+`alt="Proctor"`). It uses ordinary stacked
 sections so clients render the same structure. Human prose still comes only
 from `../i18n`. Maintainers may restyle the MJML without changing delivery
 logic, but must retain the semantic reading order, complete text equivalent,
 contextual escaping, accessibility, and privacy constraints in the
 repository [`transactional-mail` skill](../../.agents/skills/transactional-mail/SKILL.md).
+
+## Inline branding
+
+The header uses the 2.5D purple mark and ink wordmark on the white paper.
+`proctor-lockup.svg` is the package-local editable artwork. The released PNG
+is embedded in the server and referenced by a Content-ID containing its
+SHA-256 digest. The mail-owned image catalog validates its digest and dimensions
+at startup; each production template must reference one released logo.
+The root mail adapter supplies the PNG as an inline MIME part, so delivery
+requires no remote image request.
+
+Released PNG filenames, digests, and bytes are immutable. A later artwork
+release adds a new version and Content-ID while retaining earlier versions:
+queued deliveries and frozen fan-out bundles must resolve their original
+artwork across upgrades and retries. Legacy frozen HTML using the old relative
+image path is left unchanged; it does not acquire a different logo on retry.
+
+The generator includes released PNGs in template source digests. After
+changing the shared header or adding an image version, regenerate the HTML.
+The preview command copies referenced PNGs alongside its output and resolves
+Content-IDs to those local copies for browser viewing.
 
 ## Typed properties
 
@@ -115,7 +137,7 @@ must not be written below this source directory.
    message falls back to the installation locale, then English.
 
 The MJML compiler is a build-time dependency only. Runtime binaries embed the
-generated HTML and authored text. Renderer construction parses every
+generated HTML, authored text, and released PNGs. Renderer construction parses every
 production template; the later delivery composition must construct the
 renderer before server readiness. Template changes require regeneration,
 rebuild, and restart.

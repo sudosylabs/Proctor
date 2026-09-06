@@ -165,6 +165,7 @@ func examSittingCorrectionMutationErrorCodes(specific ...string) []string {
 
 func examSittingCorrectionStageErrorCodes() []string {
 	return examSittingCorrectionMutationErrorCodes(
+		"service.busy",
 		"exam.sitting.correction.invalid_content",
 		"exam.sitting.correction.stage_invalid",
 	)

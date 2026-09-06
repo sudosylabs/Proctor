@@ -30,7 +30,7 @@ func TestExamSittingHTTPScheduleUsesStrictIdempotentCommandAndSafeResponse(t *te
 	fake := newExamSittingHTTPFake(t)
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
 	body := `{"exam_revision_id":"` + fake.sitting.ExamRevisionID.String() + `","class_id":"` + fake.sitting.ClassID.String() + `","scheduled_start_at":"2026-08-15T12:30:00+02:00","scheduled_end_at":"2026-08-15T14:30:00+02:00"}`
-	request := httptest.NewRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(body))
+	request := newJSONRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "schedule-once")
 	response := httptest.NewRecorder()
@@ -82,7 +82,7 @@ func TestExamSittingHTTPMutationBodiesAreClosedDuplicateFreeAndPresenceAware(t *
 			logger, _ := newTestLogger(t)
 			fake := newExamSittingHTTPFake(t)
 			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
-			request := httptest.NewRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(test.body(fake)))
+			request := newJSONRequest(http.MethodPost, examSittingCollectionPath(fake.sitting.ExamID), strings.NewReader(test.body(fake)))
 			request.Header.Set("Authorization", "Bearer credential")
 			request.Header.Set("Idempotency-Key", "schedule-once")
 			response := httptest.NewRecorder()
@@ -98,7 +98,7 @@ func TestExamSittingHTTPMutationBodiesAreClosedDuplicateFreeAndPresenceAware(t *
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
 	path := examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)
 	patch := `{"expected_revision":1,"class_id":"` + model.NewClassID().String() + `","scheduled_start_at":"2026-08-16T09:00:00Z"}`
-	request := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(patch))
+	request := newJSONRequest(http.MethodPatch, path, strings.NewReader(patch))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "reschedule-once")
 	response := httptest.NewRecorder()
@@ -111,7 +111,7 @@ func TestExamSittingHTTPMutationBodiesAreClosedDuplicateFreeAndPresenceAware(t *
 		"explicit null": `{"expected_revision":1,"class_id":null}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			bad := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(body))
+			bad := newJSONRequest(http.MethodPatch, path, strings.NewReader(body))
 			bad.Header = request.Header.Clone()
 			got := httptest.NewRecorder()
 			httpAPI.ServeHTTP(got, bad)
@@ -134,7 +134,7 @@ func TestExamSittingHTTPCancelKeepsPrivateReasonOutOfResponse(t *testing.T) {
 	canceled.Revision = 2
 	fake.cancelResult = application.ExamSittingView{Sitting: &canceled}
 	httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
-	request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/cancel", strings.NewReader(`{"expected_revision":1,"reason":"Suspected identity substitution"}`))
+	request := newJSONRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/cancel", strings.NewReader(`{"expected_revision":1,"reason":"Suspected identity substitution"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "cancel-once")
 	response := httptest.NewRecorder()
@@ -180,7 +180,7 @@ func TestExamSittingHTTPLifecycleCommandsAreStrictIdempotentAndKeepReasonsPrivat
 			logger, _ := newTestLogger(t)
 			fake := newExamSittingHTTPFake(t)
 			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
-			request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+test.suffix, strings.NewReader(test.body))
+			request := newJSONRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+test.suffix, strings.NewReader(test.body))
 			request.Header.Set("Authorization", "Bearer credential")
 			request.Header.Set("Idempotency-Key", test.key)
 			response := httptest.NewRecorder()
@@ -211,7 +211,7 @@ func TestExamSittingHTTPLifecycleBodiesRejectUnknownDuplicateAndInvalidValues(t 
 			logger, _ := newTestLogger(t)
 			fake := newExamSittingHTTPFake(t)
 			httpAPI := newFocusedResourceAPI(t, logger, fake, examSittingResource(fake))
-			request := httptest.NewRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/pause", strings.NewReader(body))
+			request := newJSONRequest(http.MethodPost, examSittingMemberPath(fake.sitting.ExamID, fake.sitting.ID)+"/pause", strings.NewReader(body))
 			request.Header.Set("Authorization", "Bearer credential")
 			request.Header.Set("Idempotency-Key", "invalid-once")
 			response := httptest.NewRecorder()

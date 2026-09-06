@@ -251,8 +251,20 @@ components:
             code: authentication.rate_limited
             request_id: req_docs_rate_limited
     ServiceUnavailable:
-      description: Service unavailable
+      description: >-
+        Service unavailable. The service.busy code means this node's bounded
+        password or content-processing capacity is currently full. No password
+        proof or completed content publication is issued by that refused
+        operation; retry after the indicated delay, preserving any required
+        idempotency key.
       headers:
+        Retry-After:
+          description: >-
+            Present with value 1 for service.busy. Wait at least this many
+            seconds before retrying the operation.
+          schema:
+            type: integer
+            minimum: 1
         Cache-Control:
           $ref: '#/components/headers/NoStore'
       content:

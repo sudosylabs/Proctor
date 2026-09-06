@@ -34,6 +34,11 @@ homepage from the reader. Scoped CSS owns reading widths; avoid selectors
 against generated CSS-module names. The homepage is a compact guide directory,
 not a second description of product architecture.
 
+The navigation and footer retain the flat Proctor Docs lockup. Browser icons
+use the 2.5D mark and follow the browser's color preference independently of the
+site's reading theme. These are reviewed package-local assets; their tests
+validate the bundled copies without reading repository brand masters.
+
 The tracked [documentation visual-system reference](../../.agents/skills/docs-site/references/design-system.md)
 owns the brand palette, semantic colors, IBM Plex typography, spacing,
 geometry, and illustration grammar. Human changes begin in

@@ -5,6 +5,14 @@ modules, hosted Vite application, development infrastructure, observability,
 runtime container, release archives, and certification gates. Module Makefiles
 remain independently usable and do not depend on the product build.
 
+Approved brand artwork is copied into each consuming package. `make brand-copy`
+refreshes the declared copies, and `make brand-check` detects drift from the
+approved sources. Review updated package-local asset digests after copying;
+package builds and tests validate their own files and never read the root
+artwork directory. Versioned mail images are immutable, so a new mail design
+requires a new asset version and copy mapping. Copy tooling stays under
+`build/`; the artwork directory contains final designs only.
+
 Run `make help` for the current command surface. The main lifecycles are:
 
 - `make bootstrap` validates the host and installs the repository-pinned Go

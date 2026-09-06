@@ -17,6 +17,6 @@ Adding a complete theme to the generated catalog requires no page-specific
 brand change: every theme declares whether it needs the light- or dark-surface
 lockup.
 
-The browser favicon remains a separate browser-chrome policy selected by the
-system preference in `index.html`. This module does not add a theme chooser,
-persistence, or feature-owned theme state.
+The transparent 2.5D browser favicon remains a separate browser-chrome policy
+selected by the system preference in `index.html`. This module does not add a
+theme chooser, persistence, or feature-owned theme state.

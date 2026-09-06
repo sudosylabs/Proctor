@@ -14,6 +14,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -120,10 +121,6 @@ type accessStore interface {
 	Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error)
 }
 
-type memberships interface {
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-}
-
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
@@ -159,7 +156,7 @@ type EffectFailures interface {
 type Service struct {
 	persistence store.ExamStarterWorkspaceStore
 	access      accessStore
-	memberships memberships
+	memberships manageraccess.Memberships
 	authorizer  Authorizer
 	auditor     Auditor
 	content     Content
@@ -171,7 +168,7 @@ type Service struct {
 	newVersion  func() model.WorkspaceContentVersion
 }
 
-func NewService(persistence store.ExamStarterWorkspaceStore, access accessStore, memberships memberships, authorizer Authorizer, auditor Auditor,
+func NewService(persistence store.ExamStarterWorkspaceStore, access accessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor,
 	content Content, effects Effects, failures EffectFailures, now func() time.Time, newEntryID func() model.StarterWorkspaceEntryID,
 	newObjectID func() model.StarterWorkspaceObjectID, newVersion func() model.WorkspaceContentVersion) (*Service, error) {
 	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || content == nil || effects == nil ||
@@ -340,32 +337,23 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 	if access == nil || access.Exam == nil {
 		return authorization{}, unavailable(errors.New("Exam access projection is incomplete"))
 	}
-	action, override := model.ActionExamViewOverride, true
+	ordinaryAction, overrideAction := model.ActionExamView, model.ActionExamViewOverride
 	if mutation {
-		action = model.ActionExamManageOverride
+		ordinaryAction, overrideAction = model.ActionExamManage, model.ActionExamManageOverride
 	}
+	var at time.Time
 	if access.ActorIsManager {
-		memberships, listErr := service.memberships.ListActiveByUser(ctx, principal.UserID.String(), model.MillisFromTime(model.TimeUTC(service.now())))
-		if listErr != nil {
-			return authorization{}, unavailable(listErr)
-		}
-		for _, membership := range memberships {
-			if membership != nil && membership.AcademicUnitID == access.Exam.AcademicUnitID {
-				override = false
-				if mutation {
-					action = model.ActionExamManage
-				} else {
-					action = model.ActionExamView
-				}
-				break
-			}
-		}
+		at = model.TimeUTC(service.now())
+	}
+	action, err := manageraccess.SelectAction(ctx, service.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	if err != nil {
+		return authorization{}, unavailable(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: examID.String()}
 	if err := service.authorizer.Authorize(ctx, call, action, resource); err != nil {
 		return authorization{}, err
 	}
-	return authorization{action: action, unitID: access.Exam.AcademicUnitID, override: override}, nil
+	return authorization{action: action, unitID: access.Exam.AcademicUnitID, override: action == overrideAction}, nil
 }
 
 type mutationRunner func(context.Context, *store.ExamStarterWorkspaceMutation, *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error)

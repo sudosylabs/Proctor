@@ -19,13 +19,23 @@
 // write alone never makes content discoverable.
 //
 // The package depends on server/model, the consumer-owned application content
-// contracts, the reusable VFS contract, and only the image codecs used by its
-// working profile-picture pipeline. Concrete VFS backends, persistence,
+// contracts, the reusable VFS contract, and the parsers and image codecs used
+// by its purpose-specific pipelines. Concrete VFS backends, persistence,
 // transports, platform service location, configuration, and Jobs remain
 // outside it.
 //
-// Content is stateless and safe for concurrent use. It starts no goroutines
-// and never closes its VFS dependency. Small purpose-specific pipelines may
+// Content is safe for concurrent use. It owns one node-local admission limit
+// for resource validation and profile-picture processing, including generated
+// fallback rendering. Refusal is immediate, with no input reads or queued
+// work. The permit stays held until synchronous processing returns, including
+// after cancellation; the limit bounds operation count, not aggregate memory.
+// Resource validation checks cancellation between bounded spool reads and
+// rewinds. JSON syntax uses a fixed buffer and bounded nesting state, without
+// materializing authored values. Synchronous codec CPU work remains
+// non-interruptible; an observed cancellation returns no complete rendition.
+// Exact reads, deletion, and streaming Workspace or onboarding operations do
+// not consume this processing capacity. Content starts no goroutines and
+// never closes its VFS dependency. Small purpose-specific pipelines may
 // buffer input only behind an explicit bound; general file storage must stream.
 // Errors and public values never expose private keys or opaque backend
 // revisions. Cancellation or an uncertain backend acknowledgement may leave

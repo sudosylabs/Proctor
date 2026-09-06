@@ -347,5 +347,10 @@ func TestRendererParsesAndRendersEveryProductionTemplate(t *testing.T) {
 		if message.Subject == "" || message.Text == "" || message.HTML == "" {
 			t.Errorf("Render(%q) returned an empty message part", key)
 		}
+		for _, expected := range []string{`src="cid:` + testLockupCID + `"`, `alt="Proctor"`, `width="200" height="39"`} {
+			if !strings.Contains(message.HTML, expected) {
+				t.Errorf("Render(%q) is missing its accessible inline logo: %s", key, expected)
+			}
+		}
 	}
 }

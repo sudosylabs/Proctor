@@ -20,6 +20,7 @@ import (
 	appexecution "github.com/sudosylabs/proctor/server/app/execution"
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	"github.com/sudosylabs/proctor/server/cluster"
+	"github.com/sudosylabs/proctor/server/filecontent"
 	metricspkg "github.com/sudosylabs/proctor/server/metrics"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/platform"
@@ -28,6 +29,22 @@ import (
 type jobMetricsRecorder struct{ metrics *metricspkg.Module }
 
 type applicationMetricsRecorder struct{ metrics *metricspkg.Module }
+
+// workMetricsRecorder adapts either consumer-owned work recorder. Pool names
+// are selected by composition, never derived from requests or errors.
+type workMetricsRecorder struct {
+	metrics *metricspkg.Module
+	pool    string
+}
+
+var _ apppkg.PasswordWorkRecorder = workMetricsRecorder{}
+var _ filecontent.WorkRecorder = workMetricsRecorder{}
+
+func (r workMetricsRecorder) Started() { r.metrics.WorkStarted(r.pool) }
+func (r workMetricsRecorder) Finished(duration time.Duration) {
+	r.metrics.WorkFinished(r.pool, duration)
+}
+func (r workMetricsRecorder) Rejected() { r.metrics.WorkRejected(r.pool) }
 
 func (r applicationMetricsRecorder) RecordOperationalEvent(event apppkg.OperationalEvent) {
 	r.metrics.ObserveApplication(event.Subsystem(), event.Event(), event.Outcome())

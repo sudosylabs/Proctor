@@ -9,6 +9,8 @@ package app
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,45 +20,149 @@ import (
 	"github.com/sudosylabs/proctor/server/model"
 )
 
-func TestCorrectionApplyForwardsInstructionsManifestOrderAndRawKey(t *testing.T) {
+func TestCorrectionApplyPreservesOptionalInputsAndOwnsManifest(t *testing.T) {
 	t.Parallel()
-	fake := &examCorrectionUseCasesFake{}
-	application := &App{examCorrections: fake}
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	examID, sittingID, revisionID := model.NewExamID(), model.NewExamSittingID(), model.NewExamRevisionID()
-	first, second := model.NewExamResourceID(), model.NewExamResourceID()
-	base := ApplyExamSittingCorrectionCommand{ExamID: examID, SittingID: sittingID, ExpectedSittingRevision: 2, ExpectedCurrentRevisionID: revisionID, Instructions: ExamSittingCorrectionInstructions{Present: true}, Resources: []ExamSittingCorrectionResourceManifestItem{{ResourceID: first, DisplayName: "First"}, {ResourceID: second, DisplayName: "Second"}}, PrivateReason: "Fix ambiguity", IdempotencyKey: "same"}
-	if _, err := application.ApplyExamSittingCorrection(context.Background(), invocation, base); err != nil {
-		t.Fatal(err)
-	}
-	if !fake.apply.Instructions.Present || len(fake.apply.Resources) != 2 || fake.apply.Resources[0].ResourceID != first ||
-		fake.apply.Resources[1].ResourceID != second || fake.apply.IdempotencyKey != "same" {
-		t.Fatalf("child command = %#v", fake.apply)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), CredentialScopes: []string{"exam:manage"}},
+		model.RequestMetadata{RequestID: "correction-apply", IPAddress: "192.0.2.1", UserAgent: "test"})
+	for _, test := range []struct {
+		name         string
+		instructions ExamSittingCorrectionInstructions
+		policy       ExamSittingCorrectionBrowserPolicy
+		resources    []ExamSittingCorrectionResourceManifestItem
+	}{
+		{name: "omitted inputs and nil manifest"},
+		{name: "present empty inputs and empty manifest", instructions: ExamSittingCorrectionInstructions{Present: true},
+			policy:    ExamSittingCorrectionBrowserPolicy{Present: true, Policy: model.DisabledBrowserPolicy()},
+			resources: []ExamSittingCorrectionResourceManifestItem{}},
+		{name: "authored inputs and ordered manifest", instructions: ExamSittingCorrectionInstructions{Present: true, Markdown: " **Read** "},
+			policy: ExamSittingCorrectionBrowserPolicy{Present: true, Policy: model.BrowserPolicy{SchemaVersion: 1, Enabled: true,
+				StartRuleID: "notes", Rules: []model.BrowserPolicyRule{{RuleID: "notes", Origin: "https://notes.example", PathPrefix: "/"}}}},
+			resources: []ExamSittingCorrectionResourceManifestItem{
+				{ResourceID: model.NewExamResourceID(), DisplayName: " Second ", DescriptionMarkdown: " **Second** ", StageID: model.NewExamCorrectionResourceStageID()},
+				{ResourceID: model.NewExamResourceID(), DisplayName: " First "},
+			}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := ApplyExamSittingCorrectionCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+				ExpectedSittingRevision: 2, ExpectedCurrentRevisionID: model.NewExamRevisionID(), Instructions: test.instructions,
+				BrowserPolicy: test.policy, Resources: test.resources, CandidateSummary: " raw summary ", AcknowledgementRequired: true,
+				PrivateReason: " raw reason ", IdempotencyKey: " raw-key "}
+			fake := &examCorrectionUseCasesFake{}
+			if _, err := (&App{examCorrections: fake}).ApplyExamSittingCorrection(ctx, invocation, command); err != nil {
+				t.Fatal(err)
+			}
+			assertCorrectionFacadeInvocation(t, fake, ctx, invocation)
+			if fake.apply.Instructions != command.Instructions ||
+				!reflect.DeepEqual(fake.apply.BrowserPolicy, command.BrowserPolicy) ||
+				fake.apply.IdempotencyKey != command.IdempotencyKey || fake.apply.PrivateReason != command.PrivateReason ||
+				fake.apply.CandidateSummary != command.CandidateSummary || !fake.apply.AcknowledgementRequired {
+				t.Fatalf("optional presence or raw input changed: %#v", fake.apply)
+			}
+			if fake.apply.Resources == nil || len(fake.apply.Resources) != len(command.Resources) {
+				t.Fatalf("manifest must retain length and normalize nil to empty: %#v", fake.apply.Resources)
+			}
+			for index, item := range command.Resources {
+				if fake.apply.Resources[index] != item {
+					t.Fatalf("manifest order or content changed: %#v", fake.apply.Resources)
+				}
+				fake.apply.Resources[index].DisplayName = "changed by child"
+				if command.Resources[index] != item {
+					t.Fatal("child manifest shares the caller's backing array")
+				}
+			}
+		})
 	}
 }
 
 func TestCorrectionStageForwardsBodyDigestAndRawKey(t *testing.T) {
 	t.Parallel()
-	fake := &examCorrectionUseCasesFake{}
-	application := &App{examCorrections: fake}
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
-	command := StageExamSittingCorrectionResourceContentCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(), BaseRevisionID: model.NewExamRevisionID(), Target: ExamSittingCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("one"), Size: 3, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "same"}
-	if _, err := application.StageExamSittingCorrectionResourceContent(context.Background(), invocation, command); err != nil {
-		t.Fatal(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), CredentialScopes: []string{"exam:manage"}},
+		model.RequestMetadata{RequestID: "correction-stage", IPAddress: "192.0.2.1", UserAgent: "test"})
+	body := strings.NewReader("one")
+	command := StageExamSittingCorrectionResourceContentCommand{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		BaseRevisionID: model.NewExamRevisionID(), Target: ExamSittingCorrectionResourceReplacement, ResourceID: model.NewExamResourceID(),
+		MediaType: model.ExamResourceMediaText, Body: body, Size: 3, ExpectedSHA256: strings.Repeat("A", 64), IdempotencyKey: " raw-key "}
+	result := examcorrection.ResourceStage{StageID: model.NewExamCorrectionResourceStageID(), ResourceID: command.ResourceID,
+		MediaType: command.MediaType, Size: command.Size, SHA256: command.ExpectedSHA256, ExpiresAt: time.Now()}
+	fake := &examCorrectionUseCasesFake{stageResult: result}
+	got, err := (&App{examCorrections: fake}).StageExamSittingCorrectionResourceContent(ctx, invocation, command)
+	if err != nil || got != ExamSittingCorrectionResourceStage(result) {
+		t.Fatalf("stage result = %#v, %v", got, err)
 	}
-	if fake.stage.Body == nil || fake.stage.ExpectedSHA256 != strings.Repeat("a", 64) || fake.stage.IdempotencyKey != "same" {
-		t.Fatalf("child command = %#v", fake.stage)
+	if fake.stage != command || body.Len() != 3 {
+		t.Fatalf("stage input changed or upload consumed: %#v, unread bytes = %d", fake.stage, body.Len())
+	}
+	assertCorrectionFacadeInvocation(t, fake, ctx, invocation)
+}
+
+func TestCorrectionApplyNarrowsInternalResult(t *testing.T) {
+	t.Parallel()
+	want := ExamSittingCorrectionResult{ExamID: model.NewExamID(), SittingID: model.NewExamSittingID(),
+		PreviousRevisionID: model.NewExamRevisionID(), RevisionID: model.NewExamRevisionID(), RevisionNumber: 5,
+		SittingState: model.ExamSittingPaused, SittingRevision: 7, EffectiveAt: time.Now()}
+	fake := &examCorrectionUseCasesFake{applyResult: examcorrection.Result{
+		ExamID: want.ExamID, SittingID: want.SittingID, PreviousRevisionID: want.PreviousRevisionID, RevisionID: want.RevisionID,
+		RevisionNumber: want.RevisionNumber, SittingState: want.SittingState, SittingRevision: want.SittingRevision,
+		EffectiveAt: want.EffectiveAt, AcknowledgementRequired: true, Replayed: true,
+	}}
+	got, err := (&App{examCorrections: fake}).ApplyExamSittingCorrection(context.Background(), Invocation{}, ApplyExamSittingCorrectionCommand{})
+	if err != nil || got != want {
+		t.Fatalf("correction result = %#v, %v; want %#v", got, err, want)
+	}
+	for _, private := range []string{"AcknowledgementRequired", "Replayed"} {
+		if _, exists := reflect.TypeOf(got).FieldByName(private); exists {
+			t.Fatalf("public result exposes internal %s", private)
+		}
 	}
 }
 
-func TestCorrectionFacadeConcealsAuthorizationAndNotFound(t *testing.T) {
+func TestCorrectionFacadeConcealsFailuresAndDiscardsResults(t *testing.T) {
 	t.Parallel()
-	for _, cause := range []error{NewError("authorization.denied"), &examcorrection.Fault{Code: "exam.sitting.correction.not_found"}} {
-		mapped := examCorrectionError(cause, true)
-		appErr, ok := As(mapped)
-		if !ok || appErr.Code() != "resource.not_found" {
-			t.Fatalf("cause=%v mapped=%v", cause, mapped)
-		}
+	for _, test := range []struct {
+		name   string
+		cause  error
+		code   string
+		fields map[string]string
+	}{
+		{"denied", NewError("authorization.denied"), "resource.not_found", nil},
+		{"missing", &examcorrection.Fault{Code: "exam.sitting.correction.not_found"}, "resource.not_found", nil},
+		{"safe fields", &examcorrection.Fault{Code: "exam.sitting.correction.invalid", SafeFields: map[string]any{"field": "resources"}}, "exam.sitting.correction.invalid", map[string]string{"field": "resources"}},
+		{"busy", &examcorrection.Fault{Code: "service.busy"}, "service.busy", nil},
+		{"dependency", errors.New("storage unavailable"), "exam.sitting.correction.unavailable", nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &examCorrectionUseCasesFake{err: test.cause,
+				stageResult: examcorrection.ResourceStage{StageID: model.NewExamCorrectionResourceStageID()},
+				applyResult: examcorrection.Result{ExamID: model.NewExamID(), Replayed: true}}
+			application := &App{examCorrections: fake}
+			stage, stageErr := application.StageExamSittingCorrectionResourceContent(context.Background(), Invocation{}, StageExamSittingCorrectionResourceContentCommand{})
+			result, applyErr := application.ApplyExamSittingCorrection(context.Background(), Invocation{}, ApplyExamSittingCorrectionCommand{})
+			if stage != (ExamSittingCorrectionResourceStage{}) || result != (ExamSittingCorrectionResult{}) {
+				t.Fatalf("failed command returned a result: %#v, %#v", stage, result)
+			}
+			for _, err := range []error{stageErr, applyErr} {
+				mapped, ok := As(err)
+				if !ok || mapped.Code() != test.code || !reflect.DeepEqual(mapped.Fields(), test.fields) || !errors.Is(err, test.cause) {
+					t.Fatalf("error = %#v; want %s, fields %v, retained cause", mapped, test.code, test.fields)
+				}
+			}
+		})
+	}
+}
+
+func assertCorrectionFacadeInvocation(t *testing.T, fake *examCorrectionUseCasesFake, ctx context.Context, invocation Invocation) {
+	t.Helper()
+	if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
+		t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+	}
+	principal := fake.call.Principal()
+	principal.CredentialScopes[0] = "changed"
+	if !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || invocation.Principal().CredentialScopes[0] != "exam:manage" {
+		t.Fatal("child call exposed mutable principal scopes")
 	}
 }
 
@@ -98,15 +204,20 @@ func TestCorrectionEffectPublishesManagerAndCandidateRefetchFacts(t *testing.T) 
 }
 
 type examCorrectionUseCasesFake struct {
-	stage examcorrection.StageResourceContentCommand
-	apply examcorrection.ApplyCommand
+	ctx         context.Context
+	call        examcorrection.Call
+	stage       examcorrection.StageResourceContentCommand
+	apply       examcorrection.ApplyCommand
+	stageResult examcorrection.ResourceStage
+	applyResult examcorrection.Result
+	err         error
 }
 
-func (f *examCorrectionUseCasesFake) StageResourceContent(_ context.Context, _ examcorrection.Call, c examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error) {
-	f.stage = c
-	return examcorrection.ResourceStage{}, nil
+func (f *examCorrectionUseCasesFake) StageResourceContent(ctx context.Context, call examcorrection.Call, c examcorrection.StageResourceContentCommand) (examcorrection.ResourceStage, error) {
+	f.ctx, f.call, f.stage = ctx, call, c
+	return f.stageResult, f.err
 }
-func (f *examCorrectionUseCasesFake) Apply(_ context.Context, _ examcorrection.Call, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
-	f.apply = c
-	return examcorrection.Result{}, nil
+func (f *examCorrectionUseCasesFake) Apply(ctx context.Context, call examcorrection.Call, c examcorrection.ApplyCommand) (examcorrection.Result, error) {
+	f.ctx, f.call, f.apply = ctx, call, c
+	return f.applyResult, f.err
 }

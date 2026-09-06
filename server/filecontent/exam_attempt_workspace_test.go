@@ -23,7 +23,7 @@ import (
 func TestAttemptWorkspaceContentNonConditionalStageReplaysExactBytesAndRejectsMismatch(t *testing.T) {
 	t.Parallel()
 	filesystem := &examResourceNonConditionalVFS{FileSystem: memoryvfs.New()}
-	content, err := New(filesystem)
+	content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestAttemptWorkspaceContentUsesBoundedPrivateSpoolAndCleansEveryOutcome(t *
 		{name: "invalid declared size", filesystem: &examResourceWriteFailureVFS{FileSystem: memoryvfs.New()}, declared: (1 << 20) - 1, wantError: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			content, err := New(test.filesystem)
+			content, err := New(test.filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func TestAttemptWorkspaceContentStagesAndOpensOnlyTheExactOpaqueObject(t *testin
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
 			filesystem := backend.open(t)
-			content, err := New(filesystem)
+			content, err := New(filesystem, Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -123,7 +123,7 @@ func TestAttemptWorkspaceContentStagesAndOpensOnlyTheExactOpaqueObject(t *testin
 func TestAttemptWorkspaceContentBoundsUploadsAndPreservesTheFirstObject(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -161,7 +161,7 @@ func TestAttemptWorkspaceContentBoundsUploadsAndPreservesTheFirstObject(t *testi
 func TestAttemptWorkspaceContentRejectsSizeMismatchAndRemovesExactly(t *testing.T) {
 	for _, backend := range contentTestBackends() {
 		t.Run(backend.name, func(t *testing.T) {
-			content, err := New(backend.open(t))
+			content, err := New(backend.open(t), Policy{MaximumConcurrentOperations: 2}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

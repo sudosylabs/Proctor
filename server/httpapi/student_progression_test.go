@@ -60,7 +60,7 @@ func TestStudentProgressionHTTPRequiresRFC3339AndForwardsExactTargets(t *testing
 		ClientType: model.SessionClientWeb, AuthenticatedAt: at}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, studentProgressionResource(fake))
 	body := `{"source_period_id":"` + sourcePeriodID.String() + `","source_class_id":"` + sourceClassID.String() + `","destination_period_id":"` + destinationPeriodID.String() + `","destination_class_id":"` + destinationClassID.String() + `","effective_at":"` + at.Format(time.RFC3339Nano) + `"}`
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/student-progressions", strings.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/student-progressions", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer session")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -69,7 +69,7 @@ func TestStudentProgressionHTTPRequiresRFC3339AndForwardsExactTargets(t *testing
 		fake.command.DestinationPeriodID != destinationPeriodID.String() || fake.command.DestinationClassID != destinationClassID.String() || fake.command.EffectiveAt != at.UnixMilli() {
 		t.Fatalf("student progression = %d %s command=%#v", response.Code, response.Body.String(), fake.command)
 	}
-	invalid := httptest.NewRequest(http.MethodPost, "/api/v1/student-progressions", strings.NewReader(strings.Replace(body, at.Format(time.RFC3339Nano), "1800000000000", 1)))
+	invalid := newJSONRequest(http.MethodPost, "/api/v1/student-progressions", strings.NewReader(strings.Replace(body, at.Format(time.RFC3339Nano), "1800000000000", 1)))
 	invalid.Header.Set("Authorization", "Bearer session")
 	invalidResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(invalidResponse, invalid)

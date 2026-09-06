@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -24,18 +25,23 @@ func TestExamSittingScheduleUpdateForwardsPatchPresenceAndRawKey(t *testing.T) {
 	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{})
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
 	revisionID := model.NewExamRevisionID()
-	instant := time.Date(2026, 8, 15, 12, 0, 0, 0, time.FixedZone("fixture", 2*60*60))
-	fake := &examSittingUseCasesFake{}
-	_, err := (&App{examSittings: fake}).UpdateExamSittingSchedule(context.Background(), invocation, UpdateExamSittingScheduleCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ExamRevisionID: &revisionID,
-		ScheduledStartAt: &instant, IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fake.update.ExamRevisionID == nil || *fake.update.ExamRevisionID != revisionID || fake.update.ClassID != nil ||
-		fake.update.ScheduledStartAt == nil || !fake.update.ScheduledStartAt.Equal(instant) || fake.update.IdempotencyKey != "same-key" {
-		t.Fatalf("update command = %#v", fake.update)
+	instant := time.Date(2026, 8, 15, 12, 0, 0, 123456789, time.FixedZone("fixture", 2*60*60))
+	var zeroTime time.Time
+	var zeroClass model.ClassID
+	for _, command := range []UpdateExamSittingScheduleCommand{
+		{ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ExamRevisionID: &revisionID,
+			ScheduledStartAt: &instant, IdempotencyKey: " raw-key "},
+		{ExamID: examID, SittingID: sittingID, ExpectedRevision: 2, ClassID: &zeroClass,
+			ScheduledEndAt: &zeroTime, IdempotencyKey: " raw-key "},
+	} {
+		fake := &examSittingUseCasesFake{}
+		_, err := (&App{examSittings: fake}).UpdateExamSittingSchedule(context.Background(), invocation, command)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fake.update != command {
+			t.Fatalf("patch presence, pointer identity, or raw input changed: %#v", fake.update)
+		}
 	}
 }
 
@@ -70,56 +76,68 @@ func TestAuthorizeWebSocketSittingSubscriptionConcealsMissingAndDeniedTargets(t 
 	}
 }
 
-func TestExamSittingManagerTransitionsForwardRawKeys(t *testing.T) {
+func TestExamSittingFacadeForwardsCommandsAndPreservesInvocationAndResults(t *testing.T) {
 	t.Parallel()
-	invocation := NewInvocation(model.Principal{UserID: model.NewUserID()}, model.RequestMetadata{RequestID: "manager-transition"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	invocation := NewInvocation(model.Principal{UserID: model.NewUserID(), CredentialScopes: []string{"exam:manage"}},
+		model.RequestMetadata{RequestID: "sitting-command", IPAddress: "192.0.2.1", UserAgent: "test"})
 	examID, sittingID := model.NewExamID(), model.NewExamSittingID()
-	base := PauseExamSittingCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, PrivateReason: "first reason", IdempotencyKey: "same-key"}
-
-	tests := []struct {
-		name     string
-		invoke   func(*App, PauseExamSittingCommand) error
-		captured func(*examSittingUseCasesFake) examsitting.PauseCommand
+	revisionID, classID := model.NewExamRevisionID(), model.NewClassID()
+	start := time.Date(2026, time.August, 16, 12, 0, 0, 123456789, time.FixedZone("fixture", 2*60*60))
+	end := start.Add(time.Hour)
+	schedule := ScheduleExamSittingCommand{ExamID: examID, ExamRevisionID: revisionID, ClassID: classID,
+		ScheduledStartAt: start, ScheduledEndAt: end, IdempotencyKey: " raw-schedule-key "}
+	update := UpdateExamSittingScheduleCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3,
+		ExamRevisionID: &revisionID, ClassID: &classID, ScheduledStartAt: &start, ScheduledEndAt: &end, IdempotencyKey: " raw-update-key "}
+	transition := PauseExamSittingCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3,
+		PrivateReason: " raw reason ", IdempotencyKey: " raw-transition-key "}
+	cancelCommand := CancelExamSittingCommand(transition)
+	extend := ExtendExamSittingCommand{ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, ScheduledEndAt: end,
+		PrivateReason: " raw extension reason ", IdempotencyKey: " raw-extend-key "}
+	result := store.ExamSittingSnapshot{Sitting: &model.ExamSitting{ID: sittingID, Revision: 4}}
+	for _, test := range []struct {
+		name    string
+		command any
+		invoke  func(*App) (ExamSittingView, error)
 	}{
-		{name: "pause", invoke: func(app *App, command PauseExamSittingCommand) error {
-			_, err := app.PauseExamSitting(context.Background(), invocation, command)
-			return err
-		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.pause }},
-		{name: "resume", invoke: func(app *App, command PauseExamSittingCommand) error {
-			_, err := app.ResumeExamSitting(context.Background(), invocation, command)
-			return err
-		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.resume }},
-		{name: "close", invoke: func(app *App, command PauseExamSittingCommand) error {
-			_, err := app.CloseExamSitting(context.Background(), invocation, command)
-			return err
-		}, captured: func(fake *examSittingUseCasesFake) examsitting.PauseCommand { return fake.close }},
-	}
-	for _, test := range tests {
-		test := test
+		{"schedule", schedule, func(app *App) (ExamSittingView, error) {
+			return app.ScheduleExamSitting(ctx, invocation, schedule)
+		}},
+		{"update", update, func(app *App) (ExamSittingView, error) {
+			return app.UpdateExamSittingSchedule(ctx, invocation, update)
+		}},
+		{"cancel", cancelCommand, func(app *App) (ExamSittingView, error) {
+			return app.CancelExamSitting(ctx, invocation, cancelCommand)
+		}},
+		{"pause", transition, func(app *App) (ExamSittingView, error) {
+			return app.PauseExamSitting(ctx, invocation, transition)
+		}},
+		{"resume", transition, func(app *App) (ExamSittingView, error) {
+			return app.ResumeExamSitting(ctx, invocation, transition)
+		}},
+		{"close", transition, func(app *App) (ExamSittingView, error) {
+			return app.CloseExamSitting(ctx, invocation, transition)
+		}},
+		{"extend", extend, func(app *App) (ExamSittingView, error) {
+			return app.ExtendExamSitting(ctx, invocation, extend)
+		}},
+	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			first := &examSittingUseCasesFake{}
-			if err := test.invoke(&App{examSittings: first}, base); err != nil {
-				t.Fatal(err)
+			fake := &examSittingUseCasesFake{result: result}
+			got, err := test.invoke(&App{examSittings: fake})
+			if err != nil || got != result || fake.command != test.command {
+				t.Fatalf("command = %#v, result = %#v, %v", fake.command, got, err)
 			}
-			captured := test.captured(first)
-			if captured.IdempotencyKey != "same-key" || captured.PrivateReason != base.PrivateReason {
-				t.Fatalf("child command = %#v", captured)
+			if fake.ctx != ctx || !reflect.DeepEqual(fake.call.Principal(), invocation.Principal()) || fake.call.RequestMetadata() != invocation.RequestMetadata() {
+				t.Fatalf("child call lost context, principal, or request metadata: %#v", fake.call)
+			}
+			principal := fake.call.Principal()
+			principal.CredentialScopes[0] = "changed"
+			if fake.call.Principal().CredentialScopes[0] != "exam:manage" || invocation.Principal().CredentialScopes[0] != "exam:manage" {
+				t.Fatal("child call exposed mutable principal scopes")
 			}
 		})
-	}
-
-	deadline := time.Date(2026, time.August, 16, 14, 0, 0, 0, time.FixedZone("fixture", 2*60*60))
-	first := &examSittingUseCasesFake{}
-	_, err := (&App{examSittings: first}).ExtendExamSitting(context.Background(), invocation, ExtendExamSittingCommand{
-		ExamID: examID, SittingID: sittingID, ExpectedRevision: 3, ScheduledEndAt: deadline,
-		PrivateReason: "needed time", IdempotencyKey: "same-key",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.extend.IdempotencyKey != "same-key" || !first.extend.ScheduledEndAt.Equal(deadline) {
-		t.Fatalf("extension command = %#v", first.extend)
 	}
 }
 
@@ -280,21 +298,30 @@ func (f *examCollectionInvalidationStoreFake) ListCandidateInvalidationTargetsBy
 
 type examSittingUseCasesFake struct {
 	examSittingUseCases
+	ctx         context.Context
 	call        examsitting.Call
+	command     any
+	result      store.ExamSittingSnapshot
 	sittingID   model.ExamSittingID
-	pause       examsitting.PauseCommand
-	resume      examsitting.ResumeCommand
-	extend      examsitting.ExtendCommand
-	close       examsitting.EarlyCloseCommand
 	update      examsitting.UpdateScheduleCommand
 	advance     store.ExamSittingLifecycleResult
 	advanceCall examsitting.SystemCall
 	err         error
 }
 
-func (fake *examSittingUseCasesFake) UpdateSchedule(_ context.Context, _ examsitting.Call, command examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
-	fake.update = command
-	return store.ExamSittingSnapshot{}, fake.err
+func (fake *examSittingUseCasesFake) Schedule(ctx context.Context, call examsitting.Call, command examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
+}
+
+func (fake *examSittingUseCasesFake) UpdateSchedule(ctx context.Context, call examsitting.Call, command examsitting.UpdateScheduleCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command, fake.update = ctx, call, command, command
+	return fake.result, fake.err
+}
+
+func (fake *examSittingUseCasesFake) Cancel(ctx context.Context, call examsitting.Call, command examsitting.CancelCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
 }
 
 func (fake *examSittingUseCasesFake) AuthorizeView(_ context.Context, call examsitting.Call, sittingID model.ExamSittingID) error {
@@ -302,24 +329,24 @@ func (fake *examSittingUseCasesFake) AuthorizeView(_ context.Context, call exams
 	return fake.err
 }
 
-func (fake *examSittingUseCasesFake) Pause(_ context.Context, _ examsitting.Call, command examsitting.PauseCommand) (store.ExamSittingSnapshot, error) {
-	fake.pause = command
-	return store.ExamSittingSnapshot{}, fake.err
+func (fake *examSittingUseCasesFake) Pause(ctx context.Context, call examsitting.Call, command examsitting.PauseCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) Resume(_ context.Context, _ examsitting.Call, command examsitting.ResumeCommand) (store.ExamSittingSnapshot, error) {
-	fake.resume = command
-	return store.ExamSittingSnapshot{}, fake.err
+func (fake *examSittingUseCasesFake) Resume(ctx context.Context, call examsitting.Call, command examsitting.ResumeCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) Extend(_ context.Context, _ examsitting.Call, command examsitting.ExtendCommand) (store.ExamSittingSnapshot, error) {
-	fake.extend = command
-	return store.ExamSittingSnapshot{}, fake.err
+func (fake *examSittingUseCasesFake) Extend(ctx context.Context, call examsitting.Call, command examsitting.ExtendCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
 }
 
-func (fake *examSittingUseCasesFake) EarlyClose(_ context.Context, _ examsitting.Call, command examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
-	fake.close = command
-	return store.ExamSittingSnapshot{}, fake.err
+func (fake *examSittingUseCasesFake) EarlyClose(ctx context.Context, call examsitting.Call, command examsitting.EarlyCloseCommand) (store.ExamSittingSnapshot, error) {
+	fake.ctx, fake.call, fake.command = ctx, call, command
+	return fake.result, fake.err
 }
 
 func (fake *examSittingUseCasesFake) AdvanceDue(_ context.Context, call examsitting.SystemCall, _ model.ExamSittingID) (store.ExamSittingLifecycleResult, error) {

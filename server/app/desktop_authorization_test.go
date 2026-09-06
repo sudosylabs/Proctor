@@ -19,6 +19,53 @@ import (
 	"github.com/sudosylabs/proctor/server/store"
 )
 
+func TestDesktopLocalAuthenticationPreservesPasswordCapacityFailure(t *testing.T) {
+	for _, account := range []string{"existing", "missing"} {
+		t.Run(account, func(t *testing.T) {
+			persistence := newAuthenticationStoreFake()
+			authentication := newTestAuthenticationService(t, persistence)
+			const password = "CorrectHorseBatteryStaple1!"
+			user, err := authentication.createLocalUser(context.Background(), CreateLocalUserCommand{
+				User: &model.User{Username: "desktop-capacity", Email: "desktop-capacity@example.edu"}, Password: password,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			transactions := &desktopAuthorizationStoreFake{}
+			identity := testDesktopAuthorizationIdentity(t, "https://proctor.example.edu", time.Now)
+			identity.authentication = authentication
+			service, err := newDesktopAuthorizationService(transactions,
+				desktopAuthorizationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+				desktopAuthorizationAccessPolicyFake{enabled: true}, &accessPolicyCapabilitiesFake{},
+				desktopAuthorizationAuditorFake{}, &desktopAuthorizationAttemptLimiterFake{}, testDesktopSessionPolicy(),
+				DesktopAuthorizationPolicy{Issuer: "https://proctor.example.edu"}, model.NewCredentialToken, time.Now, identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := AuthenticateDesktopAuthorizationLocallyCommand{
+				Binding: model.NewCredentialToken(), LoginID: user.Email, Password: password, Source: "192.0.2.37",
+			}
+			if account == "missing" {
+				command.LoginID = "missing@example.edu"
+			}
+			saturatePasswordWork(t, authentication.hasher)
+			result, err := service.AuthenticateLocal(context.Background(), command)
+			if result != nil || !Is(err, "service.busy") {
+				t.Fatalf("saturated Desktop authentication = %#v/%v", result, err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			result, err = service.AuthenticateLocal(ctx, command)
+			if result != nil || !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled Desktop authentication = %#v/%v", result, err)
+			}
+			if transactions.authenticated != nil || len(persistence.sessions) != 0 {
+				t.Fatal("rejected password work advanced Desktop authentication or issued a Session")
+			}
+		})
+	}
+}
+
 func TestDesktopAuthorizationStartPinsPublicClientRequest(t *testing.T) {
 	t.Parallel()
 
@@ -489,6 +536,7 @@ func testDesktopSessionPolicy() SessionPolicy {
 }
 
 type desktopAuthorizationStoreFake struct {
+	authenticated   *store.DesktopAuthorizationAuthentication
 	created         *store.DesktopAuthorizationCreation
 	createExpiresAt time.Time
 	createResult    *store.DesktopAuthorizationCreated
@@ -534,7 +582,8 @@ func (s *desktopAuthorizationStoreFake) GetDesktopAuthorizationContext(context.C
 		State: model.BrowserAuthenticationStateAuthenticated, UserID: model.NewUserID(), ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 
-func (s *desktopAuthorizationStoreFake) AuthenticateDesktopAuthorization(context.Context, *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
+func (s *desktopAuthorizationStoreFake) AuthenticateDesktopAuthorization(_ context.Context, input *store.DesktopAuthorizationAuthentication) (*store.DesktopAuthorizationAuthenticationResult, error) {
+	s.authenticated = input
 	return &store.DesktopAuthorizationAuthenticationResult{}, nil
 }
 

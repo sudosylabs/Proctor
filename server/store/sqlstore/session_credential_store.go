@@ -136,9 +136,11 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 	tokenHash string,
 	access *model.SessionCredential,
 	refresh *model.SessionCredential,
-	now int64,
-	idleExpiresAt int64,
+	now time.Time,
+	idleExpiresAt time.Time,
 ) (*store.SessionRotation, error) {
+	now = model.TimeUTC(now)
+	idleExpiresAt = model.TimeUTC(idleExpiresAt)
 	if access == nil || refresh == nil {
 		return nil, store.NewErrInvalidInput("session_credential", "rotation", nil)
 	}
@@ -203,10 +205,9 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		if err != nil {
 			return nil, err
 		}
-		nowTime := model.TimeFromMillis(now)
 
 		if current.UsedAt.Valid || !current.ReplacedByID.IsZero() {
-			hashes, revokeErr := revokeReplayedSession(ctx, tx, session, nowTime)
+			hashes, revokeErr := revokeReplayedSession(ctx, tx, session, now)
 			if revokeErr != nil {
 				return nil, revokeErr
 			}
@@ -219,8 +220,8 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		if session.RevokedAt.Valid {
 			return nil, store.NewErrConflict("session_credential", "session_credentials_inactive", nil)
 		}
-		if !nowTime.Before(session.IdleExpiresAt) || !nowTime.Before(session.ExpiresAt) {
-			hashes, revokeErr := revokeOneUserSession(
+		if !now.Before(session.IdleExpiresAt) || !now.Before(session.ExpiresAt) {
+			hashes, revokeErr := revokeOneUserSessionAt(
 				ctx,
 				tx,
 				session.ID.String(),
@@ -231,16 +232,16 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 			if revokeErr != nil {
 				return nil, revokeErr
 			}
-			if session.UpdatedAt.Before(nowTime) {
-				session.UpdatedAt = nowTime
+			if session.UpdatedAt.Before(now) {
+				session.UpdatedAt = now
 			}
-			session.RevokedAt = model.OptionalTimeFrom(nowTime)
+			session.RevokedAt = model.OptionalTimeFrom(now)
 			session.RevocationReason = model.SessionRevocationExpired
 			return &store.SessionRotation{
 				Session: session, RevokedAccessHashes: hashes, Expired: true,
 			}, nil
 		}
-		if current.IsExpiredAt(nowTime) {
+		if current.IsExpiredAt(now) {
 			return nil, store.NewErrConflict("session_credential", "session_credentials_inactive", nil)
 		}
 
@@ -250,7 +251,7 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		if newAccess.ExpiresAt.After(session.ExpiresAt) {
 			newAccess.ExpiresAt = session.ExpiresAt
 		}
-		newAccess.PrepareCreate(model.NewSessionCredentialID(), nowTime)
+		newAccess.PrepareCreate(model.NewSessionCredentialID(), now)
 		if err := newAccess.Validate(); err != nil {
 			return nil, err
 		}
@@ -262,7 +263,7 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		if newRefresh.ExpiresAt.After(session.ExpiresAt) {
 			newRefresh.ExpiresAt = session.ExpiresAt
 		}
-		newRefresh.PrepareCreate(model.NewSessionCredentialID(), nowTime)
+		newRefresh.PrepareCreate(model.NewSessionCredentialID(), now)
 		if err := newRefresh.Validate(); err != nil {
 			return nil, err
 		}
@@ -277,8 +278,8 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		   AND kind = ?
 		   AND archived_at IS NULL
 		   AND revoked_at IS NULL`,
-			nowTime,
-			nowTime,
+			now,
+			now,
 			session.ID.String(),
 			string(model.SessionCredentialAccess),
 		); err != nil {
@@ -296,21 +297,21 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 		       used_at = ?,
 		       replaced_by_id = ?
 		 WHERE id = ? AND used_at IS NULL AND replaced_by_id IS NULL`,
-			nowTime,
-			nowTime,
+			now,
+			now,
 			newRefresh.ID.String(),
 			current.ID.String(),
 		); err != nil {
 			return nil, fmt.Errorf("mark refresh credential used: %w", err)
 		}
-		idleAt := model.TimeFromMillis(idleExpiresAt)
+		idleAt := idleExpiresAt
 		if idleAt.After(session.ExpiresAt) {
 			idleAt = session.ExpiresAt
 		}
-		session.LastActivityAt = nowTime
+		session.LastActivityAt = now
 		session.IdleExpiresAt = idleAt
-		if session.UpdatedAt.Before(nowTime) {
-			session.UpdatedAt = nowTime
+		if session.UpdatedAt.Before(now) {
+			session.UpdatedAt = now
 		}
 		if _, err := tx.Exec(ctx, `
 		UPDATE sessions

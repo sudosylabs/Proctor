@@ -167,8 +167,8 @@ func userProfileResource(profiles UserProfileApplication) resource {
 		principalRoute(http.MethodPatch, user, userProfileMutationCodes("request.invalid", "resource.not_found", "user.invalid", "user.conflict"), module.update),
 		strongRecentSessionRoute(http.MethodPut, email, userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.invalid", "user.conflict", "authentication.account_recovery.unavailable"), module.changeEmail),
 		strongRecentSessionRoute(http.MethodPost, appendRoutePath(email, literal("verify")), userProfileMutationCodes("authentication.strong_required", "authentication.reauthentication_required", "request.invalid", "resource.not_found", "user.conflict", "authentication.account_recovery.unavailable"), module.verifyEmail),
-		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
-		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
+		protocolRoute("profile-picture-download", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, picture, userProfilePrincipalCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable"), module.downloadPicture),
+		protocolRoute("profile-picture-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, picture, userProfilePrincipalMutationCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"), module.uploadPicture),
 		principalRoute(http.MethodDelete, picture, userProfilePrincipalMutationCodes("request.invalid", "resource.not_found", "profile_picture.unavailable", "user.conflict"), module.removePicture),
 	)
 }

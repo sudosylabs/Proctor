@@ -49,6 +49,11 @@ SPDX-License-Identifier: AGPL-3.0-only
   assert.equal(second, first);
   await checkTemplates(root);
 
+  await writeFile(path.join(root, "logo.png"), new Uint8Array([1, 2, 3]));
+  await assert.rejects(checkTemplates(root), /stale/);
+  await buildTemplates(root);
+  await checkTemplates(root);
+
   await writeFile(
     path.join(root, "example.mjml"),
     `${sourceLicenseHeader}<mjml><mj-body><mj-section><mj-column><mj-text>changed {{.Copy.Body}}</mj-text></mj-column></mj-section></mj-body></mjml>\n`,

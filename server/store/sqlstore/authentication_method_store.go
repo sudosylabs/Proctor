@@ -232,7 +232,7 @@ func getExternalIdentityForUpdate(ctx context.Context, tx *sqlxTxWrapper, id, us
 
 func getPasswordCredentialForUpdate(ctx context.Context, tx *sqlxTxWrapper, userID string) (*model.PasswordCredential, error) {
 	var row passwordCredentialRow
-	if err := tx.Get(ctx, &row, `SELECT id, created_at, updated_at, archived_at, user_id, password_hash, password_changed_at FROM password_credentials WHERE user_id=? AND archived_at IS NULL FOR UPDATE`, userID); err != nil {
+	if err := tx.Get(ctx, &row, `SELECT id, created_at, updated_at, archived_at, user_id, revision, password_hash, password_changed_at FROM password_credentials WHERE user_id=? AND archived_at IS NULL FOR UPDATE`, userID); err != nil {
 		return nil, translateError("password_credential", userID, err)
 	}
 	return row.model()

@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -21,14 +20,14 @@ import (
 
 // These tests prove application security recovery when best-effort cluster
 // invalidations are lost or duplicated. Authoritative PostgreSQL (store) state
-// and bounded authentication caches decide correctness, not message delivery.
+// decide correctness, not cache state or message delivery.
 
-func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T) {
+func TestSessionRevocationWithoutClusterFanoutRejectsWithWarmPeerCache(t *testing.T) {
 	t.Parallel()
 
 	// Node A revokes in the store and clears its local cache, but the peer
-	// never receives the cluster invalidation. After the peer's cache miss,
-	// store resolution must reject the credential.
+	// never receives the cluster invalidation. Every subsequent authentication
+	// must reject the credential even while an old positive entry remains.
 	storeFake := newAuthenticationStoreFake()
 	cacheA := newAuthenticationCacheFake()
 	cacheB := newAuthenticationCacheFake()
@@ -37,8 +36,11 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 
 	user, rawAccess := seedAuthenticatedSession(t, serviceA)
 	ctx := context.Background()
+	hash := model.HashToken(rawAccess)
+	cacheLegacyAuthentication(t, cacheA, storeFake.accessByHash[hash], storeFake.sessionByCredential[hash], user)
+	cacheLegacyAuthentication(t, cacheB, storeFake.accessByHash[hash], storeFake.sessionByCredential[hash], user)
 
-	// Warm both nodes' authentication caches (simulating prior successful auth).
+	// Both nodes have previously accepted the credential.
 	if _, err := serviceA.authenticateAccess(ctx, rawAccess); err != nil {
 		t.Fatalf("node A warm auth: %v", err)
 	}
@@ -67,19 +69,11 @@ func TestSessionRevocationWithoutClusterFanoutRejectsAfterCacheMiss(t *testing.T
 	}
 	invalidator.InvalidateAccessCredentials(ctx, hashes)
 
-	// Stale cache on B may still accept until miss/TTL — that is the bounded
-	// non-guarantee of best-effort invalidation.
-	if _, err := serviceB.authenticateAccess(ctx, rawAccess); err != nil {
-		t.Fatalf("stale cache on B still accepted before miss, got error %v", err)
-	}
-
-	// Force a cache miss to model TTL expiry or process restart without
-	// replaying the lost invalidation message.
-	for _, hash := range hashes {
-		_ = cacheB.Delete(ctx, authenticationCachePrefix+hash)
+	if _, err := cacheB.Get(ctx, authenticationCachePrefix+hash); err != nil {
+		t.Fatalf("peer positive cache must still be present: %v", err)
 	}
 	if _, err := serviceB.authenticateAccess(ctx, rawAccess); !Is(err, "authentication.invalid_token") {
-		t.Fatalf("node B auth after missed invalidation + cache miss error = %v", err)
+		t.Fatalf("node B auth after committed revocation with stale cache error = %v", err)
 	}
 }
 
@@ -213,11 +207,11 @@ type recoveryAccessClassStore struct{ store.ClassStore }
 type recoveryAccessUserStore struct{ store.UserStore }
 type recoveryAccessClassMemberStore struct{ store.ClassMemberStore }
 
-func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
+func TestSessionExpiryRejectsDespitePositiveCache(t *testing.T) {
 	t.Parallel()
 
-	// Even without invalidation, a cached principal cannot outlive the session
-	// absolute/idle expiry encoded in the cache value.
+	// Even without invalidation, an old positive cache entry cannot override
+	// the Session's authoritative absolute or idle expiry.
 	storeFake := newAuthenticationStoreFake()
 	cache := newAuthenticationCacheFake()
 	service := newTestAuthenticationServiceWithCache(t, storeFake, cache)
@@ -234,35 +228,20 @@ func TestStaleAuthenticationCacheBoundedBySessionExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Put a deliberately stale long-lived cache entry that still claims validity
-	// while the cached session is already past absolute/idle expiry.
+	// Keep a valid snapshot while the durable Session expires.
 	for _, session := range storeFake.sessions {
-		for hash, credential := range storeFake.accessByHash {
+		for _, credential := range storeFake.accessByHash {
 			if credential.SessionID != session.ID {
 				continue
 			}
 			user := storeFake.users[session.UserID.String()]
+			cacheLegacyAuthentication(t, cache, credential, session, user)
 			session.ExpiresAt = fixedNow.Add(-time.Minute)
 			session.IdleExpiresAt = fixedNow.Add(-time.Minute)
-			expiredSession := *session
-			resolved := &cachedAuthentication{
-				Credential: credential,
-				Session:    &expiredSession,
-				User:       user,
-			}
-			data, err := json.Marshal(resolved)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Direct cache write with long TTL to simulate a peer that never
-			// received invalidation and has not yet dropped its entry by TTL.
-			if err := cache.SetAlways(ctx, authenticationCachePrefix+hash, data, time.Hour); err != nil {
-				t.Fatal(err)
-			}
 		}
 	}
 	if _, err := service.authenticateAccess(ctx, rawAccess); !Is(err, "authentication.invalid_token") {
-		t.Fatalf("auth with expired cached session error = %v", err)
+		t.Fatalf("auth with expired authoritative Session error = %v", err)
 	}
 }
 
@@ -473,16 +452,13 @@ func (recoveryRoleStore) ArchiveWithAudit(context.Context, *store.RoleArchive) (
 
 type recoveryRoleBindingStore struct{ root *recoveryAuthorizationStore }
 
-func (s recoveryRoleBindingStore) ListActiveByUser(_ context.Context, userID string, at int64) ([]*model.RoleBinding, error) {
+func (s recoveryRoleBindingStore) ListActiveByUser(_ context.Context, userID string, at time.Time) ([]*model.RoleBinding, error) {
 	out := make([]*model.RoleBinding, 0)
 	for _, binding := range s.root.bindings {
 		if binding.UserID.String() != userID {
 			continue
 		}
-		if model.MillisFromTime(binding.StartsAt) > at {
-			continue
-		}
-		if binding.EndsAt.Millis() != 0 && binding.EndsAt.Millis() <= at {
+		if !binding.IsActiveAt(at) {
 			continue
 		}
 		cloned := *binding

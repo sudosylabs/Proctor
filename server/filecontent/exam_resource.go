@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -64,6 +63,14 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() || !renditionID.IsValid() || !mediaType.IsValid() || body == nil || declaredSize < 0 || declaredSize > model.ExamResourceMaximumBytes {
 		return model.FileRendition{}, ErrInvalidExamResourceContent
 	}
+	finish, err := c.beginWork(ctx)
+	if err != nil {
+		return model.FileRendition{}, err
+	}
+	defer finish()
+	if err = ctx.Err(); err != nil {
+		return model.FileRendition{}, err
+	}
 
 	spool, err := os.CreateTemp("", "proctor-exam-resource-*")
 	if err != nil {
@@ -76,15 +83,25 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 	}()
 
 	digest := sha256.New()
-	limited := io.LimitReader(struct{ io.Reader }{body}, model.ExamResourceMaximumBytes+1)
+	limited := io.LimitReader(workReader{ctx: ctx, reader: body}, declaredSize+1)
 	size, err := io.CopyBuffer(io.MultiWriter(spool, digest), limited, make([]byte, examResourceCopyBuffer))
+	if cancellation := ctx.Err(); cancellation != nil {
+		return model.FileRendition{}, cancellation
+	}
 	if err != nil || size != declaredSize || size > model.ExamResourceMaximumBytes {
 		return model.FileRendition{}, ErrInvalidExamResourceContent
 	}
-	if err = validateExamResource(spool, mediaType, size); err != nil {
+	if err = validateExamResource(ctx, spool, mediaType, size); err != nil {
 		return model.FileRendition{}, err
 	}
-	if _, err = spool.Seek(0, io.SeekStart); err != nil {
+	if err = ctx.Err(); err != nil {
+		return model.FileRendition{}, err
+	}
+	spoolReader := workReadSeeker{ctx: ctx, reader: spool}
+	if _, err = spoolReader.Seek(0, io.SeekStart); err != nil {
+		if cancellation := ctx.Err(); cancellation != nil {
+			return model.FileRendition{}, cancellation
+		}
 		return model.FileRendition{}, sanitize("rewind exam resource spool", err)
 	}
 
@@ -96,6 +113,9 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 	conditionalWrite := c.filesystem.Capabilities().ConditionalWrite
 	if !conditionalWrite {
 		matching, openErr := c.openMatchingExamResource(ctx, revisionID, renditionID, size, checksum)
+		if cancellation := ctx.Err(); cancellation != nil {
+			return model.FileRendition{}, cancellation
+		}
 		switch {
 		case openErr == nil && matching:
 			return *rendition, nil
@@ -105,9 +125,16 @@ func (c *Content) StoreExamResourceRendition(ctx context.Context, revisionID mod
 			return model.FileRendition{}, sanitize("stage exam resource", openErr)
 		}
 	}
-	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spool, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditionalWrite})
+	_, err = c.filesystem.Write(ctx, examResourceRenditionKey(revisionID, renditionID), spoolReader, vfspkg.WriteOptions{Size: &size, NoOverwrite: conditionalWrite})
+	if cancellation := ctx.Err(); cancellation != nil {
+		return model.FileRendition{}, cancellation
+	}
 	if err != nil {
-		if existing, verifyErr := c.openMatchingExamResource(ctx, revisionID, renditionID, size, checksum); verifyErr == nil && existing {
+		existing, verifyErr := c.openMatchingExamResource(ctx, revisionID, renditionID, size, checksum)
+		if cancellation := ctx.Err(); cancellation != nil {
+			return model.FileRendition{}, cancellation
+		}
+		if verifyErr == nil && existing {
 			return *rendition, nil
 		}
 		return model.FileRendition{}, sanitize("stage exam resource", err)
@@ -125,7 +152,10 @@ func (c *Content) openMatchingExamResource(ctx context.Context, revisionID model
 		return false, nil
 	}
 	digest := sha256.New()
-	read, err := io.Copy(digest, io.LimitReader(file.Body, model.ExamResourceMaximumBytes+1))
+	read, err := io.Copy(digest, io.LimitReader(workReader{ctx: ctx, reader: file.Body}, size+1))
+	if cancellation := ctx.Err(); cancellation != nil {
+		return false, cancellation
+	}
 	if err != nil {
 		return false, err
 	}
@@ -160,8 +190,12 @@ func examResourceRenditionKey(revisionID model.FileRevisionID, renditionID model
 	return revisionPrefix(revisionID) + renditionID.String() + ".resource"
 }
 
-func validateExamResource(file *os.File, mediaType model.ExamResourceMediaType, size int64) error {
+func validateExamResource(ctx context.Context, source io.ReadSeeker, mediaType model.ExamResourceMediaType, size int64) error {
+	file := workReadSeeker{ctx: ctx, reader: source}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		if cancellation := ctx.Err(); cancellation != nil {
+			return cancellation
+		}
 		return sanitize("rewind exam resource spool", err)
 	}
 	var err error
@@ -178,6 +212,9 @@ func validateExamResource(file *os.File, mediaType model.ExamResourceMediaType, 
 		err = validateExamResourceUTF8(file)
 	default:
 		err = ErrInvalidExamResourceContent
+	}
+	if cancellation := ctx.Err(); cancellation != nil {
+		return cancellation
 	}
 	if err != nil {
 		return ErrInvalidExamResourceContent
@@ -341,26 +378,6 @@ func validateExactImageEnvelope(file io.ReadSeeker, mediaType model.ExamResource
 	return nil
 }
 
-func validateExamResourceJSON(file io.ReadSeeker) error {
-	if err := validateExamResourceUTF8(file); err != nil {
-		return err
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(file)
-	decoder.UseNumber()
-	var document any
-	if err := decoder.Decode(&document); err != nil {
-		return ErrInvalidExamResourceContent
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return ErrInvalidExamResourceContent
-	}
-	return nil
-}
-
 func validateExamResourceCSV(file io.ReadSeeker) error {
 	if err := validateExamResourceUTF8(file); err != nil {
 		return err
@@ -384,7 +401,8 @@ func validateExamResourceUTF8(file io.ReadSeeker) error {
 		return err
 	}
 	reader := bufio.NewReaderSize(file, examResourceCopyBuffer)
-	prefix := make([]byte, 0, 4)
+	var prefix [4]byte
+	prefixSize := 0
 	leading := true
 	for {
 		r, size, err := reader.ReadRune()
@@ -398,17 +416,14 @@ func validateExamResourceUTF8(file io.ReadSeeker) error {
 			continue
 		}
 		leading = false
-		if len(prefix) < cap(prefix) {
-			encoded := make([]byte, utf8.RuneLen(r))
-			utf8.EncodeRune(encoded, r)
-			prefix = append(prefix, encoded...)
-			if len(prefix) > cap(prefix) {
-				prefix = prefix[:cap(prefix)]
-			}
+		if prefixSize < len(prefix) {
+			var encoded [utf8.UTFMax]byte
+			encodedSize := utf8.EncodeRune(encoded[:], r)
+			prefixSize += copy(prefix[prefixSize:], encoded[:encodedSize])
 		}
 	}
 	for _, blocked := range [][]byte{{'M', 'Z'}, {'P', 'K', 3, 4}, {0x7f, 'E', 'L', 'F'}, {'#', '!'}} {
-		if len(prefix) >= len(blocked) && string(prefix[:len(blocked)]) == string(blocked) {
+		if prefixSize >= len(blocked) && string(prefix[:len(blocked)]) == string(blocked) {
 			return ErrInvalidExamResourceContent
 		}
 	}

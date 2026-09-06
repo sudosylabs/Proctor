@@ -1,138 +1,63 @@
 // Copyright 2026 SudoSylabs
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {createHash} from 'node:crypto';
-import {readFile, readdir} from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
 
 const packageAssets = new URL('../src/assets/brand/', import.meta.url);
-const canonicalAssets = new URL('../../assets/brand/', import.meta.url);
+const { assets } = JSON.parse(
+  await readFile(new URL('manifest.json', packageAssets), 'utf8'),
+);
 
-const exactCopies = [
-  {
-    local: 'proctor-mark.svg',
-    canonical: 'mark/proctor-mark.svg',
-  },
-  {
-    local: 'proctor-mark-white.svg',
-    canonical: 'mark/proctor-mark-white.svg',
-  },
-  {
-    local: 'proctor-lockup.svg',
-    canonical: 'lockup/proctor-lockup.svg',
-  },
-  {
-    local: 'proctor-lockup-white.svg',
-    canonical: 'lockup/proctor-lockup-white.svg',
-  },
-  {
-    local: 'proctor-lockup-purple-white.svg',
-    canonical: 'lockup/proctor-lockup-purple-white.svg',
-  },
-];
-
-const derivedRasterSources = [
-  {
-    canonical: 'mark/proctor-mark-512.png',
-    canonicalSHA256:
-      '563655416240e68642d78aba57f363be03ce492172cb1215086ab5d5ea4944f5',
-  },
-  {
-    canonical: 'mark/proctor-mark-white.svg',
-    canonicalSHA256:
-      '2428d3e1d5b37e24f4300d87360cc5ac28121a5337bd63ccf947293010f88880',
-  },
-];
-
-const derivedRasters = [
-  {
-    local: 'proctor-mark-32.png',
-    localSHA256:
-      'ccdf760968020f6655e7b669782833b189d509d83d0c210d4a43e1e07664f800',
-    width: 32,
-    height: 32,
-  },
-  {
-    local: 'proctor-mark-white-32.png',
-    localSHA256:
-      'dfa09e566c353f5bb9a904347cb4e74e446a1601bcd6f6d1617b4f9b742f8e92',
-    width: 32,
-    height: 32,
-  },
-  {
-    local: 'proctor-apple-touch-icon-180.png',
-    localSHA256:
-      '3e265c9705f47811d40af8effe8c176043574faeee692c70bdec33d7b0443faa',
-    width: 180,
-    height: 180,
-  },
-];
-
-function sha256(data) {
-  return createHash('sha256').update(data).digest('hex');
-}
-
-function pngDimensions(data) {
-  const signature = '89504e470d0a1a0a';
-  if (data.length < 24 || data.subarray(0, 8).toString('hex') !== signature) {
-    throw new Error('not a PNG image');
+function dimensions(file, data) {
+  if (file.endsWith('.png')) {
+    if (
+      data.length < 24 ||
+      data.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a'
+    ) {
+      throw new Error('not a PNG image');
+    }
+    return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
   }
-  return {width: data.readUInt32BE(16), height: data.readUInt32BE(20)};
+  if (file.endsWith('.svg')) {
+    const viewBox = data.toString('utf8').match(/<svg\b[^>]*\bviewBox="0 0 (\d+) (\d+)"/);
+    if (viewBox === null) {
+      throw new Error('missing SVG dimensions');
+    }
+    return { width: Number(viewBox[1]), height: Number(viewBox[2]) };
+  }
+  throw new Error('unsupported brand asset format');
 }
 
 const failures = [];
-
-for (const asset of exactCopies) {
-  const [local, canonical] = await Promise.all([
-    readFile(new URL(asset.local, packageAssets)),
-    readFile(new URL(asset.canonical, canonicalAssets)),
-  ]);
-  if (!local.equals(canonical)) {
-    failures.push(
-      `${asset.local} differs from canonical asset ${asset.canonical}`,
-    );
+const expectedFiles = new Set(['README.md', 'manifest.json']);
+for (const asset of assets) {
+  if (!/^[a-z0-9-]+\.(png|svg)$/.test(asset.file)) {
+    failures.push(`invalid local brand asset name: ${asset.file}`);
+    continue;
   }
-}
-
-for (const source of derivedRasterSources) {
-  const rasterSource = await readFile(
-    new URL(source.canonical, canonicalAssets),
-  );
-  if (sha256(rasterSource) !== source.canonicalSHA256) {
-    failures.push(
-      `${source.canonical} changed; regenerate and review the webapp raster assets`,
-    );
+  if (expectedFiles.has(asset.file)) {
+    failures.push(`duplicate brand asset: ${asset.file}`);
+    continue;
   }
-}
-
-for (const asset of derivedRasters) {
-  const local = await readFile(new URL(asset.local, packageAssets));
-  if (sha256(local) !== asset.localSHA256) {
-    failures.push(`${asset.local} differs from its reviewed derivative`);
-  }
+  expectedFiles.add(asset.file);
   try {
-    const dimensions = pngDimensions(local);
-    if (dimensions.width !== asset.width || dimensions.height !== asset.height) {
-      failures.push(`${asset.local} must be ${asset.width}x${asset.height}px`);
+    const data = await readFile(new URL(asset.file, packageAssets));
+    if (createHash('sha256').update(data).digest('hex') !== asset.sha256) {
+      failures.push(`${asset.file} differs from its reviewed local copy`);
+    }
+    const size = dimensions(asset.file, data);
+    if (size.width !== asset.width || size.height !== asset.height) {
+      failures.push(`${asset.file} must have dimensions ${asset.width}x${asset.height}`);
     }
   } catch (error) {
-    failures.push(`${asset.local}: ${error.message}`);
+    failures.push(`${asset.file}: ${error.message}`);
   }
 }
 
-const expectedFiles = new Set([
-  'README.md',
-  ...exactCopies.map((asset) => asset.local),
-  ...derivedRasters.map((asset) => asset.local),
-]);
-const actualFiles = await readdir(packageAssets);
-for (const filename of actualFiles) {
+for (const filename of await readdir(packageAssets)) {
   if (!expectedFiles.has(filename)) {
     failures.push(`unreviewed webapp brand asset: ${filename}`);
-  }
-}
-for (const filename of expectedFiles) {
-  if (!actualFiles.includes(filename)) {
-    failures.push(`missing webapp brand asset: ${filename}`);
   }
 }
 

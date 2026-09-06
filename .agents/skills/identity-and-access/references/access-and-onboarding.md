@@ -408,6 +408,10 @@ and the current OAuth security practices in
 
 Initially accepted callbacks are exact IP-literal loopback URLs using an
 ephemeral port and random path: `127.0.0.1` or `[::1]`, never `localhost`.
+The complete callback is at most 1024 bytes. Decimal ports may contain leading
+zeroes; the exact registered spelling is preserved through approval and must
+also be accepted by the hosted client. This bound leaves room for the terminal
+code and state query within the browser's bounded redirect validation.
 Non-loopback hosts, credentials, fragments, arbitrary schemes, remote ports,
 and caller-selected commands are rejected. A custom scheme or claimed HTTPS
 link requires a separate review.

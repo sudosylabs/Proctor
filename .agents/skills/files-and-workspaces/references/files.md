@@ -11,13 +11,27 @@ never an authorization or discovery interface.
 The server-owned File Content module concentrates backend-neutral content
 mechanics over VFS: bounded validation and transformation, immutable rendition
 creation, checksums, private key derivation, exact reads, and idempotent
-physical deletion. It is stateless and owns no infrastructure lifecycle. The
+physical deletion. It owns no infrastructure lifecycle. The
 application retains authorization, semantic availability, publication,
 retention decisions, audit, indexing eligibility, and domain events; the sole
 composition root selects the concrete VFS backend, constructs File Content
-over that one dependency, and passes its bounded capabilities into the
+over that dependency and immutable processing policy, and passes its bounded capabilities into the
 application. File Content starts no goroutines and never closes VFS; the
 platform and composition root retain infrastructure lifecycle ownership.
+
+Resource validation, uploaded profile-picture normalization, default-picture
+generation, and fallback rendering share one node-local processing limit.
+Admission refuses immediately before reading input or creating content when
+all slots are occupied; there is no waiting queue. The slot remains occupied
+until synchronous processing returns even if the request is cancelled. Exact
+content reads, deletion and purge, and ordinary streaming Workspace and
+onboarding operations remain independent of this limit. It bounds concurrent
+operations, not aggregate memory. The root supplies a narrow optional recorder
+for active work, duration, and refusals; application callers map refusal to the
+retryable `service.busy` outcome while durable default generation retains its
+existing retry path. Pending Upload Leases and correction Stage reservations
+retain their ordinary recovery rules; refused processing never publishes
+available content.
 
 An acknowledged file change must survive loss of an application node or
 execution environment. Shared VFS stores the bytes in clustered production,
@@ -218,6 +232,22 @@ CSV, and JSON. A published Exam Revision retains that exact relationship even
 when the Draft later replaces or removes the resource. Candidates have
 protected in-application reads only—no public URL, download/export, print,
 local-folder, external-open, or drag-out capability.
+
+Resource processing reads at most the declared byte size plus one excess byte
+into its private spool before rejecting a size mismatch. Validation preserves
+exact authored bytes. JSON Resources contain one complete JSON value and permit
+duplicate object keys, arbitrary numeric precision, and escaped unpaired Unicode
+surrogates; raw invalid UTF-8 and NUL remain rejected. JSON syntax validation
+retains only a fixed read buffer and at most 10,000 nested container states,
+without materializing values or allocating per document member.
+
+Cancellation is observed between bounded spool reads and rewinds and before a
+completed rendition is returned. Synchronous codec or parser CPU work may still
+finish before cancellation is observed, and its processing slot remains held
+until return. Invisible staged bytes retain ordinary Upload Lease recovery.
+These controls do not impose a total memory budget: CSV validation may retain a
+whole record, image processing allocates decoded pixels and intermediate forms,
+and PDF stream and object limits do not bound aggregate parser memory.
 
 A Starter Workspace is code material rather than an Exam Resource. Mutable
 Draft entries are frozen directly into an Exam Revision as an immutable logical

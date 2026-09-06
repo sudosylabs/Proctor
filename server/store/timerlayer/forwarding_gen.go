@@ -2867,7 +2867,7 @@ func (s *timedPersonalAccessTokenStore) ListByUser(arg0 context.Context, arg1 st
 	})
 }
 
-func (s *timedPersonalAccessTokenStore) Resolve(arg0 context.Context, arg1 string, arg2 int64, arg3 int64) (*store.PersonalAccessTokenResolution, error) {
+func (s *timedPersonalAccessTokenStore) Resolve(arg0 context.Context, arg1 string, arg2 time.Time, arg3 time.Duration) (*store.PersonalAccessTokenResolution, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregatePersonalAccessToken, methodResolve), func() (*store.PersonalAccessTokenResolution, error) {
 		return s.next.Resolve(arg0, arg1, arg2, arg3)
 	})
@@ -2909,7 +2909,7 @@ func (s *timedMFAStore) ConsumeSecondFactor(arg0 context.Context, arg1 string, a
 	})
 }
 
-func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 string, arg2 string, arg3 int64) ([]string, error) {
+func (s *timedMFAStore) UpgradeSession(arg0 context.Context, arg1 string, arg2 string, arg3 time.Time) ([]string, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodUpgradeSession), func() ([]string, error) {
 		return s.next.UpgradeSession(arg0, arg1, arg2, arg3)
 	})
@@ -3011,7 +3011,7 @@ func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(arg0 context.Context, 
 	})
 }
 
-func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.AcademicUnitMember, error) {
+func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 time.Time) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListActiveByUser), func() ([]*model.AcademicUnitMember, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})
@@ -3083,9 +3083,9 @@ func (s *timedPasswordCredentialStore) GetByUser(arg0 context.Context, arg1 stri
 	})
 }
 
-func (s *timedPasswordCredentialStore) Update(arg0 context.Context, arg1 *model.PasswordCredential) (*model.PasswordCredential, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodUpdate), func() (*model.PasswordCredential, error) {
-		return s.next.Update(arg0, arg1)
+func (s *timedPasswordCredentialStore) Rehash(arg0 context.Context, arg1 *store.PasswordCredentialRehash) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregatePasswordCredential, methodRehash), func() error {
+		return s.next.Rehash(arg0, arg1)
 	})
 }
 
@@ -3101,9 +3101,9 @@ func (s *timedPasswordCredentialStore) RemoveWithAudit(arg0 context.Context, arg
 	})
 }
 
-func (s *timedSessionStore) Save(arg0 context.Context, arg1 *model.Session, arg2 []*model.SessionCredential, arg3 int) (*model.Session, []*model.SessionCredential, error) {
+func (s *timedSessionStore) Save(arg0 context.Context, arg1 *store.SessionCreation) (*model.Session, []*model.SessionCredential, error) {
 	return timeStoreCall2(s.layer, storeOperation(aggregateSession, methodSave), func() (*model.Session, []*model.SessionCredential, error) {
-		return s.next.Save(arg0, arg1, arg2, arg3)
+		return s.next.Save(arg0, arg1)
 	})
 }
 
@@ -3119,19 +3119,19 @@ func (s *timedSessionStore) ListByUser(arg0 context.Context, arg1 string) ([]*mo
 	})
 }
 
-func (s *timedSessionStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.Session, error) {
+func (s *timedSessionStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 time.Time) ([]*model.Session, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodListActiveByUser), func() ([]*model.Session, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})
 }
 
-func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 string, arg2 int64, arg3 int64) error {
+func (s *timedSessionStore) UpdateActivity(arg0 context.Context, arg1 string, arg2 time.Time, arg3 time.Time) error {
 	return timeStoreCall0(s.layer, storeOperation(aggregateSession, methodUpdateActivity), func() error {
 		return s.next.UpdateActivity(arg0, arg1, arg2, arg3)
 	})
 }
 
-func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 string, arg2 string, arg3 int64) (*store.SessionExpiryEnforcementResult, error) {
+func (s *timedSessionStore) EnforceExpiry(arg0 context.Context, arg1 string, arg2 string, arg3 time.Time) (*store.SessionExpiryEnforcementResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodEnforceExpiry), func() (*store.SessionExpiryEnforcementResult, error) {
 		return s.next.EnforceExpiry(arg0, arg1, arg2, arg3)
 	})
@@ -3185,7 +3185,7 @@ func (s *timedSessionCredentialStore) GetSessionByTokenHash(arg0 context.Context
 	})
 }
 
-func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 string, arg2 *model.SessionCredential, arg3 *model.SessionCredential, arg4 int64, arg5 int64) (*store.SessionRotation, error) {
+func (s *timedSessionCredentialStore) RotateRefresh(arg0 context.Context, arg1 string, arg2 *model.SessionCredential, arg3 *model.SessionCredential, arg4 time.Time, arg5 time.Time) (*store.SessionRotation, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateSessionCredential, methodRotateRefresh), func() (*store.SessionRotation, error) {
 		return s.next.RotateRefresh(arg0, arg1, arg2, arg3, arg4, arg5)
 	})
@@ -3293,7 +3293,7 @@ func (s *timedRoleBindingStore) ListByScope(arg0 context.Context, arg1 model.Rol
 	})
 }
 
-func (s *timedRoleBindingStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.RoleBinding, error) {
+func (s *timedRoleBindingStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 time.Time) ([]*model.RoleBinding, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateRoleBinding, methodListActiveByUser), func() ([]*model.RoleBinding, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
 	})

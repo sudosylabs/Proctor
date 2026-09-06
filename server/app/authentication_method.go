@@ -111,9 +111,9 @@ func (s *authenticationMethodService) enrollPassword(ctx context.Context, invoca
 	if err := s.require(invocation); err != nil {
 		return err
 	}
-	hash, err := s.hasher.Hash(password)
+	hash, err := s.hasher.Hash(ctx, password)
 	if err != nil {
-		return NewError("authentication.password.invalid")
+		return passwordHashError(err, "authentication.internal")
 	}
 	userID := invocation.Principal().UserID
 	_, appErr := runAuditedMutation(ctx, s.audit, mutationAttempt{Invocation: invocation,

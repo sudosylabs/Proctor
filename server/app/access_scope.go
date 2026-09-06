@@ -183,11 +183,12 @@ func (s *accessControlService) userVisibilityScope(
 	ctx context.Context,
 	principal model.Principal,
 ) (store.UserVisibilityScope, error) {
-	userScope, err := s.authorizedScopes(ctx, principal, model.ActionUserView, model.ResourceUser)
+	decisionAt := model.TimeUTC(s.now())
+	userScope, err := s.authorizedScopesAt(ctx, principal, model.ActionUserView, model.ResourceUser, decisionAt)
 	if err != nil {
 		return store.UserVisibilityScope{}, err
 	}
-	classScope, err := s.authorizedScopes(ctx, principal, model.ActionClassMembersView, model.ResourceClass)
+	classScope, err := s.authorizedScopesAt(ctx, principal, model.ActionClassMembersView, model.ResourceClass, decisionAt)
 	if err != nil {
 		return store.UserVisibilityScope{}, err
 	}
@@ -197,7 +198,7 @@ func (s *accessControlService) userVisibilityScope(
 		ClassMemberInstitutionWide:     classScope.InstitutionWide,
 		ClassMemberAcademicUnitRootIDs: append([]string(nil), classScope.AcademicUnitRootIDs...),
 		ClassIDs:                       append([]string(nil), classScope.ClassIDs...),
-		ActiveAt:                       s.now().UnixMilli(),
+		ActiveAt:                       decisionAt,
 	}
 	return visibility, nil
 }
@@ -374,7 +375,7 @@ func (s *accessControlService) authorizedScopesAt(
 			return constraint, nil
 		}
 	}
-	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), model.MillisFromTime(at))
+	bindings, err := s.bindings.ListActiveByUser(ctx, principal.UserID.String(), model.TimeUTC(at))
 	if err != nil {
 		return constraint, authorizationUnavailableError("accessControlService.authorizedScopes.bindings", err)
 	}

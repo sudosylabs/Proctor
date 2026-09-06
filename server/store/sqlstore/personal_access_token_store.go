@@ -163,13 +163,13 @@ func (s SQLPersonalAccessTokenStore) ListByUser(
 func (s SQLPersonalAccessTokenStore) Resolve(
 	ctx context.Context,
 	tokenHash string,
-	now int64,
-	updateIntervalMilliseconds int64,
+	now time.Time,
+	updateInterval time.Duration,
 ) (*store.PersonalAccessTokenResolution, error) {
-	if !model.IsValidTokenHash(tokenHash) || now <= 0 || updateIntervalMilliseconds <= 0 {
+	at := model.TimeUTC(now)
+	if !model.IsValidTokenHash(tokenHash) || !at.After(time.Unix(0, 0)) || updateInterval <= 0 {
 		return nil, store.NewErrInvalidInput("personal_access_token", "resolve", nil)
 	}
-	at := model.TimeFromMillis(now)
 	result, err := runSQLTransaction(ctx, s.GetMaster().Begin, "personal access token resolve", func(ctx context.Context, tx *sqlxTxWrapper) (*personalAccessTokenResolutionTransactionResult, error) {
 		var tokenRow personalAccessTokenRow
 		if err := tx.Get(ctx, &tokenRow, `
@@ -191,7 +191,7 @@ func (s SQLPersonalAccessTokenStore) Resolve(
 			tokenHash, at); err != nil {
 			return nil, translateError("personal_access_token", "", err)
 		}
-		if !tokenRow.LastUsedAt.Valid || at.Sub(tokenRow.LastUsedAt.Time) >= time.Duration(updateIntervalMilliseconds)*time.Millisecond {
+		if !tokenRow.LastUsedAt.Valid || at.Sub(tokenRow.LastUsedAt.Time) >= updateInterval {
 			if _, err := tx.Exec(ctx, `
 			UPDATE personal_access_tokens
 			   SET updated_at = GREATEST(updated_at, ?), last_used_at = ?

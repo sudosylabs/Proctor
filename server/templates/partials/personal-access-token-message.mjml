@@ -8,28 +8,38 @@ SPDX-License-Identifier: AGPL-3.0-only
 -->
 
 <mj-include path="./foundation-intro.mjml" />
-<mj-section background-color="#ffffff" padding="0 24px 8px">
+<mj-section background-color="#ffffff" padding="0 56px 48px">
   <mj-column>
     <mj-table cellpadding="0" cellspacing="0" width="100%" padding="0">
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.DescriptionLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;word-break:break-word">{{.PersonalAccessToken.Description}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.PersonalAccessToken.DescriptionLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;word-break:break-word;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.PersonalAccessToken.Description}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ExpiresAtLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.PersonalAccessToken.ExpiresAt}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.PersonalAccessToken.ExpiresAtLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-variant-numeric:tabular-nums;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.PersonalAccessToken.ExpiresAt}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ActionAtLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top;font-variant-numeric:tabular-nums">{{.PersonalAccessToken.ActionAt}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.PersonalAccessToken.ActionAtLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-variant-numeric:tabular-nums;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.PersonalAccessToken.ActionAt}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ScopeLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.PersonalAccessToken.Scope}}</td>
+        <td style="padding:16px 0;border-bottom:1px solid #E4E4E7">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.PersonalAccessToken.ScopeLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.PersonalAccessToken.Scope}}</div>
+        </td>
       </tr>
       <tr>
-        <th align="left" style="padding:6px 16px 6px 0;color:#5C5C5C;font-weight:400;font-size:14px;line-height:20px;vertical-align:top;width:120px">{{.Copy.PersonalAccessToken.ActionCountLabel}}</th>
-        <td style="padding:6px 0;color:#161616;font-size:14px;line-height:20px;vertical-align:top">{{.PersonalAccessToken.ActionCount}}</td>
+        <td style="padding:16px 0">
+          <div style="color:#5C5C5C;font-size:13px;line-height:18px;padding:0 0 4px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.Copy.PersonalAccessToken.ActionCountLabel}}</div>
+          <div style="color:#161616;font-size:16px;line-height:24px;font-family:IBM Plex Sans, Helvetica Neue, Helvetica, Arial, sans-serif">{{.PersonalAccessToken.ActionCount}}</div>
+        </td>
       </tr>
     </mj-table>
   </mj-column>

@@ -144,7 +144,7 @@ func (s *personalAccessTokenAdministrationService) Create(
 	command CreatePersonalAccessTokenCommand,
 ) (*model.PersonalAccessTokenCreation, error) {
 	principal := invocation.Principal()
-	at := model.TimeFromMillis(s.now().UnixMilli())
+	at := model.TimeUTC(s.now())
 	if err := requireInteractiveSession(
 		principal, true, at, s.recentAuthenticationTTL,
 	); err != nil {
@@ -336,7 +336,7 @@ func (s *personalAccessTokenAdministrationService) SetDisabled(
 	command SetPersonalAccessTokenDisabledCommand,
 ) (*model.PersonalAccessToken, error) {
 	principal := invocation.Principal()
-	at := model.TimeFromMillis(s.now().UnixMilli())
+	at := model.TimeUTC(s.now())
 	action := actionPersonalAccessTokenDisable
 	if !command.Disabled {
 		action = actionPersonalAccessTokenEnable

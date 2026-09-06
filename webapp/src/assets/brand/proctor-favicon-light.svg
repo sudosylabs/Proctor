@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 593 593" fill="none">
+  <title>Proctor 2.5D favicon — for light surfaces</title>
+  <defs>
+    <path id="front" fill-rule="evenodd" clip-rule="evenodd" d="M127 107H573A20 20 0 0 1 593 127V573A20 20 0 0 1 573 593H127A20 20 0 0 1 107 573V127A20 20 0 0 1 127 107ZM167 157H533A10 10 0 0 1 543 167V533A10 10 0 0 1 533 543H167A10 10 0 0 1 157 533V167A10 10 0 0 1 167 157Z" />
+    <mask id="container-shape" maskUnits="userSpaceOnUse" x="0" y="0" width="593" height="593" style="mask-type:alpha">
+      <path fill="#FFFFFF" d="M0 0H486L578 92H92V578L0 486Z" />
+      <use href="#front" fill="#FFFFFF" />
+    </mask>
+    <clipPath id="opening-bevel">
+      <path clip-rule="evenodd" d="M167 148H533A19 19 0 0 1 552 167V533A19 19 0 0 1 533 552H167A19 19 0 0 1 148 533V167A19 19 0 0 1 167 148ZM167 157H533A10 10 0 0 1 543 167V533A10 10 0 0 1 533 543H167A10 10 0 0 1 157 533V167A10 10 0 0 1 167 157Z" />
+    </clipPath>
+    <clipPath id="outer-bevel">
+      <path clip-rule="evenodd" d="M127 107H573A20 20 0 0 1 593 127V573A20 20 0 0 1 573 593H127A20 20 0 0 1 107 573V127A20 20 0 0 1 127 107ZM127 114H573A13 13 0 0 1 586 127V573A13 13 0 0 1 573 586H127A13 13 0 0 1 114 573V127A13 13 0 0 1 127 114Z" />
+    </clipPath>
+  </defs>
+  <g mask="url(#container-shape)">
+    <rect x="-1" y="-1" width="595" height="595" fill="#42146A" />
+    <path id="top-wall" fill="#9A6CC5" d="M0 0H593V92H92Z" />
+    <rect x="100" y="100" width="500" height="500" fill="#5C00AA" />
+    <g clip-path="url(#outer-bevel)">
+      <path fill="#490087" d="M700 0V700L350 350Z" />
+      <path fill="#3D0071" d="M0 700H700L350 350Z" />
+    </g>
+    <g clip-path="url(#opening-bevel)">
+      <rect x="148" y="148" width="404" height="404" fill="#9250C8" />
+      <path fill="#350062" d="M0 0H700L350 350Z" />
+      <path fill="#4A0782" d="M0 0L350 350L0 700Z" />
+    </g>
+  </g>
+</svg>

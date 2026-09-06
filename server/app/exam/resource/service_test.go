@@ -62,6 +62,36 @@ func TestCreateInvalidContentRemainsInvisibleAndUnaudited(t *testing.T) {
 	}
 }
 
+type testCapacityError struct{}
+
+func (testCapacityError) Error() string         { return "content capacity is unavailable" }
+func (testCapacityError) WorkCapacityExceeded() {}
+
+func TestContentCapacityRefusalRemainsInvisibleAndUnaudited(t *testing.T) {
+	t.Parallel()
+	for _, operation := range []string{"create", "replace"} {
+		t.Run(operation, func(t *testing.T) {
+			f := newFixture(t)
+			f.content.storeErr = testCapacityError{}
+			var err error
+			if operation == "create" {
+				_, err = f.service.Create(context.Background(), f.call, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+			} else {
+				resourceID := model.NewExamResourceID()
+				f.persistence.items = []store.ExamResourceRecord{testRecord(f.examID, resourceID, model.NewFileEntryID(), model.NewFileRevisionID(), 1)}
+				_, err = f.service.ReplaceContent(context.Background(), f.call, ReplaceContentCommand{ExamID: f.examID, ResourceID: resourceID, ExpectedDraftRevision: 1, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+			}
+			var fault *Fault
+			if !errors.As(err, &fault) || fault.Code != "service.busy" || !errors.Is(err, f.content.storeErr) {
+				t.Fatalf("capacity outcome=%v", err)
+			}
+			if f.persistence.finalization != nil || f.auditor.began || f.effects.calls != 0 {
+				t.Fatalf("partial visibility/audit: finalize=%#v audit=%v effects=%d", f.persistence.finalization, f.auditor.began, f.effects.calls)
+			}
+		})
+	}
+}
+
 func TestFinalizeReplayDoesNotRepublish(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -338,6 +368,21 @@ func TestCreateUsesExplicitOverrideWhenCurrentManagerMembershipIsAbsent(t *testi
 	}
 }
 
+func TestCreateStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	failure := errors.New("membership unavailable")
+	f.memberships.err = failure
+	_, err := f.service.Create(context.Background(), f.call, CreateCommand{ExamID: f.examID, ExpectedDraftRevision: 1, DisplayName: "Reference", MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.resource.unavailable" || !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want unavailable membership failure", err)
+	}
+	if want := "access,membership"; strings.Join(f.order, ",") != want {
+		t.Fatalf("order = %v, want %s", f.order, want)
+	}
+}
+
 type fixture struct {
 	service     *Service
 	call        Call
@@ -470,14 +515,15 @@ func (s *storeFake) Remove(_ context.Context, input *store.ExamResourceRemoval, 
 type membershipFake struct {
 	f     *fixture
 	items []*model.AcademicUnitMember
+	err   error
 }
 
-func (m *membershipFake) ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error) {
+func (m *membershipFake) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
 	m.f.order = append(m.f.order, "membership")
 	if m.items == nil {
-		return []*model.AcademicUnitMember{{AcademicUnitID: m.f.unitID, UserID: m.f.userID}}, nil
+		return []*model.AcademicUnitMember{{AcademicUnitID: m.f.unitID, UserID: m.f.userID}}, m.err
 	}
-	return m.items, nil
+	return m.items, m.err
 }
 
 type authFake struct {

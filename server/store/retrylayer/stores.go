@@ -9,6 +9,7 @@ package retrylayer
 
 import (
 	"context"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
@@ -690,7 +691,7 @@ func (s *academicUnitMemberStore) ListByAcademicUnit(ctx context.Context, academ
 		return s.AcademicUnitMemberStore.ListByAcademicUnit(ctx, academicUnitID, at)
 	})
 }
-func (s *academicUnitMemberStore) ListActiveByUser(ctx context.Context, userID string, at int64) ([]*model.AcademicUnitMember, error) {
+func (s *academicUnitMemberStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.AcademicUnitMember, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.AcademicUnitMember, error) {
 		return s.AcademicUnitMemberStore.ListActiveByUser(ctx, userID, at)
 	})
@@ -725,7 +726,7 @@ func (s *sessionStore) Get(ctx context.Context, id string) (*model.Session, erro
 func (s *sessionStore) ListByUser(ctx context.Context, userID string) ([]*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) { return s.SessionStore.ListByUser(ctx, userID) })
 }
-func (s *sessionStore) ListActiveByUser(ctx context.Context, userID string, at int64) ([]*model.Session, error) {
+func (s *sessionStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.Session, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.Session, error) {
 		return s.SessionStore.ListActiveByUser(ctx, userID, at)
 	})
@@ -768,7 +769,7 @@ func (s *roleBindingStore) ListByScope(ctx context.Context, scopeType model.Role
 		return s.RoleBindingStore.ListByScope(ctx, scopeType, scopeID)
 	})
 }
-func (s *roleBindingStore) ListActiveByUser(ctx context.Context, userID string, at int64) ([]*model.RoleBinding, error) {
+func (s *roleBindingStore) ListActiveByUser(ctx context.Context, userID string, at time.Time) ([]*model.RoleBinding, error) {
 	return retryCall1(ctx, s.layer, func() ([]*model.RoleBinding, error) {
 		return s.RoleBindingStore.ListActiveByUser(ctx, userID, at)
 	})

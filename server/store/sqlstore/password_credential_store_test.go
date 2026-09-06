@@ -20,7 +20,7 @@ func TestPasswordCredentialRowConversion(t *testing.T) {
 		CreatedAt: model.TimeFromMillis(1), UpdatedAt: model.TimeFromMillis(2),
 		ArchivedAt: model.OptionalTimeFromMillis(3),
 		UserID:     model.UserID(model.NewId()), PasswordHash: "$argon2id$test",
-		PasswordChangedAt: model.TimeFromMillis(4),
+		PasswordChangedAt: model.TimeFromMillis(4), Revision: 3,
 	}
 	row := newPasswordCredentialRow(credential)
 	got, err := row.model()
@@ -37,7 +37,7 @@ func TestPasswordCredentialRowRehydrationRejectsInvalidPersistedState(t *testing
 	valid := passwordCredentialRow{
 		ID: model.NewPasswordCredentialID().String(), CreatedAt: model.TimeFromMillis(1),
 		UpdatedAt: model.TimeFromMillis(2), UserID: model.NewUserID().String(),
-		PasswordHash: "$argon2id$test", PasswordChangedAt: model.TimeFromMillis(2),
+		PasswordHash: "$argon2id$test", PasswordChangedAt: model.TimeFromMillis(2), Revision: 1,
 	}
 	tests := []struct {
 		name, field string
@@ -46,6 +46,7 @@ func TestPasswordCredentialRowRehydrationRejectsInvalidPersistedState(t *testing
 		{name: "credential id", field: "id", mutate: func(row *passwordCredentialRow) { row.ID = "bad" }},
 		{name: "user id", field: "user_id", mutate: func(row *passwordCredentialRow) { row.UserID = "bad" }},
 		{name: "domain state", field: "password_changed_at", mutate: func(row *passwordCredentialRow) { row.PasswordChangedAt = model.TimeFromMillis(0) }},
+		{name: "revision", field: "revision", mutate: func(row *passwordCredentialRow) { row.Revision = 0 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

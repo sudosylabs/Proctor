@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -136,10 +137,6 @@ type accessStore interface {
 	Access(context.Context, model.ExamID, model.UserID) (*store.ExamAccessSnapshot, error)
 }
 
-type memberships interface {
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-}
-
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
@@ -199,7 +196,7 @@ type EffectFailures interface {
 type Service struct {
 	persistence store.ExamSittingStore
 	access      accessStore
-	memberships memberships
+	memberships manageraccess.Memberships
 	authorizer  Authorizer
 	auditor     Auditor
 	systemAudit SystemAuditor
@@ -211,7 +208,7 @@ type Service struct {
 	newID       func() model.ExamSittingID
 }
 
-func New(persistence store.ExamSittingStore, access accessStore, memberships memberships, authorizer Authorizer,
+func New(persistence store.ExamSittingStore, access accessStore, memberships manageraccess.Memberships, authorizer Authorizer,
 	auditor Auditor, systemAudit SystemAuditor, effects Effects, failures EffectFailures, jobs LifecycleJobFactory,
 	mail ScheduleMailPreparer, now func() time.Time, newID func() model.ExamSittingID,
 ) (*Service, error) {
@@ -1003,23 +1000,14 @@ func (service *Service) authorize(ctx context.Context, call Call, examID model.E
 	if access == nil || access.Exam == nil || access.Exam.Validate() != nil || access.Exam.ID != examID {
 		return authorizationDecision{}, unavailable(errors.New("Exam access projection is incomplete"))
 	}
-	action, override := overrideAction, true
-	if access.ActorIsManager {
-		items, listErr := service.memberships.ListActiveByUser(ctx, principal.UserID.String(), model.MillisFromTime(at))
-		if listErr != nil {
-			return authorizationDecision{}, unavailable(listErr)
-		}
-		for _, item := range items {
-			if item != nil && item.AcademicUnitID == access.Exam.AcademicUnitID {
-				action, override = ordinaryAction, false
-				break
-			}
-		}
+	action, err := manageraccess.SelectAction(ctx, service.memberships, principal.UserID, access, at, ordinaryAction, overrideAction)
+	if err != nil {
+		return authorizationDecision{}, unavailable(err)
 	}
 	if err = service.authorizer.Authorize(ctx, call, action, resource); err != nil {
 		return authorizationDecision{}, err
 	}
-	return authorizationDecision{action: action, unitID: access.Exam.AcademicUnitID, override: override, examArchived: access.Exam.IsArchived()}, nil
+	return authorizationDecision{action: action, unitID: access.Exam.AcademicUnitID, override: action == overrideAction, examArchived: access.Exam.IsArchived()}, nil
 }
 
 func requireSnapshot(snapshot *store.ExamSittingSnapshot) (store.ExamSittingSnapshot, error) {

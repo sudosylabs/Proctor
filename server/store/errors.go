@@ -24,6 +24,10 @@ import (
 // It intentionally carries no provider or account detail.
 var ErrAuthenticationMethodDisabled = errors.New("authentication method is disabled by current access policy")
 
+// ErrPasswordCredentialChanged reports that previously verified password proof
+// no longer names the active credential. Public authentication fails generically.
+var ErrPasswordCredentialChanged = errors.New("password credential has changed")
+
 // ErrLastUsableAuthenticationMethod reports that removing a credential would
 // leave the User without a method admitted by current policy and deployment.
 var ErrLastUsableAuthenticationMethod = errors.New("cannot remove the last usable authentication method")

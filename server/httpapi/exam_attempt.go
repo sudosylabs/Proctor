@@ -1559,6 +1559,9 @@ func decodeCandidateWorkspaceJSON(request operationRequest, target any, where st
 	if request.request == nil || request.request.Body == nil {
 		return invalidRequestError(where, errors.New("request body is required"))
 	}
+	if err := requireJSONMediaType(request.request); err != nil {
+		return invalidRequestError(where, err)
+	}
 	raw, err := io.ReadAll(io.LimitReader(request.request.Body, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 || rejectDuplicateTopLevelJSONMembers(raw) != nil {
 		return invalidRequestError(where, errors.New("invalid strict JSON body"))

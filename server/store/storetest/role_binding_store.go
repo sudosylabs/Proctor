@@ -16,12 +16,14 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestRoleBindingStore(t *testing.T, ss store.Store) {
+	t.Run("ActiveIntervalPrecision", func(t *testing.T) { testRoleBindingActiveIntervalPrecision(t, ss) })
 	t.Run("AuditedMutations", func(t *testing.T) {
 		ctx := context.Background()
 		institution := saveInstitution(t, ctx, ss)
@@ -160,7 +162,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 		ctx, model.RoleScopeInstitution, institution.ID.String(),
 	)
 	requireNoError(t, err)
-	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), start+1)
+	active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+1))
 	requireNoError(t, err)
 	if got.ID != binding.ID || len(byUser) != 1 || len(byScope) != 1 || len(active) != 1 {
 		t.Fatalf("binding queries = %#v/%d/%d/%d", got, len(byUser), len(byScope), len(active))
@@ -177,7 +179,7 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	if ended.EndsAt.Millis() != start+2 {
 		t.Fatalf("End() = %#v", ended)
 	}
-	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), start+3)
+	active, err = ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+3))
 	requireNoError(t, err)
 	if len(active) != 0 {
 		t.Fatalf("active ended bindings = %#v", active)
@@ -249,5 +251,47 @@ func TestRoleBindingStore(t *testing.T, ss store.Store) {
 	}
 	if succeeded != 1 || conflicted != 1 {
 		t.Fatalf("concurrent administrator End() results = success %d conflict %d", succeeded, conflicted)
+	}
+}
+
+func testRoleBindingActiveIntervalPrecision(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	user := saveUser(t, ctx, ss)
+	role, err := ss.Role().Save(ctx, &model.Role{
+		Name: "precise-binding-reader", DisplayName: "Precise Binding Reader",
+		Permissions: []string{string(model.ActionClassView)},
+	})
+	requireNoError(t, err)
+	start := time.Date(2026, 9, 5, 12, 0, 0, 123200000, time.FixedZone("offset", 3600))
+	end := start.Add(time.Second + 500*time.Microsecond)
+	binding, err := ss.RoleBinding().Save(ctx, &model.RoleBinding{
+		UserID: user.ID, RoleID: role.ID, ScopeType: model.RoleScopeInstitution,
+		ScopeID: institution.ID.String(), StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
+	})
+	requireNoError(t, err)
+	for _, test := range []struct {
+		name   string
+		at     time.Time
+		active bool
+	}{
+		{"before start", start.Add(-time.Microsecond), false},
+		{"at start", start, true},
+		{"before end", end.Add(-time.Microsecond), true},
+		{"submicrosecond before end", end.Add(-time.Nanosecond), true},
+		{"at end", end, false},
+		{"after end in same millisecond", end.Add(time.Microsecond), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			active, err := ss.RoleBinding().ListActiveByUser(ctx, user.ID.String(), test.at)
+			requireNoError(t, err)
+			if test.active {
+				if len(active) != 1 || active[0].ID != binding.ID {
+					t.Fatalf("active bindings at %v = %#v, want saved binding", test.at, active)
+				}
+			} else if len(active) != 0 {
+				t.Fatalf("active bindings at %v = %#v, want empty", test.at, active)
+			}
+		})
 	}
 }

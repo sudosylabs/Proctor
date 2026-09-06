@@ -39,14 +39,7 @@ type ListExamSittingNoShowsQuery struct {
 	Limit                int
 }
 
-type ScheduleExamSittingCommand struct {
-	ExamID           model.ExamID
-	ExamRevisionID   model.ExamRevisionID
-	ClassID          model.ClassID
-	ScheduledStartAt time.Time
-	ScheduledEndAt   time.Time
-	IdempotencyKey   string
-}
+type ScheduleExamSittingCommand = examsitting.ScheduleCommand
 
 type GetExamSittingQuery struct {
 	ExamID    model.ExamID
@@ -64,44 +57,12 @@ type ListExamSittingsQuery struct {
 	Limit                  int
 }
 
-type UpdateExamSittingScheduleCommand struct {
-	ExamID           model.ExamID
-	SittingID        model.ExamSittingID
-	ExpectedRevision int64
-	ExamRevisionID   *model.ExamRevisionID
-	ClassID          *model.ClassID
-	ScheduledStartAt *time.Time
-	ScheduledEndAt   *time.Time
-	IdempotencyKey   string
-}
-
-type CancelExamSittingCommand struct {
-	ExamID           model.ExamID
-	SittingID        model.ExamSittingID
-	ExpectedRevision int64
-	PrivateReason    string
-	IdempotencyKey   string
-}
-
-type PauseExamSittingCommand struct {
-	ExamID           model.ExamID
-	SittingID        model.ExamSittingID
-	ExpectedRevision int64
-	PrivateReason    string
-	IdempotencyKey   string
-}
-
-type ResumeExamSittingCommand = PauseExamSittingCommand
-type CloseExamSittingCommand = PauseExamSittingCommand
-
-type ExtendExamSittingCommand struct {
-	ExamID           model.ExamID
-	SittingID        model.ExamSittingID
-	ExpectedRevision int64
-	ScheduledEndAt   time.Time
-	PrivateReason    string
-	IdempotencyKey   string
-}
+type UpdateExamSittingScheduleCommand = examsitting.UpdateScheduleCommand
+type CancelExamSittingCommand = examsitting.CancelCommand
+type PauseExamSittingCommand = examsitting.PauseCommand
+type ResumeExamSittingCommand = examsitting.ResumeCommand
+type CloseExamSittingCommand = examsitting.EarlyCloseCommand
+type ExtendExamSittingCommand = examsitting.ExtendCommand
 
 type examSittingUseCases interface {
 	Schedule(context.Context, examsitting.Call, examsitting.ScheduleCommand) (store.ExamSittingSnapshot, error)
@@ -127,10 +88,7 @@ type examSittingUseCases interface {
 
 func (a *App) ScheduleExamSitting(ctx context.Context, invocation Invocation, command ScheduleExamSittingCommand) (result ExamSittingView, resultErr error) {
 	defer func() { a.recordOperational("exam_sitting", "schedule", resultErr) }()
-	view, err := a.examSittings.Schedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.ScheduleCommand{
-		ExamID: command.ExamID, ExamRevisionID: command.ExamRevisionID, ClassID: command.ClassID,
-		ScheduledStartAt: command.ScheduledStartAt, ScheduledEndAt: command.ScheduledEndAt, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.examSittings.Schedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -169,11 +127,7 @@ func (a *App) ListExamSittingNoShows(ctx context.Context, invocation Invocation,
 }
 
 func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocation, command UpdateExamSittingScheduleCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.UpdateSchedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.UpdateScheduleCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
-		ExamRevisionID: command.ExamRevisionID, ClassID: command.ClassID,
-		ScheduledStartAt: command.ScheduledStartAt, ScheduledEndAt: command.ScheduledEndAt, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.examSittings.UpdateSchedule(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -181,10 +135,7 @@ func (a *App) UpdateExamSittingSchedule(ctx context.Context, invocation Invocati
 }
 
 func (a *App) CancelExamSitting(ctx context.Context, invocation Invocation, command CancelExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Cancel(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.CancelCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.examSittings.Cancel(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -209,10 +160,7 @@ func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation In
 	command PauseExamSittingCommand, run examSittingManagerTransitionUseCase,
 ) (result ExamSittingView, resultErr error) {
 	defer func() { a.recordOperational("exam_sitting", metricEvent, resultErr) }()
-	view, err := run(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.PauseCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
-		PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := run(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}
@@ -220,10 +168,7 @@ func (a *App) runExamSittingManagerTransition(ctx context.Context, invocation In
 }
 
 func (a *App) ExtendExamSitting(ctx context.Context, invocation Invocation, command ExtendExamSittingCommand) (ExamSittingView, error) {
-	view, err := a.examSittings.Extend(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), examsitting.ExtendCommand{
-		ExamID: command.ExamID, SittingID: command.SittingID, ExpectedRevision: command.ExpectedRevision,
-		ScheduledEndAt: command.ScheduledEndAt, PrivateReason: command.PrivateReason, IdempotencyKey: command.IdempotencyKey,
-	})
+	view, err := a.examSittings.Extend(ctx, examsitting.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamSittingView{}, examSittingError(err, true)
 	}

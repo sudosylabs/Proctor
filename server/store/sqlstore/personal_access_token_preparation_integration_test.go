@@ -154,14 +154,14 @@ func personalAccessTokenPreparationAudit(userID model.UserID, sessionID model.Se
 func savePersonalAccessTokenMutationSession(t *testing.T, ctx context.Context, persistence *SQLStore, userID model.UserID) *model.Session {
 	t.Helper()
 	now := model.NowUTC()
-	session, _, err := persistence.Session().Save(ctx, &model.Session{
+	session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: userID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
 	}, []*model.SessionCredential{
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken(model.NewCredentialToken()), ExpiresAt: now.Add(2 * time.Hour)},
-	}, 100)
+	}, 100))
 	if err != nil {
 		t.Fatal(err)
 	}

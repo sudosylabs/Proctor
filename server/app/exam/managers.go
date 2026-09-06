@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -123,14 +124,14 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if err != nil {
 		return ManagerChange{}, err
 	}
-	at := model.TimeFromMillis(model.MillisFromTime(a.now()))
-	access, action, err := a.authorizeManagement(ctx, call, command.ExamID, at)
+	decisionAt := model.TimeUTC(a.now())
+	access, action, err := a.authorizeManagement(ctx, call, command.ExamID, decisionAt)
 	if err != nil {
 		return ManagerChange{}, err
 	}
 	eligible := false
 	if transition.eligibilityRequired {
-		eligible, err = a.isEligibleManager(ctx, command.UserID, access.Exam.AcademicUnitID, at)
+		eligible, err = a.isEligibleManager(ctx, command.UserID, access.Exam.AcademicUnitID, decisionAt)
 		if err != nil {
 			return ManagerChange{}, err
 		}
@@ -154,6 +155,9 @@ func (a *Authoring) changeManager(ctx context.Context, call Call, command AddMan
 	if err != nil {
 		return ManagerChange{}, err
 	}
+	// Mail and mutation records retain their existing millisecond contract;
+	// current membership decisions above use the full domain precision.
+	at := model.TimeFromMillis(model.MillisFromTime(decisionAt))
 	notices, err := a.prepareManagerNotices(ctx, access.Exam.OwnerUserID, command.UserID, snapshot.Draft.Title, at, transition)
 	if err != nil {
 		mapped := unavailable(err)
@@ -247,7 +251,7 @@ func (a *Authoring) isEligibleManager(ctx context.Context, userID model.UserID, 
 	if user == nil || !user.IsActive() {
 		return false, nil
 	}
-	eligible, err := a.hasCurrentMembership(ctx, userID, unitID, at)
+	eligible, err := manageraccess.HasCurrentMembership(ctx, a.memberships, userID, unitID, at)
 	if err != nil {
 		return false, unavailable(err)
 	}

@@ -88,6 +88,23 @@ func TestSelfSessionServiceHidesAnotherUsersSession(t *testing.T) {
 	}
 }
 
+func TestSelfSessionListUsesNativeDecisionTime(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 12, 9, 30, 0, 123_456_789, time.FixedZone("offset", 7200))
+	principal := selfSessionPrincipal(model.TimeUTC(at))
+	persistence := &selfSessionStoreFake{session: &model.Session{ID: principal.SessionID, UserID: principal.UserID}}
+	service, err := newSelfSessionService(persistence, &selfSessionEffectsFake{}, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.List(context.Background(), NewInvocation(principal, model.RequestMetadata{})); err != nil {
+		t.Fatal(err)
+	}
+	if !persistence.listedAt.Equal(model.TimeUTC(at)) || persistence.listedAt.Location() != time.UTC {
+		t.Fatalf("active Session listing time = %v, want %v", persistence.listedAt, model.TimeUTC(at))
+	}
+}
+
 func TestSelfSessionServiceRequiresFocusedDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -120,6 +137,7 @@ type selfSessionStoreFake struct {
 	revokedUserID string
 	revokedAt     int64
 	revokeCalls   int
+	listedAt      time.Time
 }
 
 func (s *selfSessionStoreFake) Get(context.Context, string) (*model.Session, error) {
@@ -130,7 +148,8 @@ func (s *selfSessionStoreFake) Get(context.Context, string) (*model.Session, err
 	return s.session, nil
 }
 
-func (s *selfSessionStoreFake) ListActiveByUser(context.Context, string, int64) ([]*model.Session, error) {
+func (s *selfSessionStoreFake) ListActiveByUser(_ context.Context, _ string, at time.Time) ([]*model.Session, error) {
+	s.listedAt = at
 	return []*model.Session{s.session}, nil
 }
 

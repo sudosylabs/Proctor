@@ -55,11 +55,10 @@ func (s *authenticationService) authenticateDPoP(
 	if _, err = s.verifyDesktopProof(ctx, resolved, rawToken, proof, method, path, true); err != nil {
 		return nil, err
 	}
-	now := s.now().UnixMilli()
+	now := model.TimeUTC(s.now())
 	if err = s.updateActivity(ctx, resolved, now); err != nil {
 		return nil, err
 	}
-	s.cacheAuthentication(ctx, model.HashToken(rawToken), resolved, now)
 	principal := principalFromDesktopAuthentication(resolved)
 	if principal.Validate() != nil {
 		return nil, authenticationUnavailable(errors.New("resolved DPoP principal is invalid"))
@@ -86,7 +85,7 @@ func (s *authenticationService) resolveDesktopCredential(
 	ctx context.Context,
 	rawToken string,
 	kind model.SessionCredentialKind,
-) (*cachedAuthentication, error) {
+) (*resolvedAuthentication, error) {
 	if s.registrations == nil || s.dpop == nil || !validRawCredential(rawToken) {
 		return nil, invalidTokenAppError()
 	}
@@ -99,7 +98,7 @@ func (s *authenticationService) resolveDesktopCredential(
 		}
 		return nil, authenticationUnavailable(err)
 	}
-	now := s.now().UTC()
+	now := model.TimeUTC(s.now())
 	if session.ClientType != model.SessionClientDesktop || credential.IsExpiredAt(now) ||
 		!session.DesktopRegistrationID.IsValid() || !model.IsValidDPoPKeyThumbprint(session.DPoPKeyThumbprint) {
 		return nil, invalidTokenAppError()
@@ -115,12 +114,12 @@ func (s *authenticationService) resolveDesktopCredential(
 		}
 		return nil, authenticationUnavailable(err)
 	}
-	return &cachedAuthentication{Credential: credential, Session: session, User: user}, nil
+	return &resolvedAuthentication{Credential: credential, Session: session, User: user}, nil
 }
 
 func (s *authenticationService) verifyDesktopProof(
 	ctx context.Context,
-	resolved *cachedAuthentication,
+	resolved *resolvedAuthentication,
 	accessToken string,
 	proof string,
 	method string,
@@ -164,7 +163,7 @@ func (s *authenticationService) dpopTarget(path string) (string, error) {
 	return canonicalDPoPTarget(s.dpop.policy.Origin + path)
 }
 
-func principalFromDesktopAuthentication(resolved *cachedAuthentication) *model.Principal {
+func principalFromDesktopAuthentication(resolved *resolvedAuthentication) *model.Principal {
 	return &model.Principal{
 		UserID: resolved.User.ID, SessionID: resolved.Session.ID,
 		CredentialID:             model.PrincipalCredentialID(resolved.Credential.ID),

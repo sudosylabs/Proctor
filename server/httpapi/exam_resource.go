@@ -85,10 +85,10 @@ func examResourceHTTPResource(application ExamResourceApplication) resource {
 	readErrors := academicReadErrorCodes("request.invalid", "resource.not_found", "exam.resource.invalid", "exam.resource.unavailable")
 	return newResource("exam-resources",
 		principalRoute(http.MethodGet, collection, readErrors, m.list),
-		idempotentProtocolRoute(IdempotencyRequired, examResourceUploadBodyLimit, "exam-resource-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPost, collection, examResourceMutationErrorCodes("exam.resource.invalid_content", "exam.resource.limit", "exam.resource.upload_invalid", "exam.resource.revision_conflict"), m.create),
+		idempotentProtocolRoute(IdempotencyRequired, examResourceUploadBodyLimit, "exam-resource-upload", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPost, collection, examResourceMutationErrorCodes("service.busy", "exam.resource.invalid_content", "exam.resource.limit", "exam.resource.upload_invalid", "exam.resource.revision_conflict"), m.create),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPatch, member, examResourceMutationErrorCodes("exam.resource.no_changes", "exam.resource.revision_conflict"), m.editMetadata),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodPut, order, examResourceMutationErrorCodes("exam.resource.no_changes", "exam.resource.order_invalid"), m.reorder),
-		idempotentProtocolRoute(IdempotencyRequired, examResourceUploadBodyLimit, "exam-resource-content-replacement", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, content, examResourceMutationErrorCodes("exam.resource.invalid_content", "exam.resource.upload_invalid", "exam.resource.revision_conflict"), m.replaceContent),
+		idempotentProtocolRoute(IdempotencyRequired, examResourceUploadBodyLimit, "exam-resource-content-replacement", RouteProtocolStreamingUpload, AuthPrincipalRequired, http.MethodPut, content, examResourceMutationErrorCodes("service.busy", "exam.resource.invalid_content", "exam.resource.upload_invalid", "exam.resource.revision_conflict"), m.replaceContent),
 		idempotentPrincipalRoute(IdempotencyRequired, http.MethodDelete, member, examResourceMutationErrorCodes("exam.resource.revision_conflict"), m.remove),
 		protocolRoute("exam-resource-protected-content", RouteProtocolBinaryDownload, AuthPrincipalRequired, http.MethodGet, content, readErrors, m.open))
 }

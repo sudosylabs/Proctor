@@ -25,6 +25,7 @@ type authenticationEntryHTTPApplication struct {
 	loginCommand        application.LoginCommand
 	loginResult         *application.LoginResult
 	loginError          error
+	loginCalls          int
 	logoutCommand       application.LogoutCommand
 	logoutCalls         int
 	registrationCommand application.RegisterLocalUserCommand
@@ -48,6 +49,7 @@ func (applicationFake *authenticationEntryHTTPApplication) Login(
 	command application.LoginCommand,
 ) (*application.LoginResult, error) {
 	applicationFake.loginCommand = command
+	applicationFake.loginCalls++
 	return applicationFake.loginResult, applicationFake.loginError
 }
 
@@ -163,7 +165,7 @@ func TestExternalAuthenticationInvitationClaimUsesStrictPOSTBody(t *testing.T) {
 		RedirectURL: "https://identity.example.test/login", Binding: model.NewCredentialToken(), ExpiresAt: time.Now().Add(time.Minute).UnixMilli(),
 	}}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, externalAuthenticationResource(applicationFake, cookies))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+	request := newJSONRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
 		strings.NewReader(`{"invitation_claim":"`+claim+`","return_to":"/join"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -175,13 +177,13 @@ func TestExternalAuthenticationInvitationClaimUsesStrictPOSTBody(t *testing.T) {
 	}
 
 	invalid := httptest.NewRecorder()
-	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
 		strings.NewReader(`{"invitation_claim":"`+claim+`","unknown":true}`)))
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("unknown invitation start field = %d %s", invalid.Code, invalid.Body.String())
 	}
 	missing := httptest.NewRecorder()
-	httpAPI.ServeHTTP(missing, httptest.NewRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
+	httpAPI.ServeHTTP(missing, newJSONRequest(http.MethodPost, "/api/v1/auth/providers/campus/login",
 		strings.NewReader(`{"return_to":"/join"}`)))
 	if missing.Code != http.StatusBadRequest {
 		t.Fatalf("missing invitation claim = %d %s", missing.Code, missing.Body.String())
@@ -222,7 +224,7 @@ func TestAuthenticationResourceRunsPublicAndSessionEntriesThroughKernel(t *testi
 		authenticationResource(authentication, cookies),
 	)
 
-	loginRequest := httptest.NewRequest(
+	loginRequest := newJSONRequest(
 		http.MethodPost,
 		"/api/v1/auth/login",
 		strings.NewReader(`{"login_id":"student@example.edu","password":"secret","client_type":"web"}`),
@@ -299,7 +301,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 	invalid := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		invalid,
-		httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"login_id":"student","unknown":true}`)),
+		newJSONRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"login_id":"student","unknown":true}`)),
 	)
 	if invalid.Code != http.StatusBadRequest || !strings.Contains(invalid.Body.String(), `"code":"request.invalid"`) {
 		t.Fatalf("invalid login body = %d %s", invalid.Code, invalid.Body.String())
@@ -309,7 +311,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 	undeclared := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		undeclared,
-		httptest.NewRequest(
+		newJSONRequest(
 			http.MethodPost,
 			"/api/v1/auth/login",
 			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop"}`),
@@ -323,7 +325,7 @@ func TestAuthenticationResourceKernelRejectsMissingCredentialAndInvalidJSON(t *t
 	invalidSecondFactor := httptest.NewRecorder()
 	httpAPI.ServeHTTP(
 		invalidSecondFactor,
-		httptest.NewRequest(
+		newJSONRequest(
 			http.MethodPost,
 			"/api/v1/auth/login",
 			strings.NewReader(`{"login_id":"student","password":"secret","client_type":"desktop","mfa_code":"used-recovery-code"}`),
@@ -342,7 +344,7 @@ func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testin
 	applicationFake := &authenticationEntryHTTPApplication{}
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, authenticationResource(applicationFake, browserCookies{}))
 
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+	request := newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"long-private-password"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -358,7 +360,7 @@ func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testin
 	}
 
 	invalid := httptest.NewRecorder()
-	httpAPI.ServeHTTP(invalid, httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+	httpAPI.ServeHTTP(invalid, newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"private","display_name":"New Student"}`)))
 	if invalid.Code != http.StatusBadRequest || applicationFake.registrationCalls != 1 {
 		t.Fatalf("display-name registration = %d calls=%d body=%s", invalid.Code, applicationFake.registrationCalls, invalid.Body.String())
@@ -366,7 +368,7 @@ func TestPublicRegistrationUsesStrictBodyAndReturnsNoAccountProjection(t *testin
 
 	applicationFake.registrationError = application.NewError("authentication.registration.invitation_required")
 	disabled := httptest.NewRecorder()
-	httpAPI.ServeHTTP(disabled, httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
+	httpAPI.ServeHTTP(disabled, newJSONRequest(http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"username":"student","email":"student@example.edu","first_name":"New","last_name":"Student","password":"private"}`)))
 	if disabled.Code != http.StatusForbidden || !strings.Contains(disabled.Body.String(), `"code":"authentication.registration.invitation_required"`) ||
 		strings.Contains(disabled.Body.String(), "student@example.edu") {

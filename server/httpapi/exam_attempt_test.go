@@ -518,7 +518,7 @@ func TestManagerReallowExamAttemptUsesExactSuspensionAndNeverReturnsPrivateReaso
 	suspensionID := model.NewAttemptSuspensionID()
 	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
 		"/attempts/" + fake.attempt.ID.String() + "/reallow"
-	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"suspension_id":"`+suspensionID.String()+`","expected_attempt_revision":2,"reason":"manager verified connectivity"}`))
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"suspension_id":"`+suspensionID.String()+`","expected_attempt_revision":2,"reason":"manager verified connectivity"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "reallow-once")
 	response := httptest.NewRecorder()
@@ -543,7 +543,7 @@ func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *test
 	path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
 		"/attempts/" + fake.attempt.ID.String() + "/end"
 	privateReason := "candidate requested an assisted early end"
-	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"`+privateReason+`"}`))
+	request := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"`+privateReason+`"}`))
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set("Idempotency-Key", "manager-end-once")
 	response := httptest.NewRecorder()
@@ -561,7 +561,7 @@ func TestManagerEndExamAttemptUsesRevisionFenceAndReturnsOnlySafeReceipt(t *test
 		t.Fatalf("manager-end response exposed private state or omitted receipt: %s", response.Body.String())
 	}
 
-	invalid := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"valid","extra":true}`))
+	invalid := newJSONRequest(http.MethodPost, path, strings.NewReader(`{"expected_attempt_revision":1,"reason":"valid","extra":true}`))
 	invalid.Header.Set("Authorization", "Bearer credential")
 	invalid.Header.Set("Idempotency-Key", "manager-end-invalid")
 	invalidResponse := httptest.NewRecorder()
@@ -696,7 +696,7 @@ func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMiss
 }
 
 func candidateWorkspaceRequest(fake *examAttemptHTTPFake, method, path string, body io.Reader, contentType, key string) *http.Request {
-	request := httptest.NewRequest(method, path, body)
+	request := newJSONRequest(method, path, body)
 	request.Header.Set("Authorization", "Bearer credential")
 	request.Header.Set(candidateAttemptCredentialHeader, fake.credential)
 	request.Header.Set(candidateAttemptConnectionHeader, fake.connection.ID.String())

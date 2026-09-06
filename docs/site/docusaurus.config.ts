@@ -3,10 +3,31 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 import {guides, referenceLinks} from './navigation.mjs';
 
+const baseUrl = (process.env.BASE_URL ?? '/').replace(/\/?$/, '/');
+
 const config: Config = {
   title: 'Proctor Documentation',
   tagline: 'Run examinations with the rules in view',
-  favicon: 'img/brand/proctor-mark-dark.svg',
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: `${baseUrl}img/brand/proctor-favicon-light-32.png`,
+      },
+    },
+    ...(['light', 'dark'] as const).map((scheme) => ({
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: `${baseUrl}img/brand/proctor-favicon-${scheme}.svg`,
+        media: `(prefers-color-scheme: ${scheme})`,
+      },
+    })),
+  ],
 
   // Keep authored and generated content on Docusaurus' forward-compatible MDX
   // parser. The API plugin has its own content root so every file is compiled
@@ -18,7 +39,7 @@ const config: Config = {
   // Publication is intentionally deferred. The placeholder prevents a local
   // build from inventing a production hostname before that decision is made.
   url: process.env.DOCS_SITE_URL ?? 'https://docs.proctor.invalid',
-  baseUrl: process.env.BASE_URL ?? '/',
+  baseUrl,
   staticDirectories: ['static', '../public/static'],
   trailingSlash: false,
 

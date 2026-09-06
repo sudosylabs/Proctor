@@ -122,7 +122,7 @@ func (s *accessControlService) evaluateResolved(
 		return true, nil
 	}
 	bindings, err := s.bindings.ListActiveByUser(
-		ctx, principal.UserID.String(), s.now().UnixMilli(),
+		ctx, principal.UserID.String(), model.TimeUTC(s.now()),
 	)
 	if err != nil {
 		return false, authorizationUnavailableError("accessControlService.Can.bindings", err)

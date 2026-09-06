@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -62,9 +63,6 @@ type AccessStore interface {
 type Revisions interface {
 	GetSnapshot(context.Context, model.ExamID, model.ExamRevisionID) (*model.ExamRevision, error)
 }
-type Memberships interface {
-	ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
-}
 type Authorizer interface {
 	Authorize(context.Context, Call, model.Action, model.Resource) error
 }
@@ -82,6 +80,7 @@ type Content interface {
 	StoreExamResourceRendition(context.Context, model.FileRevisionID, model.FileRenditionID, model.ExamResourceMediaType, io.Reader, int64, time.Time) (model.FileRendition, error)
 }
 type invalidContentError interface{ InvalidExamResourceContent() }
+type workCapacityError interface{ WorkCapacityExceeded() }
 
 type StageResourceContentCommand struct {
 	ExamID         model.ExamID
@@ -147,7 +146,7 @@ type Service struct {
 	persistence       store.ExamCorrectionStore
 	revisions         Revisions
 	access            AccessStore
-	memberships       Memberships
+	memberships       manageraccess.Memberships
 	authorizer        Authorizer
 	auditor           Auditor
 	effects           Effects
@@ -163,7 +162,7 @@ type Service struct {
 	newExamRevisionID func() model.ExamRevisionID
 }
 
-func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, memberships Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content Content, now func() time.Time, newStageID func() model.ExamCorrectionResourceStageID, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newFileRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID, newRenditionID func() model.FileRenditionID, newExamRevisionID func() model.ExamRevisionID) (*Service, error) {
+func New(p store.ExamCorrectionStore, revisions Revisions, access AccessStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects Effects, failures EffectFailures, content Content, now func() time.Time, newStageID func() model.ExamCorrectionResourceStageID, newResourceID func() model.ExamResourceID, newEntryID func() model.FileEntryID, newFileRevisionID func() model.FileRevisionID, newLeaseID func() model.UploadLeaseID, newRenditionID func() model.FileRenditionID, newExamRevisionID func() model.ExamRevisionID) (*Service, error) {
 	if p == nil || revisions == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || content == nil || now == nil || newStageID == nil || newResourceID == nil || newEntryID == nil || newFileRevisionID == nil || newLeaseID == nil || newRenditionID == nil || newExamRevisionID == nil {
 		return nil, errors.New("exam correction dependencies are required")
 	}
@@ -394,27 +393,18 @@ func (s *Service) authorize(ctx context.Context, call Call, examID model.ExamID,
 	if access == nil || access.Exam == nil || access.Exam.ID != examID {
 		return authorizationDecision{}, unavailable(errors.New("missing access"))
 	}
-	ordinary := false
+	var at time.Time
 	if access.ActorIsManager {
-		members, e := s.memberships.ListActiveByUser(ctx, p.UserID.String(), model.MillisFromTime(s.now()))
-		if e != nil {
-			return authorizationDecision{}, unavailable(e)
-		}
-		for _, m := range members {
-			if m != nil && m.AcademicUnitID == access.Exam.AcademicUnitID {
-				ordinary = true
-				break
-			}
-		}
+		at = s.now()
 	}
-	action := model.ActionExamSittingManage
-	if !ordinary {
-		action = model.ActionExamSittingManageOverride
+	action, err := manageraccess.SelectAction(ctx, s.memberships, p.UserID, access, at, model.ActionExamSittingManage, model.ActionExamSittingManageOverride)
+	if err != nil {
+		return authorizationDecision{}, unavailable(err)
 	}
 	if err = s.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExamSitting, ID: sittingID.String()}); err != nil {
 		return authorizationDecision{}, err
 	}
-	return authorizationDecision{!ordinary, access.Exam.AcademicUnitID, action}, nil
+	return authorizationDecision{action == model.ActionExamSittingManageOverride, access.Exam.AcademicUnitID, action}, nil
 }
 func (s *Service) failAudit(ctx context.Context, id string, err error) error {
 	mapped := mapStore(err)
@@ -455,6 +445,10 @@ func unavailable(cause error) error {
 	return &Fault{Code: "exam.sitting.correction.unavailable", Cause: cause}
 }
 func mapContent(err error) error {
+	var capacity workCapacityError
+	if errors.As(err, &capacity) {
+		return &Fault{Code: "service.busy", Cause: err}
+	}
 	var invalidContent invalidContentError
 	if errors.As(err, &invalidContent) {
 		return &Fault{Code: "exam.sitting.correction.invalid_content", Cause: err}

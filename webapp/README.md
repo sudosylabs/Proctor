@@ -6,9 +6,9 @@ typed same-origin transport, browser credential handling, build output, the
 generated token/theme system, and the document-level browser foundation.
 
 Runtime-owned brand assets live in
-[`src/assets/brand`](./src/assets/brand/README.md). They are reviewed copies or
-derivatives of the repository masters and are referenced through Vite so
-production files receive immutable fingerprints.
+[`src/assets/brand`](./src/assets/brand/README.md). They are reviewed local
+copies referenced through Vite so production files receive immutable
+fingerprints. Building and checking these assets uses only package-local files.
 
 [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) is the product interface contract.
 Human-owned tokens live in [`design-system/tokens.mjs`](./design-system/tokens.mjs)
@@ -86,8 +86,8 @@ npm run dev
 
 After changing the token source, run `npm run design-system:generate`. The
 normal verification gate rejects stale output, incomplete themes, contrast
-regressions, forbidden authored CSS forms, and brand assets that drift from
-their canonical masters.
+regressions, forbidden authored CSS forms, and brand assets that differ from
+their package-local review manifest.
 
 For same-origin development with Vite, configure the server PublicURL as
 `http://127.0.0.1:5173`; Vite proxies `/api` to the Go listener at

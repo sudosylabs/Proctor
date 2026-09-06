@@ -28,6 +28,7 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
+        - service.busy
         - authentication.required
         - authentication.invalid_token
         - authentication.credential_ambiguous
@@ -100,6 +101,7 @@ paths:
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
+        - service.busy
         - authentication.required
         - authentication.invalid_token
         - authentication.credential_ambiguous

@@ -116,7 +116,12 @@ func defaultConsumerConstructors(
 	}
 	return consumerConstructors{
 		fileContent: func(capabilities constructionCapabilities) (app.FileContent, error) {
-			return filecontent.New(capabilities.filesystem)
+			var recorder filecontent.WorkRecorder
+			if capabilities.metrics != nil && capabilities.metrics.Enabled() {
+				recorder = workMetricsRecorder{metrics: capabilities.metrics, pool: "file_content"}
+			}
+			return filecontent.New(capabilities.filesystem,
+				filecontent.Policy{MaximumConcurrentOperations: snapshot.FileContent.MaximumConcurrentOperations}, recorder)
 		},
 		dependencies: func(capabilities constructionCapabilities, content app.FileContent) (app.Dependencies, error) {
 			dependencies, err := applicationDependencies(capabilities, snapshot, content, mailRenderer)
@@ -220,6 +225,7 @@ func composeConsumers(
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {
 		applicationDeps.JobRecorder = jobMetricsRecorder{metrics: capabilities.metrics}
 		applicationDeps.OperationalRecorder = applicationMetricsRecorder{metrics: capabilities.metrics}
+		applicationDeps.PasswordWorkRecorder = workMetricsRecorder{metrics: capabilities.metrics, pool: "password"}
 	}
 	mailMetrics := input.overrides.MailMetrics
 	if capabilities.metrics != nil && capabilities.metrics.Enabled() {

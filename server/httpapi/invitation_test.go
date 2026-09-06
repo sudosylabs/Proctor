@@ -197,7 +197,7 @@ func TestInvitationAdministrationHTTPIsBoundedSafeAndRevisionFenced(t *testing.T
 		{path: "/api/v1/invitations/" + id + "/replacement", body: map[string]any{"expected_revision": 9, "purpose": "student_class", "email": "replacement@example.edu", "class_id": model.NewClassID().String()}, code: http.StatusCreated},
 	} {
 		body, _ := json.Marshal(mutation.body)
-		request := httptest.NewRequest(http.MethodPost, mutation.path, bytes.NewReader(body))
+		request := newJSONRequest(http.MethodPost, mutation.path, bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer session")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
@@ -224,7 +224,7 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 	classID := model.NewClassID().String()
 	body, _ := json.Marshal(map[string]any{"operation": "student_class.create", "scope_type": "class", "scope_id": classID,
 		"items": []map[string]any{{"key": "row-1", "email": "first@example.edu"}, {"key": "row-2", "email": "second@example.edu"}, {"key": "row-3", "email": "third@example.edu"}}})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer session")
 	request.Header.Set("Idempotency-Key", "batch-once")
 	response := httptest.NewRecorder()
@@ -237,7 +237,7 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 		t.Fatalf("Invitation batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.batch)
 	}
 
-	missingKey := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
+	missingKey := newJSONRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(body))
 	missingKey.Header.Set("Authorization", "Bearer session")
 	missingResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(missingResponse, missingKey)
@@ -246,7 +246,7 @@ func TestInvitationBatchHTTPIsStrictBoundedAndIdempotent(t *testing.T) {
 	}
 
 	unknownBody := []byte(`{"operation":"revoke","scope_type":"class","scope_id":"` + classID + `","items":[],"command":"arbitrary"}`)
-	unknown := httptest.NewRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(unknownBody))
+	unknown := newJSONRequest(http.MethodPost, "/api/v1/invitation-batches", bytes.NewReader(unknownBody))
 	unknown.Header.Set("Authorization", "Bearer session")
 	unknown.Header.Set("Idempotency-Key", "unknown-field")
 	unknownResponse := httptest.NewRecorder()
@@ -315,7 +315,7 @@ func TestInvitationAcceptanceHTTPReturnsOnlyRecordIDsForFreshAndReplay(t *testin
 			}}
 			httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, invitationResource(applicationFake))
 			body, _ := json.Marshal(map[string]string{"claim": model.NewCredentialToken(), "password": "correct horse battery staple", "username": "student"})
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/student-class/accept", bytes.NewReader(body))
+			request := newJSONRequest(http.MethodPost, "/api/v1/invitations/student-class/accept", bytes.NewReader(body))
 			response := httptest.NewRecorder()
 
 			httpAPI.ServeHTTP(response, request)
@@ -368,7 +368,7 @@ func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing
 	classID := model.NewClassID().String()
 	body, _ := json.Marshal(map[string]any{"email": "student@example.edu", "start_at": int64(1_800_000_000_000),
 		"end_at": int64(1_810_000_000_000), "suggested_username": "student-one"})
-	issue := httptest.NewRequest(http.MethodPost, "/api/v1/classes/"+classID+"/invitations/student", bytes.NewReader(body))
+	issue := newJSONRequest(http.MethodPost, "/api/v1/classes/"+classID+"/invitations/student", bytes.NewReader(body))
 	issue.Header.Set("Authorization", "Bearer access")
 	issueResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(issueResponse, issue)
@@ -378,7 +378,7 @@ func TestInvitationHTTPKeepsClaimOutOfIssueResponseAndAcceptsPublicly(t *testing
 	}
 	raw := model.NewCredentialToken()
 	acceptBody, _ := json.Marshal(map[string]string{"claim": raw, "password": "correct horse battery staple", "username": "student-one"})
-	accept := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/student-class/accept", bytes.NewReader(acceptBody))
+	accept := newJSONRequest(http.MethodPost, "/api/v1/invitations/student-class/accept", bytes.NewReader(acceptBody))
 	acceptResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(acceptResponse, accept)
 	if acceptResponse.Code != http.StatusOK || applicationFake.accept.Claim != raw || strings.Contains(acceptResponse.Body.String(), raw) {
@@ -395,7 +395,7 @@ func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T)
 	httpAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: principal}, invitationResource(applicationFake))
 	unitID, roleID := model.NewAcademicUnitID().String(), model.NewRoleID().String()
 	body, _ := json.Marshal(map[string]string{"email": "teacher@example.edu", "role_id": roleID})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-units/"+unitID+"/invitations/teacher", bytes.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/academic-units/"+unitID+"/invitations/teacher", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer access")
 	response := httptest.NewRecorder()
 	httpAPI.ServeHTTP(response, request)
@@ -405,7 +405,7 @@ func TestTeacherInvitationHTTPFreezesRoleAndReturnsRelationshipIDs(t *testing.T)
 	}
 	raw := model.NewCredentialToken()
 	acceptBody, _ := json.Marshal(map[string]string{"claim": raw, "password": "correct horse battery staple", "username": "teacher-one"})
-	accept := httptest.NewRequest(http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept", bytes.NewReader(acceptBody))
+	accept := newJSONRequest(http.MethodPost, "/api/v1/invitations/teacher-academic-unit/accept", bytes.NewReader(acceptBody))
 	acceptResponse := httptest.NewRecorder()
 	httpAPI.ServeHTTP(acceptResponse, accept)
 	if acceptResponse.Code != http.StatusOK || applicationFake.teacherAccept.Claim != raw || strings.Contains(acceptResponse.Body.String(), raw) {
@@ -434,7 +434,7 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 			return applicationFake.institutionRoleIssue.InstitutionID, applicationFake.institutionRoleIssue.RoleID
 		}},
 	} {
-		request := httptest.NewRequest(http.MethodPost, target.path, bytes.NewReader(body))
+		request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer session")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
@@ -450,7 +450,7 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 		{path: "/api/v1/invitations/academic-unit-role/accept", command: func() string { return applicationFake.unitRoleAccept.Claim }},
 		{path: "/api/v1/invitations/institution-role/accept", command: func() string { return applicationFake.institutionRoleAccept.Claim }},
 	} {
-		request := httptest.NewRequest(http.MethodPost, target.path, bytes.NewReader([]byte(`{"claim":"`+claim+`"}`)))
+		request := newJSONRequest(http.MethodPost, target.path, bytes.NewReader([]byte(`{"claim":"`+claim+`"}`)))
 		request.Header.Set("Authorization", "Bearer session")
 		response := httptest.NewRecorder()
 		httpAPI.ServeHTTP(response, request)
@@ -462,7 +462,7 @@ func TestScopedRoleInvitationHTTPRequiresAuthenticatedExistingUserAndInstitution
 	pat.CredentialType, pat.SessionID = model.CredentialPersonalAccessToken, ""
 	pat.CredentialID = model.PrincipalCredentialID(model.NewPersonalAccessTokenID())
 	patAPI := newFocusedResourceAPI(t, logger, classRouteAuthenticator{principal: pat}, invitationResource(applicationFake))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+institutionID+"/invitations/role", bytes.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/institutions/"+institutionID+"/invitations/role", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer pat")
 	response := httptest.NewRecorder()
 	patAPI.ServeHTTP(response, request)

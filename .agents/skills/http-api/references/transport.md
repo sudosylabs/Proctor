@@ -15,6 +15,7 @@ Resource paths use kernel-owned literal and parameter constructors. Canonical ID
 Mutable domain entities never double as wire DTOs. Command decoding:
 
 - applies body limits first;
+- requires one `application/json` Content-Type, with only an optional UTF-8 charset;
 - accepts exactly one JSON value;
 - rejects unknown fields and trailing data;
 - uses `Optional[T]` for omitted, zero, and explicit-null PATCH states;

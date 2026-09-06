@@ -134,10 +134,12 @@ func (s SQLUserTokenStore) ChangeEmail(ctx context.Context, input *store.UserEma
 		if err = tx.Select(ctx, &priorIDs, `SELECT id FROM user_tokens WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL FOR UPDATE`, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("lock prior email tokens: %w", err)
 		}
-		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=?,archived_at=? WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
+		// Existing lifecycle times can lead the database clock. Preserve their
+		// ordering without moving the new credential or mail deadlines forward.
+		if _, err = tx.Exec(ctx, `UPDATE user_tokens SET updated_at=GREATEST(updated_at,?),archived_at=GREATEST(updated_at,?) WHERE user_id=? AND purpose=? AND archived_at IS NULL AND consumed_at IS NULL`, at, at, input.UserID.String(), model.UserTokenEmailVerification); err != nil {
 			return nil, fmt.Errorf("invalidate prior email tokens: %w", err)
 		}
-		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,mail_eligibility_revision=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE users SET email=?,email_verified=false,mail_eligibility_revision=?,updated_at=GREATEST(updated_at,?),revision=revision+1 WHERE id=? AND revision=? AND archived_at IS NULL AND disabled_at IS NULL`, input.NewEmail, mailEligibilityRevision, at, input.UserID.String(), input.ExpectedRevision)
 		if err != nil {
 			return nil, translateError("user", input.UserID.String(), err)
 		}
@@ -635,6 +637,16 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		if err := requireCurrentLocalLogin(ctx, tx); err != nil {
 			return nil, err
 		}
+		// Discover only the lock key; token validity is rechecked under the lock.
+		// Take the Session lock before token, User and credential row locks, matching
+		// issuance and removal so either the new Session is revoked or proof fails.
+		var resetUserID string
+		if err := tx.Get(ctx, &resetUserID, `SELECT user_id FROM user_tokens WHERE token_hash=? AND purpose='password_reset'`, input.TokenHash); err != nil {
+			return nil, translateError("user_token", "", err)
+		}
+		if err := lockUserSessions(ctx, tx, resetUserID); err != nil {
+			return nil, err
+		}
 		if err := lockUserTokenPurposeByHash(ctx, tx, input.TokenHash, model.UserTokenPasswordReset); err != nil {
 			return nil, err
 		}
@@ -660,7 +672,7 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		var credential passwordCredentialRow
 		if err := tx.Get(ctx, &credential, `
 		SELECT id, created_at, updated_at, archived_at, user_id,
-		       password_hash, password_changed_at
+		       revision, password_hash, password_changed_at
 		  FROM password_credentials
 		 WHERE user_id = ? AND archived_at IS NULL
 		 FOR UPDATE`,
@@ -668,19 +680,17 @@ func (s SQLUserTokenStore) ConsumePasswordReset(
 		); err != nil {
 			return nil, translateError("password_credential", token.UserID, err)
 		}
+		credential.Revision++
 		credential.PasswordHash = input.PasswordHash
 		credential.PasswordChangedAt = at
 		credential.UpdatedAt = at
 		if _, err := tx.Exec(ctx, `
 		UPDATE password_credentials
-		   SET updated_at = ?, password_hash = ?, password_changed_at = ?
+		   SET updated_at = ?, password_hash = ?, password_changed_at = ?, revision = revision + 1
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL`,
 			at, input.PasswordHash, at, credential.ID, token.UserID,
 		); err != nil {
 			return nil, fmt.Errorf("update reset password: %w", err)
-		}
-		if err := lockUserSessions(ctx, tx, token.UserID); err != nil {
-			return nil, err
 		}
 		sessionRows, hashes, err := revokeAllUserSessionsAt(
 			ctx, tx, token.UserID, at, input.RevocationReason,

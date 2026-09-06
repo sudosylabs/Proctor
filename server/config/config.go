@@ -259,13 +259,14 @@ type Execution struct {
 }
 
 type Password struct {
-	MinimumLength    int `json:"MinimumLength"`
-	MaximumLength    int `json:"MaximumLength"`
-	ArgonMemoryKiB   int `json:"ArgonMemoryKiB"`
-	ArgonIterations  int `json:"ArgonIterations"`
-	ArgonParallelism int `json:"ArgonParallelism"`
-	ArgonSaltBytes   int `json:"ArgonSaltBytes"`
-	ArgonKeyBytes    int `json:"ArgonKeyBytes"`
+	MaximumConcurrentOperations int `json:"MaximumConcurrentOperations"`
+	MinimumLength               int `json:"MinimumLength"`
+	MaximumLength               int `json:"MaximumLength"`
+	ArgonMemoryKiB              int `json:"ArgonMemoryKiB"`
+	ArgonIterations             int `json:"ArgonIterations"`
+	ArgonParallelism            int `json:"ArgonParallelism"`
+	ArgonSaltBytes              int `json:"ArgonSaltBytes"`
+	ArgonKeyBytes               int `json:"ArgonKeyBytes"`
 }
 
 type Sessions struct {
@@ -333,6 +334,12 @@ type Localization struct {
 	DefaultLocale string `json:"DefaultLocale"`
 }
 
+// FileContent bounds expensive content validation and rendition processing on
+// one node. Changing the limit requires restart.
+type FileContent struct {
+	MaximumConcurrentOperations int `json:"MaximumConcurrentOperations"`
+}
+
 type Config struct {
 	Version        int            `json:"Version"`
 	Server         Server         `json:"Server"`
@@ -342,6 +349,7 @@ type Config struct {
 	Cluster        Cluster        `json:"Cluster"`
 	Mail           Mail           `json:"Mail"`
 	VFS            VFS            `json:"VFS"`
+	FileContent    FileContent    `json:"FileContent"`
 	Execution      Execution      `json:"Execution"`
 	Authentication Authentication `json:"Authentication"`
 	Localization   Localization   `json:"Localization"`
@@ -433,6 +441,7 @@ func Default() Config {
 			Local:   VFSLocal{Root: "./data"},
 			S3:      VFSS3{Secure: true},
 		},
+		FileContent: FileContent{MaximumConcurrentOperations: 2},
 		Execution: Execution{
 			Enabled:          false,
 			DialTimeout:      Duration{Duration: 10 * time.Second},
@@ -442,13 +451,14 @@ func Default() Config {
 		Authentication: Authentication{
 			Bootstrap: Bootstrap{DevelopmentMode: true},
 			Password: Password{
-				MinimumLength:    12,
-				MaximumLength:    128,
-				ArgonMemoryKiB:   64 * 1024,
-				ArgonIterations:  3,
-				ArgonParallelism: 2,
-				ArgonSaltBytes:   16,
-				ArgonKeyBytes:    32,
+				MaximumConcurrentOperations: 2,
+				MinimumLength:               12,
+				MaximumLength:               128,
+				ArgonMemoryKiB:              64 * 1024,
+				ArgonIterations:             3,
+				ArgonParallelism:            2,
+				ArgonSaltBytes:              16,
+				ArgonKeyBytes:               32,
 			},
 			Sessions: Sessions{
 				AccessTTL:              Duration{Duration: 15 * time.Minute},
@@ -687,6 +697,9 @@ func (c Config) Validate() error {
 	validateCluster(c.Cluster, add)
 	validateMail(c.Mail, add)
 	validateVFS(c.VFS, add)
+	if c.FileContent.MaximumConcurrentOperations < 1 {
+		add("file_content.maximum_concurrent_operations", "must be greater than zero")
+	}
 	validateExecution(c.Execution, add)
 	if c.Cluster.Backend == "memberlist" {
 		if c.Cache.Backend != "redis" {
@@ -1291,6 +1304,9 @@ func loopbackHostPort(address string) bool {
 
 func validateAuthentication(authentication Authentication, add func(string, string)) {
 	password := authentication.Password
+	if password.MaximumConcurrentOperations < 1 {
+		add("authentication.password.maximum_concurrent_operations", "must be greater than zero")
+	}
 	if password.MinimumLength < 8 || password.MinimumLength > 128 {
 		add("authentication.password.minimum_length", "must be between 8 and 128")
 	}

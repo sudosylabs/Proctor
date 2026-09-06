@@ -31,6 +31,7 @@ type authenticationPATResolver interface {
 }
 
 type sessionIssuance struct {
+	PasswordProof            store.PasswordCredentialProof
 	User                     *model.User
 	ClientType               model.SessionClientType
 	DeviceID                 string
@@ -83,8 +84,8 @@ func (r *personalAccessTokenBearerResolver) ResolveBearer(
 	resolved, err := r.tokens.Resolve(
 		ctx,
 		model.HashToken(rawToken),
-		at.UnixMilli(),
-		r.policy.LastUsedUpdateInterval.Milliseconds(),
+		model.TimeUTC(at),
+		r.policy.LastUsedUpdateInterval,
 	)
 	if err != nil {
 		if store.IsNotFound(err) {

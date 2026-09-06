@@ -230,10 +230,11 @@ part of node construction. Any registration failure is terminal for that
 construction attempt, and the composition root unwinds the partially built
 node before readiness rather than retrying attachment on the same instance.
 
-Cluster delivery is an accelerator, not a correctness authority. PostgreSQL,
-bounded cache TTLs, periodic revalidation, and client resynchronization recover
-missed or duplicate notifications. The detailed delivery, authentication-cache,
-and recovery contract is
+Cluster delivery is an accelerator, not a correctness authority. Every new
+Session authentication reads current PostgreSQL state; lost invalidation cannot
+preserve access through a positive cache entry. Periodic Session revalidation
+and client resynchronization recover missed notifications for established
+WebSockets. The detailed delivery, authentication, and recovery contract is
 [Cluster delivery guarantees](../../../../server/cluster/GUARANTEES.md).
 
 ## Lifecycle and observability
@@ -277,6 +278,13 @@ configured backend names, registered cluster events, registered Job/periodic
 work names, mail template/state vocabularies, and named application events.
 Resource IDs, principals, addresses, paths, cache keys, message data, mail
 recipients, and error text are forbidden labels.
+
+Expensive password and file-processing work exposes node-local
+`proctor_work_active`, `proctor_work_rejected_total`, and
+`proctor_work_duration_seconds` metrics with only the fixed `password` and
+`file_content` pool labels. Refusal is a normal overload outcome and does not
+change readiness or produce an error log for each request. HTTP clients receive
+the declared `service.busy` error with status 503 and `Retry-After: 1`.
 
 ## Naming and files
 

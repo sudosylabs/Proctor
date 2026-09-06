@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sudosylabs/proctor/server/app/exam/manageraccess"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
@@ -43,7 +44,7 @@ type PublicationEffects interface {
 type Publication struct {
 	store       store.ExamRevisionStore
 	access      store.ExamAuthoringStore
-	memberships memberships
+	memberships manageraccess.Memberships
 	authorizer  Authorizer
 	auditor     Auditor
 	effects     PublicationEffects
@@ -52,7 +53,7 @@ type Publication struct {
 	newID       func() model.ExamRevisionID
 }
 
-func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthoringStore, memberships memberships, authorizer Authorizer, auditor Auditor, effects PublicationEffects, failures EffectFailures, now func() time.Time, newID func() model.ExamRevisionID) (*Publication, error) {
+func NewPublication(persistence store.ExamRevisionStore, access store.ExamAuthoringStore, memberships manageraccess.Memberships, authorizer Authorizer, auditor Auditor, effects PublicationEffects, failures EffectFailures, now func() time.Time, newID func() model.ExamRevisionID) (*Publication, error) {
 	if persistence == nil || access == nil || memberships == nil || authorizer == nil || auditor == nil || effects == nil || failures == nil || now == nil || newID == nil {
 		return nil, errors.New("Exam Revision publication dependencies are required")
 	}
@@ -83,9 +84,9 @@ func (p *Publication) Publish(ctx context.Context, call Call, command PublishRev
 	if access == nil || access.Exam == nil {
 		return store.ExamRevisionSummary{}, unavailable(errors.New("Exam access projection is incomplete"))
 	}
-	action, err := actionForAccess(ctx, p.memberships, principal.UserID, access, at, model.ActionExamPublish, model.ActionExamPublishOverride)
+	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, at, model.ActionExamPublish, model.ActionExamPublishOverride)
 	if err != nil {
-		return store.ExamRevisionSummary{}, err
+		return store.ExamRevisionSummary{}, unavailable(err)
 	}
 	resource := model.Resource{Type: model.ResourceExam, ID: command.ExamID.String()}
 	if err = p.authorizer.Authorize(ctx, call, action, resource); err != nil {
@@ -167,9 +168,9 @@ func (p *Publication) authorizeView(ctx context.Context, call Call, examID model
 	if access == nil || access.Exam == nil {
 		return unavailable(errors.New("Exam access projection is incomplete"))
 	}
-	action, err := actionForAccess(ctx, p.memberships, principal.UserID, access, model.TimeUTC(p.now()), model.ActionExamView, model.ActionExamViewOverride)
+	action, err := manageraccess.SelectAction(ctx, p.memberships, principal.UserID, access, model.TimeUTC(p.now()), model.ActionExamView, model.ActionExamViewOverride)
 	if err != nil {
-		return err
+		return unavailable(err)
 	}
 	return p.authorizer.Authorize(ctx, call, action, model.Resource{Type: model.ResourceExam, ID: examID.String()})
 }

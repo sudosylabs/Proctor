@@ -341,11 +341,9 @@ func (s *accountTokenService) CompletePasswordReset(
 	if !validRawCredential(command.Token) {
 		return nil, invalidAccountCredential()
 	}
-	passwordHash, err := s.hasher.Hash(command.Password)
+	passwordHash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
-		return nil, NewError("authentication.password.invalid").
-			WithField("field", "password").
-			Wrap(err)
+		return nil, passwordHashError(err, "authentication.account_recovery.unavailable")
 	}
 	institution, err := s.accountRecoveryInstitution(ctx)
 	if err != nil {

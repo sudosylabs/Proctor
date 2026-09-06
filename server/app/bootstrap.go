@@ -92,9 +92,9 @@ func (s *bootstrapService) RecoverAdministratorAccess(ctx context.Context, comma
 	passwordHash := ""
 	if command.Password != "" {
 		var err error
-		passwordHash, err = s.hasher.Hash(command.Password)
+		passwordHash, err = s.hasher.Hash(ctx, command.Password)
 		if err != nil {
-			return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+			return nil, passwordHashError(err, "administrator_recovery.failed")
 		}
 	}
 	result, err := s.installations.RecoverAdministratorAccess(ctx, &store.AdministratorRecovery{
@@ -131,7 +131,7 @@ func (s *bootstrapService) ReconcileAdministratorRecovery(ctx context.Context) e
 }
 
 type passwordHash interface {
-	Hash(string) (string, error)
+	Hash(context.Context, string) (string, error)
 }
 
 type bootstrapService struct {
@@ -226,9 +226,9 @@ func (s *bootstrapService) Bootstrap(ctx context.Context, invocation Invocation,
 	if err != nil {
 		return nil, NewError("request.invalid").WithField("field", "bootstrap").Wrap(err)
 	}
-	hash, err := s.hasher.Hash(command.Password)
+	hash, err := s.hasher.Hash(ctx, command.Password)
 	if err != nil {
-		return nil, NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+		return nil, passwordHashError(err, "installation.unavailable")
 	}
 	metadata := invocation.RequestMetadata()
 	administrator, defaultPictureJob, err := prepareUserDefaultProfilePictureJob(&model.User{

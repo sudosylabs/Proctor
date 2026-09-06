@@ -1,0 +1,200 @@
+---
+title: Authentication Configuration
+description: Reference Proctor bootstrap, password, session, recovery, token, MFA, CAS, and OIDC configuration.
+audience: operator
+maturity: preview
+slug: /reference/configuration/authentication/
+---
+
+# Authentication Configuration
+
+Authentication establishes an immutable principal; it does not grant
+application permissions. These settings control credential verification,
+credential lifetimes, abuse bounds, and external identity mapping. Bootstrap,
+password, session, recovery, token, and MFA changes require a restart. The
+external-provider registry is applied dynamically after a successful reload.
+
+## Installation bootstrap
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.Bootstrap.Secret`<br />Default: empty | Credential protecting the one-time public initialization route. When set, it must contain `32`–`512` bytes, no control characters, and no surrounding whitespace. Secret. Configure it before exposing a pristine installation. |
+| `Authentication.Bootstrap.DevelopmentMode`<br />Default: `true` | Allows process-generated bootstrap material only for a pristine local development installation. It is accepted only when both `Server.ListenAddress` and `Server.PublicURL` use literal loopback addresses. Set `false` outside local development. |
+
+Development mode is deliberately tied to loopback, not merely to an
+environment name. A non-loopback installation must receive an explicit
+bootstrap secret through protected configuration.
+
+## Password policy and hashing
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.Password.MaximumConcurrentOperations`<br />Default: `2` | Per-node semaphore for expensive password hashing and verification. Must be greater than zero. Size against CPU and memory because each operation consumes the configured Argon2 resources. |
+| `Authentication.Password.MinimumLength`<br />Default: `12` | Minimum accepted password length. Must be between `8` and `128`. |
+| `Authentication.Password.MaximumLength`<br />Default: `128` | Maximum accepted password length and input-work bound. Must be at least `MinimumLength` and no more than `1024`. |
+| `Authentication.Password.ArgonMemoryKiB`<br />Default: `65536` | Argon2 memory cost per operation in KiB. Must be between `19456` and `1048576`. Multiply by maximum concurrent operations and application-node count when planning capacity. |
+| `Authentication.Password.ArgonIterations`<br />Default: `3` | Argon2 time cost. Must be between `1` and `20`. |
+| `Authentication.Password.ArgonParallelism`<br />Default: `2` | Argon2 lanes per operation. Must be between `1` and `64`. |
+| `Authentication.Password.ArgonSaltBytes`<br />Default: `16` | Random salt length for new password hashes. Must be between `16` and `64` bytes. |
+| `Authentication.Password.ArgonKeyBytes`<br />Default: `32` | Derived-key length for new password hashes. Must be between `16` and `64` bytes. |
+
+Changing Argon2 parameters affects newly produced hashes and may cause stored
+passwords to be upgraded after successful verification. Benchmark the complete
+concurrency envelope on production-class nodes before increasing costs.
+
+{/* TODO(production): publish a calibrated Argon2 profile for supported node
+classes after deployment hardware and authentication-load targets are known. */}
+
+## Web sessions
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.Sessions.AccessTTL`<br />Default: `15m` | Lifetime of a short-lived access credential. Must be greater than zero and no greater than `IdleTTL`. |
+| `Authentication.Sessions.RefreshTTL`<br />Default: `720h` (30 days) | Lifetime of a refresh credential. Must be greater than zero and no greater than `AbsoluteTTL`. |
+| `Authentication.Sessions.IdleTTL`<br />Default: `168h` (7 days) | Maximum session inactivity interval. Must be greater than zero and no greater than `AbsoluteTTL`. |
+| `Authentication.Sessions.AbsoluteTTL`<br />Default: `720h` (30 days) | Hard upper bound on a session regardless of activity. Must be greater than zero. |
+| `Authentication.Sessions.ActivityUpdateInterval`<br />Default: `5m` | Minimum interval between durable activity updates. Must be greater than zero and less than `IdleTTL`. |
+| `Authentication.Sessions.MaximumPerUser`<br />Default: `10` | Maximum concurrently retained Web Sessions for one User. Must be between `1` and `1000`. |
+| `Authentication.RecentAuthenticationTTL`<br />Default: `15m` | How long a sufficiently recent sign-in may satisfy a step-up requirement for sensitive actions. Must be between `1m` and `24h`, and no greater than `Sessions.AbsoluteTTL`. |
+
+Shortening lifetimes narrows credential exposure but increases reauthentication
+and refresh pressure. The absolute lifetime is always the final ceiling.
+
+## Login and account-recovery limits
+
+The ordinary login limiter and recovery limiter have the same shape. The
+per-source ceiling cannot be lower than the per-account ceiling.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.LoginRateLimit.Window`<br />Default: `1m` | Rolling login-attempt window. Must be between `1s` and `24h`. |
+| `Authentication.LoginRateLimit.MaximumAttempts`<br />Default: `10` | Maximum attempts associated with one account key in the window. Must be between `1` and `10000`. |
+| `Authentication.LoginRateLimit.MaximumSourceAttempts`<br />Default: `1000` | Maximum attempts from one source in the window. Must be between `MaximumAttempts` and `1000000`. |
+| `Authentication.AccountRecovery.EmailVerificationTTL`<br />Default: `24h` | Lifetime of an email-verification credential. Must be between `5m` and `720h`. |
+| `Authentication.AccountRecovery.PasswordResetTTL`<br />Default: `1h` | Lifetime of a password-reset credential. Must be between `5m` and `24h`. |
+| `Authentication.AccountRecovery.RateLimit.Window`<br />Default: `15m` | Rolling recovery-attempt window. Must be between `1s` and `24h`. |
+| `Authentication.AccountRecovery.RateLimit.MaximumAttempts`<br />Default: `3` | Maximum recovery attempts associated with one account key in the window. Must be between `1` and `10000`. |
+| `Authentication.AccountRecovery.RateLimit.MaximumSourceAttempts`<br />Default: `100` | Maximum recovery attempts from one source in the window. Must be between the per-account value and `1000000`. |
+
+In a multi-node installation, Redis keeps installation-wide disposable security
+counters coherent. Tune source limits with trusted-proxy handling and the
+installation's address-sharing behavior in mind.
+
+## Personal access tokens
+
+A <Term id="personal-access-token">Personal Access Token</Term> is a long-lived
+API credential. These settings bound what a User may request; they do not turn
+the token into a permission grant.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.PersonalAccessTokens.MinimumLifetime`<br />Default: `1h` | Shortest requested token lifetime. Must be between `5m` and `24h`. |
+| `Authentication.PersonalAccessTokens.MaximumLifetime`<br />Default: `2160h` (90 days) | Longest requested token lifetime. Must be at least `MinimumLifetime` and no more than `8760h` (365 days). |
+| `Authentication.PersonalAccessTokens.LastUsedUpdateInterval`<br />Default: `5m` | Minimum interval between durable last-used updates. Must be greater than zero and less than `MinimumLifetime`. |
+| `Authentication.PersonalAccessTokens.MaximumPerUser`<br />Default: `50` | Maximum retained personal access tokens for one User. Must be between `1` and `1000`. |
+
+## Multi-factor authentication
+
+MFA secret sealing has its own AES-256 key ring. The ring is validated even
+while MFA is disabled, and every application node must receive the same values.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.MFA.Enabled`<br />Default: `false` | Enables MFA enrollment and verification. A valid primary encryption key is required when `true`. |
+| `Authentication.MFA.Issuer`<br />Default: `Proctor` | Issuer label displayed by authenticator applications. Must contain `1`–`128` safe characters. Choose a name users can distinguish from other installations. |
+| `Authentication.MFA.EncryptionKey`<br />Default: empty | Primary AES-256 key for new MFA-secret ciphertext. Standard base64 decoding must produce exactly `32` bytes. Required when MFA is enabled or fallback keys exist. Secret. |
+| `Authentication.MFA.DecryptionKeys[]`<br />Default: empty list | Up to eight unique fallback AES-256 keys for ciphertext written before rotation. Each is a standard-base64 encoded `32`-byte key and must differ from the primary. |
+| `Authentication.MFA.SetupTTL`<br />Default: `10m` | Lifetime of an unfinished MFA setup challenge. Must be between `1m` and `1h`. |
+| `Authentication.MFA.RecoveryCodeCount`<br />Default: `10` | Number of recovery codes issued at enrollment. Must be between `5` and `20`. |
+
+Add the previous primary to `DecryptionKeys` before changing the primary, then
+converge every node before retiring it. Never reuse MFA keys for mail or
+Memberlist.
+
+## External authentication registry
+
+The external registry supports at most `64` providers and is the only
+authentication block that reloads dynamically. A reload replaces the registry
+only after the complete candidate configuration validates; existing Web
+Sessions keep their established principal.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.External.LoginStateTTL`<br />Default: `10m` | Lifetime of the one-time state binding an external login start to its callback. Must be between `1m` and `30m`. |
+| `Authentication.External.Providers[].ID`<br />Default: no providers | Stable provider identifier. Must be unique, contain `1`–`64` lower-case letters, numbers, dots, underscores, or hyphens, and start with a letter or number. Treat it as durable once identities are linked. |
+| `Authentication.External.Providers[].Type`<br />Default: no providers | Protocol discriminator: `cas` or `oidc`. Exactly the matching protocol block must be present; the other must be `null` or omitted. |
+| `Authentication.External.Providers[].DisplayName`<br />Default: no providers | Sign-in label shown to users. Must contain `1`–`128` safe characters. Use the institution's recognizable identity-provider name. |
+| `Authentication.External.Providers[].Enabled`<br />Default: no providers | Makes the provider available for new login starts when `true`. Keeping a definition disabled preserves its stable ID without advertising it. |
+| `Authentication.External.Providers[].AutoProvision`<br />Default: no providers | Creates a Proctor User after a valid assertion when no linked identity exists. When enabled, both username and email mappings are required and returned profile values must satisfy the User model. |
+
+Provider IDs participate in external identity links. Do not rename an ID as a
+cosmetic change. Disabling a provider blocks new starts without pretending its
+previously linked subjects belonged to another provider.
+
+## External claim mapping
+
+Claim mapping tells Proctor exactly which released provider values it may
+consume. A mapping name may be empty where optional, the special CAS attribute
+`user`, or a `1`–`128` character released-attribute name. Attribute names may
+contain letters, numbers, `.`, `_`, `:`, and `-`; the first character must be a
+letter or underscore. OIDC subjects must map to `sub`.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.External.Providers[].Claims.Subject`<br />Default: no providers | Required immutable provider subject. Must be `sub` for OIDC. A CAS provider may use `user` or another released attribute. This value, together with provider ID, links the external identity. |
+| `Authentication.External.Providers[].Claims.Username`<br />Default: no providers | Released username claim. Required when auto-provisioning. |
+| `Authentication.External.Providers[].Claims.Email`<br />Default: no providers | Released email claim. Required when auto-provisioning. |
+| `Authentication.External.Providers[].Claims.EmailVerifiedClaim`<br />Default: no providers | Optional boolean-like claim used to decide whether the released email is verified. For CAS, a value equal to `true` ignoring case is accepted; for OIDC, the mapped JSON claim may be boolean `true` or the case-insensitive string `"true"`. |
+| `Authentication.External.Providers[].Claims.FirstName`<br />Default: no providers | Optional released first-name claim used for profile mapping. |
+| `Authentication.External.Providers[].Claims.LastName`<br />Default: no providers | Optional released last-name claim used for profile mapping. |
+| `Authentication.External.Providers[].Claims.DisplayName`<br />Default: no providers | Optional released display-name claim used for profile mapping. |
+| `Authentication.External.Providers[].Claims.HomeOrganization`<br />Default: no providers | Optional released home-organization claim. Required when an allowlist is configured. The returned value is trimmed and compared case-insensitively. |
+| `Authentication.External.Providers[].Claims.Affiliation`<br />Default: no providers | Optional multi-valued released affiliation claim. These are provider assertions, not durable Proctor Affiliation records. |
+| `Authentication.External.Providers[].Claims.AllowedHomeOrganizations[]`<br />Default: empty list per provider | Optional allowlist of unique DNS-style organization identifiers, each `1`–`255` characters without whitespace, `@`, or `/`. An empty list admits any returned home organization. |
+| `Authentication.External.Providers[].Claims.TrustEmail`<br />Default: `false` per provider | Treats every email released by this provider as verified. Enable only when the provider contract guarantees verified ownership; otherwise map `EmailVerifiedClaim`. |
+| `Authentication.External.Providers[].Claims.MultiFactorAttribute`<br />Default: no providers | Optional released attribute carrying authentication-method or context values. It must be configured together with `MultiFactorValues`. |
+| `Authentication.External.Providers[].Claims.MultiFactorValues[]`<br />Default: empty list per provider | Unique provider values that prove multi-factor authentication. Each must contain `1`–`256` safe characters. An exact match upgrades the assertion's authentication strength. |
+
+Claim validation proves naming and required relationships, not that the
+provider actually releases the attributes or that their semantics are
+trustworthy. Test non-provisioned login, first-time provisioning, missing
+claims, rejected organizations, email verification, and single- versus
+multi-factor assertions before enabling a provider for users.
+
+## CAS provider block
+
+Start from the complete
+[`cas-provider.json`](https://github.com/sudosylabs/Proctor/blob/main/server/config/examples/cas-provider.json)
+object and place it in `Authentication.External.Providers`.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.External.Providers[].CAS.BaseURL`<br />Default: no CAS providers | CAS server root. Must be HTTPS, except loopback HTTP is accepted for development, and must contain no credentials, query, or fragment. |
+| `Authentication.External.Providers[].CAS.ValidationPath`<br />Default: no CAS providers | CAS ticket-validation endpoint path, such as `/p3/serviceValidate`. Must start with one `/` and contain no query, fragment, or control characters. |
+| `Authentication.External.Providers[].CAS.Timeout`<br />Default: no CAS providers | Deadline for a CAS validation request. Must be between `1s` and `30s`. |
+| `Authentication.External.Providers[].CAS.MaxResponseBytes`<br />Default: no CAS providers | Maximum CAS response body. Must be between `1024` and `2097152` bytes. |
+
+CAS does not standardize email-verification semantics. Leave `TrustEmail` false
+unless the provider contract guarantees ownership, and map an explicit
+boolean-like released attribute when available.
+
+## OIDC provider block
+
+Start from the complete
+[`oidc-provider.json`](https://github.com/sudosylabs/Proctor/blob/main/server/config/examples/oidc-provider.json)
+object and place it in `Authentication.External.Providers`.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Authentication.External.Providers[].OIDC.Issuer`<br />Default: no OIDC providers | Discovery issuer URL. Must be HTTPS, except loopback HTTP is accepted for development, and contain no credentials, query, fragment, or trailing slash. It must exactly match the issuer asserted by the provider. |
+| `Authentication.External.Providers[].OIDC.ClientID`<br />Default: no OIDC providers | Registered OAuth client identifier. Must contain `1`–`512` safe characters. |
+| `Authentication.External.Providers[].OIDC.ClientSecret`<br />Default: no OIDC providers | Registered OAuth client secret. Must contain `1`–`4096` safe characters. Secret; use protected delivery. |
+| `Authentication.External.Providers[].OIDC.Scopes[]`<br />Default: no OIDC providers | Unique requested scopes, each `1`–`128` characters without whitespace or controls. The list must include `openid`; add only scopes needed for mapped claims. |
+| `Authentication.External.Providers[].OIDC.UseUserInfo`<br />Default: `false` per provider | Fetches the OIDC UserInfo endpoint after token verification to supplement profile claims. Security claims remain constrained; the returned subject must match the ID token. |
+| `Authentication.External.Providers[].OIDC.Timeout`<br />Default: no OIDC providers | Deadline for OIDC discovery, token, key, and UserInfo HTTP work. Must be between `1s` and `30s`. |
+| `Authentication.External.Providers[].OIDC.MaxResponseBytes`<br />Default: no OIDC providers | Maximum accepted external HTTP response body. Must be between `1024` and `2097152` bytes. |
+
+Register the exact Proctor callback URL at the provider and prefer the narrowest
+scope set that releases the required claims. Provider discovery is deliberate:
+Proctor does not accept independently mixed authorization, token, and key
+endpoints.

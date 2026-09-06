@@ -75,7 +75,7 @@ type passwordHasherFake struct {
 	err    error
 }
 
-func (h *passwordHasherFake) Hash(string) (string, error) {
+func (h *passwordHasherFake) Hash(context.Context, string) (string, error) {
 	*h.events = append(*h.events, "hash-password")
 	return h.hash, h.err
 }
@@ -150,6 +150,24 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 	if err != nil || status.Initialized {
 		t.Fatalf("status=%#v err=%v", status, err)
 	}
+}
+
+func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
+	testPasswordHashFailures(t, "installation.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+		events := []string{}
+		persistence := &installationStoreFake{events: &events}
+		service := newBootstrapService(persistence, hasher,
+			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
+			bootstrapProtection(), "node-bootstrap", time.Now)
+		result, err := service.Bootstrap(ctx, Invocation{}, BootstrapInstallationCommand{
+			InstitutionName: "test", AdministratorUsername: "administrator", AdministratorEmail: "administrator@example.edu",
+			Password: "correct horse battery staple", BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.35",
+		})
+		if result != nil || persistence.input != nil || len(events) != 0 {
+			t.Fatal("failed password work reached installation bootstrap")
+		}
+		return err
+	})
 }
 
 func TestBootstrapCommitsAtomicAggregate(t *testing.T) {

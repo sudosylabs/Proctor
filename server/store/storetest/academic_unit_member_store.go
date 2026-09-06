@@ -11,12 +11,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
+	t.Run("ActiveIntervalPrecision", func(t *testing.T) { testAcademicUnitMemberActiveIntervalPrecision(t, ss) })
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "member-unit")
@@ -31,7 +33,7 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	if len(active) != 1 || active[0].ID != saved.ID {
 		t.Fatalf("ListByAcademicUnit() = %#v", active)
 	}
-	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), start+1)
+	byUser, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), model.TimeFromMillis(start+1))
 	requireNoError(t, err)
 	if len(byUser) != 1 || byUser[0].AcademicUnitID != unit.ID {
 		t.Fatalf("ListActiveByUser() = %#v", byUser)
@@ -82,5 +84,42 @@ func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
 	}
 	if _, err := ss.AcademicUnitMember().End(ctx, created.ID.String(), created.Revision, start+21); !store.IsConflict(err) {
 		t.Fatalf("stale End() error = %v", err)
+	}
+}
+
+func testAcademicUnitMemberActiveIntervalPrecision(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	institution := saveInstitution(t, ctx, ss)
+	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "precise-member-unit")
+	user := saveUser(t, ctx, ss)
+	start := time.Date(2026, 9, 5, 12, 0, 0, 123200000, time.FixedZone("offset", 3600))
+	end := start.Add(time.Second + 500*time.Microsecond)
+	member, err := ss.AcademicUnitMember().Save(ctx, &model.AcademicUnitMember{
+		AcademicUnitID: unit.ID, UserID: user.ID, StartsAt: start, EndsAt: model.OptionalTimeFrom(end),
+	})
+	requireNoError(t, err)
+	for _, test := range []struct {
+		name   string
+		at     time.Time
+		active bool
+	}{
+		{"before start", start.Add(-time.Microsecond), false},
+		{"at start", start, true},
+		{"before end", end.Add(-time.Microsecond), true},
+		{"submicrosecond before end", end.Add(-time.Nanosecond), true},
+		{"at end", end, false},
+		{"after end in same millisecond", end.Add(time.Microsecond), false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			active, err := ss.AcademicUnitMember().ListActiveByUser(ctx, user.ID.String(), test.at)
+			requireNoError(t, err)
+			if test.active {
+				if len(active) != 1 || active[0].ID != member.ID {
+					t.Fatalf("active memberships at %v = %#v, want saved membership", test.at, active)
+				}
+			} else if len(active) != 0 {
+				t.Fatalf("active memberships at %v = %#v, want empty", test.at, active)
+			}
+		})
 	}
 }

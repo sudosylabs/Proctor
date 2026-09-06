@@ -58,7 +58,7 @@ func TestAttemptWorkspaceContentIntegrationOnS3(t *testing.T) {
 func proveAttemptWorkspaceContentConformance(t *testing.T, filesystem vfspkg.FileSystem) {
 	t.Helper()
 	ctx := context.Background()
-	content, err := filecontent.New(filesystem)
+	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

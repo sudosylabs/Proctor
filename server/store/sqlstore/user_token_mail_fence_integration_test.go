@@ -19,6 +19,332 @@ import (
 	"github.com/sudosylabs/proctor/server/store/storetest"
 )
 
+func TestUserEmailChangePreservesLifecycleAcrossClockSkew(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		futureCreated bool
+		futureUpdated bool
+		priorToken    bool
+	}{
+		{name: "user_created_ahead", futureCreated: true, futureUpdated: true},
+		{name: "user_updated_ahead", futureUpdated: true},
+		{name: "prior_token_ahead", priorToken: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			persistence := openTestStore(t)
+			resetTestStore(t, persistence)
+			institution, err := persistence.Institution().Save(ctx, &model.Institution{Name: "email-clock", DisplayName: "Email Clock"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			databaseNow := func() time.Time {
+				t.Helper()
+				var at time.Time
+				if err := persistence.GetMaster().Get(ctx, &at, `SELECT clock_timestamp()`); err != nil {
+					t.Fatal(err)
+				}
+				return model.TimeUTC(at)
+			}
+			now := databaseNow()
+			future := now.Add(time.Hour)
+			createdAt := now.Add(-time.Hour)
+			if test.futureCreated {
+				createdAt = future
+			}
+			user := &model.User{Username: "email-clock", Email: "email-clock@example.edu"}
+			user.PrepareCreate(model.NewUserID(), createdAt)
+			if test.futureUpdated {
+				user.UpdatedAt = future.Add(time.Hour)
+			}
+			pictureCommand, err := model.EncodeDefaultProfilePictureCommand(model.DefaultProfilePictureCommandV1{UserID: user.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pictureJob, err := model.NewJob(model.NewJobID(), model.JobTypeProfilePictureGenerateDefault, 1,
+				pictureCommand, user.ID.String(), createdAt, createdAt, 8)
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings, err := model.NewUserSettingsDocument(user.ID, model.NewUserSettingsRevision(), createdAt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			created, err := persistence.User().Create(ctx, &store.UserCreation{User: user, Settings: settings, DefaultProfilePictureJob: pictureJob})
+			if err != nil {
+				t.Fatal(err)
+			}
+			user = created.User
+			var prior *model.UserToken
+			var priorDelivery *model.MailDelivery
+			var priorJob *model.Job
+			if test.priorToken {
+				prior = &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+					TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: future.Add(24 * time.Hour)}
+				prior.PrepareCreate(model.NewUserTokenID(), future)
+				prior.UpdatedAt = future.Add(time.Hour)
+				var occurrence *model.MailOccurrence
+				occurrence, priorDelivery, priorJob = authenticationPolicyTestMail(t, user.ID, model.MailOccurrenceID(prior.ID.String()),
+					model.MailOccurrenceAccountToken, model.MailTemplateIdentityVerifyEmail, model.JobTypeMailDeliverCredential,
+					future, prior.ExpiresAt)
+				prior, err = persistence.UserToken().Issue(ctx, &store.UserTokenMailIssue{Token: prior,
+					Occurrence: occurrence, Delivery: priorDelivery, Job: priorJob,
+					AuditEvent: authenticationPolicyTestAudit("authentication.email_verification.request", user.ID.String(), institution.ID.String())})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			preparedAt := future.Add(24 * time.Hour)
+			tokenLifetime, warningLifetime := 37*time.Minute, 19*time.Hour
+			token := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenEmailVerification,
+				TokenHash: model.HashToken(model.NewCredentialToken()), Target: "changed@example.edu", ExpiresAt: preparedAt.Add(tokenLifetime)}
+			token.PrepareCreate(model.NewUserTokenID(), preparedAt)
+			warningOccurrence, warningDelivery, warningJob := authenticationPolicyTestMail(t, user.ID, model.NewMailOccurrenceID(),
+				model.MailOccurrenceSecurityNotice, model.MailTemplateIdentityEmailChangeWarningOld, model.JobTypeMailDeliver,
+				preparedAt, preparedAt.Add(warningLifetime))
+			verifyOccurrence, verifyDelivery, verifyJob := authenticationPolicyTestMail(t, user.ID, model.MailOccurrenceID(token.ID.String()),
+				model.MailOccurrenceAccountToken, model.MailTemplateIdentityEmailChangeVerifyNew, model.JobTypeMailDeliverCredential,
+				preparedAt, preparedAt.Add(tokenLifetime))
+			audit := authenticationPolicyTestAudit("user.email.change", user.ID.String(), institution.ID.String())
+			audit.Status = model.AuditStatusAttempt
+			audit, err = persistence.Audit().Save(ctx, audit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := databaseNow()
+			changed, err := persistence.UserToken().ChangeEmail(ctx, &store.UserEmailChange{
+				UserID: user.ID, ExpectedRevision: user.Revision, NewEmail: token.Target, Token: token,
+				TokenLifetime: tokenLifetime, WarningLifetime: warningLifetime,
+				WarningOccurrence: warningOccurrence, WarningDelivery: warningDelivery, WarningJob: warningJob,
+				VerificationOccurrence: verifyOccurrence, VerificationDelivery: verifyDelivery, VerificationJob: verifyJob,
+				AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(before),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			after := databaseNow()
+			persistedUser, err := persistence.User().Get(ctx, user.ID.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = persistedUser.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			if !persistedUser.CreatedAt.Equal(createdAt) || persistedUser.UpdatedAt.Before(user.UpdatedAt) ||
+				(test.futureUpdated && !persistedUser.UpdatedAt.Equal(user.UpdatedAt)) {
+				t.Fatal("email change rewrote or moved the User lifecycle backward")
+			}
+			if persistedUser.Email != token.Target || persistedUser.EmailVerified || persistedUser.Revision != user.Revision+1 ||
+				!persistedUser.UpdatedAt.Equal(changed.User.UpdatedAt) {
+				t.Fatal("email change did not persist the returned User transition")
+			}
+			persistedToken, err := persistence.UserToken().Get(ctx, token.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = persistedToken.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			at := persistedToken.CreatedAt
+			if at.Before(before) || at.After(after) || !persistedToken.UpdatedAt.Equal(at) ||
+				persistedToken.ExpiresAt.Sub(at) != tokenLifetime || !changed.Token.CreatedAt.Equal(at) {
+				t.Fatal("replacement token lifetime did not use the current PostgreSQL instant")
+			}
+			for _, expected := range []struct {
+				delivery *model.MailDelivery
+				job      *model.Job
+				lifetime time.Duration
+			}{{warningDelivery, warningJob, warningLifetime}, {verifyDelivery, verifyJob, tokenLifetime}} {
+				delivery, err := persistence.Mail().GetDelivery(ctx, expected.delivery.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				job, err := persistence.Job().Get(ctx, expected.job.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = delivery.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				if err = job.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				if !delivery.CreatedAt.Equal(at) || !delivery.UpdatedAt.Equal(at) || !delivery.MessageDate.Equal(at) ||
+					delivery.Deadline.Sub(at) != expected.lifetime || !job.CreatedAt.Equal(at) ||
+					!job.UpdatedAt.Equal(at) || !job.AvailableAt.Equal(at) {
+					t.Fatal("replacement mail or Job inherited a future lifecycle timestamp")
+				}
+			}
+			if prior != nil {
+				archived, err := persistence.UserToken().Get(ctx, prior.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = archived.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				if !archived.CreatedAt.Equal(prior.CreatedAt) || !archived.ExpiresAt.Equal(prior.ExpiresAt) ||
+					!archived.UpdatedAt.Equal(prior.UpdatedAt) || !archived.ArchivedAt.Valid ||
+					!archived.ArchivedAt.Time.Equal(prior.UpdatedAt) || archived.IsActiveAt(after) {
+					t.Fatal("prior token history or immediate invalidation was not preserved")
+				}
+				delivery, err := persistence.Mail().GetDelivery(ctx, priorDelivery.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				job, err := persistence.Job().Get(ctx, priorJob.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = delivery.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				if err = job.Validate(); err != nil {
+					t.Fatal(err)
+				}
+				if delivery.State != model.MailDeliverySuppressed || len(delivery.EncryptedPayload) != 0 ||
+					!delivery.CreatedAt.Equal(priorDelivery.CreatedAt) || !delivery.Deadline.Equal(priorDelivery.Deadline) ||
+					job.Status != model.JobStatusCanceled || job.UpdatedAt.Before(priorJob.UpdatedAt) {
+					t.Fatal("superseded frozen mail was not safely suppressed")
+				}
+			}
+		})
+	}
+}
+
+func TestPasswordResetSerializesWithPasswordRemoval(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	persistence, institution, user, password := passwordProofFixture(t, ctx)
+	if _, err := persistence.GetMaster().Exec(ctx, `UPDATE access_policies
+		SET provider_admissions=jsonb_build_object('campus-cas', ?::text) WHERE singleton=1`, string(model.ProviderAdmissionLinkedOnly)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persistence.ExternalIdentity().Save(ctx, &model.ExternalIdentity{
+		UserID: user.ID, Provider: "campus-cas", Subject: "password-reset-removal",
+		LastSeenAt: model.OptionalTimeFrom(model.NowUTC()),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	audit, err := persistence.Audit().Save(ctx, &model.AuditEvent{
+		ActorID: user.ID, Action: string(model.ActionExternalIdentityManage),
+		Resource:  model.Resource{Type: model.ResourceUser, ID: user.ID.String()},
+		ScopeType: model.RoleScopeInstitution, ScopeID: institution.ID.String(), Status: model.AuditStatusAttempt,
+		NodeID: "password-reset-removal-order",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion := passwordProofReset(t, ctx, persistence, institution, user)
+	controllerPID, release := pausePasswordProofWrite(t, ctx, persistence, true)
+	type resetOutcome struct {
+		result *store.PasswordResetResult
+		err    error
+	}
+	resetDone := make(chan resetOutcome, 1)
+	go func() {
+		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
+		resetDone <- resetOutcome{result: result, err: err}
+	}()
+	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
+	removal := &store.PasswordCredentialRemoval{
+		UserID: user.ID, ChangedAt: model.GetMillis(), RevocationReason: model.SessionRevocationPasswordRemoved,
+		AuditEventID: audit.ID.String(), AuditAt: model.GetMillis(),
+		Capabilities: store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{"campus-cas": {}}},
+	}
+	type removalOutcome struct {
+		result *store.AuthenticationMethodMutationResult
+		err    error
+	}
+	removed := make(chan removalOutcome, 1)
+	go func() {
+		result, err := persistence.PasswordCredential().RemoveWithAudit(ctx, removal)
+		removed <- removalOutcome{result: result, err: err}
+	}()
+	// The old reset order held the User row before acquiring this Session
+	// fence: removal would own the fence and block on the User instead.
+	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
+	release()
+	reset, remove := <-resetDone, <-removed
+	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
+		t.Fatalf("reset before removal = %#v, %v", reset.result, reset.err)
+	}
+	if remove.err != nil || remove.result == nil || remove.result.PasswordCredential == nil {
+		t.Fatalf("removal after reset = %#v, %v", remove.result, remove.err)
+	}
+	credential := remove.result.PasswordCredential
+	if !credential.ArchivedAt.Valid || credential.Revision != password.Revision+1 || credential.PasswordHash != completion.PasswordHash {
+		t.Fatal("removal did not archive the password produced by the preceding reset")
+	}
+	if _, err = persistence.PasswordCredential().GetByUser(ctx, user.ID.String()); !store.IsNotFound(err) {
+		t.Fatalf("password remained active after removal: %v", err)
+	}
+	terminal, err := persistence.Audit().Get(ctx, audit.ID.String())
+	if err != nil || terminal.Status != model.AuditStatusSuccess {
+		t.Fatalf("removal audit = %#v, %v", terminal, err)
+	}
+}
+
+func TestPasswordResetSerializesWithResetTokenReissue(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	persistence, institution, user, password := passwordProofFixture(t, ctx)
+	completion := passwordProofReset(t, ctx, persistence, institution, user)
+	next := &model.UserToken{UserID: user.ID, Purpose: model.UserTokenPasswordReset,
+		TokenHash: model.HashToken(model.NewCredentialToken()), Target: user.Email, ExpiresAt: model.NowUTC().Add(time.Hour)}
+	next.PrepareCreate(model.NewUserTokenID(), model.NowUTC())
+	occurrence, delivery, job := authenticationPolicyTestMail(t, next.UserID, model.MailOccurrenceID(next.ID.String()),
+		model.MailOccurrenceAccountToken, model.MailTemplateIdentityPasswordReset, model.JobTypeMailDeliverCredential,
+		next.CreatedAt, next.ExpiresAt)
+	issue := &store.UserTokenMailIssue{Token: next, Occurrence: occurrence, Delivery: delivery, Job: job,
+		AuditEvent: authenticationPolicyTestAudit("authentication.password_reset.request", user.ID.String(), institution.ID.String())}
+	controllerPID, release := pausePasswordProofWrite(t, ctx, persistence, true)
+	type resetOutcome struct {
+		result *store.PasswordResetResult
+		err    error
+	}
+	resetDone := make(chan resetOutcome, 1)
+	go func() {
+		result, err := persistence.UserToken().ConsumePasswordReset(ctx, completion)
+		resetDone <- resetOutcome{result: result, err: err}
+	}()
+	resetPID := waitForBlockedMailQuery(t, ctx, persistence, controllerPID, "UPDATE password_credentials")
+	type issueOutcome struct {
+		token *model.UserToken
+		err   error
+	}
+	issued := make(chan issueOutcome, 1)
+	go func() {
+		token, err := persistence.UserToken().Issue(ctx, issue)
+		issued <- issueOutcome{token: token, err: err}
+	}()
+	// Reissue must wait on the token-purpose fence already held by reset,
+	// before taking the User or credential rows.
+	waitForBlockedMailQuery(t, ctx, persistence, resetPID, "pg_advisory_xact_lock")
+	release()
+	reset, reissued := <-resetDone, <-issued
+	if reset.err != nil || reset.result == nil || !reset.result.Token.ConsumedAt.Valid {
+		t.Fatalf("reset before token reissue = %#v, %v", reset.result, reset.err)
+	}
+	if reissued.err != nil || reissued.token == nil || reissued.token.ID != next.ID {
+		t.Fatalf("token reissue after reset = %#v, %v", reissued.token, reissued.err)
+	}
+	current, err := persistence.PasswordCredential().GetByUser(ctx, user.ID.String())
+	if err != nil || current.Revision != password.Revision+1 || current.PasswordHash != completion.PasswordHash {
+		t.Fatalf("token reissue changed reset password: %v", err)
+	}
+	retained, err := persistence.UserToken().Get(ctx, reset.result.Token.ID)
+	if err != nil || !retained.ConsumedAt.Valid {
+		t.Fatalf("token reissue lost preceding consumption: %v", err)
+	}
+	active, err := persistence.UserToken().GetByHash(ctx, next.TokenHash, model.UserTokenPasswordReset)
+	if err != nil || active.ArchivedAt.Valid || active.ConsumedAt.Valid {
+		t.Fatalf("new reset token is not active after reissue: %v", err)
+	}
+}
+
 func TestEmailVerificationConsumptionUsesPostgreSQLTime(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -67,7 +393,7 @@ func TestPasswordResetConsumptionUsesPostgreSQLTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	session, sessionCredentials := authenticationPolicyTestSession(user.ID, "password", "", "")
-	session, _, err = persistence.Session().Save(ctx, session, sessionCredentials, 10)
+	session, _, err = persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, session, sessionCredentials, 10))
 	if err != nil {
 		t.Fatal(err)
 	}

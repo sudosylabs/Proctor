@@ -13,6 +13,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -21,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -46,12 +48,19 @@ type passwordHasher struct {
 	maximumLength int
 	parameters    passwordParameters
 	dummyHash     string
+	work          chan struct{}
+	recorder      PasswordWorkRecorder
 }
 
-func newPasswordHasher(settings PasswordPolicy) (*passwordHasher, error) {
+func newPasswordHasher(settings PasswordPolicy, recorder PasswordWorkRecorder) (*passwordHasher, error) {
+	if settings.MaximumConcurrentOperations <= 0 {
+		return nil, errors.New("maximum concurrent password operations must be positive")
+	}
 	hasher := &passwordHasher{
 		minimumLength: settings.MinimumLength,
 		maximumLength: settings.MaximumLength,
+		work:          make(chan struct{}, settings.MaximumConcurrentOperations),
+		recorder:      recorder,
 		parameters: passwordParameters{
 			memoryKiB:   uint32(settings.ArgonMemoryKiB),
 			iterations:  uint32(settings.ArgonIterations),
@@ -63,6 +72,8 @@ func newPasswordHasher(settings PasswordPolicy) (*passwordHasher, error) {
 	dummyHashes.Lock()
 	dummy := dummyHashes.values[hasher.parameters]
 	if dummy == "" {
+		// Startup completes before requests can use this hasher. The cached
+		// timing hash is neither admitted nor recorded as runtime work.
 		var err error
 		dummy, err = hasher.hashUnchecked("proctor-dummy-password-never-used")
 		if err != nil {
@@ -76,11 +87,26 @@ func newPasswordHasher(settings PasswordPolicy) (*passwordHasher, error) {
 	return hasher, nil
 }
 
-func (h *passwordHasher) Hash(password string) (string, error) {
-	if err := h.Validate(password); err != nil {
+func (h *passwordHasher) Hash(ctx context.Context, password string) (string, error) {
+	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return h.hashUnchecked(password)
+	if err := h.Validate(password); err != nil {
+		return "", NewError("authentication.password.invalid").WithField("field", "password").Wrap(err)
+	}
+	release, err := h.admit(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	encoded, err := h.hashUnchecked(password)
+	if err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return encoded, nil
 }
 
 func (h *passwordHasher) hashUnchecked(password string) (string, error) {
@@ -107,11 +133,19 @@ func (h *passwordHasher) hashUnchecked(password string) (string, error) {
 	), nil
 }
 
-func (h *passwordHasher) Verify(encoded, password string) error {
+func (h *passwordHasher) Verify(ctx context.Context, encoded, password string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	parameters, salt, expected, err := parseArgon2id(encoded)
 	if err != nil {
 		return ErrPasswordMismatch
 	}
+	release, err := h.admit(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	actual := argon2.IDKey(
 		[]byte(password),
 		salt,
@@ -120,14 +154,74 @@ func (h *passwordHasher) Verify(encoded, password string) error {
 		parameters.parallelism,
 		uint32(len(expected)),
 	)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if subtle.ConstantTimeCompare(actual, expected) != 1 {
 		return ErrPasswordMismatch
 	}
 	return nil
 }
 
-func (h *passwordHasher) VerifyDummy(password string) {
-	_ = h.Verify(h.dummyHash, password)
+func (h *passwordHasher) VerifyDummy(ctx context.Context, password string) error {
+	if len(password) > h.maximumLength {
+		password = "invalid-password-length"
+	}
+	err := h.Verify(ctx, h.dummyHash, password)
+	if errors.Is(err, ErrPasswordMismatch) {
+		return nil
+	}
+	return err
+}
+
+// admit bounds all runtime password work without creating a waiting queue.
+// Argon2 cannot be interrupted: the synchronous caller retains its permit
+// until computation returns, even after the request context is cancelled.
+func (h *passwordHasher) admit(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case h.work <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			<-h.work
+			return nil, err
+		}
+		startedAt := time.Now()
+		if h.recorder != nil {
+			h.recorder.Started()
+		}
+		return func() {
+			if h.recorder != nil {
+				h.recorder.Finished(time.Since(startedAt))
+			}
+			<-h.work
+		}, nil
+	default:
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if h.recorder != nil {
+			h.recorder.Rejected()
+		}
+		return nil, NewError("service.busy")
+	}
+}
+
+// passwordHashError preserves validation and capacity failures while keeping
+// operational failures under the owning use case's unavailable code.
+func passwordHashError(err error, unavailableCode string) error {
+	if Is(err, "authentication.password.invalid") {
+		return err
+	}
+	return passwordWorkError(err, unavailableCode)
+}
+
+func passwordWorkError(err error, unavailableCode string) error {
+	if Is(err, "service.busy") {
+		return err
+	}
+	return NewError(unavailableCode).Wrap(err)
 }
 
 func (h *passwordHasher) NeedsRehash(encoded string) bool {

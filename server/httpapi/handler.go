@@ -32,7 +32,7 @@ func (a *API) newHandlerWithErrorPolicy(
 	requirement AuthRequirement,
 	errorPolicy routeErrorPolicy,
 ) http.Handler {
-	return withRequestParams(requireAuthentication(
+	authenticated := withRequestParams(requireAuthentication(
 		handler,
 		requirement,
 		a.authenticator,
@@ -41,6 +41,17 @@ func (a *API) newHandlerWithErrorPolicy(
 		a.recentAuthenticationTTL,
 		errorPolicy,
 	))
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !a.browserRequests.allows(request) {
+			code := "authentication.csrf.invalid"
+			if requirement == AuthPublic {
+				code = "request.invalid"
+			}
+			writeRouteApplicationError(writer, request, a.logger, errorPolicy, applicationError(code))
+			return
+		}
+		authenticated.ServeHTTP(writer, request)
+	})
 }
 
 func requireAuthentication(

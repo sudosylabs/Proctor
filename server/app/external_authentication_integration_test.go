@@ -241,7 +241,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	sessions, err := persistence.Session().ListActiveByUser(
 		context.Background(),
 		user.ID.String(),
-		model.GetMillis(),
+		model.NowUTC(),
 	)
 	if err != nil || len(sessions) != 1 ||
 		sessions[0].AuthenticationMethod != "cas" ||
@@ -423,7 +423,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 		t.Fatalf("invitation admission package: affiliations=%#v class_members=%#v bindings=%#v",
 			invitationAffiliations, invitationClassMembers, invitationBindings)
 	}
-	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID.String(), model.GetMillis())
+	invitationSessions, err := persistence.Session().ListActiveByUser(context.Background(), invitationUser.ID.String(), model.NowUTC())
 	if err != nil || len(invitationSessions) != 0 {
 		t.Fatalf("Invitation proof created an ordinary Session = %#v, %v", invitationSessions, err)
 	}
@@ -494,7 +494,7 @@ func TestCASExternalAuthenticationIntegration(t *testing.T) {
 	if err != nil || connectedIdentity.UserID != user.ID {
 		t.Fatalf("connected identity = %#v, %v", connectedIdentity, err)
 	}
-	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID.String(), model.GetMillis())
+	connectedSessions, err := persistence.Session().ListActiveByUser(context.Background(), user.ID.String(), model.NowUTC())
 	if err != nil || len(connectedSessions) != 1 {
 		t.Fatalf("provider connection created a Session: %#v, %v", connectedSessions, err)
 	}

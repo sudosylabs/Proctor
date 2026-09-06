@@ -24,6 +24,9 @@ import (
 )
 
 func TestPersonalAccessTokenStore(t *testing.T, ss store.Store) {
+	t.Run("NativeExpiryAndUsagePrecision", func(t *testing.T) {
+		testPersonalAccessTokenNativeExpiry(t, ss)
+	})
 	t.Run("LifecycleAndResolution", func(t *testing.T) {
 		testPersonalAccessTokenLifecycle(t, ss)
 	})
@@ -389,8 +392,8 @@ func testPersonalAccessTokenRejectsDisabledAccount(t *testing.T, ss store.Store)
 	if _, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		at+1,
-		1000,
+		model.TimeFromMillis(at+1),
+		time.Second,
 	); !store.IsNotFound(err) {
 		t.Fatalf("disabled-account Resolve() error = %v, want not found", err)
 	}
@@ -418,8 +421,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	resolved, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		now,
-		1000,
+		model.TimeFromMillis(now),
+		time.Second,
 	)
 	requireNoError(t, err)
 	if resolved.User.ID.String() != user.ID.String() ||
@@ -430,8 +433,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	debounced, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		now+100,
-		1000,
+		model.TimeFromMillis(now+100),
+		time.Second,
 	)
 	requireNoError(t, err)
 	if debounced.Token.LastUsedAt.Millis() != now {
@@ -445,8 +448,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	if _, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		now+151,
-		1000,
+		model.TimeFromMillis(now+151),
+		time.Second,
 	); !store.IsNotFound(err) {
 		t.Fatalf("disabled Resolve() error = %v, want not found", err)
 	}
@@ -471,8 +474,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	if _, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(raw),
-		now+201,
-		1000,
+		model.TimeFromMillis(now+201),
+		time.Second,
 	); !store.IsNotFound(err) {
 		t.Fatalf("revoked Resolve() error = %v, want not found", err)
 	}
@@ -491,8 +494,8 @@ func testPersonalAccessTokenLifecycle(t *testing.T, ss store.Store) {
 	unscopedResolved, err := ss.PersonalAccessToken().Resolve(
 		ctx,
 		model.HashToken(unscopedRaw),
-		model.MillisFromTime(unscoped.CreatedAt)+1,
-		1000,
+		unscoped.CreatedAt.Add(time.Millisecond),
+		time.Second,
 	)
 	requireNoError(t, err)
 	if !unscopedResolved.Token.AcademicUnitID.IsZero() {

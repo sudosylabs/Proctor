@@ -72,6 +72,32 @@ func TestStageResourceContentReadyReplaySkipsContentWrite(t *testing.T) {
 	}
 }
 
+type correctionCapacityError struct{}
+
+func (correctionCapacityError) Error() string         { return "content capacity is unavailable" }
+func (correctionCapacityError) WorkCapacityExceeded() {}
+
+func TestStageResourceContentCapacityRefusalLeavesOnlyPendingReservation(t *testing.T) {
+	t.Parallel()
+	f := newCorrectionFixture(t)
+	f.content.err = correctionCapacityError{}
+	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{
+		ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID,
+		Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText,
+		Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key",
+	})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "service.busy" || !errors.Is(err, f.content.err) {
+		t.Fatalf("capacity outcome=%v", err)
+	}
+	if f.persistence.reservation == nil || f.persistence.readyCalls != 0 || f.persistence.application != nil || f.effects.calls != 0 {
+		t.Fatalf("refused content became ready or published: store=%#v effects=%d", f.persistence, f.effects.calls)
+	}
+	if want := "access,membership,authorize,audit.begin,reserve,content.store"; strings.Join(f.order, ",") != want {
+		t.Fatalf("order=%v want=%s", f.order, want)
+	}
+}
+
 func TestStageResourceContentUsesReservedTimeForConcurrentReplay(t *testing.T) {
 	t.Parallel()
 	f := newCorrectionFixture(t)
@@ -99,6 +125,21 @@ func TestStageResourceContentUsesExplicitOverrideWithoutCurrentUnitMembership(t 
 	}
 	if f.authorizer.action != model.ActionExamSittingManageOverride || !f.persistence.reservation.ManagerOverride {
 		t.Fatalf("action=%s reservation=%#v", f.authorizer.action, f.persistence.reservation)
+	}
+}
+
+func TestStageResourceContentStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
+	t.Parallel()
+	f := newCorrectionFixture(t)
+	failure := errors.New("membership unavailable")
+	f.memberships.err = failure
+	_, err := f.service.StageResourceContent(context.Background(), f.call, StageResourceContentCommand{ExamID: f.examID, SittingID: f.sittingID, BaseRevisionID: f.baseRevisionID, Target: store.ExamCorrectionResourceAddition, MediaType: model.ExamResourceMediaText, Body: strings.NewReader("notes"), Size: 5, ExpectedSHA256: strings.Repeat("a", 64), IdempotencyKey: "test-key"})
+	var fault *Fault
+	if !errors.As(err, &fault) || fault.Code != "exam.sitting.correction.unavailable" || !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want unavailable membership failure", err)
+	}
+	if want := "access,membership"; strings.Join(f.order, ",") != want {
+		t.Fatalf("order = %v, want %s", f.order, want)
 	}
 }
 
@@ -275,14 +316,15 @@ func (a *correctionAccessFake) Access(context.Context, model.ExamID, model.UserI
 type correctionMembershipFake struct {
 	f     *correctionFixture
 	empty bool
+	err   error
 }
 
-func (m *correctionMembershipFake) ListActiveByUser(context.Context, string, int64) ([]*model.AcademicUnitMember, error) {
+func (m *correctionMembershipFake) ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error) {
 	m.f.order = append(m.f.order, "membership")
 	if m.empty {
-		return nil, nil
+		return nil, m.err
 	}
-	return []*model.AcademicUnitMember{{AcademicUnitID: m.f.unitID, UserID: m.f.userID}}, nil
+	return []*model.AcademicUnitMember{{AcademicUnitID: m.f.unitID, UserID: m.f.userID}}, m.err
 }
 
 type correctionAuthorizerFake struct {
@@ -327,11 +369,15 @@ type correctionContentFake struct {
 	f         *correctionFixture
 	calls     int
 	createdAt time.Time
+	err       error
 }
 
 func (c *correctionContentFake) StoreExamResourceRendition(_ context.Context, revisionID model.FileRevisionID, renditionID model.FileRenditionID, _ model.ExamResourceMediaType, _ io.Reader, _ int64, at time.Time) (model.FileRendition, error) {
 	c.f.order = append(c.f.order, "content.store")
 	c.calls++
 	c.createdAt = at
+	if c.err != nil {
+		return model.FileRendition{}, c.err
+	}
 	return *correctionRendition(renditionID, revisionID, at), nil
 }

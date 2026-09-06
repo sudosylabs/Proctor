@@ -81,12 +81,12 @@ func TestUserProfileOpenAPIAgreesWithRuntime(t *testing.T) {
 			{
 				Key: "GET /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/ProfilePictureOK", ExceptionalSuccess: true,
-				PublicErrorCodes: principalContractCodes("request.invalid", "resource.not_found", "profile_picture.unavailable"),
+				PublicErrorCodes: principalContractCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.unavailable"),
 			},
 			{
 				Key: "PUT /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,
 				SuccessStatus: "200", SuccessRef: "#/components/responses/UserProfileOK", SuccessSchema: "UserProfileResponse",
-				PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"),
+				PublicErrorCodes: principalMutationContractCodes("service.busy", "request.invalid", "resource.not_found", "profile_picture.invalid", "profile_picture.unavailable", "user.conflict"),
 			},
 			{
 				Key: "DELETE /api/v1/users/{user_id}/profile-picture", Auth: AuthPrincipalRequired,

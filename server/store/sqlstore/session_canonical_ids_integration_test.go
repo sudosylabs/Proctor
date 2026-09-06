@@ -29,14 +29,14 @@ func TestSessionCanonicalIDConstraintsRejectNoncanonicalValues(t *testing.T) {
 		Username: "session-constraint", Email: "session-constraint@example.edu", DisplayName: "Session Constraint",
 	})
 	now := model.NowUTC()
-	session, credentials, err := persistence.Session().Save(ctx, &model.Session{
+	session, credentials, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
 	}, []*model.SessionCredential{
 		{Kind: model.SessionCredentialAccess, TokenHash: model.HashToken("session-constraint-access"), ExpiresAt: now.Add(30 * time.Minute)},
 		{Kind: model.SessionCredentialRefresh, TokenHash: model.HashToken("session-constraint-refresh"), ExpiresAt: now.Add(2 * time.Hour)},
-	}, 10)
+	}, 10))
 	if err != nil {
 		t.Fatal(err)
 	}

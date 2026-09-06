@@ -143,7 +143,7 @@ func constructApplicationFoundation(deps Dependencies) (applicationFoundation, e
 	if err != nil {
 		return applicationFoundation{}, err
 	}
-	hasher, err := newPasswordHasher(deps.Password)
+	hasher, err := newPasswordHasher(deps.Password, deps.PasswordWorkRecorder)
 	if err != nil {
 		return applicationFoundation{}, err
 	}

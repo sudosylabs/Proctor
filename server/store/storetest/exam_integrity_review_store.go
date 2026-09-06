@@ -418,8 +418,9 @@ func revokeIntegrityReviewManager(t *testing.T, ctx context.Context, ss store.St
 
 func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss store.Store) {
 	t.Helper()
-	newSuspended := func(prefix string) (examAttemptFixture, *store.ExamAttemptFocusLossResult,
+	newSuspended := func(t *testing.T, prefix string) (examAttemptFixture, *store.ExamAttemptFocusLossResult,
 		store.ExamAttemptFocusLossAccess) {
+		t.Helper()
 		policy := model.FocusLossPolicy{Enabled: true, MinimumDuration: 500 * time.Millisecond, IncidentCount: 1,
 			Window: 10 * time.Second, Outcome: model.IntegrityOutcomeFlagAndSuspend}
 		fixture := newExamAttemptFixtureWithFocusLoss(t, ctx, ss, &policy)
@@ -434,7 +435,8 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 		}
 		return fixture, suspended, access
 	}
-	automaticSeal := func(prefix string, fixture examAttemptFixture, attemptID model.ExamAttemptID) *store.ExamSubmissionAutomaticSealResult {
+	automaticSeal := func(t *testing.T, prefix string, fixture examAttemptFixture, attemptID model.ExamAttemptID) *store.ExamSubmissionAutomaticSealResult {
+		t.Helper()
 		at := model.NowUTC()
 		closing, err := ss.ExamSitting().EarlyClose(ctx, &store.ExamSittingManagerTransition{
 			ExamID: fixture.examID, SittingID: fixture.sitting.ID, ActorUserID: fixture.manager.ID,
@@ -466,8 +468,8 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 	}
 
 	t.Run("preserved suspension causes remain eligible", func(t *testing.T) {
-		fixture, suspended, access := newSuspended("review-automatic-suspended")
-		sealed := automaticSeal("review-automatic-suspended", fixture, suspended.Attempt.ID)
+		fixture, suspended, access := newSuspended(t, "review-automatic-suspended")
+		sealed := automaticSeal(t, "review-automatic-suspended", fixture, suspended.Attempt.ID)
 		if sealed == nil || sealed.Receipt.SubmissionID.IsValid() == false || sealed.ConnectionClosed {
 			t.Fatalf("SealForSittingClose(suspended) = %#v", sealed)
 		}
@@ -487,7 +489,7 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 	})
 
 	t.Run("selector is pinned to submission generation", func(t *testing.T) {
-		fixture, suspended, oldAccess := newSuspended("review-automatic-selector")
+		fixture, suspended, oldAccess := newSuspended(t, "review-automatic-selector")
 		reallow := &store.ExamAttemptReallow{ExamID: fixture.examID, SittingID: fixture.sitting.ID,
 			AttemptID: suspended.Attempt.ID, SuspensionID: suspended.Suspension.ID, ActorUserID: fixture.manager.ID,
 			ExpectedAttemptRevision: suspended.Attempt.Revision, PrivateReason: "resume exact retained generation",
@@ -497,7 +499,7 @@ func testEndedFocusLossAfterAutomaticSeal(t *testing.T, ctx context.Context, ss 
 			store.ExamAttemptReallowOperation, "review-automatic-selector-reallow", "review-automatic-selector-reallow"))
 		requireNoError(t, err)
 		connected, currentAccess := connectFocusLossFixture(t, ctx, ss, fixture, "review-automatic-selector-reconnect")
-		sealed := automaticSeal("review-automatic-selector", fixture, connected.Attempt.ID)
+		sealed := automaticSeal(t, "review-automatic-selector", fixture, connected.Attempt.ID)
 		if _, err = ss.ExamAttempt().ResolveEndedFocusLossTarget(ctx, oldAccess); err == nil {
 			t.Fatal("ResolveEndedFocusLossTarget(previous generation) succeeded")
 		}

@@ -82,7 +82,7 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 			return nil, err
 		}
 		var credential passwordCredentialRow
-		if err := tx.Get(ctx, &credential, `SELECT id, created_at, updated_at, archived_at, user_id, password_hash, password_changed_at FROM password_credentials WHERE user_id=$1 AND archived_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
+		if err := tx.Get(ctx, &credential, `SELECT id, created_at, updated_at, archived_at, user_id, revision, password_hash, password_changed_at FROM password_credentials WHERE user_id=$1 AND archived_at IS NULL FOR UPDATE`, input.UserID.String()); err != nil {
 			return nil, fmt.Errorf("get recovery password credential: %w", translateError("password_credential", input.UserID.String(), err))
 		}
 		if _, err := credential.model(); err != nil {
@@ -96,7 +96,7 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 			return nil, store.NewErrConflict("administrator_recovery", "no_effect", nil)
 		}
 		if input.RotatePasswordHash != "" {
-			if _, err := tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, $1), password_hash=$2, password_changed_at=GREATEST(password_changed_at, $1) WHERE id=$3 AND user_id=$4 AND archived_at IS NULL`, databaseNow, input.RotatePasswordHash, credential.ID, input.UserID.String()); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE password_credentials SET updated_at=GREATEST(updated_at, $1), password_hash=$2, revision=revision+1, password_changed_at=GREATEST(password_changed_at, $1) WHERE id=$3 AND user_id=$4 AND archived_at IS NULL`, databaseNow, input.RotatePasswordHash, credential.ID, input.UserID.String()); err != nil {
 				return nil, fmt.Errorf("rotate recovery password: %w", translateError("password_credential", credential.ID, err))
 			}
 		}

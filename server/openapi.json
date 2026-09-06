@@ -3989,10 +3989,17 @@
             }
           }
         },
-        "description": "Service unavailable",
+        "description": "Service unavailable. The service.busy code means this node's bounded password or content-processing capacity is currently full. No password proof or completed content publication is issued by that refused operation; retry after the indicated delay, preserving any required idempotency key.",
         "headers": {
           "Cache-Control": {
             "$ref": "#/components/headers/NoStore"
+          },
+          "Retry-After": {
+            "description": "Present with value 1 for service.busy. Wait at least this many seconds before retrying the operation.",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
           }
         }
       },
@@ -8179,7 +8186,9 @@
             "type": "string"
           },
           "callback_url": {
+            "description": "Exact HTTP loopback URL using 127.0.0.1 or [::1], a decimal port from 49152 through 65535, and one random token path. Leading zeroes in a valid port are preserved. No query, fragment, or user information is accepted.",
             "format": "uri",
+            "maxLength": 1024,
             "type": "string"
           },
           "code_challenge": {
@@ -15616,7 +15625,7 @@
     }
   },
   "info": {
-    "description": "The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures.",
+    "description": "The reviewed public HTTP and WebSocket contract for one Proctor installation. Operations are grouped by stable product areas, declare authentication and idempotency requirements explicitly, and return RFC 9457 Problem Details for documented failures. JSON request bodies require one Content-Type of application/json, optionally with charset=utf-8. Unsafe browser requests must use the configured public origin; conflicting Origin or Fetch Metadata headers are rejected before authentication. Native clients may omit browser headers. Cookie-authenticated mutations also require their signed CSRF proof. CAS and OIDC GET callbacks retain their purpose-specific state and browser-binding checks.",
     "title": "Proctor Server API",
     "version": "1.0.0"
   },
@@ -17728,6 +17737,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
@@ -17981,6 +17991,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.desktop_authorization.invalid",
           "authentication.desktop_authorization.rejected",
@@ -18422,7 +18433,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong.",
+        "description": "Authenticates a local credential and creates an interactive Session for the declared client type. Browser clients receive host-only cookies while native clients may consume response tokens; MFA-enabled accounts must include a current TOTP or unused recovery code. Authentication failures do not reveal which credential was wrong. Requires Content-Type application/json, optionally with charset=utf-8. Cross-origin browser requests and invalid media types return request.invalid before credential verification or cookie issuance; native clients may omit browser origin headers.",
         "operationId": "login",
         "requestBody": {
           "$ref": "#/components/requestBodies/Login"
@@ -18463,6 +18474,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.client_type.invalid",
           "authentication.password.invalid",
@@ -18569,6 +18581,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.password.invalid",
           "authentication.rate_limited",
@@ -18921,6 +18934,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.password.invalid",
           "authentication.registration.invalid",
@@ -19100,6 +19114,7 @@
         ],
         "x-proctor-auth": "strong_recent_session_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
@@ -19333,6 +19348,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         },
         "security": [],
@@ -19342,6 +19360,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "installation.already_initialized",
           "installation.bootstrap_denied",
@@ -22263,6 +22282,7 @@
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
@@ -22725,6 +22745,7 @@
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
@@ -25501,6 +25522,7 @@
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
@@ -26688,6 +26710,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
@@ -26751,6 +26774,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "service.busy",
           "request.invalid",
           "authentication.rate_limited",
           "authentication.rate_limit_unavailable",
@@ -31437,6 +31461,7 @@
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
           "desktop_registration.unavailable",
+          "authentication.csrf.invalid",
           "authentication.strong_required",
           "authentication.reauthentication_required",
           "request.invalid",
@@ -33354,6 +33379,7 @@
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",
@@ -33463,6 +33489,7 @@
         ],
         "x-proctor-auth": "principal_required",
         "x-proctor-error-codes": [
+          "service.busy",
           "authentication.required",
           "authentication.invalid_token",
           "authentication.credential_ambiguous",

@@ -47,7 +47,7 @@ func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
 	previousID := model.NewClassMemberID().String()
 	body, _ := json.Marshal(map[string]any{"operation": "class.transfer", "scope_type": "class", "scope_id": classID,
 		"items": []map[string]any{{"key": "row-1", "user_id": userID, "relationship_id": previousID}}})
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/academic-administration-batches", bytes.NewReader(body))
+	request := newJSONRequest(http.MethodPost, "/api/v1/academic-administration-batches", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer session")
 	request.Header.Set("Idempotency-Key", "batch-key")
 	response := httptest.NewRecorder()
@@ -61,7 +61,7 @@ func TestAcademicAdministrationBatchHTTPIsStrictBoundedAndSafe(t *testing.T) {
 		t.Fatalf("academic administration batch = %d %s command=%#v", response.Code, response.Body.String(), applicationFake.command)
 	}
 
-	unknown := httptest.NewRequest(http.MethodPost, "/api/v1/academic-administration-batches", strings.NewReader(`{"operation":"class.end","scope_type":"class","scope_id":"`+classID+`","items":[],"command":"forbidden"}`))
+	unknown := newJSONRequest(http.MethodPost, "/api/v1/academic-administration-batches", strings.NewReader(`{"operation":"class.end","scope_type":"class","scope_id":"`+classID+`","items":[],"command":"forbidden"}`))
 	unknown.Header.Set("Authorization", "Bearer session")
 	unknown.Header.Set("Idempotency-Key", "unknown")
 	unknownResponse := httptest.NewRecorder()

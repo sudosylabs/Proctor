@@ -90,6 +90,39 @@ func (a *browserInvitationAttemptLimiterFake) Check(context.Context, string, str
 	return nil
 }
 
+func TestBrowserInvitationPreservesPasswordWorkFailures(t *testing.T) {
+	for _, purpose := range []model.InvitationPurpose{model.InvitationPurposeStudentClass, model.InvitationPurposeTeacherAcademicUnit} {
+		t.Run(string(purpose), func(t *testing.T) {
+			testPasswordHashFailures(t, "invitation.unavailable", func(t *testing.T, ctx context.Context, hasher passwordHash) error {
+				invitation := &model.Invitation{ID: model.NewInvitationID(), Purpose: purpose,
+					ClaimHash: model.HashInvitationClaim(model.NewCredentialToken()), TargetEmail: "invited@example.edu"}
+				persistence := &invitationStoreFake{invitation: invitation}
+				mail := &invitationMailPreparerFake{}
+				invitations := newInvitationServiceForTest(t, persistence, invitationAcademicUnitStoreFake{}, invitationRoleStoreFake{},
+					&invitationAuthorizerFake{}, mail, time.Now())
+				invitations.hasher = hasher
+				transactions := &browserInvitationTransactionStoreFake{resolveResult: &store.BrowserInvitationResolution{
+					ID: model.NewBrowserAuthenticationTransactionID(), InvitationID: invitation.ID, InvitationClaimHash: invitation.ClaimHash,
+				}}
+				service, err := newBrowserInvitationService(transactions,
+					browserInvitationInstitutionStoreFake{institution: &model.Institution{ID: model.NewInstitutionID()}},
+					invitations, "https://proctor.example.edu", model.NewCredentialToken)
+				if err != nil {
+					t.Fatal(err)
+				}
+				result, err := service.AcceptLocal(ctx, Invocation{}, BrowserInvitationAcceptanceCommand{
+					Handle: model.NewCredentialToken(), BrowserProof: model.NewCredentialToken(), Username: "invited",
+					Password: "correct horse battery staple", Source: "192.0.2.38",
+				})
+				if result != nil || persistence.accepted != nil || persistence.teacherAccepted != nil || mail.directJobType != "" {
+					t.Fatal("failed password work advanced hosted Invitation acceptance")
+				}
+				return err
+			})
+		})
+	}
+}
+
 func TestBrowserInvitationStartReplacesRawClaimWithTwoHashedProofs(t *testing.T) {
 	t.Parallel()
 	now := model.TimeUTC(time.Now())

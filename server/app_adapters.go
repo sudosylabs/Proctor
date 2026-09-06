@@ -53,7 +53,15 @@ func applicationDependencies(
 	if mailRenderer == nil {
 		return app.Dependencies{}, errors.New("mail template renderer is nil")
 	}
-	mailer := accountMailerAdapter{mailer: capabilities.mailer}
+	assetFiles, err := runtimeAssetDirectory("templates")
+	if err != nil {
+		return app.Dependencies{}, fmt.Errorf("open mail inline assets: %w", err)
+	}
+	mailAssets, err := appmail.NewInlineAssets(assetFiles)
+	if err != nil {
+		return app.Dependencies{}, fmt.Errorf("construct mail inline assets: %w", err)
+	}
+	mailer := accountMailerAdapter{mailer: capabilities.mailer, assets: mailAssets}
 	mailDeliveryRecorder, mailMetricsReader := newMailTelemetry(log, nil)
 	return app.Dependencies{
 		Store:                   capabilities.persistence,
@@ -72,13 +80,14 @@ func applicationDependencies(
 		PublicURL:               cfg.Server.PublicURL,
 		LoopbackHTTPDevelopment: explicitLoopbackHTTPDevelopment(cfg.Server.PublicURL),
 		Password: app.PasswordPolicy{
-			MinimumLength:    auth.Password.MinimumLength,
-			MaximumLength:    auth.Password.MaximumLength,
-			ArgonMemoryKiB:   auth.Password.ArgonMemoryKiB,
-			ArgonIterations:  auth.Password.ArgonIterations,
-			ArgonParallelism: auth.Password.ArgonParallelism,
-			ArgonSaltBytes:   auth.Password.ArgonSaltBytes,
-			ArgonKeyBytes:    auth.Password.ArgonKeyBytes,
+			MaximumConcurrentOperations: auth.Password.MaximumConcurrentOperations,
+			MinimumLength:               auth.Password.MinimumLength,
+			MaximumLength:               auth.Password.MaximumLength,
+			ArgonMemoryKiB:              auth.Password.ArgonMemoryKiB,
+			ArgonIterations:             auth.Password.ArgonIterations,
+			ArgonParallelism:            auth.Password.ArgonParallelism,
+			ArgonSaltBytes:              auth.Password.ArgonSaltBytes,
+			ArgonKeyBytes:               auth.Password.ArgonKeyBytes,
 		},
 		Sessions: app.SessionPolicy{
 			AccessTTL:              auth.Sessions.AccessTTL.Duration,
@@ -191,6 +200,7 @@ func (c platformAuthenticationCache) Add(
 
 type accountMailerAdapter struct {
 	mailer borrowedMailer
+	assets *appmail.InlineAssets
 }
 
 func (a accountMailerAdapter) Enabled() bool {
@@ -203,10 +213,21 @@ func (a accountMailerAdapter) From() appmail.Address {
 }
 
 func (a accountMailerAdapter) Send(ctx context.Context, message appmail.Outbound) (appmail.TransportOutcome, error) {
-	_, err := a.mailer.Send(ctx, mailpkg.Message{
+	images, err := a.assets.ForHTML(message.HTML)
+	if err != nil {
+		return appmail.TransportPermanent, err
+	}
+	attachments := make([]mailpkg.Attachment, 0, len(images))
+	for _, image := range images {
+		attachments = append(attachments, mailpkg.Attachment{
+			Filename: image.Filename, ContentType: "image/png", ContentID: image.ContentID, Inline: true, Data: image.Data,
+		})
+	}
+	_, err = a.mailer.Send(ctx, mailpkg.Message{
 		From: mailpkg.Address{Name: message.From.Name, Address: message.From.Address}, EnvelopeFrom: message.EnvelopeFrom,
 		To: []mailpkg.Address{{Name: message.To.Name, Address: message.To.Address}}, Subject: message.Subject,
 		Text: message.Text, HTML: message.HTML, Headers: message.Headers, MessageID: message.MessageID, Date: message.Date,
+		Attachments: attachments,
 	})
 	if err == nil {
 		return appmail.TransportUnknown, nil

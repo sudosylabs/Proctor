@@ -221,6 +221,7 @@ func newFocusedResourceAPI(
 		logger:                  logger,
 		localizer:               newTestLocalizer(t),
 		cookies:                 cookies,
+		browserRequests:         browserRequestPolicy{origin: "http://localhost:8065"},
 		recentAuthenticationTTL: time.Minute,
 	}
 	if err := httpAPI.buildRoutingKernel(

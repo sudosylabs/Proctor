@@ -41,8 +41,8 @@ type roleBindingCommandOutcome struct {
 	NoOp bool   `json:"no_op,omitempty"`
 }
 
-// roleBindingRow is the legacy integer-millisecond column layout. Domain
-// RoleBinding uses time.Time / OptionalTime; conversion is at this boundary.
+// roleBindingRow maps the native PostgreSQL timestamps and nullable lifecycle
+// fields onto a validated domain Role Binding.
 type roleBindingRow struct {
 	ID                         string              `db:"id"`
 	CreatedAt                  time.Time           `db:"created_at"`
@@ -459,9 +459,9 @@ func (s SQLRoleBindingStore) ListByScope(
 func (s SQLRoleBindingStore) ListActiveByUser(
 	ctx context.Context,
 	userID string,
-	now int64,
+	at time.Time,
 ) ([]*model.RoleBinding, error) {
-	at := model.TimeFromMillis(now)
+	at = model.TimeUTC(at)
 	return s.selectBindings(ctx, s.bindingsQuery.
 		Where(sq.Eq{"role_bindings.user_id": userID, "role_bindings.archived_at": nil}).
 		Where(sq.LtOrEq{"role_bindings.start_at": at}).

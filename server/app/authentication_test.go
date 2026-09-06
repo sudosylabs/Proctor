@@ -91,8 +91,8 @@ type authenticationStoreFake struct {
 	userGetErr          error
 	rotatedAccess       *model.SessionCredential
 	rotatedRefresh      *model.SessionCredential
-	rotatedAt           int64
-	rotatedIdleExpiry   int64
+	rotatedAt           time.Time
+	rotatedIdleExpiry   time.Time
 }
 
 type authenticationDesktopRegistrationLookupFake struct{}
@@ -251,10 +251,16 @@ func (s authenticationPasswordStore) GetByUser(_ context.Context, userID string)
 	return &cloned, nil
 }
 
-func (s authenticationPasswordStore) Update(_ context.Context, credential *model.PasswordCredential) (*model.PasswordCredential, error) {
+func (s authenticationPasswordStore) Rehash(_ context.Context, input *store.PasswordCredentialRehash) error {
+	credential := s.root.passwords[input.UserID.String()]
+	if credential == nil || credential.ArchivedAt.Valid || credential.ID != input.ID ||
+		credential.Revision != input.ExpectedRevision || credential.PasswordHash != input.ExpectedHash {
+		return store.ErrPasswordCredentialChanged
+	}
 	cloned := *credential
-	s.root.passwords[credential.UserID.String()] = &cloned
-	return &cloned, nil
+	cloned.PasswordHash = input.PasswordHash
+	s.root.passwords[input.UserID.String()] = &cloned
+	return nil
 }
 
 func (authenticationPasswordStore) Save(context.Context, *model.PasswordCredential) (*model.PasswordCredential, error) {
@@ -273,12 +279,18 @@ type authenticationSessionStore struct{ root *authenticationStoreFake }
 
 func (s authenticationSessionStore) Save(
 	_ context.Context,
-	session *model.Session,
-	credentials []*model.SessionCredential,
-	maximumPerUser int,
+	input *store.SessionCreation,
 ) (*model.Session, []*model.SessionCredential, error) {
 	if s.root.saveErr != nil {
 		return nil, nil, s.root.saveErr
+	}
+	session, credentials, maximumPerUser := input.Session, input.Credentials, input.MaximumActive
+	if session.AuthenticationMethod == "password" {
+		credential := s.root.passwords[session.UserID.String()]
+		if credential == nil || credential.ArchivedAt.Valid || credential.ID != input.PasswordProof.ID ||
+			credential.Revision != input.PasswordProof.Revision {
+			return nil, nil, store.ErrPasswordCredentialChanged
+		}
 	}
 	if maximumPerUser > 0 {
 		count := 0
@@ -318,24 +330,27 @@ func (s authenticationSessionStore) Save(
 	return &cloned, savedCredentials, nil
 }
 
-func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID string, lastActivityAt, idleExpiresAt int64) error {
+func (s authenticationSessionStore) UpdateActivity(_ context.Context, sessionID string, lastActivityAt, idleExpiresAt time.Time) error {
 	session, ok := s.root.sessions[sessionID]
 	if !ok {
 		return store.NewErrNotFound("session", sessionID)
 	}
-	at := model.TimeFromMillis(lastActivityAt)
+	at := model.TimeUTC(lastActivityAt)
 	session.LastActivityAt = at
-	session.IdleExpiresAt = model.TimeFromMillis(idleExpiresAt)
+	session.IdleExpiresAt = model.TimeUTC(idleExpiresAt)
 	session.UpdatedAt = at
 	return nil
 }
 
 func (s authenticationSessionStore) Revoke(_ context.Context, sessionID, _ string, revokedAt int64, reason model.SessionRevocationReason) ([]string, error) {
+	return s.revoke(sessionID, model.TimeFromMillis(revokedAt), reason)
+}
+
+func (s authenticationSessionStore) revoke(sessionID string, at time.Time, reason model.SessionRevocationReason) ([]string, error) {
 	session, ok := s.root.sessions[sessionID]
 	if !ok {
 		return nil, store.NewErrNotFound("session", sessionID)
 	}
-	at := model.TimeFromMillis(revokedAt)
 	session.RevokedAt = model.OptionalTimeFrom(at)
 	session.RevocationReason = reason
 	if session.UpdatedAt.Before(at) {
@@ -356,18 +371,18 @@ func (s authenticationSessionStore) EnforceExpiry(
 	_ context.Context,
 	sessionID string,
 	userID string,
-	atMillis int64,
+	at time.Time,
 ) (*store.SessionExpiryEnforcementResult, error) {
 	session, ok := s.root.sessions[sessionID]
 	if !ok || session.UserID.String() != userID || session.RevokedAt.Valid {
 		return nil, store.NewErrNotFound("session", sessionID)
 	}
-	at := model.TimeFromMillis(atMillis)
+	at = model.TimeUTC(at)
 	if !session.IsExpiredAt(at) {
 		cloned := *session
 		return &store.SessionExpiryEnforcementResult{Session: &cloned}, nil
 	}
-	hashes, err := s.Revoke(context.Background(), sessionID, userID, atMillis, model.SessionRevocationExpired)
+	hashes, err := s.revoke(sessionID, at, model.SessionRevocationExpired)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +403,7 @@ func (s authenticationSessionStore) Get(_ context.Context, id string) (*model.Se
 func (authenticationSessionStore) ListByUser(context.Context, string) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationSessionStore) ListActiveByUser(context.Context, string, int64) ([]*model.Session, error) {
+func (authenticationSessionStore) ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
 func (authenticationSessionStore) RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error) {
@@ -433,8 +448,8 @@ func (s authenticationSessionCredentialStore) RotateRefresh(
 	_ string,
 	access *model.SessionCredential,
 	refresh *model.SessionCredential,
-	at int64,
-	idleExpiry int64,
+	at time.Time,
+	idleExpiry time.Time,
 ) (*store.SessionRotation, error) {
 	s.root.rotatedAccess = access
 	s.root.rotatedRefresh = refresh
@@ -510,7 +525,7 @@ func newTestAuthenticationServiceWithEffects(
 ) *authenticationService {
 	t.Helper()
 	settings := testPasswordPolicy()
-	hasher, err := newPasswordHasher(settings)
+	hasher, err := newPasswordHasher(settings, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,9 +730,7 @@ func TestAuthenticationAuthoritativeIdleExtensionOverridesStaleExpiredCache(t *t
 	)
 	stale := *authoritative
 	stale.IdleExpiresAt = at
-	service.cacheAuthentication(context.Background(), accessHash, &cachedAuthentication{
-		Credential: credential, Session: &stale, User: user,
-	}, at.Add(-time.Minute).UnixMilli())
+	cacheLegacyAuthentication(t, cache, credential, &stale, user)
 
 	principal, err := service.authenticateAccess(context.Background(), accessRaw)
 	if err != nil || principal == nil || principal.SessionID != authoritative.ID {
@@ -725,10 +738,6 @@ func TestAuthenticationAuthoritativeIdleExtensionOverridesStaleExpiredCache(t *t
 	}
 	if authoritative.RevokedAt.Valid {
 		t.Fatalf("authoritatively extended Session was revoked: %#v", authoritative)
-	}
-	cached := service.cachedAuthentication(context.Background(), accessHash)
-	if cached == nil || cached.Session == nil || !cached.Session.IdleExpiresAt.Equal(authoritative.IdleExpiresAt) {
-		t.Fatalf("refreshed authentication cache = %#v", cached)
 	}
 }
 
@@ -780,9 +789,9 @@ func TestAuthenticationRefreshUsesControlledRuntimeAndPreservesReplayEffects(t *
 					t.Fatalf("tokens = %#v, want controlled credentials", tokens)
 				}
 			}
-			if persistence.rotatedAt != at.UnixMilli() ||
-				persistence.rotatedIdleExpiry != at.Add(2*time.Hour).UnixMilli() {
-				t.Fatalf("rotation time = %d idle = %d", persistence.rotatedAt, persistence.rotatedIdleExpiry)
+			if !persistence.rotatedAt.Equal(at) ||
+				!persistence.rotatedIdleExpiry.Equal(at.Add(2*time.Hour)) {
+				t.Fatalf("rotation time = %v idle = %v", persistence.rotatedAt, persistence.rotatedIdleExpiry)
 			}
 			if effects.last != test.wantEffect {
 				t.Fatalf("effect = %q, want %q", effects.last, test.wantEffect)
@@ -810,9 +819,10 @@ func TestAuthenticationUsesControlledClockAndCredentialGenerator(t *testing.T) {
 		base64.RawURLEncoding.EncodeToString([]byte("abcdefghijklmnopqrstuvwxyzABCDEF")),
 	}
 	next := 0
+	persistence := newAuthenticationStoreFake()
 	service := newTestAuthenticationServiceWithRuntime(
 		t,
-		newAuthenticationStoreFake(),
+		persistence,
 		newAuthenticationCacheFake(),
 		func() string {
 			credential := credentials[next]
@@ -822,12 +832,16 @@ func TestAuthenticationUsesControlledClockAndCredentialGenerator(t *testing.T) {
 		func() time.Time { return at },
 	)
 	user := &model.User{ID: model.NewUserID(), CreatedAt: at, UpdatedAt: at, Revision: 1}
+	passwordCredential := &model.PasswordCredential{UserID: user.ID, PasswordHash: "encoded-password"}
+	passwordCredential.PrepareCreate(model.NewPasswordCredentialID(), at)
+	persistence.passwords[user.ID.String()] = passwordCredential
 	resultSession, tokens, err := service.createSession(
 		context.Background(),
 		sessionIssuance{
 			User: user, ClientType: model.SessionClientCLI,
 			DeviceID: "device", DeviceName: "Device",
 			AuthenticationMethod:   "password",
+			PasswordProof:          store.PasswordCredentialProof{ID: passwordCredential.ID, Revision: passwordCredential.Revision},
 			AuthenticationStrength: model.AuthenticationSingleFactor,
 			AuthenticatedAt:        at.UnixMilli(),
 		},
@@ -907,6 +921,7 @@ type authenticationMFAVerifierFake struct {
 	calls       int
 	strength    model.AuthenticationStrength
 	completedAt int64
+	afterVerify func()
 }
 
 func (f *authenticationMFAVerifierFake) VerifyLogin(
@@ -916,6 +931,9 @@ func (f *authenticationMFAVerifierFake) VerifyLogin(
 	time.Time,
 ) (model.AuthenticationStrength, int64, error) {
 	f.calls++
+	if f.afterVerify != nil {
+		f.afterVerify()
+	}
 	return f.strength, f.completedAt, nil
 }
 
@@ -1020,6 +1038,121 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	}
 }
 
+func TestLoginPasswordCapacityPreservesAccountParity(t *testing.T) {
+	for _, account := range []string{"active", "wrong password", "missing user", "disabled user", "missing credential", "local login disabled", "invalid login", "oversized password"} {
+		t.Run(account, func(t *testing.T) {
+			persistence := newAuthenticationStoreFake()
+			service := newTestAuthenticationService(t, persistence)
+			const password = "CorrectHorseBatteryStaple1!"
+			user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+				User: &model.User{Username: "capacity-user", Email: "capacity-user@example.edu"}, Password: password,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			credential := *persistence.passwords[user.ID.String()]
+			command := LoginCommand{LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.7"}
+			switch account {
+			case "wrong password":
+				command.Password = "incorrect password"
+			case "missing user":
+				command.LoginID = "missing@example.edu"
+			case "disabled user":
+				persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
+			case "missing credential":
+				delete(persistence.passwords, user.ID.String())
+			case "local login disabled":
+				service.accessPolicy = authenticationAccessPolicyFake{local: false}
+			case "invalid login":
+				command.LoginID = ""
+			case "oversized password":
+				command.Password = strings.Repeat("x", service.hasher.maximumLength+1)
+			}
+			saturatePasswordWork(t, service.hasher)
+			result, err := service.login(context.Background(), command)
+			if result != nil || !Is(err, "service.busy") {
+				t.Fatalf("saturated login = %#v/%v, want service.busy", result, err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			result, err = service.login(ctx, command)
+			if result != nil || !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled login = %#v/%v", result, err)
+			}
+			if len(persistence.sessions) != 0 || len(persistence.accessByHash) != 0 {
+				t.Fatal("rejected password work issued Session credentials")
+			}
+			if current := persistence.passwords[user.ID.String()]; current != nil && *current != credential {
+				t.Fatal("rejected password work mutated the password credential")
+			}
+		})
+	}
+}
+
+func TestLocalUserCreationRejectsPasswordWorkBeforePersistence(t *testing.T) {
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	saturatePasswordWork(t, service.hasher)
+	command := CreateLocalUserCommand{User: &model.User{Username: "new-user", Email: "new-user@example.edu"}, Password: "CorrectHorseBatteryStaple1!"}
+	if user, err := service.createLocalUser(context.Background(), command); user != nil || !Is(err, "service.busy") {
+		t.Fatalf("saturated creation = %#v/%v", user, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if user, err := service.createLocalUser(ctx, command); user != nil || !Is(err, "authentication.internal") || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled creation = %#v/%v", user, err)
+	}
+	if len(persistence.users) != 0 || len(persistence.passwords) != 0 || persistence.createdJob != nil {
+		t.Fatal("rejected password work created account state")
+	}
+}
+
+func TestLocalAuthenticationRejectsRehashCapacityBeforeProofAndMutation(t *testing.T) {
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	const password = "CorrectHorseBatteryStaple1!"
+	user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+		User: &model.User{Username: "rehash-capacity", Email: "rehash-capacity@example.edu"}, Password: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential := *persistence.passwords[user.ID.String()]
+	service.hasher.parameters.iterations++
+	recorder := &passwordWorkRecorderFake{}
+	service.hasher.recorder = recorder
+	mfa := &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor}
+	service.mfa = mfa
+	// Admit competing work at the next context check after verification has
+	// returned its permit. This selects the rehash admission boundary without
+	// sleeps, cryptographic substitutes, or a production-only test hook.
+	var competed sync.Once
+	ctx := passwordWorkBoundaryContext{Context: context.Background(), check: func() {
+		if recorder.finished.Load() == 1 && len(service.hasher.work) == 0 {
+			competed.Do(func() { saturatePasswordWork(t, service.hasher) })
+		}
+	}}
+	proof, err := service.authenticateLocal(ctx, LoginCommand{
+		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.8",
+	})
+	if proof != nil || !Is(err, "service.busy") || recorder.rejected.Load() != 1 || mfa.calls != 0 {
+		t.Fatalf("saturated rehash = %#v/%v, rejected work %d, MFA calls %d", proof, err, recorder.rejected.Load(), mfa.calls)
+	}
+	if *persistence.passwords[user.ID.String()] != credential || len(persistence.sessions) != 0 {
+		t.Fatal("rejected rehash changed credentials or created a Session")
+	}
+}
+
+type passwordWorkBoundaryContext struct {
+	context.Context
+	check func()
+}
+
+func (ctx passwordWorkBoundaryContext) Err() error {
+	ctx.check()
+	return ctx.Context.Err()
+}
+
 func TestLoginRejectsDirectDesktopSessionIssuance(t *testing.T) {
 	t.Parallel()
 
@@ -1048,6 +1181,128 @@ func TestLoginMapsTerminalAccessPolicyFenceToGenericCredentialsFailure(t *testin
 	})
 	if result != nil || !Is(err, "authentication.invalid_credentials") {
 		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestLoginRejectsPasswordChangedAfterVerification(t *testing.T) {
+	for _, rehash := range []bool{false, true} {
+		name := "current_hash"
+		if rehash {
+			name = "rehash_required"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			persistence := newAuthenticationStoreFake()
+			service := newTestAuthenticationService(t, persistence)
+			const oldPassword = "CorrectHorseBatteryStaple1!"
+			user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+				User: &model.User{Username: "password-race", Email: "password-race@example.edu"}, Password: oldPassword,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rehash {
+				service.hasher.parameters.iterations++
+			}
+			replacement := *persistence.passwords[user.ID.String()]
+			replacement.PasswordHash, err = service.hasher.Hash(context.Background(), "ReplacementPasswordForReset1!")
+			if err != nil {
+				t.Fatal(err)
+			}
+			replacement.Revision++
+			replacement.PasswordChangedAt = replacement.PasswordChangedAt.Add(time.Microsecond)
+			replacement.UpdatedAt = replacement.PasswordChangedAt
+			// MFA is the existing seam immediately after password verification.
+			// Commit reset here to force the otherwise nondeterministic ordering.
+			service.mfa = &authenticationMFAVerifierFake{
+				strength:    model.AuthenticationSingleFactor,
+				afterVerify: func() { persistence.passwords[user.ID.String()] = &replacement },
+			}
+			result, err := service.login(ctx, LoginCommand{
+				LoginID: user.Email, Password: oldPassword, ClientType: model.SessionClientWeb, Source: "192.0.2.10",
+			})
+			if result != nil || !Is(err, "authentication.invalid_credentials") {
+				t.Fatalf("login after reset = %#v, %v", result, err)
+			}
+			if len(persistence.sessions) != 0 || len(persistence.accessByHash) != 0 {
+				t.Fatal("stale password proof created a Session or access credential")
+			}
+			if *persistence.passwords[user.ID.String()] != replacement {
+				t.Fatal("stale login changed the replacement password credential")
+			}
+		})
+	}
+}
+
+func TestLocalAuthenticationRejectsRehashConflictBeforeReturningProof(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	const password = "CorrectHorseBatteryStaple1!"
+	user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+		User: &model.User{Username: "removed-password", Email: "removed-password@example.edu"}, Password: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.hasher.parameters.iterations++
+	service.mfa = &authenticationMFAVerifierFake{
+		strength:    model.AuthenticationSingleFactor,
+		afterVerify: func() { delete(persistence.passwords, user.ID.String()) },
+	}
+	proof, err := service.authenticateLocal(ctx, LoginCommand{
+		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.11",
+	})
+	if proof != nil || !Is(err, "authentication.invalid_credentials") {
+		t.Fatalf("authenticate removed password = %#v, %v", proof, err)
+	}
+	if persistence.passwords[user.ID.String()] != nil {
+		t.Fatal("rehash resurrected removed password credential")
+	}
+}
+
+func TestLocalAuthenticationRehashPreservesPasswordProof(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	persistence := newAuthenticationStoreFake()
+	service := newTestAuthenticationService(t, persistence)
+	const password = "CorrectHorseBatteryStaple1!"
+	user, err := service.createLocalUser(ctx, CreateLocalUserCommand{
+		User: &model.User{Username: "rehash-proof", Email: "rehash-proof@example.edu"}, Password: password,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := *persistence.passwords[user.ID.String()]
+	service.hasher.parameters.iterations++
+	recorder := &passwordWorkRecorderFake{}
+	service.hasher.recorder = recorder
+	base := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return base.Add(time.Duration(recorder.finished.Load()) * time.Second) }
+	service.mfa = &authenticationMFAVerifierFake{strength: model.AuthenticationSingleFactor, afterVerify: func() {
+		if recorder.finished.Load() != 2 || len(service.hasher.work) != 0 {
+			t.Fatal("MFA ran before password work completed and released its permits")
+		}
+	}}
+	proof, err := service.authenticateLocal(ctx, LoginCommand{
+		LoginID: user.Email, Password: password, ClientType: model.SessionClientWeb, Source: "192.0.2.12",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proof.AuthenticatedAt != base.Add(2*time.Second).UnixMilli() {
+		t.Fatalf("authentication time = %d, want time after both password operations", proof.AuthenticatedAt)
+	}
+	after := persistence.passwords[user.ID.String()]
+	if proof.PasswordProof.ID != before.ID || proof.PasswordProof.Revision != before.Revision ||
+		after.Revision != before.Revision || after.PasswordChangedAt != before.PasswordChangedAt {
+		t.Fatal("rehash changed the proved password identity or revision")
+	}
+	if after.PasswordHash == before.PasswordHash || service.hasher.NeedsRehash(after.PasswordHash) ||
+		service.hasher.Verify(context.Background(), after.PasswordHash, password) != nil {
+		t.Fatal("rehash did not preserve password verification under the new parameters")
 	}
 }
 

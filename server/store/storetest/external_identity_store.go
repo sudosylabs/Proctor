@@ -41,7 +41,7 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		go func() {
 			defer wait.Done()
 			<-start
-			saved, _, saveErr = ss.Session().Save(ctx, candidate, credentials, 10)
+			saved, _, saveErr = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
 		}()
 		go func() {
 			defer wait.Done()
@@ -134,19 +134,19 @@ func TestExternalIdentityStore(t *testing.T, ss store.Store) {
 		requireNoError(t, err)
 
 		passwordSession, passwordCredentials, _ := newSession(user.ID.String())
-		passwordSession, _, err = ss.Session().Save(ctx, passwordSession, passwordCredentials, 10)
+		passwordSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, passwordSession, passwordCredentials, 10))
 		requireNoError(t, err)
 		providerSession, providerCredentials, _ := newSession(user.ID.String())
 		providerSession.AuthenticationMethod = "oidc"
 		providerSession.AuthenticationProviderID = "campus-cas"
 		providerSession.ExternalIdentityID = linked.Identity.ID
-		providerSession, _, err = ss.Session().Save(ctx, providerSession, providerCredentials, 10)
+		providerSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, providerSession, providerCredentials, 10))
 		requireNoError(t, err)
 		otherProviderSession, otherProviderCredentials, _ := newSession(user.ID.String())
 		otherProviderSession.AuthenticationMethod = "oidc"
 		otherProviderSession.AuthenticationProviderID = "campus-cas"
 		otherProviderSession.ExternalIdentityID = otherIdentity.ID
-		otherProviderSession, _, err = ss.Session().Save(ctx, otherProviderSession, otherProviderCredentials, 10)
+		otherProviderSession, _, err = ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, otherProviderSession, otherProviderCredentials, 10))
 		requireNoError(t, err)
 
 		unlinkAttempt := saveAuthenticationMethodAuditAttempt(t, ctx, ss, user.ID.String(), "unlink_provider")

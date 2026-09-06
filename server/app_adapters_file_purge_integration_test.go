@@ -67,7 +67,7 @@ func provePostgreSQLReferencedRenditionsSurvivePurge(t *testing.T, filesystem vf
 	t.Helper()
 	ctx := context.Background()
 	persistence := openFilePurgeStorageIntegrationStore(t)
-	content, err := filecontent.New(filesystem)
+	content, err := filecontent.New(filesystem, filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func proveCustomProfilePicturePipelineMatchesMemory(t *testing.T, actual *fileco
 	if err := png.Encode(&input, source); err != nil {
 		t.Fatal(err)
 	}
-	reference, err := filecontent.New(memoryvfs.New())
+	reference, err := filecontent.New(memoryvfs.New(), filecontent.Policy{MaximumConcurrentOperations: 2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

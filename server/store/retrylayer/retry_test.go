@@ -48,6 +48,7 @@ type rootStub struct {
 	examAttempt          store.ExamAttemptStore
 	examAttemptWorkspace store.ExamAttemptWorkspaceStore
 	personalAccessToken  store.PersonalAccessTokenStore
+	passwordCredential   store.PasswordCredentialStore
 	invitation           store.InvitationStore
 }
 
@@ -68,7 +69,21 @@ func (s *rootStub) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore {
 func (s *rootStub) PersonalAccessToken() store.PersonalAccessTokenStore {
 	return s.personalAccessToken
 }
-func (s *rootStub) Invitation() store.InvitationStore { return s.invitation }
+func (s *rootStub) Invitation() store.InvitationStore                 { return s.invitation }
+func (s *rootStub) PasswordCredential() store.PasswordCredentialStore { return s.passwordCredential }
+
+type passwordCredentialStub struct {
+	store.PasswordCredentialStore
+	input    *store.PasswordCredentialRehash
+	attempts int
+	err      error
+}
+
+func (s *passwordCredentialStub) Rehash(_ context.Context, input *store.PasswordCredentialRehash) error {
+	s.attempts++
+	s.input = input
+	return s.err
+}
 
 type invitationRetryStub struct {
 	store.InvitationStore
@@ -257,7 +272,7 @@ func (stub *examSittingUnsafeMutationStub) FinishSealing(context.Context, *store
 	return nil, stub.err
 }
 
-func (s *personalAccessTokenStub) Resolve(context.Context, string, int64, int64) (*store.PersonalAccessTokenResolution, error) {
+func (s *personalAccessTokenStub) Resolve(context.Context, string, time.Time, time.Duration) (*store.PersonalAccessTokenResolution, error) {
 	s.attempts++
 	return nil, s.err
 }
@@ -317,6 +332,27 @@ func TestRetryNeverRetriesUnsafeMutation(t *testing.T) {
 	}
 	if stub.saveAttempts != 1 {
 		t.Fatalf("Save() attempts = %d, want 1", stub.saveAttempts)
+	}
+}
+
+func TestRetryNeverRetriesPasswordRehashWithUnknownCommitOutcome(t *testing.T) {
+	t.Parallel()
+	unknown := errors.New("unknown commit outcome")
+	stub := &passwordCredentialStub{err: unknown}
+	layer, err := retrylayer.New(&rootStub{passwordCredential: stub}, retrylayer.Policy{
+		MaxAttempts: 3, InitialBackoff: time.Nanosecond, MaxBackoff: time.Nanosecond,
+		IsTransient: func(error) bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &store.PasswordCredentialRehash{ID: model.NewPasswordCredentialID(), UserID: model.NewUserID(),
+		ExpectedHash: "encoded-original", ExpectedRevision: 1, PasswordHash: "encoded-rehash"}
+	if err := layer.PasswordCredential().Rehash(context.Background(), input); err != unknown { //nolint:errorlint // Rehash must return the original error instance unchanged.
+		t.Fatalf("Rehash() error = %v, want original unknown-outcome error", err)
+	}
+	if stub.attempts != 1 || stub.input != input {
+		t.Fatalf("Rehash() attempts = %d, want one unchanged input", stub.attempts)
 	}
 }
 
@@ -501,7 +537,7 @@ func TestRetryDoesNotTreatMutatingResolveAsARead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, gotErr := layer.PersonalAccessToken().Resolve(context.Background(), "hash", 1, 2)
+	_, gotErr := layer.PersonalAccessToken().Resolve(context.Background(), "hash", model.TimeFromMillis(1), 2*time.Millisecond)
 	if gotErr != transientErr {
 		t.Fatalf("Resolve() error = %v, want exact error %v", gotErr, transientErr)
 	}

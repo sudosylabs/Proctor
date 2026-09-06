@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	examworkspace "github.com/sudosylabs/proctor/server/app/exam/workspace"
@@ -29,46 +28,11 @@ type OpenExamStarterWorkspaceFileQuery struct {
 	ExamID  model.ExamID
 	EntryID model.StarterWorkspaceEntryID
 }
-type CreateExamStarterWorkspaceDirectoryCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	Path                  string
-	IdempotencyKey        string
-}
-type CreateExamStarterWorkspaceFileCommand struct {
-	ExamID                model.ExamID
-	ExpectedDraftRevision int64
-	Path                  string
-	MediaType             string
-	ExpectedSHA256        string
-	Body                  io.Reader
-	Size                  int64
-	IdempotencyKey        string
-}
-type MoveExamStarterWorkspaceEntryCommand struct {
-	ExamID                model.ExamID
-	EntryID               model.StarterWorkspaceEntryID
-	ExpectedDraftRevision int64
-	Path                  string
-	IdempotencyKey        string
-}
-type ReplaceExamStarterWorkspaceFileCommand struct {
-	ExamID                 model.ExamID
-	EntryID                model.StarterWorkspaceEntryID
-	ExpectedDraftRevision  int64
-	ExpectedContentVersion model.WorkspaceContentVersion
-	MediaType              string
-	ExpectedSHA256         string
-	Body                   io.Reader
-	Size                   int64
-	IdempotencyKey         string
-}
-type RemoveExamStarterWorkspaceEntryCommand struct {
-	ExamID                model.ExamID
-	EntryID               model.StarterWorkspaceEntryID
-	ExpectedDraftRevision int64
-	IdempotencyKey        string
-}
+type CreateExamStarterWorkspaceDirectoryCommand = examworkspace.CreateDirectoryCommand
+type CreateExamStarterWorkspaceFileCommand = examworkspace.CreateFileCommand
+type MoveExamStarterWorkspaceEntryCommand = examworkspace.MoveEntryCommand
+type ReplaceExamStarterWorkspaceFileCommand = examworkspace.ReplaceFileCommand
+type RemoveExamStarterWorkspaceEntryCommand = examworkspace.RemoveEntryCommand
 
 type examStarterWorkspaceUseCases interface {
 	List(context.Context, examworkspace.Call, model.ExamID) ([]store.ExamStarterWorkspaceItem, error)
@@ -97,8 +61,7 @@ func (a *App) OpenExamStarterWorkspaceFile(ctx context.Context, invocation Invoc
 }
 
 func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceDirectoryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.CreateDirectory(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.CreateDirectoryCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examStarterWorkspace.CreateDirectory(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -106,9 +69,7 @@ func (a *App) CreateExamStarterWorkspaceDirectory(ctx context.Context, invocatio
 }
 
 func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command CreateExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.CreateFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.CreateFileCommand{
-		ExamID: command.ExamID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, MediaType: command.MediaType,
-		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examStarterWorkspace.CreateFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -116,8 +77,7 @@ func (a *App) CreateExamStarterWorkspaceFile(ctx context.Context, invocation Inv
 }
 
 func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command MoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.MoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.MoveEntryCommand{
-		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, Path: command.Path, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examStarterWorkspace.MoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -125,9 +85,7 @@ func (a *App) MoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invo
 }
 
 func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation Invocation, command ReplaceExamStarterWorkspaceFileCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.ReplaceFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.ReplaceFileCommand{
-		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, ExpectedContentVersion: command.ExpectedContentVersion, MediaType: command.MediaType,
-		ExpectedSHA256: command.ExpectedSHA256, Body: command.Body, Size: command.Size, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examStarterWorkspace.ReplaceFile(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}
@@ -135,8 +93,7 @@ func (a *App) ReplaceExamStarterWorkspaceFile(ctx context.Context, invocation In
 }
 
 func (a *App) RemoveExamStarterWorkspaceEntry(ctx context.Context, invocation Invocation, command RemoveExamStarterWorkspaceEntryCommand) (ExamStarterWorkspaceResult, error) {
-	result, err := a.examStarterWorkspace.RemoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), examworkspace.RemoveEntryCommand{
-		ExamID: command.ExamID, EntryID: command.EntryID, ExpectedDraftRevision: command.ExpectedDraftRevision, IdempotencyKey: command.IdempotencyKey})
+	result, err := a.examStarterWorkspace.RemoveEntry(ctx, examworkspace.NewCall(invocation.Principal(), invocation.RequestMetadata()), command)
 	if err != nil {
 		return ExamStarterWorkspaceResult{}, examStarterWorkspaceError(err, true)
 	}

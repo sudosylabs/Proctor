@@ -51,6 +51,10 @@ func run(args []string, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("construct mail renderer: %w", err)
 	}
+	assets, err := appmail.NewInlineAssets(os.DirFS(*templates))
+	if err != nil {
+		return fmt.Errorf("construct mail inline assets: %w", err)
+	}
 	if err := os.MkdirAll(*output, 0o755); err != nil {
 		return fmt.Errorf("create preview directory: %w", err)
 	}
@@ -125,6 +129,16 @@ func run(args []string, stderr io.Writer) error {
 		message, renderErr := renderer.Render(request)
 		if renderErr != nil {
 			return fmt.Errorf("render preview %q: %w", key, renderErr)
+		}
+		images, err := assets.ForHTML(message.HTML)
+		if err != nil {
+			return fmt.Errorf("resolve preview images: %w", err)
+		}
+		for _, image := range images {
+			if err := os.WriteFile(filepath.Join(*output, image.Filename), image.Data, 0o600); err != nil {
+				return fmt.Errorf("write preview image: %w", err)
+			}
+			message.HTML = strings.ReplaceAll(message.HTML, `src="cid:`+image.ContentID+`"`, `src="`+image.Filename+`"`)
 		}
 		base := string(key)
 		if err := os.WriteFile(filepath.Join(*output, base+".html"), []byte(message.HTML), 0o644); err != nil {

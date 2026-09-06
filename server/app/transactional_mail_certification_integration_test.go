@@ -12,8 +12,12 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -361,9 +365,61 @@ func assertCertifiedSMTPMessage(t *testing.T, raw []byte, deliveries map[string]
 		if readErr != nil || len(bytes.TrimSpace(content)) == 0 {
 			t.Fatalf("multipart %s content is empty: %v", partType, readErr)
 		}
+		if partType == "multipart/related" {
+			assertCertifiedInlineLogo(t, part.Header.Get("Content-Type"), content)
+		}
 		partTypes = append(partTypes, partType)
 	}
-	if len(partTypes) != 2 || partTypes[0] != "text/plain" || partTypes[1] != "text/html" {
+	if len(partTypes) != 2 || partTypes[0] != "text/plain" || partTypes[1] != "multipart/related" {
 		t.Fatalf("multipart alternatives = %#v", partTypes)
+	}
+}
+
+func assertCertifiedInlineLogo(t *testing.T, contentType string, body []byte) {
+	t.Helper()
+	_, parameters, err := mime.ParseMediaType(contentType)
+	if err != nil || parameters["boundary"] == "" {
+		t.Fatalf("invalid related content type: %v", err)
+	}
+	reader := multipart.NewReader(bytes.NewReader(body), parameters["boundary"])
+	htmlPart, err := reader.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kind, _, err := mime.ParseMediaType(htmlPart.Header.Get("Content-Type"))
+	if err != nil || kind != "text/html" {
+		t.Fatalf("first related part is not HTML: %v", err)
+	}
+	htmlBody, err := io.ReadAll(io.LimitReader(htmlPart, 1<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imagePart, err := reader.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kind, _, err = mime.ParseMediaType(imagePart.Header.Get("Content-Type"))
+	if err != nil || kind != "image/png" || imagePart.Header.Get("Content-Transfer-Encoding") != "base64" {
+		t.Fatalf("related logo is not a base64 PNG: %v", err)
+	}
+	disposition, _, err := mime.ParseMediaType(imagePart.Header.Get("Content-Disposition"))
+	if err != nil || disposition != "inline" {
+		t.Fatalf("logo is not inline: %v", err)
+	}
+	imageBytes, err := io.ReadAll(io.LimitReader(base64.NewDecoder(base64.StdEncoding, imagePart), 1<<20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(imageBytes))
+	if err != nil || config.Width != 600 || config.Height != 118 {
+		t.Fatalf("logo dimensions are invalid: %v", err)
+	}
+	digest := sha256.Sum256(imageBytes)
+	id := "proctor-lockup-" + hex.EncodeToString(digest[:]) + "@proctor"
+	if imagePart.Header.Get("Content-ID") != "<"+id+">" || !bytes.Contains(htmlBody, []byte(`src="cid:`+id+`"`)) {
+		t.Fatal("logo Content-ID does not match its bytes and HTML reference")
+	}
+	if _, err := reader.NextPart(); err != io.EOF {
+		t.Fatalf("unexpected additional related part: %v", err)
 	}
 }

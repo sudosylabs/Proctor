@@ -99,7 +99,7 @@ func (s *selfSessionService) List(
 	sessions, err := s.sessions.ListActiveByUser(
 		ctx,
 		principal.UserID.String(),
-		s.now().UnixMilli(),
+		model.TimeUTC(s.now()),
 	)
 	if err != nil {
 		return nil, authenticationUnavailable(err)

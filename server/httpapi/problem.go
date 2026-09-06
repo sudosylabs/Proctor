@@ -60,6 +60,9 @@ func WriteProblem(writer http.ResponseWriter, problem Problem) {
 func WriteError(writer http.ResponseWriter, request *http.Request, err error) {
 	var failure applicationFailure
 	if errors.As(err, &failure) {
+		if failure.Code() == "service.busy" {
+			writer.Header().Set("Retry-After", "1")
+		}
 		WriteProblem(writer, problemFromApplicationFailure(request, failure))
 		return
 	}

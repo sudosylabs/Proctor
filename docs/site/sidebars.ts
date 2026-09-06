@@ -353,7 +353,44 @@ const sidebars: SidebarsConfig = {
       collapsible: false,
       items: [
         {type: 'doc', id: 'reference/glossary', label: 'Glossary'},
-        {type: 'doc', id: 'reference/configuration', label: 'Configuration'},
+        {
+          type: 'category',
+          label: 'Configuration',
+          collapsed: true,
+          link: {type: 'doc', id: 'reference/configuration'},
+          items: [
+            {
+              type: 'doc',
+              id: 'reference/configuration/server-and-metrics',
+              label: 'Server and Metrics',
+            },
+            {
+              type: 'doc',
+              id: 'reference/configuration/data-and-cluster',
+              label: 'Data and Cluster',
+            },
+            {
+              type: 'doc',
+              id: 'reference/configuration/mail-and-files',
+              label: 'Mail and Files',
+            },
+            {
+              type: 'doc',
+              id: 'reference/configuration/execution',
+              label: 'Execution',
+            },
+            {
+              type: 'doc',
+              id: 'reference/configuration/authentication',
+              label: 'Authentication',
+            },
+            {
+              type: 'doc',
+              id: 'reference/configuration/localization-and-logging',
+              label: 'Localization and Logging',
+            },
+          ],
+        },
         {type: 'doc', id: 'reference/environment-variables', label: 'Environment Variables'},
         {type: 'doc', id: 'reference/command-line', label: 'Command Line'},
         {
