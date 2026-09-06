@@ -36,7 +36,7 @@ func TestWorkMetricsKeepPoolsIndependentAndLabelsClosed(t *testing.T) {
 	module.WorkFinished("untrusted-value", time.Second)
 
 	response := httptest.NewRecorder()
-	module.handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	module.handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("metrics status = %d", response.Code)
 	}

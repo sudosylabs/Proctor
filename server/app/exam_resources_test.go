@@ -41,10 +41,10 @@ func TestExamResourceFacadeForwardsUploadsWithoutConsumingOrNormalizingInput(t *
 		command any
 		invoke  func(*App) (ExamResourceRecord, error)
 	}{
-		{"create", examresource.CreateCommand(create), func(app *App) (ExamResourceRecord, error) {
+		{"create", create, func(app *App) (ExamResourceRecord, error) {
 			return app.CreateExamResource(ctx, invocation, create)
 		}},
-		{"replace", examresource.ReplaceContentCommand(replace), func(app *App) (ExamResourceRecord, error) {
+		{"replace", replace, func(app *App) (ExamResourceRecord, error) {
 			return app.ReplaceExamResourceContent(ctx, invocation, replace)
 		}},
 	} {
@@ -75,7 +75,7 @@ func TestExamResourceFacadePreservesMetadataPatchPresence(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := fake.command.(examresource.EditMetadataCommand)
-	if !ok || got != examresource.EditMetadataCommand(command) || got.DisplayName != nil || got.DescriptionMarkdown != &empty {
+	if !ok || got != command || got.DisplayName != nil || got.DescriptionMarkdown != &empty {
 		t.Fatalf("patch presence or value changed: %#v", fake.command)
 	}
 }
@@ -101,7 +101,7 @@ func TestExamResourceFacadeReorderOwnsResourceIDs(t *testing.T) {
 				t.Fatalf("result = %#v, %v", got, err)
 			}
 			captured := fake.command.(examresource.ReorderCommand)
-			want := examresource.ReorderCommand(command)
+			want := command
 			want.ResourceIDs = append([]model.ExamResourceID(nil), command.ResourceIDs...)
 			if !reflect.DeepEqual(captured, want) {
 				t.Fatalf("reorder = %#v, want %#v", captured, want)

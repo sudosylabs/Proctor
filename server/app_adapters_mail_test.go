@@ -126,8 +126,8 @@ func TestAccountMailerAdapterEmbedsFrozenLogoWithoutRewritingHTML(t *testing.T) 
 		EnvelopeFrom: "from@example.test", Subject: content.Subject, Text: content.Text, HTML: content.HTML,
 		MessageID: "<fixed@example.test>", Date: time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)}
 	for range 2 {
-		if _, err := adapter.Send(context.Background(), outbound); err != nil {
-			t.Fatal(err)
+		if _, sendErr := adapter.Send(t.Context(), outbound); sendErr != nil {
+			t.Fatal(sendErr)
 		}
 	}
 	if len(transport.messages) != 2 {

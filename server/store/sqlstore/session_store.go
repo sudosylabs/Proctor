@@ -149,8 +149,8 @@ func (s SQLSessionStore) Save(
 			return nil, err
 		}
 		if candidate.AuthenticationMethod == "password" {
-			if err := requireCurrentPasswordProof(ctx, tx, candidate.UserID, input.PasswordProof); err != nil {
-				return nil, err
+			if proofErr := requireCurrentPasswordProof(ctx, tx, candidate.UserID, input.PasswordProof); proofErr != nil {
+				return nil, proofErr
 			}
 		}
 		var activeAttempt bool

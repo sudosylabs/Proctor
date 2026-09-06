@@ -348,7 +348,7 @@ func TestRetryNeverRetriesPasswordRehashWithUnknownCommitOutcome(t *testing.T) {
 	}
 	input := &store.PasswordCredentialRehash{ID: model.NewPasswordCredentialID(), UserID: model.NewUserID(),
 		ExpectedHash: "encoded-original", ExpectedRevision: 1, PasswordHash: "encoded-rehash"}
-	if err := layer.PasswordCredential().Rehash(context.Background(), input); err != unknown {
+	if err := layer.PasswordCredential().Rehash(context.Background(), input); err != unknown { //nolint:errorlint // Rehash must return the original error instance unchanged.
 		t.Fatalf("Rehash() error = %v, want original unknown-outcome error", err)
 	}
 	if stub.attempts != 1 || stub.input != input {

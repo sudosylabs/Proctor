@@ -54,8 +54,8 @@ func TestCorrectionApplyPreservesOptionalInputsAndOwnsManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertCorrectionFacadeInvocation(t, fake, ctx, invocation)
-			if fake.apply.Instructions != examcorrection.OptionalInstructions(command.Instructions) ||
-				!reflect.DeepEqual(fake.apply.BrowserPolicy, examcorrection.OptionalBrowserPolicy(command.BrowserPolicy)) ||
+			if fake.apply.Instructions != command.Instructions ||
+				!reflect.DeepEqual(fake.apply.BrowserPolicy, command.BrowserPolicy) ||
 				fake.apply.IdempotencyKey != command.IdempotencyKey || fake.apply.PrivateReason != command.PrivateReason ||
 				fake.apply.CandidateSummary != command.CandidateSummary || !fake.apply.AcknowledgementRequired {
 				t.Fatalf("optional presence or raw input changed: %#v", fake.apply)
@@ -64,7 +64,7 @@ func TestCorrectionApplyPreservesOptionalInputsAndOwnsManifest(t *testing.T) {
 				t.Fatalf("manifest must retain length and normalize nil to empty: %#v", fake.apply.Resources)
 			}
 			for index, item := range command.Resources {
-				if fake.apply.Resources[index] != examcorrection.ResourceManifestItem(item) {
+				if fake.apply.Resources[index] != item {
 					t.Fatalf("manifest order or content changed: %#v", fake.apply.Resources)
 				}
 				fake.apply.Resources[index].DisplayName = "changed by child"
@@ -93,7 +93,7 @@ func TestCorrectionStageForwardsBodyDigestAndRawKey(t *testing.T) {
 	if err != nil || got != ExamSittingCorrectionResourceStage(result) {
 		t.Fatalf("stage result = %#v, %v", got, err)
 	}
-	if fake.stage != examcorrection.StageResourceContentCommand(command) || body.Len() != 3 {
+	if fake.stage != command || body.Len() != 3 {
 		t.Fatalf("stage input changed or upload consumed: %#v, unread bytes = %d", fake.stage, body.Len())
 	}
 	assertCorrectionFacadeInvocation(t, fake, ctx, invocation)

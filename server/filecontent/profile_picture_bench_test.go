@@ -64,7 +64,7 @@ func benchmarkContentPNG512(b *testing.B) []byte {
 	source := image.NewNRGBA(image.Rect(0, 0, 512, 512))
 	for y := 0; y < 512; y++ {
 		for x := 0; x < 512; x++ {
-			source.SetNRGBA(x, y, color.NRGBA{R: byte(x), G: byte(y), B: byte(x ^ y), A: 255})
+			source.SetNRGBA(x, y, color.NRGBA{R: byte(x & 0xff), G: byte(y & 0xff), B: byte((x ^ y) & 0xff), A: 255})
 		}
 	}
 	var encoded bytes.Buffer

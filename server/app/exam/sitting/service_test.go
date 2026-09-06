@@ -376,19 +376,19 @@ func TestScheduleAuthorizationFailureStopsMutationAndAudit(t *testing.T) {
 
 func TestScheduleStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	t.Parallel()
-	fixture := newFixture(t)
+	testFixture := newFixture(t)
 	failure := errors.New("membership unavailable")
-	fixture.memberships.err = failure
-	_, err := fixture.service.Schedule(context.Background(), fixture.call, ScheduleCommand{
-		ExamID: fixture.examID, ExamRevisionID: fixture.revisionID, ClassID: fixture.classID,
+	testFixture.memberships.err = failure
+	_, err := testFixture.service.Schedule(context.Background(), testFixture.call, ScheduleCommand{
+		ExamID: testFixture.examID, ExamRevisionID: testFixture.revisionID, ClassID: testFixture.classID,
 		ScheduledStartAt: testNow.Add(time.Hour), ScheduledEndAt: testNow.Add(3 * time.Hour), IdempotencyKey: "test-key",
 	})
 	var fault *Fault
 	if !errors.As(err, &fault) || fault.Code != "exam.sitting.unavailable" || !errors.Is(err, failure) {
 		t.Fatalf("error = %v, want unavailable membership failure", err)
 	}
-	if fixture.authorizer.action != "" || fixture.persistence.schedule != nil || fixture.auditor.operation != "" {
-		t.Fatalf("membership failure continued: action=%q schedule=%#v audit=%q", fixture.authorizer.action, fixture.persistence.schedule, fixture.auditor.operation)
+	if testFixture.authorizer.action != "" || testFixture.persistence.schedule != nil || testFixture.auditor.operation != "" {
+		t.Fatalf("membership failure continued: action=%q schedule=%#v audit=%q", testFixture.authorizer.action, testFixture.persistence.schedule, testFixture.auditor.operation)
 	}
 }
 

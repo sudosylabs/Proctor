@@ -49,6 +49,8 @@ func validateExamResourceJSON(file io.ReadSeeker) error {
 // Parent states record what follows the current value, so nesting requires no
 // recursion or per-container allocation. Reader errors stay content-safe; the
 // owning resource pipeline preserves cancellation from its context.
+//
+//nolint:errorlint // Reader EOF is an exact sentinel; a wrapped EOF remains a read failure.
 func validateExamResourceJSONSyntax(source io.Reader) error {
 	reader := bufio.NewReaderSize(source, examResourceCopyBuffer)
 	var states [maximumExamResourceJSONDepth + 1]examResourceJSONState
@@ -129,7 +131,7 @@ func validateExamResourceJSONSyntax(source io.Reader) error {
 		case 't':
 			err = readJSONLiteral(reader, "rue")
 		case 'f':
-			err = readJSONLiteral(reader, "alse")
+			err = readJSONLiteral(reader, "false"[1:])
 		case 'n':
 			err = readJSONLiteral(reader, "ull")
 		case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
@@ -197,6 +199,7 @@ func readJSONString(reader *bufio.Reader) error {
 	}
 }
 
+//nolint:errorlint // Only the exact Reader EOF sentinel can terminate a complete number.
 func readJSONNumber(reader *bufio.Reader, first byte) error {
 	// Only EOF can complete a number without a following delimiter. Preserve
 	// every other lookahead error: bufio may consume a one-shot reader error,
@@ -228,7 +231,8 @@ func readJSONNumber(reader *bufio.Reader, first byte) error {
 	}
 	if next[0] == '.' {
 		_, _ = reader.ReadByte()
-		found, err := readJSONDigits(reader)
+		var found bool
+		found, err = readJSONDigits(reader)
 		if !found || err != nil && err != io.EOF {
 			return ErrInvalidExamResourceContent
 		}

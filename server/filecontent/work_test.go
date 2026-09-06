@@ -214,8 +214,8 @@ func TestContentWorkFailureReleasesCapacityAndDoesNotGateExactReadsOrRemoval(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := content.StoreExamResource(context.Background(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("\x00"), 1, time.Unix(1, 0)); !errors.Is(err, ErrInvalidExamResourceContent) {
-		t.Fatalf("invalid content error=%v", err)
+	if _, storeErr := content.StoreExamResource(t.Context(), model.NewFileRevisionID(), model.ExamResourceMediaText, strings.NewReader("\x00"), 1, time.Unix(1, 0)); !errors.Is(storeErr, ErrInvalidExamResourceContent) {
+		t.Fatalf("invalid content error=%v", storeErr)
 	}
 	revision := model.NewFileRevisionID()
 	rendition, err := content.StoreExamResource(context.Background(), revision, model.ExamResourceMediaText, strings.NewReader("notes"), 5, time.Unix(1, 0))

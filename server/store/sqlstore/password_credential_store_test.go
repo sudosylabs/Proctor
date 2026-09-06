@@ -8,12 +8,10 @@
 package sqlstore
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/store"
 )
 
 func TestPasswordCredentialRowConversion(t *testing.T) {
@@ -32,31 +30,6 @@ func TestPasswordCredentialRowConversion(t *testing.T) {
 	if *got != *credential {
 		t.Fatalf("row.model() = %#v, want %#v", got, credential)
 	}
-}
-
-func sessionCreationForSQLTest(t *testing.T, ctx context.Context, persistence store.Store, session *model.Session,
-	credentials []*model.SessionCredential, maximum int,
-) *store.SessionCreation {
-	t.Helper()
-	input := &store.SessionCreation{Session: session, Credentials: credentials, MaximumActive: maximum}
-	if session.AuthenticationMethod == "password" {
-		input.PasswordProof = passwordProofForSQLTest(t, ctx, persistence, session.UserID)
-	}
-	return input
-}
-
-func passwordProofForSQLTest(t *testing.T, ctx context.Context, persistence store.Store, userID model.UserID) store.PasswordCredentialProof {
-	t.Helper()
-	credential, err := persistence.PasswordCredential().GetByUser(ctx, userID.String())
-	if store.IsNotFound(err) {
-		credential, err = persistence.PasswordCredential().Save(ctx, &model.PasswordCredential{
-			UserID: userID, PasswordHash: "encoded-session-fixture-password",
-		})
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return store.PasswordCredentialProof{ID: credential.ID, Revision: credential.Revision}
 }
 
 func TestPasswordCredentialRowRehydrationRejectsInvalidPersistedState(t *testing.T) {

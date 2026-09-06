@@ -87,14 +87,14 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 			{name: "future multi factor", skew: 2 * time.Hour, strength: model.AuthenticationMultiFactor},
 		} {
 			t.Run(test.name, func(t *testing.T) {
-				user := saveUser(t, ctx, ss)
+				fixtureUser := saveUser(t, ctx, ss)
 				transaction, handle, proof, state, verifier := newDesktopAuthorizationTransaction(model.NowUTC(), institution.ID)
 				created, err := ss.BrowserAuthentication().CreateDesktopAuthorization(ctx, transaction)
 				requireNoError(t, err)
 				binding := bindDesktopAuthorization(t, ctx, ss.BrowserAuthentication(), handle, proof, state)
 				input := &store.DesktopAuthorizationAuthentication{
-					BindingHash: model.HashToken(binding), UserID: user.ID, AuthenticationMethod: "password",
-					PasswordProof: testPasswordProof(t, ctx, ss, user.ID), AuthenticationStrength: test.strength,
+					BindingHash: model.HashToken(binding), UserID: fixtureUser.ID, AuthenticationMethod: "password",
+					PasswordProof: testPasswordProof(t, ctx, ss, fixtureUser.ID), AuthenticationStrength: test.strength,
 					AuthenticatedAt: model.GetMillis() + test.skew.Milliseconds(),
 					Capabilities:    store.AccessDeploymentCapabilities{Providers: map[string]store.AccessProviderCapability{}},
 				}
@@ -107,17 +107,17 @@ func TestBrowserAuthenticationStore(t *testing.T, ss store.Store, probe BrowserA
 					t.Fatalf("AuthenticateDesktopAuthorization() = %#v", authenticated)
 				}
 				code := model.NewCredentialToken()
-				issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "clock-issue")
+				issueAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, fixtureUser.ID, "clock-issue")
 				issued, err := ss.BrowserAuthentication().IssueCode(ctx, &store.DesktopAuthorizationCodeIssue{
 					BindingHash: model.HashToken(binding), StateHash: model.HashToken(state), CodeHash: model.HashToken(code),
-					ExpectedUserID: user.ID, CodeLifetime: 45 * time.Second, Capabilities: input.Capabilities,
+					ExpectedUserID: fixtureUser.ID, CodeLifetime: 45 * time.Second, Capabilities: input.Capabilities,
 					AuditEventID: issueAudit.ID.String(), AuditAt: model.GetMillis(),
 				})
 				requireNoError(t, err)
 				if issued.CodeExpiresAt.After(created.ExpiresAt) {
 					t.Fatal("code outlives its browser transaction")
 				}
-				exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, user.ID, "clock-exchange")
+				exchangeAudit := saveDesktopAuthorizationAudit(t, ctx, ss, institution.ID, fixtureUser.ID, "clock-exchange")
 				result, err := ss.BrowserAuthentication().Exchange(ctx, desktopAuthorizationExchange(model.NowUTC(), code, state, verifier, exchangeAudit))
 				requireNoError(t, err)
 				if result == nil || result.Session == nil || result.Session.AuthenticationStrength != test.strength ||

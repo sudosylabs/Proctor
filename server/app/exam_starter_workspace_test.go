@@ -46,19 +46,19 @@ func TestExamStarterWorkspaceFacadeForwardsRawCommandsAndStreams(t *testing.T) {
 		command any
 		invoke  func(*App) (ExamStarterWorkspaceResult, error)
 	}{
-		{"create directory", examworkspace.CreateDirectoryCommand(directory), func(app *App) (ExamStarterWorkspaceResult, error) {
+		{"create directory", directory, func(app *App) (ExamStarterWorkspaceResult, error) {
 			return app.CreateExamStarterWorkspaceDirectory(ctx, invocation, directory)
 		}},
-		{"create file", examworkspace.CreateFileCommand(create), func(app *App) (ExamStarterWorkspaceResult, error) {
+		{"create file", create, func(app *App) (ExamStarterWorkspaceResult, error) {
 			return app.CreateExamStarterWorkspaceFile(ctx, invocation, create)
 		}},
-		{"move entry", examworkspace.MoveEntryCommand(move), func(app *App) (ExamStarterWorkspaceResult, error) {
+		{"move entry", move, func(app *App) (ExamStarterWorkspaceResult, error) {
 			return app.MoveExamStarterWorkspaceEntry(ctx, invocation, move)
 		}},
-		{"replace file", examworkspace.ReplaceFileCommand(replace), func(app *App) (ExamStarterWorkspaceResult, error) {
+		{"replace file", replace, func(app *App) (ExamStarterWorkspaceResult, error) {
 			return app.ReplaceExamStarterWorkspaceFile(ctx, invocation, replace)
 		}},
-		{"remove entry", examworkspace.RemoveEntryCommand(remove), func(app *App) (ExamStarterWorkspaceResult, error) {
+		{"remove entry", remove, func(app *App) (ExamStarterWorkspaceResult, error) {
 			return app.RemoveExamStarterWorkspaceEntry(ctx, invocation, remove)
 		}},
 	} {

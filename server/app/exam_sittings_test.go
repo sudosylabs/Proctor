@@ -39,7 +39,7 @@ func TestExamSittingScheduleUpdateForwardsPatchPresenceAndRawKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if fake.update != examsitting.UpdateScheduleCommand(command) {
+		if fake.update != command {
 			t.Fatalf("patch presence, pointer identity, or raw input changed: %#v", fake.update)
 		}
 	}
@@ -101,25 +101,25 @@ func TestExamSittingFacadeForwardsCommandsAndPreservesInvocationAndResults(t *te
 		command any
 		invoke  func(*App) (ExamSittingView, error)
 	}{
-		{"schedule", examsitting.ScheduleCommand(schedule), func(app *App) (ExamSittingView, error) {
+		{"schedule", schedule, func(app *App) (ExamSittingView, error) {
 			return app.ScheduleExamSitting(ctx, invocation, schedule)
 		}},
-		{"update", examsitting.UpdateScheduleCommand(update), func(app *App) (ExamSittingView, error) {
+		{"update", update, func(app *App) (ExamSittingView, error) {
 			return app.UpdateExamSittingSchedule(ctx, invocation, update)
 		}},
-		{"cancel", examsitting.CancelCommand(cancelCommand), func(app *App) (ExamSittingView, error) {
+		{"cancel", cancelCommand, func(app *App) (ExamSittingView, error) {
 			return app.CancelExamSitting(ctx, invocation, cancelCommand)
 		}},
-		{"pause", examsitting.PauseCommand(transition), func(app *App) (ExamSittingView, error) {
+		{"pause", transition, func(app *App) (ExamSittingView, error) {
 			return app.PauseExamSitting(ctx, invocation, transition)
 		}},
-		{"resume", examsitting.ResumeCommand(transition), func(app *App) (ExamSittingView, error) {
+		{"resume", transition, func(app *App) (ExamSittingView, error) {
 			return app.ResumeExamSitting(ctx, invocation, transition)
 		}},
-		{"close", examsitting.EarlyCloseCommand(transition), func(app *App) (ExamSittingView, error) {
+		{"close", transition, func(app *App) (ExamSittingView, error) {
 			return app.CloseExamSitting(ctx, invocation, transition)
 		}},
-		{"extend", examsitting.ExtendCommand(extend), func(app *App) (ExamSittingView, error) {
+		{"extend", extend, func(app *App) (ExamSittingView, error) {
 			return app.ExtendExamSitting(ctx, invocation, extend)
 		}},
 	} {

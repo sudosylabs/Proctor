@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -863,7 +864,7 @@ func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecuto
 				Revision int64  `db:"revision"`
 			}
 			if err := executor.Get(ctx, &current, `SELECT id, revision FROM password_credentials WHERE user_id=? AND archived_at IS NULL`, input.UserID.String()); err != nil {
-				if err == sql.ErrNoRows {
+				if errors.Is(err, sql.ErrNoRows) {
 					return nil, store.ErrPasswordCredentialChanged
 				}
 				return nil, fmt.Errorf("resolve session password proof: %w", err)

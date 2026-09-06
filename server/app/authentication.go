@@ -354,23 +354,23 @@ func (s *authenticationService) authenticateLocal(
 		return nil, authenticationUnavailable(err)
 	}
 	if !localLoginAllowed {
-		if err := s.hasher.VerifyDummy(ctx, command.Password); err != nil {
-			return nil, passwordWorkError(err, "authentication.internal")
+		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
 		return nil, invalidCredentialsAppError()
 	}
 	if command.LoginID == "" ||
 		len(command.LoginID) > model.UserEmailMaxLength ||
 		len(command.Password) > s.hasher.maximumLength {
-		if err := s.hasher.VerifyDummy(ctx, "invalid-password-length"); err != nil {
-			return nil, passwordWorkError(err, "authentication.internal")
+		if dummyErr := s.hasher.VerifyDummy(ctx, "invalid-password-length"); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
 		return nil, invalidCredentialsAppError()
 	}
 	user, err := s.findLoginUser(ctx, command.LoginID)
 	if err != nil {
-		if err := s.hasher.VerifyDummy(ctx, command.Password); err != nil {
-			return nil, passwordWorkError(err, "authentication.internal")
+		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
 		if !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)
@@ -379,8 +379,8 @@ func (s *authenticationService) authenticateLocal(
 	}
 	credential, err := s.passwords.GetByUser(ctx, user.ID.String())
 	if err != nil {
-		if err := s.hasher.VerifyDummy(ctx, command.Password); err != nil {
-			return nil, passwordWorkError(err, "authentication.internal")
+		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
 		}
 		if !store.IsNotFound(err) {
 			return nil, authenticationUnavailable(err)

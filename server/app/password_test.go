@@ -46,11 +46,11 @@ func TestPasswordHasherRoundTripAndRehash(t *testing.T) {
 	if !strings.HasPrefix(encoded, "$argon2id$v=19$") {
 		t.Fatalf("Hash() = %q", encoded)
 	}
-	if err := hasher.Verify(context.Background(), encoded, "correct horse battery staple"); err != nil {
-		t.Fatalf("Verify(correct) error = %v", err)
+	if verifyErr := hasher.Verify(t.Context(), encoded, "correct horse battery staple"); verifyErr != nil {
+		t.Fatalf("Verify(correct) error = %v", verifyErr)
 	}
-	if err := hasher.Verify(context.Background(), encoded, "wrong password"); !errors.Is(err, ErrPasswordMismatch) {
-		t.Fatalf("Verify(wrong) error = %v", err)
+	if verifyErr := hasher.Verify(t.Context(), encoded, "wrong password"); !errors.Is(verifyErr, ErrPasswordMismatch) {
+		t.Fatalf("Verify(wrong) error = %v", verifyErr)
 	}
 	if hasher.NeedsRehash(encoded) {
 		t.Fatal("fresh hash needs rehash")

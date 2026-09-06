@@ -63,7 +63,7 @@ func testPersonalAccessTokenNativeExpiry(t *testing.T, ss store.Store) {
 func testMFANativeExpiry(t *testing.T, ss store.Store) {
 	t.Run("invalid decision instants", func(t *testing.T) {
 		ctx := context.Background()
-		for _, at := range []time.Time{time.Time{}, time.Unix(-1, 0), time.Unix(0, 0), time.Unix(0, 1)} {
+		for _, at := range []time.Time{{}, time.Unix(-1, 0), time.Unix(0, 0), time.Unix(0, 1)} {
 			userID, sessionID := model.NewUserID(), model.NewSessionID()
 			_, err := ss.MFA().Activate(ctx, &store.MFAActivationMutation{
 				CredentialID: model.NewMFACredentialID().String(), UserID: userID.String(),

@@ -83,7 +83,7 @@ func (a *InlineAssets) ForHTML(body string) ([]InlineAsset, error) {
 	for {
 		switch tokens.Next() {
 		case html.ErrorToken:
-			if err := tokens.Err(); err != io.EOF {
+			if err := tokens.Err(); !errors.Is(err, io.EOF) {
 				return nil, errors.New("mail image markup is invalid")
 			}
 			return result, nil

@@ -26,6 +26,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		candidate.EmailVerified = true
 		user, err := createUser(t, ctx, ss, candidate)
 		requireNoError(t, err)
+		// #nosec G101 -- Nonfunctional password hash used only to exercise Store removal.
 		credential, err := ss.PasswordCredential().Save(ctx, &model.PasswordCredential{UserID: user.ID, PasswordHash: "$argon2id$remove-me"})
 		requireNoError(t, err)
 		identity, err := ss.ExternalIdentity().Save(ctx, &model.ExternalIdentity{UserID: user.ID, Provider: "campus-cas",
@@ -61,6 +62,7 @@ func TestPasswordCredentialStore(t *testing.T, ss store.Store) {
 		if retained.RevokedAt.Valid {
 			t.Fatalf("provider Session was revoked = %#v", retained)
 		}
+		// #nosec G101 -- Synthetic replacement must be rejected before any hash is stored.
 		oldRehash := &store.PasswordCredentialRehash{ID: credential.ID, UserID: user.ID,
 			ExpectedHash: credential.PasswordHash, ExpectedRevision: credential.Revision, PasswordHash: "must-not-resurrect"}
 		if err = ss.PasswordCredential().Rehash(ctx, oldRehash); !errors.Is(err, store.ErrPasswordCredentialChanged) {

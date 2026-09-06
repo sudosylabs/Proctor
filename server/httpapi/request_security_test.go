@@ -8,6 +8,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,7 @@ import (
 // newJSONRequest keeps body-shape and use-case tests on the JSON protocol.
 // Request-policy tests use raw httptest requests to exercise media rejection.
 func newJSONRequest(method, target string, body io.Reader) *http.Request {
-	request := httptest.NewRequest(method, target, body)
+	request := httptest.NewRequestWithContext(context.Background(), method, target, body)
 	request.Header.Set("Content-Type", "application/json")
 	return request
 }
@@ -63,7 +64,7 @@ func TestPublicLoginRejectsUnsafeBrowserRequestsBeforeAuthentication(t *testing.
 			logger, _ := newTestLogger(t)
 			fake := &authenticationEntryHTTPApplication{loginError: application.NewError("authentication.invalid_credentials")}
 			api := newFocusedResourceAPI(t, logger, classRouteAuthenticator{}, authenticationResource(fake, browserCookies{}))
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/login",
 				strings.NewReader(`{"login_id":"student","password":"test-password","client_type":"web"}`))
 			request.Host = "other.example"
 			request.Header.Set("X-Forwarded-Host", "other.example")
@@ -96,13 +97,13 @@ func TestBrowserRequestPolicyPreservesProviderGETAndConfiguredOrigin(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "http://internal-node/api/v1/auth/login", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "http://internal-node/api/v1/auth/login", nil)
 	request.Header.Set("Origin", "https://proctor.example")
 	if !policy.allows(request) {
 		t.Fatal("canonical configured public origin rejected behind an internal proxy address")
 	}
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
-		request := httptest.NewRequest(method, "/api/v1/auth/providers/campus/callback?code=example", nil)
+		request := httptest.NewRequestWithContext(t.Context(), method, "/api/v1/auth/providers/campus/callback?code=example", nil)
 		request.Header.Set("Origin", "https://identity.example")
 		request.Header.Set("Sec-Fetch-Site", "cross-site")
 		if !policy.allows(request) {
