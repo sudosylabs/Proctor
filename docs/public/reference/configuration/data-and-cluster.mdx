@@ -1,0 +1,77 @@
+---
+title: Data and Cluster Configuration
+description: Reference Proctor's PostgreSQL pool, disposable cache, and local or Memberlist cluster configuration.
+audience: operator
+maturity: preview
+slug: /reference/configuration/data-and-cluster/
+---
+
+# Data and Cluster Configuration
+
+PostgreSQL is the durable authority. Cache entries and cluster messages are
+disposable: Proctor must be able to reconstruct correct behavior from durable
+state after either is lost. Changes on this page require a process restart.
+
+## PostgreSQL
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Database.DataSource`<br />Default: `postgres://proctor:proctor@127.0.0.1:15432/proctor?sslmode=disable` | PostgreSQL connection URL. It must use the `postgres` scheme and include both a host and database name. Treat embedded credentials as secrets. The default is development-only. |
+| `Database.MaxOpenConnections`<br />Default: `50` | Maximum open connections in this node's pool. Must be at least `2` because locked migrations require a dedicated connection alongside ordinary work. Multiply by node count before comparing with PostgreSQL capacity. |
+| `Database.MaxIdleConnections`<br />Default: `10` | Maximum idle connections retained by this node. Must be between `0` and `MaxOpenConnections`. |
+| `Database.ConnectionMaxLifetime`<br />Default: `1h` | Maximum lifetime of a pooled connection. Must be greater than zero. |
+| `Database.ConnectionMaxIdleTime`<br />Default: `5m` | Maximum time a pooled connection may remain idle. Must be greater than zero. |
+| `Database.QueryTimeout`<br />Default: `10s` | Default deadline for ordinary database operations when their caller supplies no shorter deadline. Must be greater than zero. |
+| `Database.MigrationTimeout`<br />Default: `1m` | Deadline for startup migration work and its lock acquisition. Must be greater than zero. |
+
+The validator checks URL shape and bounds; it does not connect to PostgreSQL.
+Use TLS and credential settings in the data-source query appropriate to the
+deployment. Size `MaxOpenConnections` across every application node, migration
+activity, and reserved administrative capacity.
+
+{/* TODO(production): publish measured database pool profiles after supported
+deployment sizes and PostgreSQL capacity assumptions are established. */}
+
+## Disposable cache
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Cache.Backend`<br />Default: `memory` | Cache implementation: `memory` for one process or `redis` for installation-shared disposable state. Memberlist clustering requires `redis`. |
+| `Cache.Namespace`<br />Default: `proctor` | Prefix separating this installation's cache keys. Must contain `1`–`128` ASCII letters, numbers, dots, underscores, or hyphens. Use a distinct value when Redis is shared. |
+| `Cache.Memory.MaxEntries`<br />Default: `100000` | Maximum retained entries for the `memory` backend. Must be between `1` and `1000000`. |
+| `Cache.Memory.MaxBytes`<br />Default: `67108864` (64 MiB) | Bound on retained key and encoded-value bytes for the `memory` backend. Must be between `1048576` and `1073741824`; implementation overhead is additional. |
+| `Cache.Redis.Addresses[]`<br />Default: `127.0.0.1:6379` | One or more Redis endpoints for the `redis` backend. Each entry must be `host:port`; at least one is required. |
+| `Cache.Redis.Username`<br />Default: empty | Redis ACL username. Treat it as credential material when used. |
+| `Cache.Redis.Password`<br />Default: empty | Redis password. Secret; prefer a protected environment override. |
+| `Cache.Redis.Database`<br />Default: `0` | Redis logical database number. Must be zero or greater. Use the namespace as the primary installation boundary. |
+| `Cache.Redis.TLS`<br />Default: `false` | Enables TLS for Redis connections. |
+| `Cache.Redis.ConnectTimeout`<br />Default: `5s` | Maximum Redis connection-establishment time. Must be greater than zero. |
+
+Only the selected backend's backend-specific fields are enforced. Retain the
+unused block in a complete file so a backend change remains reviewable. Redis
+is still disposable infrastructure; never treat it as the only copy of durable
+application state.
+
+## Cluster identity and transport
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Cluster.Backend`<br />Default: `local` | Inter-node transport: `local` for the single-node form or `memberlist` for a multi-node installation. |
+| `Cluster.NodeID`<br />Default: `local` | Stable runtime identity for this process. Must contain `1`–`128` ASCII letters, numbers, dots, underscores, or hyphens. Every simultaneously running node needs a distinct stable ID. |
+| `Cluster.Memberlist.BindAddress`<br />Default: `127.0.0.1:7946` | Local address receiving Memberlist traffic. Must be `host:port` with port `1`–`65535`. Public or unspecified binds require the explicit `AllowPublicBind` acknowledgement. |
+| `Cluster.Memberlist.AdvertiseAddress`<br />Default: `127.0.0.1:7946` | Address other nodes use to reach this node. Must be `host:port` with port `1`–`65535`. It should resolve consistently from every peer. |
+| `Cluster.Memberlist.EncryptionKey`<br />Default: empty | Primary Memberlist traffic-encryption key. Required with the `memberlist` backend; standard base64 decoding must produce `16`, `24`, or `32` bytes. Secret. |
+| `Cluster.Memberlist.DecryptionKeys[]`<br />Default: empty list | Up to eight unique fallback Memberlist keys accepted during rotation. Each follows the same base64 and decoded-length rules and must differ from the primary. |
+| `Cluster.Memberlist.SeedAddresses[]`<br />Default: empty list | Up to `32` `host:port` peers used to join the cluster. Entries must be valid and unique enough for the intended topology. |
+| `Cluster.Memberlist.DiscoveryTTL`<br />Default: `30s` | Lifetime of discovery records. Must be at least `3s`. |
+| `Cluster.Memberlist.DiscoveryHeartbeat`<br />Default: `10s` | Interval for refreshing discovery presence. Must be greater than zero and less than half of `DiscoveryTTL`. |
+| `Cluster.Memberlist.AllowPublicBind`<br />Default: `false` | Explicit acknowledgement that the bind address is public or unspecified. Setting this does not make a public gossip listener safe; restrict it at the network boundary. |
+
+The `memberlist` backend additionally requires the Redis cache backend and a
+non-local VFS backend. Every node shares PostgreSQL, Redis, opaque file storage,
+key material, and the effective cluster configuration. Built-in Let's Encrypt
+cannot be used with Memberlist.
+
+During key rotation, place the old primary in every node's fallback ring before
+introducing the new primary. Converge all nodes before removing the old key.
+Never reuse Memberlist material for mail or MFA secret sealing.

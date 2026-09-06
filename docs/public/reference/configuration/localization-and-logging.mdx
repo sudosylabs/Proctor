@@ -1,0 +1,75 @@
+---
+title: Localization and Logging Configuration
+description: Reference Proctor's installation locale and dynamically reconfigurable bounded logging pipeline.
+audience: operator
+maturity: preview
+slug: /reference/configuration/localization-and-logging/
+---
+
+# Localization and Logging Configuration
+
+Localization chooses the installation fallback language. Logging defines one or
+more bounded output targets. Localization changes require a restart; a valid log
+configuration is applied dynamically after reload.
+
+## Localization
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Localization.DefaultLocale`<br />Default: `en` | Installation-wide fallback locale. It must be a trimmed language identifier no longer than `35` characters. Hyphen-separated segments must contain `1`–`8` letters, with digits also allowed after the first segment. Runtime composition additionally requires a matching bundled catalog. |
+
+Use a locale actually shipped with the server. Syntax validation alone cannot
+promise that a catalog exists; the localization module performs that authority
+check while the runtime is composed.
+
+## Logging pipeline
+
+The logging pipeline truncates oversized fields, bounds queue growth, and gives
+enqueue, flush, and shutdown work finite deadlines. At least one target is
+required.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Log.MaxFieldBytes`<br />Default: `16384` (16 KiB) | Maximum encoded size retained for an individual structured field. Must be between `256` and `1048576` bytes. This is a log-safety bound, not permission to log secrets or unbounded user content. |
+| `Log.QueueSize`<br />Default: `1024` | Shared asynchronous pipeline capacity. Must be between `1` and `1048576`. |
+| `Log.EnqueueTimeout`<br />Default: `250ms` | Maximum wait to enqueue a record under pressure. Must be greater than zero and no more than `1m`. |
+| `Log.FlushTimeout`<br />Default: `5s` | Deadline for an explicit pipeline flush. Must be greater than zero and no more than `1m`. |
+| `Log.ShutdownTimeout`<br />Default: `10s` | Deadline for draining and closing logging during shutdown or replacement. Must be greater than zero and no more than `1m`. |
+
+Queue sizes multiply memory use and can defer visibility when a target is slow.
+Treat persistent queue pressure as an output or capacity failure, not a reason
+to increase every bound without measurement.
+
+## Log targets
+
+The default contains one human-readable console target. Target names must be
+unique. `Type`, `Level`, and `Format` values are case-insensitive, but lower-case
+keeps configuration consistent.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Log.Targets[].Name`<br />Default: `console` | Required stable target name, unique within the list. It identifies the output in runtime diagnostics and configuration diffs. |
+| `Log.Targets[].Type`<br />Default: `console` | Output implementation: `console` or `file`. |
+| `Log.Targets[].Level`<br />Default: `info` | Minimum emitted severity: `trace`, `debug`, `info`, `warn`, or `error`. Do not enable verbose levels for long periods without reviewing data exposure and volume. |
+| `Log.Targets[].Format`<br />Default: `text` | Record encoding: `text` for human reading or `json` for structured collection. |
+| `Log.Targets[].File`<br />Default: empty | Destination path for a `file` target. It is required for file output, must contain no null or line-break characters, and must be empty for `console`. Relative paths use the process working directory. |
+| `Log.Targets[].QueueSize`<br />Default: `256` | Per-target asynchronous queue capacity. Must be between `1` and `1048576`. A slow target cannot consume unbounded memory. |
+| `Log.Targets[].MaxSizeMB`<br />Default: `0` for console | Rotation size for a `file` target, in MiB. File targets require a value between `1` and `10240`; it is not used by console output. |
+| `Log.Targets[].MaxAgeDays`<br />Default: `0` | Maximum age of rotated file logs. For file targets, must be between `0` and `3650`; `0` disables age-based removal. |
+| `Log.Targets[].MaxBackups`<br />Default: `0` | Maximum retained rotated file count. For file targets, must be between `0` and `10000`; `0` disables count-based removal. |
+| `Log.Targets[].Compress`<br />Default: `false` | Compresses rotated file logs when `true`. It has no effect on console output. |
+
+For production collection, JSON usually preserves fields more reliably than
+parsing text. File rotation is application-owned only for `file` targets;
+console retention belongs to the process supervisor or container log pipeline.
+
+## Dynamic replacement
+
+A configuration reload validates the entire document before constructing the
+replacement logging pipeline. If logger reconfiguration fails, Proctor reports
+the failure through the existing logger rather than silently pretending the
+new target is active. Verify the expected target after every change.
+
+Logging configuration never relaxes the repository's data rules: credentials,
+secrets, student data, exam answers, and unbounded user-controlled content do
+not belong in ordinary logs.

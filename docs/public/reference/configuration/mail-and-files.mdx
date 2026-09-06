@@ -1,0 +1,82 @@
+---
+title: Mail and Files Configuration
+description: Reference Proctor's SMTP delivery, mail secret sealing, opaque file storage, and file-content processing limits.
+audience: operator
+maturity: preview
+slug: /reference/configuration/mail-and-files/
+---
+
+# Mail and Files Configuration
+
+Mail delivery and file storage are separate responsibilities. SMTP sends
+transactional messages; the VFS stores opaque bytes whose durable metadata
+lives in PostgreSQL. Configuration changes on this page require a restart.
+
+## Mail delivery
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Mail.Enabled`<br />Default: `false` | Enables transactional delivery. Secret-sealing keys are validated even while mail is disabled so an invalid rotation cannot remain hidden. |
+| `Mail.Backend`<br />Default: `smtp` | Delivery implementation. The only accepted value is `smtp`. |
+| `Mail.FromAddress`<br />Default: `no-reply@localhost` | Envelope and message sender address. When mail is enabled, it must parse as one plain email address. Use a domain authorized by the SMTP service. |
+| `Mail.FromName`<br />Default: `Proctor` | Human-readable sender name. When enabled, it must not contain unsafe control characters. |
+| `Mail.SMTP.Address`<br />Default: `127.0.0.1:1025` | SMTP endpoint in `host:port` form. The default targets a local development mail catcher. |
+| `Mail.SMTP.ServerName`<br />Default: empty | TLS server name override used for certificate verification. Leave empty only when the SMTP host name is already the correct verification name. |
+| `Mail.SMTP.LocalName`<br />Default: empty | Name sent in SMTP `EHLO` or `HELO`. When empty, the transport chooses its normal local name. Control characters are rejected. |
+| `Mail.SMTP.Security`<br />Default: `none` | Transport security: `none`, `starttls`, or `tls`. Authenticated SMTP requires `starttls` or `tls`; `none` is suitable only for protected local development. |
+| `Mail.SMTP.Username`<br />Default: empty | SMTP authentication identity. Required when `Authentication` is not `none`. |
+| `Mail.SMTP.Password`<br />Default: empty | SMTP password. Secret; prefer a protected environment override. It must be empty when authentication is `none`. |
+| `Mail.SMTP.Authentication`<br />Default: `none` | Authentication mechanism: `none`, `auto`, `plain`, or `login`. Non-`none` modes require a username and encrypted transport. |
+| `Mail.SMTP.Timeout`<br />Default: `10s` | Deadline for SMTP network operations. Must be greater than zero. |
+| `Mail.SMTP.MessageIDDomain`<br />Default: `localhost` | Domain placed in generated `Message-ID` values. Must be non-empty and contain no whitespace, `@`, or control characters. Use a stable domain controlled by the installation. |
+| `Mail.SMTP.MaxMessageBytes`<br />Default: `26214400` (25 MiB) | Maximum serialized message size. Must be between `1024` and `104857600` bytes. It is a safety bound, not a promise that the upstream SMTP service accepts that size. |
+| `Mail.SMTP.MaxRecipients`<br />Default: `100` | Maximum recipients in one delivery operation. Must be between `1` and `1000`. |
+
+Enabling mail does not prove delivery. Validate DNS, sender authorization,
+certificate trust, relay permissions, upstream size limits, and retry behavior
+with the actual SMTP service before production use.
+
+{/* TODO(deployment): document provider-tested SMTP profiles and delivery
+verification once supported production mail services are selected. */}
+
+## Mail secret sealing
+
+Proctor encrypts durable mail secrets independently from SMTP transport
+credentials. These keys must be identical on every application node.
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Mail.SecretSealing.EncryptionKey`<br />Default: empty | Primary AES-256 key for new mail-secret ciphertext. Standard base64 decoding must produce exactly `32` bytes. Required when mail is enabled and whenever fallback keys exist. Secret. |
+| `Mail.SecretSealing.DecryptionKeys[]`<br />Default: empty list | Up to eight unique fallback AES-256 keys used to read older ciphertext during rotation. Each is a standard-base64 encoded `32`-byte key and must differ from the primary. |
+
+Add the former primary to `DecryptionKeys` before changing the primary. Deploy
+the complete ring everywhere, allow old work to converge, and only then remove
+the retired key. Never reuse these keys for MFA or Memberlist.
+
+## Opaque file storage
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `VFS.Backend`<br />Default: `local` | Byte-storage backend: `local` or `s3`. A Memberlist cluster cannot use `local`, because every node must see the same bytes. |
+| `VFS.Local.Root`<br />Default: `./data` | Root directory for the local backend. Must be a non-empty path without a null byte. Relative paths use the process working directory. Back up this directory with PostgreSQL-consistent operational procedures. |
+| `VFS.S3.Endpoint`<br />Default: empty | S3-compatible service endpoint. Required for the `s3` backend and must not contain control characters. Use the endpoint format expected by the configured S3 client. |
+| `VFS.S3.AccessKey`<br />Default: empty | Static S3 access-key identity passed to the client. Configure it together with the corresponding secret unless the storage service deliberately permits anonymous access. Treat a populated value as credential material. |
+| `VFS.S3.SecretKey`<br />Default: empty | S3 secret access key. Secret; prefer a protected environment override or workload credential. |
+| `VFS.S3.SessionToken`<br />Default: empty | Temporary credential session token. Secret; rotate it with its associated access credentials. |
+| `VFS.S3.Bucket`<br />Default: empty | Bucket holding Proctor bytes. Required for `s3`; must be non-empty and contain neither `/` nor control characters. |
+| `VFS.S3.Prefix`<br />Default: empty | Optional key prefix within the bucket. It must not contain control characters. Use a distinct prefix when a bucket is shared. |
+| `VFS.S3.Region`<br />Default: empty | Region supplied to the S3-compatible client. Whether it may be empty depends on the storage service. |
+| `VFS.S3.Secure`<br />Default: `true` | Uses a secure connection to the S3-compatible endpoint when `true`. Keep enabled outside explicitly isolated development infrastructure. |
+
+Only the selected VFS backend is active. PostgreSQL owns file metadata and the
+VFS owns bytes; do not manipulate backend keys as though they were public file
+identifiers.
+
+## File-content work
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `FileContent.MaximumConcurrentOperations`<br />Default: `2` | Per-node bound on expensive validation and rendition operations. Must be greater than zero. Increase only after measuring CPU, memory, storage, and downstream pressure. |
+
+{/* TODO(production): publish a measured file-content concurrency profile after
+representative document sizes and rendition workloads are established. */}

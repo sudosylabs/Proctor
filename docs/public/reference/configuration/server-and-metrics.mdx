@@ -1,0 +1,81 @@
+---
+title: Server and Metrics Configuration
+description: Reference the Proctor public listener, TLS, request bounds, lifecycle timeouts, and Prometheus listener configuration.
+audience: operator
+maturity: preview
+slug: /reference/configuration/server-and-metrics/
+---
+
+# Server and Metrics Configuration
+
+These fields own the client-facing HTTP server and the separate Prometheus
+scrape listener. Changes require a process restart.
+
+Defaults shown here are the values compiled into Proctor and represented in the
+[complete example](https://github.com/sudosylabs/Proctor/blob/main/server/config/config.example.json).
+
+## Document version
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Version`<br />Default: `1` | Configuration schema version. Must be `1`; another value is rejected rather than guessed or migrated silently. |
+
+## Public server
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Server.ListenAddress`<br />Default: `127.0.0.1:8065` | TCP address for client traffic. Must be `host:port`; port `0` is allowed for an ephemeral test listener. A production listener normally uses a fixed port. |
+| `Server.PublicURL`<br />Default: `http://localhost:8065` | Canonical browser origin used for externally visible URLs. Must be an absolute `http` or `https` URL with a host and with no credentials, query, or fragment. Its path must be empty or `/`. Built-in TLS requires `https`. |
+| `Server.WebappDirectory`<br />Default: `./webapp/dist` | Directory containing the hosted webapp build. Must be a non-empty path without a null byte. Relative paths are resolved from the process working directory. |
+| `Server.ReadHeaderTimeout`<br />Default: `10s` | Maximum time to read request headers. Must be greater than zero. |
+| `Server.ReadTimeout`<br />Default: `30s` | Maximum time to read the complete request. Must be greater than zero. |
+| `Server.WriteTimeout`<br />Default: `30s` | Maximum response-write time. Must be greater than zero. |
+| `Server.IdleTimeout`<br />Default: `2m` | Maximum keep-alive idle time. Must be greater than zero. |
+| `Server.ShutdownTimeout`<br />Default: `15s` | Grace period for the public server and owned infrastructure during shutdown. Must be greater than zero. |
+| `Server.MaxHeaderBytes`<br />Default: `1048576` (1 MiB) | Maximum request-header size. Must be between `1024` and `16777216` bytes. |
+| `Server.MaxBodyBytes`<br />Default: `1048576` (1 MiB) | Global HTTP request-body ceiling before narrower route limits. Must be between `1024` and `104857600` bytes. |
+
+`PublicURL` describes the URL clients use; it does not decide the bind address.
+When a reverse proxy terminates TLS, keep the public URL on `https`, bind the
+server on the protected upstream network, and leave built-in TLS disabled.
+
+## Built-in TLS
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Server.TLS.Mode`<br />Default: `disabled` | Client-listener TLS mode: `disabled`, `static`, or `lets_encrypt`. |
+| `Server.TLS.CertificateFile`<br />Default: empty | PEM certificate-chain path. Required with `static`; ignored by the disabled and Let's Encrypt modes. |
+| `Server.TLS.PrivateKeyFile`<br />Default: empty | PEM private-key path. Required with `static`. Protect the file as a service credential. |
+| `Server.TLS.LetsEncrypt.Email`<br />Default: empty | Contact email supplied to the ACME account when `lets_encrypt` is selected. |
+| `Server.TLS.LetsEncrypt.CacheDirectory`<br />Default: `./data/acme` | Persistent ACME certificate cache. Must be non-empty for `lets_encrypt`; relative paths use the process working directory. |
+| `Server.TLS.ForwardHTTPToHTTPS`<br />Default: `false` | Starts the companion HTTP listener for ACME HTTP-01 and HTTPS redirects. It requires TLS to be enabled. Let's Encrypt requires this value to be `true`. |
+| `Server.TLS.HTTPListenAddress`<br />Default: `127.0.0.1:8080` | Companion HTTP address. Must use port `1`–`65535` and differ from `Server.ListenAddress` when forwarding is enabled. |
+
+Let's Encrypt is intentionally single-node: it cannot be combined with the
+Memberlist cluster backend. Its `PublicURL` host must be a lower-case ASCII
+fully qualified domain name—not localhost, an IP literal, or a single label.
+The ACME cache must survive process restarts.
+
+For `static` mode, certificate and private-key files form a pair. For either
+built-in TLS mode, `Server.PublicURL` must use `https`.
+
+## Metrics listener
+
+| Path and default | Meaning and accepted value |
+| --- | --- |
+| `Metrics.Enabled`<br />Default: `false` | Starts the node-local Prometheus metrics listener when `true`. |
+| `Metrics.ListenAddress`<br />Default: `127.0.0.1:8067` | Metrics bind address. Must be `host:port` with port `1`–`65535`. When enabled, it must not equal the public or HTTP-forwarding address. |
+| `Metrics.BearerToken`<br />Default: empty | Secret required in the `Authorization: Bearer` header. When set, it must contain `32`–`512` bytes. A non-loopback listener requires it. |
+| `Metrics.TLS.CertificateFile`<br />Default: empty | PEM certificate-chain path for the metrics listener. Certificate and private key must be set together. |
+| `Metrics.TLS.PrivateKeyFile`<br />Default: empty | PEM private-key path for the metrics listener. Protect it as a service credential. |
+| `Metrics.ReadHeaderTimeout`<br />Default: `5s` | Maximum time to read scrape request headers. Must be greater than zero. |
+| `Metrics.ReadTimeout`<br />Default: `10s` | Maximum time to read a scrape request. Must be greater than zero. |
+| `Metrics.WriteTimeout`<br />Default: `30s` | Maximum time to write a scrape response. Must be greater than zero. |
+| `Metrics.IdleTimeout`<br />Default: `1m` | Maximum keep-alive idle time. Must be greater than zero. |
+| `Metrics.ShutdownTimeout`<br />Default: `5s` | Grace period for stopping the metrics listener. Must be greater than zero. |
+| `Metrics.MaximumConcurrentScrapes`<br />Default: `2` | Per-node cap on simultaneous Prometheus scrapes. Must be between `1` and `32`. |
+
+An enabled metrics listener bound beyond loopback must configure both TLS files
+and a bearer token. This fail-closed rule prevents an accidental unauthenticated
+metrics endpoint. Store the token separately from the public-server TLS key and
+scrape it over HTTPS.

@@ -24,8 +24,8 @@ for (const match of source.matchAll(matcher)) {
   variables.push({name, parser});
 }
 
-if (variables.length !== 122) {
-  throw new Error(`expected 122 environment overrides, found ${variables.length}`);
+if (variables.length !== 124) {
+  throw new Error(`expected 124 environment overrides, found ${variables.length}`);
 }
 
 const typeLabel = {
@@ -40,13 +40,15 @@ const typeLabel = {
 };
 
 const groupOrder = [
-  'Server', 'Metrics', 'Database', 'Cache', 'Cluster', 'Mail', 'VFS',
+  'Server', 'Metrics', 'Database', 'Cache', 'Cluster', 'Mail', 'VFS', 'FileContent',
   'Execution', 'Authentication', 'Log',
 ];
 const groups = new Map(groupOrder.map((group) => [group, []]));
 for (const variable of variables) {
   const key = variable.name.split('_')[1];
-  const group = key === 'VFS' ? 'VFS' : key[0] + key.slice(1).toLowerCase();
+  const group = variable.name.startsWith('PROCTOR_FILE_CONTENT_')
+    ? 'FileContent'
+    : key === 'VFS' ? 'VFS' : key[0] + key.slice(1).toLowerCase();
   if (!groups.has(group)) {
     throw new Error(`environment variable ${variable.name} has unknown group ${group}`);
   }

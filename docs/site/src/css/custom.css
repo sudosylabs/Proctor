@@ -489,6 +489,25 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--proctor-sidebar) 62%, transparent);
 }
 
+/* Configuration paths stay readable beside prose instead of collapsing into
+   a narrow spreadsheet column. */
+
+[class*="docs-doc-id-reference/configuration/"]
+  .theme-doc-markdown
+  th:first-child,
+[class*="docs-doc-id-reference/configuration/"]
+  .theme-doc-markdown
+  td:first-child {
+  width: 40%;
+}
+
+[class*="docs-doc-id-reference/configuration/"]
+  .theme-doc-markdown
+  td:first-child
+  code {
+  font-size: 0.82em;
+}
+
 /* Code and technical controls */
 
 :not(pre) > code {
@@ -775,6 +794,64 @@ textarea:focus-visible {
   .theme-doc-markdown h2 {
     font-size: 1.45rem;
     margin-top: var(--proctor-space-7);
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    table {
+    border-top: 0;
+    display: block;
+    overflow: visible;
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    thead {
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    tbody,
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    tr,
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    tr {
+    border-bottom: var(--proctor-stroke-hairline) solid
+      var(--proctor-border-strong);
+    padding-block: var(--proctor-space-2);
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    td {
+    border-bottom: 0;
+    padding: var(--proctor-space-2) var(--proctor-space-3);
+  }
+
+  [class*="docs-doc-id-reference/configuration/"]
+    .theme-doc-markdown
+    td:first-child {
+    color: var(--proctor-ink);
+    font-weight: 500;
+    width: 100%;
   }
 
   .pagination-nav {
