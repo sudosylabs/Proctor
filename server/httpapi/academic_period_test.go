@@ -21,9 +21,11 @@ import (
 )
 
 type academicPeriodHTTPApplication struct {
-	result        *model.AcademicPeriod
-	list          []*model.AcademicPeriod
-	createCommand application.CreateAcademicPeriodCommand
+	updateCommand  application.UpdateAcademicPeriodCommand
+	archiveCommand application.ArchiveAcademicPeriodCommand
+	result         *model.AcademicPeriod
+	list           []*model.AcademicPeriod
+	createCommand  application.CreateAcademicPeriodCommand
 }
 
 func (a *academicPeriodHTTPApplication) GetAcademicPeriod(context.Context, application.Invocation, application.GetAcademicPeriodQuery) (*model.AcademicPeriod, error) {
@@ -36,10 +38,12 @@ func (a *academicPeriodHTTPApplication) CreateAcademicPeriod(_ context.Context, 
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *academicPeriodHTTPApplication) UpdateAcademicPeriod(context.Context, application.Invocation, application.UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+func (a *academicPeriodHTTPApplication) UpdateAcademicPeriod(_ context.Context, _ application.Invocation, command application.UpdateAcademicPeriodCommand) (*model.AcademicPeriod, error) {
+	a.updateCommand = command
 	return a.result, nil
 }
-func (*academicPeriodHTTPApplication) ArchiveAcademicPeriod(context.Context, application.Invocation, application.ArchiveAcademicPeriodCommand) error {
+func (a *academicPeriodHTTPApplication) ArchiveAcademicPeriod(_ context.Context, _ application.Invocation, command application.ArchiveAcademicPeriodCommand) error {
+	a.archiveCommand = command
 	return nil
 }
 

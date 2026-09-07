@@ -29,7 +29,7 @@ The initial closed catalog contains these template keys:
   `identity.email_verified_by_admin`, `identity.account_disabled`,
   `identity.account_enabled`, `identity.sessions_revoked_by_admin`,
   `identity.mfa_enabled`, `identity.mfa_disabled`,
-  `identity.mfa_recovery_codes_regenerated`,
+  `identity.mfa_recovery_codes_regenerated`, `identity.mfa_reset`,
   `identity.personal_access_token_created`,
   `identity.personal_access_token_enabled`,
   `identity.personal_access_token_disabled`, and
@@ -52,7 +52,8 @@ The initial closed catalog contains these template keys:
   `exam.ownership_transferred_from_you`, `exam.sitting_scheduled`,
   `exam.sitting_rescheduled`, `exam.sitting_cancelled`,
   `exam.sitting_assignment_removed`, `exam.submission_received`,
-  `exam.submission_automatically_sealed`, and `exam.result_released`.
+  `exam.submission_automatically_sealed`, `exam.result_released`, and
+  `exam.retention_scheduled`.
 - Operations: `system.mail_test`.
 
 New-login alerts, standalone affiliation notices, provider-directory
@@ -159,10 +160,17 @@ operation; Proctor never claims inbox delivery. Every delivery has a stable
 Message-ID that survives automatic and operator retry.
 
 The `server/app/mail` child module prepares a validated occurrence, encrypted
-payload and required Job for every catalog family. Shared payload freezing owns
-address validation, bounded serialization, sealing, digest, and stable
-Message-ID construction for both direct and fan-out child deliveries. The
-originating named Store mutation inserts them with the business state and audit
+payload and required Job for every catalog family. The Mail module owns the
+private frozen payload format, address and content validation, bounded
+serialization and reopening, sealing, digest, and stable Message-ID construction
+for both direct and fan-out child deliveries. Reopening validates the persisted
+version and message meaning and produces the complete outbound message from
+frozen content and original delivery metadata. It rejects malformed documents,
+unknown fields, and any extra trailing JSON without exposing frozen content in
+errors. Jobs owns delivery transitions and retries and passes that message to
+the existing Sender contract; it does not interpret the payload representation,
+resolve recipient details, or render content again. The originating named Store
+mutation inserts the prepared records with the business state and audit
 in one PostgreSQL transaction. A standalone mail or
 Job enqueue after the business commit is forbidden. If enabled mail cannot be
 prepared or persisted, the originating mutation rolls back. A missing or
@@ -473,6 +481,31 @@ After SMTP acceptance, the worker records Accepted and destroys ciphertext
 before completing its Job. A retry that observes terminal mail state completes
 without another send; a crash before that database transition retains the
 documented uncertain-acceptance duplicate risk.
+
+## Retention grace notices
+
+Entering retention grace atomically creates the recipient notice with the
+retirement schedule. This durable product notice is the authoritative intent;
+SMTP preparation is intentionally a separate bounded expansion so unavailable
+mail cannot block institution-approved cleanup. Select active responsible Exam
+Managers and system administrators at scheduling time, deduplicate recipients,
+and include the candidate only when Institution policy opts in.
+
+Each recipient expansion atomically reserves one `exam.retention_scheduled`
+occurrence, delivery, and finite Job and records that delivery on the notice.
+Exact retries preserve the first reservation. Preparation failure records a
+closed visible failure code without claiming delivery; no credential or private
+record data appears in the generic mail. The deadline is bounded by the normal
+72-hour mail lifetime and the retirement deadline. Disabled-mail suppression
+uses the ordinary delivery contract.
+
+Hold, policy, control, completion, or source-protection cancellation invalidates
+the affected notice dates in the same transaction as grace cancellation.
+Delivery start shares the retirement fence and suppresses a queued stale notice;
+an SMTP operation already started may finish. Delivery state changes update the
+notice projection atomically. Listing a User's own notices grants no record
+access and records no read acknowledgement. Notice delivery, failure, and expiry
+never extend retention or create a cleanup prerequisite.
 
 ## Operations, authorization, and retention
 

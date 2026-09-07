@@ -69,13 +69,15 @@ type IdempotencyRequirement string
 type RouteProtocolKind string
 
 const (
-	AuthPublic                      AuthRequirement = "public"
-	AuthPrincipalRequired           AuthRequirement = "principal_required"
-	AuthSessionRequired             AuthRequirement = "session_required"
-	AuthStrongSessionRequired       AuthRequirement = "strong_session_required"
-	AuthRecentSessionRequired       AuthRequirement = "recent_session_required"
-	AuthStrongRecentSessionRequired AuthRequirement = "strong_recent_session_required"
-	AuthRefreshCredentialRequired   AuthRequirement = "refresh_credential_required"
+	AuthPublic                           AuthRequirement = "public"
+	AuthMFARecoverySessionRequired       AuthRequirement = "mfa_recovery_session_required"
+	AuthRecentMFARecoverySessionRequired AuthRequirement = "recent_mfa_recovery_session_required"
+	AuthPrincipalRequired                AuthRequirement = "principal_required"
+	AuthSessionRequired                  AuthRequirement = "session_required"
+	AuthStrongSessionRequired            AuthRequirement = "strong_session_required"
+	AuthRecentSessionRequired            AuthRequirement = "recent_session_required"
+	AuthStrongRecentSessionRequired      AuthRequirement = "strong_recent_session_required"
+	AuthRefreshCredentialRequired        AuthRequirement = "refresh_credential_required"
 )
 
 const (

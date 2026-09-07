@@ -10,6 +10,7 @@ export const EXPECTED_WORKFLOW_IDS = Object.freeze([
   'web-account-entry-and-recovery',
   'account-methods-and-session-security',
   'access-policy-administration',
+  'institution-retention', 'examination-exports',
   'desktop-authorization-and-trust',
   'institution-and-academic-structure',
   'invitations-and-membership',

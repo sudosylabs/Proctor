@@ -154,6 +154,7 @@ func TestAccessAndOnboardingDecoratedLayerConformance(t *testing.T) {
 			storetest.TestAccessPolicyStore(t, decorated)
 		}},
 		{"DesktopCompatibilityPolicy", true, nil, storetest.TestDesktopCompatibilityPolicyStore},
+		{"RetentionPolicy", true, nil, storetest.TestRetentionPolicyStore},
 		{"CommandOutcome", false, nil, storetest.TestCommandOutcomeStore},
 	}
 
@@ -206,11 +207,31 @@ func runLayerConformance(
 			storetest.TestExamIntegrityReviewStore(t, decorated, decorated.ExamIntegrityReview(),
 				storetest.ExamIntegrityReviewSQLProbe{ConcurrentPeer: NewSQLExamIntegrityReviewStore(sqlStore)})
 		}},
+		{"RetentionCleanupAuditExpiry", func(t *testing.T, decorated store.Store) {
+			storetest.TestRetentionCleanupAuditExpiryStore(t, decorated, retentionExpirySQLProbe(sqlStore))
+		}},
+		{"RetentionAuditUnfinishedExamScope", func(t *testing.T, decorated store.Store) {
+			storetest.TestRetentionAuditUnfinishedExamScope(t, decorated, retentionExpirySQLProbe(sqlStore))
+		}},
+		{"RetentionExpiry", func(t *testing.T, decorated store.Store) {
+			storetest.TestRetentionExpiryStore(t, decorated, retentionExpirySQLProbe(sqlStore))
+		}},
+		{"RetentionReceiptExpiry", func(t *testing.T, decorated store.Store) {
+			storetest.TestRetentionReceiptExpiryStore(t, decorated, retentionSQLProbe(sqlStore), retentionExpirySQLProbe(sqlStore))
+		}},
+		{"Retention", func(t *testing.T, decorated store.Store) {
+			storetest.TestRetentionStore(t, decorated, retentionSQLProbe(sqlStore))
+		}},
+		{"ExamRecords", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamRecordsStore(t, decorated, storetest.ExamRecordsSQLProbe{ConcurrentPeer: newSQLExamRecordsStore(sqlStore)})
+		}},
 		{"ExamResource", storetest.TestExamResourceStore},
 		{"ExamCorrection", func(t *testing.T, decorated store.Store) {
 			storetest.TestExamCorrectionStore(t, decorated, examCorrectionSQLProbe(t, sqlStore))
 		}},
-		{"ExamStarterWorkspace", storetest.TestExamStarterWorkspaceStore},
+		{"ExamStarterWorkspace", func(t *testing.T, decorated store.Store) {
+			storetest.TestExamStarterWorkspaceStore(t, decorated, starterWorkspaceSQLProbe(sqlStore))
+		}},
 		{"Class", storetest.TestClassStore},
 		{"User", func(t *testing.T, decorated store.Store) {
 			storetest.TestUserStore(t, decorated, userRegistrationSQLProbe(sqlStore))
@@ -242,16 +263,21 @@ func runLayerConformance(
 		{"RoleBinding", storetest.TestRoleBindingStore},
 		{"Audit", storetest.TestAuditStore},
 		{"Installation", storetest.TestInstallationStore},
+		{"AdministratorMFAReset", func(t *testing.T, decorated store.Store) {
+			storetest.TestAdministratorMFAResetStore(t, decorated, administratorMFAResetSQLProbe(sqlStore))
+		}},
+		{"AdministratorMFAResetExternal", storetest.TestAdministratorMFAResetExternalStore},
 		{"AccessPolicy", func(t *testing.T, decorated store.Store) {
 			storetest.TestAccessPolicyStore(t, decorated)
 		}},
 		{"DesktopCompatibilityPolicy", storetest.TestDesktopCompatibilityPolicyStore},
+		{"RetentionPolicy", storetest.TestRetentionPolicyStore},
 		{"CommandOutcome", storetest.TestCommandOutcomeStore},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			switch test.name {
-			case "Installation", "AccessPolicy", "DesktopCompatibilityPolicy":
+			case "Installation", "AdministratorMFAReset", "AdministratorMFAResetExternal", "AccessPolicy", "DesktopCompatibilityPolicy", "RetentionPolicy", "RetentionExpiry", "RetentionCleanupAuditExpiry":
 				resetPristineTestStore(t, sqlStore)
 			case "PasswordCredential":
 				resetPristineTestStore(t, sqlStore)
@@ -441,6 +467,13 @@ func TestExamIntegrityReviewStore(t *testing.T) {
 	resetTestStore(t, persistence)
 	storetest.TestExamIntegrityReviewStore(t, persistence, NewSQLExamIntegrityReviewStore(persistence),
 		storetest.ExamIntegrityReviewSQLProbe{ConcurrentPeer: NewSQLExamIntegrityReviewStore(peerPersistence)})
+}
+
+func TestExamRecordsStore(t *testing.T) {
+	persistence := openTestStore(t)
+	peerPersistence := openTestStore(t)
+	resetTestStore(t, persistence)
+	storetest.TestExamRecordsStore(t, persistence, storetest.ExamRecordsSQLProbe{ConcurrentPeer: newSQLExamRecordsStore(peerPersistence)})
 }
 
 func examSubmissionSQLProbe(t *testing.T, persistence *SQLStore) storetest.ExamSubmissionSQLProbe {
@@ -1365,7 +1398,21 @@ func TestExamResourceStore(t *testing.T) {
 }
 
 func TestExamStarterWorkspaceStore(t *testing.T) {
-	StoreTest(t, storetest.TestExamStarterWorkspaceStore)
+	StoreTest(t, func(t *testing.T, persistence store.Store) {
+		storetest.TestExamStarterWorkspaceStore(t, persistence, starterWorkspaceSQLProbe(persistence.(*SQLStore)))
+	})
+}
+
+func starterWorkspaceSQLProbe(persistence *SQLStore) storetest.StarterWorkspaceSQLProbe {
+	return storetest.StarterWorkspaceSQLProbe{MakeObjectCleanupDue: func(t *testing.T, ctx context.Context, id model.StarterWorkspaceObjectID) {
+		t.Helper()
+		_, err := persistence.GetMaster().Exec(ctx, `UPDATE exam_starter_workspace_objects
+			SET updated_at=GREATEST(updated_at,statement_timestamp()),reclaim_after=statement_timestamp()-INTERVAL '1 microsecond'
+			WHERE id=? AND state='reclaimable'`, id.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}}
 }
 
 func TestClassStore(t *testing.T) {
@@ -1622,6 +1669,10 @@ func TestInstallationStore(t *testing.T) {
 
 func TestDesktopCompatibilityPolicyStore(t *testing.T) {
 	PristineStoreTest(t, storetest.TestDesktopCompatibilityPolicyStore)
+}
+
+func TestRetentionPolicyStore(t *testing.T) {
+	PristineStoreTest(t, storetest.TestRetentionPolicyStore)
 }
 
 func TestSessionRevocationAttemptFence(t *testing.T) {

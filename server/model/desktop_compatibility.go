@@ -185,7 +185,8 @@ func (p *DesktopCompatibilityPolicy) Replace(
 		return nil
 	}
 	p.MinimumDesktopRelease = settings.MinimumDesktopRelease
-	p.RevokedDesktopBuildIDs = slices.Clone(settings.RevokedDesktopBuildIDs)
+	// An empty set has one persisted/wire representation: an array, never null.
+	p.RevokedDesktopBuildIDs = append([]string{}, settings.RevokedDesktopBuildIDs...)
 	p.AdministratorMessage = settings.AdministratorMessage
 	p.Availability = settings.Availability
 	p.RetryAt = settings.RetryAt.UTC()

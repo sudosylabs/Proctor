@@ -33,6 +33,7 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("NativeTimeBoundaries", func(t *testing.T) { testSessionNativeTimeBoundaries(t, ss) })
 	t.Run("Revoke", func(t *testing.T) { testSessionRevoke(t, ss) })
 	t.Run("RevokeWithAudit", func(t *testing.T) { testSessionRevokeWithAudit(t, ss) })
+	t.Run("SelfRevocationWithAudit", func(t *testing.T) { testSelfSessionRevocationsWithAudit(t, ss) })
 	t.Run("RevokeAllForUser", func(t *testing.T) { testSessionRevokeAllForUser(t, ss) })
 	t.Run("RevokeAllForUserWithAudit", func(t *testing.T) { testSessionRevokeAllForUserWithAudit(t, ss) })
 	t.Run("DisabledMailRecordsTerminalAdministrativeNotice", func(t *testing.T) {
@@ -44,6 +45,88 @@ func TestSessionStores(t *testing.T, ss store.Store) {
 	t.Run("ConcurrentRefreshAndRevokeAll", func(t *testing.T) {
 		testSessionConcurrentRefreshAndRevokeAll(t, ss)
 	})
+}
+
+func testSelfSessionRevocationsWithAudit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	before, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentitySessionsRevokedByAdmin}, Limit: 200})
+	requireNoError(t, err)
+	for _, reason := range []model.SessionRevocationReason{model.SessionRevocationUserSession, model.SessionRevocationUserLogout, model.SessionRevocationUserAllSessions} {
+		t.Run(string(reason), func(t *testing.T) {
+			user := saveUser(t, ctx, ss)
+			session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
+			at := model.GetMillis() + 100
+			revoke := func(auditID string) (*store.SessionRevocationResult, bool, error) {
+				if reason == model.SessionRevocationUserAllSessions {
+					input := &store.UserSessionsRevocation{UserID: user.ID.String(), RevokedAt: at, Reason: reason, AuditEventID: auditID, AuditAt: at}
+					result, revokeErr := ss.Session().RevokeAllForUserWithAudit(ctx, input)
+					if revokeErr != nil {
+						return nil, false, revokeErr
+					}
+					value := &store.SessionRevocationResult{TokenHashes: result.TokenHashes}
+					if len(result.Sessions) > 0 {
+						value.Session = result.Sessions[0]
+					}
+					return value, input.NoOp, nil
+				}
+				result, revokeErr := ss.Session().RevokeWithAudit(ctx, &store.SessionRevocation{
+					SessionID: session.ID.String(), UserID: user.ID.String(), RevokedAt: at,
+					Reason: reason, AuditEventID: auditID, AuditAt: at,
+				})
+				return result, result != nil && result.Session == nil, revokeErr
+			}
+			if _, _, err := revoke(model.NewId()); err == nil {
+				t.Fatal("self revocation committed without its audit attempt")
+			}
+			credential, active, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(raw.access), model.SessionCredentialAccess)
+			requireNoError(t, err)
+			if credential.RevokedAt.Valid || active.RevokedAt.Valid {
+				t.Fatal("audit failure left session or credential revoked")
+			}
+			attempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
+			result, noop, err := revoke(attempt.ID.String())
+			requireNoError(t, err)
+			if noop || result.Session == nil || result.Session.RevokedAt.Millis() != at || len(result.TokenHashes) != 2 {
+				t.Fatalf("self revocation = %#v, no-op=%v", result, noop)
+			}
+			audit, err := ss.Audit().Get(ctx, attempt.ID.String())
+			requireNoError(t, err)
+			if audit.Status != model.AuditStatusSuccess {
+				t.Fatalf("self revocation audit = %#v", audit)
+			}
+			credential, revoked, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(raw.access), model.SessionCredentialAccess)
+			requireNoError(t, err)
+			if credential.RevokedAt.Millis() != at || revoked.RevokedAt.Millis() != at {
+				t.Fatal("audit succeeded without atomic credential-family revocation")
+			}
+
+			repeatAttempt := saveSessionAuditAttempt(t, ctx, ss, user.ID.String())
+			repeat, noop, err := revoke(repeatAttempt.ID.String())
+			if reason == model.SessionRevocationUserSession {
+				if !store.IsNotFound(err) {
+					t.Fatalf("repeated single self revocation = %v", err)
+				}
+				return
+			}
+			requireNoError(t, err)
+			if !noop || repeat.Session != nil || len(repeat.TokenHashes) != 0 {
+				t.Fatalf("repeated self revocation = %#v, no-op=%v", repeat, noop)
+			}
+			repeatAudit, err := ss.Audit().Get(ctx, repeatAttempt.ID.String())
+			requireNoError(t, err)
+			if repeatAudit.Status != model.AuditStatusSuccess {
+				t.Fatalf("no-op audit = %#v", repeatAudit)
+			}
+			if _, _, err := revoke(model.NewId()); err == nil {
+				t.Fatal("self revocation no-op skipped required audit")
+			}
+		})
+	}
+	after, err := ss.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{model.MailTemplateIdentitySessionsRevokedByAdmin}, Limit: 200})
+	requireNoError(t, err)
+	if len(after) != len(before) {
+		t.Fatalf("self revocation created administrator notices: before=%d after=%d", len(before), len(after))
+	}
 }
 
 func testSessionPasswordProof(t *testing.T, ss store.Store) {

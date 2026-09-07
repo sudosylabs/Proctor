@@ -25,6 +25,7 @@ import (
 
 type grantStoreFake struct {
 	mu               sync.Mutex
+	leaseMu          sync.Mutex
 	current          *model.ExecutionGrant
 	all              map[model.ExecutionGrantID]*model.ExecutionGrant
 	events           *[]string
@@ -78,12 +79,32 @@ func (fake *grantStoreFake) Reassign(_ context.Context, value store.ExecutionGra
 	return &store.ExecutionGrantReassignmentResult{Previous: &previousCopy, Current: &currentCopy}, nil
 }
 
-func (fake *grantStoreFake) MarkReady(_ context.Context, id model.ExecutionGrantID, revision int64, at time.Time) (*model.ExecutionGrant, error) {
+func (fake *grantStoreFake) PrepareWorkspaceEffect(_ context.Context, id model.ExecutionGrantID, revision, cursor int64, at time.Time) (*model.ExecutionGrant, error) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	fake.current.State, fake.current.UpdatedAt, fake.current.Revision = model.ExecutionGrantReady, at, revision+1
-	*fake.events = append(*fake.events, "ready:"+fake.current.HostID)
-	copy := *fake.current
+	grant := fake.current
+	if grant == nil || grant.ID != id || grant.Revision != revision || grant.WorkspacePending || grant.LifecyclePending || (fake.snapshot != nil && fake.snapshot.Cursor != cursor) {
+		return nil, store.NewErrConflict("execution_grant", "workspace_effect", nil)
+	}
+	grant.WorkspacePending, grant.PendingWorkspaceCursor, grant.Revision = true, cursor, revision+1
+	grant.UpdatedAt = at
+	copy := *grant
+	return &copy, nil
+}
+
+func (fake *grantStoreFake) MarkWorkspaceApplied(_ context.Context, id model.ExecutionGrantID, revision, cursor int64, at time.Time) (*model.ExecutionGrant, error) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	grant := fake.current
+	if grant == nil || grant.ID != id || grant.Revision != revision || !grant.WorkspacePending || grant.PendingWorkspaceCursor != cursor || (fake.snapshot != nil && fake.snapshot.Cursor != cursor) {
+		return nil, store.NewErrConflict("execution_grant", "workspace_effect", nil)
+	}
+	if grant.State == model.ExecutionGrantReserved {
+		*fake.events = append(*fake.events, "ready:"+grant.HostID)
+	}
+	grant.State, grant.UpdatedAt, grant.Revision = model.ExecutionGrantReady, at, revision+1
+	grant.AppliedWorkspaceCursor, grant.WorkspacePending, grant.PendingWorkspaceCursor = cursor, false, 0
+	copy := *grant
 	return &copy, nil
 }
 
@@ -134,12 +155,20 @@ func (fake *grantStoreFake) ReleaseGrant(_ context.Context, id model.ExecutionGr
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	grant := fake.all[id]
+	if grant == nil && fake.current != nil && fake.current.ID == id {
+		grant = fake.current
+		if fake.all == nil {
+			fake.all = make(map[model.ExecutionGrantID]*model.ExecutionGrant)
+		}
+		fake.all[id] = grant
+	}
 	if grant == nil || grant.State == model.ExecutionGrantReleased {
 		return nil, store.NewErrNotFound("execution_grant", id.String())
 	}
 	grant.State, grant.ReleasedAt, grant.UpdatedAt, grant.Revision = model.ExecutionGrantReleased,
 		model.OptionalTimeFrom(at), at, grant.Revision+1
 	grant.LifecyclePending, grant.PendingSittingState, grant.PendingSittingRevision = false, "", 0
+	grant.WorkspacePending, grant.PendingWorkspaceCursor = false, 0
 	if fake.current != nil && fake.current.ID == id {
 		fake.current = nil
 	}
@@ -158,7 +187,7 @@ func (fake *grantStoreFake) MarkRevoked(_ context.Context, id model.ExecutionGra
 	return &copy, nil
 }
 
-func (fake *grantStoreFake) ListPendingRevocations(context.Context, int) ([]*model.ExecutionGrant, error) {
+func (fake *grantStoreFake) ListPendingRevocations(context.Context, model.ExecutionGrantID, int) ([]*model.ExecutionGrant, error) {
 	return nil, nil
 }
 
@@ -166,6 +195,7 @@ type lifecycleLeaseFake struct {
 	validateErr error
 	failAt      int
 	calls       int
+	release     func()
 }
 
 func (fake *lifecycleLeaseFake) Validate(context.Context) error {
@@ -175,14 +205,20 @@ func (fake *lifecycleLeaseFake) Validate(context.Context) error {
 	}
 	return nil
 }
-func (*lifecycleLeaseFake) Release(context.Context) error { return nil }
+func (fake *lifecycleLeaseFake) Release(context.Context) error {
+	if fake.release != nil {
+		fake.release()
+	}
+	return nil
+}
 
 func (fake *grantStoreFake) AcquireLifecycleLease(context.Context, model.ExecutionGrantID) (store.ExecutionLifecycleLease, error) {
+	fake.leaseMu.Lock()
 	failAt := fake.leaseValidateAt
 	if failAt == 0 && fake.leaseValidateErr != nil {
 		failAt = 2
 	}
-	return &lifecycleLeaseFake{validateErr: fake.leaseValidateErr, failAt: failAt}, nil
+	return &lifecycleLeaseFake{validateErr: fake.leaseValidateErr, failAt: failAt, release: fake.leaseMu.Unlock}, nil
 }
 func (fake *grantStoreFake) CurrentForReconciliation(_ context.Context, id model.ExecutionGrantID) (*store.ExecutionGrantConvergence, error) {
 	for index := range fake.convergence {
@@ -241,6 +277,14 @@ func (fake hostsFake) Ensure(_ context.Context, host string, _ Spec) (Environmen
 func (fake hostsFake) Revoke(_ context.Context, host, _ string) error {
 	*fake.events = append(*fake.events, "revoke:"+host)
 	return nil
+}
+
+func (fake hostsFake) Existing(_ context.Context, host string, _ Spec) (Environment, error) {
+	*fake.events = append(*fake.events, "existing:"+host)
+	if err := fake.fail[host]; err != nil {
+		return nil, err
+	}
+	return environmentFake{host: host, events: fake.events}, nil
 }
 
 type environmentFake struct {
@@ -317,7 +361,7 @@ func TestReconcileConvergesCurrentGuestsFromDurableLifecycle(t *testing.T) {
 	}{
 		{name: "open remains available", attemptState: model.ExamAttemptActive, sittingState: model.ExamSittingOpen},
 		{name: "paused freezes", attemptState: model.ExamAttemptActive, sittingState: model.ExamSittingPaused,
-			wantEvents: []string{"ensure:runner-a", "freeze:runner-a", "applied:paused"}},
+			wantEvents: []string{"existing:runner-a", "freeze:runner-a", "applied:paused"}},
 		{name: "suspended releases", attemptState: model.ExamAttemptSuspended, sittingState: model.ExamSittingOpen,
 			wantEvents: []string{"release:runner-a", "revoke:runner-a", "revoked:runner-a"}},
 		{name: "terminal Sitting releases", attemptState: model.ExamAttemptActive, sittingState: model.ExamSittingClosing,
@@ -422,7 +466,7 @@ func TestLostLifecycleLeaseReleasesExactGrantAfterHostEffect(t *testing.T) {
 	if err == nil {
 		t.Fatal("lost lifecycle lease unexpectedly succeeded")
 	}
-	want := []string{"ensure:runner-a", "freeze:runner-a", "release:runner-a", "revoke:runner-a", "revoked:runner-a"}
+	want := []string{"existing:runner-a", "freeze:runner-a", "release:runner-a", "revoke:runner-a", "revoked:runner-a"}
 	if !reflect.DeepEqual(events, want) || grants.current != nil {
 		t.Fatalf("events/current = %v/%#v, want %v/nil", events, grants.current, want)
 	}
@@ -507,12 +551,12 @@ func TestSyncChangeUsesIncrementalApplyWithoutReplacingTree(t *testing.T) {
 	if err := service.SyncChange(context.Background(), attemptID, change); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(events, ",") != "ensure:runner,apply:runner" {
+	if strings.Join(events, ",") != "existing:runner,apply:runner" {
 		t.Fatalf("events = %v", events)
 	}
 }
 
-func TestEnsureReusesCurrentHostWhenItHasNoFreeSlots(t *testing.T) {
+func TestEnsureRebuildsOnCurrentHostWhenItHasNoFreeSlots(t *testing.T) {
 	t.Parallel()
 	var events []string
 	attemptID := model.NewExamAttemptID()
@@ -534,10 +578,10 @@ func TestEnsureReusesCurrentHostWhenItHasNoFreeSlots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if placement.HostID != "runner-a" || !placement.Ready {
+	if placement.HostID != "runner-a" || !placement.Ready || placement.GrantID == grant.ID {
 		t.Fatalf("placement = %#v", placement)
 	}
-	want := []string{"ensure:runner-a", "tree:runner-a"}
+	want := []string{"release:runner-a", "revoke:runner-a", "revoked:runner-a", "reserve:runner-a", "ensure:runner-a", "tree:runner-a", "ready:runner-a"}
 	if len(events) != len(want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -561,15 +605,15 @@ func TestAuthoritativeTreeVerifiesPinnedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := service.authoritativeTree(context.Background(), model.NewExamAttemptID())
+	tree, err := service.treeFromSnapshot(context.Background(), grants.snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(tree) != 1 || tree[0].Path != "main.go" || string(tree[0].Data) != body {
-		t.Fatalf("authoritativeTree() = %#v", tree)
+		t.Fatalf("treeFromSnapshot() = %#v", tree)
 	}
 	grants.snapshot.Nodes[0].SHA256 = strings.Repeat("0", 64)
-	if _, err := service.authoritativeTree(context.Background(), model.NewExamAttemptID()); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("authoritativeTree(corrupt) = %v, want invalid", err)
+	if _, err := service.treeFromSnapshot(context.Background(), grants.snapshot); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("treeFromSnapshot(corrupt) = %v, want invalid", err)
 	}
 }

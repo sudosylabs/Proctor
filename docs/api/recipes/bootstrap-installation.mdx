@@ -83,5 +83,7 @@ operations:
 
 The Access Policy and User-disablement transaction fence prevents removal of
 the last usable active-system-administrator path. Do not rely on that rejection
-as the only recovery plan: host recovery is an offline operator procedure and
-cannot mint a Session or clear MFA.
+as the only recovery plan. <Link to="/reference/command-line/">Host recovery</Link>
+is an offline operator procedure. Password recovery and the separately named
+MFA reset command never mint a Session; MFA reset requires fresh primary proof
+and explicit reenrollment before ordinary access returns.

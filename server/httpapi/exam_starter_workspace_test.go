@@ -194,6 +194,15 @@ func TestExamStarterWorkspaceHTTPRemoveReturnsNoContent(t *testing.T) {
 	if response.Code != http.StatusNoContent || response.Body.Len() != 0 || fake.removeEntry.EntryID != fake.entry.ID {
 		t.Fatalf("status=%d command=%#v body=%q", response.Code, fake.removeEntry, response.Body.String())
 	}
+	request = httptest.NewRequest(http.MethodDelete, path, strings.NewReader(`{"expected_draft_revision":1,"recursive":true}`))
+	request.Header.Set("Authorization", "Bearer credential")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "workspace-recursive-remove")
+	response = httptest.NewRecorder()
+	api.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || !fake.removeEntry.Recursive || fake.removeEntry.ExpectedDraftRevision != 1 {
+		t.Fatalf("recursive status=%d command=%#v body=%q", response.Code, fake.removeEntry, response.Body.String())
+	}
 }
 
 type examStarterWorkspaceHTTPFake struct {

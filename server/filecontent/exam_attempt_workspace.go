@@ -150,6 +150,24 @@ func (c *Content) RemoveAttemptWorkspaceObject(ctx context.Context,
 	return sanitize("remove Attempt Workspace object", err)
 }
 
+// PurgeRetiredAttemptWorkspaceObject removes the exact immutable key, then
+// observes its absence independently. A backend acknowledgement alone cannot
+// be reported as verified purge. This says nothing about already-open streams,
+// media erasure, backup copies, or historical object versions.
+func (c *Content) PurgeRetiredAttemptWorkspaceObject(ctx context.Context, objectID model.AttemptWorkspaceObjectID) error {
+	if err := c.RemoveAttemptWorkspaceObject(ctx, objectID); err != nil {
+		return err
+	}
+	_, err := c.filesystem.Stat(ctx, attemptWorkspaceObjectKey(objectID))
+	if errors.Is(err, vfspkg.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return sanitize("verify retired Attempt Workspace object absence", err)
+	}
+	return errors.New("retired Attempt Workspace object remains present")
+}
+
 func attemptWorkspaceObjectKey(objectID model.AttemptWorkspaceObjectID) string {
 	id := objectID.String()
 	return fmt.Sprintf("exam-attempt-workspace/%s/%s/objects/%s", id[:2], id[2:4], id)

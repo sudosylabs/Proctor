@@ -1,0 +1,604 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports":
+    post:
+      operationId: "createSittingExport"
+      summary: "Create a Sitting export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "required"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "authentication.csrf.invalid"
+        - "audit.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "exam.export.policy_unconfigured"
+        - "exam.export.limit"
+        - "exam.export.source_retired"
+        - "exam.export.scope_changed"
+        - "idempotency.key_required"
+        - "idempotency.invalid_key"
+        - "idempotency.conflict"
+        - "idempotency.in_progress"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+          csrfToken: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/CreateExamExport"
+      responses:
+        "202":
+          $ref: "#/components/responses/ExamExportAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}":
+    get:
+      operationId: "getSittingExport"
+      summary: "Get a Sitting export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/ExamExportID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExamExportOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}/content":
+    get:
+      operationId: "downloadSittingExport"
+      summary: "Download a Sitting export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+        - "exam.export.expired"
+        - "exam.export.not_ready"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/ExamExportID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExamExportArchive"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "410":
+          $ref: "#/components/responses/ExamExportGone"
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports":
+    post:
+      operationId: "createSubmissionExport"
+      summary: "Create a Submission export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "required"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "authentication.csrf.invalid"
+        - "audit.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "exam.export.policy_unconfigured"
+        - "exam.export.limit"
+        - "exam.export.source_retired"
+        - "exam.export.scope_changed"
+        - "idempotency.key_required"
+        - "idempotency.invalid_key"
+        - "idempotency.conflict"
+        - "idempotency.in_progress"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+          csrfToken: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/SubmissionID"
+        -
+          $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        $ref: "#/components/requestBodies/CreateExamExport"
+      responses:
+        "202":
+          $ref: "#/components/responses/ExamExportAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}":
+    get:
+      operationId: "getSubmissionExport"
+      summary: "Get a Submission export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/SubmissionID"
+        -
+          $ref: "#/components/parameters/ExamExportID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExamExportOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}/content":
+    get:
+      operationId: "downloadSubmissionExport"
+      summary: "Download a Submission export"
+      tags:
+        - "Data retention"
+      description: "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "resource.not_found"
+        - "exam.invalid"
+        - "exam.unavailable"
+        - "exam.export.not_found"
+        - "exam.export.conflict"
+        - "exam.export.unavailable"
+        - "administration.unavailable"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+        - "exam.export.expired"
+        - "exam.export.not_ready"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          $ref: "#/components/parameters/ExamID"
+        -
+          $ref: "#/components/parameters/ExamSittingID"
+        -
+          $ref: "#/components/parameters/SubmissionID"
+        -
+          $ref: "#/components/parameters/ExamExportID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ExamExportArchive"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "410":
+          $ref: "#/components/responses/ExamExportGone"
+components:
+  parameters:
+    ExamExportID:
+      name: "exam_export_id"
+      in: "path"
+      required: true
+      description: "The opaque export request identity, within its exact Sitting or Submission route scope."
+      schema:
+        $ref: "#/components/schemas/ID"
+  requestBodies:
+    CreateExamExport:
+      description: "Explicit whole-request category selection; omitted, empty, duplicate or unknown categories are rejected."
+      required: true
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/CreateExamExportRequest"
+          example:
+            categories:
+              - "work"
+              - "integrity"
+  responses:
+    ExamExportAccepted:
+      description: "A fixed-expiry export request was accepted; poll its exact scoped resource."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/ExamExportResponse"
+          example:
+            id: "yyyyyyyyyyyyyyyyyyyyyyyyyy"
+            exam_id: "bbbbbbbbbbbbbbbbbbbbbbbbbb"
+            exam_sitting_id: "nnnnnnnnnnnnnnnnnnnnnnnnnn"
+            categories:
+              - "work"
+            state: "queued"
+            policy_revision: 2
+            created_at: "2026-09-01T12:00:00Z"
+            expires_at: "2026-09-02T12:00:00Z"
+            construction_deadline: "2026-09-02T12:00:00Z"
+            submission_count: 1
+            file_count: 1
+            source_bytes: 128
+    ExamExportOK:
+      description: "Requester-only export metadata under current ordinary record authority."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/ExamExportResponse"
+          example:
+            id: "yyyyyyyyyyyyyyyyyyyyyyyyyy"
+            exam_id: "bbbbbbbbbbbbbbbbbbbbbbbbbb"
+            exam_sitting_id: "nnnnnnnnnnnnnnnnnnnnnnnnnn"
+            categories:
+              - "work"
+            state: "queued"
+            policy_revision: 2
+            created_at: "2026-09-01T12:00:00Z"
+            expires_at: "2026-09-02T12:00:00Z"
+            construction_deadline: "2026-09-02T12:00:00Z"
+            submission_count: 1
+            file_count: 1
+            source_bytes: 128
+    ExamExportArchive:
+      description: "Verified temporary ZIP archive; every new download is authorized and expiry checked. No public storage URL or backend identity is exposed."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+        ETag:
+          description: "Quoted SHA-256 of the complete ZIP."
+          schema:
+            type: "string"
+        Content-Disposition:
+          description: "Attachment with a safe server-generated filename."
+          schema:
+            type: "string"
+        X-Content-Type-Options:
+          schema:
+            type: "string"
+            const: "nosniff"
+      content:
+        "application/zip":
+          schema:
+            type: "string"
+            format: "binary"
+    ExamExportGone:
+      description: "The fixed advertised archive expiry has passed; new downloads are denied."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        "application/problem+json":
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+          example:
+            type: "/problems/exam-export-expired"
+            title: "Export expired"
+            status: 410
+            detail: "The temporary export has expired."
+            code: "exam.export.expired"
+            request_id: "req_docs_export_expired"
+  schemas:
+    CreateExamExportRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "categories"
+      properties:
+        categories:
+          type: "array"
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            type: "string"
+            enum:
+              - "work"
+              - "integrity"
+    ExamExportResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "exam_id"
+        - "exam_sitting_id"
+        - "categories"
+        - "state"
+        - "policy_revision"
+        - "created_at"
+        - "expires_at"
+        - "construction_deadline"
+        - "submission_count"
+        - "file_count"
+        - "source_bytes"
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        exam_id:
+          $ref: "#/components/schemas/ID"
+        exam_sitting_id:
+          $ref: "#/components/schemas/ID"
+        submission_id:
+          $ref: "#/components/schemas/ID"
+        categories:
+          type: "array"
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            type: "string"
+            enum:
+              - "work"
+              - "integrity"
+        state:
+          type: "string"
+          enum:
+            - "queued"
+            - "ready"
+            - "failed"
+            - "expired"
+        policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        created_at:
+          type: "string"
+          format: "date-time"
+        expires_at:
+          type: "string"
+          format: "date-time"
+        construction_deadline:
+          type: "string"
+          format: "date-time"
+        ready_at:
+          type: "string"
+          format: "date-time"
+        submission_count:
+          type: "integer"
+          minimum: 1
+          maximum: 200
+        file_count:
+          type: "integer"
+          minimum: 0
+          maximum: 50000
+        source_bytes:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+          maximum: 8589934592
+        archive_size_bytes:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+          maximum: 8724152320
+        archive_sha256:
+          type: "string"
+          pattern: "^[0-9a-f]{64}$"

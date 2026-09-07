@@ -28,6 +28,8 @@ tags:
     description: Invitation issuance and acceptance, invitation batches, and validated onboarding imports.
   - name: Roles and access
     description: Roles, scoped Role Bindings, and authorized audit history.
+  - name: Data retention
+    description: Institution retention policy, records completion, preservation holds, approved cleanup, notices, and temporary examination exports.
   - name: Access policy
     description: Installation-wide admission and authentication policy, preflight checks, and safe public discovery.
   - name: Examinations

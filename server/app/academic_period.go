@@ -30,11 +30,15 @@ type CreateAcademicPeriodCommand struct {
 	IdempotencyKey                 string
 }
 type UpdateAcademicPeriodCommand struct {
+	ExpectedRevision               *int64
 	ID                             string
 	Name, DisplayName, Description *string
 	StartAt, EndAt                 *int64
 }
-type ArchiveAcademicPeriodCommand struct{ ID string }
+type ArchiveAcademicPeriodCommand struct {
+	ExpectedRevision *int64
+	ID               string
+}
 
 type academicPeriodStore interface {
 	Get(context.Context, string) (*model.AcademicPeriod, error)
@@ -201,6 +205,9 @@ func (s *academicPeriodService) Update(ctx context.Context, invocation Invocatio
 	if err != nil {
 		return nil, err
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_period.conflict"); err != nil {
+		return nil, err
+	}
 	candidate := *current
 	if command.Name != nil {
 		candidate.Name = *command.Name
@@ -261,6 +268,9 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 	if err != nil {
 		return err
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_period.conflict"); err != nil {
+		return err
+	}
 	_, err = runAuditedMutation(
 		ctx,
 		s.audit,
@@ -276,7 +286,8 @@ func (s *academicPeriodService) Archive(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicPeriod, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicPeriodArchive{
-				ID: current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				ExpectedRevision: current.Revision,
+				ID:               current.ID.String(), ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

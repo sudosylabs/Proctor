@@ -36,6 +36,7 @@ type ExamStarterWorkspaceMutation struct {
 	AuditEventID           string
 	AuditAt                int64
 	EntryID                model.StarterWorkspaceEntryID
+	Recursive              bool
 	Path                   string
 	ObjectID               model.StarterWorkspaceObjectID
 	ExpectedContentVersion model.WorkspaceContentVersion
@@ -63,6 +64,10 @@ type ExamStarterWorkspaceMutationResult struct {
 // staged object and publishes its verified metadata. Replacements make the
 // prior object reclaimable only after the safety window. Exact replays return
 // the committed result without repeating mutation or changing cleanup state.
+// RemoveEntry rejects non-empty directories unless Recursive is explicit. A
+// recursive removal archives the complete subtree under the expected Draft
+// revision, advances that revision once, and retires owned objects atomically.
+// Retained outcomes and published or admitted content pins prevent cleanup.
 type ExamStarterWorkspaceStore interface {
 	List(context.Context, model.ExamID) ([]ExamStarterWorkspaceItem, error)
 	GetFile(context.Context, model.ExamID, model.StarterWorkspaceEntryID) (*ExamStarterWorkspaceItem, error)

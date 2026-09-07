@@ -10,6 +10,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"sync"
@@ -34,6 +35,9 @@ type executionGrantRow struct {
 	LifecyclePending       bool           `db:"lifecycle_pending"`
 	PendingSittingState    sql.NullString `db:"pending_sitting_state"`
 	PendingSittingRevision sql.NullInt64  `db:"pending_sitting_revision"`
+	AppliedWorkspaceCursor int64          `db:"applied_workspace_cursor"`
+	WorkspacePending       bool           `db:"workspace_pending"`
+	PendingWorkspaceCursor int64          `db:"pending_workspace_cursor"`
 	CreatedAt              time.Time      `db:"created_at"`
 	UpdatedAt              time.Time      `db:"updated_at"`
 	ReleasedAt             sql.NullTime   `db:"released_at"`
@@ -46,10 +50,11 @@ type executionGrantConvergenceRow struct {
 	AttemptState            string `db:"attempt_state"`
 	SittingState            string `db:"sitting_state"`
 	SittingRevision         int64  `db:"sitting_revision"`
+	WorkspaceCursor         int64  `db:"workspace_cursor"`
 	AcknowledgementRequired bool   `db:"acknowledgement_required"`
 }
 
-const executionGrantColumns = `id,exam_attempt_id,host_id,image,network,state,applied_sitting_state,applied_sitting_revision,lifecycle_pending,pending_sitting_state,pending_sitting_revision,created_at,updated_at,released_at,revoked_at,revision`
+const executionGrantColumns = `id,exam_attempt_id,host_id,image,network,state,applied_sitting_state,applied_sitting_revision,lifecycle_pending,pending_sitting_state,pending_sitting_revision,applied_workspace_cursor,workspace_pending,pending_workspace_cursor,created_at,updated_at,released_at,revoked_at,revision`
 
 func newSQLExecutionGrantStore(sqlStore *SQLStore) store.ExecutionGrantStore {
 	return &SQLExecutionGrantStore{SQLStore: sqlStore}
@@ -116,7 +121,8 @@ func (s SQLExecutionGrantStore) Reassign(ctx context.Context, change store.Execu
 			return nil, store.NewErrConflict("execution_grant", "revision", nil)
 		}
 		if err := tx.Get(ctx, &previous, `UPDATE execution_grants SET state='released',released_at=$1,updated_at=$1,
-			lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,revision=revision+1
+			lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,
+		workspace_pending=false,pending_workspace_cursor=0,revision=revision+1
 			WHERE id=$2 AND revision=$3 RETURNING `+executionGrantColumns,
 			model.TimeUTC(change.Replacement.At), change.CurrentID.String(), change.CurrentRevision); err != nil {
 			return nil, fmt.Errorf("release replaced execution grant: %w", err)
@@ -137,11 +143,19 @@ func (s SQLExecutionGrantStore) Reassign(ctx context.Context, change store.Execu
 	})
 }
 
-func (s SQLExecutionGrantStore) MarkReady(ctx context.Context, id model.ExecutionGrantID, revision int64, at time.Time) (*model.ExecutionGrant, error) {
-	if !id.IsValid() || revision < 1 || at.IsZero() {
-		return nil, store.NewErrInvalidInput("execution_grant", "mark_ready", nil)
+func (s SQLExecutionGrantStore) PrepareWorkspaceEffect(ctx context.Context, id model.ExecutionGrantID, revision, cursor int64, at time.Time) (*model.ExecutionGrant, error) {
+	return s.workspaceEffect(ctx, id, revision, cursor, at, false)
+}
+
+func (s SQLExecutionGrantStore) MarkWorkspaceApplied(ctx context.Context, id model.ExecutionGrantID, revision, cursor int64, at time.Time) (*model.ExecutionGrant, error) {
+	return s.workspaceEffect(ctx, id, revision, cursor, at, true)
+}
+
+func (s SQLExecutionGrantStore) workspaceEffect(ctx context.Context, id model.ExecutionGrantID, revision, cursor int64, at time.Time, complete bool) (*model.ExecutionGrant, error) {
+	if !id.IsValid() || revision < 1 || cursor < 0 || at.IsZero() {
+		return nil, store.NewErrInvalidInput("execution_grant", "workspace_effect", nil)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "mark execution grant ready", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExecutionGrant, error) {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "record execution Workspace effect", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExecutionGrant, error) {
 		var attemptID string
 		if err := tx.Get(ctx, &attemptID, `SELECT exam_attempt_id FROM execution_grants WHERE id=$1`, id.String()); err != nil {
 			return nil, translateError("execution_grant", id.String(), err)
@@ -153,15 +167,29 @@ func (s SQLExecutionGrantStore) MarkReady(ctx context.Context, id model.Executio
 		if err = lockExecutableAttempt(ctx, tx, parsedAttemptID); err != nil {
 			return nil, err
 		}
+		var currentCursor int64
+		if err = tx.Get(ctx, &currentCursor, `SELECT cursor FROM exam_attempt_workspaces WHERE exam_attempt_id=$1 FOR SHARE`, attemptID); err != nil {
+			return nil, translateError("execution_workspace", attemptID, err)
+		}
+		if currentCursor != cursor {
+			return nil, store.NewErrConflict("execution_grant", "workspace_cursor", nil)
+		}
+		set := `workspace_pending=true,pending_workspace_cursor=$4`
+		condition := `NOT workspace_pending`
+		if complete {
+			set = `state='ready',applied_workspace_cursor=$4,workspace_pending=false,pending_workspace_cursor=0`
+			condition = `workspace_pending AND pending_workspace_cursor=$4`
+		}
 		var row executionGrantRow
-		err = tx.Get(ctx, &row, `UPDATE execution_grants SET state='ready',updated_at=$1,revision=revision+1
-			WHERE id=$2 AND revision=$3 AND state='reserved' RETURNING `+executionGrantColumns,
-			model.TimeUTC(at), id.String(), revision)
+		err = tx.Get(ctx, &row, `UPDATE execution_grants SET `+set+`,updated_at=GREATEST(updated_at,$1),revision=revision+1
+			WHERE id=$2 AND revision=$3 AND state IN ('reserved','ready') AND NOT lifecycle_pending
+			AND applied_workspace_cursor<=$4 AND `+condition+` RETURNING `+executionGrantColumns,
+			model.TimeUTC(at), id.String(), revision, cursor)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, store.NewErrConflict("execution_grant", "revision_or_state", err)
+			return nil, store.NewErrConflict("execution_grant", "workspace_effect", err)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("mark execution grant ready: %w", err)
+			return nil, fmt.Errorf("record execution Workspace effect: %w", err)
 		}
 		return executionGrantModel(row)
 	})
@@ -175,7 +203,7 @@ func (s SQLExecutionGrantStore) PrepareSittingStateEffect(ctx context.Context, i
 	err := s.GetMaster().Get(ctx, &row, `UPDATE execution_grants g
 		SET lifecycle_pending=true,pending_sitting_state=$1,pending_sitting_revision=$2,updated_at=$3,revision=g.revision+1
 		FROM exam_attempts a,exam_sittings s
-		WHERE g.id=$4 AND g.revision=$5 AND g.state='ready' AND NOT g.lifecycle_pending
+		WHERE g.id=$4 AND g.revision=$5 AND g.state='ready' AND NOT g.lifecycle_pending AND NOT g.workspace_pending
 		AND a.id=g.exam_attempt_id AND s.id=a.exam_sitting_id AND s.exam_id=a.exam_id AND s.state=$1 AND s.revision=$2
 		RETURNING `+prefixedExecutionGrantColumns("g"), string(state), sittingRevision, model.TimeUTC(at), id.String(), revision)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -215,7 +243,8 @@ func (s SQLExecutionGrantStore) Release(ctx context.Context, attemptID model.Exa
 	}
 	var row executionGrantRow
 	err := s.GetMaster().Get(ctx, &row, `UPDATE execution_grants SET state='released',released_at=$1,updated_at=$1,
-		lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,revision=revision+1
+		lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,
+		workspace_pending=false,pending_workspace_cursor=0,revision=revision+1
 		WHERE exam_attempt_id=$2 AND state IN ('reserved','ready') RETURNING `+executionGrantColumns,
 		model.TimeUTC(at), attemptID.String())
 	if err != nil {
@@ -230,7 +259,8 @@ func (s SQLExecutionGrantStore) ReleaseGrant(ctx context.Context, id model.Execu
 	}
 	var row executionGrantRow
 	err := s.GetMaster().Get(ctx, &row, `UPDATE execution_grants SET state='released',released_at=$1,updated_at=$1,
-		lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,revision=revision+1
+		lifecycle_pending=false,pending_sitting_state=NULL,pending_sitting_revision=NULL,
+		workspace_pending=false,pending_workspace_cursor=0,revision=revision+1
 		WHERE id=$2 AND state IN ('reserved','ready') RETURNING `+executionGrantColumns, model.TimeUTC(at), id.String())
 	if err != nil {
 		return nil, translateError("execution_grant", id.String(), err)
@@ -242,13 +272,13 @@ func (s SQLExecutionGrantStore) MarkRevoked(ctx context.Context, id model.Execut
 	return s.transition(ctx, id, revision, at, "released", `revoked_at=$1,updated_at=$1,revision=revision+1`, "mark execution grant revoked")
 }
 
-func (s SQLExecutionGrantStore) ListPendingRevocations(ctx context.Context, limit int) ([]*model.ExecutionGrant, error) {
-	if limit < 1 || limit > 200 {
+func (s SQLExecutionGrantStore) ListPendingRevocations(ctx context.Context, after model.ExecutionGrantID, limit int) ([]*model.ExecutionGrant, error) {
+	if limit < 1 || limit > 200 || (!after.IsZero() && !after.IsValid()) {
 		return nil, store.NewErrInvalidInput("execution_grant", "limit", limit)
 	}
 	var rows []executionGrantRow
 	if err := s.GetMaster().Select(ctx, &rows, `SELECT `+executionGrantColumns+` FROM execution_grants
-		WHERE state='released' AND revoked_at IS NULL ORDER BY released_at,id LIMIT $1`, limit); err != nil {
+		WHERE state='released' AND revoked_at IS NULL AND id>$1 ORDER BY id LIMIT $2`, after.String(), limit); err != nil {
 		return nil, fmt.Errorf("list pending execution revocations: %w", err)
 	}
 	result := make([]*model.ExecutionGrant, 0, len(rows))
@@ -265,6 +295,7 @@ func (s SQLExecutionGrantStore) ListPendingRevocations(ctx context.Context, limi
 type sqlExecutionLifecycleLease struct {
 	conn    *sqlx.Conn
 	grantID model.ExecutionGrantID
+	slots   chan struct{}
 	once    sync.Once
 	err     error
 }
@@ -282,10 +313,17 @@ func (lease *sqlExecutionLifecycleLease) Validate(ctx context.Context) error {
 
 func (lease *sqlExecutionLifecycleLease) Release(ctx context.Context) error {
 	lease.once.Do(func() {
+		defer func() { <-lease.slots }()
 		var unlocked bool
 		lease.err = lease.conn.GetContext(ctx, &unlocked, `SELECT pg_advisory_unlock(hashtextextended($1,0))`, lease.grantID.String())
 		if lease.err == nil && !unlocked {
 			lease.err = errors.New("execution lifecycle advisory lock was not held")
+		}
+		if lease.err != nil {
+			// An interrupted unlock must not return a possibly locked session
+			// to the general pool. Closing the physical connection releases it.
+			discardExecutionLeaseConnection(lease.conn)
+			return
 		}
 		lease.err = errors.Join(lease.err, lease.conn.Close())
 	})
@@ -296,15 +334,51 @@ func (s SQLExecutionGrantStore) AcquireLifecycleLease(ctx context.Context, id mo
 	if !id.IsValid() {
 		return nil, store.NewErrInvalidInput("execution_grant", "lifecycle_lease", nil)
 	}
-	conn, err := s.GetMaster().DB().Connx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("acquire execution lifecycle connection: %w", err)
+	slots := s.executionLeaseSlots
+	for {
+		poolLimit := s.GetMaster().DB().Stats().MaxOpenConnections
+		if poolLimit < 2 || cap(slots) < 1 || cap(slots) >= poolLimit {
+			return nil, errors.New("execution lifecycle leases require pool capacity for ordinary queries")
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case slots <- struct{}{}:
+		}
+		conn, err := s.GetMaster().DB().Connx(ctx)
+		if err != nil {
+			<-slots
+			return nil, fmt.Errorf("acquire execution lifecycle connection: %w", err)
+		}
+		var locked bool
+		if err = conn.GetContext(ctx, &locked, `SELECT pg_try_advisory_lock(hashtextextended($1,0))`, id.String()); err != nil {
+			discardExecutionLeaseConnection(conn)
+			<-slots
+			return nil, fmt.Errorf("acquire execution lifecycle advisory lock: %w", err)
+		}
+		if locked {
+			return &sqlExecutionLifecycleLease{conn: conn, grantID: id, slots: slots}, nil
+		}
+		err = conn.Close()
+		<-slots
+		if err != nil {
+			return nil, fmt.Errorf("return execution lifecycle connection: %w", err)
+		}
+		// Waiters must leave pool capacity for the lease holder's durable
+		// transitions. A blocking advisory lock would occupy that capacity.
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
-	if _, err = conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1,0))`, id.String()); err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("acquire execution lifecycle advisory lock: %w", err)
-	}
-	return &sqlExecutionLifecycleLease{conn: conn, grantID: id}, nil
+}
+
+func discardExecutionLeaseConnection(conn *sqlx.Conn) {
+	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+	_ = conn.Close()
 }
 
 func (s SQLExecutionGrantStore) CurrentForReconciliation(ctx context.Context, id model.ExecutionGrantID) (*store.ExecutionGrantConvergence, error) {
@@ -313,10 +387,11 @@ func (s SQLExecutionGrantStore) CurrentForReconciliation(ctx context.Context, id
 	}
 	var row executionGrantConvergenceRow
 	if err := s.GetMaster().Get(ctx, &row, `SELECT `+prefixedExecutionGrantColumns("g")+`,
-		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,
+		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,w.cursor AS workspace_cursor,
 		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
 		WHERE g.id=$1 AND g.state IN ('reserved','ready')`, id.String()); err != nil {
 		return nil, translateError("execution_grant", id.String(), err)
 	}
@@ -329,10 +404,11 @@ func (s SQLExecutionGrantStore) ListCurrentForReconciliation(ctx context.Context
 	}
 	var rows []executionGrantConvergenceRow
 	if err := s.GetMaster().Select(ctx, &rows, `SELECT `+prefixedExecutionGrantColumns("g")+`,
-		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,
+		a.state AS attempt_state,s.state AS sitting_state,s.revision AS sitting_revision,w.cursor AS workspace_cursor,
 		`+pendingCorrectionAcknowledgementSQL+` AS acknowledgement_required FROM execution_grants g
 		JOIN exam_attempts a ON a.id=g.exam_attempt_id
 		JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
+		JOIN exam_attempt_workspaces w ON w.exam_attempt_id=a.id
 		WHERE g.state IN ('reserved','ready') AND g.id>$1 ORDER BY g.id LIMIT $2`, after.String(), limit); err != nil {
 		return nil, fmt.Errorf("list current execution grants for reconciliation: %w", err)
 	}
@@ -357,11 +433,11 @@ func executionGrantConvergenceModel(row executionGrantConvergenceRow) (*store.Ex
 		return nil, fmt.Errorf("execution grant persisted invalid Attempt state")
 	}
 	sittingState := model.ExamSittingState(row.SittingState)
-	if !sittingState.IsValid() || row.SittingRevision < 1 {
+	if !sittingState.IsValid() || row.SittingRevision < 1 || row.WorkspaceCursor < 0 {
 		return nil, fmt.Errorf("execution grant persisted invalid Sitting lifecycle")
 	}
 	return &store.ExecutionGrantConvergence{Grant: grant, AttemptState: attemptState,
-		SittingState: sittingState, SittingRevision: row.SittingRevision,
+		SittingState: sittingState, SittingRevision: row.SittingRevision, WorkspaceCursor: row.WorkspaceCursor,
 		AcknowledgementRequired: row.AcknowledgementRequired}, nil
 }
 
@@ -390,6 +466,7 @@ func prefixedExecutionGrantColumns(prefix string) string {
 	return prefix + ".id," + prefix + ".exam_attempt_id," + prefix + ".host_id," + prefix + ".image," + prefix + ".network," +
 		prefix + ".state," + prefix + ".applied_sitting_state," + prefix + ".applied_sitting_revision," +
 		prefix + ".lifecycle_pending," + prefix + ".pending_sitting_state," + prefix + ".pending_sitting_revision," +
+		prefix + ".applied_workspace_cursor," + prefix + ".workspace_pending," + prefix + ".pending_workspace_cursor," +
 		prefix + ".created_at," + prefix + ".updated_at," + prefix + ".released_at," + prefix + ".revoked_at," + prefix + ".revision"
 }
 
@@ -573,6 +650,7 @@ func executionGrantModel(row executionGrantRow) (*model.ExecutionGrant, error) {
 		CreatedAt:              model.TimeUTC(row.CreatedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
 		ReleasedAt: OptionalTimeFromNullTime(row.ReleasedAt), RevokedAt: OptionalTimeFromNullTime(row.RevokedAt), Revision: row.Revision}
 	grant.LifecyclePending = row.LifecyclePending
+	grant.AppliedWorkspaceCursor, grant.WorkspacePending, grant.PendingWorkspaceCursor = row.AppliedWorkspaceCursor, row.WorkspacePending, row.PendingWorkspaceCursor
 	if row.PendingSittingState.Valid {
 		grant.PendingSittingState = model.ExamSittingState(row.PendingSittingState.String)
 	}

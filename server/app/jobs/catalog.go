@@ -41,13 +41,23 @@ type CatalogDependencies struct {
 	Users                          DefaultProfilePictureReconciliationUserLister
 	DefaultProfilePictureJobs      ProfilePictureDefaultJobs
 
-	Files                   FilePurgeStore
-	FileContent             FileRevisionContentPurger
-	StarterWorkspaces       StarterWorkspaceCleanupStore
-	StarterWorkspaceContent StarterWorkspaceObjectPurger
-	AttemptWorkspaces       AttemptWorkspaceCleanupStore
-	AttemptWorkspaceContent AttemptWorkspaceObjectPurger
-	CommandOutcomes         CommandOutcomeCleaner
+	Files                     FilePurgeStore
+	FileContent               FileRevisionContentPurger
+	StarterWorkspaces         StarterWorkspaceCleanupStore
+	StarterWorkspaceContent   StarterWorkspaceObjectPurger
+	AttemptWorkspaces         AttemptWorkspaceCleanupStore
+	AttemptWorkspaceContent   AttemptWorkspaceObjectPurger
+	CommandOutcomes           CommandOutcomeCleaner
+	Retention                 RetentionMaintenanceStore
+	RetentionContent          RetentionContentPurger
+	RetentionAudit            RetentionSystemAuditor
+	ExamExports               ExamExportBuilder
+	ExamExportStore           ExamExportMaintenanceStore
+	ExamExportContent         ExamExportPurger
+	RetentionExpiry           RetentionExpiryMaintenanceStore
+	RetentionExpiryAudit      RetentionExpirySystemAuditor
+	RetentionNotices          RetentionNoticeStore
+	RetentionNoticeDispatcher RetentionNoticeDispatcher
 
 	MailDeliveries         MailDeliveryLifecycleStore
 	MailSender             appmail.Sender
@@ -101,6 +111,12 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		examSittingLifecycleDescriptor(examSittingLifecycleHandler{reconciler: deps.ExamSittingLifecycle}),
 		examSittingSealingDescriptor(examSittingSealingHandler{service: deps.ExamSittingSealing}),
 		examSittingLifecycleRecoveryDescriptor(examSittingLifecycleRecoveryHandler{service: deps.ExamSittingLifecycle}),
+		examExportBuildDescriptor(examExportBuildHandler{service: deps.ExamExports}),
+		examExportCleanupDescriptor(examExportCleanupHandler{exports: deps.ExamExportStore, content: deps.ExamExportContent}),
+		retentionDescriptor(model.JobTypeRetentionExpire, retentionExpiryHandler{records: deps.RetentionExpiry, audit: deps.RetentionExpiryAudit, jobs: deps.JobStore, now: now}),
+		retentionDescriptor(model.JobTypeRetentionReconcile, retentionHandler{records: deps.Retention, audit: deps.RetentionAudit, jobs: deps.JobStore, now: now}),
+		retentionDescriptor(model.JobTypeRetentionPurge, retentionHandler{records: deps.Retention, content: deps.RetentionContent, jobs: deps.JobStore, now: now, purge: true}),
+		retentionDescriptor(model.JobTypeRetentionNotices, retentionNoticeHandler{notices: deps.RetentionNotices, dispatcher: deps.RetentionNoticeDispatcher, jobs: deps.JobStore, now: now}),
 	}
 	if deps.Onboarding != nil {
 		descriptors = append(descriptors,
@@ -110,7 +126,7 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		)
 	}
 	descriptors = append(descriptors, jobHistoryCleanupDescriptor(jobHistoryCleanupHandler{
-		jobs: deps.JobStore,
+		jobs: deps.JobStore, continuations: deps.JobStore, now: now,
 		policies: append(retentionPolicies(descriptors), store.JobRetentionPolicy{
 			Type: model.JobTypeCleanup, SucceededCanceledAge: 30 * 24 * time.Hour, FailedAge: 90 * 24 * time.Hour,
 		}),
@@ -124,6 +140,11 @@ func NewCatalog(deps CatalogDependencies) Catalog {
 		{Name: "mail-cleanup", Proposer: mailCleanupProposer{jobs: deps.JobStore, now: now}},
 		{Name: "invitation-maintenance", Proposer: invitationMaintenanceProposer{jobs: deps.JobStore, now: now}},
 		{Name: "exam-sitting-lifecycle-recovery", Proposer: examSittingLifecycleRecoveryProposer{jobs: deps.JobStore, now: now}},
+		{Name: "exam-export-cleanup", Interval: time.Hour, Proposer: examExportCleanupProposer{jobs: deps.JobStore, now: now}},
+		{Name: "retention-expire", Interval: time.Hour, Proposer: retentionExpiryProposer{jobs: deps.JobStore, now: now}},
+		{Name: "retention-reconcile", Interval: time.Hour, Proposer: retentionProposer{jobs: deps.JobStore, now: now, jobType: model.JobTypeRetentionReconcile}},
+		{Name: "retention-purge", Interval: time.Hour, Proposer: retentionProposer{jobs: deps.JobStore, now: now, jobType: model.JobTypeRetentionPurge}},
+		{Name: "retention-notices", Interval: 10 * time.Minute, Proposer: retentionProposer{jobs: deps.JobStore, now: now, jobType: model.JobTypeRetentionNotices}},
 	}
 	return Catalog{Descriptors: descriptors, Recurrences: recurrences}
 }

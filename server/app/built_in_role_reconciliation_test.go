@@ -46,6 +46,7 @@ func TestBootstrapServiceReconcilesSystemAdministratorRoleFromRegistry(t *testin
 		LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3},
 		bootstrapProtection(),
 		"node-reconcile", func() time.Time { return at },
+		administratorRecoveryPolicy{},
 	)
 
 	if err := service.ReconcileSystemAdministratorRole(context.Background()); err != nil {
@@ -78,6 +79,7 @@ func TestBootstrapServiceFailsStartupWhenSystemAdministratorRoleCannotReconcile(
 		LoginRateLimitPolicy{Window: time.Minute, MaximumSourceAttempts: 3},
 		bootstrapProtection(),
 		"node-reconcile", model.NowUTC,
+		administratorRecoveryPolicy{},
 	)
 
 	err := service.ReconcileSystemAdministratorRole(context.Background())

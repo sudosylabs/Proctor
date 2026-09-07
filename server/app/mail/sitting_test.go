@@ -10,7 +10,6 @@ package mail
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -58,7 +57,10 @@ func TestSittingComposerFreezesAndSelectsRecipientLocales(t *testing.T) {
 		if prepareErr != nil {
 			t.Fatalf("PrepareRecipient(%q): %v", test.locale, prepareErr)
 		}
-		payload := openSittingTestPayload(t, sealer, delivery)
+		payload, openErr := OpenDelivery(sealer, delivery)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
 		if !strings.Contains(payload.HTML, `src="cid:`+testLockupCID+`"`) {
 			t.Fatal("fan-out changed the immutable logo reference")
 		}
@@ -103,21 +105,4 @@ func sittingTestSealer(t *testing.T) *secretseal.Sealer {
 		t.Fatal(err)
 	}
 	return sealer
-}
-
-func openSittingTestPayload(t *testing.T, sealer *secretseal.Sealer, delivery *model.MailDelivery) FrozenPayloadV1 {
-	t.Helper()
-	var envelope secretseal.Envelope
-	if err := json.Unmarshal(delivery.EncryptedPayload, &envelope); err != nil {
-		t.Fatal(err)
-	}
-	plaintext, err := sealer.Open(secretseal.Binding{Purpose: DeliverySealingPurpose, Owner: delivery.ID.String()}, envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload FrozenPayloadV1
-	if err = json.Unmarshal(plaintext, &payload); err != nil {
-		t.Fatal(err)
-	}
-	return payload
 }

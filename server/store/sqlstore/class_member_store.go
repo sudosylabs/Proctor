@@ -914,3 +914,29 @@ func (r classMemberRow) model() (*model.ClassMember, error) {
 }
 
 var _ store.ClassMemberStore = (*SQLClassMemberStore)(nil)
+
+func (s SQLClassMemberStore) ListPageByClass(ctx context.Context, options store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {
+	if !options.ClassID.IsValid() || options.ActiveAt < 0 || options.Limit < 1 || options.Limit > 200 ||
+		options.AfterID.IsZero() != options.AfterUserID.IsZero() ||
+		(!options.AfterID.IsZero() && (!options.AfterID.IsValid() || !options.AfterUserID.IsValid())) {
+		return nil, store.NewErrInvalidInput("class_member", "page", nil)
+	}
+	query := s.query.Where(sq.Eq{"class_members.class_id": options.ClassID.String(), "class_members.archived_at": nil})
+	if options.ActiveAt > 0 {
+		at := model.TimeFromMillis(options.ActiveAt)
+		query = query.Where(sq.LtOrEq{"class_members.start_at": at}).
+			Where("(class_members.end_at IS NULL OR class_members.end_at > ?)", at)
+	}
+	if !options.AfterID.IsZero() {
+		query = query.Where("(class_members.user_id, class_members.id) > (?, ?)", options.AfterUserID.String(), options.AfterID.String())
+	}
+	members, err := s.selectMembers(ctx, query.OrderBy("class_members.user_id", "class_members.id").Limit(uint64(options.Limit+1)))
+	if err != nil {
+		return nil, err
+	}
+	more := len(members) > options.Limit
+	if more {
+		members = members[:options.Limit]
+	}
+	return &store.ClassMemberPage{Members: members, HasMore: more}, nil
+}

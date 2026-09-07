@@ -45,7 +45,7 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 		return MailOccurrenceAccountToken, true
 	case MailTemplateIdentityPasswordChanged, MailTemplateIdentityEmailChangeWarningOld, MailTemplateIdentityEmailVerifiedByAdmin,
 		MailTemplateIdentityAccountDisabled, MailTemplateIdentityAccountEnabled, MailTemplateIdentitySessionsRevokedByAdmin,
-		MailTemplateIdentityMFAEnabled, MailTemplateIdentityMFADisabled, MailTemplateIdentityMFARecoveryCodesRegenerated,
+		MailTemplateIdentityMFAReset, MailTemplateIdentityMFAEnabled, MailTemplateIdentityMFADisabled, MailTemplateIdentityMFARecoveryCodesRegenerated,
 		MailTemplateIdentityPersonalAccessTokenCreated, MailTemplateIdentityPersonalAccessTokenEnabled,
 		MailTemplateIdentityPersonalAccessTokenDisabled, MailTemplateIdentityPersonalAccessTokenRevoked:
 		return MailOccurrenceSecurityNotice, true
@@ -62,7 +62,7 @@ func (key MailTemplateKey) OccurrenceKind() (MailOccurrenceKind, bool) {
 		MailTemplateExamSittingAssignmentRemoved:
 		return MailOccurrenceSittingSchedule, true
 	case MailTemplateExamManagerAdded, MailTemplateExamManagerRemoved, MailTemplateExamOwnershipTransferredToYou,
-		MailTemplateExamOwnershipTransferredFromYou:
+		MailTemplateExamOwnershipTransferredFromYou, MailTemplateExamRetentionScheduled:
 		return MailOccurrenceExamManagement, true
 	case MailTemplateExamSubmissionReceived, MailTemplateExamSubmissionManagerEnded, MailTemplateExamSubmissionAutomaticallySealed:
 		return MailOccurrenceSubmissionReceipt, true
@@ -85,6 +85,8 @@ const (
 	MailTemplateIdentityAccountDisabled              MailTemplateKey = "identity.account_disabled"
 	MailTemplateIdentityAccountEnabled               MailTemplateKey = "identity.account_enabled"
 	MailTemplateIdentitySessionsRevokedByAdmin       MailTemplateKey = "identity.sessions_revoked_by_admin"
+	MailTemplateIdentityMFAReset                     MailTemplateKey = "identity.mfa_reset"
+	MailTemplateExamRetentionScheduled               MailTemplateKey = "exam.retention_scheduled"
 	MailTemplateIdentityMFAEnabled                   MailTemplateKey = "identity.mfa_enabled"
 	MailTemplateIdentityMFADisabled                  MailTemplateKey = "identity.mfa_disabled"
 	MailTemplateIdentityMFARecoveryCodesRegenerated  MailTemplateKey = "identity.mfa_recovery_codes_regenerated"
@@ -156,6 +158,8 @@ var mailTemplateKeys = []MailTemplateKey{
 	MailTemplateIdentityAccountDisabled,
 	MailTemplateIdentityAccountEnabled,
 	MailTemplateIdentitySessionsRevokedByAdmin,
+	MailTemplateIdentityMFAReset,
+	MailTemplateExamRetentionScheduled,
 	MailTemplateIdentityMFAEnabled,
 	MailTemplateIdentityMFADisabled,
 	MailTemplateIdentityMFARecoveryCodesRegenerated,

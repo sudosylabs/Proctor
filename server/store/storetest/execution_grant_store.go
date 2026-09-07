@@ -68,13 +68,18 @@ func TestExecutionGrantStore(t *testing.T, ss store.Store) {
 		t.Fatalf("Reserve(conflicting) error = %v, want conflict", err)
 	}
 
-	if _, err = ss.ExecutionGrant().MarkReady(ctx, reserved.ID, reserved.Revision+1, now.Add(time.Millisecond)); !store.IsConflict(err) {
-		t.Fatalf("MarkReady(stale) error = %v, want conflict", err)
+	if _, err = ss.ExecutionGrant().PrepareWorkspaceEffect(ctx, reserved.ID, reserved.Revision+1, snapshot.Cursor, now.Add(time.Millisecond)); !store.IsConflict(err) {
+		t.Fatalf("PrepareWorkspaceEffect(stale) error = %v, want conflict", err)
 	}
-	ready, err := ss.ExecutionGrant().MarkReady(ctx, reserved.ID, reserved.Revision, now.Add(2*time.Millisecond))
+	if _, err = ss.ExecutionGrant().PrepareWorkspaceEffect(ctx, reserved.ID, reserved.Revision, snapshot.Cursor+1, now.Add(time.Millisecond)); !store.IsConflict(err) {
+		t.Fatalf("PrepareWorkspaceEffect(stale cursor) error = %v, want conflict", err)
+	}
+	projecting, err := ss.ExecutionGrant().PrepareWorkspaceEffect(ctx, reserved.ID, reserved.Revision, snapshot.Cursor, now.Add(time.Millisecond))
 	requireNoError(t, err)
-	if ready.State != model.ExecutionGrantReady || ready.Revision != reserved.Revision+1 {
-		t.Fatalf("MarkReady() = %#v", ready)
+	ready, err := ss.ExecutionGrant().MarkWorkspaceApplied(ctx, projecting.ID, projecting.Revision, snapshot.Cursor, now.Add(2*time.Millisecond))
+	requireNoError(t, err)
+	if ready.State != model.ExecutionGrantReady || ready.Revision != reserved.Revision+2 || ready.WorkspacePending || ready.AppliedWorkspaceCursor != snapshot.Cursor {
+		t.Fatalf("MarkWorkspaceApplied() = %#v", ready)
 	}
 	current, err := ss.ExecutionGrant().Current(ctx, connected.Attempt.ID)
 	requireNoError(t, err)
@@ -128,10 +133,15 @@ func TestExecutionGrantStore(t *testing.T, ss store.Store) {
 		reassigned.Current.State != model.ExecutionGrantReserved || reassigned.Current.HostID != "runner-b" {
 		t.Fatalf("Reassign() = %#v", reassigned)
 	}
-	pending, err := ss.ExecutionGrant().ListPendingRevocations(ctx, 10)
+	pending, err := ss.ExecutionGrant().ListPendingRevocations(ctx, "", 10)
 	requireNoError(t, err)
 	if len(pending) != 1 || pending[0].ID != reassigned.Previous.ID {
 		t.Fatalf("ListPendingRevocations() = %#v", pending)
+	}
+	afterPending, err := ss.ExecutionGrant().ListPendingRevocations(ctx, pending[0].ID, 10)
+	requireNoError(t, err)
+	if len(afterPending) != 0 {
+		t.Fatalf("ListPendingRevocations(after last) = %#v", afterPending)
 	}
 	_, err = ss.ExecutionGrant().MarkRevoked(ctx, reassigned.Previous.ID, reassigned.Previous.Revision, now.Add(4*time.Millisecond))
 	requireNoError(t, err)
@@ -144,7 +154,7 @@ func TestExecutionGrantStore(t *testing.T, ss store.Store) {
 	if _, err = ss.ExecutionGrant().Current(ctx, connected.Attempt.ID); !store.IsNotFound(err) {
 		t.Fatalf("Current(released) error = %v, want not found", err)
 	}
-	pending, err = ss.ExecutionGrant().ListPendingRevocations(ctx, 10)
+	pending, err = ss.ExecutionGrant().ListPendingRevocations(ctx, "", 10)
 	requireNoError(t, err)
 	if len(pending) != 1 || pending[0].ID != exactlyReleased.ID {
 		t.Fatalf("ListPendingRevocations(after release) = %#v", pending)
@@ -155,16 +165,70 @@ func TestExecutionGrantStore(t *testing.T, ss store.Store) {
 		AttemptID: connected.Attempt.ID, HostID: "runner-c", Image: reservation.Image, Network: reservation.Network,
 		At: now.Add(7 * time.Millisecond)})
 	requireNoError(t, err)
+	projecting, err = ss.ExecutionGrant().PrepareWorkspaceEffect(ctx, last.ID, last.Revision, snapshot.Cursor, now.Add(7*time.Millisecond))
+	requireNoError(t, err)
+	access := store.ExamAttemptWorkspaceMutationAccess{AttemptID: connected.Attempt.ID,
+		ParticipationID: connected.Participation.ID, Generation: connected.Participation.Generation,
+		CandidateUserID: fixture.candidate.ID, SessionID: fixture.session.ID,
+		DesktopRegistrationID: fixture.session.DesktopRegistrationID, DPoPKeyThumbprint: fixture.session.DPoPKeyThumbprint,
+		ConnectionID: connected.Connection.ID, ContinuityCredentialHash: input.ContinuityCredentialHash}
+	mutation := &store.ExamAttemptWorkspaceMutation{Access: access, Operation: model.AttemptWorkspaceMutationCreateDirectory,
+		EntryID: model.NewAttemptWorkspaceEntryID(), DestinationPath: "during-projection",
+		AuditEventID: saveExamAttemptAudit(t, ctx, ss, fixture).ID.String(), AuditAt: model.GetMillis()}
+	changed, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, mutation,
+		examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "projection-race", "projection-race"))
+	requireNoError(t, err)
+	if _, err = ss.ExecutionGrant().MarkWorkspaceApplied(ctx, projecting.ID, projecting.Revision, snapshot.Cursor, now.Add(8*time.Millisecond)); !store.IsConflict(err) {
+		t.Fatalf("MarkWorkspaceApplied(overtaken) = %v, want conflict", err)
+	}
+	uncertain, err := ss.ExecutionGrant().CurrentForReconciliation(ctx, last.ID)
+	requireNoError(t, err)
+	if !uncertain.Grant.WorkspacePending || uncertain.WorkspaceCursor != changed.Change.Cursor || uncertain.Grant.AppliedWorkspaceCursor != snapshot.Cursor {
+		t.Fatalf("uncertain projection = %#v", uncertain)
+	}
 	released, err := ss.ExecutionGrant().Release(ctx, connected.Attempt.ID, now.Add(8*time.Millisecond))
 	requireNoError(t, err)
-	if released.ID != last.ID {
+	if released.ID != last.ID || released.WorkspacePending || released.PendingWorkspaceCursor != 0 {
 		t.Fatalf("Release() = %#v, want grant %s", released, last.ID)
 	}
 	_, err = ss.ExecutionGrant().MarkRevoked(ctx, released.ID, released.Revision, now.Add(9*time.Millisecond))
 	requireNoError(t, err)
-	pending, err = ss.ExecutionGrant().ListPendingRevocations(ctx, 10)
+	pending, err = ss.ExecutionGrant().ListPendingRevocations(ctx, "", 10)
 	requireNoError(t, err)
 	if len(pending) != 0 {
 		t.Fatalf("ListPendingRevocations(after cleanup) = %#v", pending)
+	}
+
+	// A delayed observation from a retired guest must never commit against its
+	// successor, even when the candidate's participation and connection survive.
+	successor, err := ss.ExecutionGrant().Reserve(ctx, store.ExecutionGrantReservation{ID: model.NewExecutionGrantID(),
+		AttemptID: connected.Attempt.ID, HostID: "runner-d", Image: reservation.Image, Network: reservation.Network,
+		At: now.Add(10 * time.Millisecond)})
+	requireNoError(t, err)
+	projecting, err = ss.ExecutionGrant().PrepareWorkspaceEffect(ctx, successor.ID, successor.Revision, changed.Change.Cursor, now.Add(11*time.Millisecond))
+	requireNoError(t, err)
+	successor, err = ss.ExecutionGrant().MarkWorkspaceApplied(ctx, successor.ID, projecting.Revision, changed.Change.Cursor, now.Add(12*time.Millisecond))
+	requireNoError(t, err)
+	guestMutation := *mutation
+	guestMutation.Access.SourceGrantID = last.ID
+	guestMutation.EntryID, guestMutation.DestinationPath = model.NewAttemptWorkspaceEntryID(), "guest-write"
+	guestMutation.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	guestMutation.AuditAt = model.GetMillis()
+	if _, err = ss.ExamAttemptWorkspace().ApplyMutation(ctx, &guestMutation,
+		examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "old-guest", "old-guest")); !store.IsConflict(err) {
+		t.Fatalf("ApplyMutation(retired source grant) = %v, want conflict", err)
+	}
+	unchanged, err := ss.ExecutionGrant().WorkspaceSnapshot(ctx, connected.Attempt.ID)
+	requireNoError(t, err)
+	if unchanged.Cursor != changed.Change.Cursor {
+		t.Fatalf("stale guest advanced Workspace cursor: %d, want %d", unchanged.Cursor, changed.Change.Cursor)
+	}
+	guestMutation.Access.SourceGrantID = successor.ID
+	guestMutation.AuditEventID = saveExamAttemptAudit(t, ctx, ss, fixture).ID.String()
+	acknowledged, err := ss.ExamAttemptWorkspace().ApplyMutation(ctx, &guestMutation,
+		examCommand(fixture.candidate.ID, store.ExamAttemptWorkspaceMutationOperation, "current-guest", "current-guest"))
+	requireNoError(t, err)
+	if acknowledged.Change.Cursor != changed.Change.Cursor+1 {
+		t.Fatalf("current guest cursor = %d, want %d", acknowledged.Change.Cursor, changed.Change.Cursor+1)
 	}
 }

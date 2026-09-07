@@ -42,7 +42,6 @@ type ResultReleaseMailDetails = appmail.ResultReleaseDetails
 type MailRenderRequest = appmail.RenderRequest
 type DirectMailTemplateRenderer = appmail.Renderer
 type MailDeliverySender = appmail.Sender
-type frozenMailPayloadV1 = appmail.FrozenPayloadV1
 type directMailPreparer = appmail.Composer
 type ClassTransitionMailPreparation = appmail.ClassTransitionPreparation
 type ResultReleaseDirectMailPreparation = appmail.ResultReleasePreparation

@@ -9,7 +9,9 @@ export const hostedRoutes = [
   "/account/reset-password",
   "/account/verify-email",
   "/account/connect-provider",
-  "/authorization/complete"
+  "/authorization/complete",
+  "/account/security",
+  "/account/reauthenticate"
 ] as const;
 
 export type HostedRoute = (typeof hostedRoutes)[number];

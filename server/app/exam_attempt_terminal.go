@@ -40,9 +40,9 @@ type examAttemptTerminalAttempts interface {
 
 type examAttemptTerminalExecution interface {
 	Ensure(context.Context, appexecution.Request) (*appexecution.Placement, error)
-	Watch(context.Context, model.ExamAttemptID, appexecution.Cursor) (appexecution.Observation, error)
-	Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error)
-	OpenFile(context.Context, model.ExamAttemptID, string) (io.ReadCloser, error)
+	Watch(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Cursor) (appexecution.Observation, error)
+	Attach(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Window) (appexecution.Terminal, error)
+	OpenFile(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) (io.ReadCloser, error)
 	ReleaseGrant(context.Context, model.ExecutionGrantID) error
 }
 
@@ -108,7 +108,7 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 		service.releasePlacement(ctx, placement)
 		return nil, service.failAudit(ctx, auditID, NewError("exam.attempt.terminal_unavailable"))
 	}
-	observation, err := service.execution.Watch(ctx, presentation.AttemptID, "")
+	observation, err := service.execution.Watch(ctx, presentation.AttemptID, placement.GrantID, "")
 	if err != nil || observation == nil {
 		service.releasePlacement(ctx, placement)
 		if err == nil {
@@ -116,7 +116,7 @@ func (service *examAttemptTerminalService) Open(ctx context.Context, invocation 
 		}
 		return nil, service.failAudit(ctx, auditID, executionError(err))
 	}
-	terminal, err := service.execution.Attach(ctx, presentation.AttemptID, command.Window)
+	terminal, err := service.execution.Attach(ctx, presentation.AttemptID, placement.GrantID, command.Window)
 	if err != nil || terminal == nil {
 		_ = observation.Close()
 		service.releasePlacement(ctx, placement)
@@ -411,7 +411,7 @@ func (service *examAttemptTerminalService) synchronizeWorkspace(ctx context.Cont
 			service.failActiveTerminal(ctx, grantID, terminal, executionError(err))
 			return
 		}
-		if err := service.applyExecutionEvent(ctx, invocation, command, event); err != nil {
+		if err := service.applyExecutionEvent(ctx, invocation, command, grantID, event); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -475,7 +475,7 @@ func executionDeleteHasDirectoryAncestor(path string, byPath map[string]Candidat
 }
 
 func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Context, invocation Invocation,
-	command OpenCandidateExamTerminalCommand, event appexecution.Event,
+	command OpenCandidateExamTerminalCommand, grantID model.ExecutionGrantID, event appexecution.Event,
 ) error {
 	pathIgnored, fromIgnored := ignoredExecutionPath(event.Path), ignoredExecutionPath(event.From)
 	if event.Operation == appexecution.OperationMove {
@@ -494,9 +494,9 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 		byPath[item.Path] = item
 	}
 	access := ExamAttemptWorkspaceMutationAccess{CandidateAccess: command.Access,
-		ParticipationID: command.ParticipationID, Generation: command.Generation}
+		ParticipationID: command.ParticipationID, Generation: command.Generation, SourceGrantID: grantID}
 	call := examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata())
-	key := executionEventIdempotency(event)
+	key := executionEventIdempotency(grantID, event)
 	switch event.Operation {
 	case appexecution.OperationCreate:
 		if _, exists := byPath[event.Path]; exists {
@@ -509,7 +509,7 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 		if !executionCreateParentsAreAuthoritative(event.Path, byPath) {
 			return errors.New("execution create parent topology is not authoritative")
 		}
-		body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+		body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, grantID, event.Path)
 		if errors.Is(openErr, appexecution.ErrNotFound) {
 			return errors.New("execution directory create lacks an atomic host event")
 		}
@@ -522,7 +522,7 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 		if !exists || item.Kind != model.StarterWorkspaceEntryFile {
 			return errors.New("execution replace target is not an authoritative file")
 		}
-		body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+		body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, grantID, event.Path)
 		if openErr != nil {
 			return executionError(openErr)
 		}
@@ -532,7 +532,7 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 			if _, exists := byPath[event.Path]; exists {
 				return errors.New("execution move destination conflicts with authoritative workspace")
 			}
-			body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+			body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, grantID, event.Path)
 			if errors.Is(openErr, appexecution.ErrNotFound) {
 				return errors.New("execution cannot acknowledge a directory moved out of an ignored tree")
 			}
@@ -555,7 +555,7 @@ func (service *examAttemptTerminalService) applyExecutionEvent(ctx context.Conte
 			return mapTerminalAttemptError(err)
 		}
 		if item.Kind == model.StarterWorkspaceEntryDirectory {
-			body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, event.Path)
+			body, openErr := service.execution.OpenFile(ctx, command.Access.AttemptID, grantID, event.Path)
 			if openErr == nil {
 				_ = body.Close()
 				return errors.New("execution cannot atomically replace a directory with a file")
@@ -668,8 +668,8 @@ func readBoundedExecutionFile(body io.Reader, maximum int64) ([]byte, error) {
 	return data, nil
 }
 
-func executionEventIdempotency(event appexecution.Event) string {
-	digest := sha256.Sum256([]byte(event.Cursor))
+func executionEventIdempotency(grantID model.ExecutionGrantID, event appexecution.Event) string {
+	digest := sha256.Sum256([]byte(grantID.String() + ":" + string(event.Cursor)))
 	return "execution-" + hex.EncodeToString(digest[:])
 }
 

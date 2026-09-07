@@ -106,10 +106,16 @@ type MFAActivation struct {
 
 // MFAStatus is the caller's enrollment status.
 type MFAStatus struct {
-	Enabled                bool
-	Pending                bool
-	PendingExpiresAt       model.OptionalTime
-	RecoveryCodesRemaining int
+	ServiceEnabled           bool
+	MFARecoveryRequired      bool
+	AuthenticationMethod     string
+	AuthenticationProviderID string
+	AuthenticationStrength   model.AuthenticationStrength
+	RecentlyAuthenticated    bool
+	Enabled                  bool
+	Pending                  bool
+	PendingExpiresAt         model.OptionalTime
+	RecoveryCodesRemaining   int
 }
 
 func (a *App) GetMFAStatus(
@@ -167,56 +173,55 @@ func (s *mfaMechanics) consumeSecondFactor(
 	code string,
 	now time.Time,
 ) error {
-	if mfaPersistence == nil {
-		return mfaStoreError(
-			"ConsumeMFASecondFactor",
-			store.NewErrNotFound("mfa_store", ""),
-		)
-	}
-	credential, err := mfaPersistence.GetByUser(ctx, userID)
-	if err != nil || !credential.IsActive() {
-		return mfaInvalidCodeError("ConsumeMFASecondFactor")
-	}
-	normalized := normalizeMFARecoveryCode(code)
-	if len(strings.TrimSpace(code)) == 6 {
-		secret, decryptErr := s.decrypt(userID, credential)
-		if decryptErr != nil {
-			return authenticationUnavailable(decryptErr)
-		}
-		timeStep, valid := verifyTOTP(
-			secret,
-			strings.TrimSpace(code),
-			credential.LastUsedTimeStep,
-			now,
-		)
-		if !valid {
-			return mfaInvalidCodeError("ConsumeMFASecondFactor")
-		}
-		err = mfaPersistence.ConsumeSecondFactor(
-			ctx,
-			userID,
-			timeStep,
-			"",
-			now.UnixMilli(),
-		)
-	} else if normalized != "" {
-		err = mfaPersistence.ConsumeSecondFactor(
-			ctx,
-			userID,
-			0,
-			model.HashToken(normalized),
-			now.UnixMilli(),
-		)
-	} else {
-		return mfaInvalidCodeError("ConsumeMFASecondFactor")
-	}
+	proof, err := s.verifySecondFactor(ctx, mfaPersistence, userID, code, now)
 	if err != nil {
+		return err
+	}
+	if err := mfaPersistence.ConsumeSecondFactor(ctx, userID, proof.step, proof.recoveryHash, now.UnixMilli()); err != nil {
 		if store.IsNotFound(err) {
 			return mfaInvalidCodeError("ConsumeMFASecondFactor")
 		}
 		return mfaStoreError("ConsumeMFASecondFactor.consume", err)
 	}
 	return nil
+}
+
+type mfaFactorProof struct {
+	credentialID model.MFACredentialID
+	step         int64
+	recoveryHash string
+}
+
+// Verification does not consume a factor. The owning aggregate commits replay
+// protection together with the Session transition and its required audit.
+func (s *mfaMechanics) verifySecondFactor(ctx context.Context, persistence store.MFAStore, userID, code string, now time.Time) (mfaFactorProof, error) {
+	credential, err := persistence.GetByUser(ctx, userID)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+		}
+		return mfaFactorProof{}, mfaStoreError("MFA.verify", err)
+	}
+	if credential == nil || !credential.IsActive() {
+		return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+	}
+	proof := mfaFactorProof{credentialID: credential.ID}
+	if len(strings.TrimSpace(code)) == 6 {
+		secret, err := s.decrypt(userID, credential)
+		if err != nil {
+			return mfaFactorProof{}, authenticationUnavailable(err)
+		}
+		step, valid := verifyTOTP(secret, strings.TrimSpace(code), credential.LastUsedTimeStep, now)
+		if !valid {
+			return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+		}
+		proof.step = step
+	} else if normalized := normalizeMFARecoveryCode(code); normalized != "" {
+		proof.recoveryHash = model.HashToken(normalized)
+	} else {
+		return mfaFactorProof{}, mfaInvalidCodeError("MFA")
+	}
+	return proof, nil
 }
 
 type sealedMFASecret struct {
@@ -414,7 +419,7 @@ func mfaStoreError(where string, err error) error {
 	code := "authentication.mfa.unavailable"
 	if store.IsNotFound(err) {
 		code = "authentication.mfa.not_found"
-	} else if store.IsConflict(err) {
+	} else if store.IsConflict(err) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
 		code = "authentication.mfa.conflict"
 	}
 	return NewError(code).Wrap(err)

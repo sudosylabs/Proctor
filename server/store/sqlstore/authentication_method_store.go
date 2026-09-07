@@ -36,6 +36,28 @@ func (s SQLExternalIdentityStore) LinkWithAudit(ctx context.Context, input *stor
 		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 			return nil, err
 		}
+		if err := lockUserSessions(ctx, tx, identity.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryAuthenticationMethodSource(ctx, tx, identity.UserID, input.AuditEventID); err != nil {
+			return nil, err
+		}
+		recovery, err := getMFARecoveryState(ctx, tx, identity.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if recovery.ReenrollmentRequired {
+			return nil, store.ErrMFAReenrollmentRequired
+		}
+		if !input.ExternalLoginStateID.IsZero() || recovery.ResetAt.Valid {
+			var startedAt time.Time
+			if err := tx.Get(ctx, &startedAt, `SELECT created_at FROM external_login_states WHERE id=? AND purpose='connect' AND target_user_id=? AND provider=? AND audit_event_id=? AND consumed_at IS NOT NULL AND expires_at>clock_timestamp() FOR UPDATE`, input.ExternalLoginStateID.String(), identity.UserID.String(), identity.Provider, input.AuditEventID); err != nil {
+				return nil, translateError("external_login_state", "", err)
+			}
+			if recovery.ResetAt.Valid && startedAt.Before(recovery.ResetAt.Time) {
+				return nil, store.ErrAuthenticationGenerationChanged
+			}
+		}
 		if err := requireActiveUser(ctx, tx, identity.UserID.String(), false); err != nil {
 			return nil, err
 		}
@@ -67,6 +89,9 @@ func (s SQLExternalIdentityStore) UnlinkWithAudit(ctx context.Context, input *st
 			return nil, err
 		}
 		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryAuthenticationMethodSource(ctx, tx, input.UserID, input.AuditEventID); err != nil {
 			return nil, err
 		}
 		if err := requireActiveUser(ctx, tx, input.UserID.String(), false); err != nil {
@@ -121,6 +146,12 @@ func (s SQLPasswordCredentialStore) EnrollWithAudit(ctx context.Context, input *
 		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 			return nil, err
 		}
+		if err := lockUserSessions(ctx, tx, credential.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryAuthenticationMethodSource(ctx, tx, credential.UserID, input.AuditEventID); err != nil {
+			return nil, err
+		}
 		if err := requireActiveUser(ctx, tx, credential.UserID.String(), true); err != nil {
 			return nil, err
 		}
@@ -151,6 +182,9 @@ func (s SQLPasswordCredentialStore) RemoveWithAudit(ctx context.Context, input *
 			return nil, err
 		}
 		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryAuthenticationMethodSource(ctx, tx, input.UserID, input.AuditEventID); err != nil {
 			return nil, err
 		}
 		if err := requireActiveUser(ctx, tx, input.UserID.String(), false); err != nil {
@@ -240,7 +274,7 @@ func getPasswordCredentialForUpdate(ctx context.Context, tx *sqlxTxWrapper, user
 
 func revokeUserSessionsForAuthenticationMethod(ctx context.Context, executor sqlxExecutor, userID, method string, identityID model.ExternalIdentityID, at time.Time, reason model.SessionRevocationReason) ([]sessionRow, []string, error) {
 	rows := []sessionRow{}
-	if err := executor.Select(ctx, &rows, `SELECT id, created_at, updated_at, archived_at, user_id, client_type, desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id, desktop_platform, desktop_architecture, desktop_realtime_protocol, device_id, device_name, authentication_method, authentication_provider_id, external_identity_id, authentication_strength, authenticated_at, mfa_completed_at, last_activity_at, idle_expires_at, expires_at, revoked_at, revocation_reason FROM sessions WHERE user_id=? AND archived_at IS NULL AND revoked_at IS NULL AND ((?<>'' AND external_identity_id=?) OR (?='' AND authentication_method=? AND authentication_provider_id='')) FOR UPDATE`, userID, identityID.String(), identityID.String(), identityID.String(), method); err != nil {
+	if err := executor.Select(ctx, &rows, `SELECT id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type, desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id, desktop_platform, desktop_architecture, desktop_realtime_protocol, device_id, device_name, authentication_method, authentication_provider_id, external_identity_id, authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at, last_activity_at, idle_expires_at, expires_at, revoked_at, revocation_reason FROM sessions WHERE user_id=? AND archived_at IS NULL AND revoked_at IS NULL AND ((?<>'' AND external_identity_id=?) OR (?='' AND authentication_method=? AND authentication_provider_id='')) FOR UPDATE`, userID, identityID.String(), identityID.String(), identityID.String(), method); err != nil {
 		return nil, nil, err
 	}
 	if len(rows) == 0 {

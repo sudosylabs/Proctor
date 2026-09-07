@@ -82,7 +82,7 @@ func validAttemptWorkspaceMutationAccess(access store.ExamAttemptWorkspaceMutati
 	return access.AttemptID.IsValid() && access.ParticipationID.IsValid() && access.Generation > 0 &&
 		access.CandidateUserID.IsValid() && access.SessionID.IsValid() && access.DesktopRegistrationID.IsValid() &&
 		model.IsValidDPoPKeyThumbprint(access.DPoPKeyThumbprint) && access.ConnectionID.IsValid() &&
-		model.IsValidTokenHash(access.ContinuityCredentialHash)
+		model.IsValidTokenHash(access.ContinuityCredentialHash) && (access.SourceGrantID.IsZero() || access.SourceGrantID.IsValid())
 }
 
 func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, access store.ExamAttemptWorkspaceMutationAccess) (*store.ExamAttemptWorkspaceMutationTarget, time.Time, error) {
@@ -142,6 +142,16 @@ func lockAttemptWorkspaceMutationTarget(ctx context.Context, tx *sqlxTxWrapper, 
 		StartAt    time.Time    `db:"start_at"`
 		EndAt      sql.NullTime `db:"end_at"`
 		ArchivedAt sql.NullTime `db:"archived_at"`
+	}
+	if !access.SourceGrantID.IsZero() {
+		var id string
+		if err = tx.Get(ctx, &id, `SELECT id FROM execution_grants WHERE id=? AND exam_attempt_id=? AND state='ready' FOR SHARE`,
+			access.SourceGrantID.String(), access.AttemptID.String()); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, time.Time{}, store.NewErrConflict("attempt_workspace", "execution_grant", nil)
+			}
+			return nil, time.Time{}, fmt.Errorf("lock Workspace source execution grant: %w", err)
+		}
 	}
 	if err = tx.Select(ctx, &memberships, `SELECT start_at,end_at,archived_at FROM class_members
 		WHERE class_id=? AND user_id=? ORDER BY start_at,id FOR SHARE`, row.ClassID, access.CandidateUserID.String()); err != nil {
@@ -431,8 +441,9 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 		NewPath        sql.NullString `db:"new_path"`
 		ContentVersion sql.NullString `db:"content_version"`
 		ChangedAt      time.Time      `db:"changed_at"`
+		Recursive      bool           `db:"recursive"`
 	}
-	if err = tx.Select(ctx, &rows, `SELECT cursor,entry_id,entry_kind,operation,old_path,new_path,content_version,changed_at
+	if err = tx.Select(ctx, &rows, `SELECT cursor,entry_id,entry_kind,operation,old_path,new_path,content_version,changed_at,recursive
 		FROM exam_attempt_workspace_journal WHERE workspace_id=? AND cursor>? AND cursor<=? ORDER BY cursor LIMIT ?`,
 		workspace.ID, options.AfterCursor, workspace.Cursor, options.Limit+1); err != nil {
 		return nil, fmt.Errorf("list Attempt Workspace journal: %w", err)
@@ -455,7 +466,7 @@ func listAttemptWorkspaceJournalSnapshot(ctx context.Context, tx *sqlxTxWrapper,
 		}
 		entry := model.AttemptWorkspaceJournalEntry{WorkspaceID: workspaceID, Cursor: row.Cursor, EntryID: entryID,
 			EntryKind: model.StarterWorkspaceEntryKind(row.EntryKind), Operation: model.AttemptWorkspaceMutationKind(row.Operation),
-			OldPath: row.OldPath.String, NewPath: row.NewPath.String, ContentVersion: version, ChangedAt: model.TimeUTC(row.ChangedAt)}
+			OldPath: row.OldPath.String, NewPath: row.NewPath.String, ContentVersion: version, ChangedAt: model.TimeUTC(row.ChangedAt), Recursive: row.Recursive}
 		if parseErr = entry.Validate(); parseErr != nil {
 			return nil, invalidPersistedState("attempt_workspace_journal", "value", parseErr)
 		}
@@ -530,6 +541,15 @@ func prepareAttemptWorkspaceMutation(input *store.ExamAttemptWorkspaceMutation, 
 		return nil, store.NewErrInvalidInput("attempt_workspace", "mutation", nil)
 	}
 	prepared := *input
+	if (prepared.Recursive && (!prepared.Access.SourceGrantID.IsZero() || prepared.Operation != model.AttemptWorkspaceMutationDeleteEntry || prepared.ExpectedWorkspaceCursor == nil ||
+		*prepared.ExpectedWorkspaceCursor < 0 || !prepared.ExpectedContentVersion.IsZero())) ||
+		(!prepared.Recursive && prepared.ExpectedWorkspaceCursor != nil) {
+		return nil, store.NewErrInvalidInput("attempt_workspace", "recursive_delete", nil)
+	}
+	if prepared.ExpectedWorkspaceCursor != nil {
+		cursor := *prepared.ExpectedWorkspaceCursor
+		prepared.ExpectedWorkspaceCursor = &cursor
+	}
 	normalize := func(value string) (string, bool) {
 		path, normalizeErr := model.NormalizeAttemptWorkspacePath(value)
 		return path, normalizeErr == nil && path == value
@@ -603,9 +623,13 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 	}
 	var workspace struct {
 		AdmissionRevisionID string `db:"admission_revision_id"`
+		Cursor              int64  `db:"cursor"`
 	}
-	if err = tx.Get(ctx, &workspace, `SELECT admission_revision_id FROM exam_attempt_workspaces WHERE id=? FOR UPDATE`, target.WorkspaceID.String()); err != nil {
+	if err = tx.Get(ctx, &workspace, `SELECT admission_revision_id,cursor FROM exam_attempt_workspaces WHERE id=? FOR UPDATE`, target.WorkspaceID.String()); err != nil {
 		return zero, fmt.Errorf("lock Attempt Workspace: %w", err)
+	}
+	if input.Recursive && workspace.Cursor != *input.ExpectedWorkspaceCursor {
+		return zero, store.NewErrConflict("attempt_workspace", "attempt_workspace_cursor", nil)
 	}
 	revisionID, err := model.ParseExamRevisionID(workspace.AdmissionRevisionID)
 	if err != nil {
@@ -732,10 +756,13 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 				target.WorkspaceID.String(), escapeLike(current.Path)+"/%"); err != nil {
 				return zero, fmt.Errorf("count Attempt Workspace descendants: %w", err)
 			}
-			if descendants != 0 {
+			if descendants != 0 && !input.Recursive {
 				return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_not_empty", nil)
 			}
 		} else {
+			if input.Recursive {
+				return zero, store.NewErrInvalidInput("attempt_workspace", "recursive_delete", nil)
+			}
 			currentVersion, versionErr := current.workspaceContentVersion()
 			if versionErr != nil || !input.ExpectedContentVersion.IsValid() || currentVersion != input.ExpectedContentVersion {
 				return zero, store.NewErrConflict("attempt_workspace_entry", "attempt_workspace_content_version", versionErr)
@@ -747,13 +774,19 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 				protected = append(protected, current.CurrentObjectID.String)
 			}
 		}
-		if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`,
-			target.WorkspaceID.String(), input.EntryID.String()); err != nil {
-			return zero, fmt.Errorf("delete Attempt Workspace entry: %w", err)
+		if input.Recursive {
+			if err = deleteAttemptWorkspaceSubtree(ctx, tx, target.WorkspaceID, current.Path, input.AuditEventID, databaseNow); err != nil {
+				return zero, err
+			}
+		} else {
+			if _, err = tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries WHERE workspace_id=? AND id=?`,
+				target.WorkspaceID.String(), input.EntryID.String()); err != nil {
+				return zero, fmt.Errorf("delete Attempt Workspace entry: %w", err)
+			}
 		}
 	}
 	change, err := appendAttemptWorkspaceJournal(ctx, tx, target.WorkspaceID, input.EntryID, entryKind, input.Operation,
-		oldPath, newPath, version, command.KeyDigest[:], databaseNow)
+		oldPath, newPath, version, input.Recursive, command.KeyDigest[:], databaseNow)
 	if err != nil {
 		return zero, err
 	}
@@ -764,6 +797,27 @@ func applyAttemptWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input
 		return zero, err
 	}
 	return outcome, nil
+}
+
+func deleteAttemptWorkspaceSubtree(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID,
+	path, auditID string, at time.Time,
+) error {
+	// A retirement group keeps outcome protection bounded even for the maximum
+	// hierarchy. Starter-origin objects remain pinned to their published source.
+	if _, err := tx.Exec(ctx, `UPDATE exam_attempt_workspace_objects objects
+		SET state='reclaimable',updated_at=?,reclaim_after=?,retired_by_audit_event_id=?
+		WHERE objects.workspace_id=? AND objects.storage_origin='attempt' AND objects.state='current'
+			AND EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries
+				WHERE entries.workspace_id=objects.workspace_id AND entries.current_object_id=objects.id
+				AND (entries.path=? OR entries.path LIKE ? ESCAPE '!'))`,
+		at, at.Add(model.AttemptWorkspaceReclaimSafetyWindow), auditID, workspaceID.String(), path, escapeLike(path)+"/%"); err != nil {
+		return fmt.Errorf("retire Attempt Workspace subtree objects: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_entries
+		WHERE workspace_id=? AND (path=? OR path LIKE ? ESCAPE '!')`, workspaceID.String(), path, escapeLike(path)+"/%"); err != nil {
+		return fmt.Errorf("delete Attempt Workspace subtree: %w", err)
+	}
+	return nil
 }
 
 func loadAttemptWorkspaceEntryForMutation(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID, entryID model.AttemptWorkspaceEntryID) (*attemptWorkspaceEntryMutationRow, error) {
@@ -918,7 +972,7 @@ func candidateAttemptWorkspaceItem(id model.AttemptWorkspaceEntryID, kind model.
 
 func appendAttemptWorkspaceJournal(ctx context.Context, tx *sqlxTxWrapper, workspaceID model.ExamAttemptWorkspaceID,
 	entryID model.AttemptWorkspaceEntryID, entryKind model.StarterWorkspaceEntryKind, operation model.AttemptWorkspaceMutationKind,
-	oldPath, newPath string, version model.WorkspaceContentVersion, keyDigest []byte, databaseNow time.Time,
+	oldPath, newPath string, version model.WorkspaceContentVersion, recursive bool, keyDigest []byte, databaseNow time.Time,
 ) (*model.AttemptWorkspaceJournalEntry, error) {
 	var cursor int64
 	if err := tx.Get(ctx, &cursor, `UPDATE exam_attempt_workspaces SET cursor=cursor+1,updated_at=? WHERE id=? RETURNING cursor`,
@@ -927,14 +981,14 @@ func appendAttemptWorkspaceJournal(ctx context.Context, tx *sqlxTxWrapper, works
 	}
 	change := &model.AttemptWorkspaceJournalEntry{WorkspaceID: workspaceID, Cursor: cursor, EntryID: entryID,
 		EntryKind: entryKind, Operation: operation, OldPath: oldPath, NewPath: newPath,
-		ContentVersion: version, ChangedAt: databaseNow}
+		ContentVersion: version, ChangedAt: databaseNow, Recursive: recursive}
 	if err := change.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("attempt_workspace_journal", "change", nil).Wrap(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO exam_attempt_workspace_journal
-		(workspace_id,cursor,entry_id,entry_kind,operation,old_path,new_path,content_version,mutation_key_digest,changed_at)
-		VALUES (?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?)`, workspaceID.String(), cursor, entryID.String(),
-		string(entryKind), string(operation), oldPath, newPath, version.String(), keyDigest, databaseNow); err != nil {
+		(workspace_id,cursor,entry_id,entry_kind,operation,old_path,new_path,content_version,mutation_key_digest,changed_at,recursive)
+		VALUES (?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?,?)`, workspaceID.String(), cursor, entryID.String(),
+		string(entryKind), string(operation), oldPath, newPath, version.String(), keyDigest, databaseNow, recursive); err != nil {
 		return nil, fmt.Errorf("append Attempt Workspace journal: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM exam_attempt_workspace_journal WHERE workspace_id=? AND cursor<=?`,
@@ -1025,7 +1079,9 @@ func (s *SQLExamAttemptWorkspaceStore) MarkObjectReclaimable(ctx context.Context
 			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))`,
+				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
+			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
+				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)`,
 		model.AttemptWorkspaceReclaimSafetyWindow.Milliseconds(), objectID.String(), store.ExamAttemptWorkspaceMutationOperation)
 	if err != nil {
 		return fmt.Errorf("mark Attempt Workspace object reclaimable: %w", err)
@@ -1053,6 +1109,8 @@ func (s *SQLExamAttemptWorkspaceStore) ClaimObjectsForCleanup(ctx context.Contex
 			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
 				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
+			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
+				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)
 		ORDER BY COALESCE(objects.reclaim_after,objects.expires_at,objects.claimed_at),objects.id
 		FOR UPDATE SKIP LOCKED LIMIT ?
 	) UPDATE exam_attempt_workspace_objects objects
@@ -1087,7 +1145,9 @@ func (s *SQLExamAttemptWorkspaceStore) CompleteObjectCleanup(ctx context.Context
 			AND NOT EXISTS (SELECT 1 FROM exam_attempt_workspace_entries entries WHERE entries.current_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM exam_submission_manifest_entries submitted WHERE submitted.attempt_object_id=objects.id)
 			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
-				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))`,
+				WHERE outcomes.operation=? AND jsonb_exists(outcomes.outcome->'o',objects.id))
+			AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
+				WHERE outcomes.original_audit_event_id=objects.retired_by_audit_event_id)`,
 		objectID.String(), claimToken, store.ExamAttemptWorkspaceMutationOperation)
 	if err != nil {
 		return fmt.Errorf("complete Attempt Workspace object cleanup: %w", translateError("attempt_workspace_object", objectID.String(), err))

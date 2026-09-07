@@ -28,8 +28,11 @@ Session-confirmation behavior lives in the companion
 Purpose-specific email-token consumption lives in the
 [`verify-email` contract](./src/features/verify-email/CONTRACT.md). Those routes
 and the password-recovery, Invitation acceptance, Desktop authorization, and
-provider-connection feature contracts now complete the declared hosted route
-family. Their shared
+provider-connection feature contracts describe the hosted access route family.
+The bounded [`account-security`](./src/features/account-security/CONTRACT.md)
+and [`reauthenticate`](./src/features/reauthenticate/CONTRACT.md) contracts own
+MFA setup, recovery, and fresh proof without a general administration shell.
+Their shared
 structural frame is governed beside
 [`AccessPageShell`](./src/components/AccessPageShell/CONTRACT.md); feature
 modules retain their own state, transport, content, and recovery behavior.

@@ -73,9 +73,9 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
       operationId: deleteCandidateExamWorkspaceEntry
-      summary: Delete one empty directory or one exact Workspace file state
+      summary: Delete a Workspace entry or a guarded directory subtree
       description: >-
-        Deletes the exact Workspace entry only when its expected path and, for files, optional content version still match. Non-empty directories and stale file states are rejected so concurrent edits cannot be silently discarded.
+        Deletes the exact Workspace entry only when its expected path and, for files, required content version still match. A directory must be empty unless recursive is true. Recursive deletion requires the expected_workspace_cursor from the client's manifest, rejects any intervening Workspace change, and atomically removes the directory and all descendants with one recursive journal record. Other mutations do not require a Workspace cursor.
       tags:
         - Attempts and workspaces
       x-proctor-auth: session_required
@@ -102,6 +102,7 @@ paths:
         - exam.attempt.workspace.entry_conflict
         - exam.attempt.workspace.content_conflict
         - exam.attempt.workspace.directory_not_empty
+        - exam.attempt.workspace.cursor_conflict
         - authentication.dpop.invalid
         - authentication.dpop.replayed
         - authentication.dpop.use_nonce
@@ -198,3 +199,26 @@ components:
           $ref: '#/components/schemas/StarterWorkspacePath'
         expected_content_version:
           $ref: '#/components/schemas/WorkspaceContentVersion'
+          description: Required for file deletion; omitted for directories.
+        recursive:
+          type: boolean
+          default: false
+          description: Delete this directory and every descendant atomically. Requires expected_workspace_cursor and cannot be used for a file.
+        expected_workspace_cursor:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Required only when recursive is true. The complete Workspace cursor observed by the client; any intervening mutation causes a conflict.
+      allOf:
+        - if:
+            required: [recursive]
+            properties:
+              recursive:
+                const: true
+          then:
+            required: [expected_workspace_cursor]
+            not:
+              required: [expected_content_version]
+          else:
+            not:
+              required: [expected_workspace_cursor]

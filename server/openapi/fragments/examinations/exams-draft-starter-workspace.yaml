@@ -278,9 +278,9 @@ paths:
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
       operationId: removeExamDraftStarterWorkspaceEntry
-      summary: Remove one file or empty directory from a Starter Workspace
+      summary: Remove a Starter Workspace entry or guarded directory subtree
       description: >-
-        Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories are rejected, and published Revisions retain the immutable Workspace snapshot they already captured.
+        Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories require recursive to be true, which atomically removes the directory and every descendant and advances the Draft revision once. A stale Draft revision rejects the entire command. Published Revisions retain the immutable Workspace snapshot they already captured.
       tags:
         - Examinations
       x-proctor-auth: principal_required
@@ -705,6 +705,10 @@ components:
           type: integer
           format: int64
           minimum: 1
+        recursive:
+          type: boolean
+          default: false
+          description: Remove this directory and every descendant atomically under the expected Draft revision. Omit for a file or ordinary empty-directory removal.
     ExamStarterWorkspaceEntryResponse:
       type: object
       additionalProperties: false

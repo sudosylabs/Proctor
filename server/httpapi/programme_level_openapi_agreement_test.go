@@ -30,9 +30,9 @@ func TestProgrammeLevelOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "DELETE /api/v1/programme-levels/{programme_level_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/ProgrammeLevelArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "programme_level.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "ProgrammeLevelResponse", DTO: reflect.TypeOf(programmeLevelResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "programme_id", "name", "display_name", "description"}},
+			{Name: "ProgrammeLevelResponse", DTO: reflect.TypeOf(programmeLevelResponse{}), Required: []string{"revision", "id", "create_at", "update_at", "delete_at", "programme_id", "name", "display_name", "description"}},
 			{Name: "CreateProgrammeLevelRequest", DTO: reflect.TypeOf(createProgrammeLevelRequest{}), Required: []string{"name", "display_name"}},
-			{Name: "UpdateProgrammeLevelRequest", DTO: reflect.TypeOf(updateProgrammeLevelRequest{})},
+			{Name: "UpdateProgrammeLevelRequest", DTO: reflect.TypeOf(updateProgrammeLevelRequest{}), NonNullable: []string{"expected_revision"}},
 		},
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())

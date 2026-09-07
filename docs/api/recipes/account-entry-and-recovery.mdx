@@ -65,6 +65,15 @@ Email and username are never external-identity keys. An unlinked provider
 subject is admitted only under the current provider mode; a client must not
 implement its own email-match linking or auto-provisioning rule.
 
+After an administrator-assisted MFA reset, a fresh primary proof may establish
+only a restricted Web Session. The Session's `mfa_recovery_required` flag
+routes the hosted journey to `/account/security` for new authenticator setup.
+Do not treat this Session as ordinary account access or continue an Invitation,
+provider-linking, or Desktop handoff before reenrollment completes. For an
+external-only account, the server requires a separate fresh proof bound to the
+same existing User and original provider. A normal provider callback alone
+cannot bypass that recovery requirement.
+
 ## 3. Verify the Current Email Address
 
 Successful public registration returns the generic `202 Accepted` response,
@@ -104,6 +113,13 @@ Affiliation, link a provider, bypass MFA, or mint administrator authority.
 If completion is ambiguous, do not replay the same secret repeatedly. Return
 to login with the new password; if that fails, request a fresh reset message.
 
+Password recovery does not remove local MFA or an assisted-recovery restriction.
+If the authenticator and every unused recovery code are also unavailable, use
+the institution's identity-verification process followed by the separately
+authorized MFA reset described in
+[Manage Account Security](./account-security.mdx#5-recover-after-an-assisted-mfa-reset).
+Fresh proof and successful reenrollment are still required afterwards.
+
 ## 5. Rotate or End the Exact Session
 
 Use <Link to="/api/reference/refresh-session">Refresh Session</Link> only with
@@ -130,3 +146,6 @@ and revoke the smallest affected Session, Desktop Registration, or token.
 | reset request accepted but no mail arrives | Preserve the generic response; check mail operations without confirming account existence. |
 | refresh replay or invalid Session | Discard local credentials and start a new supported login ceremony. |
 | provider is unlinked | Use Invitation admission or an authenticated provider-connection flow when policy permits; never match by email. |
+| MFA recovery is required | Continue to the hosted account-security page with the restricted Web Session and enroll a new authenticator. |
+| MFA service is unavailable during recovery | Ask the operator to restore enrollment service; the recovery restriction remains in force. |
+| sensitive task needs fresh proof | Use the hosted password or original-provider reauthentication flow, return to current state, then explicitly choose the action again. |

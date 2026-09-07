@@ -342,7 +342,7 @@ components:
           maxLength: 1000
           description: Trimmed private manager reason; never exposed to the candidate.
     ExamSubmissionManagerResponse:
-      description: Manager-safe immutable Submission header without Workspace bytes or integrity evidence.
+      description: Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible.
       type: object
       additionalProperties: false
       required:
@@ -357,9 +357,7 @@ components:
         - manifest_digest
         - manifest_entry_count
         - manifest_total_file_bytes
-        - final_focus_loss_sequence
         - integrity_state
-        - unresolved_integrity_count
         - submitted_at
       properties:
         submission_id:
@@ -400,18 +398,23 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Final focus-loss signal sequence acknowledged at submission.
+          description: Final focus-loss signal sequence acknowledged at submission. Present only while integrity is retained, including when zero.
         integrity_state:
           type: string
           enum:
             - settled
             - gapped
-          description: Whether the retained integrity sequence is complete or contains a known gap.
+            - retired
+          description: Whether integrity is complete, contains a known gap, or has been permanently retired under Institution policy.
+        integrity_retired_at:
+          type: string
+          format: date-time
+          description: Present only when integrity_state is retired. Retirement does not represent a settled integrity result.
         unresolved_integrity_count:
           type: integer
           format: int64
           minimum: 0
-          description: Count of integrity items still unresolved for review.
+          description: Count of integrity items still unresolved for review. Present only while integrity is retained, including when zero.
         submitted_at:
           type: string
           format: date-time

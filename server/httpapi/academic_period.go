@@ -15,6 +15,7 @@ import (
 )
 
 type academicPeriodResponse struct {
+	Revision    int64  `json:"revision"`
 	ID          string `json:"id"`
 	CreateAt    int64  `json:"create_at"`
 	UpdateAt    int64  `json:"update_at"`
@@ -43,11 +44,12 @@ type createAcademicPeriodRequest struct {
 }
 
 type updateAcademicPeriodRequest struct {
-	Name        Optional[string] `json:"name"`
-	DisplayName Optional[string] `json:"display_name"`
-	Description Optional[string] `json:"description"`
-	StartAt     Optional[int64]  `json:"start_at"`
-	EndAt       Optional[int64]  `json:"end_at"`
+	ExpectedRevision Optional[int64]  `json:"expected_revision"`
+	Name             Optional[string] `json:"name"`
+	DisplayName      Optional[string] `json:"display_name"`
+	Description      Optional[string] `json:"description"`
+	StartAt          Optional[int64]  `json:"start_at"`
+	EndAt            Optional[int64]  `json:"end_at"`
 }
 
 type academicPeriodResourceModule struct {
@@ -161,10 +163,13 @@ func (module academicPeriodResourceModule) patch(request operationRequest) (oper
 	if err := request.decodeJSON(&body, "patchAcademicPeriod"); err != nil {
 		return operationResult{}, err
 	}
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return operationResult{}, err
+	}
 	period, err := module.academicPeriods.UpdateAcademicPeriod(
 		request.context,
 		request.invocation(),
-		application.UpdateAcademicPeriodCommand{
+		application.UpdateAcademicPeriodCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID: id, Name: body.Name.ValuePointer(),
 			DisplayName: body.DisplayName.ValuePointer(),
 			Description: body.Description.ValuePointer(),
@@ -182,8 +187,12 @@ func (module academicPeriodResourceModule) archive(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, err
 	}
+	expectedRevision, err := request.academicRevision()
+	if err != nil {
+		return operationResult{}, err
+	}
 	if err := module.academicPeriods.ArchiveAcademicPeriod(
-		request.context, request.invocation(), application.ArchiveAcademicPeriodCommand{ID: id},
+		request.context, request.invocation(), application.ArchiveAcademicPeriodCommand{ExpectedRevision: expectedRevision, ID: id},
 	); err != nil {
 		return operationResult{}, err
 	}
@@ -195,7 +204,7 @@ func academicPeriodResponseFromModel(period *model.AcademicPeriod) academicPerio
 		return academicPeriodResponse{}
 	}
 	return academicPeriodResponse{
-		ID:          period.ID.String(),
+		Revision: period.Revision, ID: period.ID.String(),
 		CreateAt:    model.MillisFromTime(period.CreatedAt),
 		UpdateAt:    model.MillisFromTime(period.UpdatedAt),
 		DeleteAt:    period.ArchivedAt.Millis(),

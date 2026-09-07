@@ -133,8 +133,10 @@ first authorized Attempt Terminal open and only when the frozen profile
 enables one. Pause freezes the environment without destroying it, and Resume
 thaws that same environment. Submit and sitting close revoke after the durable
 Attempt state commits. Confirmed connection loss revokes after a short grace.
-Reconnect after freeze or grace always replaces the tree from acknowledged
-workspace state before attaching a PTY.
+Reopening a terminal always builds a fresh grant from acknowledged Workspace
+state before attaching a PTY. A ready grant is durably released and revoked
+before replacement, even when the same host is selected. Resetting a ready
+guest's tree could erase unobserved writes from background processes.
 
 Terminal open resolves the protected Attempt presentation before beginning the
 critical audit, then ensures placement, starts Workspace observation, attaches
@@ -152,12 +154,21 @@ lifecycle.
 ## Projection
 
 The Attempt Workspace remains the durable authority. The Execution
-Environment is a synchronized projection. Losing a client, node, or
-environment cannot discard an acknowledged change.
+Environment projects acknowledged state. Losing a client, node, or environment
+cannot discard an acknowledged change. Each grant records its applied Workspace
+cursor and any pending projection cursor. Projection preparation commits before
+host I/O; completion advances the applied cursor only while the grant revision
+and authoritative Workspace cursor still match. A missed callback, out-of-order
+change, or uncertain host effect retires the grant. Reconciliation compares these
+durable cursors independently of Sitting lifecycle progress.
 
 The IDE and the Attempt Terminal are dual writers. Authoritative create,
 replace, move, and delete still commit through the existing workspace
-protocol. After acknowledgement the server applies the change to the guest.
+protocol. Initial projection reserves the grant before capturing the Workspace
+snapshot. Incremental projection reads only the changed file body; it never
+reloads all Workspace file bodies for each save. The generic host port supports
+applying an acknowledged change to the guest, subject to the adapter limitation
+below.
 Guest writes under the workspace mount become workspace mutations only after
 the server harvests them through `Watch` and `Open` and they pass the same
 acknowledgement rules, quotas, path contract, and reserved `.proctor` root.
@@ -166,15 +177,36 @@ Every Workspace mutation carries a closed origin: `candidate` or
 `execution_host`. Both origins commit through the same Attempt service and
 publish the same safe realtime result. Only candidate-originated changes are
 applied to the host; execution-host changes are already present there and must
-not echo through `Apply`. Mutation provenance is never inferred from context.
+not echo through `Apply`. Execution-host mutations also carry the exact source
+grant ID. The Store locks and verifies that this grant is still ready for the
+Attempt before committing; delayed effects may acknowledge only that same grant.
+Watch, Attach, and Open use the grant returned by terminal initialization, and
+event retry keys include both its ID and the host cursor. Mutation provenance
+is never inferred from context.
+
+Only initialization may Ensure a host guest. Subsequent interactions use the
+original connection-bound environment handle and never recreate a missing guest.
+The exact-grant lease and durable state checks surround stream acquisition;
+they do not remain held for a stream's lifetime. Losing the connection or a
+node-local handle fails closed and requires retirement and a fresh projection,
+including when a different application node must apply a lifecycle effect.
+
+The pinned execenv v0.2.0 adapter cannot safely apply incremental changes: Apply
+resets the watch baseline and may absorb unrelated concurrent guest writes
+without emitting events. Its directory move also lacks complete descendant
+version updates. The production adapter therefore refuses Apply before host I/O.
+An acknowledged candidate Workspace change retires the affected grant and closes
+its terminal; reopening rebuilds from durable state. Seamless live IDE changes
+require an upstream observation barrier and correct subtree projection. Full
+ReplaceTree is used only while initializing a reserved, fresh grant.
 
 Observation loss closes the terminal and releases its exact execution grant.
 The host API cannot atomically reset the projection and install a replacement
 watch, so in-place recovery could miss writes from an already-running guest
 process. A later authorized open receives a fresh environment constructed from
 durable Workspace state. Harvesting reads files through a bounded stream,
-enforces the Workspace per-file limit before mutation, and uses the host event
-cursor to derive deterministic retry keys. An unacknowledgeable non-ignored
+enforces the Workspace per-file limit before mutation, and uses the exact grant
+and host event cursor to derive deterministic retry keys. An unacknowledgeable non-ignored
 event fails the terminal rather than silently claiming durability.
 
 An asynchronous failure fences PTY writes and terminal close, durably releases
@@ -235,8 +267,8 @@ The server integration is implemented against execenv v0.2.0: typed multi-host
 deployment configuration and secret redaction, TLS 1.3/mTLS or loopback-only
 development dialing, connection recovery, fail-closed readiness, deterministic
 capability/capacity placement, durable assignment and cleanup history,
-authoritative PostgreSQL/VFS workspace projection, acknowledged IDE-change
-resynchronization, submission revocation, and bounded desired-state
+authoritative PostgreSQL/VFS workspace projection, safe retirement when an
+acknowledged IDE change cannot be projected, submission revocation, and bounded desired-state
 reconciliation that repairs missed open/pause/resume/release effects from
 authoritative Attempt and Sitting state as well as pending revocations. Each
 grant records the applied Sitting lifecycle state and revision; PostgreSQL
@@ -244,7 +276,12 @@ conditionally accepts an effect acknowledgement only while that exact state
 and revision remain current. A PostgreSQL advisory lease serializes host
 lifecycle effects for the exact grant across application nodes; after acquiring
 it, the worker rereads authoritative Attempt and Sitting state instead of using
-its triggering snapshot. The worker validates that same dedicated connection
+its triggering snapshot. Workspace initialization and incremental progress use
+that same lease. Acquisition retries nonblocking advisory locks without retaining
+a connection while waiting. A per-Store limit leaves at least one configured
+pool connection available for ordinary queries; undersized pools fail closed.
+A failed unlock discards the physical connection rather than pooling a live
+session lock. The worker validates that same dedicated connection
 before preparing and immediately after every host effect. Preparation persists
 a pending state/revision before Freeze or Thaw; completion clears it atomically
 with the applied marker. Connection loss releases/revokes the exact grant, and
@@ -257,6 +294,9 @@ commands, durable candidate terminal-open audit, audit-correlated lifecycle
 release, pause/resume/release hooks, and periodic cleanup. The independent
 execenv repository supplies the host binary,
 remote protocol, in-memory adapter, and conformance suite.
+
+Pending revocation scans advance through grant IDs in bounded pages and wrap
+after reaching the end. Repeated failures on one page cannot starve later grants.
 
 Exact default resource numbers, an authored ignore list, and an operator image
 catalog UI remain later product slices. The initial server ignore set is fixed

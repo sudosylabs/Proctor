@@ -18,6 +18,7 @@ import (
 )
 
 func TestAcademicUnitMemberStore(t *testing.T, ss store.Store) {
+	t.Run("StablePages", func(t *testing.T) { testAcademicUnitMemberPaging(t, ss) })
 	t.Run("ActiveIntervalPrecision", func(t *testing.T) { testAcademicUnitMemberActiveIntervalPrecision(t, ss) })
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)

@@ -52,6 +52,7 @@ func TestAuthenticationFanoutFailureIntegration(t *testing.T) {
 	dataSource := requireAuthenticationDatabase(t)
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
+	seedAuthenticationAuditInstitution(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithStore(persistence),
@@ -468,6 +469,7 @@ func TestAuthenticationIntegration(t *testing.T) {
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
+	seedAuthenticationAuditInstitution(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -729,6 +731,7 @@ func TestBrowserCookieAuthenticationIntegration(t *testing.T) {
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
+	seedAuthenticationAuditInstitution(t, persistence)
 	helper := testlib.Setup(
 		t,
 		testlib.WithConfig(func(cfg *config.Config) {
@@ -878,6 +881,7 @@ func TestSessionManagementIntegration(t *testing.T) {
 	}
 	persistence := openAuthenticationStore(t, dataSource)
 	seedInitialAuthenticationAccessPolicy(t, persistence)
+	seedAuthenticationAuditInstitution(t, persistence)
 	helper := testlib.Setup(t, testlib.WithStore(persistence))
 	password := "correct horse battery staple"
 	user, appErr := helper.App.CreateLocalUser(context.Background(), &model.User{
@@ -1437,6 +1441,17 @@ func seedAuthenticationAccessPolicy(
 		policy.InvitationAdmissionEnabled, policy.InvitationLocalCredentialEnabled,
 		policy.DesktopAuthorizationEnabled, providers,
 	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Legacy authentication fixtures create Users directly; self-session mutations
+// still need the installation singleton that owns their durable audit scope.
+func seedAuthenticationAuditInstitution(t *testing.T, persistence *sqlstore.SQLStore) {
+	t.Helper()
+	if _, err := persistence.Institution().Save(context.Background(), &model.Institution{
+		Name: "authentication-university", DisplayName: "Authentication University",
+	}); err != nil {
 		t.Fatal(err)
 	}
 }

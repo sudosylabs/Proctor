@@ -497,6 +497,7 @@ writesComplete:
 	if len(probes) > 0 && probes[0].SetParticipationLeaseExpired != nil {
 		testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t, ctx, ss, workspace, probes[0])
 	}
+	testAttemptWorkspaceRecursiveDeletion(t, ss, workspace, probes...)
 }
 
 func testExamAttemptWorkspaceSuspensionAndMultiNodeReplay(t *testing.T, ctx context.Context, ss store.Store,

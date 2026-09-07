@@ -347,6 +347,7 @@ components:
         - client_type
         - authentication_method
         - authentication_strength
+        - mfa_recovery_required
         - authenticated_at
         - last_activity_at
         - idle_expires_at
@@ -393,6 +394,13 @@ components:
         authenticated_at:
           type: integer
           format: int64
+        mfa_recovery_required:
+          type: boolean
+          description: Whether this Session is restricted to MFA reenrollment after an assisted reset.
+        reauthenticated_at:
+          type: integer
+          format: int64
+          description: Most recent fresh primary proof for the original Session method, independent of initial authentication and MFA history.
         mfa_completed_at:
           type: integer
           format: int64
@@ -420,6 +428,7 @@ components:
             - desktop_registration_revoked
             - external_identity_unlinked
             - inactive_user
+            - mfa_reset
             - password_removed
             - password_reset
             - refresh_replay

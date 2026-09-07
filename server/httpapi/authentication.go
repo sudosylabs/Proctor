@@ -87,6 +87,7 @@ type sessionResponse struct {
 	UpdateAt                int64  `json:"update_at"`
 	DeleteAt                int64  `json:"delete_at"`
 	UserID                  string `json:"user_id"`
+	MFARecoveryRequired     bool   `json:"mfa_recovery_required"`
 	ClientType              string `json:"client_type"`
 	DesktopRegistrationID   string `json:"desktop_registration_id,omitempty"`
 	DesktopRelease          string `json:"desktop_release,omitempty"`
@@ -99,6 +100,7 @@ type sessionResponse struct {
 	AuthenticationMethod    string `json:"authentication_method"`
 	AuthenticationStrength  string `json:"authentication_strength"`
 	AuthenticatedAt         int64  `json:"authenticated_at"`
+	ReauthenticatedAt       int64  `json:"reauthenticated_at,omitempty"`
 	MFACompletedAt          int64  `json:"mfa_completed_at,omitempty"`
 	LastActivityAt          int64  `json:"last_activity_at"`
 	IdleExpiresAt           int64  `json:"idle_expires_at"`
@@ -126,6 +128,7 @@ func sessionResponseFromModel(request *http.Request, session *model.Session) *se
 		UpdateAt:              model.MillisFromTime(session.UpdatedAt),
 		DeleteAt:              session.ArchivedAt.Millis(),
 		UserID:                session.UserID.String(),
+		MFARecoveryRequired:   session.MFARecoveryRequired,
 		ClientType:            string(session.ClientType),
 		DesktopRegistrationID: session.DesktopRegistrationID.String(),
 		DesktopRelease:        session.DesktopRelease, DesktopBuildID: session.DesktopBuildID,
@@ -136,6 +139,7 @@ func sessionResponseFromModel(request *http.Request, session *model.Session) *se
 		AuthenticationMethod:    session.AuthenticationMethod,
 		AuthenticationStrength:  string(session.AuthenticationStrength),
 		AuthenticatedAt:         model.MillisFromTime(session.AuthenticatedAt),
+		ReauthenticatedAt:       session.ReauthenticatedAt.Millis(),
 		MFACompletedAt:          session.MFACompletedAt.Millis(),
 		LastActivityAt:          model.MillisFromTime(session.LastActivityAt),
 		IdleExpiresAt:           model.MillisFromTime(session.IdleExpiresAt),
@@ -172,6 +176,8 @@ func sessionRevocationReasonPresentation(reason model.SessionRevocationReason) s
 		return "Password authentication was removed."
 	case model.SessionRevocationExternalIdentityUnlinked:
 		return "The external identity was unlinked."
+	case model.SessionRevocationMFAReset:
+		return "Multi-factor authentication was reset."
 	case model.SessionRevocationPasswordReset:
 		return "The password was reset."
 	case model.SessionRevocationRefreshReplay:
@@ -262,7 +268,7 @@ func authenticationResource(authentication authenticationEntryApplication, cooki
 		),
 		publicRoute(http.MethodPost, apiPath(literal("auth"), literal("login")), authenticationLoginErrorCodes(), module.login),
 		refreshCredentialRoute(http.MethodPost, apiPath(literal("auth"), literal("refresh")), authenticationRefreshErrorCodes(), module.refresh),
-		sessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), sessionAuthenticationMutationErrorCodes("authentication.internal"), module.logout),
+		mfaRecoverySessionRoute(http.MethodPost, apiPath(literal("auth"), literal("logout")), sessionAuthenticationMutationErrorCodes("authentication.internal"), module.logout),
 		sessionRoute(
 			http.MethodPost,
 			apiPath(literal("auth"), literal("email-verification"), literal("request")),
@@ -589,7 +595,7 @@ func singleCookieValue(
 
 func Principal(ctx context.Context) (model.Principal, bool) {
 	principal, ok := ctx.Value(principalContextKey{}).(model.Principal)
-	return principal, ok && principal.Validate() == nil
+	return principal, ok && principal.ValidateMFARecovery() == nil
 }
 
 func credentialFromContext(ctx context.Context) (requestCredential, bool) {

@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,17 +26,21 @@ type programmeLevelStoreFake struct {
 	updateInput  *store.ProgrammeLevelUpdate
 	archiveInput *store.ProgrammeLevelArchive
 	createErr    error
+	listed       []*model.ProgrammeLevel
+	searchTerm   string
+	searchLimit  int
 }
 
 func (s *programmeLevelStoreFake) Get(context.Context, string) (*model.ProgrammeLevel, error) {
 	*s.events = append(*s.events, "get-level")
 	return s.current, nil
 }
-func (*programmeLevelStoreFake) ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error) {
-	return nil, nil
+func (s *programmeLevelStoreFake) ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error) {
+	return s.listed, nil
 }
-func (*programmeLevelStoreFake) SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error) {
-	return nil, nil
+func (s *programmeLevelStoreFake) SearchByProgramme(_ context.Context, _ string, term string, limit int) ([]*model.ProgrammeLevel, error) {
+	s.searchTerm, s.searchLimit = term, limit
+	return s.listed[:min(limit, len(s.listed))], nil
 }
 func (s *programmeLevelStoreFake) Create(_ context.Context, input *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error) {
 	*s.events = append(*s.events, "store-create")
@@ -176,5 +181,36 @@ func TestProgrammeLevelCreateConflictCompletesFailedAttempt(t *testing.T) {
 	}
 	if !reflect.DeepEqual(events, []string{"authorize", "audit-begin", "store-create", "audit-fail"}) {
 		t.Fatalf("events = %v", events)
+	}
+}
+
+func TestProgrammeLevelListPreservesLimitWithoutSearch(t *testing.T) {
+	t.Parallel()
+	for _, term := range []string{"", "  \t", " programme "} {
+		t.Run(term, func(t *testing.T) {
+			t.Parallel()
+			events := []string{}
+			first := &model.ProgrammeLevel{ID: model.NewProgrammeLevelID()}
+			persistence := &programmeLevelStoreFake{
+				events: &events,
+				listed: []*model.ProgrammeLevel{first, {ID: model.NewProgrammeLevelID()}},
+			}
+			service := newProgrammeLevelService(
+				persistence, &programmeAuthorizerFake{events: &events},
+				&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+			)
+			got, err := service.List(context.Background(), Invocation{}, ListProgrammeLevelsQuery{
+				ProgrammeID: model.NewId(), Query: term, Limit: 1,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0] != first {
+				t.Fatalf("List(limit=1, q=%q) = %#v", term, got)
+			}
+			if persistence.searchTerm != strings.TrimSpace(term) || persistence.searchLimit != 1 {
+				t.Fatalf("bounded query = %q, %d", persistence.searchTerm, persistence.searchLimit)
+			}
+		})
 	}
 }

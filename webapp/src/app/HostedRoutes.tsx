@@ -6,12 +6,15 @@ import {
   type BrowserLocation,
 } from "../auth/fragments";
 import { AuthorizationCompletePage } from "../features/authorization-complete/AuthorizationCompletePage";
+import { AccountSecurityPage } from "../features/account-security/AccountSecurityPage";
 import { ConnectProviderPage } from "../features/connect-provider/ConnectProviderPage";
 import { DesktopAuthorizationPage } from "../features/desktop-authorization/DesktopAuthorizationPage";
 import { ForgotPasswordPage } from "../features/forgot-password/ForgotPasswordPage";
 import { JoinPage } from "../features/join/JoinPage";
 import { LoginPage } from "../features/login/LoginPage";
 import { RegisterPage } from "../features/register/RegisterPage";
+import { ReauthenticatePage } from "../features/reauthenticate/ReauthenticatePage";
+import type { ReauthenticationTask } from "../features/reauthenticate/ReauthenticationApi";
 import { ResetPasswordPage } from "../features/reset-password/ResetPasswordPage";
 import { SetupPage } from "../features/setup/SetupPage";
 import { VerifyEmailPage } from "../features/verify-email/VerifyEmailPage";
@@ -45,6 +48,8 @@ export type HostedPageBootstrap =
       credential?: { kind: "email_verification_token"; value: string };
     }
   | { route: "/account/connect-provider" }
+  | { route: "/account/security" }
+  | { route: "/account/reauthenticate"; task: ReauthenticationTask; notice?: "external_login_failed" }
   | { route: "/authorization/complete" };
 
 type RouteBootstrap<R extends HostedRoute> = Extract<
@@ -55,6 +60,7 @@ type RouteBootstrap<R extends HostedRoute> = Extract<
 type FragmentPolicy =
   | { kind: "none" }
   | { kind: "external_login_notice" }
+  | { kind: "reauthentication_task" }
   | { kind: "invitation_claim"; name: "token" }
   | { kind: "desktop_browser_proof"; name: "proof" }
   | { kind: "password_reset_token"; name: "token" }
@@ -144,6 +150,16 @@ const hostedRouteDescriptors = {
     fragment: { kind: "none" },
     render: () => <AuthorizationCompletePage />,
   },
+  "/account/security": {
+    documentTitle: "webapp.security.document_title",
+    fragment: { kind: "none" },
+    render: () => <AccountSecurityPage />,
+  },
+  "/account/reauthenticate": {
+    documentTitle: "webapp.reauthenticate.document_title",
+    fragment: { kind: "reauthentication_task" },
+    render: (bootstrap) => <ReauthenticatePage task={bootstrap.task} externalProofFailed={bootstrap.notice === "external_login_failed"} />,
+  },
 } satisfies HostedRouteDescriptorMap;
 
 export function bootstrapHostedPage(
@@ -157,6 +173,16 @@ export function bootstrapHostedPage(
   const policy = hostedRouteDescriptors[route].fragment;
 
   switch (policy.kind) {
+    case "reauthentication_task": {
+      const url = new URL(location.href);
+      const tasks = url.searchParams.getAll("task");
+      const task = tasks.length === 1 && tasks[0] === "connect-provider" ? "connect-provider" : "security";
+      const failed = url.hash === "#external_login=failed";
+      url.hash = "";
+      url.search = new URLSearchParams({ task }).toString();
+      if (url.href !== location.href) history.replaceState(history.state, "", url);
+      return { route: "/account/reauthenticate", task, ...(failed ? { notice: "external_login_failed" as const } : {}) };
+    }
     case "none":
       clearFragment(location, history);
       return { route } as RouteBootstrap<typeof route>;

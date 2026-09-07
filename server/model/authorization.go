@@ -61,6 +61,13 @@ const (
 	ActionSubmissionReviewOverride               Action = "submission.review.override"
 	ActionSubmissionRelease                      Action = "submission.release"
 	ActionSubmissionReleaseOverride              Action = "submission.release.override"
+	ActionExamRecordsComplete                    Action = "exam.records.complete"
+	ActionExamRecordsCompleteOverride            Action = "exam.records.complete.override"
+	ActionExamRecordsExport                      Action = "exam.records.export"
+	ActionExamRecordsExportOverride              Action = "exam.records.export.override"
+	ActionExamRecordsHold                        Action = "exam.records.hold"
+	ActionExamRecordsHoldOverride                Action = "exam.records.hold.override"
+	ActionRetentionHoldRelease                   Action = "retention_hold.release"
 
 	ActionAcademicUnitView          Action = "academic_unit.view"
 	ActionAcademicUnitManage        Action = "academic_unit.manage"
@@ -82,6 +89,10 @@ const (
 	ActionAccessPolicyView                 Action = "access_policy.view"
 	ActionAccessPolicyManage               Action = "access_policy.manage"
 	ActionDesktopCompatibilityPolicyManage Action = "desktop_compatibility_policy.manage"
+	ActionRetentionPolicyView              Action = "retention_policy.view"
+	ActionRetentionPolicyManage            Action = "retention_policy.manage"
+	ActionRetentionCleanupManage           Action = "retention_cleanup.manage"
+	ActionUserMFAReset                     Action = "user.mfa.reset"
 	ActionInvitationView                   Action = "invitation.view"
 	ActionInvitationCreate                 Action = "invitation.create"
 	ActionInvitationManage                 Action = "invitation.manage"
@@ -328,6 +339,13 @@ var actionDefinitions = map[Action]ActionDefinition{
 		Action: ActionSubmissionReleaseOverride, ResourceType: ResourceSubmission,
 		InheritInstitutionScope: true, InheritAcademicUnitScopes: true,
 	},
+	ActionExamRecordsComplete:         {Action: ActionExamRecordsComplete, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionExamRecordsCompleteOverride: {Action: ActionExamRecordsCompleteOverride, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionExamRecordsExport:           {Action: ActionExamRecordsExport, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionExamRecordsExportOverride:   {Action: ActionExamRecordsExportOverride, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionExamRecordsHold:             {Action: ActionExamRecordsHold, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionExamRecordsHoldOverride:     {Action: ActionExamRecordsHoldOverride, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true},
+	ActionRetentionHoldRelease:        {Action: ActionRetentionHoldRelease, ResourceType: ResourceExam, CompatibleResourceTypes: []ResourceType{ResourceExamSitting, ResourceSubmission}, InheritInstitutionScope: true, InheritAcademicUnitScopes: true, PersonalAccessTokenForbidden: true, SystemAdministratorOnly: true},
 	ActionAcademicUnitView: {
 		Action: ActionAcademicUnitView, ResourceType: ResourceAcademicUnit,
 		CompatibleResourceTypes: []ResourceType{ResourceInstitution},
@@ -403,6 +421,25 @@ var actionDefinitions = map[Action]ActionDefinition{
 	ActionAccessPolicyManage: {
 		Action: ActionAccessPolicyManage, ResourceType: ResourceInstitution,
 		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionRetentionPolicyView: {
+		Action: ActionRetentionPolicyView, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+	},
+	ActionRetentionPolicyManage: {
+		Action: ActionRetentionPolicyManage, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+		SystemAdministratorOnly: true,
+	},
+	ActionRetentionCleanupManage: {
+		Action: ActionRetentionCleanupManage, ResourceType: ResourceInstitution,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+		SystemAdministratorOnly: true,
+	},
+	ActionUserMFAReset: {
+		Action: ActionUserMFAReset, ResourceType: ResourceUser,
+		InheritInstitutionScope: true, PersonalAccessTokenForbidden: true,
+		SystemAdministratorOnly: true,
 	},
 	ActionDesktopCompatibilityPolicyManage: {
 		Action: ActionDesktopCompatibilityPolicyManage, ResourceType: ResourceInstitution,

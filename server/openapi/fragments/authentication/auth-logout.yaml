@@ -21,7 +21,7 @@ paths:
               https://proctor.example.edu/api/v1/auth/logout
       tags:
         - Authentication
-      x-proctor-auth: session_required
+      x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
         - authentication.invalid_token

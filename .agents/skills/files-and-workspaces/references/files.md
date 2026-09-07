@@ -108,6 +108,99 @@ references them; attempt files, journals, and sealed submission revisions
 remain for the applicable examination-record period. Quarantined and rejected
 content remains only as long as security review and audit require.
 
+### Institution Retention Policy
+
+One revisioned Institution Retention Policy is created in PostgreSQL in the
+same transaction as the Institution. It stores separate day counts for
+Submissions and associated work, integrity evidence and review, audit history,
+temporary export artifacts, and deletion grace time. Zero means no configured
+expiry or grace period, never immediate deletion. All values initially are
+zero. Export retention accepts zero when unconfigured or a finite 1–7 days.
+Other periods have a 36,500-day numeric maximum, not an institutional default.
+Days mean 24-hour durations. Submission work and integrity use explicit
+current Sitting Records Completion as their retention anchor; audit and
+retirement receipts use their own event ages.
+Archiving an Institution retains its policy; a replacement Institution gets
+its own initial policy. Reads select only the current active Institution.
+
+A separate Retention Control requires a protected administrator's strong
+recent Session, a current content-free preview, and approval of the exact
+policy revision. The HTTP policy projection reports whether that approval
+currently enables cleanup. Saving a new policy pauses old approval and cancels
+pending grace. Existing operational expiry of credentials, leases, abandoned
+stages, retry outcomes, and ordinary Job history remains separate.
+
+Retirement is per Submission and category. Supporting work uses the later
+work/integrity deadline and remains preserved if either required period is
+indefinite. Scoped holds and export construction protect current descendants;
+fresh holds, changed completion, policy/control changes, and new construction
+references cancel applicable grace. Renewed eligibility starts a new positive
+grace period. Scheduling durably records manager/operator notices and optional
+candidate notices; mail failure does not authorize or prevent removal.
+
+The named Store commit irreversibly closes ordinary content access, removes
+private metadata, snapshots and retained retry copies, and reserves exact
+unreferenced object keys for later physical purge. Shared published objects
+retain their independent references. Backend delete acknowledgement is not
+proof of absence: finished writers require an independent absence observation;
+unknown writers retain exact-key reconciliation references. A surviving minimal
+receipt contains identifiers, dates, policy revisions, category and purge
+status, not paths, remarks, answers, evidence or content digests. Permanent
+Submission markers survive expiry of that receipt under audit-retention rules.
+
+Policy replacement requires the expected revision and idempotency key. The
+named Store operation serializes edits and system-administrator revocation,
+rechecks the actor's current credential, protected binding and strong recent
+Session assurance at the post-lock database time, and atomically commits the
+policy, successful critical audit, and bounded retry outcome. Exact no-ops
+preserve revision and time. Identical retries return the original outcome
+after fresh application authorization, the same current credential/binding/assurance
+checks, and a new audit attempt. Exact no-ops also require these checks. Configuration
+is read authoritatively on every node and is not cached.
+
+Temporary portable exports require a separate permission and explicit work
+and/or integrity categories. They have their own bounded expiry; downloading,
+retrying, adding a later hold, or changing examination grace cannot extend it.
+They are verifiable archives without an import promise. Logical removal never
+promises immediate erasure from backups or previously downloaded exports.
+Audit and receipt expiry retain unfinished and referenced records as described
+in the [audit contract](../../authorization-audit/references/authorization.md#audit).
+
+The export lifetime is separately configured at 1–7 days; zero rejects
+creation. Advertised expiry starts at creation and never changes. Creation
+atomically freezes bounded structured records, exact Submission/category
+source protections, and a finite Job under Exam/Sitting/Submission locks.
+Source protections last at most 24 hours. Their fresh reservation immediately
+cancels applicable content grace/notices and relevant audit/receipt grace,
+even if construction completes before a scheduler scan. Exact retries hydrate
+current metadata without renewing deadlines or cancelling grace.
+
+Each build attempt registers its exact artifact identity before I/O. File
+Content builds a private bounded ZIP spool, validates original file lengths
+and hashes, and independently reads back the written archive before SQL
+publication. Publication must hold the matching live Job claim and precede
+both deadlines; only then does it release source protection. Source retirement
+preserves export retry outcomes because they contain only an export identity.
+Download access ends at fixed archive expiry, independent of byte cleanup.
+The application re-reads current credential and record authority, database-clocked
+expiry, readiness, and the exact artifact after storage opens but before exposing
+the body. A pending open that crosses a denial or expiry closes its reader;
+the node's wall clock does not substitute for that authoritative read.
+
+An uncertain writer retains its cleanup identity after absence is observed
+because it may finish later. Reconciliation retries exact-key removal and
+verification; only known-finished writers and observed absence release that
+identity. Neither delete acknowledgement nor current-key absence proves
+erasure of storage histories, replicas, backups, or termination of open streams.
+
+Physical cleanup atomically reserves a bounded batch in oldest due order and
+advances each exact key's next attempt by one hour before any VFS operation. A
+failed key does not stop the rest of its batch or occupy the next batch.
+Concurrent workers skip reserved keys. An uncertain reservation only defers
+work; it never records absence or releases a writer's reference. A completed
+verification for a known finished writer clears that retry delay so receipt
+expiry can proceed.
+
 ## Search
 
 Search uses server-maintained metadata and bounded, explicitly extracted
@@ -263,8 +356,10 @@ entity identity. Canonical case-sensitive POSIX-relative paths have at most 16
 segments, 255 UTF-8 bytes per segment, and 1,024 UTF-8 bytes total. They reject
 absolute and empty paths, dot traversal, repeated/trailing separators,
 backslashes, NUL/control characters, and the reserved `.proctor` root. Empty
-directories are PostgreSQL metadata and non-empty directory removal is not
-recursive.
+directories are PostgreSQL metadata. Removal defaults to empty directories;
+explicit recursive removal archives the entire Draft subtree atomically under
+the expected Draft revision and advances that revision once. Retained command
+outcomes and published or admitted content pins protect retired object bytes.
 
 The protected HTTP content operations return inline content only after current
 authorization, with a strong checksum ETag and `nosniff`; they never expose a
@@ -310,6 +405,16 @@ every prior save. Reconnect applies ordered changes after the last acknowledged
 cursor or refreshes a complete manifest after a gap. Conflicted, rejected, or
 outcome-unknown client work remains protected until acknowledged replacement
 or explicit discard.
+
+Directory deletion defaults to empty directories. Explicit recursive deletion
+requires the complete expected Workspace Cursor, including zero, in addition
+to the root Entry identity and expected path. Any intervening accepted
+mutation conflicts; unrelated ordinary entry mutations still omit this
+aggregate cursor fence. Success removes all descendants atomically and emits
+one deletion journal record marked recursive. Clients remove the root and
+paths beneath its slash boundary. Retired attempt-owned objects remain
+protected by the retained command outcome without an unbounded object-ID list;
+published Starter content and submitted manifests retain their pins.
 
 The public protocol is deliberately asymmetric. Authoritative create,
 replace, move/rename, and delete commands are HTTP-only, require the active

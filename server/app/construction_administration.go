@@ -32,7 +32,7 @@ func constructAdministration(
 		deps.Store.Session(), deps.Store.User(),
 		sessionAdministrationAuthorization{authorization: access.authorization},
 		mutationAuditAdapter{audit: foundation.audit}, identity.mail,
-		sessionAdministrationRealtimeEffects{effects: foundation.realtime}, time.Now,
+		foundation.realtime, time.Now,
 	)
 	roleBindings := newRoleBindingService(
 		deps.Store.RoleBinding(), deps.Store.Role(), deps.Store.User(), roleAuthorization, access.capabilities,
@@ -67,6 +67,7 @@ func constructAdministration(
 			deps.BootstrapProtection,
 			deps.NodeID,
 			time.Now,
+			administratorRecoveryPolicy{capabilities: access.capabilities, mfaEnabled: deps.MFA.Enabled},
 		),
 	}
 }

@@ -585,6 +585,14 @@ func (m *measuredExecutionHosts) Revoke(ctx context.Context, hostID, grantID str
 	m.metrics.ObserveExecutionHost("revoke", err, time.Since(started))
 	return err
 }
+
+func (m *measuredExecutionHosts) Existing(ctx context.Context, hostID string, spec appexecution.Spec) (appexecution.Environment, error) {
+	value, err := m.next.Existing(ctx, hostID, spec)
+	if err != nil || value == nil {
+		return nil, err
+	}
+	return &measuredEnvironment{next: value, metrics: m.metrics}, nil
+}
 func (m *measuredExecutionHosts) Check(ctx context.Context) error {
 	started := time.Now()
 	if checker, ok := m.next.(interface {

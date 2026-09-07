@@ -33,8 +33,12 @@ type timedStores struct {
 	examAttemptWorkspaceOnce       sync.Once
 	examCorrection                 store.ExamCorrectionStore
 	examCorrectionOnce             sync.Once
+	examExport                     store.ExamExportStore
+	examExportOnce                 sync.Once
 	examIntegrityReview            store.ExamIntegrityReviewStore
 	examIntegrityReviewOnce        sync.Once
+	examRecords                    store.ExamRecordsStore
+	examRecordsOnce                sync.Once
 	examResource                   store.ExamResourceStore
 	examResourceOnce               sync.Once
 	examRevision                   store.ExamRevisionStore
@@ -47,6 +51,10 @@ type timedStores struct {
 	examSubmissionOnce             sync.Once
 	executionGrant                 store.ExecutionGrantStore
 	executionGrantOnce             sync.Once
+	retention                      store.RetentionStore
+	retentionOnce                  sync.Once
+	retentionPolicy                store.RetentionPolicyStore
+	retentionPolicyOnce            sync.Once
 	servingNodeLease               store.ServingNodeLeaseStore
 	servingNodeLeaseOnce           sync.Once
 	examAuthoring                  store.ExamAuthoringStore
@@ -148,9 +156,19 @@ type timedExamCorrectionStore struct {
 	next  store.ExamCorrectionStore
 }
 
+type timedExamExportStore struct {
+	layer *Layer
+	next  store.ExamExportStore
+}
+
 type timedExamIntegrityReviewStore struct {
 	layer *Layer
 	next  store.ExamIntegrityReviewStore
+}
+
+type timedExamRecordsStore struct {
+	layer *Layer
+	next  store.ExamRecordsStore
 }
 
 type timedExamResourceStore struct {
@@ -181,6 +199,16 @@ type timedExamSubmissionStore struct {
 type timedExecutionGrantStore struct {
 	layer *Layer
 	next  store.ExecutionGrantStore
+}
+
+type timedRetentionStore struct {
+	layer *Layer
+	next  store.RetentionStore
+}
+
+type timedRetentionPolicyStore struct {
+	layer *Layer
+	next  store.RetentionPolicyStore
 }
 
 type timedServingNodeLeaseStore struct {
@@ -471,6 +499,26 @@ func (l *Layer) ExamIntegrityReview() store.ExamIntegrityReviewStore {
 		}
 	})
 	return l.stores.examIntegrityReview
+}
+
+func (l *Layer) ExamRecords() store.ExamRecordsStore {
+	l.stores.examRecordsOnce.Do(func() {
+		next := l.next.ExamRecords()
+		if next != nil {
+			l.stores.examRecords = &timedExamRecordsStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examRecords
+}
+
+func (l *Layer) ExamExport() store.ExamExportStore {
+	l.stores.examExportOnce.Do(func() {
+		next := l.next.ExamExport()
+		if next != nil {
+			l.stores.examExport = &timedExamExportStore{layer: l, next: next}
+		}
+	})
+	return l.stores.examExport
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -771,6 +819,26 @@ func (l *Layer) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicySto
 		}
 	})
 	return l.stores.desktopCompatibilityPolicy
+}
+
+func (l *Layer) RetentionPolicy() store.RetentionPolicyStore {
+	l.stores.retentionPolicyOnce.Do(func() {
+		next := l.next.RetentionPolicy()
+		if next != nil {
+			l.stores.retentionPolicy = &timedRetentionPolicyStore{layer: l, next: next}
+		}
+	})
+	return l.stores.retentionPolicy
+}
+
+func (l *Layer) Retention() store.RetentionStore {
+	l.stores.retentionOnce.Do(func() {
+		next := l.next.Retention()
+		if next != nil {
+			l.stores.retention = &timedRetentionStore{layer: l, next: next}
+		}
+	})
+	return l.stores.retention
 }
 
 func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
@@ -1181,6 +1249,66 @@ func (s *timedExamCorrectionStore) Apply(arg0 context.Context, arg1 *store.ExamC
 	})
 }
 
+func (s *timedExamExportStore) ListScope(arg0 context.Context, arg1 model.RetentionHoldScope) ([]store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListScope), func() ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListScope(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) ListCreationScope(arg0 context.Context, arg1 model.RetentionHoldScope, arg2 *store.CommandIdempotency) ([]store.ExamSubmissionAuthorization, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodListCreationScope), func() ([]store.ExamSubmissionAuthorization, error) {
+		return s.next.ListCreationScope(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamExportStore) Create(arg0 context.Context, arg1 *store.ExamExportCreation, arg2 *store.CommandIdempotency) (*model.ExamExport, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodCreate), func() (*model.ExamExport, error) {
+		return s.next.Create(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamExportStore) Get(arg0 context.Context, arg1 *store.ExamExportAccess) (*store.ExamExportDownload, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodGet), func() (*store.ExamExportDownload, error) {
+		return s.next.Get(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) BeginBuild(arg0 context.Context, arg1 *store.ExamExportBuild) (*store.ExamExportSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginBuild), func() (*store.ExamExportSnapshot, error) {
+		return s.next.BeginBuild(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) Publish(arg0 context.Context, arg1 *store.ExamExportPublication) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodPublish), func() error {
+		return s.next.Publish(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) FinishWriter(arg0 context.Context, arg1 store.ExamExportArtifact) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodFinishWriter), func() error {
+		return s.next.FinishWriter(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) Reconcile(arg0 context.Context, arg1 int) (int, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodReconcile), func() (int, error) {
+		return s.next.Reconcile(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.ExamExportArtifact, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamExport, methodBeginPurgeBatch), func() ([]store.ExamExportArtifact, error) {
+		return s.next.BeginPurgeBatch(arg0, arg1)
+	})
+}
+
+func (s *timedExamExportStore) CompletePurge(arg0 context.Context, arg1 store.ExamExportArtifact) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateExamExport, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
+	})
+}
+
 func (s *timedExamIntegrityReviewStore) Resolve(arg0 context.Context, arg1 model.SubmissionID) (*store.ExamIntegrityReviewAuthorization, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodResolve), func() (*store.ExamIntegrityReviewAuthorization, error) {
 		return s.next.Resolve(arg0, arg1)
@@ -1244,6 +1372,54 @@ func (s *timedExamIntegrityReviewStore) Release(arg0 context.Context, arg1 *stor
 func (s *timedExamIntegrityReviewStore) GetReleasedStudentResult(arg0 context.Context, arg1 model.ExamAttemptID, arg2 model.UserID) (*model.StudentResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExamIntegrityReview, methodGetReleasedStudentResult), func() (*model.StudentResult, error) {
 		return s.next.GetReleasedStudentResult(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRecordsStore) Resolve(arg0 context.Context, arg1 model.RetentionHoldScope) (*store.ExamRecordsScope, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodResolve), func() (*store.ExamRecordsScope, error) {
+		return s.next.Resolve(arg0, arg1)
+	})
+}
+
+func (s *timedExamRecordsStore) GetCompletion(arg0 context.Context, arg1 model.ExamID, arg2 model.ExamSittingID) (*store.ExamRecordsCompletionSnapshot, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodGetCompletion), func() (*store.ExamRecordsCompletionSnapshot, error) {
+		return s.next.GetCompletion(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRecordsStore) FindReviewWaiver(arg0 context.Context, arg1 model.RetentionHoldScope) (*model.SubmissionReviewWaiver, bool, error) {
+	return timeStoreCall2(s.layer, storeOperation(aggregateExamRecords, methodFindReviewWaiver), func() (*model.SubmissionReviewWaiver, bool, error) {
+		return s.next.FindReviewWaiver(arg0, arg1)
+	})
+}
+
+func (s *timedExamRecordsStore) CompleteRecords(arg0 context.Context, arg1 *store.ExamRecordsCompletion, arg2 *store.CommandIdempotency) (*store.ExamRecordsCompletionResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodCompleteRecords), func() (*store.ExamRecordsCompletionResult, error) {
+		return s.next.CompleteRecords(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRecordsStore) WaiveReview(arg0 context.Context, arg1 *store.ExamRecordsReviewWaiver, arg2 *store.CommandIdempotency) (*store.ExamRecordsWaiverResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodWaiveReview), func() (*store.ExamRecordsWaiverResult, error) {
+		return s.next.WaiveReview(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRecordsStore) ListHolds(arg0 context.Context, arg1 store.ExamRecordsHoldListOptions) (*store.ExamRecordsHoldPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodListHolds), func() (*store.ExamRecordsHoldPage, error) {
+		return s.next.ListHolds(arg0, arg1)
+	})
+}
+
+func (s *timedExamRecordsStore) CreateHold(arg0 context.Context, arg1 *store.ExamRecordsHoldCreation, arg2 *store.CommandIdempotency) (*store.ExamRecordsHoldResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodCreateHold), func() (*store.ExamRecordsHoldResult, error) {
+		return s.next.CreateHold(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedExamRecordsStore) ReleaseHold(arg0 context.Context, arg1 *store.ExamRecordsHoldRelease, arg2 *store.CommandIdempotency) (*store.ExamRecordsHoldResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExamRecords, methodReleaseHold), func() (*store.ExamRecordsHoldResult, error) {
+		return s.next.ReleaseHold(arg0, arg1, arg2)
 	})
 }
 
@@ -1613,9 +1789,15 @@ func (s *timedExecutionGrantStore) Reassign(arg0 context.Context, arg1 store.Exe
 	})
 }
 
-func (s *timedExecutionGrantStore) MarkReady(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 time.Time) (*model.ExecutionGrant, error) {
-	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodMarkReady), func() (*model.ExecutionGrant, error) {
-		return s.next.MarkReady(arg0, arg1, arg2, arg3)
+func (s *timedExecutionGrantStore) PrepareWorkspaceEffect(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 int64, arg4 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodPrepareWorkspaceEffect), func() (*model.ExecutionGrant, error) {
+		return s.next.PrepareWorkspaceEffect(arg0, arg1, arg2, arg3, arg4)
+	})
+}
+
+func (s *timedExecutionGrantStore) MarkWorkspaceApplied(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int64, arg3 int64, arg4 time.Time) (*model.ExecutionGrant, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodMarkWorkspaceApplied), func() (*model.ExecutionGrant, error) {
+		return s.next.MarkWorkspaceApplied(arg0, arg1, arg2, arg3, arg4)
 	})
 }
 
@@ -1649,9 +1831,9 @@ func (s *timedExecutionGrantStore) MarkRevoked(arg0 context.Context, arg1 model.
 	})
 }
 
-func (s *timedExecutionGrantStore) ListPendingRevocations(arg0 context.Context, arg1 int) ([]*model.ExecutionGrant, error) {
+func (s *timedExecutionGrantStore) ListPendingRevocations(arg0 context.Context, arg1 model.ExecutionGrantID, arg2 int) ([]*model.ExecutionGrant, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodListPendingRevocations), func() ([]*model.ExecutionGrant, error) {
-		return s.next.ListPendingRevocations(arg0, arg1)
+		return s.next.ListPendingRevocations(arg0, arg1, arg2)
 	})
 }
 
@@ -1682,6 +1864,102 @@ func (s *timedExecutionGrantStore) ListCurrentForSitting(arg0 context.Context, a
 func (s *timedExecutionGrantStore) WorkspaceSnapshot(arg0 context.Context, arg1 model.ExamAttemptID) (*store.ExecutionWorkspaceSnapshot, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateExecutionGrant, methodWorkspaceSnapshot), func() (*store.ExecutionWorkspaceSnapshot, error) {
 		return s.next.WorkspaceSnapshot(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) GetControl(arg0 context.Context) (*model.RetentionControl, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetControl), func() (*model.RetentionControl, error) {
+		return s.next.GetControl(arg0)
+	})
+}
+
+func (s *timedRetentionStore) CreatePreview(arg0 context.Context, arg1 *store.RetentionPreviewCreation, arg2 *store.CommandIdempotency) (*model.RetentionPreview, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodCreatePreview), func() (*model.RetentionPreview, error) {
+		return s.next.CreatePreview(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionStore) GetPreview(arg0 context.Context, arg1 model.RetentionPreviewID) (*model.RetentionPreview, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodGetPreview), func() (*model.RetentionPreview, error) {
+		return s.next.GetPreview(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ChangeControl(arg0 context.Context, arg1 *store.RetentionControlChange, arg2 *store.CommandIdempotency) (*store.RetentionControlResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodChangeControl), func() (*store.RetentionControlResult, error) {
+		return s.next.ChangeControl(arg0, arg1, arg2)
+	})
+}
+
+func (s *timedRetentionStore) ListRecords(arg0 context.Context, arg1 store.RetentionRecordListOptions) (*store.RetentionRecordPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListRecords), func() (*store.RetentionRecordPage, error) {
+		return s.next.ListRecords(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileSubmission(arg0 context.Context, arg1 *store.RetentionReconciliation) (*store.RetentionReconciliationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileSubmission), func() (*store.RetentionReconciliationResult, error) {
+		return s.next.ReconcileSubmission(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) BeginPurgeBatch(arg0 context.Context, arg1 int) ([]store.RetentionPurgeObject, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodBeginPurgeBatch), func() ([]store.RetentionPurgeObject, error) {
+		return s.next.BeginPurgeBatch(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) CompletePurge(arg0 context.Context, arg1 *store.RetentionPurgeCompletion) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompletePurge), func() error {
+		return s.next.CompletePurge(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ListNotices(arg0 context.Context, arg1 model.UserID, arg2 model.RetentionRetirementID, arg3 int) ([]model.RetentionNotice, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListNotices), func() ([]model.RetentionNotice, error) {
+		return s.next.ListNotices(arg0, arg1, arg2, arg3)
+	})
+}
+
+func (s *timedRetentionStore) ListPendingNotices(arg0 context.Context, arg1 int) ([]model.RetentionNotice, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListPendingNotices), func() ([]model.RetentionNotice, error) {
+		return s.next.ListPendingNotices(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) CompleteNotice(arg0 context.Context, arg1 *store.RetentionNoticeMail) error {
+	return timeStoreCall0(s.layer, storeOperation(aggregateRetention, methodCompleteNotice), func() error {
+		return s.next.CompleteNotice(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ListExpiryRecords(arg0 context.Context, arg1 store.RetentionExpiryListOptions) (*store.RetentionExpiryPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodListExpiryRecords), func() (*store.RetentionExpiryPage, error) {
+		return s.next.ListExpiryRecords(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileExpiry(arg0 context.Context, arg1 *store.RetentionExpiryReconciliation) (*store.RetentionExpiryResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileExpiry), func() (*store.RetentionExpiryResult, error) {
+		return s.next.ReconcileExpiry(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionStore) ReconcileCleanupAuditExpiry(arg0 context.Context, arg1 *store.RetentionCleanupAuditReconciliation) (*store.RetentionCleanupAuditResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetention, methodReconcileCleanupAuditExpiry), func() (*store.RetentionCleanupAuditResult, error) {
+		return s.next.ReconcileCleanupAuditExpiry(arg0, arg1)
+	})
+}
+
+func (s *timedRetentionPolicyStore) Get(arg0 context.Context) (*model.RetentionPolicy, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodGet), func() (*model.RetentionPolicy, error) {
+		return s.next.Get(arg0)
+	})
+}
+
+func (s *timedRetentionPolicyStore) Replace(arg0 context.Context, arg1 *store.RetentionPolicyReplacement, arg2 *store.CommandIdempotency) (*store.RetentionPolicyReplacementResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateRetentionPolicy, methodReplace), func() (*store.RetentionPolicyReplacementResult, error) {
+		return s.next.Replace(arg0, arg1, arg2)
 	})
 }
 
@@ -2885,6 +3163,30 @@ func (s *timedPersonalAccessTokenStore) RevokeWithAudit(arg0 context.Context, ar
 	})
 }
 
+func (s *timedMFAStore) GetRecoveryState(arg0 context.Context, arg1 model.UserID) (*model.UserMFARecovery, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodGetRecoveryState), func() (*model.UserMFARecovery, error) {
+		return s.next.GetRecoveryState(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) SavePendingWithAudit(arg0 context.Context, arg1 *store.MFAPendingEnrollment) (*model.MFACredential, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSavePendingWithAudit), func() (*model.MFACredential, error) {
+		return s.next.SavePendingWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) ChallengeWithAudit(arg0 context.Context, arg1 *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodChallengeWithAudit), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.ChallengeWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedMFAStore) ResetWithAudit(arg0 context.Context, arg1 *store.MFAAssistedReset) (*store.MFAResetResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodResetWithAudit), func() (*store.MFAResetResult, error) {
+		return s.next.ResetWithAudit(arg0, arg1)
+	})
+}
+
 func (s *timedMFAStore) SavePending(arg0 context.Context, arg1 *model.MFACredential) (*model.MFACredential, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateMFA, methodSavePending), func() (*model.MFACredential, error) {
 		return s.next.SavePending(arg0, arg1)
@@ -3011,6 +3313,12 @@ func (s *timedAcademicUnitMemberStore) ListByAcademicUnit(arg0 context.Context, 
 	})
 }
 
+func (s *timedAcademicUnitMemberStore) ListPageByAcademicUnit(arg0 context.Context, arg1 store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListPageByAcademicUnit), func() (*store.AcademicUnitMemberPage, error) {
+		return s.next.ListPageByAcademicUnit(arg0, arg1)
+	})
+}
+
 func (s *timedAcademicUnitMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 time.Time) ([]*model.AcademicUnitMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateAcademicUnitMember, methodListActiveByUser), func() ([]*model.AcademicUnitMember, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
@@ -3059,6 +3367,12 @@ func (s *timedClassMemberStore) ListByClass(arg0 context.Context, arg1 string, a
 	})
 }
 
+func (s *timedClassMemberStore) ListPageByClass(arg0 context.Context, arg1 store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListPageByClass), func() (*store.ClassMemberPage, error) {
+		return s.next.ListPageByClass(arg0, arg1)
+	})
+}
+
 func (s *timedClassMemberStore) ListActiveByUser(arg0 context.Context, arg1 string, arg2 int64) ([]*model.ClassMember, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateClassMember, methodListActiveByUser), func() ([]*model.ClassMember, error) {
 		return s.next.ListActiveByUser(arg0, arg1, arg2)
@@ -3098,6 +3412,18 @@ func (s *timedPasswordCredentialStore) EnrollWithAudit(arg0 context.Context, arg
 func (s *timedPasswordCredentialStore) RemoveWithAudit(arg0 context.Context, arg1 *store.PasswordCredentialRemoval) (*store.AuthenticationMethodMutationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregatePasswordCredential, methodRemoveWithAudit), func() (*store.AuthenticationMethodMutationResult, error) {
 		return s.next.RemoveWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedSessionStore) ReauthenticateExternalWithAudit(arg0 context.Context, arg1 *store.SessionExternalReauthentication) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticateExternalWithAudit), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticateExternalWithAudit(arg0, arg1)
+	})
+}
+
+func (s *timedSessionStore) ReauthenticatePasswordWithAudit(arg0 context.Context, arg1 *store.SessionPasswordReauthentication) (*store.SessionReauthenticationResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateSession, methodReauthenticatePasswordWithAudit), func() (*store.SessionReauthenticationResult, error) {
+		return s.next.ReauthenticatePasswordWithAudit(arg0, arg1)
 	})
 }
 
@@ -3359,6 +3685,12 @@ func (s *timedInstallationStore) RecoverAdministratorAccess(arg0 context.Context
 	})
 }
 
+func (s *timedInstallationStore) ResetAdministratorMFA(arg0 context.Context, arg1 *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error) {
+	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodResetAdministratorMFA), func() (*store.AdministratorMFAResetResult, error) {
+		return s.next.ResetAdministratorMFA(arg0, arg1)
+	})
+}
+
 func (s *timedInstallationStore) ReconcileAdministratorRecovery(arg0 context.Context, arg1 *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error) {
 	return timeStoreCall1(s.layer, storeOperation(aggregateInstallation, methodReconcileAdministratorRecovery), func() (*store.AdministratorRecoveryReconciliationResult, error) {
 		return s.next.ReconcileAdministratorRecovery(arg0, arg1)
@@ -3374,13 +3706,17 @@ var (
 	_ store.ExamAttemptStore                = (*timedExamAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore       = (*timedExamAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore             = (*timedExamCorrectionStore)(nil)
+	_ store.ExamExportStore                 = (*timedExamExportStore)(nil)
 	_ store.ExamIntegrityReviewStore        = (*timedExamIntegrityReviewStore)(nil)
+	_ store.ExamRecordsStore                = (*timedExamRecordsStore)(nil)
 	_ store.ExamResourceStore               = (*timedExamResourceStore)(nil)
 	_ store.ExamRevisionStore               = (*timedExamRevisionStore)(nil)
 	_ store.ExamSittingStore                = (*timedExamSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore       = (*timedExamStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore             = (*timedExamSubmissionStore)(nil)
 	_ store.ExecutionGrantStore             = (*timedExecutionGrantStore)(nil)
+	_ store.RetentionStore                  = (*timedRetentionStore)(nil)
+	_ store.RetentionPolicyStore            = (*timedRetentionPolicyStore)(nil)
 	_ store.ServingNodeLeaseStore           = (*timedServingNodeLeaseStore)(nil)
 	_ store.ExamAuthoringStore              = (*timedExamAuthoringStore)(nil)
 	_ store.CommandOutcomeStore             = (*timedCommandOutcomeStore)(nil)

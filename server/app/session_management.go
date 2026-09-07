@@ -53,23 +53,24 @@ type RefreshSessionCommand struct {
 // LogoutCommand ends the caller's current session.
 type LogoutCommand struct{}
 
-type selfSessionEffects interface {
-	SessionsRevoked(context.Context, string, []string, []string)
-}
-
 type selfSessionService struct {
 	sessions store.SessionStore
-	effects  selfSessionEffects
+	audit    mutationAuditor
+	effects  sessionRevocationEffects
 	now      func() time.Time
 }
 
 func newSelfSessionService(
 	sessions store.SessionStore,
-	effects selfSessionEffects,
+	audit mutationAuditor,
+	effects sessionRevocationEffects,
 	now func() time.Time,
 ) (*selfSessionService, error) {
 	if sessions == nil {
 		return nil, errors.New("self-session store is required")
+	}
+	if audit == nil {
+		return nil, errors.New("self-session audit is required")
 	}
 	if effects == nil {
 		return nil, errors.New("self-session effects are required")
@@ -77,7 +78,7 @@ func newSelfSessionService(
 	if now == nil {
 		return nil, errors.New("self-session clock is required")
 	}
-	return &selfSessionService{sessions: sessions, effects: effects, now: now}, nil
+	return &selfSessionService{sessions: sessions, audit: audit, effects: effects, now: now}, nil
 }
 
 func (a *App) ListSessions(
@@ -139,26 +140,20 @@ func (s *selfSessionService) RevokeOne(
 		return NewError("session.not_found")
 	}
 
-	hashes, err := s.sessions.Revoke(
-		ctx,
-		session.ID.String(),
-		principal.UserID.String(),
-		s.now().UnixMilli(),
-		model.SessionRevocationUserSession,
+	revocations := sessionRevocationCoordinator{sessions: s.sessions, audit: s.audit, effects: s.effects, now: s.now}
+	return revocations.revokeOne(ctx,
+		mutationAttempt{
+			Invocation: invocation, Action: model.ActionSessionManage,
+			Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
+			Operation: "revoke_own_session",
+			Value:     map[string]any{"session_id": session.ID.String()},
+		},
+		&store.SessionRevocation{
+			SessionID: session.ID.String(), UserID: principal.UserID.String(),
+			Reason: model.SessionRevocationUserSession,
+		},
+		selfSessionRevocationError,
 	)
-	if err != nil {
-		if store.IsNotFound(err) {
-			return NewError("session.not_found")
-		}
-		return authenticationUnavailable(err)
-	}
-	s.effects.SessionsRevoked(
-		ctx,
-		principal.UserID.String(),
-		[]string{session.ID.String()},
-		hashes,
-	)
-	return nil
 }
 
 func (a *App) RevokeAllSessions(
@@ -177,20 +172,23 @@ func (s *selfSessionService) RevokeAll(
 	if principal.Validate() != nil {
 		return invalidTokenAppError()
 	}
-	sessions, hashes, err := s.sessions.RevokeAllForUser(
-		ctx,
-		principal.UserID.String(),
-		s.now().UnixMilli(),
-		model.SessionRevocationUserAllSessions,
+	revocations := sessionRevocationCoordinator{sessions: s.sessions, audit: s.audit, effects: s.effects, now: s.now}
+	return revocations.revokeAll(ctx,
+		mutationAttempt{
+			Invocation: invocation, Action: model.ActionSessionManage,
+			Resource:  model.Resource{Type: model.ResourceUser, ID: principal.UserID.String()},
+			Operation: "revoke_own_sessions",
+		},
+		&store.UserSessionsRevocation{
+			UserID: principal.UserID.String(), Reason: model.SessionRevocationUserAllSessions,
+		},
+		authenticationUnavailable, nil,
 	)
-	if err != nil {
-		return authenticationUnavailable(err)
+}
+
+func selfSessionRevocationError(err error) error {
+	if store.IsNotFound(err) {
+		return NewError("session.not_found")
 	}
-	s.effects.SessionsRevoked(
-		ctx,
-		principal.UserID.String(),
-		sessionIds(sessions),
-		hashes,
-	)
-	return nil
+	return authenticationUnavailable(err)
 }

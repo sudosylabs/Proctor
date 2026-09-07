@@ -77,7 +77,7 @@ func (s SQLAccessPolicyStore) Preflight(ctx context.Context, input *store.Access
 			return nil, &store.ErrAccessPolicyRevisionConflict{CurrentRevision: current.Revision}
 		}
 		var databaseNow time.Time
-		if err := tx.Get(ctx, &databaseNow, `SELECT CURRENT_TIMESTAMP`); err != nil {
+		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read access policy preflight time: %w", err)
 		}
 		return accessPolicyBlockers(ctx, tx, current, input.Settings, input.Capabilities, databaseNow)
@@ -108,7 +108,7 @@ func (s SQLAccessPolicyStore) Replace(ctx context.Context, input *store.AccessPo
 				return accessPolicyReplacementOutcome{}, &store.ErrAccessPolicyRevisionConflict{CurrentRevision: current.Revision}
 			}
 			var databaseNow time.Time
-			if err := tx.Get(ctx, &databaseNow, `SELECT CURRENT_TIMESTAMP`); err != nil {
+			if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 				return accessPolicyReplacementOutcome{}, fmt.Errorf("read access policy mutation time: %w", err)
 			}
 			blockers, err := accessPolicyBlockers(ctx, tx, current, input.Preflight.Settings, input.Preflight.Capabilities, databaseNow)

@@ -189,7 +189,7 @@ func (r *Engine) Start(ctx context.Context) error {
 		r.wg.Add(1)
 		go func(value Recurrence) {
 			defer r.wg.Done()
-			runDailyProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake, r.recorder)
+			runRecurrenceProposal(runCtx, value, r.diagnostics, r.clock, r.proposalRetryDelay, r.Wake, r.recorder)
 		}(recurrence)
 	}
 	for _, task := range r.periodicTasks {

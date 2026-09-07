@@ -1,5 +1,10 @@
 # Login route contract
 
+An administrator-required MFA recovery Session is a bounded exception to the
+ordinary successful-login destination: the validated Session response sends
+it directly to `/account/security` for reenrollment. This does not bypass MFA
+or grant ordinary account access; the server owns the recovery restriction.
+
 This file is the exact contract for the server-hosted `/login` feature. It owns
 page state, same-origin API orchestration, navigation,
 and recovery. [`../../../DESIGN_SYSTEM.md`](../../../DESIGN_SYSTEM.md) owns the
@@ -28,8 +33,9 @@ presentation-only fragment `#external_login=failed`, which the bootstrap
 removes from history before render and exposes as the value-free
 `external_login_failed` notice. Any other fragment is removed and ignored.
 
-Both local and external success use the fixed, same-origin terminal route
-`/authorization/complete`. A future caller-specific destination requires its
+Ordinary local and external success use the fixed, same-origin terminal route
+`/authorization/complete`; restricted MFA recovery goes to `/account/security`.
+A future caller-specific destination requires its
 own bounded server contract; it must not be added as a free-form
 `/login?return_to=` convention.
 
@@ -160,7 +166,8 @@ or automatically retry.
 A successful response is accepted only from `POST /api/v1/auth/login`. The
 browser-cookie transport is authoritative; the page does not persist or expose
 the response body or any unexpected token fields. It clears live credential
-state and replaces the current history entry with `/authorization/complete` so
+state and replaces the current history entry with the fixed sign-in status or
+required MFA recovery destination so
 Back does not restore a submitted credential form.
 
 ## MFA continuation

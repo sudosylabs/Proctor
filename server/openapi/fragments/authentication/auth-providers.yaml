@@ -121,6 +121,7 @@ paths:
         - Authentication
       x-proctor-auth: public
       x-proctor-error-codes:
+        - authentication.invalid_credentials
         - request.invalid
         - authentication.external.invalid
         - authentication.external.provider_not_found

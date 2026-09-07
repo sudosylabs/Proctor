@@ -85,19 +85,21 @@ func TestPrincipalAssuranceRequirements(t *testing.T) {
 
 	now := time.UnixMilli(1_000_000)
 	recent := model.Principal{
+		UserID:                 model.NewUserID(),
+		SessionID:              model.NewSessionID(),
+		CredentialID:           model.PrincipalCredentialID(model.NewId()),
+		CredentialType:         model.CredentialSessionAccess,
+		AuthenticationMethod:   "password",
+		ClientType:             model.SessionClientWeb,
 		AuthenticationStrength: model.AuthenticationSingleFactor,
 		AuthenticatedAt:        now.Add(-time.Minute),
 	}
-	strongOld := model.Principal{
-		AuthenticationStrength: model.AuthenticationMultiFactor,
-		AuthenticatedAt:        now.Add(-time.Hour),
-		MFACompletedAt:         model.OptionalTimeFrom(now.Add(-time.Hour)),
-	}
-	strongRecent := model.Principal{
-		AuthenticationStrength: model.AuthenticationMultiFactor,
-		AuthenticatedAt:        now.Add(-time.Hour),
-		MFACompletedAt:         model.OptionalTimeFrom(now.Add(-time.Minute)),
-	}
+	strongOld := recent
+	strongOld.AuthenticationStrength = model.AuthenticationMultiFactor
+	strongOld.AuthenticatedAt = now.Add(-time.Hour)
+	strongOld.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Hour))
+	strongRecent := strongOld
+	strongRecent.MFACompletedAt = model.OptionalTimeFrom(now.Add(-time.Minute))
 	if appErr := requirePrincipalAssurance(
 		recent, AuthRecentSessionRequired, now, 15*time.Minute,
 	); appErr != nil {

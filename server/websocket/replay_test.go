@@ -211,6 +211,7 @@ func newInternalTestHub(t *testing.T) *Hub {
 		"https://proctor.example",
 		"node-a",
 		nil,
+		15*time.Second,
 	)
 	if err != nil {
 		t.Fatalf("NewHub() error = %v", err)

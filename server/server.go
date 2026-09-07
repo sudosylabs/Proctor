@@ -127,6 +127,7 @@ type runtimeReconciler interface {
 // it is never projected into HTTP or another transport.
 type runtimeAdministratorRecovery interface {
 	RecoverAdministratorAccess(context.Context, app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error)
+	ResetAdministratorMFA(context.Context, app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error)
 }
 
 type runtimeReadiness interface {

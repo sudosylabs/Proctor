@@ -15,7 +15,7 @@ paths:
       tags:
         - Membership and progression
       description: >-
-        Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant.
+        Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
       x-proctor-auth: principal_required
       x-proctor-idempotency: none
       x-proctor-error-codes:
@@ -37,6 +37,22 @@ paths:
         - dpopAuth: []
         - sessionCookie: []
       parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1024
         - name: active_at
           in: query
           required: false
@@ -44,11 +60,11 @@ paths:
             type: integer
             format: int64
             minimum: 1
-          description: Unix time in milliseconds at which membership must be effective; ignored when history is true.
+          description: Unix time in milliseconds at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.
         - name: history
           in: query
           required: false
-          description: When true, return membership history and ignore active_at.
+          description: When true, return membership history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true.
           schema:
             type: boolean
             default: false
@@ -138,6 +154,11 @@ components:
           schema:
             $ref: '#/components/schemas/AcademicUnitMemberResponse'
     AcademicUnitMemberListOK:
+      headers:
+        Link:
+          description: Present only when a bounded page has more rows. Follow the relative URL with rel="next"; its cursor and effective/history filter identify the continuation.
+          schema:
+            type: string
       description: Academic Unit Member collection
       content:
         application/json:

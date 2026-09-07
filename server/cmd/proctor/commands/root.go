@@ -46,24 +46,26 @@ func noArgs(command *cobra.Command, args []string) error {
 }
 
 type executors struct {
-	serve                serveExecutor
-	validateConfig       configValidateExecutor
-	migrateUp            migrateUpExecutor
-	migrateStatus        migrateStatusExecutor
-	recoverAdministrator administratorRecoveryExecutor
-	currentBuildInfo     buildInfoExecutor
-	effectiveUID         func() int
+	serve                 serveExecutor
+	validateConfig        configValidateExecutor
+	migrateUp             migrateUpExecutor
+	migrateStatus         migrateStatusExecutor
+	recoverAdministrator  administratorRecoveryExecutor
+	resetAdministratorMFA administratorMFAResetExecutor
+	currentBuildInfo      buildInfoExecutor
+	effectiveUID          func() int
 }
 
 func productionExecutors() executors {
 	return executors{
-		serve:                serve,
-		validateConfig:       server.ValidateConfig,
-		migrateUp:            server.MigrateUp,
-		migrateStatus:        server.MigrateStatus,
-		recoverAdministrator: server.RecoverAdministratorAccess,
-		currentBuildInfo:     server.CurrentBuildInfo,
-		effectiveUID:         os.Geteuid,
+		serve:                 serve,
+		validateConfig:        server.ValidateConfig,
+		migrateUp:             server.MigrateUp,
+		migrateStatus:         server.MigrateStatus,
+		recoverAdministrator:  server.RecoverAdministratorAccess,
+		resetAdministratorMFA: server.ResetAdministratorMFA,
+		currentBuildInfo:      server.CurrentBuildInfo,
+		effectiveUID:          os.Geteuid,
 	}
 }
 
@@ -141,7 +143,7 @@ func newRootCommand(stdin io.Reader, stdout, stderr io.Writer, execute executors
 		newServeCommand(execute.serve, text),
 		newConfigCommand(execute.validateConfig, text),
 		newMigrateCommand(execute.migrateUp, execute.migrateStatus, text),
-		newAdministratorCommand(stdin, execute.recoverAdministrator, text),
+		newAdministratorCommand(stdin, execute.recoverAdministrator, execute.resetAdministratorMFA, text),
 		newVersionCommand(execute.currentBuildInfo, text),
 	)
 	return root

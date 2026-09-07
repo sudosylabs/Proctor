@@ -99,6 +99,7 @@ type RemoveEntryCommand struct {
 	ExamID                model.ExamID
 	EntryID               model.StarterWorkspaceEntryID
 	ExpectedDraftRevision int64
+	Recursive             bool
 	IdempotencyKey        string
 }
 
@@ -303,8 +304,12 @@ func (service *Service) RemoveEntry(ctx context.Context, call Call, command Remo
 	if err := validateMutationBase(command.ExamID, command.EntryID, command.ExpectedDraftRevision); err != nil {
 		return Result{}, err
 	}
-	idempotency, err := prepareWorkspaceIdempotency(call, idempotencyOperationRemoveEntry, command.IdempotencyKey,
-		command.ExamID, command.ExpectedDraftRevision, "", command.EntryID.String(), "", "", 0, "")
+	idempotency, err := prepareIdempotency(call, idempotencyOperationRemoveEntry, command.IdempotencyKey, struct {
+		ExamID                string `json:"exam_id"`
+		ExpectedDraftRevision int64  `json:"expected_draft_revision"`
+		EntryID               string `json:"entry_id,omitempty"`
+		Recursive             bool   `json:"recursive,omitempty"`
+	}{command.ExamID.String(), command.ExpectedDraftRevision, command.EntryID.String(), command.Recursive})
 	if err != nil {
 		return Result{}, err
 	}
@@ -315,7 +320,7 @@ func (service *Service) RemoveEntry(ctx context.Context, call Call, command Remo
 	at := model.TimeUTC(service.now())
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID}
+		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID, Recursive: command.Recursive}
 	return service.runMutation(ctx, call, authorization, "entry_remove", ChangeEntryRemoved, mutation, idempotency, service.persistence.RemoveEntry)
 }
 

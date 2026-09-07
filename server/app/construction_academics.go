@@ -53,6 +53,13 @@ func constructAccessAndAcademics(
 	if err != nil {
 		return accessAcademicConstruction{}, err
 	}
+	retentionPolicy, err := newRetentionPolicyService(
+		deps.Store.RetentionPolicy(), deps.Store.Retention(), deps.Store.Institution(), academicAuthorization,
+		mutationAuditAdapter{audit: foundation.audit}, deps.RecentAuthenticationTTL, time.Now,
+	)
+	if err != nil {
+		return accessAcademicConstruction{}, err
+	}
 	desktopCompatibility, err := newDesktopCompatibilityService(
 		deps.Store.DesktopCompatibilityPolicy(),
 		deps.Store.Institution(),
@@ -68,6 +75,7 @@ func constructAccessAndAcademics(
 	return accessAcademicConstruction{
 		authorization: authorization, capabilities: capabilities, accessPolicies: accessPolicies,
 		desktopCompatibility: desktopCompatibility,
+		retentionPolicy:      retentionPolicy,
 		academicUnits: newAcademicUnitQueryService(
 			deps.Store.AcademicUnit(), academicAuthorization,
 		),

@@ -77,6 +77,9 @@ func (s SQLPersonalAccessTokenStore) Create(
 		if err := requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationCreate, candidate.UserID.String(), "", databaseAt); err != nil {
 			return nil, err
 		}
+		if err := requireMFARecoveryPATSource(ctx, tx, preparation.UserID, preparation.SessionID.String, databaseAt); err != nil {
+			return nil, err
+		}
 		actionAt := preparation.CreatedAt
 		candidate.PrepareCreate(model.NewPersonalAccessTokenID(), actionAt)
 		if err := validatePersonalAccessTokenCandidate(candidate); err != nil {
@@ -186,6 +189,7 @@ func (s SQLPersonalAccessTokenStore) Resolve(
 		   AND pat.expires_at > ?
 		   AND u.archived_at IS NULL
 		   AND u.disabled_at IS NULL
+		   AND NOT EXISTS(SELECT 1 FROM user_mfa_recovery r WHERE r.user_id=pat.user_id AND r.reenrollment_required)
 		   AND (pat.academic_unit_id IS NULL OR au.archived_at IS NULL)
 		 FOR UPDATE OF pat`,
 			tokenHash, at); err != nil {
@@ -261,6 +265,9 @@ func (s SQLPersonalAccessTokenStore) ChangeState(
 			kind = store.PersonalAccessTokenMutationDisable
 		}
 		if err := requirePersonalAccessTokenPreparation(preparation, kind, input.UserID, input.ID, databaseAt); err != nil {
+			return nil, err
+		}
+		if err := requireMFARecoveryPATSource(ctx, tx, preparation.UserID, preparation.SessionID.String, databaseAt); err != nil {
 			return nil, err
 		}
 		actionAt := preparation.CreatedAt
@@ -343,6 +350,9 @@ func (s SQLPersonalAccessTokenStore) RevokeWithAudit(
 		if err := requirePersonalAccessTokenPreparation(preparation, store.PersonalAccessTokenMutationRevoke, input.UserID, input.ID, databaseAt); err != nil {
 			return nil, err
 		}
+		if err := requireMFARecoveryPATSource(ctx, tx, preparation.UserID, preparation.SessionID.String, databaseAt); err != nil {
+			return nil, err
+		}
 		actionAt := preparation.CreatedAt
 		var row personalAccessTokenRow
 		if err := tx.Get(ctx, &row, `SELECT id, created_at, updated_at, archived_at, user_id, description,
@@ -409,6 +419,9 @@ func validatePersonalAccessTokenCandidate(candidate *model.PersonalAccessToken) 
 }
 
 func lockPersonalAccessTokensForUser(ctx context.Context, tx *sqlxTxWrapper, userID string) error {
+	if err := lockUserSessions(ctx, tx, userID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "personal_access_tokens:user:"+userID); err != nil {
 		return fmt.Errorf("lock personal access tokens: %w", err)
 	}

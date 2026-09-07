@@ -24,6 +24,7 @@ Every command accepts `--config` (short form `-c`). An explicit path wins over
 | `proctor migrate status` | compare database and server schema versions and report pending migrations | no |
 | `proctor migrate up` | apply every pending migration deliberately | no |
 | `proctor administrator recover` | host-only administrator local-authentication recovery while all nodes are stopped | no |
+| `proctor administrator reset-mfa` | reset an existing administrator's MFA and require reenrollment while all nodes are stopped | no |
 | `proctor version` | print build version, commit, build time, and Go version | no |
 
 ## Serve and Validate
@@ -66,6 +67,30 @@ password is never a positional argument or flag. The operation writes a durable
 recovery record while transports and workers remain stopped. Restart normally
 so Proctor reconciles its audit record. Other flags are `--institution-id`,
 `--user-id`, and `--enable-local-login`.
+
+For a lost authenticator, use the separately named MFA reset command:
+
+```sh
+proctor administrator reset-mfa \
+  --config /etc/proctor/config.json \
+  --institution-id <institution-id> \
+  --user-id <user-id>
+```
+
+MFA must be enabled and configured. The target must be an active system
+administrator with an existing permitted primary authentication method.
+The command accepts no password, recovery code, or factor proof. It retires
+old MFA material, revokes the target's Sessions, PATs and unfinished access
+grants, and records a mandatory reenrollment restriction with durable host
+recovery evidence. It preserves primary credentials and the Access Policy.
+
+Restart normally to reconcile the audit record. Then sign in with fresh
+password or provider proof and enroll a new authenticator. An external-only
+administrator must use an already linked, permitted provider; restore that
+provider first if it is unavailable. Disabling MFA does not lift the recovery
+restriction. A second host recovery command is rejected until the pending
+record has been reconciled. After a crashed node, wait for its serving lease
+to expire before retrying either command.
 
 ## Build Identity
 

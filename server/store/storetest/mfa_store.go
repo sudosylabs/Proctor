@@ -51,7 +51,8 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	now := model.MillisFromTime(pending.CreatedAt) + 1
 	activationAudit, activationNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, now)
 	activated, err := ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 1_000,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{
 			{CodeHash: firstHash},
 			{CodeHash: secondHash},
@@ -63,7 +64,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, activationAudit, model.MailTemplateIdentityMFAEnabled, model.MailDeliveryQueued)
 	if !activated.Credential.IsActive() ||
 		activated.Session.AuthenticationStrength != model.AuthenticationMultiFactor ||
-		activated.Session.MFACompletedAt.Millis() != now ||
+		activated.Session.MFACompletedAt.Time.Before(model.TimeFromMillis(now-1)) || activated.Session.MFACompletedAt.Time.After(model.NowUTC()) ||
 		len(activated.AccessTokenHashes) != 1 ||
 		activated.AccessTokenHashes[0] != model.HashToken(raw.access) {
 		t.Fatalf("Activate() = %#v", activated)
@@ -74,10 +75,10 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 		t.Fatalf("CountRecoveryCodes() = %d, want 2", count)
 	}
 	requireNoError(t, ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID.String(), 1_001, "", now+1,
+		ctx, user.ID.String(), time.Now().Unix()/30+1, "", now+1,
 	))
 	if err := ss.MFA().ConsumeSecondFactor(
-		ctx, user.ID.String(), 1_001, "", now+2,
+		ctx, user.ID.String(), time.Now().Unix()/30+1, "", now+2,
 	); !store.IsNotFound(err) {
 		t.Fatalf("replayed TOTP time step error = %v, want not found", err)
 	}
@@ -97,6 +98,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	replacementHash := model.HashToken(model.NewCredentialToken())
 	regenerationAudit, regenerationNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFARecoveryCodesRegenerated, now+5)
 	requireNoError(t, ss.MFA().ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
 		UserID: user.ID.String(), RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: replacementHash}}, At: now + 5,
 		AuditEventID: regenerationAudit.ID.String(), AuditAt: now + 5, Notice: regenerationNotice,
 	}))
@@ -113,7 +115,7 @@ func testMFALifecycleAndSessionAssurance(t *testing.T, ss store.Store) {
 	}
 	disableAudit, disableNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFADisabled, now+7)
 	disableNotice = suppressedMFASecurityNotice(t, disableNotice, model.TimeFromMillis(now+7))
-	disabled, err := ss.MFA().Disable(ctx, &store.MFADisablement{UserID: user.ID.String(), At: now + 7,
+	disabled, err := ss.MFA().Disable(ctx, &store.MFADisablement{Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour, UserID: user.ID.String(), At: now + 7,
 		AuditEventID: disableAudit.ID.String(), AuditAt: now + 7, Notice: disableNotice})
 	requireNoError(t, err)
 	requireMFATransitionCommitted(t, ctx, ss, user.ID, disableAudit, model.MailTemplateIdentityMFADisabled, model.MailDeliverySuppressed)
@@ -197,13 +199,14 @@ func testMFAPendingReplacement(t *testing.T, ss store.Store) {
 func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	pending := savePendingMFA(t, ctx, ss, user.ID)
 	codeHash := model.HashToken(model.NewCredentialToken())
 	base := model.MillisFromTime(pending.CreatedAt)
 	audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, base+1)
 	_, err := ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 2_000,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: codeHash}}, SessionID: session.ID.String(), At: model.TimeFromMillis(base + 1),
 		AuditEventID: audit.ID.String(), AuditAt: base + 1, Notice: notice,
 	})
@@ -249,13 +252,14 @@ func testMFARecoveryCodeConsumptionIsSerialized(t *testing.T, ss store.Store) {
 func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store) {
 	ctx := context.Background()
 	user := saveUser(t, ctx, ss)
-	session, _, _ := saveSession(t, ctx, ss, user.ID.String(), 10)
+	session, _, raw := saveSession(t, ctx, ss, user.ID.String(), 10)
 	pending := savePendingMFA(t, ctx, ss, user.ID)
 	at := model.MillisFromTime(pending.CreatedAt) + 1
 	_, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at)
 	missingAuditID := model.NewAuditEventID()
 	_, err := ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 4_000,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID.String(), At: model.TimeFromMillis(at), AuditEventID: missingAuditID.String(), AuditAt: at, Notice: notice,
 	})
@@ -277,14 +281,16 @@ func testMFATransitionMailAndAuditRollbackTogether(t *testing.T, ss store.Store)
 
 	audit, replayNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at+1)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 4_001,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID.String(), At: model.TimeFromMillis(at + 1), AuditEventID: audit.ID.String(), AuditAt: at + 1, Notice: replayNotice,
 	})
 	requireNoError(t, err)
 	replayAudit, secondNotice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at+2)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 4_002,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     session.ID.String(), At: model.TimeFromMillis(at + 2), AuditEventID: replayAudit.ID.String(), AuditAt: at + 2, Notice: secondNotice,
 	})
@@ -329,4 +335,14 @@ func savePendingMFA(
 	})
 	requireNoError(t, err)
 	return credential
+}
+
+func mfaPrincipal(t *testing.T, ctx context.Context, ss store.Store, rawAccess string) model.Principal {
+	t.Helper()
+	credential, session, err := ss.SessionCredential().GetSessionByTokenHash(ctx, model.HashToken(rawAccess), model.SessionCredentialAccess)
+	requireNoError(t, err)
+	return mfaSessionPrincipal(session, credential)
+}
+func mfaSessionPrincipal(session *model.Session, credential *model.SessionCredential) model.Principal {
+	return model.Principal{UserID: session.UserID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credential.ID), CredentialType: model.CredentialSessionAccess, AuthenticationGeneration: session.AuthenticationGeneration, MFARecoveryRequired: session.MFARecoveryRequired, ClientType: session.ClientType, AuthenticationMethod: session.AuthenticationMethod, AuthenticationProviderID: session.AuthenticationProviderID, ExternalIdentityID: session.ExternalIdentityID, AuthenticationStrength: session.AuthenticationStrength, AuthenticatedAt: session.AuthenticatedAt, ReauthenticatedAt: session.ReauthenticatedAt, MFACompletedAt: session.MFACompletedAt}
 }

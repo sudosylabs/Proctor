@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../../api/client";
+import { readProblemValue } from "../../api/problem";
 import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
 import { message } from "../../i18n/messages";
+import { requestSecurityContext } from "../account-security/AccountSecurityApi";
 import styles from "./AuthorizationCompletePage.module.css";
 
-type ConfirmationState = "checking" | "signed_in" | "no_session" | "unavailable";
+type ConfirmationState = "checking" | "signed_in" | "no_session" | "unavailable" | "recovery_required";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,11 +27,15 @@ export function isCurrentUser(value: unknown): boolean {
 
 async function confirmSession(): Promise<ConfirmationState> {
   try {
-    const { data, response } = await apiClient.GET("/api/v1/users/me");
+    const { data, error, response } = await apiClient.GET("/api/v1/users/me");
     if (response.status === 200 && isCurrentUser(data)) {
       return "signed_in";
     }
     if (response.status === 401) {
+      if (readProblemValue(error)?.code === "authentication.invalid_token") {
+        const security = await requestSecurityContext();
+        if (security.kind === "ready" && security.context.recoveryRequired) return "recovery_required";
+      }
       return "no_session";
     }
     return "unavailable";
@@ -92,6 +98,8 @@ export function AuthorizationCompletePage() {
 
 function stateBody(state: ConfirmationState): string {
   switch (state) {
+    case "recovery_required":
+      return message("webapp.security.recovery_required");
     case "checking":
       return message("webapp.authorization_complete.checking.body");
     case "signed_in":
@@ -117,7 +125,7 @@ function StatusContent({
   const content = statusContent(state);
   return (
     <div
-      className={`${styles.status} ${styles[state]}`}
+      className={`${styles.status} ${styles[state === "recovery_required" ? "unavailable" : state]}`}
       ref={state === "unavailable" ? unavailableRef : undefined}
       tabIndex={state === "unavailable" ? -1 : undefined}
     >
@@ -128,6 +136,11 @@ function StatusContent({
         <p className={styles.label}>{content.label}</p>
         <h1>{content.heading}</h1>
         <p className={styles.body}>{content.body}</p>
+        {state === "signed_in" || state === "recovery_required" ? (
+          <div className={styles.actions}><ButtonLink href="/account/security">
+            {message(state === "recovery_required" ? "webapp.security.restore_access" : "webapp.security.heading")}
+          </ButtonLink></div>
+        ) : null}
         {state === "no_session" ? (
           <div className={styles.actions}>
             <ButtonLink href="/login">
@@ -158,6 +171,12 @@ function StatusContent({
 
 function statusContent(state: ConfirmationState) {
   switch (state) {
+    case "recovery_required":
+      return {
+        label: message("webapp.security.eyebrow"),
+        heading: message("webapp.security.restore_access"),
+        body: message("webapp.security.recovery_required"),
+      };
     case "checking":
       return {
         label: message("webapp.authorization_complete.checking.label"),

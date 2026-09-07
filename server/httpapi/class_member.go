@@ -77,6 +77,27 @@ func (module classMemberResourceModule) list(request operationRequest) (operatio
 	if err != nil {
 		return operationResult{}, err
 	}
+	if usesMembershipPaging(request.request) {
+		scope := model.Resource{Type: model.ResourceClass, ID: classID}
+		query, after, err := membershipPageQuery(request.request, scope)
+		if err != nil {
+			return operationResult{}, err
+		}
+		page, err := module.members.ListClassMembersPage(request.context, request.invocation(), application.ListClassMembersPageQuery{ClassID: classID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.ClassMemberID(after.AfterID)})
+		if err != nil {
+			return operationResult{}, err
+		}
+		var next *membershipPageCursor
+		if page.HasMore && len(page.Members) > 0 {
+			last := page.Members[len(page.Members)-1]
+			next = &membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &page.ActiveAt, AfterUserID: last.UserID.String(), AfterID: last.ID.String()}
+		}
+		headers, err := membershipPageHeaders(request.request, query.Limit, next)
+		if err != nil {
+			return operationResult{}, err
+		}
+		return jsonResult(http.StatusOK, classMemberResponses(page.Members)).withHeaders(headers), nil
+	}
 	activeAt, err := parseActiveAt(request.request)
 	if err != nil {
 		return operationResult{}, err

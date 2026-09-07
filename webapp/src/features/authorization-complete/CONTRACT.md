@@ -21,10 +21,9 @@ authenticate credentials, consume a result token, resolve a provider response,
 create or repair a Session, accept an Invitation, authorize Desktop, connect
 an identity, or choose an authenticated product destination.
 
-The first version has no dashboard or generic authenticated root to navigate
-to. Success is therefore deliberately terminal: it confirms sign-in and says
-that the page may be closed. A later product destination requires its own
-bounded server and page contract; this route must not guess one.
+Success confirms sign-in and says that the page may be closed. Its one optional
+destination is the declared `/account/security` MFA lifecycle surface. There is
+no dashboard or generic authenticated root to infer.
 
 External-provider failures do not arrive here. Once the server can safely bind
 one to the ordinary hosted-login flow, it returns the browser to the fixed
@@ -38,11 +37,17 @@ The bootstrap removes any fragment before render and supplies no
 purpose-specific credential, result, provider, status, destination, or prose
 to the page.
 
-On mount, the page makes exactly one same-origin
+On mount, the page makes one same-origin
 `GET /api/v1/users/me` request through the shared credential-aware client.
 The browser's host-only Session cookies are the only authentication input. The
 page neither reads cookies in JavaScript nor treats navigation to this path as
 proof of success.
+
+An invalid-token `401` can also represent a restricted recovery Session. Only
+that bounded outcome triggers `GET /api/v1/users/me/mfa`; a validated restricted
+status offers reenrollment. Other unsuccessful status results preserve the
+ordinary signed-out state. The page never infers recovery from a URL or from
+the generic rejection alone.
 
 ## Document and semantic structure
 
@@ -63,7 +68,8 @@ do not move focus. An explicit Retry retains focus on the activated control
 until the new result is available; an error summary receives programmatic
 focus only after a user-triggered retry fails.
 
-All authored copy uses `webapp.authorization_complete.*` messages in
+Authored copy uses `webapp.authorization_complete.*` and the bounded recovery
+and account-security messages from `webapp.security.*` in
 `server/i18n`; the generated catalog is the runtime view. The implementation
 does not concatenate translated fragments and never displays protocol codes or
 server-provided prose.
@@ -75,7 +81,8 @@ The feature owns these mutually exclusive states:
 | State | Entry | Available action |
 | --- | --- | --- |
 | Confirming Session | The initial or user-triggered `GET /api/v1/users/me` is pending | None; announce bounded progress |
-| Signed in | A valid User response returns `200` | None required; explain that the page may be closed |
+| Signed in | A valid User response returns `200` | Explain that the page may be closed; offer account security |
+| Recovery required | An invalid-token rejection followed by a validated recovery-required MFA status | Restore access through `/account/security` |
 | No active Session | The request returns `401` | Normal same-origin link to `/login` |
 | Confirmation unavailable | Network failure, malformed success data, or `5xx` | Retry Session confirmation and a normal same-origin link to `/login` |
 
@@ -89,7 +96,7 @@ does not render profile fields or retain the response after selecting the
 state. A `401` does not claim that login failed or that a Session was lost;
 it says only that this browser has no active Session.
 
-Retry repeats only `GET /api/v1/users/me`. It prevents duplicate requests
+Retry repeats the bounded Session confirmation above. It prevents duplicate requests
 while pending and never replays a password submission or provider callback.
 Reload, Back, a bookmark, and direct clean-path navigation therefore enter the
 same deterministic Session check.
@@ -97,8 +104,9 @@ same deterministic Session check.
 ## Content and action contract
 
 Signed in uses the heading intent “You’re signed in” and supporting copy that
-the page may be closed. It does not expose User fields, add a logout action, or
-link to an undeclared authenticated route.
+the page may be closed. It offers account security without exposing User fields
+or adding a general authenticated navigation shell. A recovery-required response
+instead explains reenrollment and offers the same bounded security destination.
 
 No active Session uses the heading intent “You’re not signed in” and a normal
 `Sign in` link to `/login`. Confirmation unavailable uses the neutral intent

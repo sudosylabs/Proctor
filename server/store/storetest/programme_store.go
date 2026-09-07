@@ -22,6 +22,7 @@ import (
 )
 
 func TestProgrammeStore(t *testing.T, ss store.Store) {
+	t.Run("SearchLimit", func(t *testing.T) { testProgrammeStoreSearchLimit(t, ss) })
 	t.Run("MutationAuditAtomicity", func(t *testing.T) { testProgrammeStoreMutationAuditAtomicity(t, ss) })
 	t.Run("Save", func(t *testing.T) { testProgrammeStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testProgrammeStoreGet(t, ss) })
@@ -335,4 +336,18 @@ func saveProgramme(
 	})
 	requireNoError(t, err)
 	return programme
+}
+
+func testProgrammeStoreSearchLimit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	unit, _ := saveProgrammeParents(t, ctx, ss, "unrelated")
+	first := saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-first")
+	saveProgramme(t, ctx, ss, unit.ID.String(), "bounded-second")
+	for _, term := range []string{"", "  \t", "bounded"} {
+		found, err := ss.Programme().SearchByAcademicUnit(ctx, unit.ID.String(), term, 1)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != first.ID {
+			t.Fatalf("SearchByAcademicUnit(q=%q, limit=1) = %#v", term, found)
+		}
+	}
 }

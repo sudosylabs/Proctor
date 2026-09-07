@@ -250,3 +250,71 @@ func testSettings(
 		},
 	}
 }
+
+func TestProviderFreshProofRequiresAuthenticationTimeAfterBoundFlow(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		offset  time.Duration
+		missing bool
+		valid   bool
+	}{
+		{name: "fresh", valid: true}, {name: "SSO history", offset: -time.Minute}, {name: "missing auth_time", missing: true}, {name: "future", offset: time.Minute},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now := time.Now().Truncate(time.Second)
+			var issuer, nonce string
+			discovery := &oidctest.Server{PublicKeys: []oidctest.PublicKey{{PublicKey: key.Public(), KeyID: "fresh-key", Algorithm: coreoidc.RS256}}}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/token" {
+					discovery.ServeHTTP(w, r)
+					return
+				}
+				claims := map[string]any{"iss": issuer, "aud": "proctor-client", "sub": "existing-subject", "exp": now.Add(time.Hour).Unix(), "iat": now.Unix(), "nonce": nonce, "email": "student@example.edu", "email_verified": true}
+				if !test.missing {
+					claims["auth_time"] = now.Add(test.offset).Unix()
+				}
+				encoded, _ := json.Marshal(claims)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "opaque-token", "token_type": "Bearer", "id_token": oidctest.SignIDToken(key, "fresh-key", coreoidc.RS256, string(encoded))})
+			}))
+			defer server.Close()
+			issuer = server.URL
+			discovery.SetIssuer(issuer)
+			settings := testSettings(issuer)
+			settings.AutoProvision = false
+			settings.Claims.AllowedHomeOrganizations = nil
+			created, err := NewFactory().New(settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := created.(*Provider)
+			provider.now = func() time.Time { return now.Add(500 * time.Millisecond) }
+			state, proof := model.NewCredentialToken(), model.NewCredentialToken()
+			request := externalauth.BeginRequest{CallbackURL: "https://proctor.example.edu/callback", State: state, Proof: proof, FreshAuthentication: true}
+			start, err := provider.Begin(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, err := url.Parse(start.RedirectURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nonce = u.Query().Get("nonce")
+			if u.Query().Get("prompt") != "login" || u.Query().Get("max_age") != "0" || nonce == "" {
+				t.Fatal("fresh OIDC request lacks authenticated freshness constraints")
+			}
+			assertion, err := provider.Complete(context.Background(), externalauth.CompleteRequest{CallbackURL: request.CallbackURL, State: state, Proof: proof, AuthenticationStartedAt: now.Add(100 * time.Millisecond), Callback: model.ExternalAuthenticationCallback{Values: map[string][]string{"state": {state}, "code": {"fresh-code"}}}})
+			if test.valid {
+				if err != nil || assertion.AuthenticatedAt != now.UnixMilli() {
+					t.Fatalf("fresh proof failed: %v", err)
+				}
+			} else if err == nil || assertion != nil {
+				t.Fatal("unverified primary freshness was accepted")
+			}
+		})
+	}
+}

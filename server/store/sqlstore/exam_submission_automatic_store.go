@@ -569,7 +569,7 @@ func replayAutomaticExamSubmission(ctx context.Context, tx *sqlxTxWrapper, input
 	target store.ExamSubmissionAutomaticSealTarget,
 ) (*store.ExamSubmissionAutomaticSealResult, error) {
 	var row examSubmissionHeaderRow
-	if err := tx.Get(ctx, &row, examSubmissionHeaderSelect+` WHERE exam_attempt_id=? AND sealed=true FOR UPDATE`, target.AttemptID.String()); err != nil {
+	if err := tx.Get(ctx, &row, examSubmissionHeaderSelect+` WHERE exam_attempt_id=? AND sealed=true AND work_retired_at IS NULL FOR UPDATE`, target.AttemptID.String()); err != nil {
 		return nil, translateError("exam_submission", target.AttemptID.String(), err)
 	}
 	submission, err := row.model()

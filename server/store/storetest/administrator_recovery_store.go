@@ -84,12 +84,13 @@ func TestAdministratorRecoveryStore(t *testing.T, ss store.Store, probes ...Admi
 		t.Fatalf("Upsert(fresh process incarnation after expiry) error = %v", err)
 	}
 	requireNoError(t, ss.ServingNodeLease().Delete(ctx, "stale-serving-node", restartedLeaseID))
-	preservedSession, _, _ := saveSession(t, ctx, ss, installed.Administrator.ID.String(), 10)
+	preservedSession, _, raw := saveSession(t, ctx, ss, installed.Administrator.ID.String(), 10)
 	pendingMFA := savePendingMFA(t, ctx, ss, installed.Administrator.ID)
 	mfaAt := model.MillisFromTime(pendingMFA.CreatedAt) + 1
 	mfaAudit, mfaNotice := mfaSecurityNoticeFixture(t, ctx, ss, installed.Administrator, model.MailTemplateIdentityMFAEnabled, mfaAt)
 	_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pendingMFA.ID.String(), UserID: installed.Administrator.ID.String(), TimeStep: 451,
+		Principal: mfaPrincipal(t, ctx, ss, raw.access), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pendingMFA.ID.String(), UserID: installed.Administrator.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 		SessionID:     preservedSession.ID.String(), At: model.TimeFromMillis(mfaAt), AuditEventID: mfaAudit.ID.String(), AuditAt: mfaAt,
 		Notice: mfaNotice,

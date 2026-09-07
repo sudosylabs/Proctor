@@ -16,9 +16,16 @@ import (
 )
 
 type administratorRecoveryRuntimeFake struct {
-	command app.AdministratorRecoveryCommand
-	result  *app.AdministratorRecoveryResult
-	err     error
+	command    app.AdministratorRecoveryCommand
+	result     *app.AdministratorRecoveryResult
+	err        error
+	mfaCommand app.AdministratorMFAResetCommand
+	mfaResult  *app.AdministratorMFAResetResult
+}
+
+func (f *administratorRecoveryRuntimeFake) ResetAdministratorMFA(_ context.Context, command app.AdministratorMFAResetCommand) (*app.AdministratorMFAResetResult, error) {
+	f.mfaCommand = command
+	return f.mfaResult, f.err
 }
 
 func (f *administratorRecoveryRuntimeFake) RecoverAdministratorAccess(_ context.Context, command app.AdministratorRecoveryCommand) (*app.AdministratorRecoveryResult, error) {

@@ -17,10 +17,14 @@ type OccurrenceProposer interface {
 	Propose(context.Context, time.Time) error
 }
 
-// Recurrence defines application-owned work proposed once per UTC day.
+// Recurrence defines application-owned work proposed at UTC interval boundaries.
+// A zero Interval retains the daily schedule. Explicit intervals must divide a
+// day and range from one minute to one day. Each proposer durably deduplicates
+// its occurrence so restarts and multiple nodes can propose the same work.
 type Recurrence struct {
 	Name     string
 	Proposer OccurrenceProposer
+	Interval time.Duration
 }
 
 // Clock controls recurrence time and waiting. Now must be safe for concurrent
@@ -60,10 +64,13 @@ func cloneRecurrences(values []Recurrence) ([]Recurrence, error) {
 	names := make(map[string]struct{}, len(cloned))
 	for _, recurrence := range cloned {
 		if !jobContractCode.MatchString(recurrence.Name) || recurrence.Proposer == nil {
-			return nil, errors.New("invalid daily job recurrence")
+			return nil, errors.New("invalid job recurrence")
+		}
+		if recurrence.Interval != 0 && (recurrence.Interval < time.Minute || recurrence.Interval > 24*time.Hour || 24*time.Hour%recurrence.Interval != 0) {
+			return nil, errors.New("invalid job recurrence interval")
 		}
 		if _, exists := names[recurrence.Name]; exists {
-			return nil, errors.New("duplicate daily job recurrence")
+			return nil, errors.New("duplicate job recurrence")
 		}
 		names[recurrence.Name] = struct{}{}
 	}
@@ -75,7 +82,14 @@ func nextDailyOccurrence(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
 }
 
-func runDailyProposal(ctx context.Context, recurrence Recurrence, diagnostics Diagnostics, clock Clock, retryDelay time.Duration, wake func(), recorder Recorder) {
+func nextRecurrenceOccurrence(now time.Time, interval time.Duration) time.Time {
+	if interval == 0 {
+		return nextDailyOccurrence(now)
+	}
+	return now.UTC().Truncate(interval).Add(interval)
+}
+
+func runRecurrenceProposal(ctx context.Context, recurrence Recurrence, diagnostics Diagnostics, clock Clock, retryDelay time.Duration, wake func(), recorder Recorder) {
 	if recurrence.Name == "" || recurrence.Proposer == nil || diagnostics == nil || clock == nil || retryDelay <= 0 {
 		return
 	}
@@ -87,14 +101,14 @@ func runDailyProposal(ctx context.Context, recurrence Recurrence, diagnostics Di
 			recorder.Record(Activity{Kind: "recurrence", Name: recurrence.Name, Operation: "propose", Outcome: simpleJobOutcome(err), Duration: time.Since(started)})
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
-			diagnostics.ErrorContext(ctx, "propose daily durable job "+recurrence.Name, err)
+			diagnostics.ErrorContext(ctx, "propose durable job "+recurrence.Name, err)
 		}
 		delay := retryDelay
 		if err == nil {
 			if wake != nil {
 				wake()
 			}
-			delay = nextDailyOccurrence(occurrence).Sub(clock.Now().UTC())
+			delay = nextRecurrenceOccurrence(occurrence, recurrence.Interval).Sub(clock.Now().UTC())
 		}
 		if delay <= 0 {
 			occurrence = clock.Now().UTC()

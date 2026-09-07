@@ -40,6 +40,7 @@ type CreateClassCommand struct {
 }
 
 type UpdateClassCommand struct {
+	ExpectedRevision *int64
 	ID               string
 	ProgrammeLevelID *string
 	AcademicPeriodID *string
@@ -49,7 +50,8 @@ type UpdateClassCommand struct {
 }
 
 type ArchiveClassCommand struct {
-	ID string
+	ExpectedRevision *int64
+	ID               string
 }
 
 type classStore interface {
@@ -217,6 +219,9 @@ func (s *classService) Update(ctx context.Context, invocation Invocation, comman
 	if err != nil {
 		return nil, classError(err)
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "class.conflict"); err != nil {
+		return nil, err
+	}
 	candidate := *current
 	if command.ProgrammeLevelID != nil {
 		levelID, err := model.ParseProgrammeLevelID(strings.TrimSpace(*command.ProgrammeLevelID))
@@ -299,6 +304,9 @@ func (s *classService) Archive(ctx context.Context, invocation Invocation, comma
 	current, err := s.store.Get(ctx, id)
 	if err != nil {
 		return classError(err)
+	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "class.conflict"); err != nil {
+		return err
 	}
 	_, err = runAuditedMutation(
 		ctx,

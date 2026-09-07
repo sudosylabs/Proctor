@@ -42,6 +42,7 @@ type examSubmissionSealAccessRow struct {
 	AttemptCreatedAt        time.Time      `db:"attempt_created_at"`
 	AttemptUpdatedAt        time.Time      `db:"attempt_updated_at"`
 	AttemptSubmittedAt      sql.NullTime   `db:"attempt_submitted_at"`
+	WorkRetiredAt           sql.NullTime   `db:"work_retired_at"`
 	AttemptRevision         int64          `db:"attempt_revision"`
 	SittingState            string         `db:"sitting_state"`
 	ScheduledEndAt          time.Time      `db:"scheduled_end_at"`
@@ -123,7 +124,7 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 	err := tx.Get(ctx, &row, `SELECT a.exam_id,a.exam_sitting_id,s.class_id,cl.academic_period_id,a.candidate_user_id,
 		a.admission_revision_id,COALESCE(retained.exam_revision_id,s.exam_revision_id) AS current_revision_id,
 		a.state AS attempt_state,a.created_at AS attempt_created_at,
-		a.updated_at AS attempt_updated_at,a.submitted_at AS attempt_submitted_at,a.revision AS attempt_revision,
+		a.updated_at AS attempt_updated_at,a.submitted_at AS attempt_submitted_at,a.revision AS attempt_revision,retained.work_retired_at,
 		s.state AS sitting_state,s.scheduled_end_at,w.id AS workspace_id,w.cursor AS workspace_cursor,
 		p.state AS participation_state,p.generation AS participation_generation,p.renewal_sequence,
 		p.continuity_credential_hash,p.started_at AS participation_started_at,p.updated_at AS participation_updated_at,
@@ -153,6 +154,9 @@ func lockExamSubmissionSealAccess(ctx context.Context, tx *sqlxTxWrapper, access
 			return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrNotFound("exam_submission_access", access.AttemptID.String())
 		}
 		return zero, examSubmissionIntegrityTail{}, time.Time{}, fmt.Errorf("lock Exam Submission causal access: %w", err)
+	}
+	if row.WorkRetiredAt.Valid {
+		return zero, examSubmissionIntegrityTail{}, time.Time{}, store.NewErrNotFound("exam_submission_access", access.AttemptID.String())
 	}
 	var memberships []struct {
 		StartAt    time.Time    `db:"start_at"`
@@ -911,17 +915,19 @@ type examSubmissionHeaderRow struct {
 	ExamRevisionID           string         `db:"exam_revision_id"`
 	WorkspaceID              string         `db:"workspace_id"`
 	ManifestSchemaVersion    int            `db:"manifest_schema_version"`
-	WorkspaceCursor          int64          `db:"workspace_cursor"`
-	ManifestDigest           string         `db:"manifest_digest"`
-	ManifestEntryCount       int            `db:"manifest_entry_count"`
-	ManifestTotalFileBytes   int64          `db:"manifest_total_file_bytes"`
-	FinalFocusLossSequence   int64          `db:"final_focus_loss_sequence"`
-	BrowserActivityState     string         `db:"browser_activity_state"`
+	WorkspaceCursor          sql.NullInt64  `db:"workspace_cursor"`
+	ManifestDigest           sql.NullString `db:"manifest_digest"`
+	ManifestEntryCount       sql.NullInt64  `db:"manifest_entry_count"`
+	ManifestTotalFileBytes   sql.NullInt64  `db:"manifest_total_file_bytes"`
+	FinalFocusLossSequence   sql.NullInt64  `db:"final_focus_loss_sequence"`
+	BrowserActivityState     sql.NullString `db:"browser_activity_state"`
 	BrowserSourceSessionID   sql.NullString `db:"browser_activity_source_session_id"`
 	BrowserFinalSequence     sql.NullInt64  `db:"browser_activity_final_sequence"`
 	BrowserGapReason         sql.NullString `db:"browser_activity_gap_reason"`
 	IntegrityState           string         `db:"integrity_state"`
-	UnresolvedIntegrityCount int64          `db:"unresolved_integrity_count"`
+	UnresolvedIntegrityCount sql.NullInt64  `db:"unresolved_integrity_count"`
+	WorkRetiredAt            sql.NullTime   `db:"work_retired_at"`
+	IntegrityRetiredAt       sql.NullTime   `db:"integrity_retired_at"`
 	Provenance               string         `db:"provenance"`
 	SubmittedAt              time.Time      `db:"submitted_at"`
 }
@@ -929,9 +935,28 @@ type examSubmissionHeaderRow struct {
 const examSubmissionHeaderSelect = `SELECT id,exam_attempt_id,exam_revision_id,workspace_id,manifest_schema_version,workspace_cursor,
 	manifest_digest,manifest_entry_count,manifest_total_file_bytes,final_focus_loss_sequence,browser_activity_state,
 	browser_activity_source_session_id::text,browser_activity_final_sequence,browser_activity_gap_reason,integrity_state,
-	unresolved_integrity_count,provenance,submitted_at FROM exam_submissions`
+	unresolved_integrity_count,work_retired_at,integrity_retired_at,provenance,submitted_at FROM exam_submissions`
 
 func (row examSubmissionHeaderRow) model() (*model.ExamSubmission, error) {
+	// Work retirement leaves only a permanent receipt, never a readable header
+	// with synthetic zero values substituted for removed manifest metadata.
+	if row.WorkRetiredAt.Valid {
+		return nil, store.NewErrNotFound("exam_submission", row.ID)
+	}
+	if !row.WorkspaceCursor.Valid || !row.ManifestDigest.Valid || !row.ManifestEntryCount.Valid ||
+		!row.ManifestTotalFileBytes.Valid || row.ManifestEntryCount.Int64 < 0 ||
+		row.ManifestEntryCount.Int64 > model.AttemptWorkspaceMaximumEntries {
+		return nil, invalidPersistedState("exam_submission", "manifest", errors.New("retained manifest header is incomplete"))
+	}
+	if row.IntegrityRetiredAt.Valid {
+		if row.IntegrityState != string(model.SubmissionIntegrityRetired) || row.FinalFocusLossSequence.Valid ||
+			row.UnresolvedIntegrityCount.Valid || row.BrowserActivityState.Valid || row.BrowserSourceSessionID.Valid ||
+			row.BrowserFinalSequence.Valid || row.BrowserGapReason.Valid {
+			return nil, invalidPersistedState("exam_submission", "integrity", errors.New("retired integrity header retains private data"))
+		}
+	} else if !row.FinalFocusLossSequence.Valid || !row.UnresolvedIntegrityCount.Valid || !row.BrowserActivityState.Valid {
+		return nil, invalidPersistedState("exam_submission", "integrity", errors.New("retained integrity header is incomplete"))
+	}
 	id, err := model.ParseSubmissionID(row.ID)
 	if err != nil {
 		return nil, invalidPersistedState("exam_submission", "id", err)
@@ -954,14 +979,17 @@ func (row examSubmissionHeaderRow) model() (*model.ExamSubmission, error) {
 		finalSequence = &value
 	}
 	submission := &model.ExamSubmission{ID: id, AttemptID: attemptID, ExamRevisionID: revisionID, WorkspaceID: workspaceID,
-		ManifestSchemaVersion: row.ManifestSchemaVersion, WorkspaceCursor: row.WorkspaceCursor,
-		ManifestDigest: row.ManifestDigest, ManifestEntryCount: row.ManifestEntryCount,
-		ManifestTotalFileBytes: row.ManifestTotalFileBytes, FinalFocusLossSequence: row.FinalFocusLossSequence,
-		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionState(row.BrowserActivityState),
+		ManifestSchemaVersion: row.ManifestSchemaVersion, WorkspaceCursor: row.WorkspaceCursor.Int64,
+		ManifestDigest: row.ManifestDigest.String, ManifestEntryCount: int(row.ManifestEntryCount.Int64),
+		ManifestTotalFileBytes: row.ManifestTotalFileBytes.Int64, FinalFocusLossSequence: row.FinalFocusLossSequence.Int64,
+		BrowserActivity: model.BrowserActivitySubmission{State: model.BrowserActivitySubmissionState(row.BrowserActivityState.String),
 			SourceSessionID: model.BrowserSourceSessionID(row.BrowserSourceSessionID.String), FinalSequence: finalSequence,
 			GapReason: model.BrowserActivitySubmissionGapReason(row.BrowserGapReason.String)},
-		IntegrityState: model.SubmissionIntegrityState(row.IntegrityState), UnresolvedIntegrityCount: row.UnresolvedIntegrityCount,
+		IntegrityState: model.SubmissionIntegrityState(row.IntegrityState), UnresolvedIntegrityCount: row.UnresolvedIntegrityCount.Int64,
 		Provenance: model.ExamSubmissionProvenance(row.Provenance), SubmittedAt: model.TimeUTC(row.SubmittedAt)}
+	if row.IntegrityRetiredAt.Valid {
+		submission.IntegrityRetiredAt = model.OptionalTimeFrom(row.IntegrityRetiredAt.Time)
+	}
 	if err = submission.Validate(); err != nil {
 		return nil, invalidPersistedState("exam_submission", "value", err)
 	}
@@ -1012,7 +1040,7 @@ func (s *SQLExamSubmissionStore) Get(ctx context.Context, submissionID model.Sub
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "get immutable Exam Submission", func(ctx context.Context, tx *sqlxTxWrapper) (*model.ExamSubmission, error) {
 		var row examSubmissionHeaderRow
-		if err := tx.Get(ctx, &row, examSubmissionHeaderSelect+` WHERE id=? AND sealed=true FOR SHARE`, submissionID.String()); err != nil {
+		if err := tx.Get(ctx, &row, examSubmissionHeaderSelect+` WHERE id=? AND sealed=true AND work_retired_at IS NULL FOR SHARE`, submissionID.String()); err != nil {
 			return nil, translateError("exam_submission", submissionID.String(), err)
 		}
 		submission, err := row.model()

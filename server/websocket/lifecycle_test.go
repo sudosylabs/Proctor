@@ -51,6 +51,7 @@ func newTestHub(t *testing.T) *websocket.Hub {
 		"https://proctor.example",
 		"node-a",
 		nil,
+		15*time.Second,
 	)
 	if err != nil {
 		t.Fatalf("NewHub() error = %v", err)

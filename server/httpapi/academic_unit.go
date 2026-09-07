@@ -15,6 +15,7 @@ import (
 )
 
 type academicUnitResponse struct {
+	Revision      int64  `json:"revision"`
 	ID            string `json:"id"`
 	CreateAt      int64  `json:"create_at"`
 	UpdateAt      int64  `json:"update_at"`
@@ -41,10 +42,11 @@ type createAcademicUnitRequest struct {
 }
 
 type updateAcademicUnitRequest struct {
-	ParentID    *string `json:"parent_id"`
-	Name        *string `json:"name"`
-	DisplayName *string `json:"display_name"`
-	Description *string `json:"description"`
+	ExpectedRevision Optional[int64] `json:"expected_revision"`
+	ParentID         *string         `json:"parent_id"`
+	Name             *string         `json:"name"`
+	DisplayName      *string         `json:"display_name"`
+	Description      *string         `json:"description"`
 }
 
 type academicUnitResourceModule struct {
@@ -136,10 +138,13 @@ func (module academicUnitResourceModule) patch(request operationRequest) (operat
 	if err := request.decodeJSON(&body, "patchAcademicUnit"); err != nil {
 		return operationResult{}, err
 	}
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return operationResult{}, err
+	}
 	unit, err := module.academicUnits.UpdateAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.UpdateAcademicUnitCommand{
+		application.UpdateAcademicUnitCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID: id, ParentID: body.ParentID, Name: body.Name,
 			DisplayName: body.DisplayName, Description: body.Description,
 		},
@@ -155,10 +160,14 @@ func (module academicUnitResourceModule) archive(request operationRequest) (oper
 	if err != nil {
 		return operationResult{}, err
 	}
+	expectedRevision, err := request.academicRevision()
+	if err != nil {
+		return operationResult{}, err
+	}
 	err = module.academicUnits.ArchiveAcademicUnit(
 		request.context,
 		request.invocation(),
-		application.ArchiveAcademicUnitCommand{ID: id},
+		application.ArchiveAcademicUnitCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -210,7 +219,7 @@ func academicUnitResponseFromModel(unit *model.AcademicUnit) academicUnitRespons
 		return academicUnitResponse{}
 	}
 	return academicUnitResponse{
-		ID:            unit.ID.String(),
+		Revision: unit.Revision, ID: unit.ID.String(),
 		CreateAt:      model.MillisFromTime(unit.CreatedAt),
 		UpdateAt:      model.MillisFromTime(unit.UpdatedAt),
 		DeleteAt:      unit.ArchivedAt.Millis(),

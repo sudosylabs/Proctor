@@ -32,8 +32,17 @@ type installationStoreFake struct {
 	recoveryInput          *store.AdministratorRecovery
 	recoveryResult         *store.AdministratorRecoveryResult
 	recoveryErr            error
+	mfaResetInput          *store.AdministratorMFAReset
+	mfaResetResult         *store.AdministratorMFAResetResult
+	mfaResetErr            error
 	recoveryReconcileInput *store.AdministratorRecoveryReconciliation
 	recoveryReconcileErr   error
+}
+
+func (s *installationStoreFake) ResetAdministratorMFA(_ context.Context, input *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error) {
+	*s.events = append(*s.events, "reset-administrator-mfa")
+	s.mfaResetInput = input
+	return s.mfaResetResult, s.mfaResetErr
 }
 
 func (s *installationStoreFake) RecoverAdministratorAccess(_ context.Context, input *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error) {
@@ -145,6 +154,7 @@ func TestBootstrapStatusUninitializedOnNotFound(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	status, err := service.GetStatus(context.Background())
 	if err != nil || status.Initialized {
@@ -158,7 +168,7 @@ func TestBootstrapPasswordWorkFailuresStopBeforeAggregate(t *testing.T) {
 		persistence := &installationStoreFake{events: &events}
 		service := newBootstrapService(persistence, hasher,
 			bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{}), bootstrapRateLimitPolicy(10),
-			bootstrapProtection(), "node-bootstrap", time.Now)
+			bootstrapProtection(), "node-bootstrap", time.Now, administratorRecoveryPolicy{})
 		result, err := service.Bootstrap(ctx, Invocation{}, BootstrapInstallationCommand{
 			InstitutionName: "test", AdministratorUsername: "administrator", AdministratorEmail: "administrator@example.edu",
 			Password: "correct horse battery staple", BootstrapSecret: bootstrapProtection().Secret, Source: "192.0.2.35",
@@ -187,6 +197,7 @@ func TestBootstrapCommitsAtomicAggregate(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		func() time.Time { return time.UnixMilli(500) },
+		administratorRecoveryPolicy{},
 	)
 	got, err := service.Bootstrap(context.Background(), NewInvocation(model.Principal{}, model.RequestMetadata{RequestID: "req"}), BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
@@ -242,6 +253,7 @@ func TestBootstrapAlreadyInitialized(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
@@ -271,6 +283,7 @@ func TestBootstrapConflictMapsToAlreadyInitialized(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", InstitutionDisplayName: "Northbridge",
@@ -291,6 +304,7 @@ func TestBootstrapRejectsWrongSecretBeforePasswordHashingOrPersistence(t *testin
 		&passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
+		administratorRecoveryPolicy{},
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
@@ -321,6 +335,7 @@ func TestBootstrapReconcilesUnknownCommitByRepeatingTheFencedAggregate(t *testin
 		persistence, &passwordHasherFake{events: &events, hash: "encoded"},
 		bootstrapAttemptAccounting(t, &bootstrapAttemptCacheFake{events: &events}),
 		bootstrapRateLimitPolicy(10), bootstrapProtection(), "node-a", time.Now,
+		administratorRecoveryPolicy{},
 	)
 	result, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
@@ -375,6 +390,7 @@ func TestBootstrapRateLimitUsesSourceOnlySharedAccounting(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	command := BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
@@ -423,6 +439,7 @@ func TestBootstrapRateLimitFailureIsAdministrationUnavailableBeforeHashing(t *te
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",
@@ -451,6 +468,7 @@ func TestBootstrapInvalidRateLimitPolicyFailsClosed(t *testing.T) {
 		bootstrapProtection(),
 		"node-a",
 		time.Now,
+		administratorRecoveryPolicy{},
 	)
 	_, err := service.Bootstrap(context.Background(), Invocation{}, BootstrapInstallationCommand{
 		InstitutionName: "northbridge", AdministratorUsername: "admin",

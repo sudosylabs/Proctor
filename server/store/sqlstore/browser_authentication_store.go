@@ -174,6 +174,13 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 		if err := lockUserSessions(ctx, tx, input.UserID.String()); err != nil {
 			return nil, err
 		}
+		recovery, recoveryErr := getMFARecoveryState(ctx, tx, input.UserID)
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
+		if recovery.ReenrollmentRequired {
+			return nil, store.ErrMFAReenrollmentRequired
+		}
 		source, err := resolveDesktopAuthenticationProof(ctx, tx, input)
 		if err != nil {
 			return nil, err
@@ -234,6 +241,7 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 		  FROM (SELECT clock_timestamp() AS at) AS authenticated
 		 WHERE purpose='desktop_authorization' AND state='bound' AND `+selector+`=?
 		   AND created_at<=authenticated.at AND expires_at>authenticated.at
+		   AND NOT EXISTS(SELECT 1 FROM user_mfa_recovery r WHERE r.user_id=? AND (r.reenrollment_required OR r.reset_at>browser_authentication_transactions.created_at))
 		   AND (? OR EXISTS (
 		       SELECT 1 FROM sessions source JOIN session_credentials credential ON credential.session_id=source.id
 		        WHERE source.id=? AND source.user_id=? AND source.client_type='web'
@@ -247,7 +255,7 @@ func (s SQLBrowserAuthenticationStore) AuthenticateDesktopAuthorization(ctx cont
 			input.PasswordProof.ID.String(), input.PasswordProof.Revision, input.AuthenticationStrength,
 			freshPassword, source != nil, authenticatedAt, authenticatedAt,
 			!mfaCompletedAt.Valid, freshPassword, source != nil, NullTimeFromOptional(mfaCompletedAt), NullTimeFromOptional(mfaCompletedAt),
-			selectorValue, source == nil, input.SourceSessionID.String(), input.UserID.String(), input.SourceCredentialID.String())
+			selectorValue, input.UserID.String(), source == nil, input.SourceSessionID.String(), input.UserID.String(), input.SourceCredentialID.String())
 		if err != nil {
 			return nil, translateError("browser_authentication_transaction", "binding", err)
 		}
@@ -540,6 +548,16 @@ func (s SQLBrowserAuthenticationStore) IssueCode(ctx context.Context, input *sto
 		if err = lockUserSessions(ctx, tx, transaction.UserID.String()); err != nil {
 			return nil, err
 		}
+		recovery, recoveryErr := getMFARecoveryState(ctx, tx, transaction.UserID)
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
+		if recovery.ReenrollmentRequired {
+			return nil, store.ErrMFAReenrollmentRequired
+		}
+		if recovery.ResetAt.Valid && transaction.CreatedAt.Before(recovery.ResetAt.Time) {
+			return nil, store.ErrAuthenticationGenerationChanged
+		}
 		if transaction.AuthenticationMethod == "password" {
 			if err = requireCurrentPasswordProof(ctx, tx, transaction.UserID, store.PasswordCredentialProof{ID: transaction.PasswordCredentialID, Revision: transaction.PasswordCredentialRevision}); err != nil {
 				return nil, err
@@ -621,6 +639,9 @@ func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *stor
 		return nil, err
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "exchange desktop authorization code", func(ctx context.Context, tx *sqlxTxWrapper) (*store.DesktopAuthorizationExchangeResult, error) {
+		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return nil, err
+		}
 		var row browserAuthenticationRow
 		if err := tx.Get(ctx, &row, `SELECT `+browserAuthenticationColumns+` FROM browser_authentication_transactions
 		 WHERE code_hash = ? AND state_hash = ? AND code_challenge = ? AND issuer = ?
@@ -651,6 +672,16 @@ func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *stor
 		// first disable observes and revokes the new Session.
 		if err = lockUserSessions(ctx, tx, transaction.UserID.String()); err != nil {
 			return nil, err
+		}
+		recovery, recoveryErr := getMFARecoveryState(ctx, tx, transaction.UserID)
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
+		if recovery.ReenrollmentRequired {
+			return nil, store.ErrMFAReenrollmentRequired
+		}
+		if recovery.ResetAt.Valid && transaction.CreatedAt.Before(recovery.ResetAt.Time) {
+			return nil, store.ErrAuthenticationGenerationChanged
 		}
 		if transaction.AuthenticationMethod == "password" {
 			if err = requireCurrentPasswordProof(ctx, tx, transaction.UserID, store.PasswordCredentialProof{ID: transaction.PasswordCredentialID, Revision: transaction.PasswordCredentialRevision}); err != nil {
@@ -707,7 +738,7 @@ func (s SQLBrowserAuthenticationStore) Exchange(ctx context.Context, input *stor
 			return nil, err
 		}
 		candidate := model.Session{
-			UserID: transaction.UserID, ClientType: model.SessionClientDesktop,
+			UserID: transaction.UserID, ClientType: model.SessionClientDesktop, AuthenticationGeneration: recovery.Generation,
 			DesktopRegistrationID: registration.ID, DPoPKeyThumbprint: registration.KeyThumbprint,
 			DesktopRelease: transaction.DesktopRelease, DesktopBuildID: transaction.DesktopBuildID,
 			DesktopPlatform: transaction.DesktopPlatform, DesktopArchitecture: transaction.DesktopArchitecture,
@@ -849,6 +880,12 @@ func resolveDesktopAuthenticationProof(ctx context.Context, executor sqlxExecuto
 		session, err := row.model()
 		if err != nil {
 			return nil, err
+		}
+		if err := requireSessionAuthenticationGeneration(ctx, executor, session); err != nil {
+			return nil, err
+		}
+		if session.MFARecoveryRequired {
+			return nil, store.ErrMFAReenrollmentRequired
 		}
 		source = session
 		input.AuthenticationMethod = session.AuthenticationMethod

@@ -36,7 +36,7 @@ type examIntegrityReviewAuthorizationRow struct {
 const examIntegrityReviewAuthorizationSelect = `SELECT sub.id AS submission_id,a.exam_id,a.exam_sitting_id,
 	a.id AS exam_attempt_id,a.candidate_user_id,e.academic_unit_id FROM exam_submissions sub
 	JOIN exam_attempts a ON a.id=sub.exam_attempt_id JOIN exams e ON e.id=a.exam_id
-	WHERE sub.id=? AND sub.sealed=true`
+	WHERE sub.id=? AND sub.sealed=true AND sub.integrity_retired_at IS NULL`
 
 func (row examIntegrityReviewAuthorizationRow) value() (*store.ExamIntegrityReviewAuthorization, error) {
 	var value store.ExamIntegrityReviewAuthorization
@@ -189,7 +189,7 @@ func (s *SQLExamIntegrityReviewStore) Get(ctx context.Context, submissionID mode
 			return nil, err
 		}
 		var submissionRow examSubmissionHeaderRow
-		if err = tx.Get(ctx, &submissionRow, examSubmissionHeaderSelect+` WHERE id=? AND sealed=true`, submissionID.String()); err != nil {
+		if err = tx.Get(ctx, &submissionRow, examSubmissionHeaderSelect+` WHERE id=? AND sealed=true AND work_retired_at IS NULL AND integrity_retired_at IS NULL`, submissionID.String()); err != nil {
 			return nil, translateError("submission", submissionID.String(), err)
 		}
 		submission, err := submissionRow.model()
@@ -240,7 +240,7 @@ func (s *SQLExamIntegrityReviewStore) ListFlags(ctx context.Context, options sto
 		LEFT JOIN integrity_evidence ev ON ev.integrity_flag_id=f.id
 		LEFT JOIN exam_attempt_focus_loss_evaluations eval ON eval.exam_attempt_id=f.exam_attempt_id AND
 			eval.generation=f.generation AND f.policy_kind='focus_loss'
-		WHERE sub.id=? AND sub.sealed=true`
+		WHERE sub.id=? AND sub.sealed=true AND sub.integrity_retired_at IS NULL`
 	args := []any{options.SubmissionID.String()}
 	if !options.AfterFlagID.IsZero() {
 		query += ` AND f.id>?`
@@ -295,7 +295,7 @@ func (s *SQLExamIntegrityReviewStore) ListEvidence(ctx context.Context, options 
 	query := `SELECT ev.id,ev.exam_attempt_id,ev.participation_id,ev.integrity_flag_id,ev.generation,ev.policy_kind,
 		ev.focus_loss_signal_id,ev.sequence,ev.duration_milliseconds,ev.source,ev.missing_before,ev.observed_at,ev.recorded_at
 		FROM exam_submissions sub JOIN integrity_evidence ev ON ev.exam_attempt_id=sub.exam_attempt_id
-		WHERE sub.id=? AND sub.sealed=true AND ev.integrity_flag_id=?`
+		WHERE sub.id=? AND sub.sealed=true AND sub.integrity_retired_at IS NULL AND ev.integrity_flag_id=?`
 	args := []any{options.SubmissionID.String(), options.FlagID.String()}
 	if !options.AfterEvidenceID.IsZero() {
 		query += ` AND ev.id>?`
@@ -460,7 +460,8 @@ func (s *SQLExamIntegrityReviewStore) ListDiscrepancies(ctx context.Context,
 		(!options.AfterDiscrepancyID.IsZero() && !options.AfterDiscrepancyID.IsValid()) {
 		return nil, store.NewErrInvalidInput("integrity_discrepancy", "list_options", nil)
 	}
-	query := integrityDiscrepancySelect + ` WHERE submission_id=?`
+	query := integrityDiscrepancySelect + ` WHERE submission_id=? AND EXISTS
+		(SELECT 1 FROM exam_submissions sub WHERE sub.id=integrity_discrepancies.submission_id AND sub.integrity_retired_at IS NULL)`
 	args := []any{options.SubmissionID.String()}
 	if !options.AfterDiscrepancyID.IsZero() {
 		query += ` AND id>?`
@@ -497,7 +498,7 @@ func (s *SQLExamIntegrityReviewStore) SaveDecision(ctx context.Context, input *s
 	if err := validateReviewDecisionInput(input, command); err != nil {
 		return nil, err
 	}
-	return s.runReviewMutation(ctx, "save Integrity Review decision", command, input.AuditEventID, input.AuditAt,
+	return s.runReviewMutation(ctx, "save Integrity Review decision", command, input.AuditEventID, input.AuditAt, input.ActorUserID, input.ManagerOverride,
 		func(ctx context.Context, tx *sqlxTxWrapper) (examIntegrityReviewOutcome, error) {
 			return saveReviewDecision(ctx, tx, input)
 		},
@@ -513,7 +514,7 @@ func (s *SQLExamIntegrityReviewStore) UpdateDraft(ctx context.Context, input *st
 	if err := validateReviewDraftInput(input, command); err != nil {
 		return nil, err
 	}
-	return s.runReviewMutation(ctx, "update Integrity Review draft", command, input.AuditEventID, input.AuditAt,
+	return s.runReviewMutation(ctx, "update Integrity Review draft", command, input.AuditEventID, input.AuditAt, input.ActorUserID, input.ManagerOverride,
 		func(ctx context.Context, tx *sqlxTxWrapper) (examIntegrityReviewOutcome, error) {
 			return updateReviewDraft(ctx, tx, input)
 		},
@@ -529,7 +530,7 @@ func (s *SQLExamIntegrityReviewStore) Finalize(ctx context.Context, input *store
 	if err := validateReviewFinalizeInput(input, command, store.ExamIntegrityReviewFinalizeOperation); err != nil {
 		return nil, err
 	}
-	return s.runReviewMutation(ctx, "finalize Integrity Review", command, input.AuditEventID, input.AuditAt,
+	return s.runReviewMutation(ctx, "finalize Integrity Review", command, input.AuditEventID, input.AuditAt, input.ActorUserID, input.ManagerOverride,
 		func(ctx context.Context, tx *sqlxTxWrapper) (examIntegrityReviewOutcome, error) {
 			return finalizeReview(ctx, tx, input)
 		},
@@ -549,7 +550,7 @@ func (s *SQLExamIntegrityReviewStore) Release(ctx context.Context, input *store.
 	if err := validateReviewFinalizeInput(probe, command, store.ExamIntegrityReviewReleaseOperation); err != nil {
 		return nil, err
 	}
-	return s.runReviewMutation(ctx, "release Student Result", command, input.AuditEventID, input.AuditAt,
+	return s.runReviewMutation(ctx, "release Student Result", command, input.AuditEventID, input.AuditAt, input.ActorUserID, input.ManagerOverride,
 		func(ctx context.Context, tx *sqlxTxWrapper) (examIntegrityReviewOutcome, error) {
 			return releaseReview(ctx, tx, input)
 		},
@@ -570,6 +571,9 @@ func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submis
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "prepare Student Result release", func(ctx context.Context,
 		tx *sqlxTxWrapper,
 	) (*store.ExamIntegrityReviewReleasePreparation, error) {
+		if err := requireLiveSubmissionIntegrity(ctx, tx, submissionID); err != nil {
+			return nil, err
+		}
 		review, err := loadReviewForMutation(ctx, tx, submissionID)
 		if err != nil {
 			return nil, err
@@ -609,7 +613,7 @@ func (s *SQLExamIntegrityReviewStore) PrepareRelease(ctx context.Context, submis
 	})
 }
 
-func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, name string, command *store.CommandIdempotency, auditID string, auditAt int64,
+func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, name string, command *store.CommandIdempotency, auditID string, auditAt int64, actorID model.UserID, override bool,
 	execute func(context.Context, *sqlxTxWrapper) (examIntegrityReviewOutcome, error), replay func(context.Context, *sqlxTxWrapper, examIntegrityReviewOutcome, string) error,
 ) (*store.ExamIntegrityReviewMutationResult, error) {
 	result, err := runIdempotentMutation(ctx, s.SQLStore, name, idempotentMutation[examIntegrityReviewOutcome]{command: command, auditEventID: auditID, execute: execute,
@@ -626,6 +630,11 @@ func (s *SQLExamIntegrityReviewStore) runReviewMutation(ctx context.Context, nam
 				return value, err
 			}
 			return value, nil
+		}, hydrateReplay: func(ctx context.Context, tx *sqlxTxWrapper, value examIntegrityReviewOutcome) (examIntegrityReviewOutcome, error) {
+			// Replay still checks authoritative retirement when the original audit
+			// is reused; completeReplay alone is skipped in that retry path.
+			_, err := lockReviewScope(ctx, tx, value.Authorization.SubmissionID, actorID, override)
+			return value, err
 		}, completeReplay: replay})
 	if err != nil {
 		return nil, err
@@ -683,6 +692,12 @@ func lockReviewScope(ctx context.Context, tx *sqlxTxWrapper, submissionID model.
 	if err = guardExamSittingManagerExam(ctx, tx, examID, actorID, override, true); err != nil {
 		return nil, err
 	}
+	var sittingID string
+	if err = tx.Get(ctx, &sittingID, `SELECT s.id FROM exam_sittings s
+		JOIN exam_attempts a ON a.exam_sitting_id=s.id JOIN exam_submissions sub ON sub.exam_attempt_id=a.id
+		WHERE sub.id=? FOR UPDATE OF s`, submissionID.String()); err != nil {
+		return nil, translateError("submission", submissionID.String(), err)
+	}
 	var row examIntegrityReviewAuthorizationRow
 	if err := tx.Get(ctx, &row, examIntegrityReviewAuthorizationSelect+` FOR UPDATE OF sub,a`, submissionID.String()); err != nil {
 		return nil, translateError("submission", submissionID.String(), err)
@@ -703,6 +718,15 @@ func loadReviewForMutation(ctx context.Context, tx *sqlxTxWrapper, submissionID 
 		return nil, translateError("submission_review", submissionID.String(), err)
 	}
 	return row.value()
+}
+
+// The permanent category marker survives content removal and guards operations
+// that would otherwise replay retained private data or recreate retired Review
+// state. Callers preserve their aggregate lock order before invoking this guard.
+func requireLiveSubmissionIntegrity(ctx context.Context, tx *sqlxTxWrapper, submissionID model.SubmissionID) error {
+	var id string
+	err := tx.Get(ctx, &id, `SELECT id FROM exam_submissions WHERE id=? AND sealed=true AND integrity_retired_at IS NULL FOR SHARE`, submissionID.String())
+	return translateError("submission", submissionID.String(), err)
 }
 
 func insertReview(ctx context.Context, tx *sqlxTxWrapper, review *model.SubmissionReview, attemptID model.ExamAttemptID) error {
@@ -814,6 +838,9 @@ func saveReviewDecision(ctx context.Context, tx *sqlxTxWrapper, input *store.Exa
 		}
 	}
 	out := examIntegrityReviewOutcome{Authorization: *auth, Review: *review, Decision: decision}
+	if err = invalidateWaivedReviewRecords(ctx, tx, auth, input.ChangedAt); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
 	if err = completeIntegrityReviewAudit(ctx, tx, out, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
@@ -852,6 +879,9 @@ func updateReviewDraft(ctx context.Context, tx *sqlxTxWrapper, input *store.Exam
 		return examIntegrityReviewOutcome{}, err
 	}
 	out := examIntegrityReviewOutcome{Authorization: *auth, Review: *review}
+	if err = invalidateWaivedReviewRecords(ctx, tx, auth, input.ChangedAt); err != nil {
+		return examIntegrityReviewOutcome{}, err
+	}
 	if err = completeIntegrityReviewAudit(ctx, tx, out, input.AuditEventID, input.AuditAt, false, ""); err != nil {
 		return examIntegrityReviewOutcome{}, err
 	}
@@ -1112,7 +1142,7 @@ func (s *SQLExamIntegrityReviewStore) GetReleasedStudentResult(ctx context.Conte
 		StudentRemarks  string    `db:"student_remarks"`
 		ReleasedAt      time.Time `db:"released_at"`
 	}
-	if err := s.GetMaster().Get(ctx, &row, `SELECT r.id AS review_id,r.submission_id,a.id AS attempt_id,a.candidate_user_id,r.student_remarks_markdown AS student_remarks,r.released_at FROM submission_reviews r JOIN exam_submissions sub ON sub.id=r.submission_id JOIN exam_attempts a ON a.id=sub.exam_attempt_id WHERE a.id=? AND a.candidate_user_id=? AND r.state='finalized' AND r.release_state='released'`, attemptID.String(), candidateID.String()); err != nil {
+	if err := s.GetMaster().Get(ctx, &row, `SELECT r.id AS review_id,r.submission_id,a.id AS attempt_id,a.candidate_user_id,r.student_remarks_markdown AS student_remarks,r.released_at FROM submission_reviews r JOIN exam_submissions sub ON sub.id=r.submission_id JOIN exam_attempts a ON a.id=sub.exam_attempt_id WHERE a.id=? AND a.candidate_user_id=? AND sub.integrity_retired_at IS NULL AND r.state='finalized' AND r.release_state='released'`, attemptID.String(), candidateID.String()); err != nil {
 		return nil, translateError("student_result", attemptID.String(), err)
 	}
 	reviewID, err := model.ParseSubmissionReviewID(row.ReviewID)

@@ -20,7 +20,7 @@ test('the glossary skill produces the complete canonical vocabulary', async () =
       'utf8',
     ),
   );
-  assert.equal(terms.length, 61);
+  assert.equal(terms.length, 70);
   assert.deepEqual(terms[0], {
     id: 'installation',
     term: 'Installation',
@@ -31,6 +31,7 @@ test('the glossary skill produces the complete canonical vocabulary', async () =
   });
   assert(terms.some((term) => term.id === 'participation-lease'));
   assert(terms.some((term) => term.id === 'personal-access-token'));
+  assert(terms.some((term) => term.id === 'institution-retention-policy'));
 });
 
 test('renderers name the authority and remain deterministic', () => {

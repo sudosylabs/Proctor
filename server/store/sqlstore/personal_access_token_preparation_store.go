@@ -72,6 +72,9 @@ func (s SQLPersonalAccessTokenStore) PrepareMutation(ctx context.Context, input 
 		if err := validatePersonalAccessTokenPreparationAudit(input, candidate); err != nil {
 			return nil, err
 		}
+		if err := requireMFARecoveryPATSource(ctx, tx, input.UserID, candidate.SessionID.String(), at); err != nil {
+			return nil, err
+		}
 		if input.Kind == store.PersonalAccessTokenMutationCreate {
 			var active bool
 			if err := tx.Get(ctx, &active, `SELECT archived_at IS NULL AND disabled_at IS NULL FROM users WHERE id=? FOR SHARE`, input.UserID); err != nil {

@@ -140,6 +140,7 @@ function ProviderChooser({
   const [selectedID, setSelectedID] = useState(providers[0]?.id ?? "");
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string>();
+  const [reauthenticationRequired, setReauthenticationRequired] = useState(false);
   const selected = providers.find((provider) => provider.id === selectedID);
 
   useEffect(() => {
@@ -154,6 +155,7 @@ function ProviderChooser({
     }
     setPending(true);
     setFeedback(undefined);
+    setReauthenticationRequired(false);
     const result = await beginConnection(selected.id);
     if (result.kind === "redirect") {
       onRedirect(result.url);
@@ -166,6 +168,7 @@ function ProviderChooser({
           : "webapp.connect_provider.error.unavailable",
       ),
     );
+    setReauthenticationRequired(result.kind === "reauthentication_required");
     setPending(false);
   }
 
@@ -230,6 +233,9 @@ function ProviderChooser({
         {message("webapp.connect_provider.return")}
       </a>
       <FormFeedback message={feedback} />
+      {reauthenticationRequired ? <ButtonLink href="/account/reauthenticate?task=connect-provider">
+        {message("webapp.reauthenticate.action")}
+      </ButtonLink> : null}
     </section>
   );
 }

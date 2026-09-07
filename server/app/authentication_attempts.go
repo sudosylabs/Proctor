@@ -50,6 +50,8 @@ const (
 	authenticationAttemptPurposeInvitation
 	authenticationAttemptPurposeDesktopAuthorization
 	authenticationAttemptPurposePublicRegistration
+	authenticationAttemptPurposeReauthentication
+	authenticationAttemptPurposeMFA
 )
 
 func (p authenticationAttemptPurpose) keySegment() (string, bool) {
@@ -68,6 +70,10 @@ func (p authenticationAttemptPurpose) keySegment() (string, bool) {
 		return "invitation", true
 	case authenticationAttemptPurposeDesktopAuthorization:
 		return "desktop-authorization", true
+	case authenticationAttemptPurposeMFA:
+		return "mfa", true
+	case authenticationAttemptPurposeReauthentication:
+		return "reauthentication", true
 	case authenticationAttemptPurposePublicRegistration:
 		return "public-registration", true
 	default:

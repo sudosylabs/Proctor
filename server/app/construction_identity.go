@@ -34,6 +34,7 @@ func constructIdentity(
 	mfaApplication, err := newMFAApplicationService(
 		deps.Store.User(), deps.Store.MFA(), deps.Store.Session(), deps.Store.Institution(),
 		mfaAuditAdapter{audit: foundation.audit}, foundation.realtime, accountMail, foundation.mfa,
+		mfaSecurityDependencies{authorization: authorization, capabilities: capabilities, attempts: foundation.attempts, rateLimit: deps.LoginRateLimit},
 		deps.RecentAuthenticationTTL, time.Now,
 	)
 	if err != nil {
@@ -56,6 +57,7 @@ func constructIdentity(
 		deps.Cache,
 		foundation.attempts,
 		foundation.realtime,
+		mutationAuditAdapter{audit: foundation.audit},
 		foundation.hasher,
 		mfaApplication,
 		patResolver,
@@ -80,7 +82,7 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	selfSessions, err := newSelfSessionService(deps.Store.Session(), foundation.realtime, time.Now)
+	selfSessions, err := newSelfSessionService(deps.Store.Session(), mutationAuditAdapter{audit: foundation.audit}, foundation.realtime, time.Now)
 	if err != nil {
 		return identityConstruction{}, err
 	}
@@ -169,6 +171,7 @@ func constructIdentity(
 		mutationAuditAdapter{audit: foundation.audit},
 		capabilities,
 		invitations,
+		desktopAuthorization,
 		externalPolicy,
 		deps.RecentAuthenticationTTL,
 		deps.AuthenticationDiagnostics,
@@ -178,7 +181,6 @@ func constructIdentity(
 	if err != nil {
 		return identityConstruction{}, err
 	}
-	externalAuthentication.desktopAuthorization = desktopAuthorization
 	authenticationMethods, err := newAuthenticationMethodService(
 		deps.Store.PasswordCredential(), deps.Store.ExternalIdentity(), deps.Registry,
 		capabilities, foundation.hasher, mutationAuditAdapter{audit: foundation.audit}, foundation.realtime,

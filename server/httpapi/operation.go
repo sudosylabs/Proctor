@@ -444,7 +444,7 @@ func (a *API) logInvalidRouteError(request *http.Request, err error) {
 
 func authRequiresPrincipal(requirement AuthRequirement) bool {
 	switch requirement {
-	case AuthPrincipalRequired,
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired,
 		AuthSessionRequired,
 		AuthStrongSessionRequired,
 		AuthRecentSessionRequired,

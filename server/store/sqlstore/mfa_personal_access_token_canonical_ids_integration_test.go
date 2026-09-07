@@ -102,7 +102,7 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 		Username: "mfa-corruption", Email: "mfa-corruption@example.edu", DisplayName: "MFA Corruption",
 	})
 	now := model.NowUTC()
-	session, _, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
+	session, sessionCredentials, err := persistence.Session().Save(ctx, sessionCreationForSQLTest(t, ctx, persistence, &model.Session{
 		UserID: user.ID, ClientType: model.SessionClientWeb,
 		AuthenticationMethod: "password", AuthenticationStrength: model.AuthenticationSingleFactor,
 		IdleExpiresAt: now.Add(time.Hour), ExpiresAt: now.Add(2 * time.Hour),
@@ -128,7 +128,8 @@ func TestMFAActivationRejectsCorruptionBeforeCommit(t *testing.T) {
 	activationAt := model.MillisFromTime(pending.CreatedAt) + 1
 	audit, notice := mfaSQLSecurityNoticeFixture(t, ctx, persistence, user, model.MailTemplateIdentityMFAEnabled, activationAt)
 	_, err = persistence.MFA().Activate(ctx, &store.MFAActivationMutation{
-		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 1,
+		Principal: mfaSQLPrincipal(session, sessionCredentials[0]), RecentAuthenticationTTL: time.Hour,
+		CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 		RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken("mfa-corruption-recovery")}},
 		SessionID:     session.ID.String(), At: model.TimeFromMillis(activationAt), AuditEventID: audit.ID.String(), AuditAt: activationAt, Notice: notice,
 	})
@@ -181,4 +182,8 @@ func mfaSQLSecurityNoticeFixture(t *testing.T, ctx context.Context, persistence 
 		CreatedAt: when, UpdatedAt: when, MessageDate: when, Deadline: when.Add(24 * time.Hour),
 		MessageID: "<mail." + deliveryID.String() + "@example.edu>", EncryptedPayload: json.RawMessage(`{"key_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`), Revision: 1}
 	return audit, store.MFASecurityNotice{Occurrence: occurrence, Delivery: delivery, Job: job}
+}
+
+func mfaSQLPrincipal(session *model.Session, credential *model.SessionCredential) model.Principal {
+	return model.Principal{UserID: session.UserID, SessionID: session.ID, CredentialID: model.PrincipalCredentialID(credential.ID), CredentialType: model.CredentialSessionAccess, AuthenticationGeneration: session.AuthenticationGeneration, MFARecoveryRequired: session.MFARecoveryRequired, ClientType: session.ClientType, AuthenticationMethod: session.AuthenticationMethod, AuthenticationProviderID: session.AuthenticationProviderID, ExternalIdentityID: session.ExternalIdentityID, AuthenticationStrength: session.AuthenticationStrength, AuthenticatedAt: session.AuthenticatedAt, ReauthenticatedAt: session.ReauthenticatedAt, MFACompletedAt: session.MFACompletedAt}
 }

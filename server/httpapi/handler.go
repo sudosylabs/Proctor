@@ -83,7 +83,7 @@ func requireAuthentication(
 			ctx = context.WithValue(ctx, credentialSourceContextKey{}, credential.source)
 			next.ServeHTTP(writer, request.WithContext(ctx))
 		})
-	case AuthPrincipalRequired,
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired,
 		AuthSessionRequired,
 		AuthStrongSessionRequired,
 		AuthRecentSessionRequired,
@@ -194,9 +194,15 @@ func requirePrincipalAssurance(
 	now time.Time,
 	recentAuthenticationTTL time.Duration,
 ) error {
+	if principal.ValidateMFARecovery() != nil {
+		return application.NewError("authentication.invalid_token")
+	}
+	if principal.MFARecoveryRequired && requirement != AuthMFARecoverySessionRequired && requirement != AuthRecentMFARecoverySessionRequired {
+		return application.NewError("authentication.invalid_token")
+	}
 	strongRequired := requirement == AuthStrongSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
-	recentRequired := requirement == AuthRecentSessionRequired ||
+	recentRequired := requirement == AuthRecentMFARecoverySessionRequired || requirement == AuthRecentSessionRequired ||
 		requirement == AuthStrongRecentSessionRequired
 	if strongRequired && !principal.HasStrongAuthentication() {
 		return application.NewError("authentication.strong_required")

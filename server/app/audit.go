@@ -233,7 +233,7 @@ func (s *auditService) BeginCriticalAction(
 	parameters any,
 	priorState any,
 ) (*model.AuditEvent, error) {
-	if principal.Validate() != nil {
+	if principal.ValidateMFARecovery() != nil {
 		return nil, invalidTokenAppError()
 	}
 	if s.audits == nil {
@@ -265,7 +265,7 @@ func (s *auditService) PrepareCriticalAction(
 	parameters any,
 	priorState any,
 ) (*model.AuditEvent, error) {
-	if principal.Validate() != nil {
+	if principal.ValidateMFARecovery() != nil {
 		return nil, invalidTokenAppError()
 	}
 	scopeType := model.RoleScopeType(resource.Type)
@@ -296,7 +296,7 @@ func (s *auditService) BeginCriticalActionAtScope(
 	parameters any,
 	priorState any,
 ) (*model.AuditEvent, error) {
-	if principal.Validate() != nil {
+	if principal.ValidateMFARecovery() != nil {
 		return nil, invalidTokenAppError()
 	}
 	if s.audits == nil {

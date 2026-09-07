@@ -22,6 +22,7 @@ import (
 )
 
 func TestClassMemberStore(t *testing.T, ss store.Store) {
+	t.Run("StablePages", func(t *testing.T) { testClassMemberPaging(t, ss) })
 	ctx := context.Background()
 	fixture := saveClassFixture(t, ctx, ss)
 	firstClass := saveClass(t, ctx, ss, fixture.level.ID.String(), fixture.period.ID.String(), "class-member-a")

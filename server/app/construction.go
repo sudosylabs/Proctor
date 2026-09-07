@@ -26,6 +26,8 @@ type examinationConstruction struct {
 	attempts               examAttemptUseCases
 	attemptTerminals       examAttemptTerminalUseCases
 	reviews                examReviewUseCases
+	records                examRecordsUseCases
+	exports                examExportUseCases
 	resources              examResourceUseCases
 	corrections            examCorrectionUseCases
 	starterWorkspace       examStarterWorkspaceUseCases
@@ -66,6 +68,7 @@ type accessAcademicConstruction struct {
 	authorization        *accessControlService
 	capabilities         accessPolicyCapabilitySource
 	accessPolicies       *accessPolicyService
+	retentionPolicy      *retentionPolicyService
 	desktopCompatibility *desktopCompatibilityService
 	academicUnits        *academicUnitQueryService
 	academicUnitCommands *academicUnitCommandService
@@ -219,6 +222,7 @@ func assembleApplication(
 		personalAccessTokenAdministration: identity.personalAccessTokenAdministration,
 		authorization:                     access.authorization,
 		accessPolicies:                    access.accessPolicies,
+		retentionPolicy:                   access.retentionPolicy,
 		desktopCompatibility:              access.desktopCompatibility,
 		academicUnits:                     access.academicUnits,
 		academicUnitCommands:              access.academicUnitCommands,
@@ -237,6 +241,8 @@ func assembleApplication(
 		examAttempts:                      examinations.attempts,
 		examAttemptTerminals:              examinations.attemptTerminals,
 		examReviews:                       examinations.reviews,
+		examRecords:                       examinations.records,
+		examExports:                       examinations.exports,
 		examResources:                     examinations.resources,
 		examCorrections:                   examinations.corrections,
 		examStarterWorkspace:              examinations.starterWorkspace,

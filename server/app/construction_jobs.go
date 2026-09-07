@@ -47,7 +47,7 @@ func constructJobs(
 	if mailHealth == nil {
 		mailHealth = newMailHealth(deps.MailDeliverySender != nil && deps.MailDeliverySender.Enabled())
 	}
-	definitions := buildApplicationJobDefinitions(deps, identity, examinations, profiles, defaultJobs, mailHealth)
+	definitions := buildApplicationJobDefinitions(deps, foundation, identity, examinations, profiles, defaultJobs, mailHealth)
 	runtime, err := jobengine.New(jobengine.Config{
 		Store: deps.Store.Job(), Descriptors: definitions.descriptors, NodeID: deps.NodeID,
 		Diagnostics:   deps.RecoveryDiagnostics,
@@ -145,6 +145,7 @@ type applicationJobDefinitions struct {
 // use the same definition graph that production passes to the Job engine.
 func buildApplicationJobDefinitions(
 	deps Dependencies,
+	foundation applicationFoundation,
 	identity identityConstruction,
 	examinations examinationConstruction,
 	profiles profileFileConstruction,
@@ -168,7 +169,11 @@ func buildApplicationJobDefinitions(
 		StarterWorkspaces: deps.Store.ExamStarterWorkspace(), StarterWorkspaceContent: deps.FileContent,
 		AttemptWorkspaces: deps.Store.ExamAttemptWorkspace(), AttemptWorkspaceContent: deps.FileContent,
 		CommandOutcomes: deps.Store.CommandOutcome(),
-		MailDeliveries:  deps.Store.Mail(), MailSender: deps.MailDeliverySender, MailSealer: deps.MailSecretSealer,
+		ExamExports:     examinations.exports, ExamExportStore: deps.Store.ExamExport(), ExamExportContent: deps.FileContent,
+		Retention: deps.Store.Retention(), RetentionContent: deps.FileContent, RetentionAudit: retentionJobAudit{audit: foundation.audit},
+		RetentionExpiry: deps.Store.Retention(), RetentionExpiryAudit: retentionJobAudit{audit: foundation.audit},
+		RetentionNotices: deps.Store.Retention(), RetentionNoticeDispatcher: retentionNoticeDispatcher{records: deps.Store.Retention(), users: deps.Store.User(), mail: foundation.mail, now: time.Now},
+		MailDeliveries: deps.Store.Mail(), MailSender: deps.MailDeliverySender, MailSealer: deps.MailSecretSealer,
 		MailRecorder: jobMailDeliveryRecorder{recorder: deps.MailDeliveryRecorder}, MailHealth: jobMailHealth{health: mailHealth},
 		MailRelevance: jobMailDeliveryIsRelevant, SittingMailStore: deps.Store.ExamSitting(), SittingMail: examinations.sittingMail,
 		MailCleanup: deps.Store.Mail(), SittingMailMaintenance: deps.Store.ExamSitting(), MailRekey: deps.Store.Mail(),

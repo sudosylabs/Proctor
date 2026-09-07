@@ -39,6 +39,7 @@ const (
 	SessionRevocationAccountDisabled            SessionRevocationReason = "account_disabled"
 	SessionRevocationPasswordRemoved            SessionRevocationReason = "password_removed"
 	SessionRevocationExternalIdentityUnlinked   SessionRevocationReason = "external_identity_unlinked"
+	SessionRevocationMFAReset                   SessionRevocationReason = "mfa_reset"
 	SessionRevocationPasswordReset              SessionRevocationReason = "password_reset"
 	SessionRevocationRefreshReplay              SessionRevocationReason = "refresh_replay"
 	SessionRevocationInactiveUser               SessionRevocationReason = "inactive_user"
@@ -60,7 +61,7 @@ func (reason SessionRevocationReason) IsValid() bool {
 		SessionRevocationAccountDisabled,
 		SessionRevocationPasswordRemoved,
 		SessionRevocationExternalIdentityUnlinked,
-		SessionRevocationPasswordReset,
+		SessionRevocationMFAReset, SessionRevocationPasswordReset,
 		SessionRevocationRefreshReplay,
 		SessionRevocationInactiveUser,
 		SessionRevocationAuthenticationAuditFailed,
@@ -90,7 +91,7 @@ func AllSessionRevocationReasons() []SessionRevocationReason {
 		SessionRevocationExternalIdentityUnlinked,
 		SessionRevocationInactiveUser,
 		SessionRevocationPasswordRemoved,
-		SessionRevocationPasswordReset,
+		SessionRevocationMFAReset, SessionRevocationPasswordReset,
 		SessionRevocationRefreshReplay,
 		SessionRevocationUserAllSessions,
 		SessionRevocationUserLogout,
@@ -129,6 +130,8 @@ type Session struct {
 	UpdatedAt                time.Time
 	ArchivedAt               OptionalTime
 	UserID                   UserID
+	AuthenticationGeneration int64
+	MFARecoveryRequired      bool
 	ClientType               SessionClientType
 	DesktopRegistrationID    DesktopRegistrationID
 	DPoPKeyThumbprint        string
@@ -144,6 +147,7 @@ type Session struct {
 	ExternalIdentityID       ExternalIdentityID
 	AuthenticationStrength   AuthenticationStrength
 	AuthenticatedAt          time.Time
+	ReauthenticatedAt        OptionalTime
 	MFACompletedAt           OptionalTime
 	LastActivityAt           time.Time
 	IdleExpiresAt            time.Time
@@ -176,6 +180,9 @@ func (s *Session) PrepareCreate(id SessionID, at time.Time) {
 	s.ExpiresAt = TimeUTC(s.ExpiresAt)
 	if s.MFACompletedAt.Valid {
 		s.MFACompletedAt = s.MFACompletedAt.UTC()
+	}
+	if s.ReauthenticatedAt.Valid {
+		s.ReauthenticatedAt = s.ReauthenticatedAt.UTC()
 	}
 	if s.RevokedAt.Valid {
 		s.RevokedAt = s.RevokedAt.UTC()
@@ -216,6 +223,9 @@ func (s *Session) Validate() error {
 	}
 	if s.UpdatedAt.Before(s.CreatedAt) {
 		return invalidModelError(where, "session", "updated_at", "must not precede created_at", details)
+	}
+	if s.AuthenticationGeneration < 0 || (s.MFARecoveryRequired && (s.AuthenticationGeneration == 0 || s.ClientType != SessionClientWeb)) {
+		return invalidModelError(where, "session", "authentication_generation", "is inconsistent", details)
 	}
 	if !s.UserID.IsValid() {
 		return invalidModelError(where, "session", "user_id", "must be a valid identifier", details)
@@ -261,6 +271,10 @@ func (s *Session) Validate() error {
 	}
 	if s.AuthenticatedAt.IsZero() || s.AuthenticatedAt.After(s.CreatedAt) {
 		return invalidModelError(where, "session", "authenticated_at", "must be set and not follow create_at", details)
+	}
+	if s.ReauthenticatedAt.Valid && (s.ReauthenticatedAt.Time.Before(s.AuthenticatedAt) ||
+		s.ReauthenticatedAt.Time.After(s.UpdatedAt)) {
+		return invalidModelError(where, "session", "reauthenticated_at", "is inconsistent", details)
 	}
 	if s.AuthenticationStrength == AuthenticationMultiFactor {
 		if !s.MFACompletedAt.Valid ||
@@ -365,6 +379,8 @@ func (s *Session) Auditable() map[string]any {
 		"updated_at":                 MillisFromTime(s.UpdatedAt),
 		"archived_at":                s.ArchivedAt.Millis(),
 		"user_id":                    s.UserID.String(),
+		"authentication_generation":  s.AuthenticationGeneration,
+		"mfa_recovery_required":      s.MFARecoveryRequired,
 		"client_type":                s.ClientType,
 		"desktop_registration_id":    s.DesktopRegistrationID.String(),
 		"device_id":                  s.DeviceID,
@@ -373,6 +389,7 @@ func (s *Session) Auditable() map[string]any {
 		"external_identity_id":       s.ExternalIdentityID.String(),
 		"authentication_strength":    s.AuthenticationStrength,
 		"authenticated_at":           MillisFromTime(s.AuthenticatedAt),
+		"reauthenticated_at":         s.ReauthenticatedAt.Millis(),
 		"mfa_completed_at":           s.MFACompletedAt.Millis(),
 		"last_activity_at":           MillisFromTime(s.LastActivityAt),
 		"idle_expires_at":            MillisFromTime(s.IdleExpiresAt),

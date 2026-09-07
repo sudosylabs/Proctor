@@ -256,6 +256,13 @@ func (s *LifecycleStore) AccessPolicy() store.AccessPolicyStore { return lifecyc
 func (s *LifecycleStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
 	return lifecycleDesktopCompatibilityPolicyStore{}
 }
+func (s *LifecycleStore) RetentionPolicy() store.RetentionPolicyStore {
+	return lifecycleRetentionPolicyStore{}
+}
+
+func (s *LifecycleStore) ExamRecords() store.ExamRecordsStore       { return lifecycleExamRecordsStore{} }
+func (s *LifecycleStore) ExamExport() store.ExamExportStore         { return lifecycleExamExportStore{} }
+func (s *LifecycleStore) Retention() store.RetentionStore           { return lifecycleRetentionStore{} }
 func (s *LifecycleStore) AcademicUnit() store.AcademicUnitStore     { return lifecycleAcademicUnitStore{} }
 func (s *LifecycleStore) Programme() store.ProgrammeStore           { return nil }
 func (s *LifecycleStore) ProgrammeLevel() store.ProgrammeLevelStore { return nil }
@@ -406,6 +413,10 @@ var _ store.Store = (*LifecycleStore)(nil)
 type lifecycleUserStore struct{ store.UserStore }
 type lifecycleOnboardingImportStore struct{ store.OnboardingImportStore }
 type lifecycleAccessPolicyStore struct{ store.AccessPolicyStore }
+type lifecycleRetentionPolicyStore struct{ store.RetentionPolicyStore }
+type lifecycleExamRecordsStore struct{ store.ExamRecordsStore }
+type lifecycleExamExportStore struct{ store.ExamExportStore }
+type lifecycleRetentionStore struct{ store.RetentionStore }
 type lifecycleDesktopCompatibilityPolicyStore struct {
 	store.DesktopCompatibilityPolicyStore
 }

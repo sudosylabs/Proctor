@@ -110,7 +110,7 @@ if (check) {
 
   const cliReference = await readFile(cliReferencePath, 'utf8');
   const cliSources = await Promise.all(
-    ['root.go', 'serve.go', 'config.go', 'migrate.go', 'administrator.go', 'version.go']
+    ['root.go', 'serve.go', 'config.go', 'migrate.go', 'administrator.go', 'administrator_mfa_reset.go', 'version.go']
       .map((filename) => readFile(path.join(cliSourceDirectory, filename), 'utf8')),
   );
   const cliSource = cliSources.join('\n');
@@ -120,6 +120,7 @@ if (check) {
     'proctor migrate status',
     'proctor migrate up',
     'proctor administrator recover',
+    'proctor administrator reset-mfa',
     'proctor version',
     '--config',
     '--institution-id',
@@ -138,12 +139,14 @@ if (check) {
     'newConfigCommand',
     'newMigrateCommand',
     'newAdministratorCommand',
+    'newAdministratorMFAResetCommand',
     'newVersionCommand',
     'Use:   "serve"',
     'Use:   "validate"',
     'Use:   "up"',
     'Use:   "status"',
     'Use:   "recover"',
+    'Use:   "reset-mfa"',
     'Use:   "version"',
     '"config"',
     '"institution-id"',

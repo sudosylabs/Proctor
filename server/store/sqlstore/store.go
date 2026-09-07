@@ -88,6 +88,8 @@ type SQLStoreStores struct {
 	examAttemptWorkspace       store.ExamAttemptWorkspaceStore
 	examSubmission             store.ExamSubmissionStore
 	examIntegrityReview        store.ExamIntegrityReviewStore
+	examRecords                store.ExamRecordsStore
+	examExport                 store.ExamExportStore
 	examResource               store.ExamResourceStore
 	examCorrection             store.ExamCorrectionStore
 	examStarterWorkspace       store.ExamStarterWorkspaceStore
@@ -118,6 +120,8 @@ type SQLStoreStores struct {
 	installation               store.InstallationStore
 	accessPolicy               store.AccessPolicyStore
 	desktopCompatibilityPolicy store.DesktopCompatibilityPolicyStore
+	retentionPolicy            store.RetentionPolicyStore
+	retention                  store.RetentionStore
 	clusterDiscovery           store.ClusterDiscoveryStore
 	servingNodeLease           store.ServingNodeLeaseStore
 	commandOutcome             store.CommandOutcomeStore
@@ -125,9 +129,10 @@ type SQLStoreStores struct {
 
 // SQLStore owns PostgreSQL connections and all concrete model stores.
 type SQLStore struct {
-	masterX  *sqlxDBWrapper
-	stores   SQLStoreStores
-	settings Settings
+	masterX             *sqlxDBWrapper
+	stores              SQLStoreStores
+	settings            Settings
+	executionLeaseSlots chan struct{}
 }
 
 func New(ctx context.Context, settings Settings) (*SQLStore, error) {
@@ -147,6 +152,9 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore := &SQLStore{
 		masterX:  newSqlxDBWrapper(db, settings.QueryTimeout),
 		settings: settings,
+		// A host-effect lease retains one connection while its owner performs
+		// ordinary Store operations. Those operations must still make progress.
+		executionLeaseSlots: make(chan struct{}, db.Stats().MaxOpenConnections-1),
 	}
 	if err := sqlStore.Ping(ctx); err != nil {
 		_ = db.Close()
@@ -200,6 +208,10 @@ func New(ctx context.Context, settings Settings) (*SQLStore, error) {
 	sqlStore.stores.installation = newSQLInstallationStore(sqlStore)
 	sqlStore.stores.accessPolicy = newSQLAccessPolicyStore(sqlStore)
 	sqlStore.stores.desktopCompatibilityPolicy = newSQLDesktopCompatibilityPolicyStore(sqlStore)
+	sqlStore.stores.retentionPolicy = newSQLRetentionPolicyStore(sqlStore)
+	sqlStore.stores.retention = newSQLRetentionStore(sqlStore)
+	sqlStore.stores.examRecords = newSQLExamRecordsStore(sqlStore)
+	sqlStore.stores.examExport = NewSQLExamExportStore(sqlStore)
 	sqlStore.stores.clusterDiscovery = newSQLClusterDiscoveryStore(sqlStore)
 	sqlStore.stores.servingNodeLease = newSQLServingNodeLeaseStore(sqlStore)
 	sqlStore.stores.commandOutcome = newSQLCommandOutcomeStore(sqlStore)
@@ -383,6 +395,12 @@ func (ss *SQLStore) AccessPolicy() store.AccessPolicyStore {
 	return ss.stores.accessPolicy
 }
 
+func (ss *SQLStore) RetentionPolicy() store.RetentionPolicyStore {
+	return ss.stores.retentionPolicy
+}
+
+func (ss *SQLStore) Retention() store.RetentionStore { return ss.stores.retention }
+
 func (ss *SQLStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
 	return ss.stores.desktopCompatibilityPolicy
 }
@@ -428,3 +446,7 @@ func postgresVersionString(version int) string {
 }
 
 var _ store.Store = (*SQLStore)(nil)
+
+func (ss *SQLStore) ExamRecords() store.ExamRecordsStore { return ss.stores.examRecords }
+
+func (ss *SQLStore) ExamExport() store.ExamExportStore { return ss.stores.examExport }

@@ -33,6 +33,7 @@ type ExamSubmissionProvenance string
 const (
 	SubmissionIntegritySettled SubmissionIntegrityState = "settled"
 	SubmissionIntegrityGapped  SubmissionIntegrityState = "gapped"
+	SubmissionIntegrityRetired SubmissionIntegrityState = "retired"
 
 	ExamSubmissionCandidateSubmitted  ExamSubmissionProvenance = "candidate_submitted"
 	ExamSubmissionManagerEndedAttempt ExamSubmissionProvenance = "manager_ended_attempt"
@@ -40,7 +41,7 @@ const (
 )
 
 func (state SubmissionIntegrityState) IsValid() bool {
-	return state == SubmissionIntegritySettled || state == SubmissionIntegrityGapped
+	return state == SubmissionIntegritySettled || state == SubmissionIntegrityGapped || state == SubmissionIntegrityRetired
 }
 
 func (provenance ExamSubmissionProvenance) IsValid() bool {
@@ -185,7 +186,8 @@ type ExamSubmissionSpecification struct {
 
 // ExamSubmission is the immutable aggregate header for the single seal of an
 // Attempt. Manifest entries remain separately pageable; the header retains the
-// exact canonical manifest summary and terminal integrity collection state.
+// exact canonical manifest summary. Retiring integrity preserves its explicit
+// retirement time while removing the original collection state and counters.
 type ExamSubmission struct {
 	ID                       SubmissionID
 	AttemptID                ExamAttemptID
@@ -199,6 +201,7 @@ type ExamSubmission struct {
 	FinalFocusLossSequence   int64
 	BrowserActivity          BrowserActivitySubmission
 	IntegrityState           SubmissionIntegrityState
+	IntegrityRetiredAt       OptionalTime
 	UnresolvedIntegrityCount int64
 	Provenance               ExamSubmissionProvenance
 	SubmittedAt              time.Time
@@ -237,11 +240,22 @@ func (submission *ExamSubmission) Validate() error {
 		!submission.Provenance.IsValid() {
 		return errors.New("model: invalid Exam Submission")
 	}
-	if err := submission.BrowserActivity.Validate(); err != nil {
-		return err
-	}
 	if submission.ManifestEntryCount == 0 && submission.ManifestTotalFileBytes != 0 {
 		return errors.New("model: empty Exam Submission manifest has content bytes")
+	}
+	if submission.IntegrityState == SubmissionIntegrityRetired {
+		if !submission.IntegrityRetiredAt.Valid || submission.IntegrityRetiredAt.Time.IsZero() ||
+			submission.IntegrityRetiredAt.Time.Before(submission.SubmittedAt) || submission.FinalFocusLossSequence != 0 ||
+			submission.UnresolvedIntegrityCount != 0 || submission.BrowserActivity != (BrowserActivitySubmission{}) {
+			return errors.New("model: retired Exam Submission retains integrity data or lacks its retirement time")
+		}
+		return nil
+	}
+	if submission.IntegrityRetiredAt.Valid || !submission.IntegrityRetiredAt.Time.IsZero() {
+		return errors.New("model: retained Exam Submission integrity has a retirement time")
+	}
+	if err := submission.BrowserActivity.Validate(); err != nil {
+		return err
 	}
 	if (submission.IntegrityState == SubmissionIntegritySettled) != (submission.UnresolvedIntegrityCount == 0) {
 		return errors.New("model: inconsistent Exam Submission integrity state")

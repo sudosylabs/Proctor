@@ -1,0 +1,207 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+{
+  "paths": {
+    "/api/v1/users/me/retention-notices": {
+      "get": {
+        "operationId": "listRetentionNotices",
+        "summary": "List my retention notices",
+        "tags": [
+          "Data retention"
+        ],
+        "description": "Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is cancelled.",
+        "x-proctor-auth": "session_required",
+        "x-proctor-idempotency": "none",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "description": "Maximum number of the current User's retention notices to return in this page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "description": "Opaque cursor from this endpoint.",
+            "schema": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionNoticesOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "RetentionNoticesOK": {
+        "description": "The current User’s notice page.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RetentionNoticesResponse"
+            },
+            "example": {
+              "items": []
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "RetentionNoticeResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "retirement_id",
+          "exam_id",
+          "exam_sitting_id",
+          "submission_id",
+          "category",
+          "state",
+          "created_at",
+          "retire_after",
+          "delivery_state"
+        ],
+        "properties": {
+          "retirement_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "work",
+              "integrity"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "grace",
+              "cancelled",
+              "retired"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retire_after": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancelled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "queued",
+              "sending",
+              "accepted",
+              "suppressed",
+              "failed",
+              "canceled"
+            ]
+          },
+          "delivery_error_code": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      },
+      "RetentionNoticesResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/RetentionNoticeResponse"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "maxLength": 256
+          }
+        }
+      }
+    }
+  }
+}

@@ -18,6 +18,8 @@ import (
 )
 
 type academicUnitMemberStoreFake struct {
+	pageOptions store.AcademicUnitMemberPageOptions
+	pageResult  *store.AcademicUnitMemberPage
 	events      *[]string
 	current     *model.AcademicUnitMember
 	createInput *store.AcademicUnitMemberCreation
@@ -154,4 +156,13 @@ func TestAcademicUnitMemberEndConcealsCrossScopeTarget(t *testing.T) {
 	if _, err := service.End(context.Background(), Invocation{}, EndAcademicUnitMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
 	}
+}
+
+func (s *academicUnitMemberStoreFake) ListPageByAcademicUnit(_ context.Context, options store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {
+	*s.events = append(*s.events, "list-page")
+	s.pageOptions = options
+	if s.pageResult != nil {
+		return s.pageResult, nil
+	}
+	return &store.AcademicUnitMemberPage{}, nil
 }

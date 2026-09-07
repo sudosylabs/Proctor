@@ -29,6 +29,8 @@ const sidebars: SidebarsConfig = {
         'recipes/account-entry-and-recovery',
         'recipes/account-security',
         'recipes/access-policy',
+        'recipes/retention-policy',
+        'recipes/exam-exports',
         'recipes/desktop-authorization',
         'recipes/academic-structure',
         'recipes/roles-and-scopes',

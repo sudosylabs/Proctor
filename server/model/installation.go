@@ -63,6 +63,7 @@ type InstallationBootstrapResult struct {
 	RoleBinding                *RoleBinding
 	AccessPolicy               *AccessPolicy
 	DesktopCompatibilityPolicy *DesktopCompatibilityPolicy
+	RetentionPolicy            *RetentionPolicy
 }
 
 var _ Auditable = (*InstallationState)(nil)

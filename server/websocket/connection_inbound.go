@@ -33,11 +33,17 @@ func (c *connectionRuntime) readPump(ctx context.Context) {
 		return c.socket.SetReadDeadline(c.clock.Now().Add(pongWait))
 	})
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		var request Request
 		if err := c.socket.ReadJSON(&request); err != nil {
 			if c.recorder != nil {
 				c.recorder.ObserveWebSocketMessage("inbound", "request", streamResult(err), 0)
 			}
+			return
+		}
+		if ctx.Err() != nil {
 			return
 		}
 		if err := request.Validate(); err != nil {
@@ -106,7 +112,11 @@ func (c *connectionRuntime) handleExamAttemptTerminalOpen(ctx context.Context, r
 	c.terminal = terminal
 	c.mu.Unlock()
 	c.enqueueResponse(request.Sequence, json.RawMessage(`{"opened":true}`))
-	go c.readExamAttemptTerminal(terminal)
+	c.terminalReaders.Add(1)
+	go func() {
+		defer c.terminalReaders.Done()
+		c.readExamAttemptTerminal(terminal)
+	}()
 }
 
 func (c *connectionRuntime) handleExamAttemptTerminalInput(_ context.Context, request *Request) {
@@ -695,7 +705,7 @@ func (c *connectionRuntime) finalizeExamAttempt(ctx context.Context) {
 		if !ok {
 			return
 		}
-		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		closeCtx, cancel := c.finalizationContext(ctx)
 		defer cancel()
 		metadata := c.metadata
 		metadata.RequestID = c.id + ":attempt-close"

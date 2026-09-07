@@ -16,6 +16,7 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,6 +37,8 @@ type sessionRow struct {
 	UpdatedAt                time.Time      `db:"updated_at"`
 	ArchivedAt               sql.NullTime   `db:"archived_at"`
 	UserID                   string         `db:"user_id"`
+	AuthenticationGeneration int64          `db:"authentication_generation"`
+	MFARecoveryRequired      bool           `db:"mfa_recovery_required"`
 	ClientType               string         `db:"client_type"`
 	DesktopRegistrationID    sql.NullString `db:"desktop_registration_id"`
 	DPoPKeyThumbprint        sql.NullString `db:"dpop_key_thumbprint"`
@@ -51,6 +54,7 @@ type sessionRow struct {
 	ExternalIdentityID       sql.NullString `db:"external_identity_id"`
 	AuthenticationStrength   string         `db:"authentication_strength"`
 	AuthenticatedAt          time.Time      `db:"authenticated_at"`
+	ReauthenticatedAt        sql.NullTime   `db:"reauthenticated_at"`
 	MFACompletedAt           sql.NullTime   `db:"mfa_completed_at"`
 	LastActivityAt           time.Time      `db:"last_activity_at"`
 	IdleExpiresAt            time.Time      `db:"idle_expires_at"`
@@ -76,6 +80,8 @@ func sessionSliceColumns() []string {
 		"sessions.updated_at",
 		"sessions.archived_at",
 		"sessions.user_id",
+		"sessions.authentication_generation",
+		"sessions.mfa_recovery_required",
 		"sessions.client_type",
 		"sessions.desktop_registration_id",
 		"sessions.dpop_key_thumbprint",
@@ -91,6 +97,7 @@ func sessionSliceColumns() []string {
 		"sessions.external_identity_id",
 		"sessions.authentication_strength",
 		"sessions.authenticated_at",
+		"sessions.reauthenticated_at",
 		"sessions.mfa_completed_at",
 		"sessions.last_activity_at",
 		"sessions.idle_expires_at",
@@ -146,6 +153,9 @@ func (s SQLSessionStore) Save(
 			return nil, err
 		}
 		if err := lockUserSessions(ctx, tx, candidate.UserID.String()); err != nil {
+			return nil, err
+		}
+		if err := requireSessionIssuanceRecovery(ctx, tx, &candidate, input.ExternalLoginStateID); err != nil {
 			return nil, err
 		}
 		if candidate.AuthenticationMethod == "password" {
@@ -261,19 +271,19 @@ func insertSession(ctx context.Context, executor sqlxExecutor, session *model.Se
 	row := newSessionRow(session)
 	if _, err := executor.NamedExec(ctx, `
 		INSERT INTO sessions (
-			id, created_at, updated_at, archived_at, user_id, client_type,
+			id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 			desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 			desktop_platform, desktop_architecture, desktop_realtime_protocol,
 			device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
-			authentication_strength, authenticated_at, mfa_completed_at,
+			authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 			last_activity_at, idle_expires_at, expires_at, revoked_at,
 			revocation_reason
 		) VALUES (
-			:id, :created_at, :updated_at, :archived_at, :user_id, :client_type,
+			:id, :created_at, :updated_at, :archived_at, :user_id, :authentication_generation, :mfa_recovery_required, :client_type,
 			:desktop_registration_id, :dpop_key_thumbprint, :desktop_release, :desktop_build_id,
 			:desktop_platform, :desktop_architecture, :desktop_realtime_protocol,
 			:device_id, :device_name, :authentication_method, :authentication_provider_id, :external_identity_id,
-			:authentication_strength, :authenticated_at, :mfa_completed_at,
+			:authentication_strength, :authenticated_at, :reauthenticated_at, :mfa_completed_at,
 			:last_activity_at, :idle_expires_at, :expires_at, :revoked_at,
 			:revocation_reason
 		)`, &row); err != nil {
@@ -415,11 +425,11 @@ func (s SQLSessionStore) EnforceExpiry(
 		}
 		var row sessionRow
 		if err := tx.Get(ctx, &row, `
-		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
-		       authentication_strength, authenticated_at, mfa_completed_at,
+		       authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
@@ -463,9 +473,18 @@ func (s SQLSessionStore) RevokeWithAudit(
 	if !reason.IsValid() {
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
-	payloadKeyID, err := validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
-	if err != nil {
-		return nil, err
+	selfRevocation := reason == model.SessionRevocationUserSession || reason == model.SessionRevocationUserLogout
+	payloadKeyID := ""
+	if selfRevocation {
+		if input.Occurrence != nil || input.Delivery != nil || input.DeliveryJob != nil {
+			return nil, store.NewErrInvalidInput("session", "self_revocation_notice", nil)
+		}
+	} else {
+		var err error
+		payloadKeyID, err = validateSecurityNoticeMail(model.UserID(input.UserID), input.Occurrence, input.Delivery, input.DeliveryJob, model.MailTemplateIdentitySessionsRevokedByAdmin, input.RevokedAt)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "audited session revocation", func(ctx context.Context, tx *sqlxTxWrapper) (*store.SessionRevocationResult, error) {
 		if payloadKeyID != "" {
@@ -478,11 +497,11 @@ func (s SQLSessionStore) RevokeWithAudit(
 		}
 		var row sessionRow
 		if err := tx.Get(ctx, &row, `
-		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
-		       authentication_strength, authenticated_at, mfa_completed_at,
+		       authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
@@ -491,6 +510,18 @@ func (s SQLSessionStore) RevokeWithAudit(
 			input.SessionID,
 			input.UserID,
 		); err != nil {
+			if errors.Is(err, sql.ErrNoRows) && reason == model.SessionRevocationUserLogout {
+				encoded, encodeErr := model.EncodeAuditData(map[string]any{
+					"user_id": input.UserID, "session_id": input.SessionID, "no_op": true,
+				})
+				if encodeErr != nil {
+					return nil, encodeErr
+				}
+				if _, auditErr := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); auditErr != nil {
+					return nil, fmt.Errorf("complete logout no-op audit: %w", auditErr)
+				}
+				return &store.SessionRevocationResult{}, nil
+			}
 			return nil, translateError("session", input.SessionID, err)
 		}
 		hashes, err := revokeOneUserSession(
@@ -509,8 +540,10 @@ func (s SQLSessionStore) RevokeWithAudit(
 		}
 		session.RevokedAt = model.OptionalTimeFrom(revokedAt)
 		session.RevocationReason = reason
-		if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
-			return nil, err
+		if !selfRevocation {
+			if err := insertSecurityNoticeMail(ctx, tx, input.Occurrence, input.Delivery, input.DeliveryJob, payloadKeyID); err != nil {
+				return nil, err
+			}
 		}
 		encoded, appErr := model.EncodeAuditData(session.Auditable())
 		if appErr != nil {
@@ -569,7 +602,11 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 		return nil, store.NewErrInvalidInput("session", "revocation_reason", nil)
 	}
 	mailUnprepared := input.Occurrence == nil && input.Delivery == nil && input.DeliveryJob == nil
-	if mailUnprepared && input.Command == nil {
+	selfRevocation := reason == model.SessionRevocationUserAllSessions
+	if selfRevocation && (!mailUnprepared || input.Command != nil) {
+		return nil, store.NewErrInvalidInput("session", "self_revocation_notice", nil)
+	}
+	if !selfRevocation && mailUnprepared && input.Command == nil {
 		return nil, store.NewErrInvalidInput("session", "user_revocation_notice", nil)
 	}
 	payloadKeyID := ""
@@ -599,7 +636,7 @@ func (s SQLSessionStore) RevokeAllForUserWithAudit(
 		if err != nil {
 			return nil, err
 		}
-		if len(sessions) > 0 {
+		if !selfRevocation && len(sessions) > 0 {
 			if mailUnprepared {
 				return nil, store.NewErrInvalidInput("session", "user_revocation_notice", nil)
 			}
@@ -772,11 +809,11 @@ func revokeAllUserSessionsAt(
 	}
 	rows := []sessionRow{}
 	if err := executor.Select(ctx, &rows, `
-		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
-		       authentication_strength, authenticated_at, mfa_completed_at,
+		       authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
@@ -889,6 +926,8 @@ func newSessionRow(session *model.Session) sessionRow {
 		UpdatedAt:                UTCTime(session.UpdatedAt),
 		ArchivedAt:               NullTimeFromOptional(session.ArchivedAt),
 		UserID:                   session.UserID.String(),
+		AuthenticationGeneration: session.AuthenticationGeneration,
+		MFARecoveryRequired:      session.MFARecoveryRequired,
 		ClientType:               string(session.ClientType),
 		DesktopRegistrationID:    sql.NullString{String: session.DesktopRegistrationID.String(), Valid: !session.DesktopRegistrationID.IsZero()},
 		DPoPKeyThumbprint:        sql.NullString{String: session.DPoPKeyThumbprint, Valid: session.DPoPKeyThumbprint != ""},
@@ -904,6 +943,7 @@ func newSessionRow(session *model.Session) sessionRow {
 		ExternalIdentityID:       sql.NullString{String: session.ExternalIdentityID.String(), Valid: !session.ExternalIdentityID.IsZero()},
 		AuthenticationStrength:   string(session.AuthenticationStrength),
 		AuthenticatedAt:          UTCTime(session.AuthenticatedAt),
+		ReauthenticatedAt:        NullTimeFromOptional(session.ReauthenticatedAt),
 		MFACompletedAt:           NullTimeFromOptional(session.MFACompletedAt),
 		LastActivityAt:           UTCTime(session.LastActivityAt),
 		IdleExpiresAt:            UTCTime(session.IdleExpiresAt),
@@ -928,6 +968,8 @@ func (row sessionRow) model() (*model.Session, error) {
 		UpdatedAt:                row.UpdatedAt.UTC(),
 		ArchivedAt:               OptionalTimeFromNullTime(row.ArchivedAt),
 		UserID:                   userID,
+		AuthenticationGeneration: row.AuthenticationGeneration,
+		MFARecoveryRequired:      row.MFARecoveryRequired,
 		ClientType:               model.SessionClientType(row.ClientType),
 		DPoPKeyThumbprint:        row.DPoPKeyThumbprint.String,
 		DesktopRelease:           row.DesktopRelease.String,
@@ -941,6 +983,7 @@ func (row sessionRow) model() (*model.Session, error) {
 		AuthenticationProviderID: row.AuthenticationProviderID,
 		AuthenticationStrength:   model.AuthenticationStrength(row.AuthenticationStrength),
 		AuthenticatedAt:          row.AuthenticatedAt.UTC(),
+		ReauthenticatedAt:        OptionalTimeFromNullTime(row.ReauthenticatedAt),
 		MFACompletedAt:           OptionalTimeFromNullTime(row.MFACompletedAt),
 		LastActivityAt:           row.LastActivityAt.UTC(),
 		IdleExpiresAt:            row.IdleExpiresAt.UTC(),

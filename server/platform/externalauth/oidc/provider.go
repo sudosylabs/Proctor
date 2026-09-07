@@ -106,14 +106,14 @@ func (p *Provider) Begin(
 		return nil, err
 	}
 	oauthConfig := p.oauthConfig(discovered, request.CallbackURL)
-	redirectURL := oauthConfig.AuthCodeURL(
-		request.State,
+	options := []oauth2.AuthCodeOption{
 		oauth2.S256ChallengeOption(request.Proof),
-		oauth2.SetAuthURLParam(
-			"nonce",
-			transactionNonce(p.mapper.Descriptor().Id, request.Proof),
-		),
-	)
+		oauth2.SetAuthURLParam("nonce", transactionNonce(p.mapper.Descriptor().Id, request.Proof)),
+	}
+	if request.FreshAuthentication {
+		options = append(options, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
+	}
+	redirectURL := oauthConfig.AuthCodeURL(request.State, options...)
 	return &externalauth.BeginResponse{RedirectURL: redirectURL}, nil
 }
 
@@ -280,6 +280,14 @@ func (p *Provider) Complete(
 			"verify OIDC authentication time",
 			err,
 		)
+	}
+	if !request.AuthenticationStartedAt.IsZero() {
+		// OIDC Core requires auth_time with max_age. Issued-at is never
+		// accepted as substitute proof of a fresh end-user authentication.
+		if len(claims["auth_time"]) == 0 || authenticatedAt < request.AuthenticationStartedAt.Truncate(time.Second).UnixMilli() ||
+			authenticatedAt > p.now().UnixMilli() {
+			return nil, externalauth.Rejected("verify fresh OIDC authentication", errors.New("fresh authentication proof is unavailable"))
+		}
 	}
 	return p.mapper.Assertion(
 		values,

@@ -116,6 +116,9 @@ func (s SQLInstitutionStore) Save(ctx context.Context, institution *model.Instit
 				return nil, err
 			}
 		}
+		if err := insertInitialRetentionPolicy(ctx, tx, model.NewInitialRetentionPolicy(created.ID, at)); err != nil {
+			return nil, err
+		}
 		return created, nil
 	})
 }

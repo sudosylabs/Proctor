@@ -18,13 +18,14 @@ import (
 )
 
 type academicPeriodStoreFake struct {
-	events      *[]string
-	current     *model.AcademicPeriod
-	created     *model.AcademicPeriod
-	createInput *store.AcademicPeriodCreation
-	updateInput *store.AcademicPeriodUpdate
-	idempotency *store.CommandIdempotency
-	createErr   error
+	archiveInput *store.AcademicPeriodArchive
+	events       *[]string
+	current      *model.AcademicPeriod
+	created      *model.AcademicPeriod
+	createInput  *store.AcademicPeriodCreation
+	updateInput  *store.AcademicPeriodUpdate
+	idempotency  *store.CommandIdempotency
+	createErr    error
 }
 
 func (s *academicPeriodStoreFake) CreateIdempotently(_ context.Context, input *store.AcademicPeriodCreation, command *store.CommandIdempotency) (*store.AcademicPeriodCommandResult, error) {
@@ -49,8 +50,10 @@ func (s *academicPeriodStoreFake) UpdateWithAudit(_ context.Context, input *stor
 	s.updateInput = input
 	return input.Period, nil
 }
-func (*academicPeriodStoreFake) ArchiveWithAudit(context.Context, *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
-	return nil, nil
+func (s *academicPeriodStoreFake) ArchiveWithAudit(_ context.Context, input *store.AcademicPeriodArchive) (*model.AcademicPeriod, error) {
+	*s.events = append(*s.events, "store-archive")
+	s.archiveInput = input
+	return s.current, nil
 }
 
 type academicPeriodAuthorizerFake struct {

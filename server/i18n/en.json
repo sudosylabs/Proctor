@@ -56,6 +56,34 @@
     "translation": "administrator recovery recorded; restart Proctor normally to reconcile its audit record"
   },
   {
+    "id": "cli.administrator.reset_mfa.arguments",
+    "translation": "administrator reset-mfa accepts no positional arguments or authentication proofs"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.input",
+    "translation": "administrator reset-mfa requires --institution-id and --user-id"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.invalid_flags",
+    "translation": "administrator reset-mfa contains an invalid flag or flag value"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.no_result",
+    "translation": "administrator MFA reset returned no recovery restriction"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.short",
+    "translation": "Reset an administrator's MFA while all nodes are stopped"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.success",
+    "translation": "administrator MFA reset recorded; restart Proctor, sign in with the existing password or permitted provider, and enroll a new authenticator"
+  },
+  {
+    "id": "cli.administrator.reset_mfa.unavailable",
+    "translation": "administrator MFA reset is unavailable"
+  },
+  {
     "id": "cli.administrator.short",
     "translation": "Perform host-only administrator operations"
   },
@@ -780,6 +808,26 @@
     "translation": "An examination result is available"
   },
   {
+    "id": "mail.exam.retention_scheduled.body",
+    "translation": "Examination records associated with your account or responsibilities have entered deletion grace. Your retention notice in Proctor identifies the records and the planned retirement date. Contact your institution if preservation is required."
+  },
+  {
+    "id": "mail.exam.retention_scheduled.footer",
+    "translation": "The institution controls its retention policy. A later preservation hold or policy change can cancel the scheduled retirement."
+  },
+  {
+    "id": "mail.exam.retention_scheduled.heading",
+    "translation": "Records scheduled for retirement"
+  },
+  {
+    "id": "mail.exam.retention_scheduled.preheader",
+    "translation": "A records-retention notice is available in Proctor."
+  },
+  {
+    "id": "mail.exam.retention_scheduled.subject",
+    "translation": "Examination records have entered deletion grace"
+  },
+  {
     "id": "mail.exam.sitting_assignment_removed.body",
     "translation": "You are no longer assigned to the scheduled exam sitting shown below. Open the Proctor client to review your current examination schedule."
   },
@@ -1252,6 +1300,26 @@
     "translation": "Your MFA recovery codes were replaced"
   },
   {
+    "id": "mail.identity.mfa_reset.body",
+    "translation": "An administrator at your institution reset your multi-factor authentication. Your existing Sessions and personal access tokens have been revoked. Sign in again and enroll an authenticator to restore account access. Previously issued authenticator secrets and recovery codes can no longer be used."
+  },
+  {
+    "id": "mail.identity.mfa_reset.footer",
+    "translation": "If you did not request this reset, contact your institution immediately. Proctor will never ask you to send your password, authenticator secret or recovery codes by email."
+  },
+  {
+    "id": "mail.identity.mfa_reset.heading",
+    "translation": "Your multi-factor authentication was reset"
+  },
+  {
+    "id": "mail.identity.mfa_reset.preheader",
+    "translation": "Sign in again and enroll an authenticator to restore access."
+  },
+  {
+    "id": "mail.identity.mfa_reset.subject",
+    "translation": "Your multi-factor authentication was reset"
+  },
+  {
     "id": "mail.identity.password_changed.body",
     "translation": "The password for your Proctor account was changed. If you did not make this change, contact your institution immediately."
   },
@@ -1690,6 +1758,10 @@
   {
     "id": "session.revocation.inactive_user",
     "translation": "The account is inactive."
+  },
+  {
+    "id": "session.revocation.mfa_reset",
+    "translation": "Your session ended because an administrator reset your multi-factor authentication. Sign in again to set up a new authenticator."
   },
   {
     "id": "session.revocation.password_removed",
@@ -2492,6 +2564,78 @@
     "translation": "Sign in is unavailable"
   },
   {
+    "id": "webapp.reauthenticate.action",
+    "translation": "Confirm your sign-in"
+  },
+  {
+    "id": "webapp.reauthenticate.body",
+    "translation": "Provide fresh proof for this session. You’ll return to your task to review and submit the action yourself."
+  },
+  {
+    "id": "webapp.reauthenticate.cancel",
+    "translation": "Cancel and return"
+  },
+  {
+    "id": "webapp.reauthenticate.challenge.help",
+    "translation": "Your primary sign-in is recent. Verify this session with your authenticator or an unused recovery code."
+  },
+  {
+    "id": "webapp.reauthenticate.complete.body",
+    "translation": "Return to your task and choose the action again. The server will check your proof when you submit it."
+  },
+  {
+    "id": "webapp.reauthenticate.complete.heading",
+    "translation": "Your proof is ready"
+  },
+  {
+    "id": "webapp.reauthenticate.continue",
+    "translation": "Return to your task"
+  },
+  {
+    "id": "webapp.reauthenticate.document_title",
+    "translation": "Confirm your sign-in · Proctor"
+  },
+  {
+    "id": "webapp.reauthenticate.external.action",
+    "translation": "Continue with your original provider"
+  },
+  {
+    "id": "webapp.reauthenticate.external.failed",
+    "translation": "Your provider sign-in could not be confirmed. You can try again; no security action has been performed."
+  },
+  {
+    "id": "webapp.reauthenticate.external.help",
+    "translation": "Continue with the provider that established this session. Use the same provider account; a different account cannot refresh this session."
+  },
+  {
+    "id": "webapp.reauthenticate.heading",
+    "translation": "Confirm your sign-in"
+  },
+  {
+    "id": "webapp.reauthenticate.method_required",
+    "translation": "This proof method does not match the current session. Check the current status to continue with the correct method."
+  },
+  {
+    "id": "webapp.reauthenticate.password.action",
+    "translation": "Confirm password"
+  },
+  {
+    "id": "webapp.reauthenticate.password.invalid",
+    "translation": "That password could not be verified. Try again."
+  },
+  {
+    "id": "webapp.reauthenticate.password.label",
+    "translation": "Current password"
+  },
+  {
+    "id": "webapp.reauthenticate.password.required",
+    "translation": "Enter your current password."
+  },
+  {
+    "id": "webapp.reauthenticate.setup_required",
+    "translation": "This task needs a verified session. Set up an authenticator in account security, then return to connect your provider."
+  },
+  {
     "id": "webapp.register.accepted.body",
     "translation": "Proctor accepted your registration request. A verification message will follow; verify your email before signing in."
   },
@@ -2806,6 +2950,302 @@
   {
     "id": "webapp.reset_password.skip_to_main",
     "translation": "Skip to new password"
+  },
+  {
+    "id": "webapp.security.back",
+    "translation": "Back to account security"
+  },
+  {
+    "id": "webapp.security.body",
+    "translation": "Manage the authenticator and recovery codes that protect your account."
+  },
+  {
+    "id": "webapp.security.challenge.action",
+    "translation": "Verify this session"
+  },
+  {
+    "id": "webapp.security.challenge.body",
+    "translation": "Confirm access to your authenticator before managing sensitive security settings. This does not refresh your password or provider sign-in."
+  },
+  {
+    "id": "webapp.security.challenge.heading",
+    "translation": "Verify this session"
+  },
+  {
+    "id": "webapp.security.challenge.success",
+    "translation": "This session has been verified. Choose the security action you want to take."
+  },
+  {
+    "id": "webapp.security.challenge.verify",
+    "translation": "Verify code"
+  },
+  {
+    "id": "webapp.security.code.authenticator",
+    "translation": "Authenticator code"
+  },
+  {
+    "id": "webapp.security.code.enrollment_help",
+    "translation": "Enter the current six-digit code from the authenticator you just added."
+  },
+  {
+    "id": "webapp.security.code.help",
+    "translation": "Use a current authenticator code or one unused recovery code. Each recovery code can be used once."
+  },
+  {
+    "id": "webapp.security.code.label",
+    "translation": "Authenticator or recovery code"
+  },
+  {
+    "id": "webapp.security.code.required",
+    "translation": "Enter a code to continue."
+  },
+  {
+    "id": "webapp.security.codes.acknowledge",
+    "translation": "I have saved these recovery codes in a secure place."
+  },
+  {
+    "id": "webapp.security.codes.body",
+    "translation": "Keep these codes somewhere secure that you can access without your authenticator. Each code can sign you in once."
+  },
+  {
+    "id": "webapp.security.codes.done",
+    "translation": "Finish and hide codes"
+  },
+  {
+    "id": "webapp.security.codes.download",
+    "translation": "Download recovery codes"
+  },
+  {
+    "id": "webapp.security.codes.heading",
+    "translation": "Save your recovery codes"
+  },
+  {
+    "id": "webapp.security.codes.list",
+    "translation": "Recovery codes"
+  },
+  {
+    "id": "webapp.security.codes.saved",
+    "translation": "Your recovery codes are now hidden."
+  },
+  {
+    "id": "webapp.security.codes.warning",
+    "translation": "These codes are shown only now. Download them or save them manually before continuing. Refreshing or closing this page can lose this view."
+  },
+  {
+    "id": "webapp.security.disable.action",
+    "translation": "Disable or replace authenticator"
+  },
+  {
+    "id": "webapp.security.disable.body",
+    "translation": "This removes your authenticator and invalidates all its recovery codes."
+  },
+  {
+    "id": "webapp.security.disable.confirm",
+    "translation": "Disable authenticator"
+  },
+  {
+    "id": "webapp.security.disable.heading",
+    "translation": "Disable your authenticator?"
+  },
+  {
+    "id": "webapp.security.disable.success",
+    "translation": "Your authenticator is disabled. You can now explicitly set up another authenticator."
+  },
+  {
+    "id": "webapp.security.disable.warning",
+    "translation": "Your account will have no local MFA after this action. To replace your authenticator, disable it here, then explicitly start a new setup. Protection resumes after the new setup is activated."
+  },
+  {
+    "id": "webapp.security.document_title",
+    "translation": "Account security · Proctor"
+  },
+  {
+    "id": "webapp.security.error.conflict",
+    "translation": "Your security settings have changed or setup has expired. Check the current status before continuing."
+  },
+  {
+    "id": "webapp.security.error.disabled",
+    "translation": "Authenticator management is disabled. Check the current status and contact your administrator if you need access restored."
+  },
+  {
+    "id": "webapp.security.error.invalid_code",
+    "translation": "That code could not be verified. Check the code and try again."
+  },
+  {
+    "id": "webapp.security.error.no_session",
+    "translation": "Your session is no longer available. Sign in again to continue."
+  },
+  {
+    "id": "webapp.security.error.primary_required",
+    "translation": "Confirm your password or original provider sign-in, then return here and choose the action again."
+  },
+  {
+    "id": "webapp.security.error.rate_limited",
+    "translation": "Too many attempts. Wait before trying again."
+  },
+  {
+    "id": "webapp.security.error.strong_required",
+    "translation": "Verify this session before continuing. You may also need fresh password or provider proof."
+  },
+  {
+    "id": "webapp.security.error.unavailable",
+    "translation": "We couldn’t complete this request. Check your connection and try again."
+  },
+  {
+    "id": "webapp.security.eyebrow",
+    "translation": "Your account"
+  },
+  {
+    "id": "webapp.security.heading",
+    "translation": "Account security"
+  },
+  {
+    "id": "webapp.security.loading.body",
+    "translation": "We’re checking the security settings for this session."
+  },
+  {
+    "id": "webapp.security.loading.heading",
+    "translation": "Checking your security"
+  },
+  {
+    "id": "webapp.security.no_session.body",
+    "translation": "This browser needs an active session before you can manage an authenticator."
+  },
+  {
+    "id": "webapp.security.no_session.heading",
+    "translation": "Sign in to manage your security"
+  },
+  {
+    "id": "webapp.security.recovery_required",
+    "translation": "Your institution requires you to set up a new authenticator before you can use your account. Complete setup here to restore access."
+  },
+  {
+    "id": "webapp.security.refresh",
+    "translation": "Check current status"
+  },
+  {
+    "id": "webapp.security.regenerate.action",
+    "translation": "Generate new recovery codes"
+  },
+  {
+    "id": "webapp.security.regenerate.body",
+    "translation": "A new set replaces all your remaining recovery codes. You’ll need to save the new codes before leaving the next step."
+  },
+  {
+    "id": "webapp.security.regenerate.confirm",
+    "translation": "Replace recovery codes"
+  },
+  {
+    "id": "webapp.security.regenerate.heading",
+    "translation": "Replace your recovery codes?"
+  },
+  {
+    "id": "webapp.security.regenerate.warning",
+    "translation": "Every old recovery code stops working when the new set is generated. This requires fresh sign-in proof and a verified session."
+  },
+  {
+    "id": "webapp.security.restore_access",
+    "translation": "Restore account access"
+  },
+  {
+    "id": "webapp.security.return",
+    "translation": "Back to sign-in status"
+  },
+  {
+    "id": "webapp.security.service_disabled",
+    "translation": "Authenticator management is currently disabled by your institution. Contact your administrator for help. A recovery restriction remains in place until setup can be completed."
+  },
+  {
+    "id": "webapp.security.setup.action",
+    "translation": "Set up an authenticator"
+  },
+  {
+    "id": "webapp.security.setup.activate",
+    "translation": "Activate authenticator"
+  },
+  {
+    "id": "webapp.security.setup.body",
+    "translation": "In your authenticator app, add an account using a setup key. Choose time-based codes, enter the key below, then enter a code from the app."
+  },
+  {
+    "id": "webapp.security.setup.expires",
+    "translation": "Complete setup before {{.Time}}. If it expires, return to account security and restart setup."
+  },
+  {
+    "id": "webapp.security.setup.heading",
+    "translation": "Add your authenticator"
+  },
+  {
+    "id": "webapp.security.setup.key",
+    "translation": "Setup key"
+  },
+  {
+    "id": "webapp.security.setup.pending",
+    "translation": "A setup is pending. Restarting replaces its setup key; the old key will no longer activate MFA."
+  },
+  {
+    "id": "webapp.security.setup.private",
+    "translation": "Keep this key private. Anyone with it can generate your authenticator codes. It is shown only during this setup."
+  },
+  {
+    "id": "webapp.security.setup.restart",
+    "translation": "Restart authenticator setup"
+  },
+  {
+    "id": "webapp.security.sign_in",
+    "translation": "Sign in"
+  },
+  {
+    "id": "webapp.security.sign_out",
+    "translation": "Sign out"
+  },
+  {
+    "id": "webapp.security.skip_to_main",
+    "translation": "Skip to account security"
+  },
+  {
+    "id": "webapp.security.status.authenticator",
+    "translation": "Authenticator"
+  },
+  {
+    "id": "webapp.security.status.codes",
+    "translation": "Recovery codes remaining"
+  },
+  {
+    "id": "webapp.security.status.disabled",
+    "translation": "Not enabled"
+  },
+  {
+    "id": "webapp.security.status.enabled",
+    "translation": "Enabled"
+  },
+  {
+    "id": "webapp.security.status.no_codes",
+    "translation": "You have no unused recovery codes. Verify this session with your authenticator, then generate a new set."
+  },
+  {
+    "id": "webapp.security.unavailable.body",
+    "translation": "Your security settings couldn’t be loaded. Try again to check their current state."
+  },
+  {
+    "id": "webapp.security.unavailable.heading",
+    "translation": "We couldn’t check your security"
+  },
+  {
+    "id": "webapp.security.uncertain.body",
+    "translation": "We didn’t receive a usable confirmation. The change may already have completed, so check the current status before choosing another action."
+  },
+  {
+    "id": "webapp.security.uncertain.guidance",
+    "translation": "If your authenticator is active but you didn’t receive recovery codes, verify this session with that authenticator, then explicitly generate and save a new set. Codes cannot be recovered from the status page."
+  },
+  {
+    "id": "webapp.security.uncertain.heading",
+    "translation": "Check whether the change completed"
+  },
+  {
+    "id": "webapp.security.working",
+    "translation": "Working…"
   },
   {
     "id": "webapp.setup.already_initialized.body",

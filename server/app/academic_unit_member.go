@@ -51,6 +51,7 @@ type EndAcademicUnitMemberCommand struct {
 type academicUnitMemberStore interface {
 	Get(context.Context, string) (*model.AcademicUnitMember, error)
 	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	ListPageByAcademicUnit(context.Context, store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error)
 	Create(context.Context, *store.AcademicUnitMemberCreation) (*model.AcademicUnitMember, error)
 	EndWithAudit(context.Context, *store.AcademicUnitMemberEnd) (*model.AcademicUnitMember, error)
 }
@@ -312,4 +313,52 @@ func academicUnitMemberError(err error) error {
 		}
 		return NewError("administration.unavailable").WithField("resource", "academic_unit_member").Wrap(err)
 	}
+}
+
+// ListAcademicUnitMembersPageQuery opts into bounded membership enumeration. Each page is
+// authorized independently and explicit selectors preserve its effective filter.
+type ListAcademicUnitMembersPageQuery struct {
+	AfterUserID    model.UserID
+	AfterID        model.AcademicUnitMemberID
+	AcademicUnitID string
+	MembershipPageQuery
+}
+
+type AcademicUnitMemberPage struct {
+	Members  []*model.AcademicUnitMember
+	HasMore  bool
+	ActiveAt int64
+}
+
+func (a *App) ListAcademicUnitMembersPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
+	return a.academicUnitMembers.ListPage(ctx, invocation, query)
+}
+
+func (s *academicUnitMemberService) ListPage(ctx context.Context, invocation Invocation, query ListAcademicUnitMembersPageQuery) (*AcademicUnitMemberPage, error) {
+	resource, err := s.authorizeUnit(ctx, invocation, strings.TrimSpace(query.AcademicUnitID), model.ActionAcademicUnitMembersView)
+	if err != nil {
+		return nil, err
+	}
+	activeAt, limit, err := resolveMembershipPage(query.MembershipPageQuery, s.now())
+	if err != nil {
+		return nil, err
+	}
+	scopeID, err := model.ParseAcademicUnitID(resource.ID)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "academic_unit_id")
+	}
+	if query.AfterID.IsZero() != query.AfterUserID.IsZero() || (!query.AfterID.IsZero() && (!query.AfterID.IsValid() || !query.AfterUserID.IsValid())) {
+		return nil, NewError("request.invalid").WithField("field", "cursor")
+	}
+	options := store.AcademicUnitMemberPageOptions{AcademicUnitID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
+
+	page, err := s.store.ListPageByAcademicUnit(ctx, options)
+	if err != nil {
+		return nil, academicUnitMemberError(err)
+	}
+	result := &AcademicUnitMemberPage{Members: page.Members, ActiveAt: activeAt, HasMore: page.HasMore}
+	if result.Members == nil {
+		result.Members = []*model.AcademicUnitMember{}
+	}
+	return result, nil
 }

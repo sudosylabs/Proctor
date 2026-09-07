@@ -27,6 +27,7 @@ export interface InvitationContentProps {
   acceptSession(handle: string): Promise<InvitationSessionAcceptanceResult>;
   institutionName?: string;
   loading: boolean;
+  onRetry(): void;
   state: InvitationStartResult;
 }
 
@@ -35,9 +36,16 @@ export function InvitationContent({
   acceptSession,
   institutionName,
   loading,
+  onRetry,
   state,
 }: InvitationContentProps) {
   const [accepted, setAccepted] = useState(false);
+  const [retryRequested, setRetryRequested] = useState(false);
+
+  function retry() {
+    setRetryRequested(true);
+    onRetry();
+  }
 
   if (accepted) {
     return (
@@ -75,6 +83,7 @@ export function InvitationContent({
       <>
         <TaskStateAnnouncement message={message("webapp.join.invalid.heading")} />
         <InvitationRouteState
+          focusHeading={retryRequested}
           label={message("webapp.join.invalid.label")}
           heading={message("webapp.join.invalid.heading")}
           body={message("webapp.join.invalid.body")}
@@ -95,12 +104,13 @@ export function InvitationContent({
           message={message("webapp.join.unavailable.heading")}
         />
         <InvitationRouteState
+          focusHeading={retryRequested}
           label={message("webapp.join.unavailable.label")}
           heading={message("webapp.join.unavailable.heading")}
           body={message("webapp.join.unavailable.body")}
         >
           <TaskStateActions>
-            <Button onClick={() => window.location.reload()}>
+            <Button onClick={retry}>
               {message("webapp.join.unavailable.retry")}
             </Button>
           </TaskStateActions>
@@ -113,6 +123,7 @@ export function InvitationContent({
       <>
         <TaskStateAnnouncement message={message("webapp.join.session.heading")} />
         <SessionInvitation
+          focusHeading={retryRequested}
           handle={state.transaction.handle}
           institutionName={institutionName}
           acceptSession={acceptSession}
@@ -125,6 +136,7 @@ export function InvitationContent({
     <>
       <TaskStateAnnouncement message={message("webapp.join.heading")} />
       <InvitationAccountForm
+        focusHeading={retryRequested}
         handle={state.transaction.handle}
         institutionName={institutionName}
         acceptAccount={acceptAccount}
@@ -136,6 +148,7 @@ export function InvitationContent({
 
 function InvitationAccountForm({
   acceptAccount,
+  focusHeading,
   handle,
   institutionName,
   onAccepted,
@@ -143,6 +156,7 @@ function InvitationAccountForm({
   acceptAccount(
     submission: InvitationAccountSubmission,
   ): Promise<InvitationAccountAcceptanceResult>;
+  focusHeading: boolean;
   handle: string;
   institutionName?: string;
   onAccepted(): void;
@@ -205,6 +219,7 @@ function InvitationAccountForm({
   return (
     <section className={styles.page} aria-labelledby="join-heading">
       <InvitationIntro
+        focusHeading={focusHeading}
         headingID="join-heading"
         institutionName={institutionName}
         requirement="account"
@@ -297,11 +312,13 @@ function InvitationAccountForm({
 
 function SessionInvitation({
   acceptSession,
+  focusHeading,
   handle,
   institutionName,
   onAccepted,
 }: {
   acceptSession(handle: string): Promise<InvitationSessionAcceptanceResult>;
+  focusHeading: boolean;
   handle: string;
   institutionName?: string;
   onAccepted(): void;
@@ -331,6 +348,7 @@ function SessionInvitation({
   return (
     <section className={styles.page} aria-labelledby="join-heading">
       <InvitationIntro
+        focusHeading={focusHeading}
         headingID="join-heading"
         institutionName={institutionName}
         requirement="session"
@@ -372,10 +390,12 @@ function SessionInvitation({
 }
 
 function InvitationIntro({
+  focusHeading,
   headingID,
   institutionName,
   requirement,
 }: {
+  focusHeading: boolean;
   headingID: string;
   institutionName?: string;
   requirement: "account" | "session";
@@ -383,6 +403,7 @@ function InvitationIntro({
   return (
     <AccessTaskIntro
       eyebrow={message("webapp.join.context.eyebrow")}
+      focusHeading={focusHeading}
       heading={
         institutionName === undefined
           ? message("webapp.join.context.heading_fallback")

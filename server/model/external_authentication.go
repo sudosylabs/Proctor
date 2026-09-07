@@ -28,13 +28,15 @@ type ExternalAuthenticationPurpose string
 
 const (
 	ExternalAuthenticationPurposeLogin                ExternalAuthenticationPurpose = "login"
+	ExternalAuthenticationPurposeReauthenticate       ExternalAuthenticationPurpose = "reauthenticate"
+	ExternalAuthenticationPurposeMFARecovery          ExternalAuthenticationPurpose = "mfa_recovery"
 	ExternalAuthenticationPurposeConnect              ExternalAuthenticationPurpose = "connect"
 	ExternalAuthenticationPurposeInvitationAdmission  ExternalAuthenticationPurpose = "invitation_admission"
 	ExternalAuthenticationPurposeDesktopAuthorization ExternalAuthenticationPurpose = "desktop_authorization"
 )
 
 func (p ExternalAuthenticationPurpose) IsValid() bool {
-	return p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect ||
+	return p == ExternalAuthenticationPurposeMFARecovery || p == ExternalAuthenticationPurposeReauthenticate || p == ExternalAuthenticationPurposeLogin || p == ExternalAuthenticationPurposeConnect ||
 		p == ExternalAuthenticationPurposeInvitationAdmission || p == ExternalAuthenticationPurposeDesktopAuthorization
 }
 
@@ -63,6 +65,7 @@ type ExternalAuthenticationStart struct {
 // ExternalAuthenticationCompletion is returned internally after a successful
 // provider callback. Tokens follow the ordinary one-time session contract.
 type ExternalAuthenticationCompletion struct {
+	Restart  *ExternalAuthenticationStart
 	User     *User
 	Session  *Session
 	Tokens   *AuthenticationTokens
@@ -135,6 +138,9 @@ type ExternalLoginState struct {
 	Provider                           string
 	Purpose                            ExternalAuthenticationPurpose
 	TargetUserID                       UserID
+	SessionID                          SessionID
+	SessionCredentialID                SessionCredentialID
+	ExternalIdentityID                 ExternalIdentityID
 	InvitationID                       InvitationID
 	BrowserAuthenticationTransactionID BrowserAuthenticationTransactionID
 	AuditEventID                       string
@@ -200,6 +206,18 @@ func (s *ExternalLoginState) Validate() error {
 		(s.Purpose == ExternalAuthenticationPurposeInvitationAdmission && (!s.TargetUserID.IsZero() || !s.InvitationID.IsValid() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "")) ||
 		(s.Purpose == ExternalAuthenticationPurposeDesktopAuthorization && (!s.TargetUserID.IsZero() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsValid() || s.AuditEventID != "")) {
 		return invalidModelError(where, "external_login_state", "purpose", "has an invalid target", details)
+	}
+	if s.Purpose == ExternalAuthenticationPurposeMFARecovery && (!s.TargetUserID.IsValid() || !s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || s.AuditEventID != "" || s.ReturnTo != "/account/security") {
+		return invalidModelError(where, "external_login_state", "recovery", "requires the exact User and security task", details)
+	}
+	if s.Purpose == ExternalAuthenticationPurposeReauthenticate {
+		if !s.TargetUserID.IsValid() || !s.SessionID.IsValid() || !s.SessionCredentialID.IsValid() || !s.ExternalIdentityID.IsValid() ||
+			!s.InvitationID.IsZero() || !s.BrowserAuthenticationTransactionID.IsZero() || !IsValidId(s.AuditEventID) ||
+			(s.ReturnTo != "/account/security" && s.ReturnTo != "/account/connect-provider") {
+			return invalidModelError(where, "external_login_state", "reauthentication", "has an invalid current Session or task", details)
+		}
+	} else if !s.SessionID.IsZero() || !s.SessionCredentialID.IsZero() || !s.ExternalIdentityID.IsZero() {
+		return invalidModelError(where, "external_login_state", "session_id", "requires the reauthentication purpose", details)
 	}
 	if !IsValidTokenHash(s.StateHash) || !IsValidTokenHash(s.BindingHash) {
 		return invalidModelError(

@@ -57,6 +57,7 @@ type moveExamStarterWorkspaceEntryRequest struct {
 }
 type removeExamStarterWorkspaceEntryRequest struct {
 	ExpectedDraftRevision int64 `json:"expected_draft_revision"`
+	Recursive             bool  `json:"recursive,omitempty"`
 }
 type examStarterWorkspaceEntryResponse struct {
 	ID             string `json:"id"`
@@ -229,7 +230,7 @@ func (module examStarterWorkspaceHTTPModule) removeEntry(request operationReques
 		return operationResult{}, err
 	}
 	_, err = module.application.RemoveExamStarterWorkspaceEntry(request.context, request.invocation(), application.RemoveExamStarterWorkspaceEntryCommand{
-		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, IdempotencyKey: request.idempotencyKey})
+		ExamID: examID, EntryID: entryID, ExpectedDraftRevision: body.ExpectedDraftRevision, Recursive: body.Recursive, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

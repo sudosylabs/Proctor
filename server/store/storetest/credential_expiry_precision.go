@@ -100,7 +100,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				if operation == "Session upgrade" {
 					candidate.IdleExpiresAt = deadline
 				}
-				session, _, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
+				session, savedCredentials, err := ss.Session().Save(ctx, testSessionCreation(t, ctx, ss, candidate, credentials, 10))
 				requireNoError(t, err)
 				at := deadline.Add(point.offset).In(time.FixedZone("test", 2*60*60))
 				if operation == "Session upgrade" {
@@ -114,7 +114,8 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 					requireNoError(t, saveErr)
 					audit, notice := mfaSecurityNoticeFixture(t, ctx, ss, user, model.MailTemplateIdentityMFAEnabled, at.UnixMilli())
 					_, err = ss.MFA().Activate(ctx, &store.MFAActivationMutation{
-						CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: 5_000,
+						Principal: mfaSessionPrincipal(session, savedCredentials[0]), RecentAuthenticationTTL: time.Hour,
+						CredentialID: pending.ID.String(), UserID: user.ID.String(), TimeStep: time.Now().Unix() / 30,
 						RecoveryCodes: []*model.MFARecoveryCode{{CodeHash: model.HashToken(model.NewCredentialToken())}},
 						SessionID:     session.ID.String(), At: at, AuditEventID: audit.ID.String(), AuditAt: at.UnixMilli(), Notice: notice,
 					})
@@ -136,7 +137,7 @@ func testMFANativeExpiry(t *testing.T, ss store.Store) {
 				current, getErr := ss.Session().Get(ctx, session.ID.String())
 				requireNoError(t, getErr)
 				if point.valid {
-					if current.AuthenticationStrength != model.AuthenticationMultiFactor || !current.MFACompletedAt.Time.Equal(model.TimeUTC(at)) {
+					if current.AuthenticationStrength != model.AuthenticationMultiFactor || (operation == "Session upgrade" && !current.MFACompletedAt.Time.Equal(model.TimeUTC(at))) || (operation == "activation" && (current.MFACompletedAt.Time.Before(session.CreatedAt) || current.MFACompletedAt.Time.After(model.NowUTC()))) {
 						t.Fatal("MFA upgrade lost its native decision instant")
 					}
 				} else if current.AuthenticationStrength != session.AuthenticationStrength || current.MFACompletedAt.Valid {

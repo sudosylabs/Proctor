@@ -21,6 +21,8 @@ import (
 )
 
 type academicUnitMemberHTTPApplication struct {
+	pageQuery     application.ListAcademicUnitMembersPageQuery
+	pageResult    *application.AcademicUnitMemberPage
 	result        *model.AcademicUnitMember
 	values        []*model.AcademicUnitMember
 	listQuery     application.ListAcademicUnitMembersQuery
@@ -136,4 +138,12 @@ func TestAcademicUnitMemberResourceRejectsInvalidQueryAndMissingPrincipal(t *tes
 	if unauthenticatedResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status = %d: %s", unauthenticatedResponse.Code, unauthenticatedResponse.Body.String())
 	}
+}
+
+func (a *academicUnitMemberHTTPApplication) ListAcademicUnitMembersPage(_ context.Context, _ application.Invocation, query application.ListAcademicUnitMembersPageQuery) (*application.AcademicUnitMemberPage, error) {
+	a.pageQuery = query
+	if a.pageResult != nil {
+		return a.pageResult, nil
+	}
+	return &application.AcademicUnitMemberPage{}, nil
 }

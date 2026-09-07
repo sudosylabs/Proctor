@@ -21,10 +21,12 @@ import (
 )
 
 type classHTTPApplication struct {
-	result        *model.Class
-	list          []*model.Class
-	createCommand application.CreateClassCommand
-	searchErr     error
+	updateCommand  application.UpdateClassCommand
+	archiveCommand application.ArchiveClassCommand
+	result         *model.Class
+	list           []*model.Class
+	createCommand  application.CreateClassCommand
+	searchErr      error
 }
 
 type classRouteAuthenticator struct {
@@ -275,10 +277,12 @@ func (a *classHTTPApplication) CreateClass(_ context.Context, _ application.Invo
 	a.createCommand = command
 	return a.result, nil
 }
-func (a *classHTTPApplication) UpdateClass(context.Context, application.Invocation, application.UpdateClassCommand) (*model.Class, error) {
+func (a *classHTTPApplication) UpdateClass(_ context.Context, _ application.Invocation, command application.UpdateClassCommand) (*model.Class, error) {
+	a.updateCommand = command
 	return a.result, nil
 }
-func (*classHTTPApplication) ArchiveClass(context.Context, application.Invocation, application.ArchiveClassCommand) error {
+func (a *classHTTPApplication) ArchiveClass(_ context.Context, _ application.Invocation, command application.ArchiveClassCommand) error {
+	a.archiveCommand = command
 	return nil
 }
 

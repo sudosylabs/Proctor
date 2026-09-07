@@ -29,9 +29,10 @@ var (
 
 // ExternalProviderBeginRequest is the protocol-neutral start challenge.
 type ExternalProviderBeginRequest struct {
-	CallbackURL string
-	State       string
-	Proof       string
+	CallbackURL         string
+	State               string
+	Proof               string
+	FreshAuthentication bool
 }
 
 // ExternalProviderBeginResponse is the protocol-neutral redirect challenge.
@@ -41,10 +42,11 @@ type ExternalProviderBeginResponse struct {
 
 // ExternalProviderCompleteRequest is the protocol-neutral callback completion.
 type ExternalProviderCompleteRequest struct {
-	CallbackURL string
-	State       string
-	Proof       string
-	Callback    model.ExternalAuthenticationCallback
+	CallbackURL             string
+	State                   string
+	Proof                   string
+	Callback                model.ExternalAuthenticationCallback
+	AuthenticationStartedAt time.Time
 }
 
 // ExternalIdentityProvider is the app-owned protocol-neutral provider port.
@@ -71,6 +73,19 @@ type externalProviderSource interface {
 type externalInvitationAcceptor interface {
 	AcceptExternalIdentity(context.Context, *model.ExternalLoginState, *model.ExternalAuthenticationAssertion,
 		store.AccessDeploymentCapabilities, model.RequestMetadata, string) (*store.ExternalIdentityInvitationAcceptanceResult, error)
+}
+
+// externalAuthenticationDesktopAuthorization keeps browser proof resolution
+// and the purpose-specific identity handoff with Desktop authorization.
+type externalAuthenticationDesktopAuthorization interface {
+	resolveExternalAuthentication(context.Context, string, string) (desktopExternalAuthenticationTarget, error)
+	authenticateExternal(context.Context, model.BrowserAuthenticationTransactionID,
+		*model.User, *model.ExternalIdentity, string, *model.ExternalAuthenticationAssertion) error
+}
+
+type desktopExternalAuthenticationTarget struct {
+	transactionID model.BrowserAuthenticationTransactionID
+	returnTo      string
 }
 
 // ExternalAuthenticationPolicy is the deployment projection for external login.
@@ -104,7 +119,7 @@ type externalAuthenticationService struct {
 	recentAuthenticationTTL time.Duration
 	diagnostics             authenticationDiagnostics
 	invitationAcceptor      externalInvitationAcceptor
-	desktopAuthorization    *desktopAuthorizationService
+	desktopAuthorization    externalAuthenticationDesktopAuthorization
 	newCredential           func() string
 	now                     func() time.Time
 }
@@ -123,6 +138,7 @@ func newExternalAuthenticationService(
 	mutationAudit mutationAuditor,
 	capabilities accessPolicyCapabilitySource,
 	invitationAcceptor externalInvitationAcceptor,
+	desktopAuthorization externalAuthenticationDesktopAuthorization,
 	policy ExternalAuthenticationPolicy,
 	recentAuthenticationTTL time.Duration,
 	diagnostics authenticationDiagnostics,
@@ -153,6 +169,9 @@ func newExternalAuthenticationService(
 	if mutationAudit == nil || capabilities == nil || invitationAcceptor == nil || recentAuthenticationTTL <= 0 {
 		return nil, errors.New("external authentication method lifecycle dependencies are required")
 	}
+	if desktopAuthorization == nil {
+		return nil, errors.New("external authentication desktop authorization is required")
+	}
 	if diagnostics == nil {
 		return nil, errors.New("external authentication diagnostics are required")
 	}
@@ -166,7 +185,8 @@ func newExternalAuthenticationService(
 		registry: registry, loginStates: loginStates, institutions: institutions,
 		identities: identities, sessions: sessions, accessPolicy: accessPolicy, attempts: attempts,
 		authentication: authentication, invalidator: invalidator, audit: audit, mutationAudit: mutationAudit,
-		capabilities: capabilities, invitationAcceptor: invitationAcceptor, policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
+		capabilities: capabilities, invitationAcceptor: invitationAcceptor, desktopAuthorization: desktopAuthorization,
+		policy: policy, recentAuthenticationTTL: recentAuthenticationTTL,
 		diagnostics: diagnostics, newCredential: newCredential, now: now,
 	}, nil
 }
@@ -216,18 +236,17 @@ type BeginDesktopExternalAuthenticationCommand struct {
 }
 
 func (a *App) BeginDesktopExternalAuthentication(ctx context.Context, _ Invocation, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
-	if a.desktopAuthorization == nil || a.externalAuthentication == nil ||
-		!model.IsValidCredentialToken(command.Binding) || !model.IsValidCredentialToken(command.State) {
-		return nil, NewError("authentication.desktop_authorization.invalid")
+	return a.externalAuthentication.beginDesktopAuthorization(ctx, command)
+}
+
+func (s *externalAuthenticationService) beginDesktopAuthorization(ctx context.Context, command BeginDesktopExternalAuthenticationCommand) (*model.ExternalAuthenticationStart, error) {
+	target, err := s.desktopAuthorization.resolveExternalAuthentication(ctx, command.Binding, command.State)
+	if err != nil {
+		return nil, err
 	}
-	current, err := a.desktopAuthorization.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(command.Binding))
-	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateBound || !current.ID.IsValid() {
-		return nil, desktopAuthorizationStoreError(err)
-	}
-	returnTo := "/authorize/desktop?state=" + url.QueryEscape(command.State)
-	return a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, returnTo,
+	return s.beginForPurpose(ctx, command.ProviderID, target.returnTo,
 		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeDesktopAuthorization,
-		"", "", "", current.ID)
+		"", "", "", target.transactionID, nil)
 }
 
 func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation, command BeginProviderConnectionCommand) (*model.ExternalAuthenticationStart, error) {
@@ -242,7 +261,7 @@ func (a *App) BeginProviderConnection(ctx context.Context, invocation Invocation
 	}
 	start, appErr := a.externalAuthentication.beginForPurpose(ctx, command.ProviderID, command.ReturnTo,
 		model.SessionClientWeb, "", "", command.Source, model.ExternalAuthenticationPurposeConnect,
-		invocation.Principal().UserID, auditID, "", "")
+		invocation.Principal().UserID, auditID, "", "", nil)
 	if appErr != nil {
 		if failErr := a.externalAuthentication.mutationAudit.Fail(ctx, auditID, appErrorCode(appErr)); failErr != nil {
 			return nil, failErr
@@ -311,13 +330,14 @@ func (s *externalAuthenticationService) beginWithInvitationClaim(
 	deviceID, deviceName, source, invitationClaim string,
 ) (*model.ExternalAuthenticationStart, error) {
 	return s.beginForPurpose(ctx, providerID, returnTo, clientType, deviceID, deviceName, source,
-		model.ExternalAuthenticationPurposeLogin, "", "", invitationClaim, "")
+		model.ExternalAuthenticationPurposeLogin, "", "", invitationClaim, "", nil)
 }
 
 func (s *externalAuthenticationService) beginForPurpose(
 	ctx context.Context, providerID, returnTo string, clientType model.SessionClientType,
 	deviceID, deviceName, source string, purpose model.ExternalAuthenticationPurpose, targetUserID model.UserID,
 	auditEventID, invitationClaim string, browserTransactionID model.BrowserAuthenticationTransactionID,
+	reauthentication *model.Principal,
 ) (*model.ExternalAuthenticationStart, error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
@@ -372,9 +392,10 @@ func (s *externalAuthenticationService) beginForPurpose(
 	challenge, err := provider.Begin(
 		ctx,
 		ExternalProviderBeginRequest{
-			CallbackURL: callbackURL,
-			State:       stateToken,
-			Proof:       bindingToken,
+			CallbackURL:         callbackURL,
+			State:               stateToken,
+			Proof:               bindingToken,
+			FreshAuthentication: purpose == model.ExternalAuthenticationPurposeReauthenticate || purpose == model.ExternalAuthenticationPurposeMFARecovery,
 		},
 	)
 	if err != nil {
@@ -392,6 +413,17 @@ func (s *externalAuthenticationService) beginForPurpose(
 		BrowserAuthenticationTransactionID: browserTransactionID,
 		BindingHash:                        model.HashToken(bindingToken), ReturnTo: returnTo,
 		ClientType: clientType, DeviceID: deviceID, DeviceName: deviceName,
+	}
+	if reauthentication != nil {
+		if purpose != model.ExternalAuthenticationPurposeReauthenticate {
+			return nil, invalidTokenAppError()
+		}
+		state.SessionID = reauthentication.SessionID
+		state.SessionCredentialID, err = model.ParseSessionCredentialID(reauthentication.CredentialID.String())
+		if err != nil {
+			return nil, invalidTokenAppError()
+		}
+		state.ExternalIdentityID = reauthentication.ExternalIdentityID
 	}
 	var saved *model.ExternalLoginState
 	if invitationClaimHash != "" {
@@ -436,7 +468,7 @@ func (s *externalAuthenticationService) complete(
 	bindingToken string,
 	callback model.ExternalAuthenticationCallback,
 	metadata model.RequestMetadata,
-) (*model.ExternalAuthenticationCompletion, error) {
+) (completion *model.ExternalAuthenticationCompletion, completionErr error) {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	provider, exists := s.registry.Provider(providerID)
 	if !exists {
@@ -490,6 +522,18 @@ func (s *externalAuthenticationService) complete(
 		}
 		return nil, authenticationUnavailable(err)
 	}
+	// Only a consumed, browser-bound state may select a hosted failure
+	// continuation. No provider error or query value becomes a redirect target.
+	defer func() {
+		if completionErr != nil && state.Purpose == model.ExternalAuthenticationPurposeReauthenticate {
+			task := "security"
+			if state.ReturnTo == "/account/connect-provider" {
+				task = "connect-provider"
+			}
+			completion = &model.ExternalAuthenticationCompletion{ReturnTo: "/account/reauthenticate?task=" + task + "#external_login=failed"}
+			completionErr = nil
+		}
+	}()
 	nowTime := s.now()
 	now := nowTime.UnixMilli()
 
@@ -497,13 +541,18 @@ func (s *externalAuthenticationService) complete(
 	if err != nil {
 		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(err))
 	}
+	var authenticationStartedAt time.Time
+	if state.Purpose == model.ExternalAuthenticationPurposeReauthenticate || state.Purpose == model.ExternalAuthenticationPurposeMFARecovery {
+		authenticationStartedAt = state.CreatedAt
+	}
 	assertion, providerErr := provider.Complete(
 		ctx,
 		ExternalProviderCompleteRequest{
-			CallbackURL: callbackURL,
-			State:       stateToken,
-			Proof:       bindingToken,
-			Callback:    callback,
+			CallbackURL:             callbackURL,
+			State:                   stateToken,
+			Proof:                   bindingToken,
+			Callback:                callback,
+			AuthenticationStartedAt: authenticationStartedAt,
 		},
 	)
 	if providerErr != nil {
@@ -535,6 +584,9 @@ func (s *externalAuthenticationService) complete(
 			return nil, s.failConsumedProviderConnection(ctx, state, auditErr)
 		}
 		return nil, s.failConsumedProviderConnection(ctx, state, authenticationUnavailable(errors.New("provider returned a mismatched assertion")))
+	}
+	if state.Purpose == model.ExternalAuthenticationPurposeReauthenticate {
+		return s.completeReauthentication(ctx, state, assertion)
 	}
 	if state.Purpose == model.ExternalAuthenticationPurposeConnect {
 		return s.completeProviderConnection(ctx, state, assertion, metadata, institution)
@@ -586,7 +638,7 @@ func (s *externalAuthenticationService) complete(
 	var defaultPictureJob *model.Job
 	var userSettings *model.UserSettingsDocument
 	var provisionAudit *model.AuditEvent
-	autoProvision := admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
+	autoProvision := state.Purpose != model.ExternalAuthenticationPurposeMFARecovery && admission.Mode == model.ProviderAdmissionAutoProvision && provider.AutoProvision()
 	if autoProvision {
 		userCandidate = externalUserCandidate(assertion)
 		userCandidate, defaultPictureJob, err = prepareUserDefaultProfilePictureJob(userCandidate, nowTime)
@@ -680,8 +732,25 @@ func (s *externalAuthenticationService) complete(
 			"CompleteExternalAuthentication.user",
 		)
 	}
+	recovery, recoveryErr := s.authentication.recoveryState(ctx, resolution.User.ID)
+	if recoveryErr != nil {
+		return nil, recoveryErr
+	}
+	if recovery.ResetAt.Valid && state.CreatedAt.Before(recovery.ResetAt.Time) {
+		return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.recovery_generation")
+	}
+	if state.Purpose == model.ExternalAuthenticationPurposeMFARecovery && (state.TargetUserID != resolution.User.ID || assertion.AuthenticatedAt < state.CreatedAt.Truncate(time.Second).UnixMilli() || assertion.AuthenticatedAt > s.now().UnixMilli()) {
+		return nil, invalidExternalAuthenticationError("CompleteExternalAuthentication.recovery_identity")
+	}
+	if recovery.ReenrollmentRequired && state.Purpose != model.ExternalAuthenticationPurposeMFARecovery {
+		start, startErr := s.beginForPurpose(ctx, providerID, "/account/security", model.SessionClientWeb, "", "", metadata.IPAddress, model.ExternalAuthenticationPurposeMFARecovery, resolution.User.ID, "", "", "", nil)
+		if startErr != nil {
+			return nil, startErr
+		}
+		return &model.ExternalAuthenticationCompletion{Restart: start}, nil
+	}
 	if state.Purpose == model.ExternalAuthenticationPurposeDesktopAuthorization {
-		if s.desktopAuthorization == nil || !state.BrowserAuthenticationTransactionID.IsValid() {
+		if !state.BrowserAuthenticationTransactionID.IsValid() {
 			return nil, authenticationUnavailable(errors.New("desktop authorization completion is unavailable"))
 		}
 		if appErr := s.desktopAuthorization.authenticateExternal(ctx, state.BrowserAuthenticationTransactionID,
@@ -711,6 +780,7 @@ func (s *externalAuthenticationService) complete(
 		ctx,
 		sessionIssuance{
 			User: resolution.User, ClientType: state.ClientType,
+			AuthenticationGeneration: recovery.Generation, MFARecoveryRequired: recovery.ReenrollmentRequired, ExternalLoginStateID: state.ID,
 			DeviceID: state.DeviceID, DeviceName: state.DeviceName,
 			AuthenticationMethod: method, AuthenticationProviderID: providerID,
 			ExternalIdentityID:     resolution.Identity.ID,
@@ -753,7 +823,7 @@ func (s *externalAuthenticationService) complete(
 }
 
 func (s *externalAuthenticationService) failConsumedProviderConnection(ctx context.Context, state *model.ExternalLoginState, failure error) error {
-	if state == nil || state.Purpose != model.ExternalAuthenticationPurposeConnect || state.AuditEventID == "" {
+	if state == nil || (state.Purpose != model.ExternalAuthenticationPurposeConnect && state.Purpose != model.ExternalAuthenticationPurposeReauthenticate) || state.AuditEventID == "" {
 		return failure
 	}
 	if err := s.mutationAudit.Fail(ctx, state.AuditEventID, appErrorCode(failure)); err != nil {
@@ -772,6 +842,7 @@ func (s *externalAuthenticationService) completeProviderConnection(
 	}
 	connectedAt := state.ConsumedAt.Time.Truncate(time.Millisecond)
 	result, err := s.identities.LinkWithAudit(ctx, &store.ExternalIdentityLink{
+		ExternalLoginStateID: state.ID,
 		Identity: &model.ExternalIdentity{UserID: state.TargetUserID, Provider: state.Provider,
 			Subject: assertion.Subject, LastSeenAt: model.OptionalTimeFrom(connectedAt)},
 		Capabilities: accessDeploymentCapabilities(s.capabilities.Snapshot()),

@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/config"
 	"github.com/sudosylabs/proctor/server/model"
@@ -28,9 +29,10 @@ var (
 )
 
 type BeginRequest struct {
-	CallbackURL string
-	State       string
-	Proof       string
+	CallbackURL         string
+	State               string
+	Proof               string
+	FreshAuthentication bool
 }
 
 type BeginResponse struct {
@@ -38,10 +40,11 @@ type BeginResponse struct {
 }
 
 type CompleteRequest struct {
-	CallbackURL string
-	State       string
-	Proof       string
-	Callback    model.ExternalAuthenticationCallback
+	CallbackURL             string
+	State                   string
+	Proof                   string
+	Callback                model.ExternalAuthenticationCallback
+	AuthenticationStartedAt time.Time
 }
 
 // Provider owns one configured protocol integration. It returns only a

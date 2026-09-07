@@ -52,10 +52,12 @@ type Directory struct {
 }
 
 type hostClient struct {
-	id     string
-	config remote.Config
-	mu     sync.Mutex
-	client *remote.Client
+	id           string
+	config       remote.Config
+	mu           sync.Mutex
+	client       *remote.Client
+	environments map[string]*environment
+	closed       bool
 }
 
 func New(settings Settings) (*Directory, error) {
@@ -70,7 +72,8 @@ func New(settings Settings) (*Directory, error) {
 			return nil, fmt.Errorf("configure execution host %q: %w", configured.ID, err)
 		}
 		directory.ids = append(directory.ids, configured.ID)
-		directory.hosts[configured.ID] = &hostClient{id: configured.ID, config: remoteConfig}
+		directory.hosts[configured.ID] = &hostClient{id: configured.ID, config: remoteConfig,
+			environments: make(map[string]*environment)}
 	}
 	sort.Strings(directory.ids)
 	return directory, nil
@@ -106,11 +109,28 @@ func (directory *Directory) Ensure(ctx context.Context, hostID string, spec appe
 	if !directory.enabled || host == nil {
 		return nil, appexecution.ErrUnavailable
 	}
-	native := execenv.Spec{ID: execenv.ID(spec.ID), Image: execenv.Image(spec.Image), Network: nativeNetwork(spec.Network)}
-	if _, err := host.ensure(ctx, native); err != nil {
+	environment, err := host.ensure(ctx, spec)
+	if err != nil {
 		return nil, err
 	}
-	return &environment{host: host, spec: native}, nil
+	return environment, nil
+}
+
+func (directory *Directory) Existing(ctx context.Context, hostID string, spec appexecution.Spec) (appexecution.Environment, error) {
+	host := directory.hosts[hostID]
+	if !directory.enabled || host == nil {
+		return nil, appexecution.ErrUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	environment := host.environments[spec.ID]
+	if host.closed || environment == nil || environment.spec != spec {
+		return nil, appexecution.ErrUnavailable
+	}
+	return environment, nil
 }
 
 func (directory *Directory) Revoke(ctx context.Context, hostID, grantID string) error {
@@ -182,18 +202,26 @@ func (host *hostClient) ready(ctx context.Context) (appexecution.HostStatus, err
 	return status, nil
 }
 
-func (host *hostClient) ensure(ctx context.Context, spec execenv.Spec) (execenv.Env, error) {
-	var result execenv.Env
+func (host *hostClient) ensure(ctx context.Context, spec appexecution.Spec) (*environment, error) {
+	var result *environment
 	err := host.call(ctx, func(client *remote.Client) error {
-		var err error
-		result, err = client.Ensure(ctx, spec)
-		return err
+		nativeSpec := execenv.Spec{ID: execenv.ID(spec.ID), Image: execenv.Image(spec.Image), Network: nativeNetwork(spec.Network)}
+		native, err := client.Ensure(ctx, nativeSpec)
+		if err != nil {
+			return err
+		}
+		result = &environment{host: host, client: client, spec: spec, native: native}
+		host.environments[spec.ID] = result
+		return nil
 	})
 	return result, err
 }
 
 func (host *hostClient) revoke(ctx context.Context, id execenv.ID) error {
-	return host.call(ctx, func(client *remote.Client) error { return client.Revoke(ctx, id) })
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	delete(host.environments, string(id))
+	return host.callLocked(ctx, func(client *remote.Client) error { return client.Revoke(ctx, id) })
 }
 
 func (host *hostClient) capabilities() execenv.Capabilities {
@@ -208,7 +236,17 @@ func (host *hostClient) capabilities() execenv.Capabilities {
 func (host *hostClient) call(ctx context.Context, operation func(*remote.Client) error) error {
 	host.mu.Lock()
 	defer host.mu.Unlock()
+	return host.callLocked(ctx, operation)
+}
+
+func (host *hostClient) callLocked(ctx context.Context, operation func(*remote.Client) error) error {
+	if host.closed {
+		return appexecution.ErrUnavailable
+	}
 	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if host.client == nil {
 			client, err := remote.New(host.config)
 			if err != nil {
@@ -220,8 +258,7 @@ func (host *hostClient) call(ctx context.Context, operation func(*remote.Client)
 		if !errors.Is(err, execenv.ErrConnection) {
 			return translate(err)
 		}
-		_ = host.client.Close()
-		host.client = nil
+		_ = host.resetLocked()
 	}
 	return appexecution.ErrUnavailable
 }
@@ -229,6 +266,12 @@ func (host *hostClient) call(ctx context.Context, operation func(*remote.Client)
 func (host *hostClient) close() error {
 	host.mu.Lock()
 	defer host.mu.Unlock()
+	host.closed = true
+	return host.resetLocked()
+}
+
+func (host *hostClient) resetLocked() error {
+	clear(host.environments)
 	if host.client == nil {
 		return nil
 	}
@@ -238,18 +281,40 @@ func (host *hostClient) close() error {
 }
 
 type environment struct {
-	host *hostClient
-	spec execenv.Spec
+	host   *hostClient
+	client *remote.Client
+	spec   appexecution.Spec
+	native execenv.Env
 }
 
 func (environment *environment) withEnvironment(ctx context.Context, operation func(execenv.Env) error) error {
-	return environment.host.call(ctx, func(client *remote.Client) error {
-		native, err := client.Ensure(ctx, environment.spec)
-		if err != nil {
-			return err
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	host := environment.host
+	host.mu.Lock()
+	current := host.environments[environment.spec.ID] == environment && host.client == environment.client && !host.closed
+	host.mu.Unlock()
+	if !current {
+		return appexecution.ErrUnavailable
+	}
+	// The native handle is tied to its original remote session. Reconnecting
+	// or ensuring here could recreate an empty guest under an initialized ID.
+	err := operation(environment.native)
+	if errors.Is(err, execenv.ErrConnection) {
+		host.mu.Lock()
+		if host.client == environment.client {
+			_ = host.resetLocked()
 		}
-		return operation(native)
-	})
+		host.mu.Unlock()
+	} else if errors.Is(err, execenv.ErrRevoked) {
+		host.mu.Lock()
+		if host.environments[environment.spec.ID] == environment {
+			delete(host.environments, environment.spec.ID)
+		}
+		host.mu.Unlock()
+	}
+	return translate(err)
 }
 
 func (environment *environment) ReplaceTree(ctx context.Context, tree appexecution.Tree) error {
@@ -261,13 +326,12 @@ func (environment *environment) ReplaceTree(ctx context.Context, tree appexecuti
 	return environment.withEnvironment(ctx, func(env execenv.Env) error { return env.ReplaceTree(ctx, native) })
 }
 
-func (environment *environment) Apply(ctx context.Context, mutations []appexecution.Mutation) error {
-	native := make([]execenv.Mutation, len(mutations))
-	for index, mutation := range mutations {
-		native[index] = execenv.Mutation{Op: execenv.Op(mutation.Operation), Path: mutation.Path, From: mutation.From,
-			Kind: nativeNodeKind(mutation.Kind), Version: execenv.Version(mutation.Version), Data: append([]byte(nil), mutation.Data...)}
-	}
-	return environment.withEnvironment(ctx, func(env execenv.Env) error { return env.Apply(ctx, execenv.Batch{Mutations: native}) })
+func (environment *environment) Apply(context.Context, []appexecution.Mutation) error {
+	// execenv v0.2 resets its whole watcher baseline after Apply, which can
+	// silently absorb an unrelated guest write. Its directory Move also does
+	// not preserve descendant versions. Refuse before I/O: the application
+	// retires this grant and reconstructs acknowledged state on the next open.
+	return appexecution.ErrConflict
 }
 
 func (environment *environment) Attach(ctx context.Context, window appexecution.Window) (appexecution.Terminal, error) {

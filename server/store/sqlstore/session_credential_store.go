@@ -116,7 +116,7 @@ func (s SQLSessionCredentialStore) GetSessionByTokenHash(
 		Where(sq.Eq{
 			"sessions.id":          credentialRow.SessionID,
 			"sessions.archived_at": nil,
-		})
+		}).Where(currentSessionRecoveryPredicate)
 	if err := s.GetMaster().GetBuilder(ctx, &lockedSessionRow, sessionQuery); err != nil {
 		return nil, nil, translateError("session", credentialRow.SessionID, err)
 	}
@@ -187,11 +187,11 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 
 		var lockedSessionRow sessionRow
 		if err := tx.Get(ctx, &lockedSessionRow, `
-		SELECT id, created_at, updated_at, archived_at, user_id, client_type,
+		SELECT id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 		       desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 		       desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		       device_id, device_name, authentication_method, authentication_provider_id, external_identity_id,
-		       authentication_strength, authenticated_at, mfa_completed_at,
+		       authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 		       last_activity_at, idle_expires_at, expires_at, revoked_at,
 		       revocation_reason
 		  FROM sessions
@@ -206,6 +206,9 @@ func (s SQLSessionCredentialStore) RotateRefresh(
 			return nil, err
 		}
 
+		if err := requireSessionAuthenticationGeneration(ctx, tx, session); err != nil {
+			return nil, err
+		}
 		if current.UsedAt.Valid || !current.ReplacedByID.IsZero() {
 			hashes, revokeErr := revokeReplayedSession(ctx, tx, session, now)
 			if revokeErr != nil {

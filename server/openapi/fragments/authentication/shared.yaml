@@ -73,6 +73,7 @@ components:
         - client_type
         - authentication_method
         - authentication_strength
+        - mfa_recovery_required
         - authenticated_at
         - last_activity_at
         - idle_expires_at
@@ -123,6 +124,13 @@ components:
         authenticated_at:
           type: integer
           format: int64
+        mfa_recovery_required:
+          type: boolean
+          description: Ordinary access remains unavailable until a new local authenticator is activated.
+        reauthenticated_at:
+          type: integer
+          format: int64
+          description: Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.
         mfa_completed_at:
           type: integer
           format: int64
@@ -141,6 +149,7 @@ components:
         revocation_reason_code:
           type: string
           enum:
+            - mfa_reset
             - account_disabled
             - access_policy_changed
             - administrator_all_sessions

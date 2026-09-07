@@ -59,6 +59,18 @@ func NewExamAttemptWorkspaceID() ExamAttemptWorkspaceID { return ExamAttemptWork
 // NewSubmissionID returns a freshly generated submission identifier.
 func NewSubmissionID() SubmissionID { return SubmissionID(NewId()) }
 
+// NewRetentionHoldID returns a freshly generated retention hold identifier.
+func NewRetentionHoldID() RetentionHoldID { return RetentionHoldID(NewId()) }
+
+// NewRetentionPreviewID returns a freshly generated retention preview identifier.
+func NewRetentionPreviewID() RetentionPreviewID { return RetentionPreviewID(NewId()) }
+
+// NewRetentionRetirementID returns a freshly generated retention retirement identifier.
+func NewRetentionRetirementID() RetentionRetirementID { return RetentionRetirementID(NewId()) }
+
+// NewExamExportID returns a freshly generated examination export identifier.
+func NewExamExportID() ExamExportID { return ExamExportID(NewId()) }
+
 // NewAttemptParticipationID returns a freshly generated attempt-participation identifier.
 func NewAttemptParticipationID() AttemptParticipationID { return AttemptParticipationID(NewId()) }
 
@@ -255,6 +267,26 @@ func ParseExamAttemptWorkspaceID(value string) (ExamAttemptWorkspaceID, error) {
 // ParseSubmissionID validates and converts the shared identifier representation.
 func ParseSubmissionID(value string) (SubmissionID, error) {
 	return parseID[SubmissionID](value, "submission_id")
+}
+
+// ParseRetentionHoldID validates and converts the shared identifier representation.
+func ParseRetentionHoldID(value string) (RetentionHoldID, error) {
+	return parseID[RetentionHoldID](value, "retention_hold_id")
+}
+
+// ParseRetentionPreviewID validates and converts the shared identifier representation.
+func ParseRetentionPreviewID(value string) (RetentionPreviewID, error) {
+	return parseID[RetentionPreviewID](value, "retention_preview_id")
+}
+
+// ParseRetentionRetirementID validates and converts the shared identifier representation.
+func ParseRetentionRetirementID(value string) (RetentionRetirementID, error) {
+	return parseID[RetentionRetirementID](value, "retention_retirement_id")
+}
+
+// ParseExamExportID validates and converts the shared identifier representation.
+func ParseExamExportID(value string) (ExamExportID, error) {
+	return parseID[ExamExportID](value, "exam_export_id")
 }
 
 // ParseAttemptParticipationID validates and converts the shared identifier representation.
@@ -495,6 +527,18 @@ func (id ExamAttemptWorkspaceID) IsZero() bool { return id == "" }
 // IsZero reports whether the submission is the empty zero value.
 func (id SubmissionID) IsZero() bool { return id == "" }
 
+// IsZero reports whether the retention hold is the empty zero value.
+func (id RetentionHoldID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the retention preview is the empty zero value.
+func (id RetentionPreviewID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the retention retirement is the empty zero value.
+func (id RetentionRetirementID) IsZero() bool { return id == "" }
+
+// IsZero reports whether the examination export is the empty zero value.
+func (id ExamExportID) IsZero() bool { return id == "" }
+
 // IsZero reports whether the attempt-participation is the empty zero value.
 func (id AttemptParticipationID) IsZero() bool { return id == "" }
 
@@ -656,6 +700,18 @@ func (id ExamAttemptWorkspaceID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the submission is a canonical non-zero ID.
 func (id SubmissionID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the retention hold is a canonical non-zero ID.
+func (id RetentionHoldID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the retention preview is a canonical non-zero ID.
+func (id RetentionPreviewID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the retention retirement is a canonical non-zero ID.
+func (id RetentionRetirementID) IsValid() bool { return IsValidId(string(id)) }
+
+// IsValid reports whether the examination export is a canonical non-zero ID.
+func (id ExamExportID) IsValid() bool { return IsValidId(string(id)) }
 
 // IsValid reports whether the attempt-participation is a canonical non-zero ID.
 func (id AttemptParticipationID) IsValid() bool { return IsValidId(string(id)) }
@@ -819,6 +875,18 @@ func (id ExamAttemptWorkspaceID) String() string { return string(id) }
 // String returns the submission wire/database representation.
 func (id SubmissionID) String() string { return string(id) }
 
+// String returns the retention hold wire/database representation.
+func (id RetentionHoldID) String() string { return string(id) }
+
+// String returns the retention preview wire/database representation.
+func (id RetentionPreviewID) String() string { return string(id) }
+
+// String returns the retention retirement wire/database representation.
+func (id RetentionRetirementID) String() string { return string(id) }
+
+// String returns the examination export wire/database representation.
+func (id ExamExportID) String() string { return string(id) }
+
 // String returns the attempt-participation wire/database representation.
 func (id AttemptParticipationID) String() string { return string(id) }
 
@@ -980,6 +1048,18 @@ func (id ExamAttemptWorkspaceID) MarshalText() ([]byte, error) { return marshalI
 
 // MarshalText encodes the submission as its canonical string.
 func (id SubmissionID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the retention hold as its canonical string.
+func (id RetentionHoldID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the retention preview as its canonical string.
+func (id RetentionPreviewID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the retention retirement as its canonical string.
+func (id RetentionRetirementID) MarshalText() ([]byte, error) { return marshalID(id) }
+
+// MarshalText encodes the examination export as its canonical string.
+func (id ExamExportID) MarshalText() ([]byte, error) { return marshalID(id) }
 
 // MarshalText encodes the attempt-participation as its canonical string.
 func (id AttemptParticipationID) MarshalText() ([]byte, error) { return marshalID(id) }
@@ -1173,6 +1253,26 @@ func (id *ExamAttemptWorkspaceID) UnmarshalText(data []byte) error {
 // UnmarshalText decodes and validates the submission when non-empty.
 func (id *SubmissionID) UnmarshalText(data []byte) error {
 	return unmarshalID(id, data, ParseSubmissionID)
+}
+
+// UnmarshalText decodes and validates the retention hold when non-empty.
+func (id *RetentionHoldID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseRetentionHoldID)
+}
+
+// UnmarshalText decodes and validates the retention preview when non-empty.
+func (id *RetentionPreviewID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseRetentionPreviewID)
+}
+
+// UnmarshalText decodes and validates the retention retirement when non-empty.
+func (id *RetentionRetirementID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseRetentionRetirementID)
+}
+
+// UnmarshalText decodes and validates the examination export when non-empty.
+func (id *ExamExportID) UnmarshalText(data []byte) error {
+	return unmarshalID(id, data, ParseExamExportID)
 }
 
 // UnmarshalText decodes and validates the attempt-participation when non-empty.
@@ -1413,6 +1513,18 @@ func (id ExamAttemptWorkspaceID) MarshalJSON() ([]byte, error) { return marshalI
 // MarshalJSON encodes the submission as a JSON string.
 func (id SubmissionID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
+// MarshalJSON encodes the retention hold as a JSON string.
+func (id RetentionHoldID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the retention preview as a JSON string.
+func (id RetentionPreviewID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the retention retirement as a JSON string.
+func (id RetentionRetirementID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
+// MarshalJSON encodes the examination export as a JSON string.
+func (id ExamExportID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
+
 // MarshalJSON encodes the attempt-participation as a JSON string.
 func (id AttemptParticipationID) MarshalJSON() ([]byte, error) { return marshalIDJSON(id) }
 
@@ -1605,6 +1717,26 @@ func (id *ExamAttemptWorkspaceID) UnmarshalJSON(data []byte) error {
 // UnmarshalJSON decodes a JSON string into the submission.
 func (id *SubmissionID) UnmarshalJSON(data []byte) error {
 	return unmarshalIDJSON(id, data, ParseSubmissionID)
+}
+
+// UnmarshalJSON decodes a JSON string into the retention hold.
+func (id *RetentionHoldID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseRetentionHoldID)
+}
+
+// UnmarshalJSON decodes a JSON string into the retention preview.
+func (id *RetentionPreviewID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseRetentionPreviewID)
+}
+
+// UnmarshalJSON decodes a JSON string into the retention retirement.
+func (id *RetentionRetirementID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseRetentionRetirementID)
+}
+
+// UnmarshalJSON decodes a JSON string into the examination export.
+func (id *ExamExportID) UnmarshalJSON(data []byte) error {
+	return unmarshalIDJSON(id, data, ParseExamExportID)
 }
 
 // UnmarshalJSON decodes a JSON string into the attempt-participation.

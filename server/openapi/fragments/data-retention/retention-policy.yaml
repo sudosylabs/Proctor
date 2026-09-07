@@ -1,0 +1,254 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/retention-policy:
+    get:
+      operationId: getRetentionPolicy
+      summary: Get the Institution Retention Policy
+      tags:
+        - Data retention
+      description: >-
+        Returns the Institution's revisioned retention configuration. A Session with retention_policy.view is required; Personal Access Tokens cannot read it. Examination and audit periods start at zero, meaning no configured expiry, never immediate deletion. Automatic deletion is a derived projection of separate, current-revision cleanup approval. Saving settings never enables cleanup. Examination periods begin at current Sitting Records Completion; holds, supporting integrity and export construction can protect individual records. Temporary exports require a configured finite lifetime from one through seven days. Operator-controlled backups and historical object versions remain outside current-key cleanup.
+      x-proctor-auth: principal_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - retention_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          $ref: '#/components/responses/RetentionPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+    put:
+      operationId: replaceRetentionPolicy
+      summary: Replace the Institution Retention Policy
+      tags:
+        - Data retention
+      description: >-
+        Completely replaces the configuration under an optimistic revision fence. Requires a strong recent interactive system-administrator Session, an Idempotency-Key, and durable audit. The policy, successful audit, and idempotent outcome commit together. Every write, including a no-op and exact retry, rechecks the current access credential, protected administrator binding and strong recent Session assurance at the post-lock database time. A stale revision returns retention_policy.revision_conflict with current_revision; an exact retry returns the recorded result after fresh authorization. A no-op preserves revision and timestamps. All periods are required integers. Export retention accepts 0 when unconfigured or a finite lifetime from 1 through 7 days; other periods accept 0 through 36500 as a technical bound, not a recommended period. Days mean 24-hour durations. Zero leaves that period unconfigured, and export creation rejects an unconfigured lifetime. A real settings change pauses approved cleanup and cancels pending grace; a fresh preview and explicit approval are required before new scheduling. Candidate notices default to false when omitted; null is invalid.
+      x-codeSamples:
+        - lang: Shell
+          source: |-
+            curl --fail-with-body \
+              --request PUT \
+              --url 'https://proctor.example.edu/api/v1/retention-policy' \
+              --header 'Authorization: Bearer <interactive-system-administrator-session>' \
+              --header 'Content-Type: application/json' \
+              --header 'Idempotency-Key: docs-retention-policy-001' \
+              --data '{"expected_revision":1,"submission_retention_days":0,"integrity_retention_days":0,"audit_retention_days":0,"export_retention_days":0,"deletion_grace_days":0}'
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - authentication.csrf.invalid
+        - audit.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - idempotency.key_required
+        - idempotency.invalid_key
+        - idempotency.conflict
+        - idempotency.in_progress
+        - request.invalid
+        - retention_policy.invalid
+        - retention_policy.revision_conflict
+        - retention_policy.unavailable
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceRetentionPolicy'
+      responses:
+        "200":
+          $ref: '#/components/responses/RetentionPolicyOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ReplaceRetentionPolicy:
+      required: true
+      description: Complete configuration replacement. Every period is required, including zero values. Automatic deletion cannot be enabled.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RetentionPolicyRequest'
+          example:
+            expected_revision: 1
+            submission_retention_days: 0
+            integrity_retention_days: 0
+            audit_retention_days: 0
+            export_retention_days: 0
+            deletion_grace_days: 0
+  responses:
+    RetentionPolicyOK:
+      description: Revisioned Institution retention configuration and current cleanup-approval projection.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RetentionPolicyResponse'
+          example:
+            revision: 1
+            submission_retention_days: 0
+            integrity_retention_days: 0
+            audit_retention_days: 0
+            export_retention_days: 0
+            deletion_grace_days: 0
+            candidate_notices: false
+            automatic_deletion_enabled: false
+            created_at: '2026-08-01T12:00:00Z'
+            updated_at: '2026-08-01T12:00:00Z'
+  schemas:
+    RetentionPolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_revision
+        - submission_retention_days
+        - integrity_retention_days
+        - audit_retention_days
+        - export_retention_days
+        - deletion_grace_days
+      properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The revision read by the editor. A stale revision cannot overwrite newer settings.
+        submission_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Work lifetime from current Sitting Records Completion. Zero is indefinite. Supporting integrity, holds and source protections can extend preservation.
+        integrity_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. Unresolved Reviews block completion.
+        audit_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Lifetime from each completed audit or receipt event. Zero is indefinite. Unfinished work and current references protect dependent records.
+        export_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+          description: Temporary archive lifetime. Creation requires an explicit valid value from one through seven days; zero or larger existing values cannot create an export. Existing archive expiry is fixed at request time.
+        deletion_grace_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Positive per-record grace required for cleanup approval. Zero is unconfigured and cannot authorize immediate deletion. Seven days is the initial recommendation.
+        candidate_notices:
+          type: boolean
+          default: false
+          description: Also create candidate notices when their records enter grace. Manager and operator notices are always reserved durably.
+    RetentionPolicyResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - submission_retention_days
+        - integrity_retention_days
+        - audit_retention_days
+        - export_retention_days
+        - deletion_grace_days
+        - candidate_notices
+        - automatic_deletion_enabled
+        - created_at
+        - updated_at
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current policy revision.
+        submission_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Work lifetime from current Sitting Records Completion. Zero is indefinite; integrity dependencies and preservation holds remain effective.
+        integrity_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite.
+        audit_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Completed audit and receipt lifetime from their own event, subject to unfinished work and durable references. Zero is indefinite.
+        export_retention_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+          description: Temporary archive lifetime. Creation requires one through seven days; existing archive expiry is fixed at request time.
+        deletion_grace_days:
+          type: integer
+          minimum: 0
+          maximum: 36500
+          description: Per-record grace required before logical retirement. Zero is unconfigured and prevents cleanup approval.
+        candidate_notices:
+          type: boolean
+          description: Whether candidate notices accompany mandatory manager and operator notices.
+        automatic_deletion_enabled:
+          type: boolean
+          readOnly: true
+          description: True only when a separate active cleanup approval matches this exact policy revision and a positive grace period is configured.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

@@ -22,6 +22,7 @@ type WorkspaceMutationAccess struct {
 	CandidateAccess
 	ParticipationID model.AttemptParticipationID
 	Generation      int64
+	SourceGrantID   model.ExecutionGrantID
 }
 
 type WorkspaceMutationOrigin string
@@ -31,8 +32,9 @@ const (
 	WorkspaceMutationOriginExecutionHost WorkspaceMutationOrigin = "execution_host"
 )
 
-func (origin WorkspaceMutationOrigin) valid() bool {
-	return origin == WorkspaceMutationOriginCandidate || origin == WorkspaceMutationOriginExecutionHost
+func (origin WorkspaceMutationOrigin) valid(sourceGrantID model.ExecutionGrantID) bool {
+	return (origin == WorkspaceMutationOriginCandidate && sourceGrantID.IsZero()) ||
+		(origin == WorkspaceMutationOriginExecutionHost && sourceGrantID.IsValid())
 }
 
 type CreateWorkspaceDirectoryCommand struct {
@@ -76,12 +78,14 @@ type MoveWorkspaceEntryCommand struct {
 }
 
 type DeleteWorkspaceEntryCommand struct {
-	Access                 WorkspaceMutationAccess
-	Origin                 WorkspaceMutationOrigin
-	EntryID                model.AttemptWorkspaceEntryID
-	ExpectedPath           string
-	ExpectedContentVersion model.WorkspaceContentVersion
-	IdempotencyKey         string
+	Access                  WorkspaceMutationAccess
+	Origin                  WorkspaceMutationOrigin
+	EntryID                 model.AttemptWorkspaceEntryID
+	ExpectedPath            string
+	ExpectedContentVersion  model.WorkspaceContentVersion
+	Recursive               bool
+	ExpectedWorkspaceCursor *int64
+	IdempotencyKey          string
 }
 
 type WorkspaceMutationResult struct {
@@ -93,6 +97,7 @@ type WorkspaceMutationResult struct {
 	Change          model.AttemptWorkspaceJournalEntry
 	Replayed        bool
 	Origin          WorkspaceMutationOrigin
+	SourceGrantID   model.ExecutionGrantID
 }
 
 type WorkspaceJournalQuery struct {
@@ -144,7 +149,7 @@ func (service *Service) CreateWorkspaceDirectory(ctx context.Context, call Call,
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	if !command.Origin.valid() {
+	if !command.Origin.valid(access.SourceGrantID) {
 		return WorkspaceMutationResult{}, invalid("workspace_origin")
 	}
 	path, err := model.NormalizeAttemptWorkspacePath(command.Path)
@@ -190,7 +195,7 @@ func (service *Service) MoveWorkspaceEntry(ctx context.Context, call Call, comma
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	if !command.Origin.valid() {
+	if !command.Origin.valid(access.SourceGrantID) {
 		return WorkspaceMutationResult{}, invalid("workspace_origin")
 	}
 	expected, destination, err := validateWorkspaceMove(command.EntryID, command.ExpectedPath, command.DestinationPath)
@@ -217,16 +222,24 @@ func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, com
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
-	if !command.Origin.valid() {
+	if !command.Origin.valid(access.SourceGrantID) {
 		return WorkspaceMutationResult{}, invalid("workspace_origin")
+	}
+	if (command.Recursive && (command.Origin != WorkspaceMutationOriginCandidate || command.ExpectedWorkspaceCursor == nil ||
+		*command.ExpectedWorkspaceCursor < 0 || !command.ExpectedContentVersion.IsZero())) ||
+		(!command.Recursive && command.ExpectedWorkspaceCursor != nil) {
+		return WorkspaceMutationResult{}, invalid("workspace_recursive_delete")
 	}
 	expected, err := validateWorkspaceEntryFence(command.EntryID, command.ExpectedPath)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
 	idempotency, err := prepareWorkspaceMutationIdempotency(call, command.IdempotencyKey, access.AttemptID,
-		model.AttemptWorkspaceMutationDeleteEntry, struct{ EntryID, ExpectedPath, ExpectedContentVersion string }{
-			command.EntryID.String(), expected, command.ExpectedContentVersion.String()})
+		model.AttemptWorkspaceMutationDeleteEntry, struct {
+			EntryID, ExpectedPath, ExpectedContentVersion string
+			Recursive                                     bool   `json:"recursive,omitempty"`
+			ExpectedWorkspaceCursor                       *int64 `json:"expected_workspace_cursor,omitempty"`
+		}{command.EntryID.String(), expected, command.ExpectedContentVersion.String(), command.Recursive, command.ExpectedWorkspaceCursor})
 	if err != nil {
 		return WorkspaceMutationResult{}, err
 	}
@@ -236,7 +249,8 @@ func (service *Service) DeleteWorkspaceEntry(ctx context.Context, call Call, com
 	}
 	return service.applyWorkspaceMutation(ctx, call, target, &store.ExamAttemptWorkspaceMutation{Access: access,
 		Operation: model.AttemptWorkspaceMutationDeleteEntry, EntryID: command.EntryID, ExpectedPath: expected,
-		ExpectedContentVersion: command.ExpectedContentVersion}, idempotency, command.Origin, "", "")
+		ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
+		ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor}, idempotency, command.Origin, "", "")
 }
 
 func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutationAccess WorkspaceMutationAccess,
@@ -250,7 +264,7 @@ func (service *Service) stageWorkspaceFile(ctx context.Context, call Call, mutat
 	}
 	if !entryID.IsValid() || body == nil || size < 0 || size > model.AttemptWorkspaceMaximumFileBytes ||
 		mediaType == "" || strings.TrimSpace(mediaType) != mediaType || len(mediaType) > 255 ||
-		!validWorkspaceSHA256(expectedSHA) || !origin.valid() {
+		!validWorkspaceSHA256(expectedSHA) || !origin.valid(access.SourceGrantID) {
 		return WorkspaceMutationResult{}, invalid("workspace_file")
 	}
 	if operation == model.AttemptWorkspaceMutationCreateFile {
@@ -335,7 +349,8 @@ func workspaceMutationSelector(call Call, access WorkspaceMutationAccess) (store
 		return store.ExamAttemptWorkspaceMutationAccess{}, invalid("workspace_access")
 	}
 	return store.ExamAttemptWorkspaceMutationAccess{AttemptID: read.AttemptID, ParticipationID: access.ParticipationID,
-		Generation: access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
+		SourceGrantID: access.SourceGrantID,
+		Generation:    access.Generation, CandidateUserID: read.CandidateUserID, SessionID: read.SessionID,
 		DesktopRegistrationID: read.DesktopRegistrationID, DPoPKeyThumbprint: read.DPoPKeyThumbprint,
 		ConnectionID: read.ConnectionID, ContinuityCredentialHash: read.ContinuityCredentialHash}, nil
 }
@@ -403,6 +418,10 @@ func (service *Service) applyWorkspaceMutation(ctx context.Context, call Call, t
 	result, err := projectWorkspaceMutation(stored, target, mutation.Access.AttemptID, mutation.EntryID, mutation.Operation, origin, expectedKind, expectedVersion)
 	if err != nil {
 		return WorkspaceMutationResult{}, err
+	}
+	result.SourceGrantID = mutation.Access.SourceGrantID
+	if result.Change.Recursive != mutation.Recursive {
+		return WorkspaceMutationResult{}, unavailable(errors.New("inconsistent recursive Workspace mutation result"))
 	}
 	if !result.Replayed {
 		if effectErr := service.deps.Effects.WorkspaceChanged(ctx, result); effectErr != nil {

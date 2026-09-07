@@ -364,6 +364,8 @@ type Catalog interface {
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore
+	ExamRecords() ExamRecordsStore
+	ExamExport() ExamExportStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
@@ -394,6 +396,8 @@ type Catalog interface {
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
 	DesktopCompatibilityPolicy() DesktopCompatibilityPolicyStore
+	RetentionPolicy() RetentionPolicyStore
+	Retention() RetentionStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
@@ -413,6 +417,8 @@ type Store interface {
 	ExamAttemptWorkspace() ExamAttemptWorkspaceStore
 	ExamSubmission() ExamSubmissionStore
 	ExamIntegrityReview() ExamIntegrityReviewStore
+	ExamRecords() ExamRecordsStore
+	ExamExport() ExamExportStore
 	ExamResource() ExamResourceStore
 	ExamCorrection() ExamCorrectionStore
 	ExamStarterWorkspace() ExamStarterWorkspaceStore
@@ -443,6 +449,8 @@ type Store interface {
 	Installation() InstallationStore
 	AccessPolicy() AccessPolicyStore
 	DesktopCompatibilityPolicy() DesktopCompatibilityPolicyStore
+	RetentionPolicy() RetentionPolicyStore
+	Retention() RetentionStore
 	ClusterDiscovery() ClusterDiscoveryStore
 	ServingNodeLease() ServingNodeLeaseStore
 	CommandOutcome() CommandOutcomeStore
@@ -910,10 +918,12 @@ type AcademicUnitUpdate struct {
 }
 
 type AcademicUnitArchive struct {
-	ID           string
-	ArchiveAt    int64
-	AuditEventID string
-	AuditAt      int64
+	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
+	ExpectedRevision int64
+	ID               string
+	ArchiveAt        int64
+	AuditEventID     string
+	AuditAt          int64
 }
 
 // AcademicUnitStore persists nodes in the institution's academic-unit tree.
@@ -946,10 +956,12 @@ type ProgrammeUpdate struct {
 }
 
 type ProgrammeArchive struct {
-	ID           string
-	ArchiveAt    int64
-	AuditEventID string
-	AuditAt      int64
+	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
+	ExpectedRevision int64
+	ID               string
+	ArchiveAt        int64
+	AuditEventID     string
+	AuditAt          int64
 }
 
 type ProgrammeStore interface {
@@ -979,10 +991,12 @@ type ProgrammeLevelUpdate struct {
 }
 
 type ProgrammeLevelArchive struct {
-	ID           string
-	ArchiveAt    int64
-	AuditEventID string
-	AuditAt      int64
+	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
+	ExpectedRevision int64
+	ID               string
+	ArchiveAt        int64
+	AuditEventID     string
+	AuditAt          int64
 }
 
 type ProgrammeLevelStore interface {
@@ -1021,10 +1035,12 @@ type AcademicPeriodUpdate struct {
 }
 
 type AcademicPeriodArchive struct {
-	ID           string
-	ArchiveAt    int64
-	AuditEventID string
-	AuditAt      int64
+	// ExpectedRevision is optional for compatibility; positive values fence stale callers.
+	ExpectedRevision int64
+	ID               string
+	ArchiveAt        int64
+	AuditEventID     string
+	AuditAt          int64
 }
 
 type AcademicPeriodStore interface {
@@ -1297,10 +1313,11 @@ type ExternalIdentityResolutionRequest struct {
 // ExternalIdentityLink is the proof-completed, application-prepared command
 // that attaches one immutable provider subject to the exact current User.
 type ExternalIdentityLink struct {
-	Identity     *model.ExternalIdentity
-	Capabilities AccessDeploymentCapabilities
-	AuditEventID string
-	AuditAt      int64
+	ExternalLoginStateID model.ExternalLoginStateID
+	Identity             *model.ExternalIdentity
+	Capabilities         AccessDeploymentCapabilities
+	AuditEventID         string
+	AuditAt              int64
 }
 
 // ExternalIdentityUnlink removes one exact provider identity and revokes only
@@ -2077,32 +2094,38 @@ type MFASecurityNotice struct {
 }
 
 type MFAActivationMutation struct {
-	CredentialID  string
-	UserID        string
-	TimeStep      int64
-	RecoveryCodes []*model.MFARecoveryCode
-	SessionID     string
-	At            time.Time
-	AuditEventID  string
-	AuditAt       int64
-	Notice        MFASecurityNotice
+	Principal               model.Principal
+	RecentAuthenticationTTL time.Duration
+	CredentialID            string
+	UserID                  string
+	TimeStep                int64
+	RecoveryCodes           []*model.MFARecoveryCode
+	SessionID               string
+	At                      time.Time
+	AuditEventID            string
+	AuditAt                 int64
+	Notice                  MFASecurityNotice
 }
 
 type MFARecoveryCodesRegeneration struct {
-	UserID        string
-	RecoveryCodes []*model.MFARecoveryCode
-	At            int64
-	AuditEventID  string
-	AuditAt       int64
-	Notice        MFASecurityNotice
+	Principal               model.Principal
+	RecentAuthenticationTTL time.Duration
+	UserID                  string
+	RecoveryCodes           []*model.MFARecoveryCode
+	At                      int64
+	AuditEventID            string
+	AuditAt                 int64
+	Notice                  MFASecurityNotice
 }
 
 type MFADisablement struct {
-	UserID       string
-	At           int64
-	AuditEventID string
-	AuditAt      int64
-	Notice       MFASecurityNotice
+	Principal               model.Principal
+	RecentAuthenticationTTL time.Duration
+	UserID                  string
+	At                      int64
+	AuditEventID            string
+	AuditAt                 int64
+	Notice                  MFASecurityNotice
 }
 
 // MFAStore owns the encrypted TOTP credential, hashed recovery codes, replay
@@ -2110,6 +2133,10 @@ type MFADisablement struct {
 // Activation and Session upgrade use UTC microsecond decision instants and
 // reject a pending credential or Session exactly at its expiry.
 type MFAStore interface {
+	GetRecoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
+	SavePendingWithAudit(context.Context, *MFAPendingEnrollment) (*model.MFACredential, error)
+	ChallengeWithAudit(context.Context, *MFAChallenge) (*SessionReauthenticationResult, error)
+	ResetWithAudit(context.Context, *MFAAssistedReset) (*MFAResetResult, error)
 	SavePending(context.Context, *model.MFACredential) (*model.MFACredential, error)
 	GetByUser(context.Context, string) (*model.MFACredential, error)
 	Activate(context.Context, *MFAActivationMutation) (*MFAActivationResult, error)
@@ -2183,6 +2210,7 @@ type AcademicUnitMemberStore interface {
 	Get(context.Context, string) (*model.AcademicUnitMember, error)
 	ListByUser(context.Context, string) ([]*model.AcademicUnitMember, error)
 	ListByAcademicUnit(context.Context, string, int64) ([]*model.AcademicUnitMember, error)
+	ListPageByAcademicUnit(context.Context, AcademicUnitMemberPageOptions) (*AcademicUnitMemberPage, error)
 	// ListActiveByUser uses UTC microsecond precision and the interval [start, end).
 	// Archived memberships are excluded; no active memberships is an empty list.
 	ListActiveByUser(context.Context, string, time.Time) ([]*model.AcademicUnitMember, error)
@@ -2234,6 +2262,7 @@ type ClassMemberStore interface {
 	Get(context.Context, string) (*model.ClassMember, error)
 	ListByUser(context.Context, string) ([]*model.ClassMember, error)
 	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
+	ListPageByClass(context.Context, ClassMemberPageOptions) (*ClassMemberPage, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
 	End(context.Context, string, int64, int64) (*model.ClassMember, error)
 }
@@ -2289,6 +2318,10 @@ type PasswordCredentialRemoval struct {
 // SessionRevocation is the complete durable input for revoking one session
 // under an already-persisted audit attempt. AuditEventID must identify an
 // attempt that is completed successfully before the revocation may commit.
+// UserSession and UserLogout reasons forbid administrative mail; other reasons
+// require the existing security-notice bundle. UserLogout completes a successful
+// no-op audit if the caller's Session is already absent or revoked. Other single
+// revocations return not found for an inactive or non-owned Session.
 type SessionRevocation struct {
 	SessionID    string
 	UserID       string
@@ -2302,7 +2335,8 @@ type SessionRevocation struct {
 }
 
 // SessionRevocationResult contains the revoked session and token hashes needed
-// for post-commit cache and realtime effects.
+// for post-commit cache and realtime effects. Session is nil for a successful
+// UserLogout no-op, which has no new post-commit effects.
 type SessionRevocationResult struct {
 	Session     *model.Session
 	TokenHashes []string
@@ -2319,7 +2353,9 @@ type SessionExpiryEnforcementResult struct {
 
 // UserSessionsRevocation is the complete durable input for revoking every
 // active session belonging to one user under an already-persisted audit
-// attempt.
+// attempt. UserAllSessions forbids administrative mail and command idempotency;
+// other reasons retain the administrative notice contract. An empty set completes
+// a successful audit with zero revoked sessions and no notice or transient effect.
 type UserSessionsRevocation struct {
 	UserID       string
 	Occurrence   *model.MailOccurrence
@@ -2345,6 +2381,8 @@ type UserSessionsRevocationResult struct {
 // Active reads, activity updates, and expiry enforcement share UTC microsecond
 // decision instants. A Session is inactive at either expiry deadline.
 type SessionStore interface {
+	ReauthenticateExternalWithAudit(context.Context, *SessionExternalReauthentication) (*SessionReauthenticationResult, error)
+	ReauthenticatePasswordWithAudit(context.Context, *SessionPasswordReauthentication) (*SessionReauthenticationResult, error)
 	Save(context.Context, *SessionCreation) (*model.Session, []*model.SessionCredential, error)
 	Get(context.Context, string) (*model.Session, error)
 	ListByUser(context.Context, string) ([]*model.Session, error)
@@ -2369,10 +2407,11 @@ type SessionStore interface {
 // with ErrPasswordCredentialChanged. Credential generation and password hashing
 // occur before this operation.
 type SessionCreation struct {
-	Session       *model.Session
-	Credentials   []*model.SessionCredential
-	MaximumActive int
-	PasswordProof PasswordCredentialProof
+	ExternalLoginStateID model.ExternalLoginStateID
+	Session              *model.Session
+	Credentials          []*model.SessionCredential
+	MaximumActive        int
+	PasswordProof        PasswordCredentialProof
 }
 
 type SessionRotation struct {
@@ -2614,5 +2653,6 @@ type InstallationStore interface {
 	Bootstrap(context.Context, *InstallationBootstrap) (*model.InstallationBootstrapResult, error)
 	ReconcileSystemAdministratorRole(context.Context, *SystemAdministratorRoleReconciliation) (*SystemAdministratorRoleReconciliationResult, error)
 	RecoverAdministratorAccess(context.Context, *AdministratorRecovery) (*AdministratorRecoveryResult, error)
+	ResetAdministratorMFA(context.Context, *AdministratorMFAReset) (*AdministratorMFAResetResult, error)
 	ReconcileAdministratorRecovery(context.Context, *AdministratorRecoveryReconciliation) (*AdministratorRecoveryReconciliationResult, error)
 }

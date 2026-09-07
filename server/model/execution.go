@@ -51,6 +51,12 @@ type ExecutionGrant struct {
 	LifecyclePending       bool
 	PendingSittingState    ExamSittingState
 	PendingSittingRevision int64
+	// Workspace effects use the same exact-grant lease as lifecycle effects.
+	// An unfinished effect is retired after recovery rather than replayed over
+	// a running guest whose observation stream cannot be reset atomically.
+	AppliedWorkspaceCursor int64
+	WorkspacePending       bool
+	PendingWorkspaceCursor int64
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 	ReleasedAt             OptionalTime
@@ -64,6 +70,7 @@ func (grant *ExecutionGrant) Validate() error {
 		(grant.Network != ExecutionNetworkNone && grant.Network != ExecutionNetworkAllowlist) ||
 		(grant.AppliedSittingState != ExamSittingOpen && grant.AppliedSittingState != ExamSittingPaused) ||
 		grant.AppliedSittingRevision < 1 ||
+		grant.AppliedWorkspaceCursor < 0 || grant.PendingWorkspaceCursor < 0 ||
 		grant.CreatedAt.IsZero() || grant.UpdatedAt.IsZero() || grant.UpdatedAt.Before(grant.CreatedAt) ||
 		grant.Revision < 1 {
 		return fmt.Errorf("model: invalid Execution Grant")
@@ -74,6 +81,12 @@ func (grant *ExecutionGrant) Validate() error {
 		}
 	} else if grant.PendingSittingState != "" || grant.PendingSittingRevision != 0 {
 		return fmt.Errorf("model: unexpected pending Execution Grant lifecycle")
+	}
+	if !grant.WorkspacePending && grant.PendingWorkspaceCursor != 0 {
+		return fmt.Errorf("model: unexpected pending Execution Grant Workspace cursor")
+	}
+	if grant.WorkspacePending && (grant.LifecyclePending || grant.PendingWorkspaceCursor < grant.AppliedWorkspaceCursor) {
+		return fmt.Errorf("model: invalid pending Execution Grant Workspace effect")
 	}
 	switch grant.State {
 	case ExecutionGrantReserved, ExecutionGrantReady:

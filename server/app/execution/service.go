@@ -56,6 +56,7 @@ type Service struct {
 
 	reconciliationMu    sync.Mutex
 	reconciliationAfter model.ExecutionGrantID
+	revocationAfter     model.ExecutionGrantID
 }
 
 func New(grants store.ExecutionGrantStore, hosts HostDirectory, content Content, now func() time.Time,
@@ -94,9 +95,13 @@ func (s *Service) Ensure(ctx context.Context, request Request) (*Placement, erro
 	if len(candidates) == 0 {
 		return nil, ErrUnavailable
 	}
-	tree, err := s.authoritativeTree(ctx, request.AttemptID)
-	if err != nil {
-		return nil, fmt.Errorf("load authoritative execution workspace: %w", err)
+	if current != nil && current.State == model.ExecutionGrantReady {
+		// A ready grant may still have guest processes or an observation. The
+		// host cannot atomically replace its tree and install a fresh watch.
+		if err := s.retireForReopen(ctx, current); err != nil {
+			return nil, err
+		}
+		current = nil
 	}
 	if current != nil {
 		candidates = preferCurrent(candidates, current.HostID)
@@ -127,27 +132,98 @@ func (s *Service) Ensure(ctx context.Context, request Request) (*Placement, erro
 			s.revokeReleased(ctx, previous)
 		}
 
-		environment, hostErr := s.hosts.Ensure(ctx, current.HostID, Spec{
-			ID: current.ID.String(), Image: current.Image, Network: Network(current.Network),
-		})
-		if hostErr == nil {
-			hostErr = environment.ReplaceTree(ctx, cloneTree(tree))
-		}
+		var hostErr error
+		current, hostErr = s.prepareEnvironment(ctx, current)
 		if hostErr != nil {
-			if !errors.Is(hostErr, ErrUnavailable) && !errors.Is(hostErr, ErrCapacity) && !errors.Is(hostErr, ErrRevoked) {
+			if errors.Is(hostErr, ErrConflict) || (!errors.Is(hostErr, ErrUnavailable) && !errors.Is(hostErr, ErrCapacity) && !errors.Is(hostErr, ErrRevoked)) {
 				return nil, fmt.Errorf("prepare execution environment: %w", hostErr)
 			}
 			continue
 		}
-		if current.State == model.ExecutionGrantReserved {
-			current, err = s.grants.MarkReady(ctx, current.ID, current.Revision, s.now())
-			if err != nil {
-				return nil, fmt.Errorf("mark execution placement ready: %w", err)
-			}
-		}
 		return placement(current), nil
 	}
 	return nil, ErrUnavailable
+}
+
+func (s *Service) retireForReopen(ctx context.Context, grant *model.ExecutionGrant) (resultErr error) {
+	lease, err := s.grants.AcquireLifecycleLease(ctx, grant.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, releaseLifecycleLease(ctx, lease)) }()
+	current, err := s.grants.Current(ctx, grant.AttemptID)
+	if err != nil || current.ID != grant.ID || current.Revision != grant.Revision {
+		return errors.Join(ErrConflict, err)
+	}
+	return s.releaseGrant(ctx, current)
+}
+
+// prepareEnvironment holds the same cross-node lease used by incremental and
+// Sitting effects, including while the first authoritative tree is captured.
+func (s *Service) prepareEnvironment(ctx context.Context, grant *model.ExecutionGrant) (current *model.ExecutionGrant, resultErr error) {
+	current = grant
+	lease, err := s.grants.AcquireLifecycleLease(ctx, grant.ID)
+	if err != nil {
+		return current, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, releaseLifecycleLease(ctx, lease)) }()
+	current, err = s.grants.Current(ctx, grant.AttemptID)
+	if err != nil || current.ID != grant.ID {
+		return grant, errors.Join(ErrConflict, err)
+	}
+	if current.State != model.ExecutionGrantReserved {
+		// Another initializer won while this caller waited for the lease.
+		return current, ErrConflict
+	}
+	if current.LifecyclePending || current.WorkspacePending {
+		return current, s.projectionFailed(ctx, current, ErrConflict)
+	}
+	// Ensure may refuse capacity before any tree effect was prepared, allowing
+	// the caller to reassign this still-reserved placement.
+	environment, err := s.hosts.Ensure(ctx, current.HostID, Spec{ID: current.ID.String(), Image: current.Image, Network: Network(current.Network)})
+	if err != nil {
+		return current, err
+	}
+	snapshot, err := s.grants.WorkspaceSnapshot(ctx, current.AttemptID)
+	if err != nil {
+		return current, s.projectionFailed(ctx, current, err)
+	}
+	tree, err := s.treeFromSnapshot(ctx, snapshot)
+	if err != nil {
+		return current, s.projectionFailed(ctx, current, err)
+	}
+	if err = lease.Validate(ctx); err != nil {
+		return current, s.projectionFailed(ctx, current, err)
+	}
+	prepared, err := s.grants.PrepareWorkspaceEffect(ctx, current.ID, current.Revision, snapshot.Cursor, s.now())
+	if err != nil {
+		return current, s.projectionFailed(ctx, current, err)
+	}
+	if err = environment.ReplaceTree(ctx, tree); err != nil {
+		return prepared, s.projectionFailed(ctx, prepared, err)
+	}
+	if err = lease.Validate(ctx); err != nil {
+		return prepared, s.projectionFailed(ctx, prepared, err)
+	}
+	current, err = s.grants.MarkWorkspaceApplied(ctx, prepared.ID, prepared.Revision, snapshot.Cursor, s.now())
+	if err != nil {
+		return prepared, s.projectionFailed(ctx, prepared, err)
+	}
+	return current, nil
+}
+
+func releaseLifecycleLease(ctx context.Context, lease store.ExecutionLifecycleLease) error {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	return lease.Release(cleanup)
+}
+
+func (s *Service) projectionFailed(ctx context.Context, grant *model.ExecutionGrant, cause error) error {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	// A pending marker survives even if persistence is unavailable here.
+	// Reconciliation retires that exact grant after the lease is released.
+	return errors.Join(ErrConflict, cause, s.releaseGrant(cleanup, grant))
 }
 
 // Images returns the safe installation catalog projection. Host identities,
@@ -189,59 +265,62 @@ func (s *Service) Images(ctx context.Context) ([]ImageOption, error) {
 	return result, nil
 }
 
-func (s *Service) authoritativeTree(ctx context.Context, attemptID model.ExamAttemptID) (Tree, error) {
-	snapshot, err := s.grants.WorkspaceSnapshot(ctx, attemptID)
-	if err != nil {
-		return nil, err
-	}
-	if snapshot == nil || len(snapshot.Nodes) > model.AttemptWorkspaceMaximumEntries {
+func (s *Service) treeFromSnapshot(ctx context.Context, snapshot *store.ExecutionWorkspaceSnapshot) (Tree, error) {
+	if snapshot == nil || snapshot.Cursor < 0 || len(snapshot.Nodes) > model.AttemptWorkspaceMaximumEntries {
 		return nil, ErrInvalid
 	}
 	tree := make(Tree, 0, len(snapshot.Nodes))
 	var total int64
 	for _, node := range snapshot.Nodes {
-		if _, err := model.NormalizeAttemptWorkspacePath(node.Path); err != nil {
-			return nil, ErrInvalid
-		}
-		if node.Kind == model.StarterWorkspaceEntryDirectory {
-			tree = append(tree, Node{Path: node.Path, Kind: NodeDirectory})
-			continue
-		}
-		if node.Kind != model.StarterWorkspaceEntryFile || !node.ContentVersion.IsValid() ||
-			node.SizeBytes < 0 || node.SizeBytes > model.AttemptWorkspaceMaximumFileBytes {
-			return nil, ErrInvalid
-		}
-		var body io.ReadCloser
-		switch node.StorageOrigin {
-		case model.AttemptWorkspaceStorageStarter:
-			body, err = s.content.OpenStarterWorkspaceObject(ctx, node.StarterObjectID)
-		case model.AttemptWorkspaceStorageAttempt:
-			body, err = s.content.OpenAttemptWorkspaceObject(ctx, node.AttemptObjectID)
-		default:
-			return nil, ErrInvalid
-		}
+		projected, err := s.projectNode(ctx, node)
 		if err != nil {
 			return nil, err
 		}
-		data, readErr := io.ReadAll(io.LimitReader(body, model.AttemptWorkspaceMaximumFileBytes+1))
-		closeErr := body.Close()
-		if readErr != nil || closeErr != nil {
-			return nil, errors.Join(readErr, closeErr)
-		}
-		if int64(len(data)) != node.SizeBytes || int64(len(data)) > model.AttemptWorkspaceMaximumFileBytes {
-			return nil, ErrInvalid
-		}
-		digest := sha256.Sum256(data)
-		if hex.EncodeToString(digest[:]) != node.SHA256 {
-			return nil, ErrInvalid
-		}
-		total += int64(len(data))
+		total += int64(len(projected.Data))
 		if total > model.AttemptWorkspaceMaximumTotalBytes {
 			return nil, ErrInvalid
 		}
-		tree = append(tree, Node{Path: node.Path, Kind: NodeFile, Version: node.ContentVersion.String(), Data: data})
+		tree = append(tree, projected)
 	}
 	return tree, nil
+}
+
+func (s *Service) projectNode(ctx context.Context, node store.ExecutionWorkspaceNode) (Node, error) {
+	if normalized, err := model.NormalizeAttemptWorkspacePath(node.Path); err != nil || normalized != node.Path {
+		return Node{}, ErrInvalid
+	}
+	if node.Kind == model.StarterWorkspaceEntryDirectory {
+		return Node{Path: node.Path, Kind: NodeDirectory}, nil
+	}
+	if node.Kind != model.StarterWorkspaceEntryFile || !node.ContentVersion.IsValid() || node.SizeBytes < 0 || node.SizeBytes > model.AttemptWorkspaceMaximumFileBytes {
+		return Node{}, ErrInvalid
+	}
+	var body io.ReadCloser
+	var err error
+	switch node.StorageOrigin {
+	case model.AttemptWorkspaceStorageStarter:
+		body, err = s.content.OpenStarterWorkspaceObject(ctx, node.StarterObjectID)
+	case model.AttemptWorkspaceStorageAttempt:
+		body, err = s.content.OpenAttemptWorkspaceObject(ctx, node.AttemptObjectID)
+	default:
+		return Node{}, ErrInvalid
+	}
+	if err != nil {
+		return Node{}, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(body, model.AttemptWorkspaceMaximumFileBytes+1))
+	closeErr := body.Close()
+	if readErr != nil || closeErr != nil {
+		return Node{}, errors.Join(readErr, closeErr)
+	}
+	if int64(len(data)) != node.SizeBytes {
+		return Node{}, ErrInvalid
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != node.SHA256 {
+		return Node{}, ErrInvalid
+	}
+	return Node{Path: node.Path, Kind: NodeFile, Version: node.ContentVersion.String(), Data: data}, nil
 }
 
 // Release first makes the placement inactive durably, then converges host
@@ -277,33 +356,23 @@ func (s *Service) ReleaseGrant(ctx context.Context, grantID model.ExecutionGrant
 	return nil
 }
 
-// Sync converges an existing ready grant after an acknowledged IDE mutation.
-// Attempts without a grant require no transient work.
-func (s *Service) Sync(ctx context.Context, attemptID model.ExamAttemptID) error {
-	grant, err := s.grants.Current(ctx, attemptID)
-	if store.IsNotFound(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read execution placement: %w", err)
-	}
-	if grant.State != model.ExecutionGrantReady {
-		return nil
-	}
-	tree, err := s.authoritativeTree(ctx, attemptID)
-	if err != nil {
-		return fmt.Errorf("load authoritative execution workspace: %w", err)
-	}
-	environment, err := s.hosts.Ensure(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
-	if err != nil {
-		return err
-	}
-	return environment.ReplaceTree(ctx, tree)
+// SyncChange applies one acknowledged candidate change without resetting the
+// guest observation stream. A missing, uncertain or out-of-order effect retires
+// the grant; a later authorized open reconstructs it from durable state.
+func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID, change model.AttemptWorkspaceJournalEntry) error {
+	return s.syncChange(ctx, attemptID, change, "")
 }
 
-// SyncChange applies one acknowledged authoritative IDE change without
-// invalidating the guest observation stream.
-func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID, change model.AttemptWorkspaceJournalEntry) error {
+// AcknowledgeChange advances projection progress for a harvested guest change
+// without echoing that change through Apply.
+func (s *Service) AcknowledgeChange(ctx context.Context, attemptID model.ExamAttemptID, sourceGrantID model.ExecutionGrantID, change model.AttemptWorkspaceJournalEntry) error {
+	if !sourceGrantID.IsValid() {
+		return ErrInvalid
+	}
+	return s.syncChange(ctx, attemptID, change, sourceGrantID)
+}
+
+func (s *Service) syncChange(ctx context.Context, attemptID model.ExamAttemptID, change model.AttemptWorkspaceJournalEntry, sourceGrantID model.ExecutionGrantID) (resultErr error) {
 	if !attemptID.IsValid() || change.Validate() != nil {
 		return ErrInvalid
 	}
@@ -314,24 +383,90 @@ func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID,
 	if err != nil {
 		return fmt.Errorf("read execution placement: %w", err)
 	}
-	if grant.State != model.ExecutionGrantReady {
+	alreadyApplied := sourceGrantID.IsValid()
+	if alreadyApplied && grant.ID != sourceGrantID {
 		return nil
 	}
-	environment, err := s.hosts.Ensure(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
+	lease, err := s.grants.AcquireLifecycleLease(ctx, grant.ID)
 	if err != nil {
 		return err
 	}
+	defer func() { resultErr = errors.Join(resultErr, releaseLifecycleLease(ctx, lease)) }()
+	current, err := s.grants.Current(ctx, attemptID)
+	if store.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// A successor initializes from current durable state.
+	if current.ID != grant.ID {
+		return nil
+	}
+	grant = current
+	if grant.LifecyclePending || grant.WorkspacePending {
+		return s.projectionFailed(ctx, grant, ErrConflict)
+	}
+	if change.Cursor <= grant.AppliedWorkspaceCursor {
+		return nil
+	}
+	if grant.State != model.ExecutionGrantReady || change.Cursor != grant.AppliedWorkspaceCursor+1 {
+		return s.projectionFailed(ctx, grant, ErrConflict)
+	}
+	var mutation Mutation
+	if !alreadyApplied {
+		mutation, err = s.mutationForChange(ctx, attemptID, change)
+		if err != nil {
+			return s.projectionFailed(ctx, grant, err)
+		}
+	}
+	if err = lease.Validate(ctx); err != nil {
+		return s.projectionFailed(ctx, grant, err)
+	}
+	prepared, err := s.grants.PrepareWorkspaceEffect(ctx, grant.ID, grant.Revision, change.Cursor, s.now())
+	if err != nil {
+		return s.projectionFailed(ctx, grant, err)
+	}
+	if !alreadyApplied {
+		environment, openErr := s.openGrant(ctx, prepared)
+		if openErr != nil {
+			return s.projectionFailed(ctx, prepared, openErr)
+		}
+		if err = environment.Apply(ctx, []Mutation{mutation}); err != nil {
+			return s.projectionFailed(ctx, prepared, err)
+		}
+	}
+	if err = lease.Validate(ctx); err != nil {
+		return s.projectionFailed(ctx, prepared, err)
+	}
+	if _, err = s.grants.MarkWorkspaceApplied(ctx, prepared.ID, prepared.Revision, change.Cursor, s.now()); err != nil {
+		return s.projectionFailed(ctx, prepared, err)
+	}
+	return nil
+}
+
+func (s *Service) mutationForChange(ctx context.Context, attemptID model.ExamAttemptID, change model.AttemptWorkspaceJournalEntry) (Mutation, error) {
 	mutation := Mutation{Kind: NodeKind(0)}
 	switch change.Operation {
 	case model.AttemptWorkspaceMutationCreateDirectory:
 		mutation.Operation, mutation.Path, mutation.Kind = OperationCreate, change.NewPath, NodeDirectory
 	case model.AttemptWorkspaceMutationCreateFile, model.AttemptWorkspaceMutationReplaceFile:
-		tree, treeErr := s.authoritativeTree(ctx, attemptID)
+		snapshot, treeErr := s.grants.WorkspaceSnapshot(ctx, attemptID)
 		if treeErr != nil {
-			return treeErr
+			return Mutation{}, treeErr
 		}
 		var found bool
-		for _, node := range tree {
+		if snapshot == nil || snapshot.Cursor != change.Cursor || len(snapshot.Nodes) > model.AttemptWorkspaceMaximumEntries {
+			return Mutation{}, ErrConflict
+		}
+		for _, stored := range snapshot.Nodes {
+			if stored.Path != change.NewPath {
+				continue
+			}
+			node, err := s.projectNode(ctx, stored)
+			if err != nil {
+				return Mutation{}, err
+			}
 			if node.Path == change.NewPath && node.Kind == NodeFile && node.Version == change.ContentVersion.String() {
 				mutation.Path, mutation.Kind, mutation.Version, mutation.Data = node.Path, NodeFile, node.Version, node.Data
 				found = true
@@ -339,7 +474,7 @@ func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID,
 			}
 		}
 		if !found {
-			return ErrConflict
+			return Mutation{}, ErrConflict
 		}
 		if change.Operation == model.AttemptWorkspaceMutationCreateFile {
 			mutation.Operation = OperationCreate
@@ -347,14 +482,15 @@ func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID,
 			mutation.Operation = OperationReplace
 		}
 	case model.AttemptWorkspaceMutationMoveEntry:
-		mutation.Operation, mutation.From, mutation.Path = OperationMove, change.OldPath, change.NewPath
 		if change.EntryKind == model.StarterWorkspaceEntryDirectory {
-			mutation.Kind = NodeDirectory
-		} else {
-			mutation.Kind = NodeFile
-			mutation.Version = change.ContentVersion.String()
+			return Mutation{}, ErrConflict
 		}
+		mutation.Operation, mutation.From, mutation.Path = OperationMove, change.OldPath, change.NewPath
+		mutation.Kind, mutation.Version = NodeFile, change.ContentVersion.String()
 	case model.AttemptWorkspaceMutationDeleteEntry:
+		if change.Recursive {
+			return Mutation{}, ErrConflict
+		}
 		mutation.Operation, mutation.Path = OperationDelete, change.OldPath
 		if change.EntryKind == model.StarterWorkspaceEntryDirectory {
 			mutation.Kind = NodeDirectory
@@ -362,9 +498,9 @@ func (s *Service) SyncChange(ctx context.Context, attemptID model.ExamAttemptID,
 			mutation.Kind = NodeFile
 		}
 	default:
-		return ErrInvalid
+		return Mutation{}, ErrInvalid
 	}
-	return environment.Apply(ctx, []Mutation{mutation})
+	return mutation, nil
 }
 
 func (s *Service) Reconcile(ctx context.Context) (int, error) {
@@ -382,7 +518,7 @@ func (s *Service) Reconcile(ctx context.Context) (int, error) {
 		completed++
 	}
 
-	pending, err := s.grants.ListPendingRevocations(ctx, PendingRevocationPageSize)
+	pending, err := s.nextRevocationPage(ctx)
 	if err != nil {
 		return completed, errors.Join(joined, fmt.Errorf("list pending execution revocations: %w", err))
 	}
@@ -394,6 +530,21 @@ func (s *Service) Reconcile(ctx context.Context) (int, error) {
 		completed++
 	}
 	return completed, joined
+}
+
+func (s *Service) nextRevocationPage(ctx context.Context) ([]*model.ExecutionGrant, error) {
+	s.reconciliationMu.Lock()
+	defer s.reconciliationMu.Unlock()
+	page, err := s.grants.ListPendingRevocations(ctx, s.revocationAfter, PendingRevocationPageSize)
+	if err != nil {
+		return nil, err
+	}
+	if len(page) < PendingRevocationPageSize {
+		s.revocationAfter = ""
+	} else {
+		s.revocationAfter = page[len(page)-1].ID
+	}
+	return page, nil
 }
 
 func (s *Service) nextReconciliationPage(ctx context.Context) ([]store.ExecutionGrantConvergence, error) {
@@ -419,36 +570,76 @@ func (s *Service) convergeCurrent(ctx context.Context, convergence store.Executi
 	return s.convergeGrant(ctx, grant.ID)
 }
 
-func (s *Service) Attach(ctx context.Context, attemptID model.ExamAttemptID, window Window) (Terminal, error) {
-	environment, _, err := s.open(ctx, attemptID)
-	if err != nil {
-		return nil, err
+func (s *Service) Attach(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID, window Window) (Terminal, error) {
+	var terminal Terminal
+	err := s.withOpenEnvironment(ctx, attemptID, grantID, func(environment Environment) error {
+		var err error
+		terminal, err = environment.Attach(ctx, window)
+		return err
+	})
+	if err != nil && terminal != nil {
+		_ = terminal.Close()
+		terminal = nil
 	}
-	return environment.Attach(ctx, window)
+	return terminal, err
 }
 
-func (s *Service) Watch(ctx context.Context, attemptID model.ExamAttemptID, after Cursor) (Observation, error) {
-	environment, _, err := s.open(ctx, attemptID)
-	if err != nil {
-		return nil, err
+func (s *Service) Watch(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID, after Cursor) (Observation, error) {
+	var observation Observation
+	err := s.withOpenEnvironment(ctx, attemptID, grantID, func(environment Environment) error {
+		var err error
+		observation, err = environment.Watch(ctx, after)
+		return err
+	})
+	if err != nil && observation != nil {
+		_ = observation.Close()
+		observation = nil
 	}
-	return environment.Watch(ctx, after)
+	return observation, err
 }
 
-func (s *Service) OpenFile(ctx context.Context, attemptID model.ExamAttemptID, path string) (io.ReadCloser, error) {
-	environment, _, err := s.open(ctx, attemptID)
-	if err != nil {
-		return nil, err
+func (s *Service) OpenFile(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID, path string) (io.ReadCloser, error) {
+	var body io.ReadCloser
+	err := s.withOpenEnvironment(ctx, attemptID, grantID, func(environment Environment) error {
+		var err error
+		body, err = environment.Open(ctx, path)
+		return err
+	})
+	if err != nil && body != nil {
+		_ = body.Close()
+		body = nil
 	}
-	return environment.Open(ctx, path)
+	return body, err
 }
 
-func (s *Service) Freeze(ctx context.Context, attemptID model.ExamAttemptID) error {
-	environment, _, err := s.open(ctx, attemptID)
+// The lease covers acquisition, not the lifetime of a PTY, observation, or body.
+// Streams keep their original host handle and can never recreate a lost guest.
+func (s *Service) withOpenEnvironment(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID, operation func(Environment) error) (resultErr error) {
+	if !attemptID.IsValid() || !grantID.IsValid() {
+		return ErrInvalid
+	}
+	lease, err := s.grants.AcquireLifecycleLease(ctx, grantID)
 	if err != nil {
 		return err
 	}
-	return environment.Freeze(ctx)
+	defer func() { resultErr = errors.Join(resultErr, releaseLifecycleLease(ctx, lease)) }()
+	environment, grant, err := s.open(ctx, attemptID, grantID)
+	if err != nil {
+		return err
+	}
+	if err := lease.Validate(ctx); err != nil {
+		return s.projectionFailed(ctx, grant, err)
+	}
+	if err := operation(environment); err != nil {
+		return err
+	}
+	if err := lease.Validate(ctx); err != nil {
+		return s.projectionFailed(ctx, grant, err)
+	}
+	// Release can fence a grant while an interaction is in flight. Do not hand
+	// an acquired resource to the caller after that durable fence has committed.
+	_, _, err = s.open(ctx, attemptID, grantID)
+	return err
 }
 
 func (s *Service) FreezeSitting(ctx context.Context, sittingID model.ExamSittingID, sittingRevision int64) error {
@@ -480,7 +671,7 @@ func (s *Service) convergeGrant(ctx context.Context, grantID model.ExecutionGran
 	if err != nil {
 		return fmt.Errorf("acquire execution lifecycle lease: %w", err)
 	}
-	defer func() { resultErr = errors.Join(resultErr, lease.Release(context.Background())) }()
+	defer func() { resultErr = errors.Join(resultErr, releaseLifecycleLease(ctx, lease)) }()
 	for attempt := 0; attempt < 3; attempt++ {
 		convergence, err := s.grants.CurrentForReconciliation(ctx, grantID)
 		if store.IsNotFound(err) {
@@ -490,7 +681,7 @@ func (s *Service) convergeGrant(ctx context.Context, grantID model.ExecutionGran
 			return fmt.Errorf("read leased execution lifecycle: %w", err)
 		}
 		grant := convergence.Grant
-		if grant.LifecyclePending {
+		if grant.LifecyclePending || grant.WorkspacePending || grant.AppliedWorkspaceCursor != convergence.WorkspaceCursor {
 			return s.releaseGrant(ctx, grant)
 		}
 		if convergence.AttemptState != model.ExamAttemptActive || convergence.AcknowledgementRequired ||
@@ -548,7 +739,7 @@ func (s *Service) openGrant(ctx context.Context, grant *model.ExecutionGrant) (E
 	if grant == nil || grant.State != model.ExecutionGrantReady || grant.Validate() != nil {
 		return nil, ErrUnavailable
 	}
-	return s.hosts.Ensure(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
+	return s.hosts.Existing(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
 }
 
 func (s *Service) releaseGrant(ctx context.Context, grant *model.ExecutionGrant) error {
@@ -593,12 +784,15 @@ func (s *Service) forSitting(ctx context.Context, sittingID model.ExamSittingID,
 	}
 }
 
-func (s *Service) open(ctx context.Context, attemptID model.ExamAttemptID) (Environment, *model.ExecutionGrant, error) {
+func (s *Service) open(ctx context.Context, attemptID model.ExamAttemptID, grantID model.ExecutionGrantID) (Environment, *model.ExecutionGrant, error) {
+	if !attemptID.IsValid() || !grantID.IsValid() {
+		return nil, nil, ErrInvalid
+	}
 	grant, err := s.grants.Current(ctx, attemptID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read execution placement: %w", err)
 	}
-	if grant.State != model.ExecutionGrantReady {
+	if grant.ID != grantID || grant.State != model.ExecutionGrantReady {
 		return nil, nil, ErrUnavailable
 	}
 	convergence, err := s.grants.CurrentForReconciliation(ctx, grant.ID)
@@ -607,10 +801,11 @@ func (s *Service) open(ctx context.Context, attemptID model.ExamAttemptID) (Envi
 	}
 	if convergence == nil || convergence.Grant == nil || convergence.Grant.ID != grant.ID ||
 		convergence.AttemptState != model.ExamAttemptActive || convergence.SittingState != model.ExamSittingOpen ||
-		convergence.AcknowledgementRequired {
+		convergence.AcknowledgementRequired || convergence.Grant.LifecyclePending || convergence.Grant.WorkspacePending ||
+		convergence.Grant.AppliedWorkspaceCursor != convergence.WorkspaceCursor {
 		return nil, nil, ErrUnavailable
 	}
-	environment, err := s.hosts.Ensure(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
+	environment, err := s.hosts.Existing(ctx, grant.HostID, Spec{ID: grant.ID.String(), Image: grant.Image, Network: Network(grant.Network)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -669,15 +864,6 @@ func containsNetwork(values []Network, wanted Network) bool {
 		}
 	}
 	return false
-}
-
-func cloneTree(tree Tree) Tree {
-	cloned := make(Tree, len(tree))
-	copy(cloned, tree)
-	for index := range cloned {
-		cloned[index].Data = append([]byte(nil), tree[index].Data...)
-	}
-	return cloned
 }
 
 func placement(grant *model.ExecutionGrant) *Placement {

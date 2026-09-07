@@ -27,6 +27,19 @@ func TestInitialDesktopCompatibilityPolicyIsValid(t *testing.T) {
 	}
 }
 
+func TestDesktopCompatibilityPolicyReplacementCanonicalizesEmptyBuildSet(t *testing.T) {
+	t.Parallel()
+	at := time.Unix(100, 0)
+	policy := NewInitialDesktopCompatibilityPolicy(NewInstitutionID(), at)
+	settings := DesktopCompatibilityPolicySettings{MinimumDesktopRelease: "1.2.0", Availability: DesktopAvailabilityReady}
+	if err := policy.Replace(1, settings, at.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if policy.RevokedDesktopBuildIDs == nil || len(policy.RevokedDesktopBuildIDs) != 0 {
+		t.Fatal("empty revoked build set must remain an array for persistence and HTTP")
+	}
+}
+
 func TestDesktopCompatibilityPolicySettingsRejectInvalidValues(t *testing.T) {
 	t.Parallel()
 

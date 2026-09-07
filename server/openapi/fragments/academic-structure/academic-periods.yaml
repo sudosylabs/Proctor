@@ -218,6 +218,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
+      parameters:
+        - $ref: '#/components/parameters/AcademicExpectedRevision'
       operationId: archiveAcademicPeriod
       summary: Archive an Academic Period with no active Classes or enrollments
       tags:
@@ -336,6 +338,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - revision
         - id
         - create_at
         - update_at
@@ -348,6 +351,11 @@ components:
         - start_at
         - end_at
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
         create_at:
@@ -443,6 +451,11 @@ components:
       type: object
       additionalProperties: false
       properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
         name:
           type:
             - string

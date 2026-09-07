@@ -131,13 +131,42 @@ per-node concurrency, retry/backoff, cancelability, retention, and handler.
 Startup rejects duplicate types and missing handlers; there is no process-global
 mutable registration.
 
-Daily recurrence definitions are immutable constructor input to the same
-engine. `app/jobs` owns each recurrence name, typed command, stable
-date-keyed identity, deduplication policy, and bounded work definition. The
+Recurrence definitions are immutable constructor input to the same engine.
+Their default is daily; an explicit interval must divide one UTC day and lie
+between one minute and one day. `app/jobs` owns each recurrence name, interval,
+typed command, stable interval-keyed identity, deduplication policy, and bounded
+work definition. Retention reconciliation, audit/receipt expiry, byte purge, and export cleanup run
+hourly; retention-notice expansion runs every ten minutes. Startup also proposes
+the current occurrence, and a failed proposal retries that same occurrence. The
 engine owns UTC timing, bounded retry of transient proposal failures, the
 post-proposal local wake, and recurrence shutdown. Every node may propose; the
 permanent PostgreSQL occurrence ledger, not process memory or leadership,
 decides whether the logical occurrence is new.
+
+Purge workers reserve their finite work budget before atomically selecting and
+deferring exact keys for storage operations. Failed operations remain visible
+and do not prevent attempts on the rest of the selected batch. A failed or
+uncertain purge checkpoint consumes that Job's budget; it cannot create a
+fresh immediate successor. Only a fully checkpointed, completed nonempty
+batch can continue immediately. Hourly occurrences revisit deferred keys,
+so persistent errors or an uncertain empty checkpoint cannot create an
+unbounded chain of empty Jobs.
+
+Audit and receipt expiry use finite scans for ordinary audit, receipts, and
+the cleanup workflow's own terminal audit history. Every page
+and continuation carries one immutable scan-time bound and a stable identity
+cursor, so the cleanup audit it creates cannot perpetuate its own scan. Each
+examined record consumes lease-fenced work before mutation. Checkpoints follow
+durable effects; unknown outcomes can replay the named Store transition
+without extending grace or repeating deletion. Exhausted or uncertain budgets
+produce a permanently deduplicated continuation rather than resetting the
+parent Job's budget. The worker never receives audit JSON, private reasons,
+file keys, or content; it handles identities, dates, blockers and counts.
+The cleanup-history pass reserves a maximum of 100 examined rows before its
+named aggregate. It maintains separate grace for each row and coalesces all
+changes in that batch into one summary audit; unchanged scans create none.
+The snapshot boundary is checkpointed before any work reservation or effect,
+so an unknown first checkpoint cannot widen an already-spent scan.
 
 The institution-scoped `job.view` action protects safe list, get, and attempt
 history. `job.manage` protects cancellation and explicitly supported retry.
@@ -168,6 +197,17 @@ The initial registered work covers:
   expiry and 90/180-day metadata cleanup; and
 - `job.cleanup`, a daily bounded retention pass that cannot delete queued,
   running, or its own active work.
+
+History cleanup retains a bounded deletion budget per occurrence and continues
+through permanently deduplicated successors while eligible history remains.
+The successor identity belongs to the preceding Job, so retry or an unknown
+enqueue outcome cannot fork the chain. The worker records whether its page was
+exhausted before enqueueing the successor, and commits that enqueue before
+completing the current Job. A reservation ahead of its checkpoint remains
+consumed; a successor resumes from the oldest remaining history instead of
+repeating the uncertain deletion. Version-1 checkpoints remain readable and
+receive one conservative continuation; version 2 records the exhausted-page
+fact. Every pass rechecks retention eligibility against PostgreSQL time.
 
 Entering Closing atomically queues the sealing Job with the Sitting mutation.
 Its command contains only the Sitting identity, its checkpoint contains a
@@ -221,3 +261,14 @@ reports expire after seven days; retained Job identity prevents the same
 preview from executing twice after report cleanup. The complete catalog, CSV
 contract, partial-success behavior, and privacy rules live in
 the [`identity-and-access` reference](../../identity-and-access/references/access-and-onboarding.md#administrative-batches-and-csv).
+
+
+Examination export build commands carry only Export ID; snapshots and byte paths
+stay out of Job payloads, results, and logs. Builds reserve a lifetime work unit
+per attempt, at most three attempts. Operator retry cannot extend the source
+deadline. Each claim has a distinct artifact reservation before byte I/O; stale
+claims cannot publish. Hourly export cleanup reconciles at most 100 exports and
+100 artifact identities per attempt, with at most three reserved attempts. One
+failed key does not starve the rest of that batch. Uncertain writers retain
+exact reconciliation identities for a future finite occurrence; they are never
+reported as completed purge based only on an absence observation.

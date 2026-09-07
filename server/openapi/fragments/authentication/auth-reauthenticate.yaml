@@ -1,0 +1,174 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/auth/reauthenticate/password:
+    post:
+      operationId: reauthenticatePassword
+      summary: Refresh the current Session's password proof
+      description: >-
+        Verifies the password of the exact current User and refreshes primary-proof recency for an existing password Session. Original authentication and MFA history, Session identity, credentials and expiry are preserved. A Session originally established by an external provider must use that provider's reauthentication journey. The final sensitive operation remains a separate explicit request. This operation is rate limited and its successful proof and required audit commit atomically.
+      tags:
+        - Authentication
+      x-proctor-auth: mfa_recovery_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - service.busy
+        - request.invalid
+        - authentication.invalid_credentials
+        - authentication.reauthentication_method_required
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/PasswordReauthentication'
+      responses:
+        "200":
+          $ref: '#/components/responses/PasswordReauthenticationOK'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/auth/reauthenticate/external:
+    post:
+      operationId: beginExternalReauthentication
+      summary: Refresh the current Session's original provider proof
+      description: >-
+        Starts fresh authentication with the original provider and binds the callback to the same User, external identity, Session and credential. OIDC requires a fresh auth_time using max_age=0 and prompt=login. CAS uses renew on login and ticket validation. Success refreshes primary-proof recency without replacing original authentication or MFA history. The selected hosted task is a closed continuation; its final sensitive action remains explicit.
+      tags: [Authentication]
+      x-proctor-auth: mfa_recovery_session_required
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - request.invalid
+        - authentication.reauthentication_method_required
+        - authentication.external.request.invalid
+        - authentication.external.provider_not_found
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
+        - authentication.external.unavailable
+        - authentication.external.rejected
+        - authentication.internal
+        - audit.unavailable
+      x-proctor-idempotency: none
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/ExternalReauthentication'
+      responses:
+        "200":
+          $ref: '#/components/responses/ExternalReauthenticationStarted'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    PasswordReauthentication:
+      description: The current User's password, used to refresh primary proof for the existing password-authenticated Session before returning to the pending sensitive task.
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PasswordReauthenticationRequest'}
+          example: {password: '<redacted>'}
+    ExternalReauthentication:
+      description: The bounded hosted task to return to after fresh authentication with the current Session's original provider. The sensitive action remains a separate explicit request.
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ExternalReauthenticationRequest'}
+          example: {task: security}
+  responses:
+    PasswordReauthenticationOK:
+      description: The existing Session after successful fresh proof.
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SessionResponse'}
+    ExternalReauthenticationStarted:
+      description: Provider redirect plus a short-lived HttpOnly browser-binding cookie.
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        Set-Cookie:
+          schema: {type: string}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ExternalReauthenticationResponse'}
+  schemas:
+    ExternalReauthenticationRequest:
+      type: object
+      additionalProperties: false
+      required: [task]
+      properties:
+        task:
+          type: string
+          enum: [security, connect-provider]
+    ExternalReauthenticationResponse:
+      type: object
+      additionalProperties: false
+      required: [redirect_url]
+      properties:
+        redirect_url: {type: string, format: uri}
+    PasswordReauthenticationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          minLength: 1
+          writeOnly: true
+          description: The current User's password; never log or persist this input.

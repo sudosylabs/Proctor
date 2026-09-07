@@ -1,0 +1,739 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  "/api/v1/retention/control":
+    get:
+      operationId: "getRetentionControl"
+      summary: "Get cleanup approval"
+      tags:
+        - "Data retention"
+      description: "Requires retention_policy.view. Reports deliberate approval separately from settings; disabled or paused controls cannot schedule retirement."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "retention.invalid"
+        - "retention.unavailable"
+        - "retention_policy.unavailable"
+        - "resource.not_found"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      responses:
+        "200":
+          $ref: "#/components/responses/RetentionControlOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    put:
+      operationId: "changeRetentionControl"
+      summary: "Enable or pause institution cleanup"
+      tags:
+        - "Data retention"
+      description: "Requires retention_cleanup.manage and strong recent system-administrator authentication. Enablement binds a fresh preview to the exact policy revision and requires positive grace. Every changed control cancels existing grace; eligible records receive fresh grace when scheduling resumes. Pausing cannot reverse committed retirement or stop reconciliation of already-retired bytes. Exact retries return their recorded result after current authorization."
+      x-proctor-auth: "strong_recent_session_required"
+      x-proctor-idempotency: "required"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "authentication.csrf.invalid"
+        - "audit.unavailable"
+        - "request.invalid"
+        - "retention.invalid"
+        - "retention.conflict"
+        - "retention.unavailable"
+        - "retention_policy.unavailable"
+        - "retention_policy.revision_conflict"
+        - "resource.not_found"
+        - "idempotency.key_required"
+        - "idempotency.invalid_key"
+        - "idempotency.conflict"
+        - "idempotency.in_progress"
+        - "authentication.strong_required"
+        - "authentication.reauthentication_required"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+          csrfToken: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequiredIdempotencyKey"
+      responses:
+        "200":
+          $ref: "#/components/responses/RetentionControlOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+      requestBody:
+        $ref: "#/components/requestBodies/ChangeRetentionControl"
+  "/api/v1/retention/previews":
+    post:
+      operationId: "createRetentionPreview"
+      summary: "Preview retention eligibility"
+      tags:
+        - "Data retention"
+      description: "Requires retention_policy.view and critical audit. Creates a one-hour content-free assessment for the specified current policy revision. Counts explain incomplete records, configured deadlines, holds, supporting integrity, export source protection and already-retired categories. Creating a preview alone never schedules disposal."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "required"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "authentication.csrf.invalid"
+        - "audit.unavailable"
+        - "request.invalid"
+        - "retention.invalid"
+        - "retention.conflict"
+        - "retention.unavailable"
+        - "retention_policy.unavailable"
+        - "retention_policy.revision_conflict"
+        - "resource.not_found"
+        - "idempotency.key_required"
+        - "idempotency.invalid_key"
+        - "idempotency.conflict"
+        - "idempotency.in_progress"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+          csrfToken: []
+      parameters:
+        -
+          $ref: "#/components/parameters/RequiredIdempotencyKey"
+      responses:
+        "201":
+          $ref: "#/components/responses/RetentionPreviewOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+      requestBody:
+        $ref: "#/components/requestBodies/CreateRetentionPreview"
+  "/api/v1/retention/previews/{retention_preview_id}":
+    get:
+      operationId: "getRetentionPreview"
+      summary: "Get a retention preview"
+      tags:
+        - "Data retention"
+      description: "Requires retention_policy.view. Returns the original assessment and expiry. Subsequent record changes can alter eligibility; every scheduled and final transition rechecks authoritative state."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "retention.invalid"
+        - "retention.unavailable"
+        - "retention_policy.unavailable"
+        - "resource.not_found"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          name: "retention_preview_id"
+          in: "path"
+          description: "Identifier returned by Create Retention Preview; fetching does not refresh its expiry."
+          required: true
+          schema:
+            $ref: "#/components/schemas/ID"
+      responses:
+        "200":
+          $ref: "#/components/responses/RetentionPreviewOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  "/api/v1/retention/records":
+    get:
+      operationId: "listRetentionRecords"
+      summary: "List retention eligibility and retirement status"
+      tags:
+        - "Data retention"
+      description: "Requires retention_policy.view. Does not expose filenames, answers, evidence or remarks. Limit counts Submissions; each contributes work and integrity items. The opaque cursor is bound to this listing. A retired category stays closed after detailed receipt expiry. Purge-verified counts represent an independent observation of exact current-key absence; they do not certify secure media erasure or deletion of backups, historical versions, or already-open streams."
+      x-proctor-auth: "session_required"
+      x-proctor-idempotency: "none"
+      x-proctor-error-codes:
+        - "authentication.required"
+        - "authentication.invalid_token"
+        - "authentication.credential_ambiguous"
+        - "authorization.denied"
+        - "authorization.request.invalid"
+        - "authorization.unavailable"
+        - "request.invalid"
+        - "retention.invalid"
+        - "retention.unavailable"
+        - "retention_policy.unavailable"
+        - "resource.not_found"
+        - "authentication.dpop.invalid"
+        - "authentication.dpop.replayed"
+        - "authentication.dpop.use_nonce"
+        - "authentication.dpop.unavailable"
+      security:
+        -
+          bearerAuth: []
+        -
+          dpopAuth: []
+        -
+          sessionCookie: []
+      parameters:
+        -
+          name: "limit"
+          in: "query"
+          description: "Maximum number of Submissions to assess; each contributes one work and one integrity record."
+          schema:
+            type: "integer"
+            minimum: 1
+            maximum: 200
+            default: 100
+        -
+          name: "cursor"
+          in: "query"
+          description: "Opaque next_cursor from the preceding retention-record page; pass it unchanged."
+          schema:
+            type: "string"
+            maxLength: 256
+      responses:
+        "200":
+          $ref: "#/components/responses/RetentionRecordsOK"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+components:
+  requestBodies:
+    ChangeRetentionControl:
+      description: "Exact current control and policy revisions plus the intended state. Enabling also requires an unexpired preview for that policy revision."
+      required: true
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/RetentionControlRequest"
+          example:
+            expected_revision: 1
+            expected_policy_revision: 1
+            preview_id: "4cbxoynrnbnzpkfcghhsy3qxuy"
+            state: "enabled"
+    CreateRetentionPreview:
+      description: "Current policy revision to assess. The resulting preview lasts one hour and does not enable cleanup."
+      required: true
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/RetentionPreviewRequest"
+          example:
+            expected_policy_revision: 1
+  responses:
+    RetentionControlOK:
+      description: "Current revision-bound cleanup control."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/RetentionControlResponse"
+          example:
+            revision: 1
+            state: "disabled"
+            updated_at: "2026-09-01T12:00:00Z"
+    RetentionPreviewOK:
+      description: "Content-free eligibility assessment, valid for one hour."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/RetentionPreviewResponse"
+          example:
+            id: "4cbxoynrnbnzpkfcghhsy3qxuy"
+            policy_revision: 1
+            created_at: "2026-09-01T12:00:00Z"
+            expires_at: "2026-09-01T13:00:00Z"
+            work:
+              total: 0
+              eligible: 0
+              awaiting_deadline: 0
+              incomplete: 0
+              held: 0
+              unconfigured: 0
+              supporting_work: 0
+              export_protected: 0
+              retired: 0
+            integrity:
+              total: 0
+              eligible: 0
+              awaiting_deadline: 0
+              incomplete: 0
+              held: 0
+              unconfigured: 0
+              supporting_work: 0
+              export_protected: 0
+              retired: 0
+            audit:
+              total: 0
+              eligible: 0
+              awaiting_deadline: 0
+              unconfigured: 0
+              unfinished: 0
+              referenced: 0
+              held: 0
+              purge_pending: 0
+              source_protected: 0
+            receipts:
+              total: 0
+              eligible: 0
+              awaiting_deadline: 0
+              unconfigured: 0
+              unfinished: 0
+              referenced: 0
+              held: 0
+              purge_pending: 0
+              source_protected: 0
+    RetentionRecordsOK:
+      description: "Bounded eligibility page; each Submission contributes two category records."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/PrivateNoStore"
+      content:
+        "application/json":
+          schema:
+            $ref: "#/components/schemas/RetentionRecordsResponse"
+          example:
+            policy_revision: 1
+            as_of: "2026-09-01T12:00:00Z"
+            items: []
+  schemas:
+    RetentionControlRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "expected_revision"
+        - "expected_policy_revision"
+        - "state"
+      properties:
+        expected_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        expected_policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        preview_id:
+          $ref: "#/components/schemas/ID"
+          description: "Required to enable; omit when pausing."
+        state:
+          type: "string"
+          enum:
+            - "enabled"
+            - "paused"
+    RetentionPreviewRequest:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "expected_policy_revision"
+      properties:
+        expected_policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+    RetentionControlResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "revision"
+        - "state"
+        - "updated_at"
+      properties:
+        revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        state:
+          type: "string"
+          enum:
+            - "disabled"
+            - "enabled"
+            - "paused"
+        approved_policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        approved_preview_id:
+          $ref: "#/components/schemas/ID"
+        updated_at:
+          type: "string"
+          format: "date-time"
+    RetentionPreviewCounts:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "total"
+        - "eligible"
+        - "awaiting_deadline"
+        - "incomplete"
+        - "held"
+        - "unconfigured"
+        - "supporting_work"
+        - "export_protected"
+        - "retired"
+      properties:
+        total:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        eligible:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        awaiting_deadline:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        incomplete:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        held:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        unconfigured:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        supporting_work:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        export_protected:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        retired:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    RetentionPreviewResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "policy_revision"
+        - "created_at"
+        - "expires_at"
+        - "work"
+        - "integrity"
+        - "audit"
+        - "receipts"
+      properties:
+        audit:
+          $ref: "#/components/schemas/RetentionExpiryCounts"
+        receipts:
+          $ref: "#/components/schemas/RetentionExpiryCounts"
+        id:
+          $ref: "#/components/schemas/ID"
+        policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        created_at:
+          type: "string"
+          format: "date-time"
+        expires_at:
+          type: "string"
+          format: "date-time"
+        work:
+          $ref: "#/components/schemas/RetentionPreviewCounts"
+        integrity:
+          $ref: "#/components/schemas/RetentionPreviewCounts"
+    RetentionExpiryCounts:
+      type: object
+      additionalProperties: false
+      required:
+        - total
+        - eligible
+        - awaiting_deadline
+        - unconfigured
+        - unfinished
+        - referenced
+        - held
+        - purge_pending
+        - source_protected
+      properties:
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        eligible:
+          type: integer
+          format: int64
+          minimum: 0
+        awaiting_deadline:
+          type: integer
+          format: int64
+          minimum: 0
+        unconfigured:
+          type: integer
+          format: int64
+          minimum: 0
+        unfinished:
+          type: integer
+          format: int64
+          minimum: 0
+        referenced:
+          type: integer
+          format: int64
+          minimum: 0
+        held:
+          type: integer
+          format: int64
+          minimum: 0
+        purge_pending:
+          type: integer
+          format: int64
+          minimum: 0
+        source_protected:
+          type: integer
+          format: int64
+          minimum: 0
+    RetentionRetirement:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "state"
+        - "policy_revision"
+        - "control_revision"
+        - "completion_revision"
+        - "scheduled_at"
+        - "retire_after"
+        - "purge_pending"
+        - "purge_verified"
+      properties:
+        id:
+          $ref: "#/components/schemas/ID"
+        state:
+          type: "string"
+          enum:
+            - "grace"
+            - "cancelled"
+            - "retired"
+        policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        control_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        completion_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        scheduled_at:
+          type: "string"
+          format: "date-time"
+        retire_after:
+          type: "string"
+          format: "date-time"
+        retired_at:
+          type: "string"
+          format: "date-time"
+        purge_pending:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        purge_verified:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+    RetentionRecord:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "exam_id"
+        - "exam_sitting_id"
+        - "submission_id"
+        - "category"
+        - "completion_revision"
+        - "completion_current"
+        - "has_integrity"
+        - "held"
+        - "shared_published_objects"
+        - "blocker"
+      properties:
+        exam_id:
+          $ref: "#/components/schemas/ID"
+        exam_sitting_id:
+          $ref: "#/components/schemas/ID"
+        submission_id:
+          $ref: "#/components/schemas/ID"
+        category:
+          type: "string"
+          enum:
+            - "work"
+            - "integrity"
+        completion_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        completed_at:
+          type: "string"
+          format: "date-time"
+        completion_current:
+          type: "boolean"
+        has_integrity:
+          type: "boolean"
+        held:
+          type: "boolean"
+        export_protected_until:
+          type: "string"
+          format: "date-time"
+        retired_at:
+          type: "string"
+          format: "date-time"
+        shared_published_objects:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+        blocker:
+          type: "string"
+          enum:
+            - ""
+            - "retired"
+            - "records_incomplete"
+            - "preservation_hold"
+            - "retention_unconfigured"
+            - "supporting_integrity"
+            - "export_in_progress"
+            - "retention_period"
+        eligible_at:
+          type: "string"
+          format: "date-time"
+        retirement:
+          $ref: "#/components/schemas/RetentionRetirement"
+    RetentionRecordsResponse:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "policy_revision"
+        - "as_of"
+        - "items"
+      properties:
+        policy_revision:
+          type: "integer"
+          format: "int64"
+          minimum: 1
+        as_of:
+          type: "string"
+          format: "date-time"
+        items:
+          type: "array"
+          maxItems: 400
+          items:
+            $ref: "#/components/schemas/RetentionRecord"
+        next_cursor:
+          type: "string"
+          maxLength: 256

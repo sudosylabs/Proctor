@@ -30,16 +30,19 @@ type CreateProgrammeLevelCommand struct {
 	Description string
 }
 type UpdateProgrammeLevelCommand struct {
-	ID          string
-	Name        *string
-	DisplayName *string
-	Description *string
+	ExpectedRevision *int64
+	ID               string
+	Name             *string
+	DisplayName      *string
+	Description      *string
 }
-type ArchiveProgrammeLevelCommand struct{ ID string }
+type ArchiveProgrammeLevelCommand struct {
+	ExpectedRevision *int64
+	ID               string
+}
 
 type programmeLevelStore interface {
 	Get(context.Context, string) (*model.ProgrammeLevel, error)
-	ListByProgramme(context.Context, string) ([]*model.ProgrammeLevel, error)
 	SearchByProgramme(context.Context, string, string, int) ([]*model.ProgrammeLevel, error)
 	Create(context.Context, *store.ProgrammeLevelCreation) (*model.ProgrammeLevel, error)
 	UpdateWithAudit(context.Context, *store.ProgrammeLevelUpdate) (*model.ProgrammeLevel, error)
@@ -95,13 +98,9 @@ func (s *programmeLevelService) List(ctx context.Context, invocation Invocation,
 	if err := s.authorization.Authorize(ctx, invocation, model.ActionProgrammeLevelView, model.Resource{Type: model.ResourceProgramme, ID: programmeID}); err != nil {
 		return nil, err
 	}
-	var levels []*model.ProgrammeLevel
-	var err error
-	if term := strings.TrimSpace(query.Query); term == "" {
-		levels, err = s.store.ListByProgramme(ctx, programmeID)
-	} else {
-		levels, err = s.store.SearchByProgramme(ctx, programmeID, term, normalizeAdministrationLimit(query.Limit))
-	}
+	levels, err := s.store.SearchByProgramme(
+		ctx, programmeID, strings.TrimSpace(query.Query), normalizeAdministrationLimit(query.Limit),
+	)
 	if err != nil {
 		return nil, programmeLevelError(err)
 	}
@@ -175,6 +174,9 @@ func (s *programmeLevelService) Update(ctx context.Context, invocation Invocatio
 		return nil, err
 	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: current.ID.String()}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "programme_level.conflict"); err != nil {
+		return nil, err
+	}
 	candidate := *current
 	if command.Name != nil {
 		candidate.Name = *command.Name
@@ -221,6 +223,9 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 	if err != nil {
 		return err
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "programme_level.conflict"); err != nil {
+		return err
+	}
 	resource := model.Resource{Type: model.ResourceProgrammeLevel, ID: current.ID.String()}
 	_, err = runAuditedMutation(
 		ctx,
@@ -237,7 +242,8 @@ func (s *programmeLevelService) Archive(ctx context.Context, invocation Invocati
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.ProgrammeLevel, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.ProgrammeLevelArchive{
-				ID: current.ID.String(), ArchiveAt: reference.MutationAtMillis,
+				ExpectedRevision: current.Revision,
+				ID:               current.ID.String(), ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

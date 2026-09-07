@@ -30,8 +30,12 @@ type retryStores struct {
 	examAttemptWorkspaceOnce       sync.Once
 	examCorrection                 store.ExamCorrectionStore
 	examCorrectionOnce             sync.Once
+	examExport                     store.ExamExportStore
+	examExportOnce                 sync.Once
 	examIntegrityReview            store.ExamIntegrityReviewStore
 	examIntegrityReviewOnce        sync.Once
+	examRecords                    store.ExamRecordsStore
+	examRecordsOnce                sync.Once
 	examResource                   store.ExamResourceStore
 	examResourceOnce               sync.Once
 	examRevision                   store.ExamRevisionStore
@@ -44,6 +48,10 @@ type retryStores struct {
 	examSubmissionOnce             sync.Once
 	executionGrant                 store.ExecutionGrantStore
 	executionGrantOnce             sync.Once
+	retention                      store.RetentionStore
+	retentionOnce                  sync.Once
+	retentionPolicy                store.RetentionPolicyStore
+	retentionPolicyOnce            sync.Once
 	servingNodeLease               store.ServingNodeLeaseStore
 	servingNodeLeaseOnce           sync.Once
 	examAuthoring                  store.ExamAuthoringStore
@@ -145,8 +153,18 @@ type examCorrectionStore struct {
 	layer *Layer
 }
 
+type examExportStore struct {
+	store.ExamExportStore
+	layer *Layer
+}
+
 type examIntegrityReviewStore struct {
 	store.ExamIntegrityReviewStore
+	layer *Layer
+}
+
+type examRecordsStore struct {
+	store.ExamRecordsStore
 	layer *Layer
 }
 
@@ -177,6 +195,16 @@ type examSubmissionStore struct {
 
 type executionGrantStore struct {
 	store.ExecutionGrantStore
+	layer *Layer
+}
+
+type retentionStore struct {
+	store.RetentionStore
+	layer *Layer
+}
+
+type retentionPolicyStore struct {
+	store.RetentionPolicyStore
 	layer *Layer
 }
 
@@ -468,6 +496,26 @@ func (l *Layer) ExamIntegrityReview() store.ExamIntegrityReviewStore {
 		}
 	})
 	return l.stores.examIntegrityReview
+}
+
+func (l *Layer) ExamRecords() store.ExamRecordsStore {
+	l.stores.examRecordsOnce.Do(func() {
+		next := l.Store.ExamRecords()
+		if next != nil {
+			l.stores.examRecords = &examRecordsStore{ExamRecordsStore: next, layer: l}
+		}
+	})
+	return l.stores.examRecords
+}
+
+func (l *Layer) ExamExport() store.ExamExportStore {
+	l.stores.examExportOnce.Do(func() {
+		next := l.Store.ExamExport()
+		if next != nil {
+			l.stores.examExport = &examExportStore{ExamExportStore: next, layer: l}
+		}
+	})
+	return l.stores.examExport
 }
 
 func (l *Layer) ExamResource() store.ExamResourceStore {
@@ -770,6 +818,26 @@ func (l *Layer) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicySto
 	return l.stores.desktopCompatibilityPolicy
 }
 
+func (l *Layer) RetentionPolicy() store.RetentionPolicyStore {
+	l.stores.retentionPolicyOnce.Do(func() {
+		next := l.Store.RetentionPolicy()
+		if next != nil {
+			l.stores.retentionPolicy = &retentionPolicyStore{RetentionPolicyStore: next, layer: l}
+		}
+	})
+	return l.stores.retentionPolicy
+}
+
+func (l *Layer) Retention() store.RetentionStore {
+	l.stores.retentionOnce.Do(func() {
+		next := l.Store.Retention()
+		if next != nil {
+			l.stores.retention = &retentionStore{RetentionStore: next, layer: l}
+		}
+	})
+	return l.stores.retention
+}
+
 func (l *Layer) ClusterDiscovery() store.ClusterDiscoveryStore {
 	l.stores.clusterDiscoveryOnce.Do(func() {
 		next := l.Store.ClusterDiscovery()
@@ -809,13 +877,17 @@ var (
 	_ store.ExamAttemptStore                = (*examAttemptStore)(nil)
 	_ store.ExamAttemptWorkspaceStore       = (*examAttemptWorkspaceStore)(nil)
 	_ store.ExamCorrectionStore             = (*examCorrectionStore)(nil)
+	_ store.ExamExportStore                 = (*examExportStore)(nil)
 	_ store.ExamIntegrityReviewStore        = (*examIntegrityReviewStore)(nil)
+	_ store.ExamRecordsStore                = (*examRecordsStore)(nil)
 	_ store.ExamResourceStore               = (*examResourceStore)(nil)
 	_ store.ExamRevisionStore               = (*examRevisionStore)(nil)
 	_ store.ExamSittingStore                = (*examSittingStore)(nil)
 	_ store.ExamStarterWorkspaceStore       = (*examStarterWorkspaceStore)(nil)
 	_ store.ExamSubmissionStore             = (*examSubmissionStore)(nil)
 	_ store.ExecutionGrantStore             = (*executionGrantStore)(nil)
+	_ store.RetentionStore                  = (*retentionStore)(nil)
+	_ store.RetentionPolicyStore            = (*retentionPolicyStore)(nil)
 	_ store.ServingNodeLeaseStore           = (*servingNodeLeaseStore)(nil)
 	_ store.ExamAuthoringStore              = (*examAuthoringStore)(nil)
 	_ store.CommandOutcomeStore             = (*commandOutcomeStore)(nil)

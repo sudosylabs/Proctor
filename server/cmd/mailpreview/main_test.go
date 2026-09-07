@@ -54,8 +54,8 @@ func TestRunWritesDeterministicRepresentativePreview(t *testing.T) {
 		}
 	}
 	keys := model.AllMailTemplateKeys()
-	if len(keys) != 44 {
-		t.Fatalf("preview catalog keys = %d, want 44", len(keys))
+	if len(keys) != 46 {
+		t.Fatalf("preview catalog keys = %d, want 46", len(keys))
 	}
 	for _, catalogKey := range keys {
 		key := string(catalogKey)

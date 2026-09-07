@@ -61,4 +61,27 @@ func TestExecutionGrantValidationFailsClosed(t *testing.T) {
 	if err := invalid.Validate(); err == nil {
 		t.Fatal("released grant without released_at was accepted")
 	}
+	for _, test := range []struct {
+		name string
+		edit func(*ExecutionGrant)
+	}{
+		{"negative applied cursor", func(g *ExecutionGrant) { g.AppliedWorkspaceCursor = -1 }},
+		{"negative pending cursor", func(g *ExecutionGrant) { g.PendingWorkspaceCursor = -1 }},
+		{"unmarked pending cursor", func(g *ExecutionGrant) { g.PendingWorkspaceCursor = 1 }},
+		{"backward pending cursor", func(g *ExecutionGrant) {
+			g.AppliedWorkspaceCursor, g.WorkspacePending, g.PendingWorkspaceCursor = 2, true, 1
+		}},
+		{"overlapping pending effects", func(g *ExecutionGrant) {
+			g.WorkspacePending, g.LifecyclePending = true, true
+			g.PendingSittingState, g.PendingSittingRevision = ExamSittingOpen, 1
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := *grant
+			test.edit(&invalid)
+			if err := invalid.Validate(); err == nil {
+				t.Fatal("invalid workspace progress was accepted")
+			}
+		})
+	}
 }

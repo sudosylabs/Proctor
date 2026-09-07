@@ -31,6 +31,17 @@
       }
     },
     "parameters": {
+      "AcademicExpectedRevision": {
+        "description": "Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility.",
+        "in": "query",
+        "name": "expected_revision",
+        "required": false,
+        "schema": {
+          "format": "int64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
       "AcademicPeriodID": {
         "description": "The Academic Period identifier.",
         "in": "path",
@@ -175,6 +186,15 @@
           "$ref": "#/components/schemas/ID"
         }
       },
+      "ExamExportID": {
+        "description": "The opaque export request identity, within its exact Sitting or Submission route scope.",
+        "in": "path",
+        "name": "exam_export_id",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ID"
+        }
+      },
       "ExamID": {
         "description": "The Exam identifier.",
         "in": "path",
@@ -306,6 +326,15 @@
           "minLength": 1,
           "pattern": "^[A-Za-z0-9._~-]+$",
           "type": "string"
+        }
+      },
+      "RetentionHoldID": {
+        "description": "The preservation hold identifier.",
+        "in": "path",
+        "name": "retention_hold_id",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ID"
         }
       },
       "ReturnTo": {
@@ -575,6 +604,23 @@
         "description": "Exact current Sitting revision and private rationale for pre-open cancellation.",
         "required": true
       },
+      "ChangeRetentionControl": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_policy_revision": 1,
+              "expected_revision": 1,
+              "preview_id": "4cbxoynrnbnzpkfcghhsy3qxuy",
+              "state": "enabled"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionControlRequest"
+            }
+          }
+        },
+        "description": "Exact current control and policy revisions plus the intended state. Enabling also requires an unexpired preview for that policy revision.",
+        "required": true
+      },
       "ChangeUserEmail": {
         "content": {
           "application/json": {
@@ -647,6 +693,21 @@
           }
         },
         "description": "Supplies the one-time email-verification token delivered through the configured mail channel.",
+        "required": true
+      },
+      "CompleteExamRecords": {
+        "content": {
+          "application/json": {
+            "example": {
+              "acknowledged_evidence_revision": 0,
+              "expected_revision": 1
+            },
+            "schema": {
+              "$ref": "#/components/schemas/CompleteExamRecordsRequest"
+            }
+          }
+        },
+        "description": "Current completion revision and acknowledged evidence revision for the Closed Sitting whose Reviews are finalized or explicitly waived.",
         "required": true
       },
       "CompletePasswordReset": {
@@ -832,6 +893,23 @@
         "description": "The owning Academic Unit, initial Draft title, and optional Markdown instructions for a new Exam.",
         "required": true
       },
+      "CreateExamExport": {
+        "content": {
+          "application/json": {
+            "example": {
+              "categories": [
+                "work",
+                "integrity"
+              ]
+            },
+            "schema": {
+              "$ref": "#/components/schemas/CreateExamExportRequest"
+            }
+          }
+        },
+        "description": "Explicit whole-request category selection; omitted, empty, duplicate or unknown categories are rejected.",
+        "required": true
+      },
       "CreateExamStarterWorkspaceDirectory": {
         "content": {
           "application/json": {
@@ -896,6 +974,35 @@
           }
         },
         "description": "Canonical and human-facing presentation for a Level owned by the route Programme.",
+        "required": true
+      },
+      "CreateRetentionHold": {
+        "content": {
+          "application/json": {
+            "example": {
+              "private_reason": "Preserve records until the institution concludes its review.",
+              "reason_code": "institution_request"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/CreateRetentionHoldRequest"
+            }
+          }
+        },
+        "description": "Optional Sitting or Submission scope and a bounded private reason. Omitting both scope identifiers preserves the entire Exam, including later descendants.",
+        "required": true
+      },
+      "CreateRetentionPreview": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_policy_revision": 1
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionPreviewRequest"
+            }
+          }
+        },
+        "description": "Current policy revision to assess. The resulting preview lasts one hour and does not enable cleanup.",
         "required": true
       },
       "CreateRole": {
@@ -1163,6 +1270,20 @@
         "description": "Exact Sitting revision, strictly later deadline, and private manager rationale.",
         "required": true
       },
+      "ExternalReauthentication": {
+        "content": {
+          "application/json": {
+            "example": {
+              "task": "security"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ExternalReauthenticationRequest"
+            }
+          }
+        },
+        "description": "The bounded hosted task to return to after fresh authentication with the current Session's original provider. The sensitive action remains a separate explicit request.",
+        "required": true
+      },
       "Login": {
         "content": {
           "application/json": {
@@ -1239,6 +1360,20 @@
           }
         },
         "description": "Exact current Invitation revision for resend or revocation.",
+        "required": true
+      },
+      "PasswordReauthentication": {
+        "content": {
+          "application/json": {
+            "example": {
+              "password": "\u003credacted\u003e"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/PasswordReauthenticationRequest"
+            }
+          }
+        },
+        "description": "The current User's password, used to refresh primary proof for the existing password-authenticated Session before returning to the pending sensitive task.",
         "required": true
       },
       "PauseExamSitting": {
@@ -1325,6 +1460,22 @@
           }
         },
         "description": "Identifies the active suspension, expected Attempt revision, and private manager reason required for the audited re-allow transition.",
+        "required": true
+      },
+      "ReleaseRetentionHold": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_revision": 1,
+              "private_reason": "The institution has concluded its review and approved release.",
+              "reason_code": "case_closed"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ReleaseRetentionHoldRequest"
+            }
+          }
+        },
+        "description": "Current hold revision and the reason authorizing release. Releasing a hold starts no immediate deletion and cannot restore already retired records.",
         "required": true
       },
       "RemoveExamManager": {
@@ -1449,6 +1600,25 @@
         "description": "Exact pending revision and complete immutable package for the replacement Invitation.",
         "required": true
       },
+      "ReplaceRetentionPolicy": {
+        "content": {
+          "application/json": {
+            "example": {
+              "audit_retention_days": 0,
+              "deletion_grace_days": 0,
+              "expected_revision": 1,
+              "export_retention_days": 0,
+              "integrity_retention_days": 0,
+              "submission_retention_days": 0
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionPolicyRequest"
+            }
+          }
+        },
+        "description": "Complete configuration replacement. Every period is required, including zero values. Automatic deletion cannot be enabled.",
+        "required": true
+      },
       "ReplaceUserSettings": {
         "content": {
           "application/json": {
@@ -1477,6 +1647,22 @@
           }
         },
         "description": "Supplies the account email address to which an eligible password-reset message should be sent.",
+        "required": true
+      },
+      "ResetUserMFA": {
+        "content": {
+          "application/json": {
+            "example": {
+              "identity_verified": true,
+              "reason": "Authenticator is no longer available.",
+              "verification_reference": "case-2026-0042"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ResetUserMFARequest"
+            }
+          }
+        },
+        "description": "The administrator's identity-verification attestation, bounded reset reason, and reference to the Institution's verification record for the target User.",
         "required": true
       },
       "ResumeExamSitting": {
@@ -1808,6 +1994,24 @@
         },
         "description": "Mutable presentation fields for one User; omitted or null fields remain unchanged.",
         "required": true
+      },
+      "WaiveSubmissionReview": {
+        "content": {
+          "application/json": {
+            "example": {
+              "expected_discrepancy_count": 0,
+              "expected_review_revision": 0,
+              "expected_revision": 0,
+              "private_reason": "Reviewed the current inventory; no finalized Review is needed.",
+              "reason_code": "review_not_required"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/WaiveSubmissionReviewRequest"
+            }
+          }
+        },
+        "description": "Expected waiver and Review revisions, current discrepancy count, and the private reason for waiving a Review of this exact inventory.",
+        "required": true
       }
     },
     "responses": {
@@ -1926,7 +2130,15 @@
             }
           }
         },
-        "description": "Academic Unit Member collection"
+        "description": "Academic Unit Member collection",
+        "headers": {
+          "Link": {
+            "description": "Present only when a bounded page has more rows. Follow the relative URL with rel=\"next\"; its cursor and effective/history filter identify the continuation.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
       },
       "AcademicUnitOK": {
         "content": {
@@ -2361,7 +2573,15 @@
             }
           }
         },
-        "description": "Class Member collection"
+        "description": "Class Member collection",
+        "headers": {
+          "Link": {
+            "description": "Present only when a bounded page has more rows. Follow the relative URL with rel=\"next\"; its cursor and effective/history filter identify the continuation.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
       },
       "ClassOK": {
         "content": {
@@ -2592,6 +2812,125 @@
         },
         "description": "Exam and initial Draft created"
       },
+      "ExamExportAccepted": {
+        "content": {
+          "application/json": {
+            "example": {
+              "categories": [
+                "work"
+              ],
+              "construction_deadline": "2026-09-02T12:00:00Z",
+              "created_at": "2026-09-01T12:00:00Z",
+              "exam_id": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "exam_sitting_id": "nnnnnnnnnnnnnnnnnnnnnnnnnn",
+              "expires_at": "2026-09-02T12:00:00Z",
+              "file_count": 1,
+              "id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "policy_revision": 2,
+              "source_bytes": 128,
+              "state": "queued",
+              "submission_count": 1
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ExamExportResponse"
+            }
+          }
+        },
+        "description": "A fixed-expiry export request was accepted; poll its exact scoped resource.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "ExamExportArchive": {
+        "content": {
+          "application/zip": {
+            "schema": {
+              "format": "binary",
+              "type": "string"
+            }
+          }
+        },
+        "description": "Verified temporary ZIP archive; every new download is authorized and expiry checked. No public storage URL or backend identity is exposed.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          },
+          "Content-Disposition": {
+            "description": "Attachment with a safe server-generated filename.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "ETag": {
+            "description": "Quoted SHA-256 of the complete ZIP.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          "X-Content-Type-Options": {
+            "schema": {
+              "const": "nosniff",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ExamExportGone": {
+        "content": {
+          "application/problem+json": {
+            "example": {
+              "code": "exam.export.expired",
+              "detail": "The temporary export has expired.",
+              "request_id": "req_docs_export_expired",
+              "status": 410,
+              "title": "Export expired",
+              "type": "/problems/exam-export-expired"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ProblemDetails"
+            }
+          }
+        },
+        "description": "The fixed advertised archive expiry has passed; new downloads are denied.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
+      "ExamExportOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "categories": [
+                "work"
+              ],
+              "construction_deadline": "2026-09-02T12:00:00Z",
+              "created_at": "2026-09-01T12:00:00Z",
+              "exam_id": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "exam_sitting_id": "nnnnnnnnnnnnnnnnnnnnnnnnnn",
+              "expires_at": "2026-09-02T12:00:00Z",
+              "file_count": 1,
+              "id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "policy_revision": 2,
+              "source_bytes": 128,
+              "state": "queued",
+              "submission_count": 1
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ExamExportResponse"
+            }
+          }
+        },
+        "description": "Requester-only export metadata under current ordinary record authority.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
       "ExamIdentityOK": {
         "content": {
           "application/json": {
@@ -2777,6 +3116,57 @@
               "const": "nosniff",
               "type": "string"
             }
+          }
+        }
+      },
+      "ExamRecordsCompletionOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "completed_at": "2026-09-01T10:00:00Z",
+              "completed_by_user_id": "bnndrfg8ejkmcpqxot1uwisza3",
+              "completed_evidence_revision": 0,
+              "current": true,
+              "evidence_revision": 0,
+              "exam_sitting_id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "revision": 2
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ExamRecordsCompletionResponse"
+            }
+          }
+        },
+        "description": "The recorded completion result. Exact replay preserves its original timestamp; a separate current snapshot may have changed.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "ExamRecordsSnapshotOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "completion": {
+                "completed_evidence_revision": 0,
+                "current": false,
+                "evidence_revision": 0,
+                "exam_sitting_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                "revision": 1
+              },
+              "pending_reviews": 2,
+              "sitting_state": "closed",
+              "submission_count": 20
+            },
+            "schema": {
+              "$ref": "#/components/schemas/ExamRecordsSnapshotResponse"
+            }
+          }
+        },
+        "description": "Current Sitting records lifecycle and bounded eligibility counts.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
           }
         }
       },
@@ -3280,6 +3670,26 @@
           }
         }
       },
+      "ExternalReauthenticationStarted": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ExternalReauthenticationResponse"
+            }
+          }
+        },
+        "description": "Provider redirect plus a short-lived HttpOnly browser-binding cookie.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          },
+          "Set-Cookie": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "Forbidden": {
         "content": {
           "application/problem+json": {
@@ -3720,6 +4130,21 @@
           }
         }
       },
+      "PasswordReauthenticationOK": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SessionResponse"
+            }
+          }
+        },
+        "description": "The existing Session after successful fresh proof.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
       "PersonalAccessTokenCreated": {
         "content": {
           "application/json": {
@@ -3891,6 +4316,226 @@
         "headers": {
           "Cache-Control": {
             "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
+      "RetentionControlOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "revision": 1,
+              "state": "disabled",
+              "updated_at": "2026-09-01T12:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionControlResponse"
+            }
+          }
+        },
+        "description": "Current revision-bound cleanup control.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionHoldCreated": {
+        "content": {
+          "application/json": {
+            "example": {
+              "created_at": "2026-09-01T10:00:00Z",
+              "created_by_user_id": "dnndrfg8ejkmcpqxot1uwisza3",
+              "exam_id": "bnndrfg8ejkmcpqxot1uwisza3",
+              "id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "integrity_retired_submission_count": 0,
+              "private_reason": "Preserve records until the institution concludes its review.",
+              "reason_code": "institution_request",
+              "revision": 1,
+              "work_retired_submission_count": 0
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionHoldResponse"
+            }
+          }
+        },
+        "description": "Manual preservation hold; creation-time counts disclose already retired content.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionHoldOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "created_at": "2026-09-01T10:00:00Z",
+              "created_by_user_id": "dnndrfg8ejkmcpqxot1uwisza3",
+              "exam_id": "bnndrfg8ejkmcpqxot1uwisza3",
+              "id": "ybndrfg8ejkmcpqxot1uwisza3",
+              "integrity_retired_submission_count": 0,
+              "private_reason": "Preserve records until the institution concludes its review.",
+              "reason_code": "institution_request",
+              "revision": 1,
+              "work_retired_submission_count": 0
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionHoldResponse"
+            }
+          }
+        },
+        "description": "Released preservation hold with immutable creation-time coverage.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionHoldPageOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "items": []
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionHoldPageResponse"
+            }
+          }
+        },
+        "description": "Bounded hold page, including ancestor holds that cover the requested descendant.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionNoticesOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "items": []
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionNoticesResponse"
+            }
+          }
+        },
+        "description": "The current User’s notice page.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionPolicyOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "audit_retention_days": 0,
+              "automatic_deletion_enabled": false,
+              "candidate_notices": false,
+              "created_at": "2026-08-01T12:00:00Z",
+              "deletion_grace_days": 0,
+              "export_retention_days": 0,
+              "integrity_retention_days": 0,
+              "revision": 1,
+              "submission_retention_days": 0,
+              "updated_at": "2026-08-01T12:00:00Z"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionPolicyResponse"
+            }
+          }
+        },
+        "description": "Revisioned Institution retention configuration and current cleanup-approval projection.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionPreviewOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "audit": {
+                "awaiting_deadline": 0,
+                "eligible": 0,
+                "held": 0,
+                "purge_pending": 0,
+                "referenced": 0,
+                "source_protected": 0,
+                "total": 0,
+                "unconfigured": 0,
+                "unfinished": 0
+              },
+              "created_at": "2026-09-01T12:00:00Z",
+              "expires_at": "2026-09-01T13:00:00Z",
+              "id": "4cbxoynrnbnzpkfcghhsy3qxuy",
+              "integrity": {
+                "awaiting_deadline": 0,
+                "eligible": 0,
+                "export_protected": 0,
+                "held": 0,
+                "incomplete": 0,
+                "retired": 0,
+                "supporting_work": 0,
+                "total": 0,
+                "unconfigured": 0
+              },
+              "policy_revision": 1,
+              "receipts": {
+                "awaiting_deadline": 0,
+                "eligible": 0,
+                "held": 0,
+                "purge_pending": 0,
+                "referenced": 0,
+                "source_protected": 0,
+                "total": 0,
+                "unconfigured": 0,
+                "unfinished": 0
+              },
+              "work": {
+                "awaiting_deadline": 0,
+                "eligible": 0,
+                "export_protected": 0,
+                "held": 0,
+                "incomplete": 0,
+                "retired": 0,
+                "supporting_work": 0,
+                "total": 0,
+                "unconfigured": 0
+              }
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionPreviewResponse"
+            }
+          }
+        },
+        "description": "Content-free eligibility assessment, valid for one hour.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
+          }
+        }
+      },
+      "RetentionRecordsOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "as_of": "2026-09-01T12:00:00Z",
+              "items": [],
+              "policy_revision": 1
+            },
+            "schema": {
+              "$ref": "#/components/schemas/RetentionRecordsResponse"
+            }
+          }
+        },
+        "description": "Bounded eligibility page; each Submission contributes two category records.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
           }
         }
       },
@@ -4110,6 +4755,24 @@
           },
           "X-Content-Type-Options": {
             "$ref": "#/components/headers/NoSniff"
+          }
+        }
+      },
+      "SubmissionReviewWaiverOK": {
+        "content": {
+          "application/json": {
+            "example": {
+              "waiver": null
+            },
+            "schema": {
+              "$ref": "#/components/schemas/SubmissionReviewWaiverEnvelope"
+            }
+          }
+        },
+        "description": "Private decision for the current inventory, or null when no decision exists.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/PrivateNoStore"
           }
         }
       },
@@ -4492,6 +5155,12 @@
             ],
             "type": "string"
           },
+          "revision": {
+            "description": "Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "start_at": {
             "description": "Inclusive start time in Unix milliseconds.",
             "format": "int64",
@@ -4504,6 +5173,7 @@
           }
         },
         "required": [
+          "revision",
           "id",
           "create_at",
           "update_at",
@@ -4603,12 +5273,19 @@
           "parent_id": {
             "$ref": "#/components/schemas/ID"
           },
+          "revision": {
+            "description": "Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "update_at": {
             "format": "int64",
             "type": "integer"
           }
         },
         "required": [
+          "revision",
           "id",
           "create_at",
           "update_at",
@@ -6933,6 +7610,10 @@
               "delete_entry"
             ],
             "type": "string"
+          },
+          "recursive": {
+            "description": "When true, this directory deletion removes old_path and all descendants whose paths start with old_path followed by a slash. Clients apply the entire subtree removal at this one cursor.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7147,12 +7828,19 @@
           "programme_level_id": {
             "$ref": "#/components/schemas/ID"
           },
+          "revision": {
+            "description": "Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "update_at": {
             "format": "int64",
             "type": "integer"
           }
         },
         "required": [
+          "revision",
           "id",
           "create_at",
           "update_at",
@@ -7162,6 +7850,26 @@
           "name",
           "display_name",
           "description"
+        ],
+        "type": "object"
+      },
+      "CompleteExamRecordsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledged_evidence_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "acknowledged_evidence_revision"
         ],
         "type": "object"
       },
@@ -7569,6 +8277,28 @@
         ],
         "type": "object"
       },
+      "CreateExamExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "enum": [
+                "work",
+                "integrity"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "type": "object"
+      },
       "CreateExamRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7731,6 +8461,42 @@
         "required": [
           "name",
           "display_name"
+        ],
+        "type": "object"
+      },
+      "CreateRetentionHoldRequest": {
+        "additionalProperties": false,
+        "description": "Omit both nested IDs for an Exam hold, provide Sitting ID for a Sitting hold, or provide both for an exact Submission hold. Explicit null and empty IDs are rejected.",
+        "properties": {
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "reason_code",
+          "private_reason"
         ],
         "type": "object"
       },
@@ -7940,12 +8706,50 @@
       },
       "DeleteCandidateWorkspaceEntryRequest": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "else": {
+              "not": {
+                "required": [
+                  "expected_workspace_cursor"
+                ]
+              }
+            },
+            "if": {
+              "properties": {
+                "recursive": {
+                  "const": true
+                }
+              },
+              "required": [
+                "recursive"
+              ]
+            },
+            "then": {
+              "not": {
+                "required": [
+                  "expected_content_version"
+                ]
+              },
+              "required": [
+                "expected_workspace_cursor"
+              ]
+            }
+          }
+        ],
         "properties": {
           "expected_content_version": {
-            "$ref": "#/components/schemas/WorkspaceContentVersion"
+            "$ref": "#/components/schemas/WorkspaceContentVersion",
+            "description": "Required for file deletion; omitted for directories."
           },
           "expected_path": {
             "$ref": "#/components/schemas/StarterWorkspacePath"
+          },
+          "expected_workspace_cursor": {
+            "description": "Required only when recursive is true. The complete Workspace cursor observed by the client; any intervening mutation causes a conflict.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
           },
           "generation": {
             "format": "int64",
@@ -7954,6 +8758,11 @@
           },
           "participation_id": {
             "$ref": "#/components/schemas/ID"
+          },
+          "recursive": {
+            "default": false,
+            "description": "Delete this directory and every descendant atomically. Requires expected_workspace_cursor and cannot be used for a file.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -9110,6 +9919,107 @@
         ],
         "type": "object"
       },
+      "ExamExportResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "archive_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "archive_size_bytes": {
+            "format": "int64",
+            "maximum": 8724152320,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "categories": {
+            "items": {
+              "enum": [
+                "work",
+                "integrity"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "construction_deadline": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "exam_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "file_count": {
+            "maximum": 50000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "ready_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source_bytes": {
+            "format": "int64",
+            "maximum": 8589934592,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "ready",
+              "failed",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "submission_count": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "id",
+          "exam_id",
+          "exam_sitting_id",
+          "categories",
+          "state",
+          "policy_revision",
+          "created_at",
+          "expires_at",
+          "construction_deadline",
+          "submission_count",
+          "file_count",
+          "source_bytes"
+        ],
+        "type": "object"
+      },
       "ExamIdentityResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9708,6 +10618,87 @@
           "schema_version",
           "connection_loss",
           "focus_loss"
+        ],
+        "type": "object"
+      },
+      "ExamRecordsCompletionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "completed_by_user_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "completed_evidence_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "evidence_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "stale_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exam_sitting_id",
+          "revision",
+          "evidence_revision",
+          "completed_evidence_revision",
+          "current"
+        ],
+        "type": "object"
+      },
+      "ExamRecordsSnapshotResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completion": {
+            "$ref": "#/components/schemas/ExamRecordsCompletionResponse"
+          },
+          "pending_reviews": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sitting_state": {
+            "enum": [
+              "scheduled",
+              "open",
+              "closed",
+              "paused",
+              "closing",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "submission_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "completion",
+          "sitting_state",
+          "submission_count",
+          "pending_reviews"
         ],
         "type": "object"
       },
@@ -10770,7 +11761,7 @@
       },
       "ExamSubmissionManagerResponse": {
         "additionalProperties": false,
-        "description": "Manager-safe immutable Submission header without Workspace bytes or integrity evidence.",
+        "description": "Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible.",
         "properties": {
           "exam_attempt_id": {
             "$ref": "#/components/schemas/ID"
@@ -10786,16 +11777,22 @@
             "$ref": "#/components/schemas/ID"
           },
           "final_focus_loss_sequence": {
-            "description": "Final focus-loss signal sequence acknowledged at submission.",
+            "description": "Final focus-loss signal sequence acknowledged at submission. Present only while integrity is retained, including when zero.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
+          "integrity_retired_at": {
+            "description": "Present only when integrity_state is retired. Retirement does not represent a settled integrity result.",
+            "format": "date-time",
+            "type": "string"
+          },
           "integrity_state": {
-            "description": "Whether the retained integrity sequence is complete or contains a known gap.",
+            "description": "Whether integrity is complete, contains a known gap, or has been permanently retired under Institution policy.",
             "enum": [
               "settled",
-              "gapped"
+              "gapped",
+              "retired"
             ],
             "type": "string"
           },
@@ -10828,7 +11825,7 @@
             "type": "string"
           },
           "unresolved_integrity_count": {
-            "description": "Count of integrity items still unresolved for review.",
+            "description": "Count of integrity items still unresolved for review. Present only while integrity is retained, including when zero.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -10854,9 +11851,7 @@
           "manifest_digest",
           "manifest_entry_count",
           "manifest_total_file_bytes",
-          "final_focus_loss_sequence",
           "integrity_state",
-          "unresolved_integrity_count",
           "submitted_at"
         ],
         "type": "object"
@@ -11393,6 +12388,35 @@
         },
         "required": [
           "invitation_claim"
+        ],
+        "type": "object"
+      },
+      "ExternalReauthenticationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "task": {
+            "enum": [
+              "security",
+              "connect-provider"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "task"
+        ],
+        "type": "object"
+      },
+      "ExternalReauthenticationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "redirect_url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "redirect_url"
         ],
         "type": "object"
       },
@@ -12526,7 +13550,30 @@
       "MFAStatusResponse": {
         "additionalProperties": false,
         "properties": {
+          "authentication_method": {
+            "enum": [
+              "password",
+              "oidc",
+              "cas"
+            ],
+            "type": "string"
+          },
+          "authentication_provider_id": {
+            "description": "Original provider for an external Session; absent for password Sessions.",
+            "type": "string"
+          },
+          "authentication_strength": {
+            "enum": [
+              "single_factor",
+              "multi_factor"
+            ],
+            "type": "string"
+          },
           "enabled": {
+            "type": "boolean"
+          },
+          "mfa_recovery_required": {
+            "description": "Whether this Session is restricted to fresh primary proof and local authenticator enrollment after an assisted reset.",
             "type": "boolean"
           },
           "pending": {
@@ -12536,12 +13583,24 @@
             "format": "int64",
             "type": "integer"
           },
+          "recently_authenticated": {
+            "type": "boolean"
+          },
           "recovery_codes_remaining": {
             "minimum": 0,
             "type": "integer"
+          },
+          "service_enabled": {
+            "description": "Whether local authenticator enrollment and verification are currently available.",
+            "type": "boolean"
           }
         },
         "required": [
+          "service_enabled",
+          "mfa_recovery_required",
+          "authentication_method",
+          "authentication_strength",
+          "recently_authenticated",
           "enabled",
           "pending",
           "recovery_codes_remaining"
@@ -13353,6 +14412,21 @@
         ],
         "type": "object"
       },
+      "PasswordReauthenticationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "description": "The current User's password; never log or persist this input.",
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
       "PasswordResetCompletionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13541,12 +14615,19 @@
           "programme_id": {
             "$ref": "#/components/schemas/ID"
           },
+          "revision": {
+            "description": "Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "update_at": {
             "format": "int64",
             "type": "integer"
           }
         },
         "required": [
+          "revision",
           "id",
           "create_at",
           "update_at",
@@ -13590,12 +14671,19 @@
           "name": {
             "type": "string"
           },
+          "revision": {
+            "description": "Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "update_at": {
             "format": "int64",
             "type": "integer"
           }
         },
         "required": [
+          "revision",
           "id",
           "create_at",
           "update_at",
@@ -13809,6 +14897,48 @@
         ],
         "type": "object"
       },
+      "ReleaseRetentionHoldRequest": {
+        "additionalProperties": false,
+        "description": "Supply the same exact nested scope used to create this hold. Release never restores previously retired content.",
+        "properties": {
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "expected_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "reason_code",
+          "private_reason"
+        ],
+        "type": "object"
+      },
       "RemoveExamManagerRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13844,6 +14974,11 @@
             "format": "int64",
             "minimum": 1,
             "type": "integer"
+          },
+          "recursive": {
+            "default": false,
+            "description": "Remove this directory and every descendant atomically under the expected Draft revision. Omit for a file or ordinary empty-directory removal.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -14014,6 +15149,801 @@
           "expected_revision",
           "purpose",
           "email"
+        ],
+        "type": "object"
+      },
+      "ResetUserMFARequest": {
+        "additionalProperties": false,
+        "properties": {
+          "identity_verified": {
+            "const": true,
+            "description": "Attests that institution identity verification has been completed.",
+            "type": "boolean"
+          },
+          "reason": {
+            "description": "A bounded administrative reason. Do not include passwords, secrets, recovery codes or identity documents.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "verification_reference": {
+            "description": "Reference to the institution's verification record; do not include the verification evidence itself.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_verified",
+          "reason",
+          "verification_reference"
+        ],
+        "type": "object"
+      },
+      "RetentionControlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "preview_id": {
+            "$ref": "#/components/schemas/ID",
+            "description": "Required to enable; omit when pausing."
+          },
+          "state": {
+            "enum": [
+              "enabled",
+              "paused"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "expected_policy_revision",
+          "state"
+        ],
+        "type": "object"
+      },
+      "RetentionControlResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "approved_preview_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "disabled",
+              "enabled",
+              "paused"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "state",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "RetentionExpiryCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "awaiting_deadline": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eligible": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "held": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purge_pending": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "referenced": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_protected": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unconfigured": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unfinished": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "eligible",
+          "awaiting_deadline",
+          "unconfigured",
+          "unfinished",
+          "referenced",
+          "held",
+          "purge_pending",
+          "source_protected"
+        ],
+        "type": "object"
+      },
+      "RetentionHoldPageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionHoldResponse"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "next_cursor": {
+            "maxLength": 512,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "RetentionHoldResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "integrity_retired_submission_count": {
+            "description": "Number of descendant Submissions whose integrity category had already retired when this hold was created.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          },
+          "release_private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "release_reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          },
+          "released_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "released_by_user_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "work_retired_submission_count": {
+            "description": "Number of descendant Submissions whose work had already retired when this hold was created. These records cannot be restored by the hold.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "exam_id",
+          "revision",
+          "created_at",
+          "created_by_user_id",
+          "reason_code",
+          "private_reason",
+          "work_retired_submission_count",
+          "integrity_retired_submission_count"
+        ],
+        "type": "object"
+      },
+      "RetentionNoticeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "work",
+              "integrity"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delivery_error_code": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "delivery_state": {
+            "enum": [
+              "pending",
+              "queued",
+              "sending",
+              "accepted",
+              "suppressed",
+              "failed",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "exam_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "retire_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retirement_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "state": {
+            "enum": [
+              "grace",
+              "cancelled",
+              "retired"
+            ],
+            "type": "string"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "retirement_id",
+          "exam_id",
+          "exam_sitting_id",
+          "submission_id",
+          "category",
+          "state",
+          "created_at",
+          "retire_after",
+          "delivery_state"
+        ],
+        "type": "object"
+      },
+      "RetentionNoticesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionNoticeResponse"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "next_cursor": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "RetentionPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "audit_retention_days": {
+            "description": "Lifetime from each completed audit or receipt event. Zero is indefinite. Unfinished work and current references protect dependent records.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "candidate_notices": {
+            "default": false,
+            "description": "Also create candidate notices when their records enter grace. Manager and operator notices are always reserved durably.",
+            "type": "boolean"
+          },
+          "deletion_grace_days": {
+            "description": "Positive per-record grace required for cleanup approval. Zero is unconfigured and cannot authorize immediate deletion. Seven days is the initial recommendation.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "description": "The revision read by the editor. A stale revision cannot overwrite newer settings.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "export_retention_days": {
+            "description": "Temporary archive lifetime. Creation requires an explicit valid value from one through seven days; zero or larger existing values cannot create an export. Existing archive expiry is fixed at request time.",
+            "maximum": 7,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "integrity_retention_days": {
+            "description": "Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. Unresolved Reviews block completion.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "submission_retention_days": {
+            "description": "Work lifetime from current Sitting Records Completion. Zero is indefinite. Supporting integrity, holds and source protections can extend preservation.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "submission_retention_days",
+          "integrity_retention_days",
+          "audit_retention_days",
+          "export_retention_days",
+          "deletion_grace_days"
+        ],
+        "type": "object"
+      },
+      "RetentionPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audit_retention_days": {
+            "description": "Completed audit and receipt lifetime from their own event, subject to unfinished work and durable references. Zero is indefinite.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "automatic_deletion_enabled": {
+            "description": "True only when a separate active cleanup approval matches this exact policy revision and a positive grace period is configured.",
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "candidate_notices": {
+            "description": "Whether candidate notices accompany mandatory manager and operator notices.",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deletion_grace_days": {
+            "description": "Per-record grace required before logical retirement. Zero is unconfigured and prevents cleanup approval.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "export_retention_days": {
+            "description": "Temporary archive lifetime. Creation requires one through seven days; existing archive expiry is fixed at request time.",
+            "maximum": 7,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "integrity_retention_days": {
+            "description": "Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "description": "Current policy revision.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "submission_retention_days": {
+            "description": "Work lifetime from current Sitting Records Completion. Zero is indefinite; integrity dependencies and preservation holds remain effective.",
+            "maximum": 36500,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "submission_retention_days",
+          "integrity_retention_days",
+          "audit_retention_days",
+          "export_retention_days",
+          "deletion_grace_days",
+          "candidate_notices",
+          "automatic_deletion_enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "RetentionPreviewCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "awaiting_deadline": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eligible": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "export_protected": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "held": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "incomplete": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retired": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "supporting_work": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unconfigured": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "eligible",
+          "awaiting_deadline",
+          "incomplete",
+          "held",
+          "unconfigured",
+          "supporting_work",
+          "export_protected",
+          "retired"
+        ],
+        "type": "object"
+      },
+      "RetentionPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_policy_revision"
+        ],
+        "type": "object"
+      },
+      "RetentionPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audit": {
+            "$ref": "#/components/schemas/RetentionExpiryCounts"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "integrity": {
+            "$ref": "#/components/schemas/RetentionPreviewCounts"
+          },
+          "policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "receipts": {
+            "$ref": "#/components/schemas/RetentionExpiryCounts"
+          },
+          "work": {
+            "$ref": "#/components/schemas/RetentionPreviewCounts"
+          }
+        },
+        "required": [
+          "id",
+          "policy_revision",
+          "created_at",
+          "expires_at",
+          "work",
+          "integrity",
+          "audit",
+          "receipts"
+        ],
+        "type": "object"
+      },
+      "RetentionRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "blocker": {
+            "enum": [
+              "",
+              "retired",
+              "records_incomplete",
+              "preservation_hold",
+              "retention_unconfigured",
+              "supporting_integrity",
+              "export_in_progress",
+              "retention_period"
+            ],
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "work",
+              "integrity"
+            ],
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "completion_current": {
+            "type": "boolean"
+          },
+          "completion_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eligible_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "exam_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "exam_sitting_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "export_protected_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "has_integrity": {
+            "type": "boolean"
+          },
+          "held": {
+            "type": "boolean"
+          },
+          "retired_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retirement": {
+            "$ref": "#/components/schemas/RetentionRetirement"
+          },
+          "shared_published_objects": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "exam_id",
+          "exam_sitting_id",
+          "submission_id",
+          "category",
+          "completion_revision",
+          "completion_current",
+          "has_integrity",
+          "held",
+          "shared_published_objects",
+          "blocker"
+        ],
+        "type": "object"
+      },
+      "RetentionRecordsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionRecord"
+            },
+            "maxItems": 400,
+            "type": "array"
+          },
+          "next_cursor": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy_revision",
+          "as_of",
+          "items"
+        ],
+        "type": "object"
+      },
+      "RetentionRetirement": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "control_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "policy_revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "purge_pending": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purge_verified": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retire_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retired_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scheduled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "grace",
+              "cancelled",
+              "retired"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "policy_revision",
+          "control_revision",
+          "completion_revision",
+          "scheduled_at",
+          "retire_after",
+          "purge_pending",
+          "purge_verified"
         ],
         "type": "object"
       },
@@ -14316,6 +16246,15 @@
             "format": "int64",
             "type": "integer"
           },
+          "mfa_recovery_required": {
+            "description": "Whether this Session is restricted to MFA reenrollment after an assisted reset.",
+            "type": "boolean"
+          },
+          "reauthenticated_at": {
+            "description": "Most recent fresh primary proof for the original Session method, independent of initial authentication and MFA history.",
+            "format": "int64",
+            "type": "integer"
+          },
           "revocation_reason": {
             "description": "Localized presentation of revocation_reason_code.",
             "type": "string"
@@ -14331,6 +16270,7 @@
               "desktop_registration_revoked",
               "external_identity_unlinked",
               "inactive_user",
+              "mfa_reset",
               "password_removed",
               "password_reset",
               "refresh_replay",
@@ -14361,6 +16301,7 @@
           "client_type",
           "authentication_method",
           "authentication_strength",
+          "mfa_recovery_required",
           "authenticated_at",
           "last_activity_at",
           "idle_expires_at",
@@ -14456,12 +16397,22 @@
             "format": "int64",
             "type": "integer"
           },
+          "mfa_recovery_required": {
+            "description": "Ordinary access remains unavailable until a new local authenticator is activated.",
+            "type": "boolean"
+          },
+          "reauthenticated_at": {
+            "description": "Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.",
+            "format": "int64",
+            "type": "integer"
+          },
           "revocation_reason": {
             "description": "Localized presentation of revocation_reason_code.",
             "type": "string"
           },
           "revocation_reason_code": {
             "enum": [
+              "mfa_reset",
               "account_disabled",
               "access_policy_changed",
               "administrator_all_sessions",
@@ -14501,6 +16452,7 @@
           "client_type",
           "authentication_method",
           "authentication_strength",
+          "mfa_recovery_required",
           "authenticated_at",
           "last_activity_at",
           "idle_expires_at",
@@ -14801,6 +16753,85 @@
         ],
         "type": "object"
       },
+      "SubmissionReviewWaiverEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "waiver": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SubmissionReviewWaiverResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "waiver"
+        ],
+        "type": "object"
+      },
+      "SubmissionReviewWaiverResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_user_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "discrepancy_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "review_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "submission_id": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "submission_id",
+          "revision",
+          "review_revision",
+          "discrepancy_count",
+          "actor_user_id",
+          "recorded_at",
+          "reason_code",
+          "private_reason"
+        ],
+        "type": "object"
+      },
       "SubmitExamAttemptRequest": {
         "additionalProperties": false,
         "properties": {
@@ -14998,6 +17029,12 @@
               "null"
             ]
           },
+          "expected_revision": {
+            "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
           "name": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
             "type": [
@@ -15033,6 +17070,12 @@
               "string",
               "null"
             ]
+          },
+          "expected_revision": {
+            "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
           },
           "name": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -15075,6 +17118,12 @@
               "string",
               "null"
             ]
+          },
+          "expected_revision": {
+            "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
           },
           "name": {
             "description": "Omitted or null leaves the value unchanged.",
@@ -15251,7 +17300,7 @@
       },
       "UpdateProgrammeLevelRequest": {
         "additionalProperties": false,
-        "description": "Mutable Programme Level fields; omitted or null values remain unchanged.",
+        "description": "Mutable Programme Level fields; omitted or null metadata values remain unchanged; expected_revision, when present, must be a positive integer.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -15266,6 +17315,12 @@
               "string",
               "null"
             ]
+          },
+          "expected_revision": {
+            "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
           },
           "name": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -15279,7 +17334,7 @@
       },
       "UpdateProgrammeRequest": {
         "additionalProperties": false,
-        "description": "Mutable Programme fields; omitted or null values remain unchanged.",
+        "description": "Mutable Programme fields; omitted or null metadata values remain unchanged; expected_revision, when present, must be a positive integer.",
         "properties": {
           "description": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -15294,6 +17349,12 @@
               "string",
               "null"
             ]
+          },
+          "expected_revision": {
+            "description": "Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
           },
           "name": {
             "description": "Omitted or null leaves the value unchanged. An empty string is present and subject to validation.",
@@ -15572,6 +17633,53 @@
           "revision",
           "writable",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "WaiveSubmissionReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_discrepancy_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_review_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "private_reason": {
+            "description": "Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason_code": {
+            "description": "Closed operational audit code. Write case-specific details only in private_reason.",
+            "enum": [
+              "institution_request",
+              "integrity_review",
+              "records_review",
+              "review_not_required",
+              "case_closed",
+              "mistake",
+              "other"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "expected_review_revision",
+          "expected_discrepancy_count",
+          "reason_code",
+          "private_reason"
         ],
         "type": "object"
       },
@@ -15873,6 +17981,11 @@
       "delete": {
         "description": "Archives one Academic Period only after proving that no active Class or enrollment still depends on it. History is retained, and the operation never cascades into Class deletion, membership termination, or student progression.",
         "operationId": "archiveAcademicPeriod",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AcademicExpectedRevision"
+          }
+        ],
         "responses": {
           "204": {
             "$ref": "#/components/responses/AcademicPeriodArchived"
@@ -16326,6 +18439,11 @@
       "delete": {
         "description": "Archives one empty eligible Academic Unit while retaining hierarchy and audit history. Active descendants, Programmes, memberships, or authorization dependencies block the transition rather than being cascaded.",
         "operationId": "archiveAcademicUnit",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AcademicExpectedRevision"
+          }
+        ],
         "responses": {
           "204": {
             "$ref": "#/components/responses/AcademicUnitArchived"
@@ -16957,11 +19075,33 @@
     },
     "/api/v1/academic-units/{academic_unit_id}/members": {
       "get": {
-        "description": "Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant.",
+        "description": "Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
         "operationId": "listAcademicUnitMembers",
         "parameters": [
           {
-            "description": "Unix time in milliseconds at which membership must be effective; ignored when history is true.",
+            "description": "Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Unix time in milliseconds at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
             "name": "active_at",
             "required": false,
@@ -16972,7 +19112,7 @@
             }
           },
           {
-            "description": "When true, return membership history and ignore active_at.",
+            "description": "When true, return membership history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true.",
             "in": "query",
             "name": "history",
             "required": false,
@@ -18538,7 +20678,7 @@
             "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/auth/logout"
           }
         ],
-        "x-proctor-auth": "session_required",
+        "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
           "authentication.invalid_token",
@@ -18692,6 +20832,7 @@
         ],
         "x-proctor-auth": "public",
         "x-proctor-error-codes": [
+          "authentication.invalid_credentials",
           "request.invalid",
           "authentication.external.invalid",
           "authentication.external.provider_not_found",
@@ -18836,6 +20977,156 @@
           "authentication.external.rejected",
           "authentication.external.unavailable",
           "authentication.internal"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/auth/reauthenticate/external": {
+      "post": {
+        "description": "Starts fresh authentication with the original provider and binds the callback to the same User, external identity, Session and credential. OIDC requires a fresh auth_time using max_age=0 and prompt=login. CAS uses renew on login and ticket validation. Success refreshes primary-proof recency without replacing original authentication or MFA history. The selected hosted task is a closed continuation; its final sensitive action remains explicit.",
+        "operationId": "beginExternalReauthentication",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ExternalReauthentication"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExternalReauthenticationStarted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Refresh the current Session's original provider proof",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "mfa_recovery_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authentication.csrf.invalid",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "request.invalid",
+          "authentication.reauthentication_method_required",
+          "authentication.external.request.invalid",
+          "authentication.external.provider_not_found",
+          "authentication.rate_limited",
+          "authentication.rate_limit_unavailable",
+          "authentication.external.unavailable",
+          "authentication.external.rejected",
+          "authentication.internal",
+          "audit.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/auth/reauthenticate/password": {
+      "post": {
+        "description": "Verifies the password of the exact current User and refreshes primary-proof recency for an existing password Session. Original authentication and MFA history, Session identity, credentials and expiry are preserved. A Session originally established by an external provider must use that provider's reauthentication journey. The final sensitive operation remains a separate explicit request. This operation is rate limited and its successful proof and required audit commit atomically.",
+        "operationId": "reauthenticatePassword",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/PasswordReauthentication"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PasswordReauthenticationOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Refresh the current Session's password proof",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "mfa_recovery_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authentication.csrf.invalid",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "service.busy",
+          "request.invalid",
+          "authentication.invalid_credentials",
+          "authentication.reauthentication_method_required",
+          "authentication.rate_limited",
+          "authentication.rate_limit_unavailable",
+          "authentication.internal",
+          "audit.unavailable"
         ],
         "x-proctor-idempotency": "none"
       }
@@ -19455,6 +21746,11 @@
       "delete": {
         "description": "Archives one Class only after proving it has no active members or Role Bindings. The operation retains historical enrollment and audit records and never ends relationships implicitly.",
         "operationId": "archiveClass",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AcademicExpectedRevision"
+          }
+        ],
         "responses": {
           "204": {
             "$ref": "#/components/responses/ClassArchived"
@@ -19763,11 +22059,33 @@
     },
     "/api/v1/classes/{class_id}/members": {
       "get": {
-        "description": "Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data.",
+        "description": "Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.",
         "operationId": "listClassMembers",
         "parameters": [
           {
-            "description": "Unix time in milliseconds at which enrollment must be effective; ignored when history is true.",
+            "description": "Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Unix time in milliseconds at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor.",
             "in": "query",
             "name": "active_at",
             "required": false,
@@ -19778,7 +22096,7 @@
             }
           },
           {
-            "description": "When true, return enrollment history and ignore active_at.",
+            "description": "When true, return enrollment history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true.",
             "in": "query",
             "name": "history",
             "required": false,
@@ -20805,7 +23123,7 @@
     },
     "/api/v1/exam-attempts/{exam_attempt_id}/workspace/entries/{attempt_workspace_entry_id}": {
       "delete": {
-        "description": "Deletes the exact Workspace entry only when its expected path and, for files, optional content version still match. Non-empty directories and stale file states are rejected so concurrent edits cannot be silently discarded.",
+        "description": "Deletes the exact Workspace entry only when its expected path and, for files, required content version still match. A directory must be empty unless recursive is true. Recursive deletion requires the expected_workspace_cursor from the client's manifest, rejects any intervening Workspace change, and atomically removes the directory and all descendants with one recursive journal record. Other mutations do not require a Workspace cursor.",
         "operationId": "deleteCandidateExamWorkspaceEntry",
         "parameters": [
           {
@@ -20859,7 +23177,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Delete one empty directory or one exact Workspace file state",
+        "summary": "Delete a Workspace entry or a guarded directory subtree",
         "tags": [
           "Attempts and workspaces"
         ],
@@ -20886,6 +23204,7 @@
           "exam.attempt.workspace.entry_conflict",
           "exam.attempt.workspace.content_conflict",
           "exam.attempt.workspace.directory_not_empty",
+          "exam.attempt.workspace.cursor_conflict",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
           "authentication.dpop.use_nonce",
@@ -22939,7 +25258,7 @@
     },
     "/api/v1/exams/{exam_id}/draft/starter-workspace/entries/{starter_workspace_entry_id}": {
       "delete": {
-        "description": "Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories are rejected, and published Revisions retain the immutable Workspace snapshot they already captured.",
+        "description": "Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories require recursive to be true, which atomically removes the directory and every descendant and advances the Draft revision once. A stale Draft revision rejects the entire command. Published Revisions retain the immutable Workspace snapshot they already captured.",
         "operationId": "removeExamDraftStarterWorkspaceEntry",
         "parameters": [
           {
@@ -22987,7 +25306,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Remove one file or empty directory from a Starter Workspace",
+        "summary": "Remove a Starter Workspace entry or guarded directory subtree",
         "tags": [
           "Examinations"
         ],
@@ -23785,6 +26104,292 @@
           "authentication.dpop.replayed",
           "authentication.dpop.use_nonce",
           "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/exams/{exam_id}/retention-holds": {
+      "get": {
+        "description": "Requires a Session and exam.records.hold through current Exam Manager and exact Academic Unit membership, or its scoped override. Lists exact or descendant scopes with applicable ancestor holds. Holds have no automatic expiry. Creation-time retired counts identify content that the hold cannot restore. Pages use a bounded scope-bound cursor.",
+        "operationId": "listRetentionHolds",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "description": "Optional exact Sitting filter; includes covering Exam holds.",
+            "in": "query",
+            "name": "exam_sitting_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "Optional exact Submission filter, requiring exam_sitting_id; includes covering ancestor holds.",
+            "in": "query",
+            "name": "submission_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "Only true or false is accepted.",
+            "in": "query",
+            "name": "include_released",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Maximum number of preservation holds to return in this page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque continuation bound to exact scope and include_released. Do not interpret or change it.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionHoldPageOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List preservation holds",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "post": {
+        "description": "Requires a Session and exam.records.hold through current Exam Manager and exact Academic Unit membership, or its scoped override. An Exam, Sitting or Submission hold covers current content and future arrivals within its scope until explicit release. It prevents pending retirement but cannot restore content already retired. Rejects a wholly retired exact Submission; broader holds still preserve remaining descendants. Creation-time retired counts disclose partial retirement. The hold, safe critical audit and retry outcome commit together after fresh authority checks.",
+        "operationId": "createRetentionHold",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateRetentionHold"
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/RetentionHoldCreated"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Preserve examination records",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.conflict",
+          "exam.unavailable",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/exams/{exam_id}/retention-holds/{retention_hold_id}/release": {
+      "post": {
+        "description": "Requires retention_hold.release on a protected system-administrator Session with strong recent authentication. Supply the original exact scope and current hold revision. Release is manual, durably audited and idempotent; authority and proof are rechecked inside the transaction and on replay. The private release rationale does not enter ordinary audit. Removing a hold does not restore already retired data or bypass fresh eligibility and grace.",
+        "operationId": "releaseRetentionHold",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/RetentionHoldID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ReleaseRetentionHold"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionHoldOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Release a preservation hold",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.conflict",
+          "exam.unavailable",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required"
         ],
         "x-proctor-idempotency": "required"
       }
@@ -25653,6 +28258,265 @@
         "x-proctor-idempotency": "required"
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports": {
+      "post": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.",
+        "operationId": "createSittingExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateExamExport"
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/ExamExportAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a Sitting export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "exam.export.policy_unconfigured",
+          "exam.export.limit",
+          "exam.export.source_retired",
+          "exam.export.scope_changed",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}": {
+      "get": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.",
+        "operationId": "getSittingExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamExportID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamExportOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get a Sitting export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}/content": {
+      "get": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.",
+        "operationId": "downloadSittingExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamExportID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamExportArchive"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/ExamExportGone"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Download a Sitting export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "exam.export.expired",
+          "exam.export.not_ready"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend": {
       "parameters": [
         {
@@ -25939,6 +28803,163 @@
         "x-proctor-idempotency": "required"
       }
     },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/records-completion": {
+      "get": {
+        "description": "Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Returns only lifecycle provenance and bounded counts. Current completion is separate from delivery closure, and a stale completion blocks retention. Retired integrity categories do not require recreated Reviews.",
+        "operationId": "getExamSittingRecords",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamRecordsSnapshotOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Inspect Sitting records completion",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "post": {
+        "description": "Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. The Sitting must be Closed and every remaining Submission Review finalized or explicitly unnecessary for its exact current inventory. The supplied revision and integrity revision must match. New accepted evidence or edits to a waived Review make completion stale and require acknowledgement and renewed completion, restarting retention. Exact replay and already-current completion do not restart the clock. Completion, current credential/permission rechecks, durable audit and retry outcome commit together. It neither enables cleanup nor releases holds.",
+        "operationId": "completeExamSittingRecords",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CompleteExamRecords"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamRecordsCompletionOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Complete Sitting records",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.conflict",
+          "exam.unavailable",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/resume": {
       "parameters": [
         {
@@ -26020,6 +29041,437 @@
           "exam.sitting.revision_conflict",
           "exam.sitting.state_conflict",
           "exam.sitting.deadline_reached",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports": {
+      "post": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.",
+        "operationId": "createSubmissionExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/SubmissionID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateExamExport"
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/ExamExportAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create a Submission export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "exam.export.policy_unconfigured",
+          "exam.export.limit",
+          "exam.export.source_retired",
+          "exam.export.scope_changed",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}": {
+      "get": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.",
+        "operationId": "getSubmissionExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/SubmissionID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamExportID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamExportOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get a Submission export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}/content": {
+      "get": {
+        "description": "Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.",
+        "operationId": "downloadSubmissionExport",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/SubmissionID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamExportID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/ExamExportArchive"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/ExamExportGone"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Download a Submission export",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "exam.export.not_found",
+          "exam.export.conflict",
+          "exam.export.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "exam.export.expired",
+          "exam.export.not_ready"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/review-waiver": {
+      "get": {
+        "description": "Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Returns the recorded private decision or null. Its Review revision and discrepancy count identify the acknowledged inventory. Candidate self-access is concealed; retired private decisions cannot be replayed.",
+        "operationId": "getSubmissionReviewWaiver",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/SubmissionID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SubmissionReviewWaiverOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Inspect a Submission Review waiver",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.unavailable",
+          "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "post": {
+        "description": "Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Requires a Closed Sitting and exact current waiver, Review and discrepancy preconditions; zero waiver revision creates the first decision. Prohibits candidate self-waivers, all undecided Flags and finalized Reviews. New accepted discrepancies or later edits invalidate the waiver. The private rationale is stored only in the dedicated record and protected retry outcome; audit contains the closed reason code and identifiers. Retired integrity records reject this action and replay.",
+        "operationId": "waiveSubmissionReview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExamID"
+          },
+          {
+            "$ref": "#/components/parameters/ExamSittingID"
+          },
+          {
+            "$ref": "#/components/parameters/SubmissionID"
+          },
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/WaiveSubmissionReview"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SubmissionReviewWaiverOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Mark a Submission Review unnecessary",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "exam.invalid",
+          "exam.conflict",
+          "exam.unavailable",
           "idempotency.key_required",
           "idempotency.invalid_key",
           "idempotency.conflict",
@@ -28667,6 +32119,11 @@
       "delete": {
         "description": "Archives one Programme Level only when it has no active Classes. The transition retains history and never cascades into Class archival, enrollment termination, or Role Binding removal.",
         "operationId": "archiveProgrammeLevel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AcademicExpectedRevision"
+          }
+        ],
         "responses": {
           "204": {
             "$ref": "#/components/responses/ProgrammeLevelArchived"
@@ -29011,6 +32468,11 @@
       "delete": {
         "description": "Archives one Programme only after proving it has no active Programme Levels. The operation retains history and never cascades into Level, Class, enrollment, or authorization changes.",
         "operationId": "archiveProgramme",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AcademicExpectedRevision"
+          }
+        ],
         "responses": {
           "204": {
             "$ref": "#/components/responses/ProgrammeArchived"
@@ -29366,6 +32828,533 @@
           "programme_level.invalid",
           "programme_level.conflict",
           "administration.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/retention-policy": {
+      "get": {
+        "description": "Returns the Institution's revisioned retention configuration. A Session with retention_policy.view is required; Personal Access Tokens cannot read it. Examination and audit periods start at zero, meaning no configured expiry, never immediate deletion. Automatic deletion is a derived projection of separate, current-revision cleanup approval. Saving settings never enables cleanup. Examination periods begin at current Sitting Records Completion; holds, supporting integrity and export construction can protect individual records. Temporary exports require a configured finite lifetime from one through seven days. Operator-controlled backups and historical object versions remain outside current-key cleanup.",
+        "operationId": "getRetentionPolicy",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionPolicyOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get the Institution Retention Policy",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "principal_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "retention_policy.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "put": {
+        "description": "Completely replaces the configuration under an optimistic revision fence. Requires a strong recent interactive system-administrator Session, an Idempotency-Key, and durable audit. The policy, successful audit, and idempotent outcome commit together. Every write, including a no-op and exact retry, rechecks the current access credential, protected administrator binding and strong recent Session assurance at the post-lock database time. A stale revision returns retention_policy.revision_conflict with current_revision; an exact retry returns the recorded result after fresh authorization. A no-op preserves revision and timestamps. All periods are required integers. Export retention accepts 0 when unconfigured or a finite lifetime from 1 through 7 days; other periods accept 0 through 36500 as a technical bound, not a recommended period. Days mean 24-hour durations. Zero leaves that period unconfigured, and export creation rejects an unconfigured lifetime. A real settings change pauses approved cleanup and cancels pending grace; a fresh preview and explicit approval are required before new scheduling. Candidate notices default to false when omitted; null is invalid.",
+        "operationId": "replaceRetentionPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ReplaceRetentionPolicy"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionPolicyOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace the Institution Retention Policy",
+        "tags": [
+          "Data retention"
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "Shell",
+            "source": "curl --fail-with-body \\\n  --request PUT \\\n  --url 'https://proctor.example.edu/api/v1/retention-policy' \\\n  --header 'Authorization: Bearer \u003cinteractive-system-administrator-session\u003e' \\\n  --header 'Content-Type: application/json' \\\n  --header 'Idempotency-Key: docs-retention-policy-001' \\\n  --data '{\"expected_revision\":1,\"submission_retention_days\":0,\"integrity_retention_days\":0,\"audit_retention_days\":0,\"export_retention_days\":0,\"deletion_grace_days\":0}'"
+          }
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "request.invalid",
+          "retention_policy.invalid",
+          "retention_policy.revision_conflict",
+          "retention_policy.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/retention/control": {
+      "get": {
+        "description": "Requires retention_policy.view. Reports deliberate approval separately from settings; disabled or paused controls cannot schedule retirement.",
+        "operationId": "getRetentionControl",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionControlOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get cleanup approval",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.unavailable",
+          "retention_policy.unavailable",
+          "resource.not_found",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      },
+      "put": {
+        "description": "Requires retention_cleanup.manage and strong recent system-administrator authentication. Enablement binds a fresh preview to the exact policy revision and requires positive grace. Every changed control cancels existing grace; eligible records receive fresh grace when scheduling resumes. Pausing cannot reverse committed retirement or stop reconciliation of already-retired bytes. Exact retries return their recorded result after current authorization.",
+        "operationId": "changeRetentionControl",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ChangeRetentionControl"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionControlOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Enable or pause institution cleanup",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.conflict",
+          "retention.unavailable",
+          "retention_policy.unavailable",
+          "retention_policy.revision_conflict",
+          "resource.not_found",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/retention/previews": {
+      "post": {
+        "description": "Requires retention_policy.view and critical audit. Creates a one-hour content-free assessment for the specified current policy revision. Counts explain incomplete records, configured deadlines, holds, supporting integrity, export source protection and already-retired categories. Creating a preview alone never schedules disposal.",
+        "operationId": "createRetentionPreview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequiredIdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateRetentionPreview"
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/RetentionPreviewOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Preview retention eligibility",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "authentication.csrf.invalid",
+          "audit.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.conflict",
+          "retention.unavailable",
+          "retention_policy.unavailable",
+          "retention_policy.revision_conflict",
+          "resource.not_found",
+          "idempotency.key_required",
+          "idempotency.invalid_key",
+          "idempotency.conflict",
+          "idempotency.in_progress",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "required"
+      }
+    },
+    "/api/v1/retention/previews/{retention_preview_id}": {
+      "get": {
+        "description": "Requires retention_policy.view. Returns the original assessment and expiry. Subsequent record changes can alter eligibility; every scheduled and final transition rechecks authoritative state.",
+        "operationId": "getRetentionPreview",
+        "parameters": [
+          {
+            "description": "Identifier returned by Create Retention Preview; fetching does not refresh its expiry.",
+            "in": "path",
+            "name": "retention_preview_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionPreviewOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get a retention preview",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.unavailable",
+          "retention_policy.unavailable",
+          "resource.not_found",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/retention/records": {
+      "get": {
+        "description": "Requires retention_policy.view. Does not expose filenames, answers, evidence or remarks. Limit counts Submissions; each contributes work and integrity items. The opaque cursor is bound to this listing. A retired category stays closed after detailed receipt expiry. Purge-verified counts represent an independent observation of exact current-key absence; they do not certify secure media erasure or deletion of backups, historical versions, or already-open streams.",
+        "operationId": "listRetentionRecords",
+        "parameters": [
+          {
+            "description": "Maximum number of Submissions to assess; each contributes one work and one integrity record.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque next_cursor from the preceding retention-record page; pass it unchanged.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionRecordsOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List retention eligibility and retirement status",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.unavailable",
+          "retention_policy.unavailable",
+          "resource.not_found",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
           "authentication.dpop.use_nonce",
@@ -31585,7 +35574,7 @@
         "tags": [
           "Authentication"
         ],
-        "x-proctor-auth": "session_required",
+        "x-proctor-auth": "mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
           "authentication.invalid_token",
@@ -31626,6 +35615,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
@@ -31652,7 +35644,7 @@
         "tags": [
           "Authentication"
         ],
-        "x-proctor-auth": "recent_session_required",
+        "x-proctor-auth": "recent_mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
           "authentication.invalid_token",
@@ -31661,6 +35653,8 @@
           "authentication.reauthentication_required",
           "request.invalid",
           "authentication.mfa.invalid_code",
+          "authentication.rate_limited",
+          "authentication.rate_limit_unavailable",
           "authentication.mfa.disabled",
           "authentication.mfa.not_found",
           "authentication.mfa.conflict",
@@ -31701,6 +35695,9 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
@@ -31735,6 +35732,8 @@
           "authentication.csrf.invalid",
           "request.invalid",
           "authentication.mfa.invalid_code",
+          "authentication.rate_limited",
+          "authentication.rate_limit_unavailable",
           "authentication.mfa.disabled",
           "authentication.mfa.not_found",
           "authentication.mfa.conflict",
@@ -31959,7 +35958,7 @@
             "source": "curl --request POST \\\n  --header \"Authorization: Bearer $PROCTOR_TOKEN\" \\\n  https://proctor.example.edu/api/v1/users/me/mfa/setup"
           }
         ],
-        "x-proctor-auth": "recent_session_required",
+        "x-proctor-auth": "recent_mfa_recovery_session_required",
         "x-proctor-error-codes": [
           "authentication.required",
           "authentication.invalid_token",
@@ -31972,6 +35971,86 @@
           "authentication.mfa.unavailable",
           "authentication.internal",
           "audit.unavailable",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
+    "/api/v1/users/me/retention-notices": {
+      "get": {
+        "description": "Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is cancelled.",
+        "operationId": "listRetentionNotices",
+        "parameters": [
+          {
+            "description": "Maximum number of the current User's retention notices to return in this page.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from this endpoint.",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/RetentionNoticesOK"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List my retention notices",
+        "tags": [
+          "Data retention"
+        ],
+        "x-proctor-auth": "session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "request.invalid",
+          "retention.invalid",
+          "retention.unavailable",
           "authentication.dpop.invalid",
           "authentication.dpop.replayed",
           "authentication.dpop.use_nonce",
@@ -33217,6 +37296,91 @@
         "x-proctor-idempotency": "none"
       }
     },
+    "/api/v1/users/{user_id}/mfa/reset": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/UserID"
+        }
+      ],
+      "post": {
+        "description": "Requires the protected system-administrator action user.mfa.reset and strong recent interactive authentication. Administrative self-reset is prohibited. The institution verifies identity outside Proctor and records a bounded attestation reference. Old local MFA material, all target Sessions and PATs, and unfinished access grants are invalidated atomically with mandatory audit and security-notice reservation. Fresh primary proof then creates a restricted Web Session; activation of a new local authenticator restores ordinary access. Existing provider identity and primary credentials remain unchanged. The request fails when local enrollment is unavailable or when it would remove the last usable administrator authentication path. A repeated explicit reset creates a new recovery generation.",
+        "operationId": "resetUserMFA",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ResetUserMFA"
+        },
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/SensitiveNoContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "dpopAuth": []
+          },
+          {
+            "csrfToken": [],
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Reset another User's local MFA after institution verification",
+        "tags": [
+          "Authentication"
+        ],
+        "x-proctor-auth": "strong_recent_session_required",
+        "x-proctor-error-codes": [
+          "authentication.required",
+          "authentication.invalid_token",
+          "authentication.credential_ambiguous",
+          "authentication.csrf.invalid",
+          "authentication.dpop.invalid",
+          "authentication.dpop.replayed",
+          "authentication.dpop.use_nonce",
+          "authentication.dpop.unavailable",
+          "authentication.strong_required",
+          "authentication.reauthentication_required",
+          "authorization.denied",
+          "authorization.request.invalid",
+          "authorization.unavailable",
+          "audit.unavailable",
+          "request.invalid",
+          "resource.not_found",
+          "authentication.mfa.reset_invalid",
+          "authentication.mfa.disabled",
+          "authentication.mfa.not_found",
+          "authentication.mfa.conflict",
+          "authentication.mfa.unavailable",
+          "authentication.internal"
+        ],
+        "x-proctor-idempotency": "none"
+      }
+    },
     "/api/v1/users/{user_id}/profile-picture": {
       "delete": {
         "description": "Removes the target User's current custom picture only when If-Match names its exact strong revision, then returns the retained default profile projection. A stale editor cannot remove a newer upload, and storage cleanup occurs after the durable state change.",
@@ -33909,6 +38073,10 @@
     {
       "description": "Roles, scoped Role Bindings, and authorized audit history.",
       "name": "Roles and access"
+    },
+    {
+      "description": "Institution retention policy, records completion, preservation holds, approved cleanup, notices, and temporary examination exports.",
+      "name": "Data retention"
     },
     {
       "description": "Installation-wide admission and authentication policy, preflight checks, and safe public discovery.",

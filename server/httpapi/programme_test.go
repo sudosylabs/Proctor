@@ -21,10 +21,11 @@ import (
 )
 
 type programmeHTTPApplication struct {
-	result        *model.Programme
-	list          []*model.Programme
-	createCommand application.CreateProgrammeCommand
-	updateCommand application.UpdateProgrammeCommand
+	archiveCommand application.ArchiveProgrammeCommand
+	result         *model.Programme
+	list           []*model.Programme
+	createCommand  application.CreateProgrammeCommand
+	updateCommand  application.UpdateProgrammeCommand
 }
 
 func (a *programmeHTTPApplication) GetProgramme(context.Context, application.Invocation, application.GetProgrammeQuery) (*model.Programme, error) {
@@ -41,7 +42,8 @@ func (a *programmeHTTPApplication) UpdateProgramme(_ context.Context, _ applicat
 	a.updateCommand = command
 	return a.result, nil
 }
-func (a *programmeHTTPApplication) ArchiveProgramme(context.Context, application.Invocation, application.ArchiveProgrammeCommand) error {
+func (a *programmeHTTPApplication) ArchiveProgramme(_ context.Context, _ application.Invocation, command application.ArchiveProgrammeCommand) error {
+	a.archiveCommand = command
 	return nil
 }
 

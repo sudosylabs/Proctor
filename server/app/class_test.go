@@ -18,14 +18,15 @@ import (
 )
 
 type classStoreFake struct {
-	events      *[]string
-	current     *model.Class
-	unitID      string
-	created     *model.Class
-	createInput *store.ClassCreation
-	updateInput *store.ClassUpdate
-	createErr   error
-	getUnitErr  error
+	archiveInput *store.ClassArchive
+	events       *[]string
+	current      *model.Class
+	unitID       string
+	created      *model.Class
+	createInput  *store.ClassCreation
+	updateInput  *store.ClassUpdate
+	createErr    error
+	getUnitErr   error
 }
 
 func (s *classStoreFake) Get(context.Context, string) (*model.Class, error) {
@@ -52,8 +53,10 @@ func (s *classStoreFake) UpdateWithAudit(_ context.Context, input *store.ClassUp
 	s.updateInput = input
 	return input.Class, nil
 }
-func (*classStoreFake) ArchiveWithAudit(context.Context, *store.ClassArchive) (*model.Class, error) {
-	return nil, nil
+func (s *classStoreFake) ArchiveWithAudit(_ context.Context, input *store.ClassArchive) (*model.Class, error) {
+	*s.events = append(*s.events, "store-archive")
+	s.archiveInput = input
+	return s.current, nil
 }
 
 func TestClassGetAuthorizesExactScopeBeforeReading(t *testing.T) {

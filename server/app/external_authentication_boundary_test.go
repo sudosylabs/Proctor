@@ -488,7 +488,11 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		invalidator: externalInvalidatorFake{}, audit: externalAuditFake{},
 		diagnostics: &securityEffectsDiagnosticsFake{}, newCredential: model.NewCredentialToken,
 		acceptor: &externalInvitationAcceptorFake{},
+		desktop:  &externalDesktopAuthorizationFake{},
 		now:      time.Now,
+	}
+	if _, err := valid.build(); err != nil {
+		t.Fatalf("complete construction failed: %v", err)
 	}
 	tests := []struct {
 		name  string
@@ -500,6 +504,7 @@ func TestExternalAuthenticationRequiresFocusedDependencies(t *testing.T) {
 		{"sessions", func(a *externalAuthenticationConstructorArgs) { a.sessions = nil }},
 		{"attempt accounting", func(a *externalAuthenticationConstructorArgs) { a.attempts = nil }},
 		{"Invitation acceptor", func(a *externalAuthenticationConstructorArgs) { a.acceptor = nil }},
+		{"Desktop authorization", func(a *externalAuthenticationConstructorArgs) { a.desktop = nil }},
 		{"generator", func(a *externalAuthenticationConstructorArgs) { a.newCredential = nil }},
 	}
 	for _, test := range tests {
@@ -525,6 +530,7 @@ type externalAuthenticationConstructorArgs struct {
 	audit         externalAuthenticationAudit
 	diagnostics   authenticationDiagnostics
 	acceptor      externalInvitationAcceptor
+	desktop       externalAuthenticationDesktopAuthorization
 	newCredential func() string
 	now           func() time.Time
 }
@@ -535,7 +541,7 @@ func (a externalAuthenticationConstructorArgs) build() (*externalAuthenticationS
 		a.registry, a.loginStates, a.institutions, a.identities, a.sessions,
 		allowAllAuthenticationAccessPolicy(), a.attempts, a.issuer, a.invalidator, a.audit,
 		&mutationAttemptAuditorFake{events: &events, beginID: model.NewAuditEventID().String()},
-		&accessPolicyCapabilitiesFake{}, a.acceptor, ExternalAuthenticationPolicy{}, 15*time.Minute,
+		&accessPolicyCapabilitiesFake{}, a.acceptor, a.desktop, ExternalAuthenticationPolicy{}, 15*time.Minute,
 		a.diagnostics, a.newCredential, a.now,
 	)
 }
@@ -963,4 +969,12 @@ func (p desktopCallbackExternalProvider) State(model.ExternalAuthenticationCallb
 }
 func (desktopCallbackExternalProvider) Complete(context.Context, ExternalProviderCompleteRequest) (*model.ExternalAuthenticationAssertion, error) {
 	return nil, errors.New("not used")
+}
+
+func (externalSessionIssuerFake) recoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	return &model.UserMFARecovery{UserID: userID}, nil
+}
+
+func (providerConnectionSessionIssuerFake) recoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	return &model.UserMFARecovery{UserID: userID}, nil
 }

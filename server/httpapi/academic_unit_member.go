@@ -70,6 +70,27 @@ func (module academicUnitMemberResourceModule) list(request operationRequest) (o
 	if err != nil {
 		return operationResult{}, err
 	}
+	if usesMembershipPaging(request.request) {
+		scope := model.Resource{Type: model.ResourceAcademicUnit, ID: unitID}
+		query, after, err := membershipPageQuery(request.request, scope)
+		if err != nil {
+			return operationResult{}, err
+		}
+		page, err := module.members.ListAcademicUnitMembersPage(request.context, request.invocation(), application.ListAcademicUnitMembersPageQuery{AcademicUnitID: unitID, MembershipPageQuery: query, AfterUserID: model.UserID(after.AfterUserID), AfterID: model.AcademicUnitMemberID(after.AfterID)})
+		if err != nil {
+			return operationResult{}, err
+		}
+		var next *membershipPageCursor
+		if page.HasMore && len(page.Members) > 0 {
+			last := page.Members[len(page.Members)-1]
+			next = &membershipPageCursor{ScopeType: scope.Type, ScopeID: scope.ID, ActiveAt: &page.ActiveAt, AfterUserID: last.UserID.String(), AfterID: last.ID.String()}
+		}
+		headers, err := membershipPageHeaders(request.request, query.Limit, next)
+		if err != nil {
+			return operationResult{}, err
+		}
+		return jsonResult(http.StatusOK, academicUnitMemberResponses(page.Members)).withHeaders(headers), nil
+	}
 	activeAt, err := parseActiveAt(request.request)
 	if err != nil {
 		return operationResult{}, err

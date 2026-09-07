@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-// This file contains direct-mail composition and shared frozen-payload rules.
+// This file contains direct-mail composition.
 package mail
 
 import (
@@ -115,19 +115,6 @@ type Renderer interface {
 	Render(RenderRequest) (FrozenContent, error)
 }
 
-type FrozenPayloadV1 struct {
-	Version              int    `json:"version"`
-	RecipientName        string `json:"recipient_name"`
-	RecipientAddress     string `json:"recipient_address"`
-	FromName             string `json:"from_name"`
-	FromAddress          string `json:"from_address"`
-	Subject              string `json:"subject"`
-	Text                 string `json:"text"`
-	HTML                 string `json:"html"`
-	AutoSubmitted        string `json:"auto_submitted"`
-	AutoResponseSuppress string `json:"auto_response_suppress"`
-}
-
 type directPreparation struct {
 	Recipient    *model.User
 	OccurrenceID model.MailOccurrenceID
@@ -157,6 +144,7 @@ type NoticePreparation struct {
 type MFANoticeKind string
 
 const (
+	MFANoticeReset                    MFANoticeKind = "reset"
 	MFANoticeEnabled                  MFANoticeKind = "enabled"
 	MFANoticeDisabled                 MFANoticeKind = "disabled"
 	MFANoticeRecoveryCodesRegenerated MFANoticeKind = "recovery_codes_regenerated"
@@ -278,6 +266,8 @@ func (p *Composer) PrepareSessionsRevokedByAdministrator(request NoticePreparati
 func (p *Composer) PrepareMFANotice(request NoticePreparation, kind MFANoticeKind) (*store.PreparedMail, error) {
 	var key model.MailTemplateKey
 	switch kind {
+	case MFANoticeReset:
+		key = model.MailTemplateIdentityMFAReset
 	case MFANoticeEnabled:
 		key = model.MailTemplateIdentityMFAEnabled
 	case MFANoticeDisabled:
@@ -296,6 +286,20 @@ func (p *Composer) PrepareInvitationAccepted(request NoticePreparation) (*store.
 
 func (p *Composer) PrepareOperatorTest(request NoticePreparation) (*store.PreparedMail, error) {
 	return p.prepareNotice(request, model.MailTemplateSystemTest)
+}
+
+// PrepareRetentionScheduled announces a durable grace notice. Its body contains
+// no private examination facts; exact categories and dates live in the notice.
+// Delivery stops at the earlier of the standard lifetime and retirement date.
+func (p *Composer) PrepareRetentionScheduled(request NoticePreparation, retireAfter time.Time) (*store.PreparedMail, error) {
+	deadline := request.At.Add(directMailLifetime)
+	if retireAfter.Before(deadline) {
+		deadline = retireAfter
+	}
+	if !deadline.After(request.At) {
+		return nil, errors.New("retention notice is no longer current")
+	}
+	return p.prepareDirect(directPreparation{Recipient: request.Recipient, OccurrenceID: model.NewMailOccurrenceID(), TemplateKey: model.MailTemplateExamRetentionScheduled, At: request.At, Deadline: deadline})
 }
 
 func (p *Composer) prepareNotice(request NoticePreparation, key model.MailTemplateKey) (*store.PreparedMail, error) {

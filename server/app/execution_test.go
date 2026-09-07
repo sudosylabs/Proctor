@@ -45,7 +45,7 @@ func (stub *executionUseCasesStub) Images(context.Context) ([]appexecution.Image
 	return append([]appexecution.ImageOption(nil), stub.images...), stub.err
 }
 
-func (stub *executionUseCasesStub) Watch(context.Context, model.ExamAttemptID, appexecution.Cursor) (appexecution.Observation, error) {
+func (stub *executionUseCasesStub) Watch(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Cursor) (appexecution.Observation, error) {
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
 	if stub.watchCalls < len(stub.observations) {
@@ -57,18 +57,15 @@ func (stub *executionUseCasesStub) Watch(context.Context, model.ExamAttemptID, a
 	return stub.observation, stub.err
 }
 
-func (stub *executionUseCasesStub) Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error) {
+func (stub *executionUseCasesStub) Attach(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Window) (appexecution.Terminal, error) {
 	return stub.terminal, stub.err
 }
 
-func (stub *executionUseCasesStub) OpenFile(context.Context, model.ExamAttemptID, string) (io.ReadCloser, error) {
+func (stub *executionUseCasesStub) OpenFile(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) (io.ReadCloser, error) {
 	return stub.openBody, stub.err
 }
 
-func (stub *executionUseCasesStub) Sync(_ context.Context, attemptID model.ExamAttemptID) error {
-	stub.mu.Lock()
-	defer stub.mu.Unlock()
-	stub.synchronized = append(stub.synchronized, attemptID)
+func (stub *executionUseCasesStub) AcknowledgeChange(_ context.Context, _ model.ExamAttemptID, _ model.ExecutionGrantID, _ model.AttemptWorkspaceJournalEntry) error {
 	return stub.err
 }
 

@@ -21,11 +21,12 @@ import (
 )
 
 type programmeLevelHTTPApplication struct {
-	result        *model.ProgrammeLevel
-	list          []*model.ProgrammeLevel
-	err           error
-	createCommand application.CreateProgrammeLevelCommand
-	updateCommand application.UpdateProgrammeLevelCommand
+	archiveCommand application.ArchiveProgrammeLevelCommand
+	result         *model.ProgrammeLevel
+	list           []*model.ProgrammeLevel
+	err            error
+	createCommand  application.CreateProgrammeLevelCommand
+	updateCommand  application.UpdateProgrammeLevelCommand
 }
 
 func (a *programmeLevelHTTPApplication) GetProgrammeLevel(context.Context, application.Invocation, application.GetProgrammeLevelQuery) (*model.ProgrammeLevel, error) {
@@ -42,7 +43,8 @@ func (a *programmeLevelHTTPApplication) UpdateProgrammeLevel(_ context.Context, 
 	a.updateCommand = command
 	return a.result, a.err
 }
-func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(context.Context, application.Invocation, application.ArchiveProgrammeLevelCommand) error {
+func (a *programmeLevelHTTPApplication) ArchiveProgrammeLevel(_ context.Context, _ application.Invocation, command application.ArchiveProgrammeLevelCommand) error {
+	a.archiveCommand = command
 	return a.err
 }
 

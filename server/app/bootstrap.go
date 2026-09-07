@@ -70,6 +70,7 @@ type installationStore interface {
 	Bootstrap(context.Context, *store.InstallationBootstrap) (*model.InstallationBootstrapResult, error)
 	ReconcileSystemAdministratorRole(context.Context, *store.SystemAdministratorRoleReconciliation) (*store.SystemAdministratorRoleReconciliationResult, error)
 	RecoverAdministratorAccess(context.Context, *store.AdministratorRecovery) (*store.AdministratorRecoveryResult, error)
+	ResetAdministratorMFA(context.Context, *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error)
 	ReconcileAdministratorRecovery(context.Context, *store.AdministratorRecoveryReconciliation) (*store.AdministratorRecoveryReconciliationResult, error)
 }
 
@@ -142,6 +143,7 @@ type bootstrapService struct {
 	maximumSourceAttempts int
 	bootstrapSecretDigest [sha256.Size]byte
 	bootstrapAvailable    bool
+	recoveryPolicy        administratorRecoveryPolicy
 	nodeID                string
 	now                   func() time.Time
 }
@@ -154,12 +156,14 @@ func newBootstrapService(
 	protection BootstrapProtectionPolicy,
 	nodeID string,
 	now func() time.Time,
+	recoveryPolicy administratorRecoveryPolicy,
 ) *bootstrapService {
 	return &bootstrapService{
 		installations: installations, hasher: hasher, attempts: attempts,
 		rateLimitWindow: rateLimit.Window, maximumSourceAttempts: rateLimit.MaximumSourceAttempts,
 		bootstrapSecretDigest: digestBootstrapSecret(protection.Secret),
 		bootstrapAvailable:    protection.Secret != "",
+		recoveryPolicy:        recoveryPolicy,
 		nodeID:                nodeID, now: now,
 	}
 }

@@ -67,6 +67,9 @@ func decodeOpaqueCursor[T any](raw string, spec opaqueCursorSpec[T]) (T, error) 
 	if err != nil {
 		return zero, invalidOpaqueCursorError(spec.label, err)
 	}
+	if base64.RawURLEncoding.EncodeToString(decoded) != raw {
+		return zero, invalidOpaqueCursorError(spec.label, errors.New("cursor encoding is not canonical"))
+	}
 	if len(decoded) == 0 || len(decoded) > base64.RawURLEncoding.DecodedLen(spec.maximumEncodedLength) || !utf8.Valid(decoded) {
 		return zero, invalidOpaqueCursorError(spec.label, errors.New("decoded cursor is invalid"))
 	}

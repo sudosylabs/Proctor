@@ -30,6 +30,9 @@ type ExamAttemptWorkspaceMutationAccess struct {
 	DPoPKeyThumbprint        string
 	ConnectionID             model.AttemptConnectionID
 	ContinuityCredentialHash string
+	// SourceGrantID fences harvested guest writes to their exact ready grant.
+	// Candidate-originated commands leave it zero.
+	SourceGrantID model.ExecutionGrantID
 }
 
 // ExamAttemptWorkspaceMutationTarget is the bounded preflight projection used
@@ -66,22 +69,27 @@ type ExamAttemptWorkspaceObjectReady struct {
 // uses EntryID and DestinationPath. Move additionally requires ExpectedPath.
 // Replace requires EntryID, ExpectedPath, ExpectedContentVersion, and a Ready
 // ObjectID. Delete requires EntryID and ExpectedPath, plus
-// ExpectedContentVersion for a file. Cursor is deliberately absent: unrelated
-// entry mutations may commute while PostgreSQL still orders accepted changes.
+// ExpectedContentVersion for a file. Recursive directory deletion additionally
+// requires ExpectedWorkspaceCursor, fencing the complete subtree snapshot.
+// Other mutations omit this aggregate fence so unrelated entries may commute.
 // Rename and move are the same MoveEntry operation; moving a directory
 // atomically rewrites its descendants after checking every resulting path and
-// collision, while deleting a non-empty directory conflicts rather than
-// recursively deleting it.
+// collision. Non-recursive deletion of a non-empty directory conflicts.
+// Recursive deletion removes the entire subtree atomically, retires its owned
+// objects with retained-outcome protection, and appends one recursive journal
+// record. Published Starter and submitted content pins remain protected.
 type ExamAttemptWorkspaceMutation struct {
-	Access                 ExamAttemptWorkspaceMutationAccess
-	Operation              model.AttemptWorkspaceMutationKind
-	EntryID                model.AttemptWorkspaceEntryID
-	ExpectedPath           string
-	DestinationPath        string
-	ExpectedContentVersion model.WorkspaceContentVersion
-	ObjectID               model.AttemptWorkspaceObjectID
-	AuditEventID           string
-	AuditAt                int64
+	Access                  ExamAttemptWorkspaceMutationAccess
+	Operation               model.AttemptWorkspaceMutationKind
+	EntryID                 model.AttemptWorkspaceEntryID
+	ExpectedPath            string
+	DestinationPath         string
+	ExpectedContentVersion  model.WorkspaceContentVersion
+	Recursive               bool
+	ExpectedWorkspaceCursor *int64
+	ObjectID                model.AttemptWorkspaceObjectID
+	AuditEventID            string
+	AuditAt                 int64
 }
 
 // ExamAttemptWorkspaceMutationResult is the safe acknowledged state. Entry is
@@ -134,7 +142,7 @@ type CandidateWorkspaceJournalPage struct {
 // bounded KeyDigest for correlation, but candidate journal projections omit it.
 // At most the newest 4,096 entries remain; pruning and append are atomic.
 // Stable conflicts are attempt_workspace_path, attempt_workspace_entry,
-// attempt_workspace_content_version, attempt_workspace_not_empty,
+// attempt_workspace_content_version, attempt_workspace_not_empty, attempt_workspace_cursor,
 // attempt_workspace_entry_limit, attempt_workspace_size_limit, and
 // attempt_workspace_object_state.
 //

@@ -115,6 +115,45 @@ func TestExamSubmissionSettledIntegrityRequiresNoUnresolvedGaps(t *testing.T) {
 	}
 }
 
+func TestExamSubmissionIntegrityRetirementRequiresRedactedState(t *testing.T) {
+	t.Parallel()
+	manifest, err := NewExamSubmissionManifest(7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission, err := NewExamSubmission(ExamSubmissionSpecification{
+		ID: NewSubmissionID(), AttemptID: NewExamAttemptID(), ExamRevisionID: NewExamRevisionID(),
+		WorkspaceID: NewExamAttemptWorkspaceID(), Manifest: manifest,
+		BrowserActivity: BrowserActivitySubmission{State: BrowserActivitySubmissionNotApplicable},
+		Provenance:      ExamSubmissionCandidateSubmitted, SubmittedAt: time.Unix(100, 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission.IntegrityState = SubmissionIntegrityRetired
+	submission.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(200, 0))
+	submission.BrowserActivity = BrowserActivitySubmission{}
+	if err := submission.Validate(); err != nil {
+		t.Fatalf("retired integrity with retained work: %v", err)
+	}
+	for name, corrupt := range map[string]func(*ExamSubmission){
+		"missing retirement time":      func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTime{} },
+		"time before submission":       func(value *ExamSubmission) { value.IntegrityRetiredAt = OptionalTimeFrom(time.Unix(99, 0)) },
+		"old focus sequence":           func(value *ExamSubmission) { value.FinalFocusLossSequence = 9 },
+		"old unresolved count":         func(value *ExamSubmission) { value.UnresolvedIntegrityCount = 3 },
+		"old browser state":            func(value *ExamSubmission) { value.BrowserActivity.State = BrowserActivitySubmissionNotApplicable },
+		"settled with retirement time": func(value *ExamSubmission) { value.IntegrityState = SubmissionIntegritySettled },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := *submission
+			corrupt(&candidate)
+			if candidate.Validate() == nil {
+				t.Fatal("inconsistent retirement state accepted")
+			}
+		})
+	}
+}
+
 func TestExamSubmissionManifestLengthFramesVariableFields(t *testing.T) {
 	t.Parallel()
 

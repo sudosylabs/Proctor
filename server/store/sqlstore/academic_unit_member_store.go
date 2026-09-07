@@ -540,3 +540,29 @@ func (r academicUnitMemberRow) model() (*model.AcademicUnitMember, error) {
 }
 
 var _ store.AcademicUnitMemberStore = (*SQLAcademicUnitMemberStore)(nil)
+
+func (s SQLAcademicUnitMemberStore) ListPageByAcademicUnit(ctx context.Context, options store.AcademicUnitMemberPageOptions) (*store.AcademicUnitMemberPage, error) {
+	if !options.AcademicUnitID.IsValid() || options.ActiveAt < 0 || options.Limit < 1 || options.Limit > 200 ||
+		options.AfterID.IsZero() != options.AfterUserID.IsZero() ||
+		(!options.AfterID.IsZero() && (!options.AfterID.IsValid() || !options.AfterUserID.IsValid())) {
+		return nil, store.NewErrInvalidInput("academic_unit_member", "page", nil)
+	}
+	query := s.query.Where(sq.Eq{"academic_unit_members.academic_unit_id": options.AcademicUnitID.String(), "academic_unit_members.archived_at": nil})
+	if options.ActiveAt > 0 {
+		at := model.TimeFromMillis(options.ActiveAt)
+		query = query.Where(sq.LtOrEq{"academic_unit_members.start_at": at}).
+			Where("(academic_unit_members.end_at IS NULL OR academic_unit_members.end_at > ?)", at)
+	}
+	if !options.AfterID.IsZero() {
+		query = query.Where("(academic_unit_members.user_id, academic_unit_members.id) > (?, ?)", options.AfterUserID.String(), options.AfterID.String())
+	}
+	members, err := s.selectMembers(ctx, query.OrderBy("academic_unit_members.user_id", "academic_unit_members.id").Limit(uint64(options.Limit+1)))
+	if err != nil {
+		return nil, err
+	}
+	more := len(members) > options.Limit
+	if more {
+		members = members[:options.Limit]
+	}
+	return &store.AcademicUnitMemberPage{Members: members, HasMore: more}, nil
+}

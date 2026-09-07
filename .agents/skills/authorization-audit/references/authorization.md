@@ -34,6 +34,29 @@ they do not possess, or delegate protected system, role-management,
 access-policy, or administrative-delegation authority without the separately
 required parent or Institution authority.
 
+## Records completion and preservation
+
+`exam.records.complete` grants the separate completion and waiver actions
+through a current Exam Manager relationship and current membership in the
+Exam's exact Academic Unit. `exam.records.complete.override` is an explicit
+scoped permission, not an administrator-only shortcut. Waivers and their
+private read projection exclude the Submission's own candidate; a denial is
+durably audited. Neither path can waive an undecided Flag.
+
+`exam.records.hold` and its scoped `.override` follow those same manager/scope
+rules for placing and inspecting Exam, Sitting and Submission holds.
+`retention_hold.release` additionally requires the active protected
+system-administrator Role and strong recent interactive authentication.
+Ordinary custom roles cannot release a hold merely by including that action.
+All of these actions require Session credentials and forbid PATs.
+
+The owning Store operations recheck credential validity, current role and
+scope, ordinary manager membership, and release assurance while holding the
+affected domain fences. State, critical audit and retained retry outcome
+commit atomically. Every replay rechecks current authority. Closed operational
+reason codes and immutable IDs/counts enter ordinary audit; private
+preservation/release rationale and review text never do.
+
 ## Academic and onboarding actions
 
 The accepted granular catalog distinguishes:
@@ -226,8 +249,72 @@ attempt transitions once to `success` or `fail`. If terminal completion fails
 after commit, return an internal failure and retain the attempt for operator
 reconciliation.
 
+Self-service Session revocation and logout follow the same critical attempt
+and atomic-success rule as administrative revocation. Their ownership-based
+authority, separate audit operations, no-op outcomes, and notice exclusion are
+defined in the [Session contract](../../identity-and-access/references/identity.md#sessions-browser-transport-and-desktop-handoff).
+
 Audit parameters and prior/result projections are each bounded to 16 KiB and
 exclude secrets, credentials, exam answers, and unbounded user content. Direct
 peer addresses may be recorded; forwarded client addresses remain untrusted
-until trusted-proxy configuration exists. Retention is indefinite until an
-administrator-visible retention and legal-preservation policy is decided.
+until trusted-proxy configuration exists.
+
+Audit and minimal retirement receipts follow the current approved Institution
+Retention Policy's audit period. Zero preserves them indefinitely. An audit's
+terminal event and a receipt's own retirement or cancellation event define
+their ages; completed offline-recovery evidence and released hold history must
+also satisfy their own event ages. Eligibility begins a fresh positive grace
+period. Saving a policy never approves expiry, and policy or control changes
+cancel pending grace atomically.
+
+Unfinished audit attempts and records still referenced by durable owners are
+protected. Relevant examination holds, unfinished records completion, export
+construction, and uncompleted physical purge are explicit preview blockers.
+Adding a durable audit reference cancels its expiry grace even if that
+reference disappears before the next worker scan. Existing FK owners are a
+closed, conformance-tested inventory; a new reference requires a deliberate
+protection and cancellation rule. Ordinary audit listing and visibility
+checks do not grant expiry authority.
+
+The named Retention Store operation locks policy/control and the current
+examination owners, rechecks dependencies at the PostgreSQL clock, and commits
+the bounded removal with a separate content-free system audit. Neither its
+pending schedule nor a retirement receipt references that cleanup audit;
+cleanup history therefore receives its own age rather than retaining detailed
+audit forever. Reconciled offline recovery evidence may expire with its audit.
+Released hold history may expire only after both audit events and the release
+have aged and no retained command outcome references them. Other referenced
+histories remain visible blockers until their owning workflow removes them.
+
+Terminal system cleanup audits use a separate bounded aggregate pass, never
+one new audit for each old cleanup audit. The same per-record age, grace,
+holds and reference checks apply. A changing batch reserves its actorless
+critical attempt inside the named transaction before effects, then completes
+one scalar-count summary atomically. A no-change scan, including protected
+and future-grace records, emits no audit. The summary itself follows the same
+batch lifecycle; repeated generations therefore do not multiply history.
+Broad Exam audit records inherit unfinished protection from descendant Sittings.
+
+A receipt cannot expire until its permanent Submission markers exist and
+all exact-key purge writers are known finished with independently confirmed
+absence. Unknown writers retain their reconciliation references indefinitely.
+Deleting eligible receipt history also removes its notices, but never clears
+permanent category markers or restores content.
+
+`retention_policy.view` reads Institution policy through an authorized Session
+and may be granted at Institution scope. `retention_policy.manage` is reserved
+for the active protected system-administrator Role and additionally requires
+a strong recent interactive Session. Neither action accepts Personal Access
+Tokens. Startup reconciliation adds both actions to the protected Role on
+existing installations. Policy replacement requires critical audit, expected
+revision, and idempotency; success commits with the policy and retained outcome.
+
+`exam.records.export` and `exam.records.export_override` grant no standalone
+read access. Creation and retrieval also require Submission read; Sitting
+exports require Sitting read, and integrity requires Browser Activity read,
+all under the same ordinary/override scope. SQL rechecks credentials,
+bindings, Exam Manager/exact-unit membership, nested ownership and requester
+under authoritative locks. Critical creation audit, the exact ID-only retry
+outcome, source protections and build Job commit atomically. Archive bytes,
+paths, private Review text, hashes and structured student records never enter
+ordinary audit or Job diagnostics.

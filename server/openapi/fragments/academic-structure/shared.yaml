@@ -7,6 +7,15 @@
 
 components:
   parameters:
+    AcademicExpectedRevision:
+      name: expected_revision
+      in: query
+      required: false
+      description: Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     OptionalIdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -69,6 +78,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - revision
         - id
         - create_at
         - update_at
@@ -78,6 +88,11 @@ components:
         - display_name
         - description
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
         create_at:
@@ -150,6 +165,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - revision
         - id
         - create_at
         - update_at
@@ -159,6 +175,11 @@ components:
         - display_name
         - description
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
         create_at:
@@ -182,6 +203,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - revision
         - id
         - create_at
         - update_at
@@ -191,6 +213,11 @@ components:
         - display_name
         - description
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
         create_at:
@@ -214,6 +241,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - revision
         - id
         - create_at
         - update_at
@@ -224,6 +252,11 @@ components:
         - display_name
         - description
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
         id:
           $ref: '#/components/schemas/ID'
         create_at:

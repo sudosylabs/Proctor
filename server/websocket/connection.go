@@ -14,6 +14,8 @@ package websocket
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/sudosylabs/proctor/server/app"
 	"github.com/sudosylabs/proctor/server/model"
@@ -32,20 +34,30 @@ type connectionRuntime struct {
 	id          string
 	recorder    Recorder
 
-	mu            sync.Mutex
-	nextSequence  int64
-	history       []*Event
-	subscriptions map[string]Subscription
-	replayable    bool
-	send          chan outboundMessage
-	closeOnce     sync.Once
-	attemptClose  sync.Once
-	attempt       *examAttemptBinding
-	terminal      app.CandidateExamTerminal
+	mu                 sync.Mutex
+	nextSequence       int64
+	history            []*Event
+	subscriptions      map[string]Subscription
+	replayable         bool
+	send               chan outboundMessage
+	closeStarted       atomic.Bool
+	transportCloseOnce sync.Once
+	attemptClose       sync.Once
+	attempt            *examAttemptBinding
+	terminal           app.CandidateExamTerminal
+	terminalReaders    sync.WaitGroup
 
 	activityMu sync.Mutex
 	activities sync.WaitGroup
 	finalized  bool
+
+	lifecycleMu      sync.Mutex
+	runStarted       bool
+	stopping         bool
+	runDone          chan struct{}
+	runCancel        context.CancelFunc
+	finalizeCancel   context.CancelFunc
+	shutdownDeadline time.Time
 }
 
 type examAttemptBinding struct {
@@ -89,6 +101,7 @@ func newConnectionRuntime(
 		subscriptions: subscriptions,
 		replayable:    true,
 		send:          make(chan outboundMessage, sendQueueSize),
+		runDone:       make(chan struct{}),
 	}
 	for _, event := range replayEvents {
 		runtime.send <- outboundMessage{event: event}
@@ -97,7 +110,19 @@ func newConnectionRuntime(
 }
 
 func (c *connectionRuntime) run(ctx context.Context) {
+	c.lifecycleMu.Lock()
+	if c.stopping || c.runStarted {
+		c.lifecycleMu.Unlock()
+		return
+	}
+	if c.runDone == nil {
+		c.runDone = make(chan struct{})
+	}
 	pumpCtx, cancel := context.WithCancel(ctx)
+	c.runStarted, c.runCancel = true, cancel
+	c.lifecycleMu.Unlock()
+	defer close(c.runDone)
+	defer cancel()
 	var pumps sync.WaitGroup
 	pumps.Add(2)
 	go func() {
@@ -113,6 +138,48 @@ func (c *connectionRuntime) run(ctx context.Context) {
 	c.closeTransport()
 	pumps.Wait()
 	c.finalizeExamAttempt(ctx)
+	c.terminalReaders.Wait()
+}
+
+// beginShutdown stops new connection work while retaining the shared deadline
+// for durable finalization. A registered socket whose pumps have not begun can
+// be disposed immediately and can never start afterward.
+func (c *connectionRuntime) beginShutdown(deadline time.Time) {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.runDone == nil {
+		c.runDone = make(chan struct{})
+	}
+	if !c.stopping {
+		c.stopping = true
+		if !c.runStarted {
+			close(c.runDone)
+		}
+	}
+	c.shutdownDeadline = deadline
+	if c.runCancel != nil {
+		c.runCancel()
+	}
+}
+
+func (c *connectionRuntime) finalizationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	if !c.shutdownDeadline.IsZero() {
+		deadline = minTime(deadline, c.shutdownDeadline)
+	}
+	finalizeCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline)
+	c.finalizeCancel = cancel
+	return finalizeCtx, cancel
+}
+
+func (c *connectionRuntime) cancelFinalization() {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.finalizeCancel != nil {
+		c.finalizeCancel()
+	}
 }
 
 // acquire retains the runtime for one Hub-selected operation. The Hub calls it

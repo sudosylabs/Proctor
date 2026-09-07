@@ -10,6 +10,7 @@ package app
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,17 +26,21 @@ type programmeStoreFake struct {
 	updateInput  *store.ProgrammeUpdate
 	archiveInput *store.ProgrammeArchive
 	createErr    error
+	listed       []*model.Programme
+	searchTerm   string
+	searchLimit  int
 }
 
 func (s *programmeStoreFake) Get(context.Context, string) (*model.Programme, error) {
 	*s.events = append(*s.events, "get")
 	return s.current, nil
 }
-func (*programmeStoreFake) ListByAcademicUnit(context.Context, string) ([]*model.Programme, error) {
-	return nil, nil
+func (s *programmeStoreFake) ListByAcademicUnit(context.Context, string) ([]*model.Programme, error) {
+	return s.listed, nil
 }
-func (*programmeStoreFake) SearchByAcademicUnit(context.Context, string, string, int) ([]*model.Programme, error) {
-	return nil, nil
+func (s *programmeStoreFake) SearchByAcademicUnit(_ context.Context, _ string, term string, limit int) ([]*model.Programme, error) {
+	s.searchTerm, s.searchLimit = term, limit
+	return s.listed[:min(limit, len(s.listed))], nil
 }
 func (s *programmeStoreFake) Create(_ context.Context, input *store.ProgrammeCreation) (*model.Programme, error) {
 	*s.events = append(*s.events, "store-create")
@@ -213,5 +218,36 @@ func TestProgrammeArchiveUsesAtomicStoreSeam(t *testing.T) {
 	}
 	if persistence.archiveInput == nil || persistence.archiveInput.ID != current.ID.String() || persistence.archiveInput.AuditEventID != auditID {
 		t.Fatalf("archive input = %#v", persistence.archiveInput)
+	}
+}
+
+func TestProgrammeListPreservesLimitWithoutSearch(t *testing.T) {
+	t.Parallel()
+	for _, term := range []string{"", "  \t", " programme "} {
+		t.Run(term, func(t *testing.T) {
+			t.Parallel()
+			events := []string{}
+			first := &model.Programme{ID: model.NewProgrammeID()}
+			persistence := &programmeStoreFake{
+				events: &events,
+				listed: []*model.Programme{first, {ID: model.NewProgrammeID()}},
+			}
+			service := newProgrammeService(
+				persistence, &programmeAuthorizerFake{events: &events},
+				&institutionAuditorFake{events: &events}, time.Now, model.NewId,
+			)
+			got, err := service.List(context.Background(), Invocation{}, ListProgrammesQuery{
+				AcademicUnitID: model.NewId(), Query: term, Limit: 1,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0] != first {
+				t.Fatalf("List(limit=1, q=%q) = %#v", term, got)
+			}
+			if persistence.searchTerm != strings.TrimSpace(term) || persistence.searchLimit != 1 {
+				t.Fatalf("bounded query = %q, %d", persistence.searchTerm, persistence.searchLimit)
+			}
+		})
 	}
 }

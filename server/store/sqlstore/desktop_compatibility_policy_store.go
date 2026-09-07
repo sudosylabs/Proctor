@@ -72,8 +72,14 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 				if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
 					return desktopCompatibilityPolicyReplacementOutcome{}, err
 				}
+				current, err := getDesktopCompatibilityPolicy(ctx, tx, "FOR UPDATE")
+				if err != nil {
+					return desktopCompatibilityPolicyReplacementOutcome{}, err
+				}
+				// Read wall time after serialization; transaction-start time can
+				// precede a binding revocation committed while this edit waited.
 				var databaseNow time.Time
-				if err := tx.Get(ctx, &databaseNow, `SELECT CURRENT_TIMESTAMP`); err != nil {
+				if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 					return desktopCompatibilityPolicyReplacementOutcome{}, fmt.Errorf(
 						"read desktop compatibility policy mutation time: %w",
 						err,
@@ -94,10 +100,6 @@ func (s SQLDesktopCompatibilityPolicyStore) Replace(
 						"actor_not_system_administrator",
 						nil,
 					)
-				}
-				current, err := getDesktopCompatibilityPolicy(ctx, tx, "FOR UPDATE")
-				if err != nil {
-					return desktopCompatibilityPolicyReplacementOutcome{}, err
 				}
 				if current.Revision != input.ExpectedRevision {
 					return desktopCompatibilityPolicyReplacementOutcome{},

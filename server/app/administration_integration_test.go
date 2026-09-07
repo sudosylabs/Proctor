@@ -546,6 +546,10 @@ func (s unknownBootstrapOutcomeInstallation) ReconcileAdministratorRecovery(
 	return s.delegate.ReconcileAdministratorRecovery(ctx, input)
 }
 
+func (s unknownBootstrapOutcomeInstallation) ResetAdministratorMFA(ctx context.Context, input *store.AdministratorMFAReset) (*store.AdministratorMFAResetResult, error) {
+	return s.delegate.ResetAdministratorMFA(ctx, input)
+}
+
 func TestBootstrapUnknownCommitOutcomeReconcilesThroughRealGraph(t *testing.T) {
 	dataSource := os.Getenv("PROCTOR_TEST_DATABASE_URL")
 	if dataSource == "" {

@@ -50,6 +50,7 @@ export function JoinPage({ claim }: JoinPageProps) {
       <InvitationContent
         institutionName={initialResource.value.institutionName}
         loading={initialResource.loading}
+        onRetry={initialResource.retry}
         state={initialResource.value.state}
         acceptAccount={acceptInvitationAccount}
         acceptSession={acceptInvitationSession}

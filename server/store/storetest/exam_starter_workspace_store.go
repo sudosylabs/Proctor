@@ -21,7 +21,7 @@ import (
 // TestExamStarterWorkspaceStore verifies the bounded hierarchy, replay, move,
 // content-pointer replacement, and nonempty-directory guarantees shared by
 // every adapter.
-func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store) {
+func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...StarterWorkspaceSQLProbe) {
 	ctx := context.Background()
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "starter-workspace-unit")
@@ -226,6 +226,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store) {
 	if len(claimed) != 0 {
 		t.Fatalf("completed cleanup remained claimable = %#v", claimed)
 	}
+	testStarterWorkspaceRecursiveRemoval(t, ss, probes...)
 }
 
 func starterWorkspaceMutation(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID,

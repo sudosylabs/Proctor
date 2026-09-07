@@ -52,6 +52,14 @@ func (s *hookStore) AccessPolicy() store.AccessPolicyStore { return hookAccessPo
 func (s *hookStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
 	return hookDesktopCompatibilityPolicyStore{}
 }
+func (s *hookStore) RetentionPolicy() store.RetentionPolicyStore {
+	return hookRetentionPolicyStore{}
+}
+func (s *hookStore) Retention() store.RetentionStore { return hookRetentionStore{} }
+
+type hookRetentionPolicyStore struct{ store.RetentionPolicyStore }
+type hookRetentionStore struct{ store.RetentionStore }
+
 func (s *hookStore) DesktopRegistration() store.DesktopRegistrationStore {
 	return hookDesktopRegistrationStore{}
 }
@@ -80,6 +88,8 @@ func (s *hookStore) ExamIntegrityReview() store.ExamIntegrityReviewStore {
 func (s *hookStore) ExamCorrection() store.ExamCorrectionStore {
 	return hookExamCorrectionStore{}
 }
+func (s *hookStore) ExamRecords() store.ExamRecordsStore { return hookExamRecordsStore{} }
+func (s *hookStore) ExamExport() store.ExamExportStore   { return hookExamExportStore{} }
 func (s *hookStore) ExamResource() store.ExamResourceStore {
 	return hookExamResourceStore{}
 }
@@ -184,6 +194,8 @@ type hookExamAttemptWorkspaceStore struct {
 type hookExamSubmissionStore struct{ store.ExamSubmissionStore }
 type hookExamIntegrityReviewStore struct{ store.ExamIntegrityReviewStore }
 type hookExamCorrectionStore struct{ store.ExamCorrectionStore }
+type hookExamRecordsStore struct{ store.ExamRecordsStore }
+type hookExamExportStore struct{ store.ExamExportStore }
 type hookExamResourceStore struct{ store.ExamResourceStore }
 type hookExamRevisionStore struct{ store.ExamRevisionStore }
 type hookExamSittingStore struct{ store.ExamSittingStore }

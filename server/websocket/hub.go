@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/maphash"
 	"net/http"
 	"net/url"
@@ -32,13 +33,14 @@ import (
 )
 
 const (
-	sendQueueSize   = 256
-	replayQueueSize = 128
-	writeWait       = 30 * time.Second
-	pongWait        = 100 * time.Second
-	pingInterval    = 60 * time.Second
-	sessionCheck    = 30 * time.Second
-	replayRetention = 2 * time.Minute
+	sendQueueSize       = 256
+	replayQueueSize     = 128
+	writeWait           = 30 * time.Second
+	pongWait            = 100 * time.Second
+	pingInterval        = 60 * time.Second
+	sessionCheck        = 30 * time.Second
+	replayRetention     = 2 * time.Minute
+	shutdownControlWait = time.Second
 	// Close codes are part of the public WebSocket protocol contract.
 	CloseServer               = 4000
 	CloseSessionRevoked       = 4001
@@ -70,19 +72,22 @@ const (
 // Construction is inert: Start owns the replay reaper; Close is idempotent and
 // drains connections when the hub was started.
 type Hub struct {
-	application Application
-	logger      Logger
-	localizer   Localizer
-	publicURL   *url.URL
-	nodeID      string
-	hashSeed    maphash.Seed
-	recorder    Recorder
+	application     Application
+	logger          Logger
+	localizer       Localizer
+	publicURL       *url.URL
+	nodeID          string
+	hashSeed        maphash.Seed
+	recorder        Recorder
+	shutdownTimeout time.Duration
 
-	mu     sync.RWMutex
-	state  hubState
-	shards []*shard
-	stop   chan struct{}
-	done   chan struct{}
+	mu        sync.RWMutex
+	state     hubState
+	shards    []*shard
+	stop      chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // Recorder observes bounded connection, message, publication, replay, and
@@ -140,14 +145,15 @@ type Application interface {
 	ValidateWebSocketPrincipal(context.Context, model.Principal) error
 }
 
-// NewHub constructs an inert hub. Call Start before Accept; Close stops any
-// started background work and open connections.
+// NewHub constructs an inert hub. Call Start before Accept; Close drains its
+// connections and background work within the supplied shutdown timeout.
 func NewHub(
 	application Application,
 	logger Logger,
 	publicURL string,
 	nodeID string,
 	localizer Localizer,
+	shutdownTimeout time.Duration,
 ) (*Hub, error) {
 	if application == nil {
 		return nil, errors.New("WebSocket application is required")
@@ -155,20 +161,24 @@ func NewHub(
 	if logger == nil {
 		return nil, errors.New("WebSocket logger is required")
 	}
+	if shutdownTimeout <= 0 {
+		return nil, errors.New("WebSocket shutdown timeout must be positive")
+	}
 	parsed, err := url.Parse(publicURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, errors.New("WebSocket public URL is invalid")
 	}
 	shardCount := max(runtime.NumCPU(), 1)
 	hub := &Hub{
-		application: application,
-		logger:      logger,
-		localizer:   localizer,
-		publicURL:   parsed,
-		nodeID:      nodeID,
-		hashSeed:    maphash.MakeSeed(),
-		state:       hubCreated,
-		shards:      make([]*shard, shardCount),
+		application:     application,
+		logger:          logger,
+		localizer:       localizer,
+		publicURL:       parsed,
+		nodeID:          nodeID,
+		hashSeed:        maphash.MakeSeed(),
+		state:           hubCreated,
+		shards:          make([]*shard, shardCount),
+		shutdownTimeout: shutdownTimeout,
 	}
 	for index := range hub.shards {
 		hub.shards[index] = &shard{
@@ -560,9 +570,31 @@ func (h *Hub) closeMatching(
 	}
 }
 
-// Close stops the reaper when running, drains connections, and is idempotent.
-// Closing a never-started hub is a no-op success.
+// Close stops admission, closes sockets, and waits for active connection work,
+// including durable Attempt Connection finalization, within one deadline.
+// Deadline exhaustion cancels finalization and returns an error retained for
+// concurrent and repeated callers. Closing a never-started hub succeeds.
 func (h *Hub) Close() error {
+	h.closeOnce.Do(func() { h.closeErr = h.shutdown() })
+	return h.closeErr
+}
+
+func (h *Hub) shutdown() error {
+	ctx, cancel := context.WithTimeout(context.Background(), h.shutdownTimeout)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	shutdownError := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// A connection's deadline timer can finish its work before this
+		// context's timer is scheduled. The shared wall-clock deadline still
+		// bounds a successful drain under that scheduling order.
+		if !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
 	h.mu.Lock()
 	switch h.state {
 	case hubCreated:
@@ -570,11 +602,7 @@ func (h *Hub) Close() error {
 		h.mu.Unlock()
 		return nil
 	case hubStopped:
-		done := h.done
 		h.mu.Unlock()
-		if done != nil {
-			<-done
-		}
 		return nil
 	case hubStarted:
 		h.state = hubStopped
@@ -593,15 +621,53 @@ func (h *Hub) Close() error {
 			shard.mu.Unlock()
 		}
 		for _, connection := range connections {
-			connection.close(CloseServer, localizedCloseReason(connection.localizer, connection.locale, websocketCloseMessages["server_shutdown"]), false)
+			connection.beginShutdown(deadline)
+		}
+		// Every close frame shares the same short deadline. A slow peer cannot
+		// spend another full write budget for each connection in the Hub.
+		controlDeadline := minTime(deadline, time.Now().Add(shutdownControlWait))
+		for _, connection := range connections {
+			connection.closeWithDeadline(CloseServer, localizedCloseReason(connection.localizer, connection.locale, websocketCloseMessages["server_shutdown"]), false, controlDeadline)
+			connection.closeTransport()
 			connection.release()
 		}
-		<-done
+		abort := func(err error) error {
+			for _, connection := range connections {
+				connection.cancelFinalization()
+				connection.closeTransport()
+			}
+			return fmt.Errorf("WebSocket shutdown: %w", err)
+		}
+		if err := shutdownError(); err != nil {
+			return abort(err)
+		}
+		for _, connection := range connections {
+			select {
+			case <-connection.runDone:
+			case <-ctx.Done():
+				return abort(ctx.Err())
+			}
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return abort(ctx.Err())
+		}
+		if err := shutdownError(); err != nil {
+			return abort(err)
+		}
 		return nil
 	default:
 		h.mu.Unlock()
 		return nil
 	}
+}
+
+func minTime(first, second time.Time) time.Time {
+	if first.Before(second) {
+		return first
+	}
+	return second
 }
 
 func (h *Hub) reapReplayStates() {

@@ -25,6 +25,17 @@ type mfaAudit interface {
 	Complete(context.Context, string, model.AuditStatus, string, any) error
 }
 
+type mfaResetAuthorizer interface {
+	Authorize(context.Context, model.Principal, model.Action, model.Resource, model.RequestMetadata) error
+}
+
+type mfaSecurityDependencies struct {
+	authorization mfaResetAuthorizer
+	capabilities  accessPolicyCapabilitySource
+	attempts      *authenticationAttemptAccounting
+	rateLimit     LoginRateLimitPolicy
+}
+
 type mfaEffects interface {
 	SessionsRevoked(context.Context, string, []string, []string)
 }
@@ -39,6 +50,7 @@ type mfaApplicationService struct {
 	audit                   mfaAudit
 	effects                 mfaEffects
 	mail                    mfaNoticeMailPreparer
+	security                mfaSecurityDependencies
 	mechanics               *mfaMechanics
 	recentAuthenticationTTL time.Duration
 	now                     func() time.Time
@@ -53,6 +65,7 @@ func newMFAApplicationService(
 	effects mfaEffects,
 	mail mfaNoticeMailPreparer,
 	mechanics *mfaMechanics,
+	security mfaSecurityDependencies,
 	recentAuthenticationTTL time.Duration,
 	now func() time.Time,
 ) (*mfaApplicationService, error) {
@@ -73,6 +86,10 @@ func newMFAApplicationService(
 		return nil, errors.New("MFA mail preparer is required")
 	case mechanics == nil:
 		return nil, errors.New("MFA mechanics are required")
+	case security.authorization == nil || security.capabilities == nil || security.attempts == nil:
+		return nil, errors.New("MFA security dependencies are required")
+	case security.rateLimit.MaximumAttempts <= 0 || security.rateLimit.MaximumSourceAttempts <= 0 || security.rateLimit.Window <= 0:
+		return nil, errors.New("MFA attempt policy is required")
 	case recentAuthenticationTTL <= 0:
 		return nil, errors.New("MFA recent authentication TTL must be positive")
 	case now == nil:
@@ -81,38 +98,31 @@ func newMFAApplicationService(
 	return &mfaApplicationService{
 		users: users, credentials: credentials, sessions: sessions,
 		institutions: institutions, audit: audit, effects: effects,
-		mail: mail, mechanics: mechanics, recentAuthenticationTTL: recentAuthenticationTTL,
+		mail: mail, mechanics: mechanics, security: security, recentAuthenticationTTL: recentAuthenticationTTL,
 		now: now,
 	}, nil
 }
 
-func (s *mfaApplicationService) GetStatus(
-	ctx context.Context,
-	invocation Invocation,
-) (*MFAStatus, error) {
+func (s *mfaApplicationService) GetStatus(ctx context.Context, invocation Invocation) (*MFAStatus, error) {
 	principal := invocation.Principal()
-	if err := s.requireInteractiveSession(principal, false); err != nil {
+	if err := s.requireRecoverySession(principal, false); err != nil {
 		return nil, err
 	}
-	if err := s.requireEnabled(); err != nil {
-		return nil, err
-	}
+	status := &MFAStatus{ServiceEnabled: s.mechanics.settings.Enabled, MFARecoveryRequired: principal.MFARecoveryRequired,
+		AuthenticationMethod: principal.AuthenticationMethod, AuthenticationProviderID: principal.AuthenticationProviderID,
+		AuthenticationStrength: principal.AuthenticationStrength, RecentlyAuthenticated: principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL)}
 	credential, err := s.credentials.GetByUser(ctx, principal.UserID.String())
 	if store.IsNotFound(err) {
-		return &MFAStatus{}, nil
+		return status, nil
 	}
 	if err != nil {
 		return nil, mfaStoreFailure(err)
 	}
-	status := &MFAStatus{
-		Enabled:          credential.IsActive(),
-		Pending:          credential.IsPendingAt(model.TimeUTC(s.now())),
-		PendingExpiresAt: credential.PendingExpiresAt,
-	}
+	status.Enabled = credential.IsActive()
+	status.Pending = credential.IsPendingAt(model.TimeUTC(s.now()))
+	status.PendingExpiresAt = credential.PendingExpiresAt
 	if status.Enabled {
-		status.RecoveryCodesRemaining, err = s.credentials.CountRecoveryCodes(
-			ctx, principal.UserID.String(),
-		)
+		status.RecoveryCodesRemaining, err = s.credentials.CountRecoveryCodes(ctx, principal.UserID.String())
 		if err != nil {
 			return nil, mfaStoreFailure(err)
 		}
@@ -126,7 +136,7 @@ func (s *mfaApplicationService) Setup(
 	command SetupMFACommand,
 ) (*MFASetup, error) {
 	principal := invocation.Principal()
-	if err := s.requireInteractiveSession(principal, true); err != nil {
+	if err := s.requireRecoverySession(principal, true); err != nil {
 		return nil, err
 	}
 	if err := s.requireEnabled(); err != nil {
@@ -165,14 +175,9 @@ func (s *mfaApplicationService) Setup(
 	if appErr != nil {
 		return nil, appErr
 	}
-	saved, err := s.credentials.SavePending(ctx, candidate)
+	saved, err := s.credentials.SavePendingWithAudit(ctx, &store.MFAPendingEnrollment{Principal: principal, Credential: candidate, Lifetime: s.mechanics.settings.SetupTTL, RecentAuthenticationTTL: s.recentAuthenticationTTL, AuditEventID: model.AuditEventID(auditID)})
 	if err != nil {
 		return nil, s.failMutation(ctx, auditID, "MFA", err)
-	}
-	if appErr := s.audit.Complete(
-		ctx, auditID, model.AuditStatusSuccess, "", saved.Auditable(),
-	); appErr != nil {
-		return nil, appErr
 	}
 	return &MFASetup{
 		Secret: secret,
@@ -189,10 +194,13 @@ func (s *mfaApplicationService) Activate(
 	command ActivateMFACommand,
 ) (*MFAActivation, error) {
 	principal := invocation.Principal()
-	if err := s.requireInteractiveSession(principal, true); err != nil {
+	if err := s.requireRecoverySession(principal, true); err != nil {
 		return nil, err
 	}
 	if err := s.requireEnabled(); err != nil {
+		return nil, err
+	}
+	if err := s.limitFactorAttempt(ctx, invocation); err != nil {
 		return nil, err
 	}
 	credential, err := s.credentials.GetByUser(ctx, principal.UserID.String())
@@ -236,6 +244,7 @@ func (s *mfaApplicationService) Activate(
 		return nil, appErr
 	}
 	activated, err := s.credentials.Activate(ctx, &store.MFAActivationMutation{
+		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
 		CredentialID: credential.ID.String(), UserID: principal.UserID.String(), TimeStep: timeStep,
 		RecoveryCodes: recoveryCodes, SessionID: principal.SessionID.String(), At: now,
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
@@ -262,6 +271,9 @@ func (s *mfaApplicationService) Challenge(
 	if err := s.requireEnabled(); err != nil {
 		return nil, err
 	}
+	if err := s.limitFactorAttempt(ctx, invocation); err != nil {
+		return nil, err
+	}
 	resource, appErr := s.auditResource(ctx)
 	if appErr != nil {
 		return nil, appErr
@@ -271,39 +283,32 @@ func (s *mfaApplicationService) Challenge(
 		return nil, appErr
 	}
 	now := model.TimeUTC(s.now())
-	if appErr := s.consumeSecondFactor(
-		ctx, principal.UserID.String(), command.Code, now,
-	); appErr != nil {
+	proof, err := s.mechanics.verifySecondFactor(ctx, s.credentials, principal.UserID.String(), command.Code, now)
+	if err != nil {
 		code := "authentication.mfa.invalid_code"
-		if failure, ok := As(appErr); ok {
+		if failure, ok := As(err); ok {
 			code = failure.Code()
 		}
-		if auditErr := s.audit.Complete(
-			ctx, auditID, model.AuditStatusFail, code, nil,
-		); auditErr != nil {
+		if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, code, nil); auditErr != nil {
 			return nil, auditErr
 		}
-		return nil, appErr
+		return nil, err
 	}
-	hashes, err := s.credentials.UpgradeSession(
-		ctx, principal.SessionID.String(), principal.UserID.String(), now,
-	)
+	result, err := s.credentials.ChallengeWithAudit(ctx, &store.MFAChallenge{Principal: principal, CredentialID: proof.credentialID, TimeStep: proof.step, RecoveryCodeHash: proof.recoveryHash, VerifiedAt: now, AuditEventID: model.AuditEventID(auditID)})
 	if err != nil {
-		return nil, s.failMutation(ctx, auditID, "ChallengeMFA.upgrade", err)
+		if store.IsNotFound(err) {
+			if auditErr := s.audit.Complete(ctx, auditID, model.AuditStatusFail, "authentication.mfa.invalid_code", nil); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, mfaInvalidCodeError("ChallengeMFA")
+		}
+		return nil, s.failMutation(ctx, auditID, "ChallengeMFA", err)
 	}
-	s.effects.SessionsRevoked(
-		ctx, principal.UserID.String(), []string{principal.SessionID.String()}, hashes,
-	)
-	session, err := s.sessions.Get(ctx, principal.SessionID.String())
-	if err != nil {
-		return nil, s.failMutation(ctx, auditID, "ChallengeMFA.session", err)
+	if result == nil || result.Session == nil {
+		return nil, authenticationUnavailable(errors.New("MFA challenge returned no Session"))
 	}
-	if appErr := s.audit.Complete(
-		ctx, auditID, model.AuditStatusSuccess, "", session.Auditable(),
-	); appErr != nil {
-		return nil, appErr
-	}
-	return session, nil
+	s.effects.SessionsRevoked(ctx, principal.UserID.String(), []string{principal.SessionID.String()}, result.AccessTokenHashes)
+	return result.Session, nil
 }
 
 func (s *mfaApplicationService) RegenerateRecoveryCodes(
@@ -341,6 +346,7 @@ func (s *mfaApplicationService) RegenerateRecoveryCodes(
 		return nil, appErr
 	}
 	if err := s.credentials.ReplaceRecoveryCodes(ctx, &store.MFARecoveryCodesRegeneration{
+		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
 		UserID: principal.UserID.String(), RecoveryCodes: codes, At: now.UnixMilli(),
 		AuditEventID: auditID, AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	}); err != nil {
@@ -378,6 +384,7 @@ func (s *mfaApplicationService) Disable(
 		return appErr
 	}
 	result, err := s.credentials.Disable(ctx, &store.MFADisablement{
+		Principal: principal, RecentAuthenticationTTL: s.recentAuthenticationTTL,
 		UserID: principal.UserID.String(), At: now.UnixMilli(), AuditEventID: auditID,
 		AuditAt: now.UnixMilli(), Notice: mfaSecurityNotice(prepared),
 	})
@@ -543,3 +550,41 @@ func (a mfaAuditAdapter) Complete(
 }
 
 var _ authenticationMFAVerifier = (*mfaApplicationService)(nil)
+
+func (s *mfaApplicationService) RecoveryState(ctx context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	state, err := s.credentials.GetRecoveryState(ctx, userID)
+	if err != nil {
+		return nil, authenticationUnavailable(err)
+	}
+	if state.ReenrollmentRequired && !s.mechanics.settings.Enabled {
+		return nil, NewError("authentication.mfa.unavailable")
+	}
+	return state, nil
+}
+
+func (s *mfaApplicationService) requireRecoverySession(principal model.Principal, recent bool) error {
+	if principal.ValidateMFARecovery() != nil || principal.CredentialType != model.CredentialSessionAccess {
+		return NewError("authentication.session_required")
+	}
+	if recent && !principal.IsRecentlyAuthenticated(s.now(), s.recentAuthenticationTTL) {
+		return NewError("authentication.reauthentication_required")
+	}
+	return nil
+}
+
+func (s *mfaApplicationService) limitFactorAttempt(ctx context.Context, invocation Invocation) error {
+	_, limited, err := s.security.attempts.account(ctx, authenticationAttemptIntent{
+		purpose: authenticationAttemptPurposeMFA, window: s.security.rateLimit.Window,
+		limits: []authenticationAttemptLimit{
+			{dimension: authenticationAttemptDimensionIdentity, maximum: s.security.rateLimit.MaximumAttempts, identity: invocation.Principal().UserID.String()},
+			{dimension: authenticationAttemptDimensionSource, maximum: s.security.rateLimit.MaximumSourceAttempts, source: invocation.RequestMetadata().IPAddress},
+		},
+	})
+	if err != nil {
+		return rateLimitUnavailableAppError(err)
+	}
+	if limited {
+		return NewError("authentication.rate_limited")
+	}
+	return nil
+}

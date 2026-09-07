@@ -249,6 +249,8 @@ func (s SQLExamStarterWorkspaceStore) ClaimObjectsForCleanup(ctx context.Context
 				SELECT 1 FROM exam_attempt_workspace_objects pinned
 				WHERE pinned.starter_object_id = objects.id
 			  )
+			  AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
+				WHERE outcomes.original_audit_event_id = objects.retired_by_audit_event_id)
 		ORDER BY COALESCE(reclaim_after, expires_at), id
 		FOR UPDATE SKIP LOCKED LIMIT ?
 	) UPDATE exam_starter_workspace_objects AS objects
@@ -291,7 +293,9 @@ func (s SQLExamStarterWorkspaceStore) CompleteObjectCleanup(ctx context.Context,
 				AND NOT EXISTS (
 					SELECT 1 FROM exam_attempt_workspace_objects pinned
 					WHERE pinned.starter_object_id = objects.id
-				)`, objectID.String(), claimToken)
+				)
+				AND NOT EXISTS (SELECT 1 FROM command_outcomes outcomes
+					WHERE outcomes.original_audit_event_id = objects.retired_by_audit_event_id)`, objectID.String(), claimToken)
 		if err != nil {
 			return struct{}{}, fmt.Errorf("complete Starter Workspace object cleanup: %w", translateError("exam_starter_workspace_object", objectID.String(), err))
 		}
@@ -498,14 +502,33 @@ func removeStarterWorkspaceEntry(ctx context.Context, tx *sqlxTxWrapper, input *
 			input.ExamID.String(), escapeLike(item.Entry.Path)+"/%"); err != nil {
 			return nil, fmt.Errorf("count Starter Workspace descendants: %w", err)
 		}
-		if descendants != 0 {
+		if descendants != 0 && !input.Recursive {
 			return nil, store.NewErrConflict("exam_starter_workspace_entry", "workspace_directory_not_empty", nil)
 		}
+	} else if input.Recursive {
+		return nil, store.NewErrInvalidInput("exam_starter_workspace", "recursive_remove", nil)
 	}
 	at := model.TimeFromMillis(input.ChangedAt)
-	if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_entries SET archived_at = ?, updated_at = ? WHERE exam_id = ? AND id = ? AND archived_at IS NULL`,
-		at, at, input.ExamID.String(), input.EntryID.String()); err != nil {
-		return nil, fmt.Errorf("remove Starter Workspace entry: %w", err)
+	if input.Recursive {
+		if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_objects objects
+			SET state='reclaimable',updated_at=?,reclaim_after=?,retired_by_audit_event_id=?
+			WHERE objects.exam_id=? AND objects.state='current'
+				AND EXISTS (SELECT 1 FROM exam_starter_workspace_entries entries
+					WHERE entries.exam_id=objects.exam_id AND entries.current_object_id=objects.id AND entries.archived_at IS NULL
+					AND (entries.path=? OR entries.path LIKE ? ESCAPE '!'))`,
+			at, at.Add(model.StarterWorkspaceReclaimSafetyWindow), input.AuditEventID, input.ExamID.String(), item.Entry.Path, escapeLike(item.Entry.Path)+"/%"); err != nil {
+			return nil, fmt.Errorf("retire Starter Workspace subtree objects: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_entries SET archived_at=?,updated_at=?
+			WHERE exam_id=? AND archived_at IS NULL AND (path=? OR path LIKE ? ESCAPE '!')`,
+			at, at, input.ExamID.String(), item.Entry.Path, escapeLike(item.Entry.Path)+"/%"); err != nil {
+			return nil, fmt.Errorf("remove Starter Workspace subtree: %w", err)
+		}
+	} else {
+		if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_entries SET archived_at = ?, updated_at = ? WHERE exam_id = ? AND id = ? AND archived_at IS NULL`,
+			at, at, input.ExamID.String(), input.EntryID.String()); err != nil {
+			return nil, fmt.Errorf("remove Starter Workspace entry: %w", err)
+		}
 	}
 	reclaimID := model.StarterWorkspaceObjectID("")
 	if item.Object != nil {

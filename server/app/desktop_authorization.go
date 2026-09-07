@@ -347,6 +347,9 @@ func (s *desktopAuthorizationService) AuthenticateLocal(ctx context.Context, com
 	if err != nil {
 		return nil, err
 	}
+	if proof.MFARecoveryRequired {
+		return nil, invalidCredentialsAppError()
+	}
 	result, err := s.authenticate(ctx, command.Binding, store.DesktopAuthorizationAuthentication{
 		PasswordProof: proof.PasswordProof,
 		UserID:        proof.User.ID, AuthenticationMethod: "password", AuthenticationStrength: proof.AuthenticationStrength,
@@ -375,6 +378,17 @@ func (s *desktopAuthorizationService) authenticate(ctx context.Context, binding 
 		return result, NewError("authentication.desktop_authorization.account_session_locked")
 	}
 	return result, nil
+}
+
+func (s *desktopAuthorizationService) resolveExternalAuthentication(ctx context.Context, binding, state string) (desktopExternalAuthenticationTarget, error) {
+	if !model.IsValidCredentialToken(binding) || !model.IsValidCredentialToken(state) {
+		return desktopExternalAuthenticationTarget{}, NewError("authentication.desktop_authorization.invalid")
+	}
+	current, err := s.transactions.GetDesktopAuthorizationContext(ctx, model.HashToken(binding))
+	if err != nil || current == nil || current.State != model.BrowserAuthenticationStateBound || !current.ID.IsValid() {
+		return desktopExternalAuthenticationTarget{}, desktopAuthorizationStoreError(err)
+	}
+	return desktopExternalAuthenticationTarget{transactionID: current.ID, returnTo: "/authorize/desktop?state=" + url.QueryEscape(state)}, nil
 }
 
 func (s *desktopAuthorizationService) authenticateExternal(ctx context.Context, transactionID model.BrowserAuthenticationTransactionID,
@@ -622,7 +636,7 @@ func desktopAuthorizationRedirectURL(callback, code, state string) (string, erro
 }
 
 func desktopAuthorizationStoreError(err error) *Error {
-	if store.IsNotFound(err) || errors.Is(err, store.ErrAuthenticationMethodDisabled) || errors.Is(err, store.ErrPasswordCredentialChanged) {
+	if store.IsNotFound(err) || errors.Is(err, store.ErrAuthenticationMethodDisabled) || errors.Is(err, store.ErrPasswordCredentialChanged) || errors.Is(err, store.ErrAuthenticationGenerationChanged) || errors.Is(err, store.ErrMFAReenrollmentRequired) {
 		return NewError("authentication.desktop_authorization.rejected")
 	}
 	var conflict *store.ErrConflict

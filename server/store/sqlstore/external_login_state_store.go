@@ -37,6 +37,9 @@ type externalLoginStateRow struct {
 	Provider                           string         `db:"provider"`
 	Purpose                            string         `db:"purpose"`
 	TargetUserID                       sql.NullString `db:"target_user_id"`
+	SessionID                          sql.NullString `db:"session_id"`
+	SessionCredentialID                sql.NullString `db:"session_credential_id"`
+	ExternalIdentityID                 sql.NullString `db:"external_identity_id"`
 	InvitationID                       sql.NullString `db:"invitation_id"`
 	BrowserAuthenticationTransactionID sql.NullString `db:"browser_authentication_transaction_id"`
 	AuditEventID                       sql.NullString `db:"audit_event_id"`
@@ -58,6 +61,9 @@ func externalLoginStateSliceColumns() []string {
 		"external_login_states.provider",
 		"external_login_states.purpose",
 		"external_login_states.target_user_id",
+		"external_login_states.session_id",
+		"external_login_states.session_credential_id",
+		"external_login_states.external_identity_id",
 		"external_login_states.invitation_id",
 		"external_login_states.browser_authentication_transaction_id",
 		"external_login_states.audit_event_id",
@@ -155,11 +161,11 @@ func (s SQLExternalLoginStateStore) save(
 		row := newExternalLoginStateRow(&candidate)
 		if _, err := tx.NamedExec(ctx, `
 			INSERT INTO external_login_states (
-				id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
+				id, created_at, updated_at, provider, purpose, target_user_id, session_id, session_credential_id, external_identity_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
 				return_to, client_type, device_id, device_name, expires_at,
 				consumed_at
 			) VALUES (
-				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :invitation_id, :browser_authentication_transaction_id, :audit_event_id, :state_hash, :binding_hash,
+				:id, :created_at, :updated_at, :provider, :purpose, :target_user_id, :session_id, :session_credential_id, :external_identity_id, :invitation_id, :browser_authentication_transaction_id, :audit_event_id, :state_hash, :binding_hash,
 				:return_to, :client_type, :device_id, :device_name, :expires_at,
 				:consumed_at
 			)`, &row); err != nil {
@@ -203,7 +209,7 @@ func (s SQLExternalLoginStateStore) Consume(
 		   AND consumed_at IS NULL
 		   AND created_at <= consumed.at
 		   AND expires_at > consumed.at
-		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
+		RETURNING id, created_at, updated_at, provider, purpose, target_user_id, session_id, session_credential_id, external_identity_id, invitation_id, browser_authentication_transaction_id, audit_event_id, state_hash, binding_hash,
 		          return_to, client_type, device_id, device_name, expires_at,
 		          consumed_at`,
 		provider,
@@ -226,7 +232,7 @@ func (s SQLExternalLoginStateStore) Maintain(ctx context.Context, limit int) (*s
 			SELECT state.id, state.audit_event_id
 			  FROM external_login_states state
 			  JOIN audit_events audit ON audit.id=state.audit_event_id AND audit.status='attempt'
-			 WHERE state.purpose='connect' AND state.expires_at<=clock_timestamp()
+			 WHERE state.purpose IN ('connect','reauthenticate') AND state.expires_at<=clock_timestamp()
 			 ORDER BY state.expires_at, state.id
 			 FOR UPDATE OF state, audit SKIP LOCKED LIMIT ?
 		), completed AS (
@@ -253,7 +259,7 @@ func (s SQLExternalLoginStateStore) Maintain(ctx context.Context, limit int) (*s
 		var more bool
 		if err := tx.Get(ctx, &more, `SELECT EXISTS (
 			SELECT 1 FROM external_login_states state JOIN audit_events audit ON audit.id=state.audit_event_id
-			 WHERE state.purpose='connect' AND state.expires_at<=clock_timestamp() AND audit.status='attempt'
+			 WHERE state.purpose IN ('connect','reauthenticate') AND state.expires_at<=clock_timestamp() AND audit.status='attempt'
 		) OR EXISTS (
 			SELECT 1 FROM external_login_states WHERE expires_at<=clock_timestamp()-(? * interval '1 millisecond')
 		)`, externalLoginStateRetention.Milliseconds()); err != nil {
@@ -272,6 +278,9 @@ func newExternalLoginStateRow(
 		UpdatedAt:                          UTCTime(state.UpdatedAt),
 		Provider:                           state.Provider,
 		Purpose:                            string(state.Purpose),
+		SessionID:                          sql.NullString{String: state.SessionID.String(), Valid: !state.SessionID.IsZero()},
+		SessionCredentialID:                sql.NullString{String: state.SessionCredentialID.String(), Valid: !state.SessionCredentialID.IsZero()},
+		ExternalIdentityID:                 sql.NullString{String: state.ExternalIdentityID.String(), Valid: !state.ExternalIdentityID.IsZero()},
 		TargetUserID:                       sql.NullString{String: state.TargetUserID.String(), Valid: !state.TargetUserID.IsZero()},
 		InvitationID:                       sql.NullString{String: state.InvitationID.String(), Valid: !state.InvitationID.IsZero()},
 		BrowserAuthenticationTransactionID: sql.NullString{String: state.BrowserAuthenticationTransactionID.String(), Valid: !state.BrowserAuthenticationTransactionID.IsZero()},
@@ -309,6 +318,18 @@ func (row externalLoginStateRow) model() (*model.ExternalLoginState, error) {
 		ConsumedAt:   OptionalTimeFromNullTime(row.ConsumedAt),
 	}
 	target, err := parseNullablePersistedID("external_login_state", "target_user_id", row.TargetUserID, model.ParseUserID)
+	if err != nil {
+		return nil, err
+	}
+	value.SessionID, err = parseNullablePersistedID("external_login_state", "session_id", row.SessionID, model.ParseSessionID)
+	if err != nil {
+		return nil, err
+	}
+	value.SessionCredentialID, err = parseNullablePersistedID("external_login_state", "session_credential_id", row.SessionCredentialID, model.ParseSessionCredentialID)
+	if err != nil {
+		return nil, err
+	}
+	value.ExternalIdentityID, err = parseNullablePersistedID("external_login_state", "external_identity_id", row.ExternalIdentityID, model.ParseExternalIdentityID)
 	if err != nil {
 		return nil, err
 	}

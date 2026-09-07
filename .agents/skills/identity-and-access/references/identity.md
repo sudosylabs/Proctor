@@ -100,6 +100,15 @@ retaining distinct named use cases and atomic terminal transitions. MFA
 cryptographic mechanics remain separate from MFA enrollment, challenge,
 recovery-code, and assurance-transition policy.
 
+External authentication receives Desktop Authorization as a required behavioral
+interface at construction. The Desktop Authorization module resolves the current
+bound transaction from the browser proof and prepares its return path; the
+verified provider callback authenticates only that exact transaction. The public
+facade delegates this collaboration without traversing Desktop persistence or
+assigning dependencies after construction. Ordinary Web Session issuance,
+provider connection, Invitation admission, and Desktop code exchange retain
+their distinct purposes and owners.
+
 Focused service constructors validate all required contracts and remain inert.
 Post-commit cache or Realtime failure does not rewrite a successfully committed
 durable result into a transaction failure; it produces bounded diagnostics and
@@ -144,7 +153,8 @@ the built-in role in the same release.
 
 Every route explicitly requires one of: public access, an authenticated
 principal, an interactive session, strong/MFA assurance, recent
-reauthentication, a composed assurance requirement, or a refresh credential.
+reauthentication, a composed assurance requirement, a bounded MFA-recovery
+Session, or a refresh credential.
 Administrative privilege is an application authorization decision, not a
 transport authentication class.
 
@@ -160,6 +170,27 @@ credentials whose hashes alone are persisted. Idle and absolute expiry are
 separate; activity writes are debounced; concurrency is bounded; users can
 list and revoke sessions; account and credential security changes can revoke
 all sessions. Authorization always resolves current role bindings.
+
+Self-service Session revocation and logout are critical audited mutations.
+The immutable principal selects the owning User; revoking a listed Session
+also verifies its current ownership. These intrinsic self-service operations
+do not grant administrative `session.manage` authority over another User.
+Their audit uses `session.manage` with the distinct `revoke_own_session`,
+`revoke_own_sessions`, or `logout` operation and only bounded Session/User
+identifiers plus approved Session result data. A durable attempt precedes the
+mutation, and Session/credential-family revocation commits atomically with its
+successful completion. An unavailable required audit fails closed before
+post-commit cache or realtime effects. Self-service reasons never create an
+administrator security notice.
+
+Repeating a single listed-Session revocation returns concealed not-found once
+that Session is revoked, with a failed mutation attempt when ownership was
+resolved. Logout on an already absent or revoked caller Session remains a
+successful audited no-op. Revoking all own Sessions with none remaining also
+completes a successful audit with a zero count. These no-ops produce no new
+revocation effects. Transport authentication still rejects a credential after
+its committed revocation; no-op behavior applies to an already-established
+application invocation, including concurrent requests.
 
 Every new Session authentication resolves its current credential, Session, and
 active User through authoritative Store reads and fails closed if a required
@@ -262,6 +293,45 @@ replay-protected, recovery codes are hashed and single-use, and recovery-code
 values are shown only once. External-provider MFA counts only when an
 explicitly configured trusted assertion proves it.
 
+Primary reauthentication preserves the Session's original method, provider,
+initial authentication and MFA history. Password proof targets the exact current
+User and current password revision. A separate optional reauthentication instant
+refreshes recency; it does not manufacture a new MFA completion. Both primary
+reauthentication and challenge commit their Session transition and required audit
+atomically, then invalidate disposable credential state. Setup, activation,
+recovery-code replacement, and disablement recheck the live current Session
+under the per-User Session fence before the MFA fence. Activation and challenge
+use a post-lock PostgreSQL instant. Factor attempts have bounded accounting.
+
+Institution-assisted reset is a protected system-administrator action requiring
+strong recent interactive authentication, an outside-Proctor identity-verification
+attestation, and a bounded reason and verification reference. It targets another
+active User, including another administrator, and never permits self-reset. The
+last usable administrator primary path remains protected. The reset aggregate
+retires local factors and codes, revokes Sessions and PATs, invalidates unfinished
+credential grants, and commits a security-notice reservation and required audit
+with a permanent per-User generation and reset instant.
+
+A fresh primary proof after reset can issue only a restricted Web Session. Ordinary
+principal validation rejects it. Only explicit status, fresh-proof, setup,
+activation and logout paths accept this context. Normal challenge, PATs, Desktop
+handoff and other account operations cannot restore access. Only activation of a
+new local authenticator clears the restriction for the activating Session; other
+restricted Sessions do not acquire ordinary authority. Generation and reset time
+survive activation, so pre-reset password proofs and unknown-User provider/browser
+transactions cannot regain authority afterwards. Required recovery persists when
+MFA or the provider is disabled; online reset refuses when enrollment is unavailable.
+
+An external-only User retains the exact existing provider identity. Ordinary SSO
+resolves the account but cannot satisfy assisted recovery: a separate bound flow
+requires verified fresh primary proof from that provider. No email match, Invitation
+or alternate primary credential substitutes for this proof. Hosted fresh-proof
+continuations are closed to MFA management and provider linking, return current
+state, and require the final sensitive action explicitly. Restarting pending setup
+replaces its old secret. A lost activation response is resolved through status and
+explicit recovery-code regeneration using the new authenticator; once-shown codes
+are never reconstructed.
+
 ## External provider boundary
 
 Protocols live under `server/platform/externalauth` and implement a
@@ -285,9 +355,9 @@ claims never create roles or memberships.
 One User may link several external identities and may also retain a local
 password when policy permits. Linking to an existing User requires current
 proof from both the existing User context and provider transaction. A valid
-Invitation claim may instead admit a new relationship-free User and exact
-identity link; it does not itself accept the Invitation or attach that identity
-to another existing User.
+Invitation admission flow instead accepts its exact package and binds the proved
+provider identity to the User admitted by that Invitation. It creates no ordinary
+Web Session and cannot substitute for assisted MFA recovery.
 Provider profile changes do not silently overwrite established Proctor fields.
 Provider-driven profile synchronization, relationship reconciliation, and
 deprovisioning require a separately reported policy; a failed provider account
@@ -299,7 +369,11 @@ The durable key is `(provider ID, opaque subject)`, where the authoritative
 subject is explicitly mapped from `<cas:user>` or a released attribute. The
 callback consumes state once and validates the ticket through the back channel
 against the exact service URL. CAS success or `renew=true` does not prove MFA
-without a configured trusted assertion. Proxy tickets, gateway login, CAS
+without a configured trusted assertion. Fresh primary reauthentication sends
+`renew=true` both at login and at service-ticket validation, as required by the
+[CAS protocol](https://apereo.github.io/cas/development/protocol/CAS-Protocol-Specification.html).
+The verified fresh proof uses the bound flow start as its conservative instant.
+Proxy tickets, gateway login, CAS
 single logout, and implicit multi-institution routing are outside the current
 contract.
 
@@ -311,7 +385,11 @@ nonce. The ID token signature, issuer, audience, expiry, nonce, and any
 included `at_hash` are verified. User-info `sub` must match the ID-token `sub`
 and cannot override authentication time or MFA claims. Provider tokens, codes,
 and raw claims are ephemeral and never persisted, returned, logged, or
-audited.
+audited. Fresh primary reauthentication requests `prompt=login` and `max_age=0`
+and requires signed `auth_time` no earlier than the bound flow's start (at the
+claim's second precision) and no later than the current instant. `iat` is never a
+substitute for fresh `auth_time`; this follows
+[OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html).
 
 A future cross-site SAML POST flow requires a reviewed two-stage design that
 retains the validated response and completes on a same-origin GET. The global

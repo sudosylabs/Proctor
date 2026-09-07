@@ -96,6 +96,19 @@ func TestAttemptWorkspaceJournalDescribesSafeOrderedAcknowledgements(t *testing.
 	if err := deleted.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	deleted.Recursive = true
+	if err := deleted.Validate(); err == nil {
+		t.Fatal("journal accepted recursive file deletion")
+	}
+	deleted.EntryKind = StarterWorkspaceEntryDirectory
+	if err := deleted.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	move.Recursive = true
+	if err := move.Validate(); err == nil {
+		t.Fatal("journal accepted a recursive non-deletion")
+	}
+	move.Recursive = false
 	bad := move
 	bad.NewPath = "../escape"
 	if err := bad.Validate(); err == nil {

@@ -106,7 +106,7 @@ func externalAuthenticationResource(
 				"authentication.method.disabled", "authentication.method.last_usable", "authentication.method.not_found",
 				"authentication.method.provider_conflict", "authentication.method.conflict", "authentication.method.unavailable",
 				"authentication.sessions.maximum_reached", "authentication.internal", "audit.unavailable",
-				"authentication.desktop_authorization.account_session_locked",
+				"authentication.desktop_authorization.account_session_locked", "authentication.invalid_credentials",
 			},
 			module.complete,
 		),
@@ -210,6 +210,13 @@ func (module externalAuthenticationResourceModule) complete(
 	)
 	if err != nil {
 		return protocolResult{}, errorWithHeaders(err, clearBinding)
+	}
+	if completion.Restart != nil {
+		headers := captureResponseHeaders(func(writer http.ResponseWriter) {
+			module.cookies.attachExternalLoginBinding(writer, completion.Restart.Binding, completion.Restart.ExpiresAt)
+		})
+		headers.Set("Cache-Control", "no-store")
+		return redirectProtocolResult(completion.Restart.RedirectURL).withHeaders(headers), nil
 	}
 	headers := combineResponseHeaders(clearBinding, captureResponseHeaders(func(writer http.ResponseWriter) {
 		module.cookies.attach(writer, completion.Tokens)

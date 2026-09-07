@@ -21,7 +21,7 @@ import (
 
 type administratorRecoveryExecutor func(context.Context, string, server.AdministratorRecoveryCommand) (*server.AdministratorRecoveryResult, error)
 
-func newAdministratorCommand(stdin io.Reader, recover administratorRecoveryExecutor, text commandText) *cobra.Command {
+func newAdministratorCommand(stdin io.Reader, recover administratorRecoveryExecutor, resetMFA administratorMFAResetExecutor, text commandText) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "administrator",
 		Short: text.value("cli.administrator.short", "Perform host-only administrator operations", nil),
@@ -86,7 +86,7 @@ func newAdministratorCommand(stdin io.Reader, recover administratorRecoveryExecu
 	recoverCommand.SetFlagErrorFunc(func(*cobra.Command, error) error {
 		return newUsageError(text.value("cli.administrator.error.invalid_flags", "administrator recover contains an invalid flag or flag value", nil))
 	})
-	command.AddCommand(recoverCommand)
+	command.AddCommand(recoverCommand, newAdministratorMFAResetCommand(resetMFA, text))
 	return command
 }
 

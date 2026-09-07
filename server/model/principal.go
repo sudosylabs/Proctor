@@ -33,6 +33,8 @@ const (
 // memberships because authorization must resolve current durable state.
 type Principal struct {
 	UserID                   UserID
+	AuthenticationGeneration int64
+	MFARecoveryRequired      bool
 	SessionID                SessionID
 	CredentialID             PrincipalCredentialID
 	CredentialType           CredentialType
@@ -50,6 +52,7 @@ type Principal struct {
 	DesktopArchitecture      DesktopArchitecture
 	DesktopRealtimeProtocol  int
 	AuthenticatedAt          time.Time
+	ReauthenticatedAt        OptionalTime
 	MFACompletedAt           OptionalTime
 	CredentialScopes         []string
 	AcademicUnitID           AcademicUnitID
@@ -68,6 +71,26 @@ type AuthenticationTokens struct {
 // Validate checks that the immutable authentication context is internally
 // consistent for its credential type.
 func (p Principal) Validate() error {
+	if p.MFARecoveryRequired {
+		return errors.New("model: principal is restricted to MFA reenrollment")
+	}
+	return p.validateIdentity()
+}
+
+// ValidateMFARecovery accepts an ordinary principal or the narrow Web Session
+// established by fresh primary proof after assisted reset. Only the explicitly
+// bounded MFA recovery operations may call this instead of Validate.
+func (p Principal) ValidateMFARecovery() error {
+	if p.MFARecoveryRequired && (p.AuthenticationGeneration <= 0 || p.ClientType != SessionClientWeb || p.CredentialType != CredentialSessionAccess) {
+		return errors.New("model: MFA recovery principal is invalid")
+	}
+	return p.validateIdentity()
+}
+
+func (p Principal) validateIdentity() error {
+	if p.AuthenticationGeneration < 0 {
+		return errors.New("model: principal authentication generation is invalid")
+	}
 	if !p.UserID.IsValid() || !p.CredentialID.IsValid() ||
 		p.AuthenticationMethod == "" || !p.ClientType.IsValid() {
 		return errors.New("model: principal identity is invalid")
@@ -97,12 +120,15 @@ func (p Principal) Validate() error {
 				(!IsValidIdentityProviderID(p.AuthenticationProviderID) || !p.ExternalIdentityID.IsValid())) {
 			return errors.New("model: session principal authentication provider is invalid")
 		}
+		if p.ReauthenticatedAt.Valid && p.ReauthenticatedAt.Time.Before(p.AuthenticatedAt) {
+			return errors.New("model: session principal reauthentication is invalid")
+		}
 		return nil
 	case CredentialPersonalAccessToken:
-		if !p.SessionID.IsZero() || p.AuthenticationStrength != "" ||
+		if !p.SessionID.IsZero() || p.AuthenticationStrength != "" || p.MFARecoveryRequired || p.AuthenticationGeneration != 0 ||
 			p.AuthenticationProviderID != "" ||
 			!p.ExternalIdentityID.IsZero() ||
-			!p.AuthenticatedAt.IsZero() || p.MFACompletedAt.Valid ||
+			!p.AuthenticatedAt.IsZero() || p.ReauthenticatedAt.Valid || p.MFACompletedAt.Valid ||
 			p.ClientType != SessionClientCLI || p.RegisteredDesktopKey || !p.DesktopRegistrationID.IsZero() || p.DPoPKeyThumbprint != "" ||
 			p.DesktopRelease != "" || p.DesktopBuildID != "" || p.DesktopPlatform != "" || p.DesktopArchitecture != "" || p.DesktopRealtimeProtocol != 0 ||
 			len(p.CredentialScopes) == 0 ||
@@ -138,10 +164,14 @@ func (p Principal) HasRegisteredDesktopKey() bool {
 }
 
 func (p Principal) LastAuthenticationAt() time.Time {
-	if p.MFACompletedAt.Valid && p.MFACompletedAt.Time.After(p.AuthenticatedAt) {
-		return p.MFACompletedAt.Time
+	latest := p.AuthenticatedAt
+	if p.ReauthenticatedAt.Valid && p.ReauthenticatedAt.Time.After(latest) {
+		latest = p.ReauthenticatedAt.Time
 	}
-	return p.AuthenticatedAt
+	if p.MFACompletedAt.Valid && p.MFACompletedAt.Time.After(latest) {
+		latest = p.MFACompletedAt.Time
+	}
+	return latest
 }
 
 func (p Principal) IsRecentlyAuthenticated(now time.Time, maximumAge time.Duration) bool {

@@ -103,6 +103,8 @@ paths:
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
+      parameters:
+        - $ref: '#/components/parameters/AcademicExpectedRevision'
       operationId: archiveProgrammeLevel
       summary: Archive a Programme Level that has no active Classes
       tags:
@@ -183,10 +185,15 @@ components:
           $ref: '#/components/headers/NoStore'
   schemas:
     UpdateProgrammeLevelRequest:
-      description: Mutable Programme Level fields; omitted or null values remain unchanged.
+      description: Mutable Programme Level fields; omitted or null metadata values remain unchanged; expected_revision, when present, must be a positive integer.
       type: object
       additionalProperties: false
       properties:
+        expected_revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
         name:
           type:
             - string

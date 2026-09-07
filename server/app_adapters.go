@@ -305,9 +305,10 @@ func (a externalIdentityProviderAdapter) Begin(
 	request app.ExternalProviderBeginRequest,
 ) (*app.ExternalProviderBeginResponse, error) {
 	response, err := a.provider.Begin(ctx, externalauth.BeginRequest{
-		CallbackURL: request.CallbackURL,
-		State:       request.State,
-		Proof:       request.Proof,
+		CallbackURL:         request.CallbackURL,
+		State:               request.State,
+		Proof:               request.Proof,
+		FreshAuthentication: request.FreshAuthentication,
 	})
 	if err != nil {
 		return nil, mapExternalProviderError(err)
@@ -333,10 +334,11 @@ func (a externalIdentityProviderAdapter) Complete(
 	request app.ExternalProviderCompleteRequest,
 ) (*model.ExternalAuthenticationAssertion, error) {
 	assertion, err := a.provider.Complete(ctx, externalauth.CompleteRequest{
-		CallbackURL: request.CallbackURL,
-		State:       request.State,
-		Proof:       request.Proof,
-		Callback:    request.Callback,
+		CallbackURL:             request.CallbackURL,
+		State:                   request.State,
+		Proof:                   request.Proof,
+		Callback:                request.Callback,
+		AuthenticationStartedAt: request.AuthenticationStartedAt,
 	})
 	if err != nil {
 		return nil, mapExternalProviderError(err)

@@ -882,6 +882,83 @@ test("Invitation acceptance exchanges the claim before account creation", async 
   );
 });
 
+test("Invitation retry preserves the live claim after a temporary exchange failure", async ({
+  page,
+}) => {
+  let exchanges = 0;
+  let documents = 0;
+  page.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      documents += 1;
+    }
+  });
+  await mockDiscovery(page);
+  await page.route("**/api/v1/auth/browser/invitations", async (route) => {
+    exchanges += 1;
+    expect(await route.request().postDataJSON()).toEqual({
+      claim: "private-invitation-claim",
+    });
+    if (exchanges === 1) {
+      await route.fulfill({ status: 503, body: "temporarily unavailable" });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        handle: "private-browser-handle",
+        purpose: "student_class",
+        requirement: "account",
+        expires_at: Date.now() + 300_000,
+      }),
+    });
+  });
+  await page.route("**/api/v1/auth/browser/invitations/accept", async (route) => {
+    expect(await route.request().postDataJSON()).toEqual({
+      handle: "private-browser-handle",
+      username: "ada.okafor",
+      password: "private-invitation-password",
+    });
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        invitation_id: "invitation-1",
+        user_id: "user-1",
+        replayed: false,
+      }),
+    });
+  });
+  await page.goto("/join#token=private-invitation-claim");
+
+  const unavailableHeading = page.getByRole("heading", {
+    name: "The Invitation can’t be checked",
+  });
+  await expect(unavailableHeading).toBeVisible();
+  await expect(unavailableHeading).not.toBeFocused();
+  await expect(page).toHaveURL(`${canonicalOrigin}/join`);
+  expect(exchanges).toBe(1);
+
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Join Northbridge Institute" }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(`${canonicalOrigin}/join`);
+  expect(exchanges).toBe(2);
+  expect(documents).toBe(1);
+  await page.getByLabel("Username").fill("ada.okafor");
+  await page.locator("#invitation-password").fill("private-invitation-password");
+  await page.getByRole("button", { name: "Accept invitation" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Your Invitation is accepted" }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(`${canonicalOrigin}/join`);
+  await expect(page.locator("body")).not.toContainText("private-invitation-claim");
+  await expect(page.locator("body")).not.toContainText("private-browser-handle");
+  expect(documents).toBe(1);
+});
+
 test("Session Invitation preserves its handle while warning about new-tab sign in", async ({
   page,
 }) => {

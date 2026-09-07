@@ -478,7 +478,7 @@ func securityForAuth(auth AuthRequirement, method string) ([]map[string][]string
 		return []map[string][]string{}, nil
 	case AuthRefreshCredentialRequired:
 		return []map[string][]string{{"refreshBearerAuth": {}}, {"refreshDPoPAuth": {}}, {"refreshCookie": {}, "csrfToken": {}}}, nil
-	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
 		AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
 		security := []map[string][]string{{"bearerAuth": {}}, {"dpopAuth": {}}}
 		if method == http.MethodGet {

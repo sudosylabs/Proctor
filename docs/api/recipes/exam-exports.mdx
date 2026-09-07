@@ -1,0 +1,139 @@
+---
+title: Export Examination Records
+description: Request a bounded private archive, verify its original files and structured records, and respect its fixed expiry.
+audience: api-consumer
+maturity: preview
+sidebar_position: 8
+---
+
+import Link from '@docusaurus/Link';
+
+# Export Examination Records
+
+An examination export is a temporary ZIP archive for an authorized reviewer.
+It contains an explicitly selected set of sealed Submission records and their
+original files. Its versioned manifest and SHA-256 hashes support independent
+verification after download. Exporting does not complete a Sitting's records,
+release a candidate result, or enable cleanup.
+
+## 1. Choose the Scope and Categories
+
+Use <Link to="/api/reference/create-submission-export">Create Submission export</Link>
+for one Submission, or
+<Link to="/api/reference/create-sitting-export">Create Sitting export</Link>
+for every sealed Submission currently belonging to that Sitting. A Sitting
+archive captures that exact set; a later Submission requires a new export.
+An empty scope is rejected. Candidates cannot export their own Submissions
+through these reviewer operations.
+
+Send an explicit category selection:
+
+```json
+{"categories": ["work", "integrity"]}
+```
+
+`work` includes the preserved Workspace manifest, directory paths, and original
+file bytes. `integrity` includes the integrity summary, observations and
+discrepancies, private Review text and decisions, frozen Review inventories,
+waivers, and related integrity records. Choose one category when the other is
+unnecessary. Private Review records remain private even when a smaller result
+has been released to the candidate. A retired category cannot be exported.
+
+The requester needs the dedicated `exam.records.export` permission, current
+Exam Manager access, and the ordinary read permissions for every selected
+record. Scoped override access uses the corresponding override permissions.
+Sitting exports also require Sitting read authority; integrity exports require
+Browser Activity read authority. These routes accept Sessions, not Personal
+Access Tokens. Current credentials, permissions, and scope are rechecked when
+requesting metadata or downloading; an archive is downloadable only by its
+requester.
+
+## 2. Request Once and Observe the Fixed Deadline
+
+The institution must configure an export lifetime from one to seven days in
+its <Link to="/api/recipes/retention-policy">retention policy</Link>. One day is
+the recommended starting point. Zero is unconfigured and rejects new exports;
+it never means immediate deletion. A later policy change does not alter an
+existing export's advertised expiry.
+
+Send a fresh `Idempotency-Key` with the create request. Cookie transport also
+requires CSRF proof. A successful request returns `202` with `queued` metadata,
+the captured counts, `construction_deadline`, and `expires_at`. Retrying the
+same command with the same key returns the same export and the same deadline.
+A changed scope or category selection needs a new key.
+
+Save the returned export ID. The
+<Link to="/api/guides/idempotency">bounded retry-record window</Link> applies;
+an idempotency key is not a permanent lookup handle. After that record has
+expired, use the saved ID to inspect the original export rather than resending
+its create request.
+
+The lifetime begins when the request is created. Downloads, build retries,
+preservation holds, and examination deletion grace do not extend it. Temporary
+source protections last at most 24 hours and are released when the independent
+archive is verified. Construction that misses this deadline fails; it does not
+reserve another protection period silently.
+
+Requests are bounded to 200 Submissions, 50,000 Workspace entries, 50,000
+structured records, 8 GiB of original file bytes, and 64 MiB of structured
+JSON. A request exceeding a bound is rejected as a whole. The service does not
+silently produce an incomplete Sitting archive. Use a smaller scope when a
+limit is reached. Construction uses finite background work with at most three
+attempts; unavailable or changed source bytes can cause a build to fail.
+
+## 3. Download and Verify
+
+Poll <Link to="/api/reference/get-submission-export">Submission export metadata</Link>
+or <Link to="/api/reference/get-sitting-export">Sitting export metadata</Link>
+with the requesting User's current Session. States are `queued`, `ready`,
+`failed`, and `expired`. Only `ready` metadata advertises the ZIP byte length,
+SHA-256 digest, and ready time.
+
+Download through the matching
+<Link to="/api/reference/download-submission-export">Submission archive route</Link>
+or <Link to="/api/reference/download-sitting-export">Sitting archive route</Link>.
+There is no public storage URL. Responses are private and must not be cached.
+Keep archives outside ordinary logs and shared analytics stores.
+
+Verify the downloaded ZIP's byte length and SHA-256 against the ready metadata
+before processing it. Then read the archive's `README.txt` and `manifest.json`.
+Manifest version 1 identifies each exported member by archive path, byte length,
+and SHA-256. Hash the uncompressed bytes of every listed member and check the
+complete inventory. File entries also record the original logical path and
+stable Submission and Entry identifiers. The original bytes are stored without
+conversion; file names inside the ZIP use opaque identities rather than
+untrusted candidate paths.
+
+`records.json` has its own schema version and the exact requested categories.
+It preserves directory paths and links structured file records to the archive
+members. Neither document requires access to a Proctor storage key. The
+archive contains its selected records and files; it does not bundle shared
+published Exam materials or provide archive re-import and backup restoration.
+Hashes detect changed bytes; they are not a digital signature or a claim about
+the truth of an integrity observation.
+
+## 4. Handle Expiry and Retirement
+
+New download access ends at `expires_at`, even if physical storage cleanup is
+still pending. An already-open download cannot be recalled. While its retry
+record is retained, an old create command returns current expired metadata and
+cannot resurrect the archive. Requesting a new export requires current
+authority and source records that still exist.
+
+Construction protects only its selected source records. If that protection
+interrupts a scheduled retirement, resumed eligibility receives fresh deletion
+grace. A verified independent archive no longer holds the original Submission
+open: source retirement and archive expiry follow their own deadlines.
+
+Failed, abandoned, and expired artifacts enter bounded cleanup and
+reconciliation. A successful deletion acknowledgement alone does not establish
+absence; the server also checks the exact managed key. An interrupted writer
+may have an uncertain outcome, so its cleanup identity remains available for
+later reconciliation even after one absence observation.
+
+Verified current-key absence is not secure media erasure. It does not certify
+deletion of operator-controlled backups, snapshots, historical object versions,
+or replicas. Institutions remain responsible for those storage policies and
+for downloaded copies. See
+<Link to="/operator/maintenance-and-recovery">maintenance and recovery</Link>
+for operator responsibilities.

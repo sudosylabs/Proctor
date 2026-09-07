@@ -327,11 +327,11 @@ function LocalLoginForm({
         password,
         ...(mfaRequired ? { mfaCode } : {}),
       });
-      if (result.kind === "authenticated") {
+      if (result.kind === "authenticated" || result.kind === "recovery_required") {
         setLoginID("");
         setPassword("");
         setMFACode("");
-        window.location.replace("/authorization/complete");
+        window.location.replace(result.kind === "recovery_required" ? "/account/security" : "/authorization/complete");
         return;
       }
 

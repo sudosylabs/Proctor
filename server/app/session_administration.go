@@ -56,17 +56,13 @@ type sessionAdministrationUserStore interface {
 	Get(context.Context, string) (*model.User, error)
 }
 
-type sessionAdministrationEffects interface {
-	SessionsRevoked(context.Context, string, []*model.Session, []string)
-}
-
 type sessionAdministrationService struct {
 	sessions      sessionAdministrationStore
 	users         sessionAdministrationUserStore
 	authorization sessionAdministrationAuthorizer
 	audit         mutationAuditor
 	mail          sessionAdministrationMailPreparer
-	effects       sessionAdministrationEffects
+	effects       sessionRevocationEffects
 	now           func() time.Time
 }
 
@@ -76,7 +72,7 @@ func newSessionAdministrationService(
 	authorization sessionAdministrationAuthorizer,
 	audit mutationAuditor,
 	mail sessionAdministrationMailPreparer,
-	effects sessionAdministrationEffects,
+	effects sessionRevocationEffects,
 	now func() time.Time,
 ) *sessionAdministrationService {
 	return &sessionAdministrationService{
@@ -162,9 +158,10 @@ func (s *sessionAdministrationService) RevokeOne(
 	if err != nil {
 		return sessionAdministrationError(err)
 	}
-	result, err := runAuditedMutation(
-		ctx,
-		s.audit,
+	revocations := sessionRevocationCoordinator{
+		sessions: s.sessions, audit: s.audit, effects: s.effects, now: func() time.Time { return now },
+	}
+	return revocations.revokeOne(ctx,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionSessionManage,
@@ -173,22 +170,13 @@ func (s *sessionAdministrationService) RevokeOne(
 			Value:      map[string]any{"user_id": userID, "session_id": sessionID},
 			Prior:      session.Auditable(),
 		},
-		func() time.Time { return now },
-		func(ctx context.Context, reference mutationAttemptReference) (*store.SessionRevocationResult, error) {
-			return s.sessions.RevokeWithAudit(ctx, &store.SessionRevocation{
-				SessionID: sessionID, UserID: userID, RevokedAt: reference.MutationAtMillis,
-				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				Reason:       model.SessionRevocationAdministratorSession,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
-			})
+		&store.SessionRevocation{
+			SessionID: sessionID, UserID: userID,
+			Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
+			Reason: model.SessionRevocationAdministratorSession,
 		},
 		sessionAdministrationError,
 	)
-	if err != nil {
-		return err
-	}
-	s.effects.SessionsRevoked(ctx, userID, []*model.Session{result.Session}, result.TokenHashes)
-	return nil
 }
 
 func (a *App) RevokeUserSessions(
@@ -234,9 +222,10 @@ func (s *sessionAdministrationService) RevokeAll(
 			return sessionAdministrationError(err)
 		}
 	}
-	result, err := runAuditedMutation(
-		ctx,
-		s.audit,
+	revocations := sessionRevocationCoordinator{
+		sessions: s.sessions, audit: s.audit, effects: s.effects, now: func() time.Time { return now },
+	}
+	return revocations.revokeAll(ctx,
 		mutationAttempt{
 			Invocation: invocation,
 			Action:     model.ActionSessionManage,
@@ -244,29 +233,13 @@ func (s *sessionAdministrationService) RevokeAll(
 			Operation:  "revoke_sessions",
 			Value:      map[string]any{"user_id": userID},
 		},
-		func() time.Time { return now },
-		func(ctx context.Context, reference mutationAttemptReference) (*store.UserSessionsRevocationResult, error) {
-			input := &store.UserSessionsRevocation{
-				UserID: userID, RevokedAt: reference.MutationAtMillis,
-				Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
-				Reason:       model.SessionRevocationAdministratorAllSessions,
-				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis, Command: idempotency,
-			}
-			value, storeErr := s.sessions.RevokeAllForUserWithAudit(ctx, input)
-			if command.batchReplayed != nil {
-				*command.batchReplayed = input.Replayed || input.NoOp
-			}
-			return value, storeErr
+		&store.UserSessionsRevocation{
+			UserID:     userID,
+			Occurrence: prepared.Occurrence, Delivery: prepared.Delivery, DeliveryJob: prepared.Job,
+			Reason: model.SessionRevocationAdministratorAllSessions, Command: idempotency,
 		},
-		sessionAdministrationError,
+		sessionAdministrationError, command.batchReplayed,
 	)
-	if err != nil {
-		return err
-	}
-	if result != nil && len(result.Sessions) > 0 {
-		s.effects.SessionsRevoked(ctx, userID, result.Sessions, result.TokenHashes)
-	}
-	return nil
 }
 
 func (s *sessionAdministrationService) prepareRevocationNotice(user *model.User, at time.Time) (*preparedDirectMail, error) {
@@ -303,19 +276,6 @@ func (a sessionAdministrationAuthorization) AuthorizeManage(
 		model.Resource{Type: model.ResourceUser, ID: userID},
 		invocation.RequestMetadata(),
 	)
-}
-
-type sessionAdministrationRealtimeEffects struct {
-	effects authenticationSecurityEffects
-}
-
-func (e sessionAdministrationRealtimeEffects) SessionsRevoked(
-	ctx context.Context,
-	userID string,
-	sessions []*model.Session,
-	hashes []string,
-) {
-	e.effects.SessionsRevoked(ctx, userID, sessionIds(sessions), hashes)
 }
 
 func sessionAdministrationError(err error) error {

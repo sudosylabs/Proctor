@@ -182,11 +182,13 @@ type MoveCandidateExamWorkspaceEntryCommand struct {
 }
 
 type DeleteCandidateExamWorkspaceEntryCommand struct {
-	Access                 ExamAttemptWorkspaceMutationAccess
-	EntryID                model.AttemptWorkspaceEntryID
-	ExpectedPath           string
-	ExpectedContentVersion model.WorkspaceContentVersion
-	IdempotencyKey         string
+	Access                  ExamAttemptWorkspaceMutationAccess
+	EntryID                 model.AttemptWorkspaceEntryID
+	ExpectedPath            string
+	ExpectedContentVersion  model.WorkspaceContentVersion
+	Recursive               bool
+	ExpectedWorkspaceCursor *int64
+	IdempotencyKey          string
 }
 
 type OpenCandidateExamResourceQuery struct {
@@ -323,7 +325,8 @@ func (a *App) DeleteCandidateExamWorkspaceEntry(ctx context.Context, invocation 
 ) (ExamAttemptWorkspaceMutationResult, error) {
 	result, err := a.examAttempts.DeleteWorkspaceEntry(ctx, examattempt.NewCall(invocation.Principal(), invocation.RequestMetadata()),
 		examattempt.DeleteWorkspaceEntryCommand{Access: command.Access, Origin: examattempt.WorkspaceMutationOriginCandidate, EntryID: command.EntryID, ExpectedPath: command.ExpectedPath,
-			ExpectedContentVersion: command.ExpectedContentVersion, IdempotencyKey: command.IdempotencyKey})
+			ExpectedContentVersion: command.ExpectedContentVersion, Recursive: command.Recursive,
+			ExpectedWorkspaceCursor: command.ExpectedWorkspaceCursor, IdempotencyKey: command.IdempotencyKey})
 	if err != nil {
 		return ExamAttemptWorkspaceMutationResult{}, examAttemptError(err, true)
 	}
@@ -604,6 +607,7 @@ type examAttemptRealtimeEffects struct {
 	execution interface {
 		Release(context.Context, model.ExamAttemptID) error
 		SyncChange(context.Context, model.ExamAttemptID, model.AttemptWorkspaceJournalEntry) error
+		AcknowledgeChange(context.Context, model.ExamAttemptID, model.ExecutionGrantID, model.AttemptWorkspaceJournalEntry) error
 	}
 }
 
@@ -725,8 +729,12 @@ func (effects examAttemptRealtimeEffects) WorkspaceChanged(ctx context.Context, 
 		return err
 	}
 	var executionErr error
-	if effects.execution != nil && result.Origin == examattempt.WorkspaceMutationOriginCandidate {
-		executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
+	if effects.execution != nil {
+		if result.Origin == examattempt.WorkspaceMutationOriginCandidate {
+			executionErr = effects.execution.SyncChange(ctx, result.AttemptID, result.Change)
+		} else {
+			executionErr = effects.execution.AcknowledgeChange(ctx, result.AttemptID, result.SourceGrantID, result.Change)
+		}
 	}
 	return errors.Join(effects.realtime.Publish(ctx, event), executionErr)
 }

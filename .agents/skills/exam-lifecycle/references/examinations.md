@@ -183,8 +183,10 @@ Paths are already-canonical case-sensitive POSIX-relative values with at most
 16 segments, 255 UTF-8 bytes per segment, and 1,024 UTF-8 bytes total. Empty,
 absolute, dot, dot-dot, repeated or trailing separators, backslashes,
 NUL/control characters, and the reserved `.proctor` root are invalid. Empty
-directories are metadata; removing a non-empty directory is rejected rather
-than recursive.
+directories are metadata. Removing a non-empty directory requires explicit
+recursive intent and the current Draft revision. The complete subtree is
+archived atomically, the Draft revision advances once, and published or
+admitted snapshots retain their immutable content pins.
 
 Candidates receive no download, export, print, public URL, local-folder,
 drag-out, or external-open capability for Exam Resources, starter material,
@@ -192,8 +194,9 @@ workspaces, or submissions. Protected in-application rendering necessarily
 transfers bounded content to the client, so the contract is candidate export
 prohibition rather than an impossible claim that bytes never reach the device.
 Authorized managers may inspect authored material and sealed submissions in
-application; any future bulk Submission export is a separately authorized,
-audited, retention-aware capability.
+application; individual Submission and Sitting exports are separately
+authorized, audited, retention-aware capabilities. The candidate export
+prohibition is unchanged.
 
 Protected HTTP reads are authorization-checked on every request, return inline
 content with a strong checksum ETag and `nosniff`, and expose neither storage
@@ -468,6 +471,15 @@ Attempt-scoped journal records identities, paths, mutation keys, resulting
 versions, and Workspace Cursors without retaining every prior content body.
 Only acknowledged authoritative state may be submitted.
 
+Explicit recursive directory deletion fences the entire live Workspace with
+the client's expected Workspace Cursor and removes the root and all
+descendants in one transaction. A stale cursor rejects the complete command.
+The journal advances once with a recursive deletion record naming the root;
+clients remove descendants only across a slash boundary. Ordinary deletion
+still requires an empty directory, and ordinary entry mutations do not take
+this aggregate cursor precondition. Owned bytes are retired with retained
+outcome protection; published or submitted content pins survive.
+
 Every Workspace write rechecks the Open Sitting, active Attempt, current Class
 membership, exact active Participation generation and credential, and the
 owning Session-bound open Connection. Command idempotency is Attempt-scoped so
@@ -685,6 +697,48 @@ rows committed before finalization enter its frozen inventory, while later
 rows remain manager-readable discrepancies and never alter a finalized or
 released Review.
 
+## Records completion and preservation
+
+Sitting Records Completion is separate from delivery closure and Review
+finalization. A Closed Sitting can be completed only when each remaining
+Submission Review is finalized or has an explicit current waiver. A waiver
+binds the exact Review revision and accepted discrepancy count, prohibits all
+undecided Flags, and excludes the candidate actor. It records private rationale
+in its dedicated record and only a closed reason code in ordinary audit.
+
+Fresh accepted late integrity data makes the whole Sitting completion stale.
+Edits to a waived draft Review do the same because the acknowledged inventory
+has changed. The completion snapshot exposes a revision and an integrity
+revision that the manager must acknowledge together. A renewed completion
+starts a new retention clock; exact retries and an already-current completion
+preserve the original timestamp. Retired integrity categories reject later
+ingestion, private Review reads and mutation replay. Renewing completion does
+not require recreating already retired Reviews.
+
+Retention Holds address an Exam, Sitting or Submission through exact nested
+ownership. They preserve current content and future descendants until manual
+release; holding one Submission does not hold its classmates. A hold created
+after partial retirement records creation-time retired counts and protects
+what remains. An exact wholly retired Submission rejects a new hold. Creation
+and retirement serialize on the same Exam/Sitting/Submission fences, so a hold
+cannot silently promise to recover a competing retirement commit.
+
+Completion, waiver and hold mutations require idempotency, current credential
+and scope rechecks, and successful critical audit in the same transaction.
+Every replay rechecks current authority, including retries using the original
+audit identity. These operations never themselves enable cleanup or remove
+content. The [authorization reference](../../authorization-audit/references/authorization.md#records-completion-and-preservation)
+owns their permission and assurance rules.
+
+Examination exports capture an exact explicit work/integrity selection and a
+bounded immutable set of sealed Submissions. The dedicated export action
+supplements ordinary read authority. Current Exam Manager/exact membership or
+scoped override authority and the requester are rechecked for metadata and
+download. Self-candidate exports are excluded. A Sitting request is
+all-or-nothing at its stated limits, never silently partial. Portable records
+select their fields deliberately, retain frozen Review inventory links and
+include only requested categories; opaque storage origins remain private.
+
 ## Authorization, effects, and persistence
 
 The initial authorization resources are Exam, Exam Sitting, Exam Attempt, and
@@ -724,14 +778,18 @@ multi-node, and Docker-backed verification.
 
 The initial implemented scope excludes grading, scoring, questions/rubrics,
 dedicated proctor assignment,
-accommodations, Exam copying or templates, resource search, configurable
-retention/export/deletion, binary integrity capture, arbitrary policies, and
+accommodations, Exam copying or templates, resource search, binary integrity
+capture, arbitrary policies, and
 offline participation. Execution Environments and the Attempt Terminal server
 contract are implemented as described in
 the [`execution-environments` skill](../../execution-environments/SKILL.md);
 the candidate UI remains a separate client slice. Exact
-close-work budgets and record retention remain explicit decisions for their
-owning slices. The
+close-work budgets remain an explicit decision for their owning slice.
+Sitting Records Completion defines the examination retention anchor above.
+The revisioned Institution Retention Policy and separate Retention Control
+approve bounded cleanup only after preview. The
+[file contract](../../files-and-workspaces/references/files.md#institution-retention-policy)
+defines category retirement, byte purge, expiring exports and surviving markers. The
 pre-release schema extends the single version-1 baseline and requires
 development databases to be recreated; it does not add a chain of development
 migrations.

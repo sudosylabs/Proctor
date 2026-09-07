@@ -24,6 +24,41 @@ export const glossaryTerms = [
     "avoid": "Tenant, organization"
   },
   {
+    "id": "institution-retention-policy",
+    "term": "Institution Retention Policy",
+    "section": "Installation",
+    "definition": "The revisioned Institution-owned configuration of record-retention periods and deletion grace time. Saving the policy does not authorize deletion; a separate Retention Control approves recurring cleanup for an exact revision.",
+    "avoid": "Exam Policy Set, deployment configuration, deletion authorization"
+  },
+  {
+    "id": "retention-control",
+    "term": "Retention Control",
+    "section": "Installation",
+    "definition": "The Institution's explicit approval, pause, or disabled state for recurring cleanup. Approval is bound to one Retention Policy revision and a current Retention Preview; it cannot bypass preservation or live references.",
+    "avoid": "Retention Policy, blanket deletion permission"
+  },
+  {
+    "id": "retention-preview",
+    "term": "Retention Preview",
+    "section": "Installation",
+    "definition": "A time-limited, content-free count of records eligible for retention cleanup and records protected by current blockers, evaluated against one policy revision. It supports review but is never a frozen deletion instruction.",
+    "avoid": "Export, deletion queue, records completion"
+  },
+  {
+    "id": "record-retirement",
+    "term": "Record Retirement",
+    "section": "Installation",
+    "definition": "A scheduled irreversible removal of one Submission's work or integrity category after its retention deadline and positive grace period. Once committed, permanent retirement markers prevent restoration through ordinary reads or retries; its minimal receipt follows audit-retention rules.",
+    "avoid": "Archive, immediate physical erasure, account deletion"
+  },
+  {
+    "id": "retention-notice",
+    "term": "Retention Notice",
+    "section": "Installation",
+    "definition": "A durable notification to the responsible managers and operators that records have entered deletion grace, with optional candidate recipients. Cancellation supersedes the advertised date; mail delivery is not proof of acknowledgement.",
+    "avoid": "Preservation Hold, delivery receipt, deletion approval"
+  },
+  {
     "id": "academic-unit",
     "term": "Academic Unit",
     "section": "Academic structure",
@@ -113,6 +148,13 @@ export const glossaryTerms = [
     "section": "Examinations",
     "definition": "A scheduled delivery of one exam revision to one class.",
     "avoid": "Exam version, exam session"
+  },
+  {
+    "id": "sitting-records-completion",
+    "term": "Sitting Records Completion",
+    "section": "Examinations",
+    "definition": "An explicit audited acknowledgement that a Closed Sitting's remaining Submission Reviews are finalized or deliberately unnecessary. Newly accepted integrity changes make it stale; renewed completion restarts its retention clock without restoring retired content.",
+    "avoid": "Sitting closure, finalization of a Review, deletion authorization"
   },
   {
     "id": "exam-attempt",
@@ -267,6 +309,27 @@ export const glossaryTerms = [
     "section": "Examinations",
     "definition": "The integrity decisions and manager remarks associated with one submission; it contains no structured academic grade or outcome.",
     "avoid": "Grade, rubric, submission"
+  },
+  {
+    "id": "submission-review-waiver",
+    "term": "Submission Review Waiver",
+    "section": "Examinations",
+    "definition": "An audited decision that a Submission's exact current Review and discrepancy inventory needs no finalized Review. It cannot waive an undecided Flag or be made by that Submission's candidate.",
+    "avoid": "Evidence dismissal, finalization, self-review"
+  },
+  {
+    "id": "examination-export",
+    "term": "Examination Export",
+    "section": "Examinations",
+    "definition": "A separately authorized, temporary portable archive of an explicit work and/or integrity selection from sealed Submissions. The requester can verify its contents; its fixed expiry grants neither restoration nor reimport capability.",
+    "avoid": "Backup, Submission, candidate download, permanent source reference"
+  },
+  {
+    "id": "retention-hold",
+    "term": "Retention Hold",
+    "section": "Examinations",
+    "definition": "An explicit preservation instruction covering an Exam, Sitting, or Submission and its future descendants until a protected administrator releases it. It cannot restore content that has already retired.",
+    "avoid": "Automatic expiry, backup, restoration"
   },
   {
     "id": "exam-manager",

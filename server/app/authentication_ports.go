@@ -18,6 +18,7 @@ import (
 )
 
 type authenticationMFAVerifier interface {
+	RecoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
 	VerifyLogin(
 		context.Context,
 		string,
@@ -31,6 +32,9 @@ type authenticationPATResolver interface {
 }
 
 type sessionIssuance struct {
+	AuthenticationGeneration int64
+	MFARecoveryRequired      bool
+	ExternalLoginStateID     model.ExternalLoginStateID
 	PasswordProof            store.PasswordCredentialProof
 	User                     *model.User
 	ClientType               model.SessionClientType
@@ -45,6 +49,7 @@ type sessionIssuance struct {
 }
 
 type authenticationSessionIssuer interface {
+	recoveryState(context.Context, model.UserID) (*model.UserMFARecovery, error)
 	createSession(
 		context.Context,
 		sessionIssuance,

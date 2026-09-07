@@ -12,6 +12,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 
 	application "github.com/sudosylabs/proctor/server/app"
@@ -88,6 +89,50 @@ func TestAccountAndAdministrativeSessionNoticesUseRealServerGraph(t *testing.T) 
 	}
 	if err := helper.App.Logout(ctx, application.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), application.LogoutCommand{}); err != nil {
 		t.Fatal(err)
+	}
+	if err := helper.App.Logout(ctx, application.NewInvocation(*logoutPrincipal, model.RequestMetadata{}), application.LogoutCommand{}); err != nil {
+		t.Fatal(err)
+	}
+	all := loginIntegrationUser(t, helper.Handler(), target.Username, password, model.SessionClientCLI, "mail11-self-all")
+	allPrincipal, appErr := helper.App.AuthenticateAccess(ctx, all.Tokens.AccessToken)
+	if appErr != nil {
+		t.Fatal(appErr)
+	}
+	allInvocation := application.NewInvocation(*allPrincipal, model.RequestMetadata{})
+	for range 2 {
+		if err := helper.App.RevokeAllSessions(ctx, allInvocation, application.RevokeAllSessionsCommand{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	audits, err := persistence.Audit().List(ctx, store.AuditListOptions{
+		ActorId: target.ID.String(), Action: string(model.ActionSessionManage),
+		Visibility: store.AuditVisibilityScope{InstitutionWide: true}, Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations := map[string]int{}
+	for _, event := range audits {
+		var parameters struct {
+			Operation string `json:"operation"`
+		}
+		if err := json.Unmarshal(event.Parameters, &parameters); err != nil {
+			t.Fatal(err)
+		}
+		if event.Status != model.AuditStatusSuccess || event.Resource.ID != target.ID.String() {
+			t.Fatalf("self Session audit = %#v", event)
+		}
+		operations[parameters.Operation]++
+		for _, token := range []string{self.Tokens.AccessToken, self.Tokens.RefreshToken, logout.Tokens.AccessToken, logout.Tokens.RefreshToken, all.Tokens.AccessToken, all.Tokens.RefreshToken} {
+			for _, payload := range [][]byte{event.Parameters, event.PriorState, event.Result} {
+				if bytes.Contains(payload, []byte(token)) || bytes.Contains(payload, []byte(model.HashToken(token))) {
+					t.Fatal("self Session audit exposed a credential or its hash")
+				}
+			}
+		}
+	}
+	if len(audits) != 5 || operations["revoke_own_session"] != 1 || operations["revoke_own_sessions"] != 2 || operations["logout"] != 2 {
+		t.Fatalf("self Session audit operations = %#v", operations)
 	}
 
 	durable, err := persistence.Mail().ListDeliveries(ctx, store.MailDeliveryListOptions{TemplateKeys: []model.MailTemplateKey{

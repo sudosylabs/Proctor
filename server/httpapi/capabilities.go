@@ -141,12 +141,14 @@ type AffiliationApplication interface {
 
 type AcademicUnitMemberApplication interface {
 	ListAcademicUnitMembers(context.Context, application.Invocation, application.ListAcademicUnitMembersQuery) ([]*model.AcademicUnitMember, error)
+	ListAcademicUnitMembersPage(context.Context, application.Invocation, application.ListAcademicUnitMembersPageQuery) (*application.AcademicUnitMemberPage, error)
 	CreateAcademicUnitMember(context.Context, application.Invocation, application.CreateAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
 	EndAcademicUnitMember(context.Context, application.Invocation, application.EndAcademicUnitMemberCommand) (*model.AcademicUnitMember, error)
 }
 
 type ClassMemberApplication interface {
 	ListClassMembers(context.Context, application.Invocation, application.ListClassMembersQuery) ([]*model.ClassMember, error)
+	ListClassMembersPage(context.Context, application.Invocation, application.ListClassMembersPageQuery) (*application.ClassMemberPage, error)
 	EnrollClassMember(context.Context, application.Invocation, application.EnrollClassMemberCommand) (*model.ClassEnrollment, error)
 	EndClassMember(context.Context, application.Invocation, application.EndClassMemberCommand) (*model.ClassMember, error)
 }
@@ -227,10 +229,16 @@ type Application interface {
 	ExternalAuthentication
 	authenticationMethodApplication
 	Sessions
+	SessionReauthentication
 	PersonalAccessTokens
 	MFA
+	MFAAdministration
 	InstitutionApplication
 	DesktopCompatibilityApplication
+	RetentionPolicyApplication
+	RetentionApplication
+	ExamRecordsApplication
+	ExamExportsApplication
 	JobOperationsApplication
 	MailApplication
 	ExamApplication

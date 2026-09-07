@@ -352,12 +352,17 @@ type AttemptWorkspaceJournalEntry struct {
 	NewPath        string
 	ContentVersion WorkspaceContentVersion
 	ChangedAt      time.Time
+	// Recursive deletes OldPath and every descendant separated by a slash.
+	Recursive bool `json:",omitempty"`
 }
 
 func (entry AttemptWorkspaceJournalEntry) Validate() error {
 	if !entry.WorkspaceID.IsValid() || entry.Cursor < 1 || !entry.EntryID.IsValid() ||
 		!entry.Operation.IsValid() || entry.ChangedAt.IsZero() {
 		return fmt.Errorf("model: invalid Attempt Workspace journal entry")
+	}
+	if entry.Recursive && (entry.Operation != AttemptWorkspaceMutationDeleteEntry || entry.EntryKind != StarterWorkspaceEntryDirectory) {
+		return fmt.Errorf("model: recursive Workspace journal entry must delete a directory")
 	}
 	validOld := func() bool {
 		normalized, err := NormalizeAttemptWorkspacePath(entry.OldPath)

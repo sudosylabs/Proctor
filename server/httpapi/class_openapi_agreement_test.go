@@ -34,9 +34,9 @@ func TestClassOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Key: "DELETE /api/v1/classes/{class_id}", Auth: AuthPrincipalRequired, SuccessStatus: "204", SuccessRef: "#/components/responses/ClassArchived", PublicErrorCodes: principalMutationContractCodes("request.invalid", "resource.not_found", "class.conflict", "administration.unavailable")},
 		},
 		Schemas: []openAPIAgreementSchema{
-			{Name: "ClassResponse", DTO: reflect.TypeOf(classResponse{}), Required: []string{"id", "create_at", "update_at", "delete_at", "programme_level_id", "academic_period_id", "name", "display_name", "description"}},
+			{Name: "ClassResponse", DTO: reflect.TypeOf(classResponse{}), Required: []string{"revision", "id", "create_at", "update_at", "delete_at", "programme_level_id", "academic_period_id", "name", "display_name", "description"}},
 			{Name: "CreateClassRequest", DTO: reflect.TypeOf(createClassRequest{}), Required: []string{"academic_period_id", "name", "display_name"}},
-			{Name: "UpdateClassRequest", DTO: reflect.TypeOf(updateClassRequest{})},
+			{Name: "UpdateClassRequest", DTO: reflect.TypeOf(updateClassRequest{}), NonNullable: []string{"expected_revision"}},
 		},
 	}
 	assertOpenAPIAgreement(t, suite, runtimeAPI.Routes())

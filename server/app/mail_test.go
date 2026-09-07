@@ -12,12 +12,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
 	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
@@ -278,8 +280,8 @@ func TestDirectMailPreparerFreezesEncryptedCredentialPayload(t *testing.T) {
 	if strings.Contains(string(prepared.Delivery.EncryptedPayload), "credential-secret") || strings.Contains(string(prepared.Delivery.EncryptedPayload), user.Email) {
 		t.Fatalf("persisted payload exposes credential or recipient: %s", prepared.Delivery.EncryptedPayload)
 	}
-	opened, err := appjobs.OpenFrozenMailPayload(mailTestSealer(t), prepared.Delivery)
-	if err != nil || opened.Text != content.Text || opened.RecipientAddress != user.Email {
+	opened, err := appmail.OpenDelivery(mailTestSealer(t), prepared.Delivery)
+	if err != nil || opened.Text != content.Text || opened.To.Address != user.Email {
 		t.Fatalf("opened payload = %#v, %v", opened, err)
 	}
 }
@@ -590,21 +592,14 @@ func TestMailServiceRejectsEnabledDeliveryWithoutSecretSealer(t *testing.T) {
 
 func TestMailDeliveryHandlerUsesStableMessageIDAndRecordsAcceptance(t *testing.T) {
 	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
-	sealer := mailTestSealer(t)
-	id := model.NewMailDeliveryID()
-	payload := frozenMailPayloadV1{Version: 1, RecipientName: "Operator", RecipientAddress: "operator@example.test", FromName: "Proctor", FromAddress: "no-reply@example.test", Subject: "test", Text: "text", HTML: "<p>html</p>", AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
-	plaintext, _ := json.Marshal(payload)
-	envelope, _ := sealer.Seal(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: id.String()}, plaintext)
-	encrypted, _ := json.Marshal(envelope)
-	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: id})
-	job, _ := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, 1, command, id.String(), at, at, model.MailMaximumAttempts)
-	delivery := &model.MailDelivery{ID: id, OccurrenceID: model.NewMailOccurrenceID(), JobID: job.ID, TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(24 * time.Hour), MessageID: "<mail." + id.String() + "@example.test>", EncryptedPayload: encrypted, Revision: 1}
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, 24*time.Hour)
 	persistence := &mailStoreFake{delivery: delivery}
-	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: payload.FromAddress}}
+	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "new-sender@example.test"}}
 	now := at.Add(time.Second)
 	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { now = now.Add(time.Second); return now }, job)
 	if outcome.Kind != jobengine.OutcomeSucceeded || len(sender.messages) != 1 || sender.messages[0].MessageID != delivery.MessageID ||
-		sender.messages[0].Headers["Auto-Submitted"][0] != payload.AutoSubmitted || sender.messages[0].Headers["X-Auto-Response-Suppress"][0] != payload.AutoResponseSuppress ||
+		!sender.messages[0].Date.Equal(at) || sender.messages[0].From.Address != "no-reply@example.test" ||
+		sender.messages[0].Headers["Auto-Submitted"][0] != "auto-generated" || sender.messages[0].Headers["X-Auto-Response-Suppress"][0] != "All" ||
 		persistence.delivery.State != model.MailDeliveryAccepted || len(persistence.delivery.EncryptedPayload) != 0 {
 		t.Fatalf("outcome=%#v messages=%#v delivery=%#v", outcome, sender.messages, persistence.delivery)
 	}
@@ -700,15 +695,17 @@ func TestMailDeliveryHandlerExpiresRetryWhenSMTPReturnsAfterDeadline(t *testing.
 func mailDeliveryHandlerFixture(t *testing.T, at time.Time, deadlineAfter time.Duration) (*secretseal.Sealer, *model.Job, *model.MailDelivery) {
 	t.Helper()
 	sealer := mailTestSealer(t)
-	id := model.NewMailDeliveryID()
-	payload := frozenMailPayloadV1{Version: 1, RecipientName: "Operator", RecipientAddress: "operator@example.test", FromName: "Proctor", FromAddress: "no-reply@example.test", Subject: "test", Text: "text", AutoSubmitted: "auto-generated", AutoResponseSuppress: "All"}
-	plaintext, _ := json.Marshal(payload)
-	envelope, _ := sealer.Seal(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: id.String()}, plaintext)
-	encrypted, _ := json.Marshal(envelope)
-	command, _ := model.EncodeMailDeliveryCommand(model.MailDeliveryCommandV1{DeliveryID: id})
-	job, _ := model.NewJob(model.NewJobID(), model.JobTypeMailDeliver, 1, command, id.String(), at, at, model.MailMaximumAttempts)
-	delivery := &model.MailDelivery{ID: id, OccurrenceID: model.NewMailOccurrenceID(), JobID: job.ID, TargetUserID: model.NewUserID(), TemplateKey: model.MailTemplateSystemTest, TemplateDigest: strings.Repeat("a", 64), MaskedRecipient: "o***@example.test", State: model.MailDeliveryQueued, CreatedAt: at, UpdatedAt: at, MessageDate: at, Deadline: at.Add(deadlineAfter), MessageID: "<mail." + id.String() + "@example.test>", EncryptedPayload: encrypted, Revision: 1}
-	return sealer, job, delivery
+	composer, err := appmail.NewComposer(mailRendererFake{FrozenMailContent{Subject: "test", Text: "text", HTML: "<p>html</p>"}},
+		&mailSenderFake{enabled: true, from: MailAddress{Name: "Proctor", Address: "no-reply@example.test"}}, sealer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := composer.PrepareOperatorTest(appmail.NoticePreparation{Recipient: mailTestUser(mailTestPrincipal(at), at), At: at})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.Delivery.Deadline = at.Add(deadlineAfter)
+	return sealer, prepared.Job, prepared.Delivery
 }
 
 func runMailDeliveryJob(persistence appjobs.MailDeliveryLifecycleStore, sender MailDeliverySender,
@@ -719,16 +716,106 @@ func runMailDeliveryJob(persistence appjobs.MailDeliveryLifecycleStore, sender M
 }
 
 func TestMailDeliveryHandlerClassifiesRetryableAndPermanentFailures(t *testing.T) {
-	if appjobs.MailTransportFailureCode(MailTransportAcceptanceUncertain) != "mail.transport.acceptance_uncertain" {
-		t.Fatal("uncertain outcome lost")
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		outcome MailTransportOutcome
+		code    string
+		kind    jobengine.OutcomeKind
+		state   model.MailDeliveryState
+	}{
+		{"temporary", MailTransportTemporary, "mail.transport.temporary", jobengine.OutcomeRetryableFailure, model.MailDeliveryQueued},
+		{"permanent", MailTransportPermanent, "mail.transport.permanent", jobengine.OutcomePermanentFailure, model.MailDeliveryFailed},
+		{"unknown", MailTransportUnknown, "mail.transport.unknown", jobengine.OutcomeRetryableFailure, model.MailDeliveryQueued},
+		{"acceptance uncertain", MailTransportAcceptanceUncertain, "mail.transport.acceptance_uncertain", jobengine.OutcomeRetryableFailure, model.MailDeliveryQueued},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+			sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+			persistence := &mailStoreFake{delivery: delivery}
+			sendErr := errors.New("private provider detail")
+			sender := &mailSenderFake{enabled: true, outcome: test.outcome, err: sendErr}
+			outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
+			if outcome.Kind != test.kind || outcome.PublicErrorCode != test.code || !errors.Is(outcome.Err, sendErr) ||
+				persistence.delivery.State != test.state || persistence.delivery.PublicFailureCode != test.code ||
+				persistence.delivery.AttemptCount != 1 || len(persistence.delivery.EncryptedPayload) == 0 || len(sender.messages) != 1 {
+				t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
+			}
+			// Both automatic retries and a repeated terminal Job preserve the
+			// first send's identity; only retryable work may reach Sender again.
+			sender.err = nil
+			sender.from = MailAddress{Address: "changed@example.test"}
+			second := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(2 * time.Second) }, job)
+			if test.state == model.MailDeliveryFailed {
+				if second.Kind != jobengine.OutcomePermanentFailure || len(sender.messages) != 1 {
+					t.Fatalf("permanent failure was resent: %#v, sends=%d", second, len(sender.messages))
+				}
+				return
+			}
+			if second.Kind != jobengine.OutcomeSucceeded || persistence.delivery.State != model.MailDeliveryAccepted ||
+				len(persistence.delivery.EncryptedPayload) != 0 || len(sender.messages) != 2 ||
+				!reflect.DeepEqual(sender.messages[0], sender.messages[1]) {
+				t.Fatalf("retry=%#v delivery=%#v messages=%#v", second, persistence.delivery, sender.messages)
+			}
+		})
 	}
-	for outcome, want := range map[MailTransportOutcome]string{MailTransportTemporary: "mail.transport.temporary", MailTransportPermanent: "mail.transport.permanent", MailTransportUnknown: "mail.transport.unknown"} {
-		if got := appjobs.MailTransportFailureCode(outcome); got != want {
-			t.Fatalf("code(%s)=%s", outcome, got)
-		}
+}
+
+func TestMailDeliveryHandlerFailsUnavailablePayloadWithoutSending(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	_, _, otherDelivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	// A valid envelope from another delivery must fail the owner binding.
+	delivery.EncryptedPayload = otherDelivery.EncryptedPayload
+	persistence := &mailStoreFake{delivery: delivery}
+	sender := &mailSenderFake{enabled: true}
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
+	if outcome.Kind != jobengine.OutcomePermanentFailure || outcome.PublicErrorCode != "mail.payload.unavailable" ||
+		persistence.delivery.State != model.MailDeliveryFailed || persistence.delivery.AttemptCount != 1 || len(sender.messages) != 0 {
+		t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
 	}
-	sender := &mailSenderFake{enabled: true, from: MailAddress{Address: "no-reply@example.test"}, outcome: MailTransportTemporary, err: errors.New("secret provider detail")}
-	if outcome, err := sender.Send(context.Background(), OutboundMail{}); outcome != MailTransportTemporary || err == nil {
-		t.Fatal("portable classification lost across application port")
+}
+
+func TestMailDeliveryHandlerFailsInvalidMessageWithoutSending(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
+	sealer, job, delivery := mailDeliveryHandlerFixture(t, at, time.Hour)
+	persistence := &mailInvalidMessageMetadataStoreFake{mailStoreFake: &mailStoreFake{delivery: delivery}}
+	sender := &mailSenderFake{enabled: true}
+	outcome := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(time.Second) }, job)
+	if outcome.Kind != jobengine.OutcomePermanentFailure || outcome.PublicErrorCode != "mail.message.invalid" ||
+		!errors.Is(outcome.Err, appmail.ErrInvalidMessage) || persistence.delivery.State != model.MailDeliveryFailed ||
+		persistence.delivery.PublicFailureCode != "mail.message.invalid" || persistence.delivery.AttemptCount != 1 ||
+		len(sender.messages) != 0 {
+		t.Fatalf("outcome=%#v delivery=%#v sends=%d", outcome, persistence.delivery, len(sender.messages))
 	}
+	if strings.Contains(outcome.Err.Error(), "hidden@example.test") {
+		t.Fatal("worker error disclosed invalid message metadata")
+	}
+	failedRevision := persistence.delivery.Revision
+	second := runMailDeliveryJob(persistence, sender, sealer, func() time.Time { return at.Add(2 * time.Second) }, job)
+	if second.Kind != jobengine.OutcomePermanentFailure || second.PublicErrorCode != "mail.message.invalid" ||
+		persistence.delivery.Revision != failedRevision || persistence.delivery.AttemptCount != 1 || len(sender.messages) != 0 {
+		t.Fatalf("terminal replay changed invalid delivery: outcome=%#v delivery=%#v sends=%d", second, persistence.delivery, len(sender.messages))
+	}
+}
+
+type mailInvalidMessageMetadataStoreFake struct {
+	*mailStoreFake
+}
+
+func (s *mailInvalidMessageMetadataStoreFake) StartDelivery(ctx context.Context, id model.MailDeliveryID,
+	revision int64, at time.Time,
+) (*model.MailDelivery, error) {
+	delivery, err := s.mailStoreFake.StartDelivery(ctx, id, revision, at)
+	if err != nil {
+		return nil, err
+	}
+	// Keep the stored record valid while exercising the worker's defensive
+	// validation of returned metadata without interpreting Mail's payload.
+	delivery = delivery.Clone()
+	delivery.MessageID += "\r\nBcc: hidden@example.test"
+	return delivery, nil
 }

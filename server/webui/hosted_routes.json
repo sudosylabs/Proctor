@@ -8,5 +8,7 @@
   "/account/reset-password",
   "/account/verify-email",
   "/account/connect-provider",
-  "/authorization/complete"
+  "/authorization/complete",
+  "/account/security",
+  "/account/reauthenticate"
 ]

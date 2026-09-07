@@ -406,8 +406,20 @@ func (authenticationSessionStore) ListByUser(context.Context, string) ([]*model.
 func (authenticationSessionStore) ListActiveByUser(context.Context, string, time.Time) ([]*model.Session, error) {
 	return nil, errors.New("unused")
 }
-func (authenticationSessionStore) RevokeWithAudit(context.Context, *store.SessionRevocation) (*store.SessionRevocationResult, error) {
-	return nil, errors.New("unused")
+func (s authenticationSessionStore) RevokeWithAudit(_ context.Context, input *store.SessionRevocation) (*store.SessionRevocationResult, error) {
+	session := s.root.sessions[input.SessionID]
+	if session == nil || session.UserID.String() != input.UserID || session.RevokedAt.Valid {
+		if input.Reason == model.SessionRevocationUserLogout {
+			return &store.SessionRevocationResult{}, nil
+		}
+		return nil, store.NewErrNotFound("session", input.SessionID)
+	}
+	hashes, err := s.revoke(input.SessionID, model.TimeFromMillis(input.RevokedAt), input.Reason)
+	if err != nil {
+		return nil, err
+	}
+	cloned := *session
+	return &store.SessionRevocationResult{Session: &cloned, TokenHashes: hashes}, nil
 }
 func (authenticationSessionStore) RevokeAllForUser(context.Context, string, int64, model.SessionRevocationReason) ([]*model.Session, []string, error) {
 	return nil, nil, errors.New("unused")
@@ -538,6 +550,7 @@ func newTestAuthenticationServiceWithEffects(
 		cache,
 		mustAuthenticationAttemptAccounting(t, cache),
 		effects,
+		&mutationAttemptAuditorFake{events: &[]string{}, beginID: model.NewId()},
 		hasher,
 		mfa,
 		personalTokens,
@@ -1429,4 +1442,11 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 	if !ok || failure.Code() != "authentication.rate_limited" {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+func (discardAuthenticationMFAVerifier) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	return &model.UserMFARecovery{UserID: userID}, nil
+}
+func (*authenticationMFAVerifierFake) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	return &model.UserMFARecovery{UserID: userID}, nil
 }

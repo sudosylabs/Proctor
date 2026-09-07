@@ -182,10 +182,12 @@ type constructionCatalogWithJobs struct {
 	examSittings         store.ExamSittingStore
 }
 
-func (catalog constructionCatalogWithJobs) Job() store.JobStore   { return catalog.jobs }
-func (constructionCatalogWithJobs) Mail() store.MailStore         { return nil }
-func (catalog constructionCatalogWithJobs) User() store.UserStore { return catalog.users }
-func (catalog constructionCatalogWithJobs) File() store.FileStore { return catalog.files }
+func (catalog constructionCatalogWithJobs) Job() store.JobStore       { return catalog.jobs }
+func (constructionCatalogWithJobs) Mail() store.MailStore             { return nil }
+func (constructionCatalogWithJobs) Retention() store.RetentionStore   { return nil }
+func (constructionCatalogWithJobs) ExamExport() store.ExamExportStore { return nil }
+func (catalog constructionCatalogWithJobs) User() store.UserStore     { return catalog.users }
+func (catalog constructionCatalogWithJobs) File() store.FileStore     { return catalog.files }
 func (constructionCatalogWithJobs) ExamStarterWorkspace() store.ExamStarterWorkspaceStore {
 	return nil
 }
@@ -293,6 +295,7 @@ func TestApplicationJobDefinitionsIncludeSittingLifecycleAndDailyRecovery(t *tes
 			},
 			FileContent: constructionFileContentStub{},
 		},
+		applicationFoundation{},
 		identityConstruction{onboardingImports: &onboardingImportService{}},
 		examinationConstruction{sittings: constructionExamSittingUseCasesStub{}, attempts: constructionExamAttemptUseCasesStub{}}, profiles,
 		appjobs.NewDefaultProfilePictureJobs(constructionJobStoreStub{}),

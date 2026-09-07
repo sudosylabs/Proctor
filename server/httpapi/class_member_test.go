@@ -21,6 +21,8 @@ import (
 )
 
 type classMemberHTTPApplication struct {
+	pageQuery     application.ListClassMembersPageQuery
+	pageResult    *application.ClassMemberPage
 	result        *model.ClassEnrollment
 	ended         *model.ClassMember
 	values        []*model.ClassMember
@@ -111,4 +113,12 @@ func TestClassMemberHistoryQueryIsForwarded(t *testing.T) {
 	if !ok || activeAt != 0 {
 		t.Fatalf("active at = %d, ok = %v; want 0, true", activeAt, ok)
 	}
+}
+
+func (a *classMemberHTTPApplication) ListClassMembersPage(_ context.Context, _ application.Invocation, query application.ListClassMembersPageQuery) (*application.ClassMemberPage, error) {
+	a.pageQuery = query
+	if a.pageResult != nil {
+		return a.pageResult, nil
+	}
+	return &application.ClassMemberPage{}, nil
 }

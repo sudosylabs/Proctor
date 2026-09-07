@@ -60,6 +60,7 @@ type ExecutionGrantConvergence struct {
 	AttemptState            model.ExamAttemptState
 	SittingState            model.ExamSittingState
 	SittingRevision         int64
+	WorkspaceCursor         int64
 	AcknowledgementRequired bool
 }
 
@@ -78,13 +79,17 @@ type ExecutionGrantStore interface {
 	Current(context.Context, model.ExamAttemptID) (*model.ExecutionGrant, error)
 	Reserve(context.Context, ExecutionGrantReservation) (*model.ExecutionGrant, error)
 	Reassign(context.Context, ExecutionGrantReassignment) (*ExecutionGrantReassignmentResult, error)
-	MarkReady(context.Context, model.ExecutionGrantID, int64, time.Time) (*model.ExecutionGrant, error)
+	// PrepareWorkspaceEffect records uncertainty before an exact-grant host
+	// effect. Completion requires the same authoritative Workspace cursor and
+	// makes an initially reserved grant ready. Both run under its lifecycle lease.
+	PrepareWorkspaceEffect(context.Context, model.ExecutionGrantID, int64, int64, time.Time) (*model.ExecutionGrant, error)
+	MarkWorkspaceApplied(context.Context, model.ExecutionGrantID, int64, int64, time.Time) (*model.ExecutionGrant, error)
 	PrepareSittingStateEffect(context.Context, model.ExecutionGrantID, int64, model.ExamSittingState, int64, time.Time) (*model.ExecutionGrant, error)
 	MarkSittingStateApplied(context.Context, model.ExecutionGrantID, int64, model.ExamSittingState, int64, time.Time) (*model.ExecutionGrant, error)
 	Release(context.Context, model.ExamAttemptID, time.Time) (*model.ExecutionGrant, error)
 	ReleaseGrant(context.Context, model.ExecutionGrantID, time.Time) (*model.ExecutionGrant, error)
 	MarkRevoked(context.Context, model.ExecutionGrantID, int64, time.Time) (*model.ExecutionGrant, error)
-	ListPendingRevocations(context.Context, int) ([]*model.ExecutionGrant, error)
+	ListPendingRevocations(context.Context, model.ExecutionGrantID, int) ([]*model.ExecutionGrant, error)
 	AcquireLifecycleLease(context.Context, model.ExecutionGrantID) (ExecutionLifecycleLease, error)
 	CurrentForReconciliation(context.Context, model.ExecutionGrantID) (*ExecutionGrantConvergence, error)
 	ListCurrentForReconciliation(context.Context, model.ExecutionGrantID, int) ([]ExecutionGrantConvergence, error)

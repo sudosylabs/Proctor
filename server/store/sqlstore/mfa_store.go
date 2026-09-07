@@ -158,10 +158,23 @@ func (s SQLMFAStore) Activate(
 				return nil, err
 			}
 		}
-		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
+		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
-		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
+		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, true, input.RecentAuthenticationTTL, false)
+		if err != nil {
+			return nil, err
+		}
+		if current.ID.String() != input.SessionID || current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+			return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
+		}
+		at = databaseNow
+		currentStep := at.Unix() / 30
+		if input.TimeStep < currentStep-1 || input.TimeStep > currentStep+1 {
+			return nil, store.NewErrConflict("mfa_credential", "verification_expired", nil)
+		}
+		prepared, err = prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+		if err != nil {
 			return nil, err
 		}
 		var row mfaCredentialRow
@@ -171,11 +184,11 @@ func (s SQLMFAStore) Activate(
 		       pending_expires_at = NULL, activated_at = ?,
 		       last_used_time_step = ?
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL
-		   AND state = 'pending' AND pending_expires_at > ?
+		   AND state = 'pending' AND pending_expires_at > ? AND pending_expires_at > ?
 		 RETURNING id, created_at, updated_at, archived_at, user_id, state,
 		           encrypted_secret, encryption_key_id, pending_expires_at,
 		           activated_at, last_used_time_step`,
-			at, at, input.TimeStep, input.CredentialID, input.UserID, at,
+			at, at, input.TimeStep, input.CredentialID, input.UserID, at, model.TimeUTC(input.At),
 		); err != nil {
 			return nil, translateError("mfa_credential", input.CredentialID, err)
 		}
@@ -193,6 +206,16 @@ func (s SQLMFAStore) Activate(
 		}
 		for _, code := range prepared {
 			if err := insertMFARecoveryCode(ctx, tx, code); err != nil {
+				return nil, err
+			}
+		}
+		// Only activation of a new local factor clears assisted recovery. Other
+		// restricted Sessions stay invalid after this transition.
+		if current.MFARecoveryRequired {
+			if _, err := tx.Exec(ctx, `UPDATE user_mfa_recovery SET reenrollment_required=false,updated_at=? WHERE user_id=? AND generation=? AND reenrollment_required`, at, input.UserID, current.AuthenticationGeneration); err != nil {
+				return nil, err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE sessions SET mfa_recovery_required=false,updated_at=GREATEST(updated_at,?) WHERE id=?`, at, input.SessionID); err != nil {
 				return nil, err
 			}
 		}
@@ -336,7 +359,19 @@ func (s SQLMFAStore) ReplaceRecoveryCodes(
 				return struct{}{}, err
 			}
 		}
-		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
+		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
+			return struct{}{}, err
+		}
+		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, false, input.RecentAuthenticationTTL, true)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+			return struct{}{}, store.NewErrInvalidInput("mfa_credential", "principal", nil)
+		}
+		at = databaseNow
+		prepared, err = prepareMFARecoveryCodes(input.UserID, input.RecoveryCodes, at)
+		if err != nil {
 			return struct{}{}, err
 		}
 		var credentialID string
@@ -416,12 +451,17 @@ func (s SQLMFAStore) Disable(
 				return nil, err
 			}
 		}
-		if err := lockMFAUser(ctx, tx, input.UserID); err != nil {
+		if err := lockMFASessionUser(ctx, tx, input.UserID); err != nil {
 			return nil, err
 		}
-		if err := lockUserSessions(ctx, tx, input.UserID); err != nil {
+		current, databaseNow, err := currentMFASession(ctx, tx, input.Principal, false, input.RecentAuthenticationTTL, true)
+		if err != nil {
 			return nil, err
 		}
+		if current.UserID.String() != input.UserID || input.RecentAuthenticationTTL <= 0 {
+			return nil, store.NewErrInvalidInput("mfa_credential", "principal", nil)
+		}
+		at = databaseNow
 		result, err := tx.Exec(ctx, `
 		UPDATE mfa_credentials
 		   SET updated_at = GREATEST(updated_at, ?), archived_at = ?
@@ -583,11 +623,11 @@ func upgradeSessionAuthentication(
 		       mfa_completed_at = ?
 		 WHERE id = ? AND user_id = ? AND archived_at IS NULL AND revoked_at IS NULL
 		   AND idle_expires_at > ? AND expires_at > ?
-		 RETURNING id, created_at, updated_at, archived_at, user_id, client_type,
+		 RETURNING id, created_at, updated_at, archived_at, user_id, authentication_generation, mfa_recovery_required, client_type,
 		           desktop_registration_id, dpop_key_thumbprint, desktop_release, desktop_build_id,
 		           desktop_platform, desktop_architecture, desktop_realtime_protocol,
 		           device_id, device_name, authentication_method, authentication_provider_id,
-		           external_identity_id, authentication_strength, authenticated_at, mfa_completed_at,
+		           external_identity_id, authentication_strength, authenticated_at, reauthenticated_at, mfa_completed_at,
 		           last_activity_at, idle_expires_at, expires_at, revoked_at,
 		           revocation_reason`,
 		at, at, sessionID, userID, at, at,

@@ -22,6 +22,7 @@ import (
 )
 
 func TestProgrammeLevelStore(t *testing.T, ss store.Store) {
+	t.Run("SearchLimit", func(t *testing.T) { testProgrammeLevelStoreSearchLimit(t, ss) })
 	t.Run("MutationAuditAtomicity", func(t *testing.T) { testProgrammeLevelStoreMutationAuditAtomicity(t, ss) })
 	t.Run("Save", func(t *testing.T) { testProgrammeLevelStoreSave(t, ss) })
 	t.Run("Get", func(t *testing.T) { testProgrammeLevelStoreGet(t, ss) })
@@ -333,4 +334,18 @@ func saveProgrammeLevel(
 	})
 	requireNoError(t, err)
 	return level
+}
+
+func testProgrammeLevelStoreSearchLimit(t *testing.T, ss store.Store) {
+	ctx := context.Background()
+	_, programme := saveProgrammeParents(t, ctx, ss, "bounded-programme")
+	first := saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "bounded-first")
+	saveProgrammeLevel(t, ctx, ss, programme.ID.String(), "bounded-second")
+	for _, term := range []string{"", "  \t", "bounded"} {
+		found, err := ss.ProgrammeLevel().SearchByProgramme(ctx, programme.ID.String(), term, 1)
+		requireNoError(t, err)
+		if len(found) != 1 || found[0].ID != first.ID {
+			t.Fatalf("SearchByProgramme(q=%q, limit=1) = %#v", term, found)
+		}
+	}
 }

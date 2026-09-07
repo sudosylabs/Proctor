@@ -15,6 +15,7 @@ import (
 )
 
 type programmeLevelResponse struct {
+	Revision    int64  `json:"revision"`
 	ID          string `json:"id"`
 	CreateAt    int64  `json:"create_at"`
 	UpdateAt    int64  `json:"update_at"`
@@ -37,9 +38,10 @@ type createProgrammeLevelRequest struct {
 }
 
 type updateProgrammeLevelRequest struct {
-	Name        Optional[string] `json:"name"`
-	DisplayName Optional[string] `json:"display_name"`
-	Description Optional[string] `json:"description"`
+	ExpectedRevision Optional[int64]  `json:"expected_revision"`
+	Name             Optional[string] `json:"name"`
+	DisplayName      Optional[string] `json:"display_name"`
+	Description      Optional[string] `json:"description"`
 }
 
 type programmeLevelResourceModule struct {
@@ -162,10 +164,13 @@ func (module programmeLevelResourceModule) patch(request operationRequest) (oper
 	if err := request.decodeJSON(&body, "patchProgrammeLevel"); err != nil {
 		return operationResult{}, err
 	}
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return operationResult{}, err
+	}
 	level, err := module.programmeLevels.UpdateProgrammeLevel(
 		request.context,
 		request.invocation(),
-		application.UpdateProgrammeLevelCommand{
+		application.UpdateProgrammeLevelCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID:          id,
 			Name:        body.Name.ValuePointer(),
 			DisplayName: body.DisplayName.ValuePointer(),
@@ -183,8 +188,12 @@ func (module programmeLevelResourceModule) archive(request operationRequest) (op
 	if err != nil {
 		return operationResult{}, err
 	}
+	expectedRevision, err := request.academicRevision()
+	if err != nil {
+		return operationResult{}, err
+	}
 	err = module.programmeLevels.ArchiveProgrammeLevel(
-		request.context, request.invocation(), application.ArchiveProgrammeLevelCommand{ID: id},
+		request.context, request.invocation(), application.ArchiveProgrammeLevelCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -197,7 +206,7 @@ func programmeLevelResponseFromModel(level *model.ProgrammeLevel) programmeLevel
 		return programmeLevelResponse{}
 	}
 	return programmeLevelResponse{
-		ID:          level.ID.String(),
+		Revision: level.Revision, ID: level.ID.String(),
 		CreateAt:    model.MillisFromTime(level.CreatedAt),
 		UpdateAt:    model.MillisFromTime(level.UpdatedAt),
 		DeleteAt:    level.ArchivedAt.Millis(),

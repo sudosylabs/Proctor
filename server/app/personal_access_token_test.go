@@ -9,7 +9,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -17,8 +16,8 @@ import (
 	"testing"
 	"time"
 
+	appmail "github.com/sudosylabs/proctor/server/app/mail"
 	"github.com/sudosylabs/proctor/server/model"
-	"github.com/sudosylabs/proctor/server/secretseal"
 	"github.com/sudosylabs/proctor/server/store"
 )
 
@@ -451,16 +450,8 @@ func TestPersonalAccessTokenAdministrationRendersPostgreSQLPreparedActionTime(t 
 	if tokens.notice.Delivery == nil || len(tokens.notice.Delivery.EncryptedPayload) == 0 {
 		t.Fatalf("prepared notice = %#v", tokens.notice)
 	}
-	var envelope secretseal.Envelope
-	if err := json.Unmarshal(tokens.notice.Delivery.EncryptedPayload, &envelope); err != nil {
-		t.Fatal(err)
-	}
-	plaintext, err := sealer.Open(secretseal.Binding{Purpose: mailDeliverySealingPurpose, Owner: tokens.notice.Delivery.ID.String()}, envelope)
+	payload, err := appmail.OpenDelivery(sealer, tokens.notice.Delivery)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var payload frozenMailPayloadV1
-	if err := json.Unmarshal(plaintext, &payload); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(payload.Text, databaseAt.Format(time.RFC3339Nano)) {

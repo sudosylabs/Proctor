@@ -15,6 +15,7 @@ import (
 )
 
 type programmeResponse struct {
+	Revision       int64  `json:"revision"`
 	ID             string `json:"id"`
 	CreateAt       int64  `json:"create_at"`
 	UpdateAt       int64  `json:"update_at"`
@@ -37,9 +38,10 @@ type createProgrammeRequest struct {
 }
 
 type updateProgrammeRequest struct {
-	Name        Optional[string] `json:"name"`
-	DisplayName Optional[string] `json:"display_name"`
-	Description Optional[string] `json:"description"`
+	ExpectedRevision Optional[int64]  `json:"expected_revision"`
+	Name             Optional[string] `json:"name"`
+	DisplayName      Optional[string] `json:"display_name"`
+	Description      Optional[string] `json:"description"`
 }
 
 type programmeResourceModule struct {
@@ -126,9 +128,12 @@ func (module programmeResourceModule) patch(request operationRequest) (operation
 	if err := request.decodeJSON(&body, "patchProgramme"); err != nil {
 		return operationResult{}, err
 	}
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return operationResult{}, err
+	}
 	programme, err := module.programmes.UpdateProgramme(
 		request.context, request.invocation(),
-		application.UpdateProgrammeCommand{ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
+		application.UpdateProgrammeCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(), ID: id, Name: body.Name.ValuePointer(), DisplayName: body.DisplayName.ValuePointer(), Description: body.Description.ValuePointer()},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -141,9 +146,13 @@ func (module programmeResourceModule) archive(request operationRequest) (operati
 	if err != nil {
 		return operationResult{}, err
 	}
+	expectedRevision, err := request.academicRevision()
+	if err != nil {
+		return operationResult{}, err
+	}
 	err = module.programmes.ArchiveProgramme(
 		request.context, request.invocation(),
-		application.ArchiveProgrammeCommand{ID: id},
+		application.ArchiveProgrammeCommand{ExpectedRevision: expectedRevision, ID: id},
 	)
 	if err != nil {
 		return operationResult{}, err
@@ -156,7 +165,7 @@ func programmeResponseFromModel(programme *model.Programme) programmeResponse {
 		return programmeResponse{}
 	}
 	return programmeResponse{
-		ID:             programme.ID.String(),
+		Revision: programme.Revision, ID: programme.ID.String(),
 		CreateAt:       model.MillisFromTime(programme.CreatedAt),
 		UpdateAt:       model.MillisFromTime(programme.UpdatedAt),
 		DeleteAt:       programme.ArchivedAt.Millis(),

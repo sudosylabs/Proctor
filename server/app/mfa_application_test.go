@@ -61,7 +61,7 @@ func TestMFAChallengeRejectsReplayedRecoveryCodeAndPreservesEffectOrdering(t *te
 
 	want := []string{
 		"institution", "audit_begin", "credential_get", "consume", "upgrade",
-		"effects", "session_get", "audit_success",
+		"audit_success", "effects",
 		"institution", "audit_begin", "credential_get", "consume", "audit_fail",
 	}
 	if !reflect.DeepEqual(events, want) {
@@ -277,34 +277,34 @@ func TestMFAApplicationServiceRequiresFocusedDependencies(t *testing.T) {
 		build func() (*mfaApplicationService, error)
 	}{
 		{"user store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(nil, persistence, sessions, institutions, audit, effects, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(nil, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"MFA store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, nil, sessions, institutions, audit, effects, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, nil, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"session store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, nil, institutions, audit, effects, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, nil, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"institution store", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, nil, audit, effects, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, nil, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"audit", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, nil, effects, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, nil, effects, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"effects", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, nil, mail, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, nil, mail, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"mail", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, nil, mechanics, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, nil, mechanics, testMFASecurity(), time.Minute, now)
 		}},
 		{"mechanics", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, nil, time.Minute, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, nil, testMFASecurity(), time.Minute, now)
 		}},
 		{"recent authentication TTL", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, 0, now)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), 0, now)
 		}},
 		{"clock", func() (*mfaApplicationService, error) {
-			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, time.Minute, nil)
+			return newMFAApplicationService(users, persistence, sessions, institutions, audit, effects, mail, mechanics, testMFASecurity(), time.Minute, nil)
 		}},
 	}
 	for _, test := range tests {
@@ -329,7 +329,7 @@ func newTestMFAApplicationService(
 		mfaApplicationUserStoreFake{}, persistence,
 		mfaApplicationSessionStoreFake{persistence: persistence},
 		mfaApplicationInstitutionStoreFake{persistence: persistence}, audit, effects,
-		&mfaSecurityNoticeMailPreparerFake{}, mustTestMFAMechanics(t), 15*time.Minute, func() time.Time { return now },
+		&mfaSecurityNoticeMailPreparerFake{}, mustTestMFAMechanics(t), testMFASecurity(), 15*time.Minute, func() time.Time { return now },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -459,6 +459,8 @@ func (m *mfaSecurityNoticeMailPreparerFake) PrepareMFANotice(request NoticeMailP
 	switch kind {
 	case MFAMailNoticeDisabled:
 		key = model.MailTemplateIdentityMFADisabled
+	case "reset":
+		key = model.MailTemplateIdentityMFAReset
 	case MFAMailNoticeRecoveryCodesRegenerated:
 		key = model.MailTemplateIdentityMFARecoveryCodesRegenerated
 	}
@@ -530,4 +532,34 @@ func (e *mfaApplicationEffectsFake) SessionsRevoked(_ context.Context, userID st
 	e.userID = userID
 	e.sessionIDs = append([]string(nil), sessionIDs...)
 	e.hashes = append([]string(nil), hashes...)
+}
+
+type mfaResetAuthorizationFake struct{ err error }
+
+func (a mfaResetAuthorizationFake) Authorize(context.Context, model.Principal, model.Action, model.Resource, model.RequestMetadata) error {
+	return a.err
+}
+func testMFASecurity() mfaSecurityDependencies {
+	return mfaSecurityDependencies{authorization: mfaResetAuthorizationFake{}, capabilities: &accessPolicyCapabilitiesFake{}, attempts: &authenticationAttemptAccounting{cache: newAuthenticationCacheFake()}, rateLimit: LoginRateLimitPolicy{MaximumAttempts: 100, MaximumSourceAttempts: 1000, Window: time.Minute}}
+}
+func (s *mfaApplicationStoreFake) GetRecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	return &model.UserMFARecovery{UserID: userID}, nil
+}
+func (s *mfaApplicationStoreFake) SavePendingWithAudit(ctx context.Context, input *store.MFAPendingEnrollment) (*model.MFACredential, error) {
+	saved, err := s.SavePending(ctx, input.Credential)
+	if err == nil {
+		s.appendEvent("audit_success")
+	}
+	return saved, err
+}
+func (s *mfaApplicationStoreFake) ChallengeWithAudit(ctx context.Context, input *store.MFAChallenge) (*store.SessionReauthenticationResult, error) {
+	if err := s.ConsumeSecondFactor(ctx, input.Principal.UserID.String(), input.TimeStep, input.RecoveryCodeHash, input.VerifiedAt.UnixMilli()); err != nil {
+		return nil, err
+	}
+	hashes, err := s.UpgradeSession(ctx, input.Principal.SessionID.String(), input.Principal.UserID.String(), input.VerifiedAt)
+	if err != nil {
+		return nil, err
+	}
+	s.appendEvent("audit_success")
+	return &store.SessionReauthenticationResult{Session: s.session, AccessTokenHashes: hashes}, nil
 }

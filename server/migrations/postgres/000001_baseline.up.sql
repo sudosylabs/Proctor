@@ -564,7 +564,7 @@ CREATE TABLE mail_occurrences (
         'identity.email_change_verify_new', 'identity.email_verified_by_admin',
 		'identity.account_disabled', 'identity.account_enabled',
 		'identity.sessions_revoked_by_admin',
-		'identity.mfa_enabled', 'identity.mfa_disabled',
+		'identity.mfa_enabled', 'identity.mfa_disabled', 'identity.mfa_reset',
 		'identity.mfa_recovery_codes_regenerated',
 		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
 		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
@@ -580,7 +580,7 @@ CREATE TABLE mail_occurrences (
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
         'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
-        'exam.result_released'
+        'exam.result_released', 'exam.retention_scheduled'
     )),
     actor_user_id varchar(26) NOT NULL REFERENCES users(id),
     created_at timestamptz NOT NULL,
@@ -610,7 +610,7 @@ CREATE TABLE mail_deliveries (
         'identity.email_change_verify_new', 'identity.email_verified_by_admin',
 		'identity.account_disabled', 'identity.account_enabled',
 		'identity.sessions_revoked_by_admin',
-		'identity.mfa_enabled', 'identity.mfa_disabled',
+		'identity.mfa_enabled', 'identity.mfa_disabled', 'identity.mfa_reset',
 		'identity.mfa_recovery_codes_regenerated',
 		'identity.personal_access_token_created', 'identity.personal_access_token_enabled',
 		'identity.personal_access_token_disabled', 'identity.personal_access_token_revoked',
@@ -626,7 +626,7 @@ CREATE TABLE mail_deliveries (
         'exam.manager_added', 'exam.manager_removed',
         'exam.ownership_transferred_to_you', 'exam.ownership_transferred_from_you',
         'exam.submission_received', 'exam.submission_manager_ended', 'exam.submission_automatically_sealed',
-        'exam.result_released'
+        'exam.result_released', 'exam.retention_scheduled'
     )),
     template_digest char(64) NOT NULL CHECK (template_digest ~ '^[0-9a-f]{64}$'),
     masked_recipient varchar(254) NOT NULL
@@ -946,6 +946,13 @@ CREATE TABLE exam_starter_workspace_objects (
     reclaim_after timestamptz,
     claim_token varchar(128),
     claimed_at timestamptz,
+    retired_by_audit_event_id varchar(26),
+    CONSTRAINT exam_starter_workspace_objects_retired_by_audit_event_id_canonical_check CHECK (
+        retired_by_audit_event_id IS NULL OR retired_by_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
+    ),
+    CONSTRAINT exam_starter_workspace_objects_retirement_check CHECK (
+        retired_by_audit_event_id IS NULL OR state IN ('reclaimable', 'claimed')
+    ),
     UNIQUE (exam_id, id),
     CONSTRAINT exam_starter_workspace_objects_lifecycle_check CHECK (
         updated_at >= created_at AND expires_at > created_at AND
@@ -1570,6 +1577,9 @@ CREATE TABLE sessions (
 	authentication_strength varchar(32) NOT NULL
         CHECK (authentication_strength IN ('single_factor', 'multi_factor')),
     authenticated_at timestamptz NOT NULL,
+    reauthenticated_at timestamptz,
+    mfa_recovery_required boolean NOT NULL DEFAULT false,
+    authentication_generation bigint NOT NULL DEFAULT 0 CHECK (authentication_generation >= 0),
     mfa_completed_at timestamptz,
     last_activity_at timestamptz NOT NULL,
     idle_expires_at timestamptz NOT NULL,
@@ -1577,12 +1587,14 @@ CREATE TABLE sessions (
     revoked_at timestamptz,
     revocation_reason varchar(1024) NOT NULL DEFAULT '',
     CONSTRAINT sessions_lifecycle_check CHECK (updated_at >= created_at),
+    CONSTRAINT sessions_reauthentication_check CHECK (reauthenticated_at IS NULL OR
+        (reauthenticated_at >= authenticated_at AND reauthenticated_at <= updated_at)),
 	CONSTRAINT sessions_revocation_check CHECK (
 		(revoked_at IS NULL AND revocation_reason = '') OR
 		(revoked_at IS NOT NULL AND revocation_reason IN (
 			'access_policy_changed', 'account_disabled', 'administrator_all_sessions',
 			'administrator_session', 'authentication_audit_failed', 'desktop_authorization_failed', 'external_identity_unlinked',
-			'inactive_user', 'password_removed', 'password_reset', 'refresh_replay',
+			'inactive_user', 'password_removed', 'password_reset', 'refresh_replay', 'mfa_reset',
 			'user_all_sessions', 'user_logout', 'user_session', 'desktop_registration_revoked',
 			'exam_attempt_session_lock', 'expired'
 		))
@@ -1686,6 +1698,9 @@ CREATE TABLE execution_grants (
     lifecycle_pending boolean NOT NULL DEFAULT false,
     pending_sitting_state varchar(16) CHECK (pending_sitting_state IN ('open', 'paused')),
     pending_sitting_revision bigint CHECK (pending_sitting_revision > 0),
+    applied_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (applied_workspace_cursor >= 0),
+    workspace_pending boolean NOT NULL DEFAULT false,
+    pending_workspace_cursor bigint NOT NULL DEFAULT 0 CHECK (pending_workspace_cursor >= 0),
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     released_at timestamptz,
@@ -1700,13 +1715,17 @@ CREATE TABLE execution_grants (
     CONSTRAINT execution_grants_pending_lifecycle_check CHECK (
         (lifecycle_pending AND pending_sitting_state IS NOT NULL AND pending_sitting_revision IS NOT NULL) OR
         (NOT lifecycle_pending AND pending_sitting_state IS NULL AND pending_sitting_revision IS NULL)
+    ),
+    CONSTRAINT execution_grants_pending_workspace_check CHECK (
+        (workspace_pending AND NOT lifecycle_pending AND pending_workspace_cursor >= applied_workspace_cursor) OR
+        (NOT workspace_pending AND pending_workspace_cursor = 0)
     )
 );
 
 CREATE UNIQUE INDEX execution_grants_one_active_attempt_idx
     ON execution_grants (exam_attempt_id) WHERE state IN ('reserved', 'ready');
 CREATE INDEX execution_grants_pending_revocation_idx
-    ON execution_grants (released_at, id) WHERE state = 'released' AND revoked_at IS NULL;
+    ON execution_grants (id) WHERE state = 'released' AND revoked_at IS NULL;
 
 CREATE TABLE exam_attempt_workspaces (
     id varchar(26) PRIMARY KEY,
@@ -1744,6 +1763,13 @@ CREATE TABLE exam_attempt_workspace_objects (
     reclaim_after timestamptz,
     claim_token varchar(128),
     claimed_at timestamptz,
+    retired_by_audit_event_id varchar(26),
+    CONSTRAINT exam_attempt_workspace_objects_retired_by_audit_event_id_canonical_check CHECK (
+        retired_by_audit_event_id IS NULL OR retired_by_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'
+    ),
+    CONSTRAINT exam_attempt_workspace_objects_retirement_check CHECK (
+        retired_by_audit_event_id IS NULL OR (storage_origin = 'attempt' AND state IN ('reclaimable', 'claimed'))
+    ),
     UNIQUE (workspace_id, id),
     UNIQUE (workspace_id, id, admission_revision_id, source_starter_entry_id),
     CONSTRAINT exam_attempt_workspace_objects_source_fkey
@@ -1831,6 +1857,10 @@ CREATE TABLE exam_attempt_workspace_journal (
     content_version varchar(26),
     mutation_key_digest bytea NOT NULL CHECK (octet_length(mutation_key_digest) = 32),
     changed_at timestamptz NOT NULL,
+    recursive boolean NOT NULL DEFAULT false,
+    CONSTRAINT exam_attempt_workspace_journal_recursive_check CHECK (
+        NOT recursive OR (operation = 'delete_entry' AND entry_kind = 'directory')
+    ),
     PRIMARY KEY (workspace_id, cursor),
     CONSTRAINT exam_attempt_workspace_journal_path_check CHECK (
         (old_path IS NULL OR octet_length(old_path) BETWEEN 1 AND 1024) AND
@@ -2358,12 +2388,13 @@ ALTER TABLE exam_attempt_focus_loss_evaluations
 CREATE FUNCTION reject_integrity_record_update() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+	IF TG_OP = 'DELETE' AND retention_allows_integrity_delete(OLD.exam_attempt_id) THEN RETURN OLD; END IF;
     RAISE EXCEPTION 'Integrity records are immutable' USING ERRCODE = '55000';
 END;
 $$;
-CREATE TRIGGER integrity_flags_immutable BEFORE UPDATE ON integrity_flags
+CREATE TRIGGER integrity_flags_immutable BEFORE UPDATE OR DELETE ON integrity_flags
     FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
-CREATE TRIGGER integrity_evidence_immutable BEFORE UPDATE ON integrity_evidence
+CREATE TRIGGER integrity_evidence_immutable BEFORE UPDATE OR DELETE ON integrity_evidence
     FOR EACH ROW EXECUTE FUNCTION reject_integrity_record_update();
 
 CREATE FUNCTION guard_exam_attempt_suspension_mutation() RETURNS trigger
@@ -2532,6 +2563,22 @@ $$;
 CREATE FUNCTION guard_exam_submission_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.sealed AND NEW.sealed AND
+       (NEW.work_retired_at IS DISTINCT FROM OLD.work_retired_at OR NEW.integrity_retired_at IS DISTINCT FROM OLD.integrity_retired_at) AND
+       (to_jsonb(NEW) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count' - 'browser_activity_state' - 'browser_activity_source_session_id' - 'browser_activity_final_sequence' - 'browser_activity_gap_reason') =
+       (to_jsonb(OLD) - 'work_retired_at' - 'integrity_retired_at' - 'workspace_cursor' - 'manifest_digest' - 'manifest_entry_count' - 'manifest_total_file_bytes' - 'integrity_state' - 'final_focus_loss_sequence' - 'unresolved_integrity_count' - 'browser_activity_state' - 'browser_activity_source_session_id' - 'browser_activity_final_sequence' - 'browser_activity_gap_reason') AND
+       (((NEW.work_retired_at IS NOT DISTINCT FROM OLD.work_retired_at) AND
+         ROW(NEW.workspace_cursor,NEW.manifest_digest,NEW.manifest_entry_count,NEW.manifest_total_file_bytes) IS NOT DISTINCT FROM
+         ROW(OLD.workspace_cursor,OLD.manifest_digest,OLD.manifest_entry_count,OLD.manifest_total_file_bytes)) OR
+        (OLD.work_retired_at IS NULL AND NEW.work_retired_at IS NOT NULL AND
+         EXISTS(SELECT 1 FROM retention_retirements WHERE submission_id=OLD.id AND category='work' AND state='retired' AND retired_at=NEW.work_retired_at))) AND
+       (((NEW.integrity_retired_at IS NOT DISTINCT FROM OLD.integrity_retired_at) AND
+         ROW(NEW.integrity_state,NEW.final_focus_loss_sequence,NEW.unresolved_integrity_count,NEW.browser_activity_state,NEW.browser_activity_source_session_id,NEW.browser_activity_final_sequence,NEW.browser_activity_gap_reason) IS NOT DISTINCT FROM
+         ROW(OLD.integrity_state,OLD.final_focus_loss_sequence,OLD.unresolved_integrity_count,OLD.browser_activity_state,OLD.browser_activity_source_session_id,OLD.browser_activity_final_sequence,OLD.browser_activity_gap_reason)) OR
+        (OLD.integrity_retired_at IS NULL AND NEW.integrity_retired_at IS NOT NULL AND
+         EXISTS(SELECT 1 FROM retention_retirements WHERE submission_id=OLD.id AND state='retired' AND retired_at=NEW.integrity_retired_at))) THEN
+        RETURN NEW;
+    END IF;
     IF TG_OP = 'UPDATE' AND NOT OLD.sealed AND NEW.sealed AND
        (to_jsonb(NEW) - 'sealed') = (to_jsonb(OLD) - 'sealed') THEN
         RETURN NEW;
@@ -2543,6 +2590,10 @@ $$;
 CREATE FUNCTION reject_exam_submission_manifest_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+	IF TG_OP = 'DELETE' AND EXISTS(SELECT 1 FROM retention_retirements
+	   WHERE submission_id=OLD.submission_id AND category='work' AND state='retired') THEN
+		RETURN OLD;
+	END IF;
     RAISE EXCEPTION 'sealed Submission manifest is immutable' USING ERRCODE = '55000';
 END;
 $$;
@@ -2567,7 +2618,13 @@ DECLARE
     actual_entries integer;
     actual_bytes bigint;
 BEGIN
+    IF TG_OP = 'INSERT' AND (NEW.work_retired_at IS NOT NULL OR NEW.integrity_retired_at IS NOT NULL) THEN
+        RAISE EXCEPTION 'Submission cannot be created retired' USING ERRCODE = '23514';
+    END IF;
     SELECT * INTO current_submission FROM exam_submissions WHERE id = NEW.id;
+	IF current_submission.work_retired_at IS NOT NULL AND current_submission.sealed THEN
+		RETURN NULL;
+	END IF;
     SELECT count(*), COALESCE(sum(size_bytes), 0) INTO actual_entries, actual_bytes
       FROM exam_submission_manifest_entries WHERE submission_id = NEW.id;
     IF NOT current_submission.sealed OR current_submission.manifest_entry_count <> actual_entries OR
@@ -2805,6 +2862,7 @@ CREATE TABLE submission_review_inventory_discrepancies (
 CREATE FUNCTION guard_submission_review_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+	IF TG_OP = 'DELETE' AND retention_allows_integrity_delete(OLD.exam_attempt_id) THEN RETURN OLD; END IF;
     IF NEW.id IS DISTINCT FROM OLD.id OR NEW.submission_id IS DISTINCT FROM OLD.submission_id OR
        NEW.exam_attempt_id IS DISTINCT FROM OLD.exam_attempt_id OR NEW.created_by_user_id IS DISTINCT FROM OLD.created_by_user_id OR
        NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.revision <> OLD.revision + 1 OR NEW.updated_at < OLD.updated_at THEN
@@ -2836,6 +2894,7 @@ LANGUAGE plpgsql AS $$
 DECLARE
     review_state varchar(16);
 BEGIN
+	IF TG_OP = 'DELETE' AND retention_allows_integrity_delete(OLD.exam_attempt_id) THEN RETURN OLD; END IF;
     SELECT state INTO review_state FROM submission_reviews WHERE id = COALESCE(NEW.submission_review_id, OLD.submission_review_id);
     IF TG_OP = 'DELETE' OR review_state IS DISTINCT FROM 'draft' THEN
         RAISE EXCEPTION 'Integrity Review decision is frozen' USING ERRCODE = '55000';
@@ -2853,6 +2912,8 @@ $$;
 CREATE FUNCTION reject_submission_review_inventory_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+	IF TG_OP = 'DELETE' AND EXISTS(SELECT 1 FROM submission_reviews r
+	   WHERE r.id=OLD.submission_review_id AND retention_allows_integrity_delete(r.exam_attempt_id)) THEN RETURN OLD; END IF;
     RAISE EXCEPTION 'Submission Review inventory is immutable' USING ERRCODE = '55000';
 END;
 $$;
@@ -3025,8 +3086,11 @@ CREATE TABLE external_login_states (
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     provider varchar(64) NOT NULL,
-	purpose varchar(32) NOT NULL CHECK (purpose IN ('login', 'connect', 'invitation_admission', 'desktop_authorization')),
+	purpose varchar(32) NOT NULL CHECK (purpose IN ('login', 'connect', 'invitation_admission', 'desktop_authorization', 'reauthenticate', 'mfa_recovery')),
 	target_user_id varchar(26) REFERENCES users(id),
+	session_id varchar(26) REFERENCES sessions(id),
+	session_credential_id varchar(26) REFERENCES session_credentials(id),
+	external_identity_id varchar(26) REFERENCES external_identities(id),
 	invitation_id varchar(26) REFERENCES invitations(id),
 	browser_authentication_transaction_id varchar(26),
 	audit_event_id varchar(26),
@@ -3044,10 +3108,15 @@ CREATE TABLE external_login_states (
             (consumed_at IS NULL OR (consumed_at >= created_at AND consumed_at < expires_at))
 		),
 	CONSTRAINT external_login_states_purpose_target_check CHECK (
+		(purpose = 'reauthenticate' AND target_user_id IS NOT NULL AND audit_event_id IS NOT NULL AND
+		 session_id IS NOT NULL AND session_credential_id IS NOT NULL AND external_identity_id IS NOT NULL AND
+		 invitation_id IS NULL AND browser_authentication_transaction_id IS NULL) OR
+		(session_id IS NULL AND session_credential_id IS NULL AND external_identity_id IS NULL AND (
+		(purpose = 'mfa_recovery' AND target_user_id IS NOT NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NULL AND return_to='/account/security') OR
 		(purpose = 'login' AND target_user_id IS NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NULL) OR
 		(purpose = 'connect' AND target_user_id IS NOT NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NOT NULL) OR
 		(purpose = 'invitation_admission' AND target_user_id IS NULL AND invitation_id IS NOT NULL AND browser_authentication_transaction_id IS NULL AND audit_event_id IS NULL) OR
-		(purpose = 'desktop_authorization' AND target_user_id IS NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NOT NULL AND audit_event_id IS NULL)
+		(purpose = 'desktop_authorization' AND target_user_id IS NULL AND invitation_id IS NULL AND browser_authentication_transaction_id IS NOT NULL AND audit_event_id IS NULL)))
 	)
 );
 
@@ -3410,6 +3479,17 @@ CREATE TABLE command_outcomes (
 CREATE INDEX command_outcomes_expires_at_idx
     ON command_outcomes (expires_at, user_id, operation);
 
+CREATE INDEX command_outcomes_original_audit_event_idx
+    ON command_outcomes (original_audit_event_id) WHERE original_audit_event_id IS NOT NULL;
+
+ALTER TABLE exam_starter_workspace_objects
+    ADD CONSTRAINT exam_starter_workspace_objects_retirement_fkey
+    FOREIGN KEY (retired_by_audit_event_id) REFERENCES audit_events(id);
+
+ALTER TABLE exam_attempt_workspace_objects
+    ADD CONSTRAINT exam_attempt_workspace_objects_retirement_fkey
+    FOREIGN KEY (retired_by_audit_event_id) REFERENCES audit_events(id);
+
 CREATE TABLE access_policies (
     singleton smallint PRIMARY KEY CHECK (singleton = 1),
     id varchar(26) NOT NULL UNIQUE,
@@ -3427,6 +3507,20 @@ CREATE TABLE access_policies (
         jsonb_typeof(provider_admissions) = 'object' AND
         octet_length(provider_admissions::text) <= 16384
     )
+);
+
+CREATE TABLE retention_policies (
+    institution_id varchar(26) PRIMARY KEY REFERENCES institutions(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    submission_retention_days integer NOT NULL CHECK (submission_retention_days BETWEEN 0 AND 36500),
+    integrity_retention_days integer NOT NULL CHECK (integrity_retention_days BETWEEN 0 AND 36500),
+    audit_retention_days integer NOT NULL CHECK (audit_retention_days BETWEEN 0 AND 36500),
+    export_retention_days integer NOT NULL CHECK (export_retention_days BETWEEN 0 AND 7),
+    deletion_grace_days integer NOT NULL CHECK (deletion_grace_days BETWEEN 0 AND 36500),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL CHECK (updated_at >= created_at),
+    CONSTRAINT retention_policies_institution_id_canonical_check
+        CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$')
 );
 
 CREATE TABLE desktop_compatibility_policies (
@@ -3509,12 +3603,19 @@ CREATE TABLE administrator_recovery_records (
     user_id varchar(26) NOT NULL REFERENCES users(id),
     local_login_enabled boolean NOT NULL,
     password_rotated boolean NOT NULL,
+    mfa_reset boolean NOT NULL DEFAULT false,
+    mfa_recovery_generation bigint,
     policy_from_revision bigint CHECK (policy_from_revision > 0),
     policy_to_revision bigint,
     reconciled_at timestamptz,
     audit_event_id varchar(26) UNIQUE REFERENCES audit_events(id),
     CONSTRAINT administrator_recovery_records_action_check
-        CHECK (local_login_enabled OR password_rotated),
+        CHECK ((mfa_reset AND NOT local_login_enabled AND NOT password_rotated) OR
+            (NOT mfa_reset AND (local_login_enabled OR password_rotated))),
+    CONSTRAINT administrator_recovery_records_mfa_check CHECK (
+        (mfa_reset AND mfa_recovery_generation IS NOT NULL AND mfa_recovery_generation > 0) OR
+        (NOT mfa_reset AND mfa_recovery_generation IS NULL)
+    ),
     CONSTRAINT administrator_recovery_records_lifecycle_check CHECK (
         (reconciled_at IS NULL AND audit_event_id IS NULL) OR
         (reconciled_at IS NOT NULL AND audit_event_id IS NOT NULL AND reconciled_at >= created_at)
@@ -4293,3 +4394,437 @@ ALTER TABLE installation_states
     CHECK (administrator_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
     ADD CONSTRAINT installation_states_access_policy_id_canonical_check
     CHECK (access_policy_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+CREATE INDEX academic_unit_members_scope_page_idx
+    ON academic_unit_members (academic_unit_id, user_id, id) WHERE archived_at IS NULL;
+CREATE INDEX class_members_scope_page_idx
+    ON class_members (class_id, user_id, id) WHERE archived_at IS NULL;
+
+
+-- Explicit examination records completion and scoped manual preservation.
+CREATE TABLE exam_sitting_records_completions (
+    exam_sitting_id varchar(26) PRIMARY KEY REFERENCES exam_sittings(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    evidence_revision bigint NOT NULL DEFAULT 0 CHECK (evidence_revision >= 0),
+    completed_evidence_revision bigint NOT NULL DEFAULT 0 CHECK (completed_evidence_revision >= 0 AND completed_evidence_revision <= evidence_revision),
+    completed_at timestamptz,
+    completed_by_user_id varchar(26) REFERENCES users(id),
+    stale_at timestamptz,
+    CONSTRAINT exam_sitting_records_completions_lifecycle_check CHECK (
+        (completed_at IS NULL AND completed_by_user_id IS NULL AND stale_at IS NULL AND completed_evidence_revision = 0) OR
+        (completed_at IS NOT NULL AND completed_by_user_id IS NOT NULL AND
+          ((stale_at IS NULL AND completed_evidence_revision = evidence_revision) OR (stale_at IS NOT NULL AND stale_at >= completed_at)))
+    )
+);
+
+CREATE TABLE submission_review_waivers (
+    submission_id varchar(26) PRIMARY KEY REFERENCES exam_submissions(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    review_revision bigint NOT NULL CHECK (review_revision >= 0),
+    discrepancy_count bigint NOT NULL CHECK (discrepancy_count >= 0),
+    actor_user_id varchar(26) NOT NULL REFERENCES users(id),
+    recorded_at timestamptz NOT NULL,
+    reason_code varchar(64) NOT NULL CHECK (reason_code IN ('institution_request','integrity_review','records_review','review_not_required','case_closed','mistake','other')),
+    private_reason text NOT NULL CHECK (private_reason = btrim(private_reason) AND char_length(private_reason) BETWEEN 1 AND 1000 AND octet_length(private_reason) <= 4000),
+    audit_event_id varchar(26) NOT NULL REFERENCES audit_events(id)
+);
+
+CREATE TABLE retention_holds (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id),
+    exam_sitting_id varchar(26),
+    submission_id varchar(26) REFERENCES exam_submissions(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    work_retired_submission_count bigint NOT NULL DEFAULT 0 CHECK (work_retired_submission_count >= 0),
+    integrity_retired_submission_count bigint NOT NULL DEFAULT 0 CHECK (integrity_retired_submission_count >= 0),
+    created_at timestamptz NOT NULL,
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    reason_code varchar(64) NOT NULL CHECK (reason_code IN ('institution_request','integrity_review','records_review','review_not_required','case_closed','mistake','other')),
+    private_reason text NOT NULL CHECK (private_reason = btrim(private_reason) AND char_length(private_reason) BETWEEN 1 AND 1000 AND octet_length(private_reason) <= 4000),
+    creation_audit_event_id varchar(26) NOT NULL REFERENCES audit_events(id),
+    released_at timestamptz,
+    released_by_user_id varchar(26) REFERENCES users(id),
+    release_reason_code varchar(64),
+    release_private_reason text,
+    release_audit_event_id varchar(26) REFERENCES audit_events(id),
+    FOREIGN KEY (exam_id, exam_sitting_id) REFERENCES exam_sittings(exam_id, id),
+    CONSTRAINT retention_holds_scope_check CHECK (submission_id IS NULL OR exam_sitting_id IS NOT NULL),
+    CONSTRAINT retention_holds_lifecycle_check CHECK (
+        (released_at IS NULL AND released_by_user_id IS NULL AND release_reason_code IS NULL AND release_private_reason IS NULL AND release_audit_event_id IS NULL) OR
+        (released_at IS NOT NULL AND released_at >= created_at AND released_by_user_id IS NOT NULL AND release_audit_event_id IS NOT NULL AND
+         release_reason_code IS NOT NULL AND release_private_reason IS NOT NULL AND
+         release_reason_code IN ('institution_request','integrity_review','records_review','review_not_required','case_closed','mistake','other') AND release_private_reason = btrim(release_private_reason) AND
+         char_length(release_private_reason) BETWEEN 1 AND 1000 AND octet_length(release_private_reason) <= 4000)
+    )
+);
+CREATE INDEX retention_holds_exam_id_id_idx ON retention_holds (exam_id, id);
+CREATE INDEX retention_holds_active_scope_idx ON retention_holds (exam_id, exam_sitting_id, submission_id) WHERE released_at IS NULL;
+
+-- Configuration and authorization of recurring retirement are independent.
+CREATE TABLE retention_previews (
+    id varchar(26) PRIMARY KEY,
+    institution_id varchar(26) NOT NULL REFERENCES institutions(id),
+    policy_revision bigint NOT NULL CHECK (policy_revision > 0),
+    created_by_user_id varchar(26) NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '1 hour'),
+    counts jsonb NOT NULL CHECK (jsonb_typeof(counts) = 'object' AND octet_length(counts::text) <= 4096)
+);
+
+CREATE TABLE retention_controls (
+    institution_id varchar(26) PRIMARY KEY REFERENCES institutions(id),
+    revision bigint NOT NULL CHECK (revision > 0),
+    state varchar(16) NOT NULL CHECK (state IN ('disabled','enabled','paused')),
+    approved_policy_revision bigint,
+    approved_preview_id varchar(26) REFERENCES retention_previews(id),
+    changed_by_user_id varchar(26) REFERENCES users(id),
+    updated_at timestamptz NOT NULL,
+    CONSTRAINT retention_controls_approval_check CHECK (
+        (state = 'disabled' AND approved_policy_revision IS NULL AND approved_preview_id IS NULL) OR
+        (state IN ('enabled','paused') AND approved_policy_revision IS NOT NULL AND approved_policy_revision > 0 AND
+         approved_preview_id IS NOT NULL AND changed_by_user_id IS NOT NULL)
+    )
+);
+
+ALTER TABLE retention_policies ADD COLUMN candidate_notices boolean NOT NULL DEFAULT false;
+ALTER TABLE exam_submissions ADD COLUMN work_retired_at timestamptz;
+ALTER TABLE exam_submissions ADD COLUMN integrity_retired_at timestamptz;
+-- Apply after the existing work_retired_at / integrity_retired_at columns.
+-- Root owns baseline guard integration and the exact one-time transition fence.
+ALTER TABLE exam_submissions
+    ALTER COLUMN workspace_cursor DROP NOT NULL,
+    ALTER COLUMN manifest_digest DROP NOT NULL,
+    ALTER COLUMN manifest_entry_count DROP NOT NULL,
+    ALTER COLUMN manifest_total_file_bytes DROP NOT NULL,
+    ALTER COLUMN final_focus_loss_sequence DROP NOT NULL,
+    ALTER COLUMN browser_activity_state DROP NOT NULL,
+    ALTER COLUMN unresolved_integrity_count DROP NOT NULL,
+    DROP CONSTRAINT exam_submissions_integrity_state_check,
+    DROP CONSTRAINT exam_submissions_integrity_check,
+    DROP CONSTRAINT exam_submissions_browser_activity_check;
+
+ALTER TABLE exam_submissions
+    ADD CONSTRAINT exam_submissions_work_retirement_check CHECK (
+        (work_retired_at IS NULL AND workspace_cursor IS NOT NULL AND
+         manifest_digest IS NOT NULL AND manifest_entry_count IS NOT NULL AND
+         manifest_total_file_bytes IS NOT NULL) OR
+        (work_retired_at IS NOT NULL AND work_retired_at >= submitted_at AND
+         workspace_cursor IS NULL AND manifest_digest IS NULL AND
+         manifest_entry_count IS NULL AND manifest_total_file_bytes IS NULL AND
+         integrity_retired_at IS NOT NULL)
+    ),
+    ADD CONSTRAINT exam_submissions_integrity_check CHECK (
+        (integrity_retired_at IS NULL AND final_focus_loss_sequence IS NOT NULL AND
+         unresolved_integrity_count IS NOT NULL AND browser_activity_state IS NOT NULL AND
+         ((integrity_state='settled' AND unresolved_integrity_count=0) OR
+          (integrity_state='gapped' AND unresolved_integrity_count>0))) OR
+        (integrity_retired_at IS NOT NULL AND integrity_retired_at >= submitted_at AND
+         integrity_state='retired' AND final_focus_loss_sequence IS NULL AND
+         unresolved_integrity_count IS NULL AND browser_activity_state IS NULL AND
+         browser_activity_source_session_id IS NULL AND browser_activity_final_sequence IS NULL AND
+         browser_activity_gap_reason IS NULL)
+    ),
+    ADD CONSTRAINT exam_submissions_browser_activity_check CHECK (
+        (integrity_retired_at IS NOT NULL AND browser_activity_state IS NULL AND
+         browser_activity_source_session_id IS NULL AND browser_activity_final_sequence IS NULL AND
+         browser_activity_gap_reason IS NULL) OR
+        (integrity_retired_at IS NULL AND (
+          (browser_activity_state='not_applicable' AND browser_activity_source_session_id IS NULL AND
+           browser_activity_final_sequence IS NULL AND browser_activity_gap_reason IS NULL) OR
+          (browser_activity_state='complete' AND browser_activity_source_session_id IS NOT NULL AND
+           browser_activity_final_sequence IS NOT NULL AND browser_activity_gap_reason IS NULL) OR
+          (browser_activity_state='gapped' AND browser_activity_source_session_id IS NOT NULL AND
+           browser_activity_gap_reason IS NOT NULL)))
+    );
+
+
+
+CREATE TABLE retention_retirements (
+    id varchar(26) PRIMARY KEY,
+    institution_id varchar(26) NOT NULL REFERENCES institutions(id),
+    exam_id varchar(26) NOT NULL REFERENCES exams(id),
+    exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
+    category varchar(16) NOT NULL CHECK (category IN ('work','integrity')),
+    state varchar(16) NOT NULL CHECK (state IN ('grace','cancelled','retired')),
+    policy_revision bigint NOT NULL CHECK (policy_revision > 0),
+    control_revision bigint NOT NULL CHECK (control_revision > 0),
+    completion_revision bigint NOT NULL CHECK (completion_revision > 0),
+    scheduled_at timestamptz NOT NULL,
+    retire_after timestamptz NOT NULL CHECK (retire_after > scheduled_at),
+    retired_at timestamptz,
+    cancelled_at timestamptz,
+    cancellation_reason varchar(64),
+    CONSTRAINT retention_retirements_lifecycle_check CHECK (
+        (state = 'grace' AND retired_at IS NULL AND cancelled_at IS NULL AND cancellation_reason IS NULL) OR
+        (state = 'cancelled' AND retired_at IS NULL AND cancelled_at IS NOT NULL AND cancelled_at >= scheduled_at AND
+         cancellation_reason IS NOT NULL AND cancellation_reason ~ '^[a-z][a-z0-9_]{0,63}$') OR
+        (state = 'retired' AND retired_at IS NOT NULL AND retired_at >= retire_after AND cancelled_at IS NULL AND cancellation_reason IS NULL)
+    )
+);
+CREATE UNIQUE INDEX retention_retirements_active_record_idx
+    ON retention_retirements (submission_id, category) WHERE state <> 'cancelled';
+CREATE INDEX retention_retirements_grace_idx ON retention_retirements (retire_after, id) WHERE state = 'grace';
+
+-- Durable in-product notices precede optional mail delivery. Cancellation
+-- supersedes the old date instead of leaving a misleading active notice.
+-- Pending expiry is separate from permanent retirement markers and does not
+-- reference the audit it will eventually remove.
+CREATE TABLE retention_expiry_schedules (
+    record_kind varchar(16) NOT NULL CHECK (record_kind IN ('audit','receipt')),
+    record_id varchar(26) NOT NULL,
+    policy_revision bigint NOT NULL CHECK (policy_revision > 0),
+    control_revision bigint NOT NULL CHECK (control_revision > 0),
+    scheduled_at timestamptz NOT NULL,
+    expires_after timestamptz NOT NULL CHECK (expires_after > scheduled_at),
+    PRIMARY KEY (record_kind, record_id)
+);
+CREATE INDEX retention_expiry_schedules_deadline_idx ON retention_expiry_schedules (expires_after,record_kind,record_id);
+
+CREATE TABLE retention_notices (
+    retirement_id varchar(26) NOT NULL REFERENCES retention_retirements(id) ON DELETE CASCADE,
+    recipient_user_id varchar(26) NOT NULL REFERENCES users(id),
+    created_at timestamptz NOT NULL,
+    cancelled_at timestamptz,
+    delivery_state varchar(16) NOT NULL DEFAULT 'pending' CHECK (delivery_state IN ('pending','queued','sending','accepted','suppressed','failed','canceled')),
+    delivery_error_code varchar(128) NOT NULL DEFAULT '',
+    mail_delivery_id varchar(26) REFERENCES mail_deliveries(id) ON DELETE SET NULL,
+    PRIMARY KEY (retirement_id, recipient_user_id)
+);
+CREATE INDEX retention_notices_recipient_idx ON retention_notices (recipient_user_id, retirement_id);
+
+-- The export owner creates and releases bounded construction references.
+-- These are independent of archive expiry after materialization succeeds.
+CREATE TABLE retention_source_protections (
+    export_id varchar(26) NOT NULL,
+    submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
+    category varchar(16) NOT NULL CHECK (category IN ('work','integrity')),
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '1 day'),
+    PRIMARY KEY (export_id, submission_id, category)
+);
+CREATE INDEX retention_source_protections_submission_idx ON retention_source_protections (submission_id, category, expires_at);
+
+-- Temporary, independently expiring archives. Frozen records and source
+-- references exist only while construction is pending; Jobs contain IDs only.
+CREATE TABLE exam_exports (
+    id varchar(26) PRIMARY KEY,
+    exam_id varchar(26) NOT NULL REFERENCES exams(id),
+    exam_sitting_id varchar(26) NOT NULL REFERENCES exam_sittings(id),
+    submission_id varchar(26) REFERENCES exam_submissions(id),
+    requester_user_id varchar(26) NOT NULL REFERENCES users(id),
+    categories text[] NOT NULL CHECK (categories IN (ARRAY['work'], ARRAY['integrity'], ARRAY['work','integrity'])),
+    state varchar(16) NOT NULL CHECK (state IN ('queued','ready','failed','expired')),
+    policy_revision bigint NOT NULL CHECK (policy_revision > 0),
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL CHECK (expires_at > created_at AND expires_at <= created_at + interval '7 days'),
+    source_expires_at timestamptz NOT NULL CHECK (source_expires_at > created_at AND source_expires_at <= created_at + interval '1 day' AND source_expires_at <= expires_at),
+    submission_count integer NOT NULL CHECK (submission_count BETWEEN 1 AND 200),
+    file_count integer NOT NULL CHECK (file_count BETWEEN 0 AND 50000),
+    source_bytes bigint NOT NULL CHECK (source_bytes BETWEEN 0 AND 8589934592),
+    job_id varchar(26) NOT NULL UNIQUE,
+    snapshot jsonb,
+    archive_attempt_id varchar(26),
+    archive_size_bytes bigint,
+    archive_sha256 char(64),
+    ready_at timestamptz,
+    CHECK (snapshot IS NULL OR octet_length(snapshot::text) <= 67108864),
+    CHECK ((state = 'queued' AND snapshot IS NOT NULL) OR (state <> 'queued' AND snapshot IS NULL)),
+    CHECK ((state = 'ready' AND archive_attempt_id IS NOT NULL AND archive_size_bytes BETWEEN 1 AND 8724152320 AND archive_sha256 ~ '^[0-9a-f]{64}$' AND ready_at >= created_at AND ready_at < expires_at) OR
+        (state <> 'ready' AND archive_attempt_id IS NULL AND archive_size_bytes IS NULL AND archive_sha256 IS NULL AND ready_at IS NULL))
+);
+CREATE INDEX exam_exports_cleanup_idx ON exam_exports (expires_at, id);
+CREATE TABLE exam_export_submissions (
+    export_id varchar(26) NOT NULL REFERENCES exam_exports(id) ON DELETE CASCADE,
+    submission_id varchar(26) NOT NULL REFERENCES exam_submissions(id),
+    PRIMARY KEY (export_id, submission_id)
+);
+CREATE TABLE exam_export_artifacts (
+    export_id varchar(26) NOT NULL REFERENCES exam_exports(id),
+    attempt_id varchar(26) NOT NULL,
+    created_at timestamptz NOT NULL,
+    writer_finished boolean NOT NULL DEFAULT false,
+    observed_absent_at timestamptz,
+    reconcile_after timestamptz NOT NULL,
+    PRIMARY KEY (export_id, attempt_id)
+);
+CREATE INDEX exam_export_artifacts_cleanup_idx ON exam_export_artifacts (reconcile_after, export_id, attempt_id);
+ALTER TABLE retention_source_protections ADD CONSTRAINT retention_source_protections_export_fkey FOREIGN KEY (export_id) REFERENCES exam_exports(id);
+
+CREATE TABLE retention_purge_objects (
+    retirement_id varchar(26) NOT NULL REFERENCES retention_retirements(id),
+    object_id varchar(26) NOT NULL,
+    absence_verified_at timestamptz,
+    writer_finished boolean NOT NULL,
+    last_absence_observed_at timestamptz,
+    verify_after timestamptz NOT NULL DEFAULT '-infinity',
+    CHECK (absence_verified_at IS NULL OR writer_finished),
+    PRIMARY KEY (retirement_id, object_id)
+);
+CREATE INDEX retention_purge_objects_pending_idx ON retention_purge_objects (verify_after, retirement_id, object_id) WHERE absence_verified_at IS NULL;
+
+CREATE FUNCTION retention_allows_integrity_delete(attempt_id varchar) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+    SELECT EXISTS(SELECT 1 FROM retention_retirements r JOIN exam_submissions sub ON sub.id=r.submission_id
+        WHERE sub.exam_attempt_id=attempt_id AND r.category='integrity' AND r.state='retired');
+$$;
+
+-- The generation survives reenrollment: pre-reset proofs cannot regain
+-- authority merely because the current restriction has been cleared.
+CREATE TABLE user_mfa_recovery (
+    user_id varchar(26) PRIMARY KEY REFERENCES users(id),
+    generation bigint NOT NULL CHECK (generation > 0),
+    reset_at timestamptz NOT NULL,
+    reenrollment_required boolean NOT NULL,
+    updated_at timestamptz NOT NULL CHECK (updated_at >= reset_at)
+);
+
+-- A reference introduced and removed between worker scans still invalidates
+-- grace. The FK fences the concurrent delete; this trigger records the loss of
+-- continuous eligibility without acquiring the Institution policy in reverse.
+CREATE FUNCTION cancel_referenced_audit_expiry() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    DELETE FROM retention_expiry_schedules
+      WHERE record_kind='audit' AND record_id=to_jsonb(NEW)->>TG_ARGV[0];
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER external_login_states_cancel_audit_expiry AFTER INSERT OR UPDATE OF audit_event_id ON external_login_states FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER exam_attempt_manager_end_actions_cancel_audit_expiry AFTER INSERT ON exam_attempt_manager_end_actions FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER exam_sitting_private_actions_cancel_audit_expiry AFTER INSERT ON exam_sitting_private_actions FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER exam_sitting_live_corrections_cancel_audit_expiry AFTER INSERT ON exam_sitting_live_corrections FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER exam_attempt_correction_acknowledgements_cancel_audit_expiry AFTER INSERT ON exam_attempt_correction_acknowledgements FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER command_outcomes_cancel_audit_expiry AFTER INSERT OR UPDATE OF original_audit_event_id ON command_outcomes FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('original_audit_event_id');
+CREATE TRIGGER exam_starter_workspace_objects_cancel_audit_expiry AFTER INSERT OR UPDATE OF retired_by_audit_event_id ON exam_starter_workspace_objects FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('retired_by_audit_event_id');
+CREATE TRIGGER exam_attempt_workspace_objects_cancel_audit_expiry AFTER INSERT OR UPDATE OF retired_by_audit_event_id ON exam_attempt_workspace_objects FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('retired_by_audit_event_id');
+CREATE TRIGGER administrator_recovery_records_cancel_audit_expiry AFTER INSERT OR UPDATE OF audit_event_id ON administrator_recovery_records FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER submission_review_waivers_cancel_audit_expiry AFTER INSERT OR UPDATE OF audit_event_id ON submission_review_waivers FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('audit_event_id');
+CREATE TRIGGER retention_holds_creation_cancel_audit_expiry AFTER INSERT OR UPDATE OF creation_audit_event_id ON retention_holds FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('creation_audit_event_id');
+CREATE TRIGGER retention_holds_release_cancel_audit_expiry AFTER INSERT OR UPDATE OF release_audit_event_id ON retention_holds FOR EACH ROW EXECUTE FUNCTION cancel_referenced_audit_expiry('release_audit_event_id');
+
+-- Canonical identifiers for examination records, retention, exports, and recovery.
+
+ALTER TABLE exam_export_artifacts
+    ADD CONSTRAINT exam_export_artifacts_attempt_id_canonical_check
+    CHECK (attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_export_artifacts_export_id_canonical_check
+    CHECK (export_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_export_submissions
+    ADD CONSTRAINT exam_export_submissions_export_id_canonical_check
+    CHECK (export_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_export_submissions_submission_id_canonical_check
+    CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_exports
+    ADD CONSTRAINT exam_exports_archive_attempt_id_canonical_check
+    CHECK (archive_attempt_id IS NULL OR archive_attempt_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_job_id_canonical_check
+    CHECK (job_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_requester_user_id_canonical_check
+    CHECK (requester_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_exports_submission_id_canonical_check
+    CHECK (submission_id IS NULL OR submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE exam_sitting_records_completions
+    ADD CONSTRAINT exam_sitting_records_completions_completed_by_user_id_canonical
+    CHECK (completed_by_user_id IS NULL OR completed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT exam_sitting_records_completions_exam_sitting_id_canonical_chec
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE external_login_states
+    ADD CONSTRAINT external_login_states_external_identity_id_canonical_check
+    CHECK (external_identity_id IS NULL OR external_identity_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT external_login_states_session_credential_id_canonical_check
+    CHECK (session_credential_id IS NULL OR session_credential_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT external_login_states_session_id_canonical_check
+    CHECK (session_id IS NULL OR session_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_controls
+    ADD CONSTRAINT retention_controls_approved_preview_id_canonical_check
+    CHECK (approved_preview_id IS NULL OR approved_preview_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_controls_changed_by_user_id_canonical_check
+    CHECK (changed_by_user_id IS NULL OR changed_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_controls_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_expiry_schedules
+    ADD CONSTRAINT retention_expiry_schedules_record_id_canonical_check
+    CHECK (record_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_holds
+    ADD CONSTRAINT retention_holds_created_by_user_id_canonical_check
+    CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_creation_audit_event_id_canonical_check
+    CHECK (creation_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id IS NULL OR exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_release_audit_event_id_canonical_check
+    CHECK (release_audit_event_id IS NULL OR release_audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_released_by_user_id_canonical_check
+    CHECK (released_by_user_id IS NULL OR released_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_holds_submission_id_canonical_check
+    CHECK (submission_id IS NULL OR submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_notices
+    ADD CONSTRAINT retention_notices_mail_delivery_id_canonical_check
+    CHECK (mail_delivery_id IS NULL OR mail_delivery_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_notices_recipient_user_id_canonical_check
+    CHECK (recipient_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_notices_retirement_id_canonical_check
+    CHECK (retirement_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_previews
+    ADD CONSTRAINT retention_previews_created_by_user_id_canonical_check
+    CHECK (created_by_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_previews_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_previews_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_purge_objects
+    ADD CONSTRAINT retention_purge_objects_object_id_canonical_check
+    CHECK (object_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_purge_objects_retirement_id_canonical_check
+    CHECK (retirement_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_retirements
+    ADD CONSTRAINT retention_retirements_exam_id_canonical_check
+    CHECK (exam_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_retirements_exam_sitting_id_canonical_check
+    CHECK (exam_sitting_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_retirements_id_canonical_check
+    CHECK (id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_retirements_institution_id_canonical_check
+    CHECK (institution_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_retirements_submission_id_canonical_check
+    CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE retention_source_protections
+    ADD CONSTRAINT retention_source_protections_export_id_canonical_check
+    CHECK (export_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT retention_source_protections_submission_id_canonical_check
+    CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE submission_review_waivers
+    ADD CONSTRAINT submission_review_waivers_actor_user_id_canonical_check
+    CHECK (actor_user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_waivers_audit_event_id_canonical_check
+    CHECK (audit_event_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$'),
+    ADD CONSTRAINT submission_review_waivers_submission_id_canonical_check
+    CHECK (submission_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');
+
+ALTER TABLE user_mfa_recovery
+    ADD CONSTRAINT user_mfa_recovery_user_id_canonical_check
+    CHECK (user_id ~ '^[ybndrfg8ejkmcpqxot1uwisza345h769]{26}$');

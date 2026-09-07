@@ -100,6 +100,61 @@ OpenAPI entry omitted: invalid origin (403) and unavailable WebSocket service
 (503). Their declaration is an additive documentation correction for existing
 runtime behavior, not a new failure mode.
 
+## Institution Retention Policy
+
+`GET /api/v1/retention-policy` reads the Institution's authoritative revisioned
+configuration under `retention_policy.view`; Personal Access Tokens are
+forbidden. `PUT` requires a strong recent system-administrator Session,
+`retention_policy.manage`, `Idempotency-Key`, and the editor's
+`expected_revision`. All five day-count settings are required non-null
+integers. Export retention accepts zero when unconfigured or 1–7 days; the other
+settings accept zero through 36,500. Zero means no configured expiry or grace
+period, never immediate deletion; initial settings are all zero.
+
+The policy, successful critical audit, and idempotent result commit together.
+A stale revision conflicts; every write, including exact replay and no-op,
+rechecks the current access credential, protected administrator binding and
+strong recent Session assurance at the post-lock database time. Exact replay
+is freshly audited; a no-op preserves revision, timestamps, and approval. `candidate_notices` is an
+optional non-null boolean defaulting to false. Responses are private/no-store;
+`automatic_deletion_enabled` is derived from the separate approved control for
+that policy revision. It is never a writable policy field. Actual settings
+changes pause cleanup and cancel outstanding grace.
+
+Retention preview/control and record APIs accept interactive Sessions. Only
+strong recent protected administrator approval with a fresh one-hour preview,
+matching policy and control revisions, positive grace, and an idempotency key
+can enable cleanup. Record pages count Submissions and project their two
+content categories without answer content. Audit and receipt previews expose
+only counts and dependency blockers. Durable own-recipient notices use a
+separate opaque retirement cursor; they grant no underlying examination access
+and have no read-acknowledgement effect. Every projection is private/no-store.
+
+Category retirement and current-key byte absence are distinct states. Work
+reads after integrity-only retirement explicitly report retired integrity and
+omit its private detail. Expiring receipts never remove permanent retirement
+fences. Hold release and records completion remain separate authorized domain
+operations; shared published material remains protected. The bounded server
+APIs add no broad hosted administration pages.
+
+## Examination exports
+
+The `exam-exports` resource owns Session-only creation, requester-only metadata,
+and binary downloads for individual Submission or Sitting scope. Creation is
+idempotent and returns 202; category arrays contain explicit, distinct work or
+integrity selections. Ready metadata advertises the full archive SHA-256 and
+length. Binary responses use a fixed opaque attachment name, private/no-store,
+application/zip, checksum ETag, and nosniff; no storage URL or key is public.
+Current record authority, readiness, and fixed expiry are rechecked by the use
+case after storage opens and before it returns a response body. The authoritative
+Store projects expiry using database time; a serving node's clock cannot extend
+the lifetime. Rejection closes the pending reader, and a changed artifact cannot
+reuse an earlier open. Source retirement does not invalidate the independently
+verified archive,
+while expiry denies new downloads even before byte cleanup. This manager
+archive does not change the candidate inline-content contract or add Resource
+or Starter Workspace download endpoints.
+
 ## Browser request acceptance
 
 Before authentication or application work, unsafe requests reject a present
@@ -183,6 +238,33 @@ audited, or returned. `GET` on the same path remains the ordinary claim-free
 start. A valid claimed flow terminally accepts the exact Invitation package and
 links the proved immutable provider subject in one Store transaction. It does
 not create an ordinary Web Session or leave a relationship-free User behind.
+
+## Bounded MFA recovery and fresh proof
+
+The security context, setup and activation routes explicitly accept
+`mfa_recovery_session_required` or `recent_mfa_recovery_session_required`.
+Password and original-provider reauthentication and logout also accept the
+restricted Session context. Ordinary routes fail with `authentication.invalid_token`;
+clients may query the bounded MFA status to distinguish mandatory reenrollment
+from a signed-out browser. Restricted Sessions retain normal cookie/CSRF rules.
+MFA status projects the original password/oidc/cas method, optional provider ID,
+strength, recency, service availability and recovery restriction without requiring
+ordinary User-profile access. Every security response is `Cache-Control: no-store`.
+
+`POST /api/v1/auth/reauthenticate/password` accepts only the current User's password.
+The external counterpart accepts the closed task `security` or `connect-provider`,
+uses the original provider and exact current identity, and sets the existing
+HttpOnly browser-binding cookie. A consumed reauthentication callback returns to
+that task; a failed bound proof returns a fixed `external_login=failed` fragment on
+the closed reauthentication page. It carries no provider error or secret. Neither
+proof endpoint automatically performs the final sensitive action.
+
+`POST /api/v1/users/{user_id}/mfa/reset` is a separate protected administrator
+operation. Its attestation reference identifies outside-Proctor verification;
+passwords, identity documents, authenticator secrets and recovery codes are never
+valid evidence fields. The caller cannot reset itself. Success reports only that
+fresh primary proof and reenrollment are required. It exposes no reset secret or
+primary-credential bypass and has no general hosted administration page.
 
 ## Desktop browser authorization
 
@@ -647,6 +729,27 @@ responses are `no-store`, reports are `nosniff`, and generic Jobs, audits,
 logs, and safe projections contain no roster, recipient, profile, or mail
 payload data.
 
+## Academic revisions and membership pages
+
+Academic Unit, Programme, Programme Level, Academic Period, and Class responses
+include `revision`. Their PATCH commands accept an optional positive,
+non-null `expected_revision`; DELETE accepts the same optional positive value
+as a query parameter. Omission preserves existing clients. When supplied,
+the application checks the editor's revision after authorization and the Store
+fences the mutation atomically. Conflicts use each resource's existing
+`*.conflict` code; a stale editor cannot update or archive newer state.
+
+Academic Unit Member and Class Member GET collections preserve bare-array
+responses. Supplying `limit` or `cursor` opts into bounded keyset paging, with
+50 items by default and a maximum of 200. A continuation is returned in a
+relative `Link` with `rel="next"`; no continuation means the page is final.
+Ordering is the immutable `(user_id, id)` tuple. Every page freshly authorizes
+the scope. Its bounded cursor fixes scope and effective time/history filters;
+omitted filters inherit the cursor, while conflicting values are rejected.
+Paged `history=true` cannot be combined with `active_at`. Results remain a live
+view, not a retained database snapshot. Calls without paging parameters retain
+their existing full-list behavior.
+
 ## Ownership and extension workflow
 
 `httpapi.New` is the production construction boundary. Its broad `Options` value
@@ -881,6 +984,11 @@ of multipart overhead. PostgreSQL authoritatively applies the current
 Institution policy to each Exam Resource or Starter Workspace finalization;
 the default per-file limit remains 10 MiB.
 
+Starter Workspace directory removal defaults to empty directories. Explicit
+`recursive: true` archives the directory and every descendant atomically under
+the existing `expected_draft_revision`, advances that revision once, and
+preserves published and admitted content pins. The flag is invalid for files.
+
 Protected content responses set a strong checksum ETag,
 `X-Content-Type-Options: nosniff`, and no `Content-Disposition` header. Exam
 Resources use `Cache-Control: private, max-age=300`; mutable Starter Workspace
@@ -1022,6 +1130,15 @@ authoritative and may be lower. Other mutations use duplicate-free strict JSON.
 The access selectors
 are reauthorized on every write but are excluded from the Attempt-scoped
 idempotency fingerprint so an exact command can recover across reconnect.
+Directory deletion defaults to empty directories. With `recursive: true`, the
+request must supply `expected_workspace_cursor` from its complete manifest
+(zero is valid), omit `expected_content_version`, and target a directory. Any
+intervening Workspace mutation conflicts before the subtree changes. Success
+atomically removes the root and all descendants, advances the Cursor once,
+and emits one journal record with `recursive: true` and the root `old_path`.
+Clients remove that path and descendants separated by a slash, preserving
+similar sibling prefixes. Other mutations omit this aggregate cursor fence.
+The recursive flag and expected cursor are semantic idempotency inputs.
 Malformed paths, cursors, limits, states, or protection headers return
 `request.invalid` (`400`). Missing or mismatched Attempt, candidate,
 Participation, credential, Connection, or manager-visible target is concealed

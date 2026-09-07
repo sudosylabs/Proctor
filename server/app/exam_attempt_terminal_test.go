@@ -97,7 +97,7 @@ func (fake *terminalExecutionPortFake) Ensure(context.Context, appexecution.Requ
 	return value, err
 }
 
-func (fake *terminalExecutionPortFake) Watch(context.Context, model.ExamAttemptID, appexecution.Cursor) (appexecution.Observation, error) {
+func (fake *terminalExecutionPortFake) Watch(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Cursor) (appexecution.Observation, error) {
 	fake.mu.Lock()
 	fake.order = append(fake.order, "watch")
 	fake.watchCalls++
@@ -106,7 +106,7 @@ func (fake *terminalExecutionPortFake) Watch(context.Context, model.ExamAttemptI
 	return value, err
 }
 
-func (fake *terminalExecutionPortFake) Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error) {
+func (fake *terminalExecutionPortFake) Attach(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Window) (appexecution.Terminal, error) {
 	fake.mu.Lock()
 	fake.order = append(fake.order, "attach")
 	fake.attachCalls++
@@ -115,7 +115,7 @@ func (fake *terminalExecutionPortFake) Attach(context.Context, model.ExamAttempt
 	return value, err
 }
 
-func (fake *terminalExecutionPortFake) OpenFile(context.Context, model.ExamAttemptID, string) (io.ReadCloser, error) {
+func (fake *terminalExecutionPortFake) OpenFile(context.Context, model.ExamAttemptID, model.ExecutionGrantID, string) (io.ReadCloser, error) {
 	fake.mu.Lock()
 	fake.openFileCalls++
 	fake.mu.Unlock()
@@ -642,16 +642,16 @@ type terminalWorkspaceExecutionFake struct {
 func (*terminalWorkspaceExecutionFake) Ensure(context.Context, appexecution.Request) (*appexecution.Placement, error) {
 	return nil, appexecution.ErrUnavailable
 }
-func (fake *terminalWorkspaceExecutionFake) Watch(ctx context.Context, id model.ExamAttemptID, cursor appexecution.Cursor) (appexecution.Observation, error) {
+func (fake *terminalWorkspaceExecutionFake) Watch(ctx context.Context, id model.ExamAttemptID, grantID model.ExecutionGrantID, cursor appexecution.Cursor) (appexecution.Observation, error) {
 	if fake.watch == nil {
 		return nil, appexecution.ErrUnavailable
 	}
 	return fake.watch(ctx, id, cursor)
 }
-func (*terminalWorkspaceExecutionFake) Attach(context.Context, model.ExamAttemptID, appexecution.Window) (appexecution.Terminal, error) {
+func (*terminalWorkspaceExecutionFake) Attach(context.Context, model.ExamAttemptID, model.ExecutionGrantID, appexecution.Window) (appexecution.Terminal, error) {
 	return nil, appexecution.ErrUnavailable
 }
-func (fake *terminalWorkspaceExecutionFake) OpenFile(ctx context.Context, id model.ExamAttemptID, path string) (io.ReadCloser, error) {
+func (fake *terminalWorkspaceExecutionFake) OpenFile(ctx context.Context, id model.ExamAttemptID, grantID model.ExecutionGrantID, path string) (io.ReadCloser, error) {
 	if fake.openFile == nil {
 		return nil, appexecution.ErrNotFound
 	}
@@ -882,14 +882,15 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 	version := model.WorkspaceContentVersion("2")
 	file := CandidateExamWorkspaceItem{EntryID: fileID, Kind: model.StarterWorkspaceEntryFile, Path: "old.txt", ContentVersion: version}
 	directory := CandidateExamWorkspaceItem{EntryID: directoryID, Kind: model.StarterWorkspaceEntryDirectory, Path: "old-dir"}
-	key := executionEventIdempotency(appexecution.Event{Cursor: "event-cursor"})
+	grantID := model.NewExecutionGrantID()
+	key := executionEventIdempotency(grantID, appexecution.Event{Cursor: "event-cursor"})
 	bodyBytes := []byte("host bytes")
 
 	t.Run("isolated watcher directory create fails before mutation", func(t *testing.T) {
 		attempts := &terminalWorkspaceAttemptFake{pages: []examattempt.WorkspacePage{{Cursor: 1}}}
 		service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationCreate, Path: "dir"}
-		if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err == nil {
+		if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err == nil {
 			t.Fatal("unfenced directory create succeeded")
 		}
 		if len(attempts.directories) != 0 {
@@ -911,17 +912,18 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 					return body, nil
 				}}}
 				event := appexecution.Event{Cursor: "event-cursor", Operation: operation, Path: path}
-				if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+				if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 					t.Fatal(err)
 				}
 				digest := sha256.Sum256(bodyBytes)
 				if replace {
 					if len(attempts.replacements) != 1 || attempts.replacements[0].EntryID != fileID ||
+						attempts.replacements[0].Access.SourceGrantID != grantID ||
 						attempts.replacements[0].ExpectedContentVersion != version || attempts.replacements[0].ExpectedSHA256 != hex.EncodeToString(digest[:]) ||
 						attempts.replacements[0].MediaType != "application/octet-stream" || !bytes.Equal(attempts.replaceBodies[0], bodyBytes) {
 						t.Fatalf("replace command = %#v", attempts.replacements)
 					}
-				} else if len(attempts.files) != 1 || attempts.files[0].Path != path || attempts.files[0].ExpectedSHA256 != hex.EncodeToString(digest[:]) ||
+				} else if len(attempts.files) != 1 || attempts.files[0].Access.SourceGrantID != grantID || attempts.files[0].Path != path || attempts.files[0].ExpectedSHA256 != hex.EncodeToString(digest[:]) ||
 					attempts.files[0].Size != int64(len(bodyBytes)) || attempts.files[0].IdempotencyKey != key || !bytes.Equal(attempts.fileBodies[0], bodyBytes) {
 					t.Fatalf("create command = %#v", attempts.files)
 				}
@@ -939,7 +941,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 		attempts := &terminalWorkspaceAttemptFake{pages: []examattempt.WorkspacePage{{Cursor: 1, Items: []CandidateExamWorkspaceItem{file}}}}
 		service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationMove, From: file.Path, Path: "moved.txt"}
-		if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+		if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 			t.Fatal(err)
 		}
 		if len(attempts.moves) != 1 || attempts.moves[0].EntryID != fileID || attempts.moves[0].DestinationPath != "moved.txt" || attempts.moves[0].IdempotencyKey != key {
@@ -966,7 +968,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 				service := &examAttemptTerminalService{attempts: attempts, execution: execution}
 				event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationMove, From: directory.Path, Path: "new-path"}
 				if repair {
-					if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err == nil {
+					if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err == nil {
 						t.Fatal("non-atomic directory-to-file replacement succeeded")
 					}
 					if len(attempts.deletes) != 0 || len(attempts.files) != 0 || len(attempts.moves) != 0 {
@@ -980,7 +982,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 						t.Fatalf("directory-to-file body closed %d times", closed)
 					}
 				} else {
-					if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+					if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 						t.Fatal(err)
 					}
 					if len(attempts.moves) != 1 || attempts.moves[0].EntryID != directoryID {
@@ -995,7 +997,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 		attempts := &terminalWorkspaceAttemptFake{pages: []examattempt.WorkspacePage{{Cursor: 1, Items: []CandidateExamWorkspaceItem{file}}}}
 		service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationDelete, Path: file.Path}
-		if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+		if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 			t.Fatal(err)
 		}
 		if len(attempts.deletes) != 1 || attempts.deletes[0].ExpectedContentVersion != version || attempts.deletes[0].IdempotencyKey != key {
@@ -1028,7 +1030,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				attempts := &terminalWorkspaceAttemptFake{pages: []examattempt.WorkspacePage{{Cursor: 1, Items: test.items}}}
 				service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{openFile: test.openFile}}
-				if err := service.applyExecutionEvent(context.Background(), invocation, command, test.event); err == nil {
+				if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, test.event); err == nil {
 					t.Fatal("unfenced directory topology succeeded")
 				}
 				if len(attempts.directories) != 0 || len(attempts.files) != 0 || len(attempts.replacements) != 0 ||
@@ -1045,7 +1047,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 		service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationMove,
 			From: file.Path, Path: "target/cache.txt"}
-		if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+		if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 			t.Fatal(err)
 		}
 		if len(attempts.deletes) != 1 || len(attempts.moves) != 0 || attempts.deletes[0].EntryID != file.EntryID ||
@@ -1059,7 +1061,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 		service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationMove,
 			From: directory.Path, Path: "target/cache"}
-		if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err == nil {
+		if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err == nil {
 			t.Fatal("cross-boundary directory move succeeded")
 		}
 		if len(attempts.deletes) != 0 || len(attempts.moves) != 0 {
@@ -1087,7 +1089,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 			event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationMove,
 				From: "target/cache", Path: "restored"}
 			if test.wantFile {
-				if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err != nil {
+				if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err != nil {
 					t.Fatal(err)
 				}
 				if len(attempts.files) != 1 || len(attempts.directories) != 0 || attempts.files[0].Path != event.Path ||
@@ -1095,7 +1097,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 					t.Fatalf("cross-boundary file/directory = %#v/%#v", attempts.files, attempts.directories)
 				}
 			} else {
-				if err := service.applyExecutionEvent(context.Background(), invocation, command, event); err == nil {
+				if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event); err == nil {
 					t.Fatal("cross-boundary directory move succeeded")
 				}
 				if len(attempts.directories) != 0 || len(attempts.files) != 0 {
@@ -1121,7 +1123,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 			t.Parallel()
 			attempts := &terminalWorkspaceAttemptFake{pages: []examattempt.WorkspacePage{{Cursor: 1, Items: test.items}}}
 			service := &examAttemptTerminalService{attempts: attempts, execution: &terminalWorkspaceExecutionFake{}}
-			if err := service.applyExecutionEvent(context.Background(), invocation, command, test.event); err == nil {
+			if err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, test.event); err == nil {
 				t.Fatal("conflicting event succeeded")
 			}
 		})
@@ -1135,7 +1137,7 @@ func TestExamAttemptTerminalWorkspaceEventApplication(t *testing.T) {
 			return &terminalTrackedBody{reader: bytes.NewReader(bodyBytes)}, nil
 		}}}
 		event := appexecution.Event{Cursor: "event-cursor", Operation: appexecution.OperationCreate, Path: "file.txt"}
-		err := service.applyExecutionEvent(context.Background(), invocation, command, event)
+		err := service.applyExecutionEvent(context.Background(), invocation, command, grantID, event)
 		appErr, ok := As(err)
 		if !ok || appErr.Code() != "resource.not_found" {
 			t.Fatalf("concealed child error = %v", err)
@@ -1251,11 +1253,15 @@ func TestExamAttemptTerminalManifestAndFileBounds(t *testing.T) {
 
 	t.Run("deterministic event key", func(t *testing.T) {
 		event := appexecution.Event{Cursor: "same-cursor"}
-		firstKey, secondKey := executionEventIdempotency(event), executionEventIdempotency(event)
-		digest := sha256.Sum256([]byte(event.Cursor))
+		grantID := model.NewExecutionGrantID()
+		firstKey, secondKey := executionEventIdempotency(grantID, event), executionEventIdempotency(grantID, event)
+		digest := sha256.Sum256([]byte(grantID.String() + ":" + string(event.Cursor)))
 		want := "execution-" + hex.EncodeToString(digest[:])
 		if firstKey != secondKey || firstKey != want {
 			t.Fatalf("event keys = %q/%q; want %q", firstKey, secondKey, want)
+		}
+		if successorKey := executionEventIdempotency(model.NewExecutionGrantID(), event); successorKey == firstKey {
+			t.Fatal("different grants shared an event idempotency key")
 		}
 	})
 }

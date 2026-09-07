@@ -43,3 +43,9 @@ types; it never exposes a general token field. Credential-free routes remove
 unexpected fragments without interpreting them, login recognizes only its
 exact bounded failure notice, Desktop query evidence remains length-bounded,
 and unknown paths return no bootstrap or fallback page.
+
+Fresh-proof bootstrap accepts only `security` and `connect-provider` tasks,
+removes every other query field and fragment, and defaults ambiguous or unknown
+task input to account security. It recognizes only the exact generic external
+failure notice. Those tasks map to fixed local destinations; no arbitrary
+return URL or sensitive action enters bootstrap.

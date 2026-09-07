@@ -403,6 +403,53 @@ func TestManagerSubmissionReadManifestAndFileArePurposeSpecificAndProtected(t *t
 	}
 }
 
+func TestManagerSubmissionIntegrityRetirementOmitsFormerCounters(t *testing.T) {
+	t.Parallel()
+	for _, retired := range []bool{false, true} {
+		name := "retained zero counters"
+		if retired {
+			name = "retired integrity"
+		}
+		t.Run(name, func(t *testing.T) {
+			fake := newExamAttemptHTTPFake(t)
+			submission := &fake.submissionView.Submission
+			submission.FinalFocusLossSequence = 0
+			submission.UnresolvedIntegrityCount = 0
+			submission.IntegrityState = model.SubmissionIntegritySettled
+			if retired {
+				submission.IntegrityState = model.SubmissionIntegrityRetired
+				submission.IntegrityRetiredAt = model.OptionalTimeFrom(submission.SubmittedAt.Add(time.Hour))
+				submission.BrowserActivity = model.BrowserActivitySubmission{}
+			}
+			httpAPI := newExamAttemptFocusedAPI(t, fake)
+			path := "/api/v1/exams/" + fake.attempt.ExamID.String() + "/sittings/" + fake.attempt.SittingID.String() +
+				"/attempts/" + fake.attempt.ID.String() + "/submissions/" + submission.ID.String()
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.Header.Set("Authorization", "Bearer credential")
+			response := httptest.NewRecorder()
+			httpAPI.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("header read = %d: %s", response.Code, response.Body.String())
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+				t.Fatal(err)
+			}
+			for _, counter := range []string{"final_focus_loss_sequence", "unresolved_integrity_count"} {
+				value, exists := fields[counter]
+				if exists == retired || exists && string(value) != "0" {
+					t.Fatalf("counter presence/value disagrees with retirement: %s", response.Body.String())
+				}
+			}
+			_, hasRetirement := fields["integrity_retired_at"]
+			if hasRetirement != retired || string(fields["integrity_state"]) != `"`+string(submission.IntegrityState)+`"` ||
+				string(fields["manifest_digest"]) != `"`+submission.ManifestDigest+`"` || len(fields["workspace_cursor"]) == 0 {
+				t.Fatalf("retirement/retained-work projection = %s", response.Body.String())
+			}
+		})
+	}
+}
+
 func TestCandidateAttemptHeadersRequireOneCanonicalSensitiveCredentialAndConnection(t *testing.T) {
 	t.Parallel()
 	credential := model.NewCredentialToken()
@@ -607,6 +654,17 @@ func TestCandidateWorkspaceJournalAndAllHTTPMutationsMapExactProtectedCommands(t
 		!strings.Contains(journalResponse.Body.String(), `"current_cursor":5`) || !strings.Contains(journalResponse.Header().Get("Cache-Control"), "no-store") {
 		t.Fatalf("journal=%d %s query=%#v", journalResponse.Code, journalResponse.Body.String(), fake.journalQuery)
 	}
+	fake.journalPage.Entries[0].Operation = model.AttemptWorkspaceMutationDeleteEntry
+	fake.journalPage.Entries[0].EntryKind = model.StarterWorkspaceEntryDirectory
+	fake.journalPage.Entries[0].OldPath = "src"
+	fake.journalPage.Entries[0].NewPath, fake.journalPage.Entries[0].ContentVersion = "", ""
+	fake.journalPage.Entries[0].Recursive = true
+	journalResponse = httptest.NewRecorder()
+	httpAPI.ServeHTTP(journalResponse, fake.candidateRequest(http.MethodGet, base+"/changes?after_cursor=3&limit=20"))
+	if journalResponse.Code != http.StatusOK || !strings.Contains(journalResponse.Body.String(), `"recursive":true`) ||
+		!strings.Contains(journalResponse.Body.String(), `"old_path":"src"`) {
+		t.Fatalf("recursive journal=%d %s", journalResponse.Code, journalResponse.Body.String())
+	}
 
 	directoryBody := strings.NewReader(`{"participation_id":"` + participationID + `","generation":1,"path":"src"}`)
 	directoryRequest := candidateWorkspaceRequest(fake, http.MethodPost, base+"/directories", directoryBody, "application/json", "mkdir-once")
@@ -692,6 +750,40 @@ func TestCandidateWorkspaceMutationsRejectMissingIdempotencyDuplicateJSONAndMiss
 	httpAPI.ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("missing size=%d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestCandidateRecursiveWorkspaceDeletionRequiresSnapshot(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name, fields string
+		status       int
+	}{
+		{"zero cursor", `,"recursive":true,"expected_workspace_cursor":0`, http.StatusOK},
+		{"missing cursor", `,"recursive":true`, http.StatusBadRequest},
+		{"null cursor", `,"recursive":true,"expected_workspace_cursor":null`, http.StatusBadRequest},
+		{"negative cursor", `,"recursive":true,"expected_workspace_cursor":-1`, http.StatusBadRequest},
+		{"cursor without recursion", `,"expected_workspace_cursor":0`, http.StatusBadRequest},
+		{"null cursor without recursion", `,"expected_workspace_cursor":null`, http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := newExamAttemptHTTPFake(t)
+			api := newExamAttemptFocusedAPI(t, fake)
+			entryID := model.NewAttemptWorkspaceEntryID()
+			path := "/api/v1/exam-attempts/" + fake.attempt.ID.String() + "/workspace/entries/" + entryID.String()
+			body := strings.NewReader(`{"participation_id":"` + fake.participation.ID.String() + `","generation":1,"expected_path":"src"` + test.fields + `}`)
+			response := httptest.NewRecorder()
+			api.ServeHTTP(response, candidateWorkspaceRequest(fake, http.MethodDelete, path, body, "application/json", "recursive"))
+			if response.Code != test.status {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			if test.status == http.StatusOK && (!fake.workspaceDelete.Recursive || fake.workspaceDelete.ExpectedWorkspaceCursor == nil || *fake.workspaceDelete.ExpectedWorkspaceCursor != 0) {
+				t.Fatalf("command=%#v", fake.workspaceDelete)
+			}
+			if test.status == http.StatusBadRequest && fake.workspaceDelete.EntryID.IsValid() {
+				t.Fatal("invalid recursive request reached application")
+			}
+		})
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"io"
 	"time"
 
+	examengine "github.com/sudosylabs/proctor/server/app/exam"
 	examattempt "github.com/sudosylabs/proctor/server/app/exam/attempt"
 	examcorrection "github.com/sudosylabs/proctor/server/app/exam/correction"
 	examresource "github.com/sudosylabs/proctor/server/app/exam/resource"
@@ -36,6 +37,8 @@ type FileContent interface {
 	appjobs.FileRevisionContentPurger
 	appjobs.StarterWorkspaceObjectPurger
 	appjobs.AttemptWorkspaceObjectPurger
+	appjobs.RetentionContentPurger
+	examengine.ExportContent
 	examattempt.Content
 	examresource.FileContent
 	examcorrection.Content

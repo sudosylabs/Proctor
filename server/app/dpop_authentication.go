@@ -166,6 +166,8 @@ func (s *authenticationService) dpopTarget(path string) (string, error) {
 func principalFromDesktopAuthentication(resolved *resolvedAuthentication) *model.Principal {
 	return &model.Principal{
 		UserID: resolved.User.ID, SessionID: resolved.Session.ID,
+		AuthenticationGeneration: resolved.Session.AuthenticationGeneration,
+		MFARecoveryRequired:      resolved.Session.MFARecoveryRequired,
 		CredentialID:             model.PrincipalCredentialID(resolved.Credential.ID),
 		CredentialType:           model.CredentialSessionAccess,
 		AuthenticationMethod:     resolved.Session.AuthenticationMethod,
@@ -182,6 +184,7 @@ func principalFromDesktopAuthentication(resolved *resolvedAuthentication) *model
 		DesktopArchitecture:      resolved.Session.DesktopArchitecture,
 		DesktopRealtimeProtocol:  resolved.Session.DesktopRealtimeProtocol,
 		AuthenticatedAt:          resolved.Session.AuthenticatedAt,
+		ReauthenticatedAt:        resolved.Session.ReauthenticatedAt,
 		MFACompletedAt:           resolved.Session.MFACompletedAt,
 	}
 }

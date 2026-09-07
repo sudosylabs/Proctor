@@ -66,7 +66,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 	replaceMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
 	deleteMutationCodes := workspaceMutationCodes("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
-		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty", "exam.attempt.workspace.cursor_conflict")
 	submissionMutationCodes := workspaceMutationCodes("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
 		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.browser_activity_conflict",
 		"exam.attempt.connection_lost")
@@ -135,7 +135,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "CandidateExamWorkspaceListResponse", DTO: reflect.TypeOf(candidateExamWorkspaceListResponse{}), Required: []string{"workspace_id", "workspace_cursor", "items", "refresh_required"}},
 			{Name: "CreateCandidateWorkspaceDirectoryRequest", DTO: reflect.TypeOf(createCandidateWorkspaceDirectoryRequest{}), Required: []string{"participation_id", "generation", "path"}},
 			{Name: "MoveCandidateWorkspaceEntryRequest", DTO: reflect.TypeOf(moveCandidateWorkspaceEntryRequest{}), Required: []string{"participation_id", "generation", "expected_path", "destination_path"}},
-			{Name: "DeleteCandidateWorkspaceEntryRequest", DTO: reflect.TypeOf(deleteCandidateWorkspaceEntryRequest{}), Required: []string{"participation_id", "generation", "expected_path"}},
+			{Name: "DeleteCandidateWorkspaceEntryRequest", DTO: reflect.TypeOf(deleteCandidateWorkspaceEntryRequest{}), Required: []string{"participation_id", "generation", "expected_path"}, NonNullable: []string{"expected_workspace_cursor"}},
 			{Name: "CandidateWorkspaceMutationResponse", DTO: reflect.TypeOf(candidateWorkspaceMutationResponse{}), Required: []string{"workspace_id", "workspace_cursor", "operation"}},
 			{Name: "CandidateWorkspaceJournalEntryResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalEntryResponse{}), Required: []string{"cursor", "entry_id", "kind", "operation", "changed_at"}},
 			{Name: "CandidateWorkspaceJournalResponse", DTO: reflect.TypeOf(candidateWorkspaceJournalResponse{}), Required: []string{"workspace_id", "current_cursor", "entries", "has_more", "refresh_required"}},
@@ -146,7 +146,7 @@ func TestExamAttemptOpenAPIAgreesWithRuntime(t *testing.T) {
 			{Name: "AcknowledgeExamCorrectionRequest", DTO: reflect.TypeOf(acknowledgeExamCorrectionRequest{}), Required: []string{"participation_id", "generation", "expected_current_revision_id"}},
 			{Name: "AcknowledgeExamCorrectionResponse", DTO: reflect.TypeOf(acknowledgeExamCorrectionResponse{}), Required: []string{"revision_id", "acknowledgement_state", "acknowledged_at"}},
 			{Name: "ExamSubmissionReceiptResponse", DTO: reflect.TypeOf(examSubmissionReceiptResponse{}), Required: []string{"submission_id", "exam_attempt_id", "exam_revision_id", "state", "workspace_cursor", "manifest_digest", "submitted_at"}},
-			{Name: "ExamSubmissionManagerResponse", DTO: reflect.TypeOf(examSubmissionManagerResponse{}), Required: []string{"submission_id", "exam_id", "exam_sitting_id", "exam_attempt_id", "exam_revision_id", "workspace_id", "manifest_schema_version", "workspace_cursor", "manifest_digest", "manifest_entry_count", "manifest_total_file_bytes", "final_focus_loss_sequence", "integrity_state", "unresolved_integrity_count", "submitted_at"}},
+			{Name: "ExamSubmissionManagerResponse", DTO: reflect.TypeOf(examSubmissionManagerResponse{}), Required: []string{"submission_id", "exam_id", "exam_sitting_id", "exam_attempt_id", "exam_revision_id", "workspace_id", "manifest_schema_version", "workspace_cursor", "manifest_digest", "manifest_entry_count", "manifest_total_file_bytes", "integrity_state", "submitted_at"}, NonNullable: []string{"final_focus_loss_sequence", "unresolved_integrity_count"}},
 			{Name: "ExamSubmissionManifestItemResponse", DTO: reflect.TypeOf(examSubmissionManifestItemResponse{}), Required: []string{"entry_id", "kind", "path"}},
 			{Name: "ExamSubmissionManifestResponse", DTO: reflect.TypeOf(examSubmissionManifestResponse{}), Required: []string{"submission_id", "workspace_cursor", "manifest_digest", "items"}},
 		},

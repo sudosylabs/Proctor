@@ -32,6 +32,14 @@ describe("authenticateLocal", () => {
     }
   });
 
+  it("directs a recovery-restricted Web Session to reenrollment", async () => {
+    const post = vi.spyOn(apiClient, "POST");
+    post.mockResolvedValue(apiResult(200, { data: { session: { ...session, mfa_recovery_required: true } } }));
+    await expect(authenticateLocal(submission)).resolves.toEqual({ kind: "recovery_required" });
+    post.mockResolvedValue(apiResult(200, { data: { session: { ...session, mfa_recovery_required: "true" } } }));
+    await expect(authenticateLocal(submission)).resolves.toEqual({ kind: "unavailable" });
+  });
+
   it.each([
     ["authentication.mfa.required", "mfa_required"],
     ["authentication.mfa.invalid_code", "mfa_invalid"],

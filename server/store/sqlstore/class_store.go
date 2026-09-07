@@ -82,10 +82,10 @@ func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
+	return s.createClass(ctx, &candidate, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
+}
+
+func (s SQLClassStore) createClass(ctx context.Context, candidate *model.Class, audit *academicMutationAudit) (*model.Class, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class creation", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
 		if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -99,7 +99,7 @@ func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
 			return nil, err
 		}
-		row := newClassRow(&candidate)
+		row := newClassRow(candidate)
 		if _, err := tx.NamedExec(ctx, `INSERT INTO classes (
 			id, created_at, updated_at, archived_at, revision, programme_level_id,
 			academic_period_id, name, display_name, description
@@ -109,10 +109,10 @@ func (s SQLClassStore) Create(ctx context.Context, input *store.ClassCreation) (
 		)`, &row); err != nil {
 			return nil, fmt.Errorf("create class: %w", translateError("class", candidate.ID.String(), err))
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete class creation audit: %w", err)
+		if err := audit.complete(ctx, tx, candidate.Auditable()); err != nil {
+			return nil, err
 		}
-		return &candidate, nil
+		return candidate, nil
 	})
 }
 
@@ -136,32 +136,7 @@ func (s SQLClassStore) Save(ctx context.Context, class *model.Class) (*model.Cla
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "class save", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
-		if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
-			return nil, err
-		}
-		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
-			return nil, err
-		}
-		row := newClassRow(&candidate)
-		if _, err := tx.NamedExec(ctx, `
-			INSERT INTO classes (
-				id, created_at, updated_at, archived_at, revision, programme_level_id,
-				academic_period_id, name, display_name, description
-			) VALUES (
-				:id, :created_at, :updated_at, :archived_at, :revision, :programme_level_id,
-				:academic_period_id, :name, :display_name, :description
-			)`, &row); err != nil {
-			return nil, fmt.Errorf("save class: %w", translateError("class", candidate.ID.String(), err))
-		}
-		return &candidate, nil
-	})
+	return s.createClass(ctx, &candidate, nil)
 }
 
 func (s SQLClassStore) Get(ctx context.Context, id string) (*model.Class, error) {
@@ -294,7 +269,6 @@ func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	}
 
 	candidate := *class
-	expectedRevision := candidate.Revision
 	candidate.PrepareUpdate(model.NowUTC())
 	if err := candidate.Validate(); err != nil {
 		return nil, store.NewErrInvalidInput("class", "value", nil).Wrap(err)
@@ -302,48 +276,7 @@ func (s SQLClassStore) Update(ctx context.Context, class *model.Class) (*model.C
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "class update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
-		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := lockProgrammeLevelLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := lockAcademicPeriodLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := lockClassLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
-			return nil, err
-		}
-		if err := validateAcademicPeriodApplicable(ctx, tx, candidate.ProgrammeLevelID.String(), candidate.AcademicPeriodID.String()); err != nil {
-			return nil, err
-		}
-		result, err := tx.NamedExec(ctx, `
-		UPDATE classes
-		   SET updated_at = :updated_at,
-		       revision = :revision,
-		       programme_level_id = :programme_level_id,
-		       academic_period_id = :academic_period_id,
-		       name = :name,
-		       display_name = :display_name,
-		       description = :description
-		 WHERE id = :id AND archived_at IS NULL AND revision = :expected_revision`, map[string]any{
-			"id": candidate.ID.String(), "updated_at": candidate.UpdatedAt, "revision": candidate.Revision,
-			"programme_level_id": candidate.ProgrammeLevelID.String(), "academic_period_id": candidate.AcademicPeriodID.String(),
-			"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
-			"expected_revision": expectedRevision,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("update class: %w", translateError("class", candidate.ID.String(), err))
-		}
-		if err := requireClassRevisionAffected(ctx, tx, result, candidate.ID.String()); err != nil {
-			return nil, err
-		}
-		return &candidate, nil
-	})
+	return s.updateClass(ctx, &candidate, "", nil)
 }
 
 func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUpdate) (*model.Class, error) {
@@ -359,11 +292,11 @@ func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 	if err := s.validateInstitution(ctx, &candidate); err != nil {
 		return nil, err
 	}
-	encoded, appErr := model.EncodeAuditData(candidate.Auditable())
-	if appErr != nil {
-		return nil, appErr
-	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "class audited update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
+	return s.updateClass(ctx, &candidate, input.ExpectedAcademicUnitID, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
+}
+
+func (s SQLClassStore) updateClass(ctx context.Context, candidate *model.Class, expectedUnitID string, audit *academicMutationAudit) (*model.Class, error) {
+	return runSQLTransaction(ctx, s.GetMaster().Begin, "class update", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
@@ -376,8 +309,10 @@ func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 		if err := lockClassLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
-		if err := requireExpectedClassSnapshot(ctx, tx, candidate.ID.String(), input.ExpectedAcademicUnitID, input.ExpectedRevision); err != nil {
-			return nil, err
+		if expectedUnitID != "" {
+			if err := requireExpectedClassSnapshot(ctx, tx, candidate.ID.String(), expectedUnitID, candidate.Revision-1); err != nil {
+				return nil, err
+			}
 		}
 		if err := validateActiveProgrammeLevel(ctx, tx, candidate.ProgrammeLevelID.String()); err != nil {
 			return nil, err
@@ -393,7 +328,7 @@ func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 			"id": candidate.ID.String(), "updated_at": candidate.UpdatedAt, "programme_level_id": candidate.ProgrammeLevelID.String(),
 			"academic_period_id": candidate.AcademicPeriodID.String(), "revision": candidate.Revision,
 			"name": candidate.Name, "display_name": candidate.DisplayName, "description": candidate.Description,
-			"expected_revision": input.ExpectedRevision,
+			"expected_revision": candidate.Revision - 1,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("update class: %w", translateError("class", candidate.ID.String(), err))
@@ -401,10 +336,10 @@ func (s SQLClassStore) UpdateWithAudit(ctx context.Context, input *store.ClassUp
 		if err := requireClassRevisionAffected(ctx, tx, result, candidate.ID.String()); err != nil {
 			return nil, err
 		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete class update audit: %w", err)
+		if err := audit.complete(ctx, tx, candidate.Auditable()); err != nil {
+			return nil, err
 		}
-		return &candidate, nil
+		return candidate, nil
 	})
 }
 
@@ -416,49 +351,7 @@ func (s SQLClassStore) Archive(
 	if archiveAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "archived_at", archiveAt)
 	}
-	return runSQLTransaction(ctx, s.GetMaster().Begin, "class archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
-		if err := lockClassLifecycle(ctx, tx); err != nil {
-			return nil, err
-		}
-		var row classRow
-		query := s.classesQuery.Where(sq.Eq{"classes.id": id, "classes.archived_at": nil})
-		if err := tx.GetBuilder(ctx, &row, query); err != nil {
-			return nil, translateError("class", id, err)
-		}
-		current, err := row.model()
-		if err != nil {
-			return nil, err
-		}
-		var dependent bool
-		if err := tx.Get(ctx, &dependent, `
-		SELECT EXISTS (
-			SELECT 1 FROM class_members
-			 WHERE class_id = ? AND archived_at IS NULL AND end_at IS NULL
-			UNION ALL
-			SELECT 1 FROM role_bindings
-			 WHERE scope_type = 'class' AND scope_id = ?
-			   AND archived_at IS NULL AND end_at IS NULL
-		)`, id, id); err != nil {
-			return nil, fmt.Errorf("check class archive dependencies: %w", err)
-		}
-		if dependent {
-			return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
-		}
-		result, err := tx.Exec(ctx, `
-		UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1
-		 WHERE id = ? AND archived_at IS NULL`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id)
-		if err != nil {
-			return nil, fmt.Errorf("archive class: %w", err)
-		}
-		if err := requireAffected(result, "class", id); err != nil {
-			return nil, err
-		}
-		at := model.TimeFromMillis(archiveAt)
-		current.UpdatedAt = at
-		current.ArchivedAt = model.OptionalTimeFromMillis(archiveAt)
-		current.Revision++
-		return current, nil
-	})
+	return s.archiveClass(ctx, id, archiveAt, 0, "", nil)
 }
 
 func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassArchive) (*model.Class, error) {
@@ -466,6 +359,10 @@ func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassA
 		input.ExpectedRevision <= 0 || input.ArchiveAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("class", "archive", nil)
 	}
+	return s.archiveClass(ctx, input.ID, input.ArchiveAt, input.ExpectedRevision, input.ExpectedAcademicUnitID, &academicMutationAudit{eventID: input.AuditEventID, at: input.AuditAt})
+}
+
+func (s SQLClassStore) archiveClass(ctx context.Context, id string, archiveAt, expectedRevision int64, expectedUnitID string, audit *academicMutationAudit) (*model.Class, error) {
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "class archive", func(ctx context.Context, tx *sqlxTxWrapper) (*model.Class, error) {
 		if err := lockProgrammeLifecycle(ctx, tx); err != nil {
 			return nil, err
@@ -473,45 +370,45 @@ func (s SQLClassStore) ArchiveWithAudit(ctx context.Context, input *store.ClassA
 		if err := lockClassLifecycle(ctx, tx); err != nil {
 			return nil, err
 		}
-		if err := requireExpectedClassSnapshot(ctx, tx, input.ID, input.ExpectedAcademicUnitID, input.ExpectedRevision); err != nil {
-			return nil, err
+		if expectedUnitID != "" {
+			if err := requireExpectedClassSnapshot(ctx, tx, id, expectedUnitID, expectedRevision); err != nil {
+				return nil, err
+			}
 		}
 		var row classRow
-		query := s.classesQuery.Where(sq.Eq{"classes.id": input.ID, "classes.archived_at": nil})
+		query := s.classesQuery.Where(sq.Eq{"classes.id": id, "classes.archived_at": nil})
 		if err := tx.GetBuilder(ctx, &row, query); err != nil {
-			return nil, translateError("class", input.ID, err)
+			return nil, translateError("class", id, err)
+		}
+		if err := requireAcademicRevision("class", expectedRevision, row.Revision); err != nil {
+			return nil, err
 		}
 		var dependent bool
 		if err := tx.Get(ctx, &dependent, `SELECT EXISTS (
 		SELECT 1 FROM class_members WHERE class_id = ? AND archived_at IS NULL AND end_at IS NULL
 		UNION ALL SELECT 1 FROM role_bindings WHERE scope_type = 'class' AND scope_id = ? AND archived_at IS NULL AND end_at IS NULL
-	)`, input.ID, input.ID); err != nil {
+	)`, id, id); err != nil {
 			return nil, fmt.Errorf("check class archive dependencies: %w", err)
 		}
 		if dependent {
 			return nil, store.NewErrConflict("class", "class_has_active_dependents", nil)
 		}
-		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(input.ArchiveAt), model.TimeFromMillis(input.ArchiveAt), input.ID, input.ExpectedRevision)
+		result, err := tx.Exec(ctx, `UPDATE classes SET updated_at = GREATEST(created_at, ?), archived_at = GREATEST(created_at, ?), revision = revision + 1 WHERE id = ? AND archived_at IS NULL AND revision = ?`, model.TimeFromMillis(archiveAt), model.TimeFromMillis(archiveAt), id, row.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("archive class: %w", err)
 		}
-		if err := requireClassRevisionAffected(ctx, tx, result, input.ID); err != nil {
+		if err := requireClassRevisionAffected(ctx, tx, result, id); err != nil {
 			return nil, err
+		}
+		if err := tx.GetBuilder(ctx, &row, s.classesQuery.Where(sq.Eq{"classes.id": id})); err != nil {
+			return nil, fmt.Errorf("read archived class: %w", err)
 		}
 		class, err := row.model()
 		if err != nil {
 			return nil, err
 		}
-		at := model.TimeFromMillis(input.ArchiveAt)
-		class.UpdatedAt = at
-		class.ArchivedAt = model.OptionalTimeFromMillis(input.ArchiveAt)
-		class.Revision = input.ExpectedRevision + 1
-		encoded, appErr := model.EncodeAuditData(class.Auditable())
-		if appErr != nil {
-			return nil, appErr
-		}
-		if _, err := completeAuditEvent(ctx, tx, input.AuditEventID, model.AuditStatusSuccess, "", encoded, input.AuditAt); err != nil {
-			return nil, fmt.Errorf("complete class archive audit: %w", err)
+		if err := audit.complete(ctx, tx, class.Auditable()); err != nil {
+			return nil, err
 		}
 		return class, nil
 	})

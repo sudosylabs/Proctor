@@ -58,6 +58,7 @@ type EndClassMemberCommand struct {
 type classMemberStore interface {
 	Get(context.Context, string) (*model.ClassMember, error)
 	ListByClass(context.Context, string, int64) ([]*model.ClassMember, error)
+	ListPageByClass(context.Context, store.ClassMemberPageOptions) (*store.ClassMemberPage, error)
 	EnrollWithAudit(context.Context, *store.ClassMemberEnrollment) (*store.ClassEnrollmentResult, error)
 	EndWithAudit(context.Context, *store.ClassMemberEnd) (*model.ClassMember, error)
 	ListActiveByUser(context.Context, string, int64) ([]*model.ClassMember, error)
@@ -630,4 +631,52 @@ func classMemberError(err error) error {
 		return NewError("class_member.invalid").WithField("resource", "class_member").Wrap(err)
 	}
 	return NewError("administration.unavailable").WithField("resource", "class_member").Wrap(err)
+}
+
+// ListClassMembersPageQuery opts into bounded membership enumeration. Each page is
+// authorized independently and explicit selectors preserve its effective filter.
+type ListClassMembersPageQuery struct {
+	AfterUserID model.UserID
+	AfterID     model.ClassMemberID
+	ClassID     string
+	MembershipPageQuery
+}
+
+type ClassMemberPage struct {
+	Members  []*model.ClassMember
+	HasMore  bool
+	ActiveAt int64
+}
+
+func (a *App) ListClassMembersPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
+	return a.classMembers.ListPage(ctx, invocation, query)
+}
+
+func (s *classMemberService) ListPage(ctx context.Context, invocation Invocation, query ListClassMembersPageQuery) (*ClassMemberPage, error) {
+	resource, err := s.authorizeClass(ctx, invocation, strings.TrimSpace(query.ClassID), model.ActionClassMembersView)
+	if err != nil {
+		return nil, err
+	}
+	activeAt, limit, err := resolveMembershipPage(query.MembershipPageQuery, s.now())
+	if err != nil {
+		return nil, err
+	}
+	scopeID, err := model.ParseClassID(resource.ID)
+	if err != nil {
+		return nil, NewError("request.invalid").WithField("field", "class_id")
+	}
+	if query.AfterID.IsZero() != query.AfterUserID.IsZero() || (!query.AfterID.IsZero() && (!query.AfterID.IsValid() || !query.AfterUserID.IsValid())) {
+		return nil, NewError("request.invalid").WithField("field", "cursor")
+	}
+	options := store.ClassMemberPageOptions{ClassID: scopeID, ActiveAt: activeAt, Limit: limit, AfterID: query.AfterID, AfterUserID: query.AfterUserID}
+
+	page, err := s.store.ListPageByClass(ctx, options)
+	if err != nil {
+		return nil, classMemberError(err)
+	}
+	result := &ClassMemberPage{Members: page.Members, ActiveAt: activeAt, HasMore: page.HasMore}
+	if result.Members == nil {
+		result.Members = []*model.ClassMember{}
+	}
+	return result, nil
 }

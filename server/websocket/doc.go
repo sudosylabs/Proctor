@@ -24,6 +24,8 @@
 // pump has stopped, the runtime returns one immutable snapshot; Hub alone
 // decides whether that snapshot is eligible for local replay. Wire DTOs and
 // validation remain separate protocol contracts.
+// Hub shutdown stops admission and drains those runtimes under the configured
+// server shutdown deadline before the root disposes their shared dependencies.
 //
 // The package deliberately does not own HTTP route registration, application
 // authorization policy, durable state, cross-node replay, or infrastructure

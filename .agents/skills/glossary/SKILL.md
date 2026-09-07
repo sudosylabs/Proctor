@@ -34,6 +34,37 @@ _Avoid_: Tenant, university instance
 The university or school represented by an installation.
 _Avoid_: Tenant, organization
 
+**Institution Retention Policy**:
+The revisioned Institution-owned configuration of record-retention periods
+and deletion grace time. Saving the policy does not authorize deletion; a
+separate Retention Control approves recurring cleanup for an exact revision.
+_Avoid_: Exam Policy Set, deployment configuration, deletion authorization
+
+**Retention Control**:
+The Institution's explicit approval, pause, or disabled state for recurring
+cleanup. Approval is bound to one Retention Policy revision and a current
+Retention Preview; it cannot bypass preservation or live references.
+_Avoid_: Retention Policy, blanket deletion permission
+
+**Retention Preview**:
+A time-limited, content-free count of records eligible for retention cleanup
+and records protected by current blockers, evaluated against one policy
+revision. It supports review but is never a frozen deletion instruction.
+_Avoid_: Export, deletion queue, records completion
+
+**Record Retirement**:
+A scheduled irreversible removal of one Submission's work or integrity
+category after its retention deadline and positive grace period. Once
+committed, permanent retirement markers prevent restoration through ordinary
+reads or retries; its minimal receipt follows audit-retention rules.
+_Avoid_: Archive, immediate physical erasure, account deletion
+
+**Retention Notice**:
+A durable notification to the responsible managers and operators that records
+have entered deletion grace, with optional candidate recipients. Cancellation
+supersedes the advertised date; mail delivery is not proof of acknowledgement.
+_Avoid_: Preservation Hold, delivery receipt, deletion approval
+
 ## Academic structure
 
 **Academic Unit**:
@@ -101,6 +132,13 @@ _Avoid_: Execution-host capacity, deployment configuration, retention policy
 **Exam Sitting**:
 A scheduled delivery of one exam revision to one class.
 _Avoid_: Exam version, exam session
+
+**Sitting Records Completion**:
+An explicit audited acknowledgement that a Closed Sitting's remaining
+Submission Reviews are finalized or deliberately unnecessary. Newly accepted
+integrity changes make it stale; renewed completion restarts its retention
+clock without restoring retired content.
+_Avoid_: Sitting closure, finalization of a Review, deletion authorization
 
 **Exam Attempt**:
 One student's private, durable body of work while participating in an exam;
@@ -210,6 +248,24 @@ _Avoid_: Attempt, copied workspace, grade
 The integrity decisions and manager remarks associated with one submission;
 it contains no structured academic grade or outcome.
 _Avoid_: Grade, rubric, submission
+
+**Submission Review Waiver**:
+An audited decision that a Submission's exact current Review and discrepancy
+inventory needs no finalized Review. It cannot waive an undecided Flag or be
+made by that Submission's candidate.
+_Avoid_: Evidence dismissal, finalization, self-review
+
+**Examination Export**:
+A separately authorized, temporary portable archive of an explicit work and/or
+integrity selection from sealed Submissions. The requester can verify its
+contents; its fixed expiry grants neither restoration nor reimport capability.
+_Avoid_: Backup, Submission, candidate download, permanent source reference
+
+**Retention Hold**:
+An explicit preservation instruction covering an Exam, Sitting, or Submission
+and its future descendants until a protected administrator releases it.
+It cannot restore content that has already retired.
+_Avoid_: Automatic expiry, backup, restoration
 
 **Exam Manager**:
 The exam creator or a teacher explicitly granted equal authority to manage one

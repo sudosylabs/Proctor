@@ -62,6 +62,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		sessions           store.SessionStore
 		sessionCredentials store.SessionCredentialStore
 		attempts           *authenticationAttemptAccounting
+		audit              mutationAuditor
 		effects            authenticationSecurityEffects
 		mfa                authenticationMFAVerifier
 		personalTokens     authenticationPATResolver
@@ -71,6 +72,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		users: persistence.User(), passwords: persistence.PasswordCredential(),
 		sessions: persistence.Session(), sessionCredentials: persistence.SessionCredential(),
 		attempts: mustAuthenticationAttemptAccounting(t, cache),
+		audit:    &mutationAttemptAuditorFake{},
 		effects:  discardAuthenticationSecurityEffects{},
 		mfa:      discardAuthenticationMFAVerifier{}, personalTokens: discardAuthenticationPATResolver{},
 		newCredential: model.NewCredentialToken,
@@ -86,6 +88,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 			cache,
 			deps.attempts,
 			deps.effects,
+			deps.audit,
 			hasher,
 			deps.mfa,
 			deps.personalTokens,
@@ -107,6 +110,7 @@ func TestAuthenticationServiceRequiresSecurityDependencies(t *testing.T) {
 		{name: "sessions", mutate: func(deps *dependencies) { deps.sessions = nil }},
 		{name: "session credentials", mutate: func(deps *dependencies) { deps.sessionCredentials = nil }},
 		{name: "attempt accounting", mutate: func(deps *dependencies) { deps.attempts = nil }},
+		{name: "audit", mutate: func(deps *dependencies) { deps.audit = nil }},
 		{name: "effects", mutate: func(deps *dependencies) { deps.effects = nil }},
 		{name: "MFA verifier", mutate: func(deps *dependencies) { deps.mfa = nil }},
 		{name: "PAT resolver", mutate: func(deps *dependencies) { deps.personalTokens = nil }},
@@ -146,6 +150,7 @@ func TestExternalAuthenticationServiceRequiresInvalidator(t *testing.T) {
 		mutationAuditAdapter{audit: audit},
 		&accessPolicyCapabilitiesFake{},
 		&externalInvitationAcceptorFake{},
+		&externalDesktopAuthorizationFake{},
 		ExternalAuthenticationPolicy{},
 		15*time.Minute,
 		&securityEffectsDiagnosticsFake{},

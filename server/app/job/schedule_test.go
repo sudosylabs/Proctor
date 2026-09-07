@@ -218,3 +218,62 @@ func TestNextDailyOccurrenceUsesUTCDayBoundary(t *testing.T) {
 		t.Fatalf("next occurrence = %v, want %v", got, want)
 	}
 }
+
+func TestRecurrenceIntervalRetriesSameBucketThenAdvancesAtUTCBoundary(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, time.September, 7, 13, 57, 0, 0, time.FixedZone("offset", 2*60*60))
+	clock := newManualClock(at)
+	proposer := &occurrenceProposerFake{calls: make(chan time.Time, 4), fail: 1}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runRecurrenceProposal(ctx, Recurrence{Name: "hourly", Interval: time.Hour, Proposer: proposer}, &jobDiagnosticsFake{}, clock, 5*time.Minute, nil, nil)
+	}()
+	defer func() { cancel(); <-done }()
+	if got := <-proposer.calls; !got.Equal(at) {
+		t.Fatalf("first occurrence = %v", got)
+	}
+	retry := <-clock.timers
+	if retry.delay != 5*time.Minute {
+		t.Fatalf("retry delay = %v", retry.delay)
+	}
+	// A transient failure crossing noon must first finish the old occurrence.
+	clock.advance(retry, at.Add(5*time.Minute))
+	if got := <-proposer.calls; !got.Equal(at) {
+		t.Fatalf("retry changed occurrence: %v", got)
+	}
+	if got := <-proposer.calls; !got.Equal(at.Add(5 * time.Minute)) {
+		t.Fatalf("missed current occurrence: %v", got)
+	}
+	next := <-clock.timers
+	if next.delay != 58*time.Minute {
+		t.Fatalf("next UTC hour delay = %v", next.delay)
+	}
+	clock.advance(next, time.Date(2026, time.September, 7, 13, 0, 0, 0, time.UTC))
+	if got := <-proposer.calls; got.Hour() != 13 || got.Location() != time.UTC {
+		t.Fatalf("next occurrence = %v", got)
+	}
+}
+
+func TestRecurrenceIntervalsAreBoundedAndAlignAcrossNodes(t *testing.T) {
+	t.Parallel()
+	for _, interval := range []time.Duration{-time.Hour, time.Second, 7 * time.Minute, 25 * time.Hour} {
+		if _, err := cloneRecurrences([]Recurrence{{Name: "invalid", Interval: interval, Proposer: noOpProposer{}}}); err == nil {
+			t.Errorf("accepted interval %s", interval)
+		}
+	}
+	for _, interval := range []time.Duration{0, time.Minute, 10 * time.Minute, time.Hour, 24 * time.Hour} {
+		if _, err := cloneRecurrences([]Recurrence{{Name: "valid", Interval: interval, Proposer: noOpProposer{}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := time.Date(2026, time.September, 7, 12, 31, 0, 0, time.UTC)
+	second := first.Add(4 * time.Minute).In(time.FixedZone("offset", -5*60*60))
+	want := time.Date(2026, time.September, 7, 12, 40, 0, 0, time.UTC)
+	for _, now := range []time.Time{first, second} {
+		if got := nextRecurrenceOccurrence(now, 10*time.Minute); !got.Equal(want) {
+			t.Fatalf("boundary = %v, want %v", got, want)
+		}
+	}
+}

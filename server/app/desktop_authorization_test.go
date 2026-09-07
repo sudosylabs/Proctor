@@ -548,6 +548,10 @@ type desktopAuthorizationStoreFake struct {
 	issueErr        error
 	exchangeErr     error
 	contextResult   *store.DesktopAuthorizationContext
+	contextErr      error
+	contextNil      bool
+	contextBinding  string
+	contextCalls    int
 	authorizationID model.BrowserAuthenticationTransactionID
 }
 
@@ -574,7 +578,12 @@ func (s *desktopAuthorizationStoreFake) BindDesktopAuthorization(context.Context
 	return &store.DesktopAuthorizationBound{ExpiresAt: time.Now().Add(time.Minute)}, nil
 }
 
-func (s *desktopAuthorizationStoreFake) GetDesktopAuthorizationContext(context.Context, string) (*store.DesktopAuthorizationContext, error) {
+func (s *desktopAuthorizationStoreFake) GetDesktopAuthorizationContext(_ context.Context, binding string) (*store.DesktopAuthorizationContext, error) {
+	s.contextBinding = binding
+	s.contextCalls++
+	if s.contextErr != nil || s.contextNil {
+		return nil, s.contextErr
+	}
 	if s.contextResult != nil {
 		return s.contextResult, nil
 	}

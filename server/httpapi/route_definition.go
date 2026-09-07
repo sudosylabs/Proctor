@@ -61,7 +61,7 @@ func route(
 func routeErrorCodes(auth AuthRequirement, errorCodes []string) []string {
 	result := append([]string(nil), errorCodes...)
 	switch auth {
-	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired,
 		AuthRecentSessionRequired, AuthStrongRecentSessionRequired:
 		for _, code := range []string{
 			"authentication.dpop.invalid",
@@ -170,3 +170,10 @@ func newResource(name string, routes ...routeDefinition) resource {
 
 type protocolOperation func(operationRequest) (protocolResult, error)
 type upgradeOperation func(http.ResponseWriter, operationRequest) error
+
+func mfaRecoverySessionRoute(method string, path routePath, codes []string, operation operation) routeDefinition {
+	return route(AuthMFARecoverySessionRequired, method, path, codes, operation)
+}
+func recentMFARecoverySessionRoute(method string, path routePath, codes []string, operation operation) routeDefinition {
+	return route(AuthRecentMFARecoverySessionRequired, method, path, codes, operation)
+}

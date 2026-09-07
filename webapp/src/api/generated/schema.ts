@@ -265,7 +265,7 @@ export interface paths {
         };
         /**
          * List effective-dated organizational members
-         * @description Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant.
+         * @description Lists authorized current or historical organizational memberships for one Academic Unit at the requested effective instant. Membership describes a relationship only and is never presented as an unrestricted permission grant. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
          */
         get: operations["listAcademicUnitMembers"];
         put?: never;
@@ -844,6 +844,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/reauthenticate/external": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh the current Session's original provider proof
+         * @description Starts fresh authentication with the original provider and binds the callback to the same User, external identity, Session and credential. OIDC requires a fresh auth_time using max_age=0 and prompt=login. CAS uses renew on login and ticket validation. Success refreshes primary-proof recency without replacing original authentication or MFA history. The selected hosted task is a closed continuation; its final sensitive action remains explicit.
+         */
+        post: operations["beginExternalReauthentication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reauthenticate/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh the current Session's password proof
+         * @description Verifies the password of the exact current User and refreshes primary-proof recency for an existing password Session. Original authentication and MFA history, Session identity, credentials and expiry are preserved. A Session originally established by an external provider must use that provider's reauthentication journey. The final sensitive operation remains a separate explicit request. This operation is rate limited and its successful proof and required audit commit atomically.
+         */
+        post: operations["reauthenticatePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1087,7 +1127,7 @@ export interface paths {
         };
         /**
          * List active or historical student enrollments for a Class
-         * @description Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data.
+         * @description Lists authorized student enrollments for one Class at the requested effective instant or across retained history. The roster projection contains relationship state and does not expand student credentials, answers, or unrestricted profile data. Bounded pages use immutable (user_id, id) ordering. The next Link freezes the effective instant or history filter, but pages are a live view: later membership edits and insertions can change later results; no database snapshot is retained across requests.
          */
         get: operations["listClassMembers"];
         put?: never;
@@ -1350,8 +1390,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete one empty directory or one exact Workspace file state
-         * @description Deletes the exact Workspace entry only when its expected path and, for files, optional content version still match. Non-empty directories and stale file states are rejected so concurrent edits cannot be silently discarded.
+         * Delete a Workspace entry or a guarded directory subtree
+         * @description Deletes the exact Workspace entry only when its expected path and, for files, required content version still match. A directory must be empty unless recursive is true. Recursive deletion requires the expected_workspace_cursor from the client's manifest, rejects any intervening Workspace change, and atomically removes the directory and all descendants with one recursive journal record. Other mutations do not require a Workspace cursor.
          */
         delete: operations["deleteCandidateExamWorkspaceEntry"];
         options?: never;
@@ -1770,8 +1810,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove one file or empty directory from a Starter Workspace
-         * @description Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories are rejected, and published Revisions retain the immutable Workspace snapshot they already captured.
+         * Remove a Starter Workspace entry or guarded directory subtree
+         * @description Removes the exact Starter Workspace entry when the expected Draft revision still matches. Non-empty directories require recursive to be true, which atomically removes the directory and every descendant and advances the Draft revision once. A stale Draft revision rejects the entire command. Published Revisions retain the immutable Workspace snapshot they already captured.
          */
         delete: operations["removeExamDraftStarterWorkspaceEntry"];
         options?: never;
@@ -1904,6 +1944,50 @@ export interface paths {
          */
         put: operations["transferExamOwnership"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/retention-holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List preservation holds
+         * @description Requires a Session and exam.records.hold through current Exam Manager and exact Academic Unit membership, or its scoped override. Lists exact or descendant scopes with applicable ancestor holds. Holds have no automatic expiry. Creation-time retired counts identify content that the hold cannot restore. Pages use a bounded scope-bound cursor.
+         */
+        get: operations["listRetentionHolds"];
+        put?: never;
+        /**
+         * Preserve examination records
+         * @description Requires a Session and exam.records.hold through current Exam Manager and exact Academic Unit membership, or its scoped override. An Exam, Sitting or Submission hold covers current content and future arrivals within its scope until explicit release. It prevents pending retirement but cannot restore content already retired. Rejects a wholly retired exact Submission; broader holds still preserve remaining descendants. Creation-time retired counts disclose partial retirement. The hold, safe critical audit and retry outcome commit together after fresh authority checks.
+         */
+        post: operations["createRetentionHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/retention-holds/{retention_hold_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a preservation hold
+         * @description Requires retention_hold.release on a protected system-administrator Session with strong recent authentication. Supply the original exact scope and current hold revision. Release is manual, durably audited and idempotent; authority and proof are rechecked inside the transaction and on replay. The private release rationale does not enter ordinary audit. Removing a hold does not restore already retired data or bypass fresh eligibility and grace.
+         */
+        post: operations["releaseRetentionHold"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2365,6 +2449,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Sitting export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
+         */
+        post: operations["createSittingExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a Sitting export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
+         */
+        get: operations["getSittingExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/exports/{exam_export_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a Sitting export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
+         */
+        get: operations["downloadSittingExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/extend": {
         parameters: {
             query?: never;
@@ -2440,6 +2584,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/records-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Sitting records completion
+         * @description Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Returns only lifecycle provenance and bounded counts. Current completion is separate from delivery closure, and a stale completion blocks retention. Retired integrity categories do not require recreated Reviews.
+         */
+        get: operations["getExamSittingRecords"];
+        put?: never;
+        /**
+         * Complete Sitting records
+         * @description Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. The Sitting must be Closed and every remaining Submission Review finalized or explicitly unnecessary for its exact current inventory. The supplied revision and integrity revision must match. New accepted evidence or edits to a waived Review make completion stale and require acknowledgement and renewed completion, restarting retention. Exact replay and already-current completion do not restart the clock. Completion, current credential/permission rechecks, durable audit and retry outcome commit together. It neither enables cleanup nor releases holds.
+         */
+        post: operations["completeExamSittingRecords"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/resume": {
         parameters: {
             query?: never;
@@ -2459,6 +2627,90 @@ export interface paths {
          * @description Resumes one paused Sitting under its exact revision fence after rechecking the Exam and delivery window. It does not renew expired candidate Participation credentials; affected candidates must complete the ordinary reconnect or re-allow flow.
          */
         post: operations["resumeExamSitting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Submission export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Select work, integrity, or both explicitly. The entire selected scope is frozen atomically; no partial Sitting archive is returned. Initial limits are 200 Submissions, 50,000 workspace entries, 50,000 structured records, 8 GiB original bytes and 64 MiB structured JSON. Exceeding a limit rejects the request. A configured export period from 1 through 7 days is required; zero leaves exports unconfigured and must be changed explicitly before creation. Expiry starts at request creation, with at most 24 hours for construction. Audit, finite Job and exact category source protections commit together. Retries return the same export and never extend its expiry. The archive contains original workspace files, structured records, a versioned manifest and SHA-256 hashes. Re-import is not supported.
+         */
+        post: operations["createSubmissionExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a Submission export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may inspect this export. Current credentials, ordinary read authority and exact scope are rechecked. Returns queued, ready, failed or expired state; an expired archive never returns its content hash or a usable artifact selector. The advertised expiry is fixed even when policy later changes. There are no storage keys or public download URLs.
+         */
+        get: operations["getSubmissionExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/exports/{exam_export_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a Submission export
+         * @description Requires an interactive Session and the separate exam.records.export permission through the current Exam Manager and exact Academic Unit membership, or its scoped override. Ordinary Submission view authority is also required for every selected Submission; Sitting exports additionally require Sitting view. Integrity exports require browser-activity view. Candidate self-access is excluded. Personal Access Tokens are forbidden. Only the requesting User may download a ready, unexpired archive under current credentials and ordinary read authority. Returns an application/zip attachment with private, no-store caching and a safe filename. No presigned or public URL is issued. The ETag and archive_sha256 metadata give the complete ZIP SHA-256; manifest.json lists each data member size and SHA-256. Hashes detect changes and are not a signature. Expiry denies new downloads but does not terminate an already-open stream. Physical cleanup separately observes current-key absence; it cannot certify secure media erasure, operator-controlled backups, historical versions or replicas.
+         */
+        get: operations["downloadSubmissionExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exams/{exam_id}/sittings/{exam_sitting_id}/submissions/{submission_id}/review-waiver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect a Submission Review waiver
+         * @description Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Returns the recorded private decision or null. Its Review revision and discrepancy count identify the acknowledged inventory. Candidate self-access is concealed; retired private decisions cannot be replayed.
+         */
+        get: operations["getSubmissionReviewWaiver"];
+        put?: never;
+        /**
+         * Mark a Submission Review unnecessary
+         * @description Requires a Session and the separate exam.records.complete action through current Exam Manager and exact Academic Unit membership, or its scoped override action. Requires a Closed Sitting and exact current waiver, Review and discrepancy preconditions; zero waiver revision creates the first decision. Prohibits candidate self-waivers, all undecided Flags and finalized Reviews. New accepted discrepancies or later edits invalidate the waiver. The private rationale is stored only in the dedicated record and protected retry outcome; audit contains the closed reason code and identifiers. Retired integrity records reject this action and replay.
+         */
+        post: operations["waiveSubmissionReview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3256,6 +3508,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/retention-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the Institution Retention Policy
+         * @description Returns the Institution's revisioned retention configuration. A Session with retention_policy.view is required; Personal Access Tokens cannot read it. Examination and audit periods start at zero, meaning no configured expiry, never immediate deletion. Automatic deletion is a derived projection of separate, current-revision cleanup approval. Saving settings never enables cleanup. Examination periods begin at current Sitting Records Completion; holds, supporting integrity and export construction can protect individual records. Temporary exports require a configured finite lifetime from one through seven days. Operator-controlled backups and historical object versions remain outside current-key cleanup.
+         */
+        get: operations["getRetentionPolicy"];
+        /**
+         * Replace the Institution Retention Policy
+         * @description Completely replaces the configuration under an optimistic revision fence. Requires a strong recent interactive system-administrator Session, an Idempotency-Key, and durable audit. The policy, successful audit, and idempotent outcome commit together. Every write, including a no-op and exact retry, rechecks the current access credential, protected administrator binding and strong recent Session assurance at the post-lock database time. A stale revision returns retention_policy.revision_conflict with current_revision; an exact retry returns the recorded result after fresh authorization. A no-op preserves revision and timestamps. All periods are required integers. Export retention accepts 0 when unconfigured or a finite lifetime from 1 through 7 days; other periods accept 0 through 36500 as a technical bound, not a recommended period. Days mean 24-hour durations. Zero leaves that period unconfigured, and export creation rejects an unconfigured lifetime. A real settings change pauses approved cleanup and cancels pending grace; a fresh preview and explicit approval are required before new scheduling. Candidate notices default to false when omitted; null is invalid.
+         */
+        put: operations["replaceRetentionPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retention/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get cleanup approval
+         * @description Requires retention_policy.view. Reports deliberate approval separately from settings; disabled or paused controls cannot schedule retirement.
+         */
+        get: operations["getRetentionControl"];
+        /**
+         * Enable or pause institution cleanup
+         * @description Requires retention_cleanup.manage and strong recent system-administrator authentication. Enablement binds a fresh preview to the exact policy revision and requires positive grace. Every changed control cancels existing grace; eligible records receive fresh grace when scheduling resumes. Pausing cannot reverse committed retirement or stop reconciliation of already-retired bytes. Exact retries return their recorded result after current authorization.
+         */
+        put: operations["changeRetentionControl"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retention/previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview retention eligibility
+         * @description Requires retention_policy.view and critical audit. Creates a one-hour content-free assessment for the specified current policy revision. Counts explain incomplete records, configured deadlines, holds, supporting integrity, export source protection and already-retired categories. Creating a preview alone never schedules disposal.
+         */
+        post: operations["createRetentionPreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retention/previews/{retention_preview_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a retention preview
+         * @description Requires retention_policy.view. Returns the original assessment and expiry. Subsequent record changes can alter eligibility; every scheduled and final transition rechecks authoritative state.
+         */
+        get: operations["getRetentionPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retention/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List retention eligibility and retirement status
+         * @description Requires retention_policy.view. Does not expose filenames, answers, evidence or remarks. Limit counts Submissions; each contributes work and integrity items. The opaque cursor is bound to this listing. A retired category stays closed after detailed receipt expiry. Purge-verified counts represent an independent observation of exact current-key absence; they do not certify secure media erasure or deletion of backups, historical versions, or already-open streams.
+         */
+        get: operations["listRetentionRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/role-bindings": {
         parameters: {
             query?: never;
@@ -3919,6 +4279,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/me/retention-notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List my retention notices
+         * @description Returns the current Session User’s own durable grace notices, including cancellation and delivery status. The notice grants no examination record access. Reading it neither acknowledges delivery nor changes cleanup. Candidate notices are optional; responsible Exam Managers and institution operators receive them by default. Pending dates are invalidated when grace is cancelled.
+         */
+        get: operations["listRetentionNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me/sessions": {
         parameters: {
             query?: never;
@@ -4242,6 +4622,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/{user_id}/mfa/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The User identifier. */
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset another User's local MFA after institution verification
+         * @description Requires the protected system-administrator action user.mfa.reset and strong recent interactive authentication. Administrative self-reset is prohibited. The institution verifies identity outside Proctor and records a bounded attestation reference. Old local MFA material, all target Sessions and PATs, and unfinished access grants are invalidated atomically with mandatory audit and security-notice reservation. Fresh primary proof then creates a restricted Web Session; activation of a new local authenticator restores ordinary access. Existing provider identity and primary credentials remain unchanged. The request fails when local enrollment is unavailable or when it would remove the last usable administrator authentication path. A repeated explicit reset creates a new recovery generation.
+         */
+        post: operations["resetUserMFA"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}/profile-picture": {
         parameters: {
             query?: never;
@@ -4464,6 +4867,11 @@ export interface components {
             owner_type: "institution" | "academic_unit";
             /**
              * Format: int64
+             * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
+             */
+            revision: number;
+            /**
+             * Format: int64
              * @description Inclusive start time in Unix milliseconds.
              */
             start_at: number;
@@ -4498,6 +4906,11 @@ export interface components {
             institution_id: components["schemas"]["ID"];
             name: string;
             parent_id?: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
+             */
+            revision: number;
             /** Format: int64 */
             update_at: number;
         };
@@ -5137,6 +5550,8 @@ export interface components {
             old_path?: components["schemas"]["StarterWorkspacePath"];
             /** @enum {string} */
             operation: "create_file" | "create_directory" | "replace_file" | "move_entry" | "delete_entry";
+            /** @description When true, this directory deletion removes old_path and all descendants whose paths start with old_path followed by a slash. Clients apply the entire subtree removal at this one cursor. */
+            recursive?: boolean;
         };
         CandidateWorkspaceJournalResponse: {
             /** Format: int64 */
@@ -5200,8 +5615,19 @@ export interface components {
             id: components["schemas"]["ID"];
             name: string;
             programme_level_id: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
+             */
+            revision: number;
             /** Format: int64 */
             update_at: number;
+        };
+        CompleteExamRecordsRequest: {
+            /** Format: int64 */
+            acknowledged_evidence_revision: number;
+            /** Format: int64 */
+            expected_revision: number;
         };
         ConfigureExamDraftBrowserPolicyRequest: {
             browser_policy: components["schemas"]["BrowserPolicy"];
@@ -5427,6 +5853,9 @@ export interface components {
              */
             update_at?: number;
         };
+        CreateExamExportRequest: {
+            categories: ("work" | "integrity")[];
+        };
         CreateExamRequest: {
             /** @description The Academic Unit that owns the Exam. */
             academic_unit_id: components["schemas"]["ID"];
@@ -5515,6 +5944,18 @@ export interface components {
              */
             update_at?: number;
         };
+        /** @description Omit both nested IDs for an Exam hold, provide Sitting ID for a Sitting hold, or provide both for an exact Submission hold. Explicit null and empty IDs are rejected. */
+        CreateRetentionHoldRequest: {
+            exam_sitting_id?: components["schemas"]["ID"];
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            private_reason: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            reason_code: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
+            submission_id?: components["schemas"]["ID"];
+        };
         /** @description Exact effective-dated permission grant to create. */
         CreateRoleBindingRequest: {
             /**
@@ -5573,12 +6014,23 @@ export interface components {
             scope_type: "institution" | "academic_unit";
         };
         DeleteCandidateWorkspaceEntryRequest: {
+            /** @description Required for file deletion; omitted for directories. */
             expected_content_version?: components["schemas"]["WorkspaceContentVersion"];
             expected_path: components["schemas"]["StarterWorkspacePath"];
+            /**
+             * Format: int64
+             * @description Required only when recursive is true. The complete Workspace cursor observed by the client; any intervening mutation causes a conflict.
+             */
+            expected_workspace_cursor?: number;
             /** Format: int64 */
             generation: number;
             participation_id: components["schemas"]["ID"];
-        };
+            /**
+             * @description Delete this directory and every descendant atomically. Requires expected_workspace_cursor and cannot be used for a file.
+             * @default false
+             */
+            recursive: boolean;
+        } & unknown;
         DesktopAuthorizationAccountResponse: {
             display_name: string;
             id: string;
@@ -5910,6 +6362,32 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        ExamExportResponse: {
+            archive_sha256?: string;
+            /** Format: int64 */
+            archive_size_bytes?: number;
+            categories: ("work" | "integrity")[];
+            /** Format: date-time */
+            construction_deadline: string;
+            /** Format: date-time */
+            created_at: string;
+            exam_id: components["schemas"]["ID"];
+            exam_sitting_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            expires_at: string;
+            file_count: number;
+            id: components["schemas"]["ID"];
+            /** Format: int64 */
+            policy_revision: number;
+            /** Format: date-time */
+            ready_at?: string;
+            /** Format: int64 */
+            source_bytes: number;
+            /** @enum {string} */
+            state: "queued" | "ready" | "failed" | "expired";
+            submission_count: number;
+            submission_id?: components["schemas"]["ID"];
+        };
         ExamIdentityResponse: {
             academic_unit_id: components["schemas"]["ID"];
             /** Format: date-time */
@@ -6102,6 +6580,30 @@ export interface components {
             focus_loss: components["schemas"]["FocusLossPolicy"];
             /** @constant */
             schema_version: 1;
+        };
+        ExamRecordsCompletionResponse: {
+            /** Format: date-time */
+            completed_at?: string;
+            completed_by_user_id?: components["schemas"]["ID"];
+            /** Format: int64 */
+            completed_evidence_revision: number;
+            current: boolean;
+            /** Format: int64 */
+            evidence_revision: number;
+            exam_sitting_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            stale_at?: string;
+        };
+        ExamRecordsSnapshotResponse: {
+            completion: components["schemas"]["ExamRecordsCompletionResponse"];
+            /** Format: int64 */
+            pending_reviews: number;
+            /** @enum {string} */
+            sitting_state: "scheduled" | "open" | "closed" | "paused" | "closing" | "canceled";
+            /** Format: int64 */
+            submission_count: number;
         };
         ExamResourceContentReplacementMetadata: {
             /** Format: int64 */
@@ -6419,7 +6921,7 @@ export interface components {
         ExamStarterWorkspaceListResponse: {
             items: components["schemas"]["ExamStarterWorkspaceListItemResponse"][];
         };
-        /** @description Manager-safe immutable Submission header without Workspace bytes or integrity evidence. */
+        /** @description Manager-safe Submission header without Workspace bytes or integrity evidence. Retired integrity has an explicit retirement time and omits the former signal counters; retained work remains accessible. */
         ExamSubmissionManagerResponse: {
             exam_attempt_id: components["schemas"]["ID"];
             exam_id: components["schemas"]["ID"];
@@ -6428,14 +6930,19 @@ export interface components {
             exam_sitting_id: components["schemas"]["ID"];
             /**
              * Format: int64
-             * @description Final focus-loss signal sequence acknowledged at submission.
+             * @description Final focus-loss signal sequence acknowledged at submission. Present only while integrity is retained, including when zero.
              */
-            final_focus_loss_sequence: number;
+            final_focus_loss_sequence?: number;
             /**
-             * @description Whether the retained integrity sequence is complete or contains a known gap.
+             * Format: date-time
+             * @description Present only when integrity_state is retired. Retirement does not represent a settled integrity result.
+             */
+            integrity_retired_at?: string;
+            /**
+             * @description Whether integrity is complete, contains a known gap, or has been permanently retired under Institution policy.
              * @enum {string}
              */
-            integrity_state: "settled" | "gapped";
+            integrity_state: "settled" | "gapped" | "retired";
             manifest_digest: components["schemas"]["SHA256"];
             /** @description Total number of file and directory entries in the sealed manifest. */
             manifest_entry_count: number;
@@ -6454,9 +6961,9 @@ export interface components {
             submitted_at: string;
             /**
              * Format: int64
-             * @description Count of integrity items still unresolved for review.
+             * @description Count of integrity items still unresolved for review. Present only while integrity is retained, including when zero.
              */
-            unresolved_integrity_count: number;
+            unresolved_integrity_count?: number;
             /** Format: int64 */
             workspace_cursor: number;
             workspace_id: components["schemas"]["ID"];
@@ -6613,6 +7120,14 @@ export interface components {
             device_name?: string;
             invitation_claim: string;
             return_to?: string;
+        };
+        ExternalReauthenticationRequest: {
+            /** @enum {string} */
+            task: "security" | "connect-provider";
+        };
+        ExternalReauthenticationResponse: {
+            /** Format: uri */
+            redirect_url: string;
         };
         FocusLossPolicy: {
             enabled: boolean;
@@ -6982,11 +7497,22 @@ export interface components {
             secret: string;
         };
         MFAStatusResponse: {
+            /** @enum {string} */
+            authentication_method: "password" | "oidc" | "cas";
+            /** @description Original provider for an external Session; absent for password Sessions. */
+            authentication_provider_id?: string;
+            /** @enum {string} */
+            authentication_strength: "single_factor" | "multi_factor";
             enabled: boolean;
+            /** @description Whether this Session is restricted to fresh primary proof and local authenticator enrollment after an assisted reset. */
+            mfa_recovery_required: boolean;
             pending: boolean;
             /** Format: int64 */
             pending_expires_at?: number;
+            recently_authenticated: boolean;
             recovery_codes_remaining: number;
+            /** @description Whether local authenticator enrollment and verification are currently available. */
+            service_enabled: boolean;
         };
         /** @description One bounded page of safe mail delivery projections. */
         MailDeliveryListResponse: {
@@ -7264,6 +7790,10 @@ export interface components {
             /** @enum {string} */
             status: "valid" | "invalid" | "duplicate" | "pending" | "succeeded" | "no_op" | "failed" | "skipped" | "canceled";
         };
+        PasswordReauthenticationRequest: {
+            /** @description The current User's password; never log or persist this input. */
+            password: string;
+        };
         PasswordResetCompletionRequest: {
             password: string;
             token: string;
@@ -7323,6 +7853,11 @@ export interface components {
             id: components["schemas"]["ID"];
             name: string;
             programme_id: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
+             */
+            revision: number;
             /** Format: int64 */
             update_at: number;
         };
@@ -7337,6 +7872,11 @@ export interface components {
             display_name: string;
             id: components["schemas"]["ID"];
             name: string;
+            /**
+             * Format: int64
+             * @description Current aggregate revision. Supply it as expected_revision on an edit or archive to protect a client snapshot from concurrent changes.
+             */
+            revision: number;
             /** Format: int64 */
             update_at: number;
         };
@@ -7408,6 +7948,20 @@ export interface components {
             reason: string;
             suspension_id: components["schemas"]["ID"];
         };
+        /** @description Supply the same exact nested scope used to create this hold. Release never restores previously retired content. */
+        ReleaseRetentionHoldRequest: {
+            exam_sitting_id?: components["schemas"]["ID"];
+            /** Format: int64 */
+            expected_revision: number;
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            private_reason: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            reason_code: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
+            submission_id?: components["schemas"]["ID"];
+        };
         RemoveExamManagerRequest: {
             /** Format: int64 */
             expected_exam_revision: number;
@@ -7419,6 +7973,11 @@ export interface components {
         RemoveExamStarterWorkspaceEntryRequest: {
             /** Format: int64 */
             expected_draft_revision: number;
+            /**
+             * @description Remove this directory and every descendant atomically under the expected Draft revision. Omit for a file or ordinary empty-directory removal.
+             * @default false
+             */
+            recursive: boolean;
         };
         ReorderExamResourcesRequest: {
             /** Format: int64 */
@@ -7474,6 +8033,261 @@ export interface components {
             suggested_locale?: string;
             suggested_timezone?: string;
             suggested_username?: string;
+        };
+        ResetUserMFARequest: {
+            /**
+             * @description Attests that institution identity verification has been completed.
+             * @constant
+             */
+            identity_verified: true;
+            /** @description A bounded administrative reason. Do not include passwords, secrets, recovery codes or identity documents. */
+            reason: string;
+            /** @description Reference to the institution's verification record; do not include the verification evidence itself. */
+            verification_reference: string;
+        };
+        RetentionControlRequest: {
+            /** Format: int64 */
+            expected_policy_revision: number;
+            /** Format: int64 */
+            expected_revision: number;
+            /** @description Required to enable; omit when pausing. */
+            preview_id?: components["schemas"]["ID"];
+            /** @enum {string} */
+            state: "enabled" | "paused";
+        };
+        RetentionControlResponse: {
+            /** Format: int64 */
+            approved_policy_revision?: number;
+            approved_preview_id?: components["schemas"]["ID"];
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            state: "disabled" | "enabled" | "paused";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        RetentionExpiryCounts: {
+            /** Format: int64 */
+            awaiting_deadline: number;
+            /** Format: int64 */
+            eligible: number;
+            /** Format: int64 */
+            held: number;
+            /** Format: int64 */
+            purge_pending: number;
+            /** Format: int64 */
+            referenced: number;
+            /** Format: int64 */
+            source_protected: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            unconfigured: number;
+            /** Format: int64 */
+            unfinished: number;
+        };
+        RetentionHoldPageResponse: {
+            items: components["schemas"]["RetentionHoldResponse"][];
+            next_cursor?: string;
+        };
+        RetentionHoldResponse: {
+            /** Format: date-time */
+            created_at: string;
+            created_by_user_id: components["schemas"]["ID"];
+            exam_id: components["schemas"]["ID"];
+            exam_sitting_id?: components["schemas"]["ID"];
+            id: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Number of descendant Submissions whose integrity category had already retired when this hold was created.
+             */
+            integrity_retired_submission_count: number;
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            private_reason: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            reason_code: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            release_private_reason?: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            release_reason_code?: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
+            /** Format: date-time */
+            released_at?: string;
+            released_by_user_id?: components["schemas"]["ID"];
+            /** Format: int64 */
+            revision: number;
+            submission_id?: components["schemas"]["ID"];
+            /**
+             * Format: int64
+             * @description Number of descendant Submissions whose work had already retired when this hold was created. These records cannot be restored by the hold.
+             */
+            work_retired_submission_count: number;
+        };
+        RetentionNoticeResponse: {
+            /** Format: date-time */
+            cancelled_at?: string;
+            /** @enum {string} */
+            category: "work" | "integrity";
+            /** Format: date-time */
+            created_at: string;
+            delivery_error_code?: string;
+            /** @enum {string} */
+            delivery_state: "pending" | "queued" | "sending" | "accepted" | "suppressed" | "failed" | "canceled";
+            exam_id: components["schemas"]["ID"];
+            exam_sitting_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            retire_after: string;
+            retirement_id: components["schemas"]["ID"];
+            /** @enum {string} */
+            state: "grace" | "cancelled" | "retired";
+            submission_id: components["schemas"]["ID"];
+        };
+        RetentionNoticesResponse: {
+            items: components["schemas"]["RetentionNoticeResponse"][];
+            next_cursor?: string;
+        };
+        RetentionPolicyRequest: {
+            /** @description Lifetime from each completed audit or receipt event. Zero is indefinite. Unfinished work and current references protect dependent records. */
+            audit_retention_days: number;
+            /**
+             * @description Also create candidate notices when their records enter grace. Manager and operator notices are always reserved durably.
+             * @default false
+             */
+            candidate_notices: boolean;
+            /** @description Positive per-record grace required for cleanup approval. Zero is unconfigured and cannot authorize immediate deletion. Seven days is the initial recommendation. */
+            deletion_grace_days: number;
+            /**
+             * Format: int64
+             * @description The revision read by the editor. A stale revision cannot overwrite newer settings.
+             */
+            expected_revision: number;
+            /** @description Temporary archive lifetime. Creation requires an explicit valid value from one through seven days; zero or larger existing values cannot create an export. Existing archive expiry is fixed at request time. */
+            export_retention_days: number;
+            /** @description Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. Unresolved Reviews block completion. */
+            integrity_retention_days: number;
+            /** @description Work lifetime from current Sitting Records Completion. Zero is indefinite. Supporting integrity, holds and source protections can extend preservation. */
+            submission_retention_days: number;
+        };
+        RetentionPolicyResponse: {
+            /** @description Completed audit and receipt lifetime from their own event, subject to unfinished work and durable references. Zero is indefinite. */
+            audit_retention_days: number;
+            /** @description True only when a separate active cleanup approval matches this exact policy revision and a positive grace period is configured. */
+            readonly automatic_deletion_enabled: boolean;
+            /** @description Whether candidate notices accompany mandatory manager and operator notices. */
+            candidate_notices: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Per-record grace required before logical retirement. Zero is unconfigured and prevents cleanup approval. */
+            deletion_grace_days: number;
+            /** @description Temporary archive lifetime. Creation requires one through seven days; existing archive expiry is fixed at request time. */
+            export_retention_days: number;
+            /** @description Integrity evidence, Review and released-remark lifetime from current Sitting Records Completion. Zero is indefinite. */
+            integrity_retention_days: number;
+            /**
+             * Format: int64
+             * @description Current policy revision.
+             */
+            revision: number;
+            /** @description Work lifetime from current Sitting Records Completion. Zero is indefinite; integrity dependencies and preservation holds remain effective. */
+            submission_retention_days: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        RetentionPreviewCounts: {
+            /** Format: int64 */
+            awaiting_deadline: number;
+            /** Format: int64 */
+            eligible: number;
+            /** Format: int64 */
+            export_protected: number;
+            /** Format: int64 */
+            held: number;
+            /** Format: int64 */
+            incomplete: number;
+            /** Format: int64 */
+            retired: number;
+            /** Format: int64 */
+            supporting_work: number;
+            /** Format: int64 */
+            total: number;
+            /** Format: int64 */
+            unconfigured: number;
+        };
+        RetentionPreviewRequest: {
+            /** Format: int64 */
+            expected_policy_revision: number;
+        };
+        RetentionPreviewResponse: {
+            audit: components["schemas"]["RetentionExpiryCounts"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            id: components["schemas"]["ID"];
+            integrity: components["schemas"]["RetentionPreviewCounts"];
+            /** Format: int64 */
+            policy_revision: number;
+            receipts: components["schemas"]["RetentionExpiryCounts"];
+            work: components["schemas"]["RetentionPreviewCounts"];
+        };
+        RetentionRecord: {
+            /** @enum {string} */
+            blocker: "" | "retired" | "records_incomplete" | "preservation_hold" | "retention_unconfigured" | "supporting_integrity" | "export_in_progress" | "retention_period";
+            /** @enum {string} */
+            category: "work" | "integrity";
+            /** Format: date-time */
+            completed_at?: string;
+            completion_current: boolean;
+            /** Format: int64 */
+            completion_revision: number;
+            /** Format: date-time */
+            eligible_at?: string;
+            exam_id: components["schemas"]["ID"];
+            exam_sitting_id: components["schemas"]["ID"];
+            /** Format: date-time */
+            export_protected_until?: string;
+            has_integrity: boolean;
+            held: boolean;
+            /** Format: date-time */
+            retired_at?: string;
+            retirement?: components["schemas"]["RetentionRetirement"];
+            /** Format: int64 */
+            shared_published_objects: number;
+            submission_id: components["schemas"]["ID"];
+        };
+        RetentionRecordsResponse: {
+            /** Format: date-time */
+            as_of: string;
+            items: components["schemas"]["RetentionRecord"][];
+            next_cursor?: string;
+            /** Format: int64 */
+            policy_revision: number;
+        };
+        RetentionRetirement: {
+            /** Format: int64 */
+            completion_revision: number;
+            /** Format: int64 */
+            control_revision: number;
+            id: components["schemas"]["ID"];
+            /** Format: int64 */
+            policy_revision: number;
+            /** Format: int64 */
+            purge_pending: number;
+            /** Format: int64 */
+            purge_verified: number;
+            /** Format: date-time */
+            retire_after: string;
+            /** Format: date-time */
+            retired_at?: string;
+            /** Format: date-time */
+            scheduled_at: string;
+            /** @enum {string} */
+            state: "grace" | "cancelled" | "retired";
         };
         RevokeSessionRequest: {
             session_id: components["schemas"]["ID"];
@@ -7598,10 +8412,17 @@ export interface components {
             last_activity_at: number;
             /** Format: int64 */
             mfa_completed_at?: number;
+            /** @description Whether this Session is restricted to MFA reenrollment after an assisted reset. */
+            mfa_recovery_required: boolean;
+            /**
+             * Format: int64
+             * @description Most recent fresh primary proof for the original Session method, independent of initial authentication and MFA history.
+             */
+            reauthenticated_at?: number;
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "mfa_reset" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: int64 */
             revoked_at?: number;
             /** Format: int64 */
@@ -7639,10 +8460,17 @@ export interface components {
             last_activity_at: number;
             /** Format: int64 */
             mfa_completed_at?: number;
+            /** @description Ordinary access remains unavailable until a new local authenticator is activated. */
+            mfa_recovery_required: boolean;
+            /**
+             * Format: int64
+             * @description Most recent verified fresh primary proof for the original Session method; does not replace initial authentication or MFA history.
+             */
+            reauthenticated_at?: number;
             /** @description Localized presentation of revocation_reason_code. */
             revocation_reason?: string;
             /** @enum {string} */
-            revocation_reason_code?: "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
+            revocation_reason_code?: "mfa_reset" | "account_disabled" | "access_policy_changed" | "administrator_all_sessions" | "administrator_session" | "authentication_audit_failed" | "desktop_authorization_failed" | "desktop_registration_revoked" | "external_identity_unlinked" | "inactive_user" | "password_removed" | "password_reset" | "refresh_replay" | "user_all_sessions" | "user_logout" | "user_session";
             /** Format: int64 */
             revoked_at?: number;
             /** Format: int64 */
@@ -7727,6 +8555,28 @@ export interface components {
             source_class_id: components["schemas"]["ID"];
             source_period_id: components["schemas"]["ID"];
         };
+        SubmissionReviewWaiverEnvelope: {
+            waiver: components["schemas"]["SubmissionReviewWaiverResponse"] | null;
+        };
+        SubmissionReviewWaiverResponse: {
+            actor_user_id: components["schemas"]["ID"];
+            /** Format: int64 */
+            discrepancy_count: number;
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            private_reason: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            reason_code: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
+            /** Format: date-time */
+            recorded_at: string;
+            /** Format: int64 */
+            review_revision: number;
+            /** Format: int64 */
+            revision: number;
+            submission_id: components["schemas"]["ID"];
+        };
         SubmitExamAttemptRequest: {
             browser_activity: components["schemas"]["BrowserActivitySubmission"];
             /** @description The current Exam Sitting Revision displayed by the client. */
@@ -7806,6 +8656,11 @@ export interface components {
              * @description Omitted or null leaves the exclusive end unchanged.
              */
             end_at?: number | null;
+            /**
+             * Format: int64
+             * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
+             */
+            expected_revision?: number;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
             /**
@@ -7820,6 +8675,11 @@ export interface components {
             description?: string | null;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             display_name?: string | null;
+            /**
+             * Format: int64
+             * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
+             */
+            expected_revision?: number;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
             parent_id?: string | null;
@@ -7832,6 +8692,11 @@ export interface components {
             description?: string | null;
             /** @description Omitted or null leaves the value unchanged. */
             display_name?: string | null;
+            /**
+             * Format: int64
+             * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
+             */
+            expected_revision?: number;
             /** @description Omitted or null leaves the value unchanged. */
             name?: string | null;
             /** @description Omitted or null leaves the Programme Level unchanged. */
@@ -7882,21 +8747,31 @@ export interface components {
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
         };
-        /** @description Mutable Programme Level fields; omitted or null values remain unchanged. */
+        /** @description Mutable Programme Level fields; omitted or null metadata values remain unchanged; expected_revision, when present, must be a positive integer. */
         UpdateProgrammeLevelRequest: {
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             description?: string | null;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             display_name?: string | null;
+            /**
+             * Format: int64
+             * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
+             */
+            expected_revision?: number;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
         };
-        /** @description Mutable Programme fields; omitted or null values remain unchanged. */
+        /** @description Mutable Programme fields; omitted or null metadata values remain unchanged; expected_revision, when present, must be a positive integer. */
         UpdateProgrammeRequest: {
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             description?: string | null;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             display_name?: string | null;
+            /**
+             * Format: int64
+             * @description Optional positive revision from the last resource response. A stale value returns the resource conflict error without applying the edit. Omission preserves v1 compatibility; null is invalid.
+             */
+            expected_revision?: number;
             /** @description Omitted or null leaves the value unchanged. An empty string is present and subject to validation. */
             name?: string | null;
         };
@@ -7990,6 +8865,21 @@ export interface components {
             updated_at: number;
             /** @description Whether this Session may currently replace the settings source. */
             writable: boolean;
+        };
+        WaiveSubmissionReviewRequest: {
+            /** Format: int64 */
+            expected_discrepancy_count: number;
+            /** Format: int64 */
+            expected_review_revision: number;
+            /** Format: int64 */
+            expected_revision: number;
+            /** @description Private institutional rationale, without leading or trailing whitespace. Limited to 4000 UTF-8 bytes and excluded from ordinary audit. */
+            private_reason: string;
+            /**
+             * @description Closed operational audit code. Write case-specific details only in private_reason.
+             * @enum {string}
+             */
+            reason_code: "institution_request" | "integrity_review" | "records_review" | "review_not_required" | "case_closed" | "mistake" | "other";
         };
         /** @description Opaque comparison token for one acknowledged Workspace file content state. It is not an entity identifier and must be returned unchanged. */
         WorkspaceContentVersion: string;
@@ -8089,6 +8979,8 @@ export interface components {
         /** @description Academic Unit Member collection */
         AcademicUnitMemberListOK: {
             headers: {
+                /** @description Present only when a bounded page has more rows. Follow the relative URL with rel="next"; its cursor and effective/history filter identify the continuation. */
+                Link?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -8406,6 +9298,8 @@ export interface components {
         /** @description Class Member collection */
         ClassMemberListOK: {
             headers: {
+                /** @description Present only when a bounded page has more rows. Follow the relative URL with rel="next"; its cursor and effective/history filter identify the continuation. */
+                Link?: string;
                 [name: string]: unknown;
             };
             content: {
@@ -8581,6 +9475,97 @@ export interface components {
                 "application/json": components["schemas"]["ExamResponse"];
             };
         };
+        /** @description A fixed-expiry export request was accepted; poll its exact scoped resource. */
+        ExamExportAccepted: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "categories": [
+                 *         "work"
+                 *       ],
+                 *       "construction_deadline": "2026-09-02T12:00:00Z",
+                 *       "created_at": "2026-09-01T12:00:00Z",
+                 *       "exam_id": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+                 *       "exam_sitting_id": "nnnnnnnnnnnnnnnnnnnnnnnnnn",
+                 *       "expires_at": "2026-09-02T12:00:00Z",
+                 *       "file_count": 1,
+                 *       "id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+                 *       "policy_revision": 2,
+                 *       "source_bytes": 128,
+                 *       "state": "queued",
+                 *       "submission_count": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExamExportResponse"];
+            };
+        };
+        /** @description Verified temporary ZIP archive; every new download is authorized and expiry checked. No public storage URL or backend identity is exposed. */
+        ExamExportArchive: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                /** @description Attachment with a safe server-generated filename. */
+                "Content-Disposition"?: string;
+                /** @description Quoted SHA-256 of the complete ZIP. */
+                ETag?: string;
+                "X-Content-Type-Options"?: "nosniff";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/zip": string;
+            };
+        };
+        /** @description The fixed advertised archive expiry has passed; new downloads are denied. */
+        ExamExportGone: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "code": "exam.export.expired",
+                 *       "detail": "The temporary export has expired.",
+                 *       "request_id": "req_docs_export_expired",
+                 *       "status": 410,
+                 *       "title": "Export expired",
+                 *       "type": "/problems/exam-export-expired"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["ProblemDetails"];
+            };
+        };
+        /** @description Requester-only export metadata under current ordinary record authority. */
+        ExamExportOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "categories": [
+                 *         "work"
+                 *       ],
+                 *       "construction_deadline": "2026-09-02T12:00:00Z",
+                 *       "created_at": "2026-09-01T12:00:00Z",
+                 *       "exam_id": "bbbbbbbbbbbbbbbbbbbbbbbbbb",
+                 *       "exam_sitting_id": "nnnnnnnnnnnnnnnnnnnnnnnnnn",
+                 *       "expires_at": "2026-09-02T12:00:00Z",
+                 *       "file_count": 1,
+                 *       "id": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+                 *       "policy_revision": 2,
+                 *       "source_bytes": 128,
+                 *       "state": "queued",
+                 *       "submission_count": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExamExportResponse"];
+            };
+        };
         /** @description Exam identity */
         ExamIdentityOK: {
             headers: {
@@ -8699,6 +9684,51 @@ export interface components {
                 [name: string]: unknown;
             };
             content?: never;
+        };
+        /** @description The recorded completion result. Exact replay preserves its original timestamp; a separate current snapshot may have changed. */
+        ExamRecordsCompletionOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "completed_at": "2026-09-01T10:00:00Z",
+                 *       "completed_by_user_id": "bnndrfg8ejkmcpqxot1uwisza3",
+                 *       "completed_evidence_revision": 0,
+                 *       "current": true,
+                 *       "evidence_revision": 0,
+                 *       "exam_sitting_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                 *       "revision": 2
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExamRecordsCompletionResponse"];
+            };
+        };
+        /** @description Current Sitting records lifecycle and bounded eligibility counts. */
+        ExamRecordsSnapshotOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "completion": {
+                 *         "completed_evidence_revision": 0,
+                 *         "current": false,
+                 *         "evidence_revision": 0,
+                 *         "exam_sitting_id": "ybndrfg8ejkmcpqxot1uwisza3",
+                 *         "revision": 1
+                 *       },
+                 *       "pending_reviews": 2,
+                 *       "sitting_state": "closed",
+                 *       "submission_count": 20
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExamRecordsSnapshotResponse"];
+            };
         };
         /** @description Exam Draft resource created */
         ExamResourceCreated: {
@@ -9014,6 +10044,17 @@ export interface components {
                 [name: string]: unknown;
             };
             content?: never;
+        };
+        /** @description Provider redirect plus a short-lived HttpOnly browser-binding cookie. */
+        ExternalReauthenticationStarted: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                "Set-Cookie"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ExternalReauthenticationResponse"];
+            };
         };
         /** @description Access denied */
         Forbidden: {
@@ -9349,6 +10390,16 @@ export interface components {
                 "text/csv": string;
             };
         };
+        /** @description The existing Session after successful fresh proof. */
+        PasswordReauthenticationOK: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["SessionResponse"];
+            };
+        };
         /** @description Personal Access Token with one-time credential */
         PersonalAccessTokenCreated: {
             headers: {
@@ -9478,6 +10529,202 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["PublicAccessDiscoveryResponse"];
+            };
+        };
+        /** @description Current revision-bound cleanup control. */
+        RetentionControlOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "revision": 1,
+                 *       "state": "disabled",
+                 *       "updated_at": "2026-09-01T12:00:00Z"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionControlResponse"];
+            };
+        };
+        /** @description Manual preservation hold; creation-time counts disclose already retired content. */
+        RetentionHoldCreated: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "created_at": "2026-09-01T10:00:00Z",
+                 *       "created_by_user_id": "dnndrfg8ejkmcpqxot1uwisza3",
+                 *       "exam_id": "bnndrfg8ejkmcpqxot1uwisza3",
+                 *       "id": "ybndrfg8ejkmcpqxot1uwisza3",
+                 *       "integrity_retired_submission_count": 0,
+                 *       "private_reason": "Preserve records until the institution concludes its review.",
+                 *       "reason_code": "institution_request",
+                 *       "revision": 1,
+                 *       "work_retired_submission_count": 0
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionHoldResponse"];
+            };
+        };
+        /** @description Released preservation hold with immutable creation-time coverage. */
+        RetentionHoldOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "created_at": "2026-09-01T10:00:00Z",
+                 *       "created_by_user_id": "dnndrfg8ejkmcpqxot1uwisza3",
+                 *       "exam_id": "bnndrfg8ejkmcpqxot1uwisza3",
+                 *       "id": "ybndrfg8ejkmcpqxot1uwisza3",
+                 *       "integrity_retired_submission_count": 0,
+                 *       "private_reason": "Preserve records until the institution concludes its review.",
+                 *       "reason_code": "institution_request",
+                 *       "revision": 1,
+                 *       "work_retired_submission_count": 0
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionHoldResponse"];
+            };
+        };
+        /** @description Bounded hold page, including ancestor holds that cover the requested descendant. */
+        RetentionHoldPageOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionHoldPageResponse"];
+            };
+        };
+        /** @description The current User’s notice page. */
+        RetentionNoticesOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "items": []
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionNoticesResponse"];
+            };
+        };
+        /** @description Revisioned Institution retention configuration and current cleanup-approval projection. */
+        RetentionPolicyOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "audit_retention_days": 0,
+                 *       "automatic_deletion_enabled": false,
+                 *       "candidate_notices": false,
+                 *       "created_at": "2026-08-01T12:00:00Z",
+                 *       "deletion_grace_days": 0,
+                 *       "export_retention_days": 0,
+                 *       "integrity_retention_days": 0,
+                 *       "revision": 1,
+                 *       "submission_retention_days": 0,
+                 *       "updated_at": "2026-08-01T12:00:00Z"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionPolicyResponse"];
+            };
+        };
+        /** @description Content-free eligibility assessment, valid for one hour. */
+        RetentionPreviewOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "audit": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "held": 0,
+                 *         "purge_pending": 0,
+                 *         "referenced": 0,
+                 *         "source_protected": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0,
+                 *         "unfinished": 0
+                 *       },
+                 *       "created_at": "2026-09-01T12:00:00Z",
+                 *       "expires_at": "2026-09-01T13:00:00Z",
+                 *       "id": "4cbxoynrnbnzpkfcghhsy3qxuy",
+                 *       "integrity": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "export_protected": 0,
+                 *         "held": 0,
+                 *         "incomplete": 0,
+                 *         "retired": 0,
+                 *         "supporting_work": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0
+                 *       },
+                 *       "policy_revision": 1,
+                 *       "receipts": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "held": 0,
+                 *         "purge_pending": 0,
+                 *         "referenced": 0,
+                 *         "source_protected": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0,
+                 *         "unfinished": 0
+                 *       },
+                 *       "work": {
+                 *         "awaiting_deadline": 0,
+                 *         "eligible": 0,
+                 *         "export_protected": 0,
+                 *         "held": 0,
+                 *         "incomplete": 0,
+                 *         "retired": 0,
+                 *         "supporting_work": 0,
+                 *         "total": 0,
+                 *         "unconfigured": 0
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionPreviewResponse"];
+            };
+        };
+        /** @description Bounded eligibility page; each Submission contributes two category records. */
+        RetentionRecordsOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "as_of": "2026-09-01T12:00:00Z",
+                 *       "items": [],
+                 *       "policy_revision": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionRecordsResponse"];
             };
         };
         /** @description Role Binding created */
@@ -9656,6 +10903,21 @@ export interface components {
                 "text/csv": string;
             };
         };
+        /** @description Private decision for the current inventory, or null when no decision exists. */
+        SubmissionReviewWaiverOK: {
+            headers: {
+                "Cache-Control": components["headers"]["PrivateNoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "waiver": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["SubmissionReviewWaiverEnvelope"];
+            };
+        };
         /** @description Request-specific availability and Desktop compatibility result */
         SystemPingOK: {
             headers: {
@@ -9766,6 +11028,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+        AcademicExpectedRevision: number;
         /** @description The Academic Period identifier. */
         AcademicPeriodID: components["schemas"]["ID"];
         /** @description The Academic Unit identifier. */
@@ -9796,6 +11060,8 @@ export interface components {
         DeviceName: string;
         /** @description The Exam Attempt identifier. */
         ExamAttemptID: components["schemas"]["ID"];
+        /** @description The opaque export request identity, within its exact Sitting or Submission route scope. */
+        ExamExportID: components["schemas"]["ID"];
         /** @description The Exam identifier. */
         ExamID: components["schemas"]["ID"];
         /** @description The Exam resource identifier. */
@@ -9824,6 +11090,8 @@ export interface components {
         ProviderID: string;
         /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
         RequiredIdempotencyKey: string;
+        /** @description The preservation hold identifier. */
+        RetentionHoldID: components["schemas"]["ID"];
         /** @description Validated relative client destination to restore after the provider callback; unsafe or external targets are rejected. */
         ReturnTo: string;
         /** @description The scoped Role Binding identifier. */
@@ -10001,6 +11269,20 @@ export interface components {
                 "application/json": components["schemas"]["CancelExamSittingRequest"];
             };
         };
+        /** @description Exact current control and policy revisions plus the intended state. Enabling also requires an unexpired preview for that policy revision. */
+        ChangeRetentionControl: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_policy_revision": 1,
+                 *       "expected_revision": 1,
+                 *       "preview_id": "4cbxoynrnbnzpkfcghhsy3qxuy",
+                 *       "state": "enabled"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionControlRequest"];
+            };
+        };
         /** @description The complete replacement email address; successful change always requires later verification. */
         ChangeUserEmail: {
             content: {
@@ -10058,6 +11340,18 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["EmailVerificationCompletionRequest"];
+            };
+        };
+        /** @description Current completion revision and acknowledged evidence revision for the Closed Sitting whose Reviews are finalized or explicitly waived. */
+        CompleteExamRecords: {
+            content: {
+                /**
+                 * @example {
+                 *       "acknowledged_evidence_revision": 0,
+                 *       "expected_revision": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["CompleteExamRecordsRequest"];
             };
         };
         /** @description Supplies the one-time reset token and the replacement password, both of which must be treated as secrets by clients and logs. */
@@ -10210,6 +11504,20 @@ export interface components {
                 "application/json": components["schemas"]["CreateExamRequest"];
             };
         };
+        /** @description Explicit whole-request category selection; omitted, empty, duplicate or unknown categories are rejected. */
+        CreateExamExport: {
+            content: {
+                /**
+                 * @example {
+                 *       "categories": [
+                 *         "work",
+                 *         "integrity"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateExamExportRequest"];
+            };
+        };
         /** @description Supplies the expected Draft revision and canonical path for the new empty directory. */
         CreateExamStarterWorkspaceDirectory: {
             content: {
@@ -10262,6 +11570,29 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["CreateProgrammeLevelRequest"];
+            };
+        };
+        /** @description Optional Sitting or Submission scope and a bounded private reason. Omitting both scope identifiers preserves the entire Exam, including later descendants. */
+        CreateRetentionHold: {
+            content: {
+                /**
+                 * @example {
+                 *       "private_reason": "Preserve records until the institution concludes its review.",
+                 *       "reason_code": "institution_request"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateRetentionHoldRequest"];
+            };
+        };
+        /** @description Current policy revision to assess. The resulting preview lasts one hour and does not enable cleanup. */
+        CreateRetentionPreview: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_policy_revision": 1
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionPreviewRequest"];
             };
         };
         /** @description Canonical custom Role presentation and complete initial permission set. */
@@ -10484,6 +11815,17 @@ export interface components {
                 "application/json": components["schemas"]["ExtendExamSittingRequest"];
             };
         };
+        /** @description The bounded hosted task to return to after fresh authentication with the current Session's original provider. The sensitive action remains a separate explicit request. */
+        ExternalReauthentication: {
+            content: {
+                /**
+                 * @example {
+                 *       "task": "security"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExternalReauthenticationRequest"];
+            };
+        };
         /** @description The local login identifier, password, client type, optional device presentation, and optional MFA proof. Credentials are sensitive and must never be logged. */
         Login: {
             content: {
@@ -10545,6 +11887,17 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["InvitationMutationRequest"];
+            };
+        };
+        /** @description The current User's password, used to refresh primary proof for the existing password-authenticated Session before returning to the pending sensitive task. */
+        PasswordReauthentication: {
+            content: {
+                /**
+                 * @example {
+                 *       "password": "<redacted>"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PasswordReauthenticationRequest"];
             };
         };
         /** @description Exact current Sitting revision and private rationale for pausing delivery. */
@@ -10616,6 +11969,19 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["ReallowExamAttemptRequest"];
+            };
+        };
+        /** @description Current hold revision and the reason authorizing release. Releasing a hold starts no immediate deletion and cannot restore already retired records. */
+        ReleaseRetentionHold: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_revision": 1,
+                 *       "private_reason": "The institution has concluded its review and approved release.",
+                 *       "reason_code": "case_closed"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ReleaseRetentionHoldRequest"];
             };
         };
         /** @description Supplies the last observed Exam aggregate revision required to revoke the path User's manager relationship. */
@@ -10719,6 +12085,22 @@ export interface components {
                 "application/json": components["schemas"]["ReplaceInvitationRequest"];
             };
         };
+        /** @description Complete configuration replacement. Every period is required, including zero values. Automatic deletion cannot be enabled. */
+        ReplaceRetentionPolicy: {
+            content: {
+                /**
+                 * @example {
+                 *       "audit_retention_days": 0,
+                 *       "deletion_grace_days": 0,
+                 *       "expected_revision": 1,
+                 *       "export_retention_days": 0,
+                 *       "integrity_retention_days": 0,
+                 *       "submission_retention_days": 0
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionPolicyRequest"];
+            };
+        };
         /** @description Complete settings JSON source, its supported format version, and the exact current revision to replace. */
         ReplaceUserSettings: {
             content: {
@@ -10741,6 +12123,19 @@ export interface components {
                  *     }
                  */
                 "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        /** @description The administrator's identity-verification attestation, bounded reset reason, and reference to the Institution's verification record for the target User. */
+        ResetUserMFA: {
+            content: {
+                /**
+                 * @example {
+                 *       "identity_verified": true,
+                 *       "reason": "Authenticator is no longer available.",
+                 *       "verification_reference": "case-2026-0042"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResetUserMFARequest"];
             };
         };
         /** @description Exact current Sitting revision and private rationale for resuming delivery. */
@@ -11013,6 +12408,21 @@ export interface components {
                 "application/json": components["schemas"]["UpdateUserProfileRequest"];
             };
         };
+        /** @description Expected waiver and Review revisions, current discrepancy count, and the private reason for waiving a Review of this exact inventory. */
+        WaiveSubmissionReview: {
+            content: {
+                /**
+                 * @example {
+                 *       "expected_discrepancy_count": 0,
+                 *       "expected_review_revision": 0,
+                 *       "expected_revision": 0,
+                 *       "private_reason": "Reviewed the current inventory; no finalized Review is needed.",
+                 *       "reason_code": "review_not_required"
+                 *     }
+                 */
+                "application/json": components["schemas"]["WaiveSubmissionReviewRequest"];
+            };
+        };
     };
     headers: {
         /** @description Server-issued nonce required by every accepted Desktop DPoP proof. */
@@ -11117,7 +12527,10 @@ export interface operations {
     };
     archiveAcademicPeriod: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
+            };
             header?: never;
             path: {
                 /** @description The Academic Period identifier. */
@@ -11247,7 +12660,10 @@ export interface operations {
     };
     archiveAcademicUnit: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
+            };
             header?: never;
             path: {
                 /** @description The Academic Unit identifier. */
@@ -11447,9 +12863,13 @@ export interface operations {
     listAcademicUnitMembers: {
         parameters: {
             query?: {
-                /** @description Unix time in milliseconds at which membership must be effective; ignored when history is true. */
+                /** @description Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available. */
+                limit?: number;
+                /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
+                cursor?: string;
+                /** @description Unix time in milliseconds at which membership must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
                 active_at?: number;
-                /** @description When true, return membership history and ignore active_at. */
+                /** @description When true, return membership history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
             };
             header?: never;
@@ -12069,6 +13489,46 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    beginExternalReauthentication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ExternalReauthentication"];
+        responses: {
+            200: components["responses"]["ExternalReauthenticationStarted"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    reauthenticatePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["PasswordReauthentication"];
+        responses: {
+            200: components["responses"]["PasswordReauthenticationOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     refreshSession: {
         parameters: {
             query?: never;
@@ -12275,7 +13735,10 @@ export interface operations {
     };
     archiveClass: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
+            };
             header?: never;
             path: {
                 /** @description The Class identifier. */
@@ -12364,9 +13827,13 @@ export interface operations {
     listClassMembers: {
         parameters: {
             query?: {
-                /** @description Unix time in milliseconds at which enrollment must be effective; ignored when history is true. */
+                /** @description Opt into bounded paging while preserving the bare-array response. Defaults to 50 when cursor is supplied; pages contain at most 200 rows. Without limit or cursor the legacy full-list response remains available. */
+                limit?: number;
+                /** @description Opaque continuation from the previous Link header. It binds the resource and effective/history filter. Every page requires fresh authorization; do not edit or reuse it for another resource or filter. */
+                cursor?: string;
+                /** @description Unix time in milliseconds at which enrollment must be effective; ignored when history is true in legacy full-list mode. For paging, omit it with history=true and inherit the first page instant when following a cursor. */
                 active_at?: number;
-                /** @description When true, return enrollment history and ignore active_at. */
+                /** @description When true, return enrollment history. Legacy full-list mode ignores active_at; paged requests must omit active_at with history=true. */
                 history?: boolean;
             };
             header?: never;
@@ -13555,6 +15022,90 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    listRetentionHolds: {
+        parameters: {
+            query?: {
+                /** @description Optional exact Sitting filter; includes covering Exam holds. */
+                exam_sitting_id?: components["schemas"]["ID"];
+                /** @description Optional exact Submission filter, requiring exam_sitting_id; includes covering ancestor holds. */
+                submission_id?: components["schemas"]["ID"];
+                /** @description Only true or false is accepted. */
+                include_released?: boolean;
+                /** @description Maximum number of preservation holds to return in this page. */
+                limit?: number;
+                /** @description Opaque continuation bound to exact scope and include_released. Do not interpret or change it. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionHoldPageOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createRetentionHold: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["CreateRetentionHold"];
+        responses: {
+            201: components["responses"]["RetentionHoldCreated"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    releaseRetentionHold: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The preservation hold identifier. */
+                retention_hold_id: components["parameters"]["RetentionHoldID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ReleaseRetentionHold"];
+        responses: {
+            200: components["responses"]["RetentionHoldOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listExamRevisions: {
         parameters: {
             query?: {
@@ -14114,6 +15665,86 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    createSittingExport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["CreateExamExport"];
+        responses: {
+            202: components["responses"]["ExamExportAccepted"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSittingExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The opaque export request identity, within its exact Sitting or Submission route scope. */
+                exam_export_id: components["parameters"]["ExamExportID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamExportOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    downloadSittingExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The opaque export request identity, within its exact Sitting or Submission route scope. */
+                exam_export_id: components["parameters"]["ExamExportID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamExportArchive"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["ExamExportGone"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     extendExamSitting: {
         parameters: {
             query?: never;
@@ -14197,6 +15828,56 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    getExamSittingRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamRecordsSnapshotOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    completeExamSittingRecords: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["CompleteExamRecords"];
+        responses: {
+            200: components["responses"]["ExamRecordsCompletionOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     resumeExamSitting: {
         parameters: {
             query?: never;
@@ -14215,6 +15896,146 @@ export interface operations {
         requestBody: components["requestBodies"]["ResumeExamSitting"];
         responses: {
             200: components["responses"]["ExamSittingOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createSubmissionExport: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["CreateExamExport"];
+        responses: {
+            202: components["responses"]["ExamExportAccepted"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSubmissionExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+                /** @description The opaque export request identity, within its exact Sitting or Submission route scope. */
+                exam_export_id: components["parameters"]["ExamExportID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamExportOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    downloadSubmissionExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+                /** @description The opaque export request identity, within its exact Sitting or Submission route scope. */
+                exam_export_id: components["parameters"]["ExamExportID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ExamExportArchive"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            410: components["responses"]["ExamExportGone"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSubmissionReviewWaiver: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["SubmissionReviewWaiverOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    waiveSubmissionReview: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path: {
+                /** @description The Exam identifier. */
+                exam_id: components["parameters"]["ExamID"];
+                /** @description The Exam Sitting identifier. */
+                exam_sitting_id: components["parameters"]["ExamSittingID"];
+                /** @description The sealed Submission identifier. */
+                submission_id: components["parameters"]["SubmissionID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WaiveSubmissionReview"];
+        responses: {
+            200: components["responses"]["SubmissionReviewWaiverOK"];
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
@@ -15040,7 +16861,10 @@ export interface operations {
     };
     archiveProgrammeLevel: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
+            };
             header?: never;
             path: {
                 /** @description The Programme Level identifier. */
@@ -15148,7 +16972,10 @@ export interface operations {
     };
     archiveProgramme: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Optional revision from the last resource response. A stale value returns the resource conflict error without archiving; omission preserves v1 compatibility. */
+                expected_revision?: components["parameters"]["AcademicExpectedRevision"];
+            };
             header?: never;
             path: {
                 /** @description The Programme identifier. */
@@ -15234,6 +17061,150 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionPolicyOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    replaceRetentionPolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ReplaceRetentionPolicy"];
+        responses: {
+            200: components["responses"]["RetentionPolicyOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getRetentionControl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionControlOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    changeRetentionControl: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ChangeRetentionControl"];
+        responses: {
+            200: components["responses"]["RetentionControlOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createRetentionPreview: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required opaque client key. Identical semantic commands replay the committed outcome for at least 24 hours; reuse with different input is a conflict. */
+                "Idempotency-Key": components["parameters"]["RequiredIdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["CreateRetentionPreview"];
+        responses: {
+            201: components["responses"]["RetentionPreviewOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getRetentionPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier returned by Create Retention Preview; fetching does not refresh its expiry. */
+                retention_preview_id: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionPreviewOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listRetentionRecords: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of Submissions to assess; each contributes one work and one integrity record. */
+                limit?: number;
+                /** @description Opaque next_cursor from the preceding retention-record page; pass it unchanged. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionRecordsOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -15902,6 +17873,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             501: components["responses"]["NotImplemented"];
             503: components["responses"]["ServiceUnavailable"];
@@ -15922,6 +17894,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             501: components["responses"]["NotImplemented"];
             503: components["responses"]["ServiceUnavailable"];
@@ -15984,6 +17957,28 @@ export interface operations {
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             501: components["responses"]["NotImplemented"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listRetentionNotices: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of the current User's retention notices to return in this page. */
+                limit?: number;
+                /** @description Opaque cursor from this endpoint. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RetentionNoticesOK"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };
@@ -16345,6 +18340,29 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    resetUserMFA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The User identifier. */
+                user_id: components["parameters"]["UserID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["ResetUserMFA"];
+        responses: {
+            204: components["responses"]["SensitiveNoContent"];
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            501: components["responses"]["NotImplemented"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };

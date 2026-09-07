@@ -14,9 +14,93 @@ import (
 	"testing"
 	"time"
 
+	jobengine "github.com/sudosylabs/proctor/server/app/job"
+	appjobs "github.com/sudosylabs/proctor/server/app/jobs"
 	"github.com/sudosylabs/proctor/server/model"
 	"github.com/sudosylabs/proctor/server/store"
 )
+
+func TestJobHistoryCleanupContinuesAcrossNodesPastOneDailyBatch(t *testing.T) {
+	ss := openTestStore(t)
+	resetTestStore(t, ss)
+	ctx := context.Background()
+	for range 237 {
+		insertTerminalJobHistoryFixture(t, ss, model.JobTypeProfilePictureGenerateDefault, model.JobStatusSucceeded, 31*24*time.Hour, true)
+	}
+	catalog := appjobs.NewCatalog(appjobs.CatalogDependencies{JobStore: ss.Job(), Now: time.Now})
+	var descriptor jobengine.Descriptor
+	var proposer jobengine.OccurrenceProposer
+	for _, value := range catalog.Descriptors {
+		if value.Type == model.JobTypeCleanup {
+			descriptor = value
+		}
+	}
+	for _, value := range catalog.Recurrences {
+		if value.Name == "job-history-cleanup" {
+			proposer = value.Proposer
+		}
+	}
+	if descriptor.Handler == nil || proposer == nil {
+		t.Fatal("history cleanup catalog is incomplete")
+	}
+	occurrence := model.NowUTC()
+	for range 2 {
+		if err := proposer.Propose(ctx, occurrence); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, nodeID := range []string{"cleanup-node-a", "cleanup-node-b"} {
+		engine, err := jobengine.New(jobengine.Config{Store: ss.Job(), Descriptors: []jobengine.Descriptor{descriptor}, NodeID: nodeID,
+			Diagnostics: historyCleanupDiagnostics{t: t}, Policy: jobengine.Policy{PollInterval: 5 * time.Millisecond, ShutdownTimeout: time.Second}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = engine.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := engine.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var remaining, completed int
+		if err := ss.GetMaster().Get(ctx, &remaining, `SELECT COUNT(*) FROM jobs WHERE type=?`, string(model.JobTypeProfilePictureGenerateDefault)); err != nil {
+			t.Fatal(err)
+		}
+		if err := ss.GetMaster().Get(ctx, &completed, `SELECT COUNT(*) FROM jobs WHERE type=? AND status='succeeded' AND work_reserved=100`, string(model.JobTypeCleanup)); err != nil {
+			t.Fatal(err)
+		}
+		if remaining == 0 && completed == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cleanup did not converge: retained Jobs=%d succeeded bounded passes=%d", remaining, completed)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	var attempts, occurrences int
+	if err := ss.GetMaster().Get(ctx, &attempts, `SELECT COUNT(*) FROM job_attempts a JOIN jobs j ON j.id=a.job_id WHERE j.type=?`, string(model.JobTypeProfilePictureGenerateDefault)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ss.GetMaster().Get(ctx, &occurrences, `SELECT COUNT(*) FROM job_permanent_occurrences WHERE type=?`, string(model.JobTypeCleanup)); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || occurrences != 3 {
+		t.Fatalf("cleanup left attempts or forked occurrences: attempts=%d occurrences=%d", attempts, occurrences)
+	}
+}
+
+type historyCleanupDiagnostics struct{ t *testing.T }
+
+func (d historyCleanupDiagnostics) ErrorContext(ctx context.Context, message string, err error) {
+	if ctx.Err() != nil {
+		return
+	}
+	d.t.Errorf("%s: %v", message, err)
+}
 
 func TestJobHistoryCleanupHonorsStateRetentionAndSelfPreservation(t *testing.T) {
 	ss := openTestStore(t)

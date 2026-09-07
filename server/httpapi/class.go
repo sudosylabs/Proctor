@@ -15,6 +15,7 @@ import (
 )
 
 type classResponse struct {
+	Revision         int64  `json:"revision"`
 	ID               string `json:"id"`
 	CreateAt         int64  `json:"create_at"`
 	UpdateAt         int64  `json:"update_at"`
@@ -37,6 +38,7 @@ type createClassRequest struct {
 	Description      string `json:"description"`
 }
 type updateClassRequest struct {
+	ExpectedRevision Optional[int64]  `json:"expected_revision"`
 	ProgrammeLevelID Optional[string] `json:"programme_level_id"`
 	AcademicPeriodID Optional[string] `json:"academic_period_id"`
 	Name             Optional[string] `json:"name"`
@@ -213,10 +215,13 @@ func (module classResourceModule) patch(request operationRequest) (operationResu
 	if err := request.decodeJSON(&body, "patchClass"); err != nil {
 		return operationResult{}, err
 	}
+	if err := validateAcademicRevision(body.ExpectedRevision); err != nil {
+		return operationResult{}, err
+	}
 	class, err := module.classes.UpdateClass(
 		request.context,
 		request.invocation(),
-		application.UpdateClassCommand{
+		application.UpdateClassCommand{ExpectedRevision: body.ExpectedRevision.ValuePointer(),
 			ID:               id,
 			ProgrammeLevelID: body.ProgrammeLevelID.ValuePointer(),
 			AcademicPeriodID: body.AcademicPeriodID.ValuePointer(),
@@ -236,10 +241,14 @@ func (module classResourceModule) archive(request operationRequest) (operationRe
 	if err != nil {
 		return operationResult{}, err
 	}
+	expectedRevision, err := request.academicRevision()
+	if err != nil {
+		return operationResult{}, err
+	}
 	if err := module.classes.ArchiveClass(
 		request.context,
 		request.invocation(),
-		application.ArchiveClassCommand{ID: id},
+		application.ArchiveClassCommand{ExpectedRevision: expectedRevision, ID: id},
 	); err != nil {
 		return operationResult{}, err
 	}
@@ -251,7 +260,7 @@ func classResponseFromModel(class *model.Class) classResponse {
 		return classResponse{}
 	}
 	return classResponse{
-		ID:               class.ID.String(),
+		Revision: class.Revision, ID: class.ID.String(),
 		CreateAt:         model.MillisFromTime(class.CreatedAt),
 		UpdateAt:         model.MillisFromTime(class.UpdatedAt),
 		DeleteAt:         class.ArchivedAt.Millis(),

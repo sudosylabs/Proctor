@@ -107,7 +107,7 @@ func validateResourceCatalog(apiPrefix string, resources []resource) error {
 
 func idempotencyPrincipalAuth(requirement AuthRequirement) bool {
 	switch requirement {
-	case AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired, AuthRecentSessionRequired,
+	case AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired, AuthPrincipalRequired, AuthSessionRequired, AuthStrongSessionRequired, AuthRecentSessionRequired,
 		AuthStrongRecentSessionRequired:
 		return true
 	default:
@@ -147,7 +147,7 @@ func countTrue(values ...bool) int {
 
 func validAuthRequirement(requirement AuthRequirement) bool {
 	switch requirement {
-	case AuthPublic,
+	case AuthPublic, AuthMFARecoverySessionRequired, AuthRecentMFARecoverySessionRequired,
 		AuthPrincipalRequired,
 		AuthSessionRequired,
 		AuthStrongSessionRequired,

@@ -53,6 +53,8 @@ describe("hosted route descriptors", () => {
       "/account/reset-password": "webapp.reset_password.document_title",
       "/account/verify-email": "webapp.verify_email.document_title",
       "/account/connect-provider": "webapp.connect_provider.document_title",
+      "/account/security": "webapp.security.document_title",
+      "/account/reauthenticate": "webapp.reauthenticate.document_title",
       "/authorization/complete":
         "webapp.authorization_complete.document_title",
     });
@@ -70,12 +72,26 @@ describe("hosted route descriptors", () => {
 });
 
 describe("hosted route bootstrap", () => {
+  it("limits reauthentication to exact tasks and removes arbitrary return targets", () => {
+    expect(bootstrap("/account/reauthenticate?task=connect-provider&return_to=https://elsewhere.example", "#external_login=failed")).toEqual({
+      replacements: ["https://proctor.example/account/reauthenticate?task=connect-provider"],
+      value: { route: "/account/reauthenticate", task: "connect-provider", notice: "external_login_failed" },
+    });
+    for (const query of ["", "?task=unknown", "?task=security&task=connect-provider", "?return_to=//elsewhere.example"]) {
+      expect(bootstrap(`/account/reauthenticate${query}`, "#token=secret")).toEqual({
+        replacements: ["https://proctor.example/account/reauthenticate?task=security"],
+        value: { route: "/account/reauthenticate", task: "security" },
+      });
+    }
+  });
+
   it("sanitizes unexpected fragments on every credential-free route", () => {
     for (const route of [
       "/setup",
       "/register",
       "/account/forgot-password",
       "/account/connect-provider",
+      "/account/security",
       "/authorization/complete",
     ] as const) {
       const result = bootstrap(route, "#unexpected=secret");

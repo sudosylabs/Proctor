@@ -132,5 +132,8 @@ type Environment interface {
 type HostDirectory interface {
 	Catalog(context.Context) ([]HostStatus, error)
 	Ensure(context.Context, string, Spec) (Environment, error)
+	// Existing returns the original environment handle without creating a guest
+	// or reconnecting it. Losing that handle requires a fresh grant/projection.
+	Existing(context.Context, string, Spec) (Environment, error)
 	Revoke(context.Context, string, string) error
 }

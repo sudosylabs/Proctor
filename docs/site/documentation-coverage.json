@@ -9,6 +9,7 @@
     {"tag": "Invitations and onboarding", "page": "docs/api/recipes/invite-and-link-users.mdx"},
     {"tag": "Roles and access", "page": "docs/api/recipes/roles-and-scopes.mdx"},
     {"tag": "Access policy", "page": "docs/api/recipes/access-policy.mdx"},
+    {"tag": "Data retention", "page": "docs/api/recipes/retention-policy.mdx"},
     {"tag": "Examinations", "page": "docs/api/recipes/author-and-publish-exam.mdx"},
     {"tag": "Sittings", "page": "docs/api/recipes/manage-sitting.mdx"},
     {"tag": "Attempts and workspaces", "page": "docs/api/recipes/candidate-attempt.mdx"},
@@ -19,6 +20,43 @@
     {"tag": "Realtime", "page": "docs/api/guides/realtime.mdx"}
   ],
   "workflows": [
+    {
+      "id": "institution-retention",
+      "phase": 3,
+      "state": "documented",
+      "page": "docs/api/recipes/retention-policy.mdx",
+      "operations": [
+        "getRetentionPolicy",
+        "replaceRetentionPolicy",
+        "getExamSittingRecords",
+        "completeExamSittingRecords",
+        "getSubmissionReviewWaiver",
+        "waiveSubmissionReview",
+        "listRetentionHolds",
+        "createRetentionHold",
+        "releaseRetentionHold",
+        "getRetentionControl",
+        "changeRetentionControl",
+        "createRetentionPreview",
+        "getRetentionPreview",
+        "listRetentionRecords",
+        "listRetentionNotices"
+      ]
+    },
+    {
+      "id": "examination-exports",
+      "phase": 6,
+      "state": "documented",
+      "page": "docs/api/recipes/exam-exports.mdx",
+      "operations": [
+        "createSittingExport",
+        "getSittingExport",
+        "downloadSittingExport",
+        "createSubmissionExport",
+        "getSubmissionExport",
+        "downloadSubmissionExport"
+      ]
+    },
     {
       "id": "web-account-entry-and-recovery",
       "phase": 2,
@@ -38,8 +76,9 @@
       "state": "documented",
       "page": "docs/api/recipes/account-security.mdx",
       "operations": [
-        "setupMFA",
-        "activateMFA", "challengeMFA", "disableMFA",
+        "getMFAStatus", "setupMFA",
+        "activateMFA", "challengeMFA", "regenerateMFARecoveryCodes", "disableMFA",
+        "reauthenticatePassword", "beginExternalReauthentication", "resetUserMFA",
         "listAuthenticationMethods", "enrollPassword", "removePassword",
         "beginProviderConnection", "unlinkExternalIdentity",
         "listCurrentUserSessions", "revokeCurrentUserSession",

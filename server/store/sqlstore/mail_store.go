@@ -292,6 +292,15 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 			}
 			sittingFence = fence
 		}
+		retentionMail := templateKey == model.MailTemplateExamRetentionScheduled
+		retentionRelevant := true
+		if retentionMail {
+			var err error
+			retentionRelevant, err = lockRetentionNoticeMail(ctx, tx, id)
+			if err != nil {
+				return nil, err
+			}
+		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
 		if err != nil {
 			return nil, err
@@ -306,6 +315,20 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 		}
 		if current.Revision != expectedRevision {
 			return nil, store.NewErrConflict("mail_delivery", "stale_revision", nil)
+		}
+		if retentionMail && !retentionRelevant {
+			transitionAt := databaseNow
+			if transitionAt.Before(current.UpdatedAt) {
+				transitionAt = current.UpdatedAt
+			}
+			updated, err := current.Suppress(model.MailDeliveryObsoleteCode, transitionAt)
+			if err != nil {
+				return nil, err
+			}
+			if err = updateMailDelivery(ctx, tx, current, updated); err != nil {
+				return nil, err
+			}
+			return updated, nil
 		}
 		if credential {
 			relevant, relevanceErr := activeRecoveryTokenMail(ctx, tx, current, purpose, databaseNow)
@@ -371,7 +394,7 @@ func (s SQLMailStore) StartDelivery(ctx context.Context, id model.MailDeliveryID
 			}
 		}
 		startAt := at
-		if credential || invitationCredential || sittingFence != nil {
+		if credential || invitationCredential || sittingFence != nil || retentionMail {
 			startAt = databaseNow
 			if startAt.Before(current.UpdatedAt) {
 				startAt = current.UpdatedAt
@@ -846,6 +869,11 @@ func updateMailDelivery(ctx context.Context, tx *sqlxTxWrapper, current, updated
 	}
 	if affected != 1 {
 		return store.NewErrConflict("mail_delivery", "stale_revision", nil)
+	}
+	if updated.TemplateKey == model.MailTemplateExamRetentionScheduled {
+		if _, err = tx.Exec(ctx, `UPDATE retention_notices SET delivery_state=?,delivery_error_code=? WHERE mail_delivery_id=?`, string(updated.State), updated.PublicFailureCode, updated.ID.String()); err != nil {
+			return err
+		}
 	}
 	if currentPayloadKeyID != payloadKeyID {
 		if currentPayloadKeyID == "" || payloadKeyID != "" {

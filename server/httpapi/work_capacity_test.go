@@ -47,6 +47,7 @@ func TestLoginCapacityRefusalIsRetryableAndDoesNotIssueCredentials(t *testing.T)
 func TestOnlyExpensiveWorkRoutesDeclareCapacityRefusal(t *testing.T) {
 	expected := map[string]bool{
 		"POST /api/v1/auth/login":                                                            true,
+		"POST /api/v1/auth/reauthenticate/password":                                          true,
 		"POST /api/v1/auth/register":                                                         true,
 		"POST /api/v1/auth/password-reset/complete":                                          true,
 		"POST /api/v1/bootstrap":                                                             true,

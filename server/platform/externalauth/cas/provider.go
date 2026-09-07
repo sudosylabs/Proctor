@@ -107,6 +107,9 @@ func (p *Provider) Begin(
 	loginURL := *p.loginURL
 	query := loginURL.Query()
 	query.Set("service", serviceURL)
+	if request.FreshAuthentication {
+		query.Set("renew", "true")
+	}
 	loginURL.RawQuery = query.Encode()
 	return &externalauth.BeginResponse{RedirectURL: loginURL.String()}, nil
 }
@@ -144,6 +147,9 @@ func (p *Provider) Complete(
 	query := validationURL.Query()
 	query.Set("service", serviceURL)
 	query.Set("ticket", ticket)
+	if !request.AuthenticationStartedAt.IsZero() {
+		query.Set("renew", "true")
+	}
 	validationURL.RawQuery = query.Encode()
 
 	httpRequest, err := http.NewRequestWithContext(
@@ -229,10 +235,20 @@ func (p *Provider) Complete(
 		values[name] = append(values[name], value)
 	}
 	emailVerified := p.mapperEmailVerified(values)
+	authenticatedAt := p.now()
+	if !request.AuthenticationStartedAt.IsZero() {
+		// renew is checked by CAS at ticket validation as well as login.
+		// Use the transaction start as a conservative proof instant: the
+		// service-bound ticket required primary credentials after that start.
+		if request.AuthenticationStartedAt.After(authenticatedAt) {
+			return nil, externalauth.Rejected("verify fresh CAS authentication", errors.New("fresh authentication time is invalid"))
+		}
+		authenticatedAt = request.AuthenticationStartedAt
+	}
 	return p.mapper.Assertion(
 		values,
 		emailVerified,
-		p.now().UnixMilli(),
+		authenticatedAt.UnixMilli(),
 	)
 }
 

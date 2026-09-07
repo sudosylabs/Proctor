@@ -92,6 +92,24 @@ argument; a rotation is an availability repair, so it preserves existing
 Sessions and the operator may use ordinary Session administration after
 regaining access if compromise is suspected.
 
+The separately named `administrator reset-mfa` command resets only an exact
+existing active system administrator after Institution confirmation. It uses
+the same serving-lease, protected-administrator and pending-recovery fences.
+MFA must be enabled, and the target must retain a primary authentication path
+under current Access Policy and deployment capability. External-only targets
+use an already linked, permitted, available provider; the command does not
+create a password or enable local login.
+
+The named reset atomically retires factor and recovery-code material, advances
+the User's durable recovery generation, requires reenrollment, revokes all
+Sessions and PATs, terminalizes unfinished access preparations and releases
+execution grants. It records secret-free pending host recovery evidence in
+the same transaction. The next normal startup must reconcile that evidence
+into `authentication.administrator_mfa_reset` audit before serving. The audit
+has system client provenance and no impersonated actor. Recovery still
+requires fresh primary proof followed by the explicit reenrollment activation
+transition; configuration changes cannot remove the restriction.
+
 Local-login recovery advances the Access Policy revision under the same
 system-administrator authentication-path fence as ordinary policy and
 credential mutations. It is deliberately not attributed to the target User in

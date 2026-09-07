@@ -39,6 +39,7 @@ type App struct {
 	personalAccessTokenAdministration *personalAccessTokenAdministrationService
 	authorization                     *accessControlService
 	accessPolicies                    *accessPolicyService
+	retentionPolicy                   *retentionPolicyService
 	desktopCompatibility              *desktopCompatibilityService
 	academicUnits                     *academicUnitQueryService
 	academicUnitCommands              *academicUnitCommandService
@@ -55,6 +56,8 @@ type App struct {
 	exams                             examUseCases
 	examRevisions                     examRevisionUseCases
 	examSittings                      examSittingUseCases
+	examRecords                       examRecordsUseCases
+	examExports                       examExportUseCases
 	examAttempts                      examAttemptUseCases
 	examAttemptTerminals              examAttemptTerminalUseCases
 	execution                         executionImageCatalog

@@ -1206,12 +1206,20 @@ func requireCurrentPrincipalCredential(ctx context.Context, tx *sqlxTxWrapper, p
 		}
 		return time.Time{}, err
 	}
+	state, stateErr := getMFARecoveryState(ctx, tx, principal.UserID)
+	if stateErr != nil {
+		return time.Time{}, stateErr
+	}
+	if state.ReenrollmentRequired || (principal.CredentialType == model.CredentialSessionAccess && principal.AuthenticationGeneration != state.Generation) {
+		return time.Time{}, store.NewErrConflict("authorization", "credential", nil)
+	}
 	switch principal.CredentialType {
 	case model.CredentialSessionAccess:
 		err = tx.Get(ctx, &active, `SELECT true FROM sessions s JOIN session_credentials c ON c.session_id=s.id
 			WHERE s.id=? AND s.user_id=? AND s.archived_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>?
+			AND s.idle_expires_at>? AND s.authentication_generation=? AND NOT s.mfa_recovery_required
 			AND c.id=? AND c.kind='access' AND c.archived_at IS NULL AND c.revoked_at IS NULL AND c.expires_at>? FOR SHARE OF s,c`,
-			principal.SessionID.String(), principal.UserID.String(), at, principal.CredentialID.String(), at)
+			principal.SessionID.String(), principal.UserID.String(), at, at, state.Generation, principal.CredentialID.String(), at)
 	case model.CredentialPersonalAccessToken:
 		err = tx.Get(ctx, &active, `SELECT true FROM personal_access_tokens WHERE id=? AND user_id=? AND archived_at IS NULL AND disabled_at IS NULL
 			AND revoked_at IS NULL AND expires_at>? AND scopes=? AND academic_unit_id IS NOT DISTINCT FROM ? FOR SHARE`, principal.CredentialID.String(), principal.UserID.String(), at,

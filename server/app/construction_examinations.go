@@ -157,9 +157,22 @@ func constructExaminations(deps Dependencies, foundation applicationFoundation, 
 	if err != nil {
 		return examinationConstruction{}, err
 	}
+	records, err := examengine.NewRecords(deps.Store.ExamRecords(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
+		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}},
+		deps.RecentAuthenticationTTL, time.Now, model.NewRetentionHoldID)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
+	exports, err := examengine.NewExports(deps.Store.ExamExport(), deps.Store.ExamAuthoring(), deps.Store.AcademicUnitMember(),
+		examRecordsAuthorizationAdapter{authorization: access.authorization, audit: foundation.audit},
+		examAuditAdapter{audit: mutationAuditAdapter{audit: foundation.audit}}, deps.FileContent, time.Now, model.NewExamExportID, model.NewJobID)
+	if err != nil {
+		return examinationConstruction{}, err
+	}
 	return examinationConstruction{execution: execution, authoring: authoring, revisions: revisions, sittings: sittings, sittingMail: sittingMail,
 		sittingMailPreparation: sittingMailPreparation, attempts: attempts, attemptTerminals: attemptTerminals, reviews: reviews,
-		resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
+		records: records, exports: exports, resources: resources, corrections: corrections, starterWorkspace: starterWorkspace}, nil
 }
 
 type examAttemptSystemAuditAdapter struct{ audit *auditService }

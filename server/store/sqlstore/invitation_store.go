@@ -1893,14 +1893,18 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 		return nil, store.NewErrInvalidInput("invitation", "external_identity_acceptance", nil)
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "external identity Invitation acceptance", func(ctx context.Context, tx *sqlxTxWrapper) (*store.ExternalIdentityInvitationAcceptanceResult, error) {
+		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
+			return nil, err
+		}
 		var state struct {
+			CreatedAt    time.Time    `db:"created_at"`
 			InvitationID string       `db:"invitation_id"`
 			Provider     string       `db:"provider"`
 			Purpose      string       `db:"purpose"`
 			ExpiresAt    time.Time    `db:"expires_at"`
 			ConsumedAt   sql.NullTime `db:"consumed_at"`
 		}
-		if err := tx.Get(ctx, &state, `SELECT invitation_id,provider,purpose,expires_at,consumed_at FROM external_login_states WHERE id=? FOR UPDATE`, input.ExternalStateID.String()); err != nil {
+		if err := tx.Get(ctx, &state, `SELECT created_at,invitation_id,provider,purpose,expires_at,consumed_at FROM external_login_states WHERE id=? FOR UPDATE`, input.ExternalStateID.String()); err != nil {
 			return nil, translateError("external_login_state", input.ExternalStateID.String(), err)
 		}
 		databaseNow, err := jobDatabaseNow(ctx, tx)
@@ -1930,9 +1934,6 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 		if !configured {
 			return nil, store.ErrAuthenticationMethodDisabled
 		}
-		if err = lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-			return nil, err
-		}
 		policy, err := getAccessPolicy(ctx, tx, "FOR SHARE")
 		if err != nil {
 			return nil, err
@@ -1959,6 +1960,16 @@ func (s SQLInvitationStore) AcceptExternalIdentity(ctx context.Context, input *s
 		user, created, err := resolveExternalInvitationUser(ctx, tx, invitation, input, databaseNow)
 		if err != nil {
 			return nil, err
+		}
+		recovery, recoveryErr := getMFARecoveryState(ctx, tx, user.ID)
+		if recoveryErr != nil {
+			return nil, recoveryErr
+		}
+		if recovery.ReenrollmentRequired {
+			return nil, store.ErrMFAReenrollmentRequired
+		}
+		if recovery.ResetAt.Valid && state.CreatedAt.Before(recovery.ResetAt.Time) {
+			return nil, store.ErrAuthenticationGenerationChanged
 		}
 		identity, err := linkExternalInvitationIdentity(ctx, tx, input.Identity, user.ID, provider, databaseNow)
 		if err != nil {

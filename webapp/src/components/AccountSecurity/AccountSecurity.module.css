@@ -1,0 +1,81 @@
+@layer components {
+  .page,
+  .stack {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    gap: var(--proctor-space-5);
+  }
+
+  .page {
+    inline-size: 100%;
+    gap: var(--proctor-space-6);
+  }
+
+  .summary {
+    margin: var(--proctor-space-0);
+    border-block: var(--proctor-border-width-hairline) solid var(--proctor-color-border-default);
+  }
+
+  .summary > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--proctor-space-2) var(--proctor-space-5);
+    padding-block: var(--proctor-space-4);
+  }
+
+  .summary dt { color: var(--proctor-color-foreground-muted); }
+  .summary dd { margin: var(--proctor-space-0); font-weight: var(--proctor-font-weight-semibold); }
+
+  .secret { font-family: var(--proctor-font-family-mono); }
+
+  .codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--proctor-space-3) var(--proctor-space-5);
+    padding: var(--proctor-space-5);
+    margin: var(--proctor-space-0);
+    border: var(--proctor-border-width-hairline) solid var(--proctor-color-border-strong);
+    list-style: none;
+    overflow-wrap: anywhere;
+  }
+
+  .acknowledgement {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--proctor-space-3);
+    min-block-size: var(--proctor-control-size-default);
+    cursor: pointer;
+  }
+
+  .acknowledgement input {
+    flex: 0 0 auto;
+    inline-size: var(--proctor-icon-size-default);
+    block-size: var(--proctor-icon-size-default);
+    margin: var(--proctor-space-1) var(--proctor-space-0);
+    accent-color: var(--proctor-color-action-primary);
+  }
+
+  .footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--proctor-space-3) var(--proctor-space-5);
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer a {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--proctor-control-size-default);
+  }
+
+  @media (max-width: 30rem) {
+    .codes { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  @media (forced-colors: active) {
+    .codes, .summary { border-color: CanvasText; }
+  }
+}

@@ -34,6 +34,12 @@ func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 		model.JobTypeExamSittingLifecycle:          true,
 		model.JobTypeExamSittingSealing:            true,
 		model.JobTypeExamSittingLifecycleRecovery:  true,
+		model.JobTypeExamExportBuild:               true,
+		model.JobTypeExamExportCleanup:             true,
+		model.JobTypeRetentionExpire:               true,
+		model.JobTypeRetentionReconcile:            true,
+		model.JobTypeRetentionPurge:                true,
+		model.JobTypeRetentionNotices:              true,
 		model.JobTypeCleanup:                       true,
 	}
 	if len(catalog.Descriptors) != len(wantTypes) {
@@ -52,6 +58,11 @@ func TestCatalogDeclaresTheCompleteCoreDurableWorkGraph(t *testing.T) {
 		"mail-cleanup":                           true,
 		"invitation-maintenance":                 true,
 		"exam-sitting-lifecycle-recovery":        true,
+		"exam-export-cleanup":                    true,
+		"retention-expire":                       true,
+		"retention-reconcile":                    true,
+		"retention-purge":                        true,
+		"retention-notices":                      true,
 	}
 	if len(catalog.Recurrences) != len(wantRecurrences) {
 		t.Fatalf("recurrence count = %d, want %d", len(catalog.Recurrences), len(wantRecurrences))

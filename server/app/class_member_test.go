@@ -19,6 +19,8 @@ import (
 )
 
 type classMemberStoreFake struct {
+	pageOptions store.ClassMemberPageOptions
+	pageResult  *store.ClassMemberPage
 	events      *[]string
 	current     *model.ClassMember
 	enrollInput *store.ClassMemberEnrollment
@@ -373,4 +375,13 @@ func TestClassMemberEndConcealsCrossScopeTarget(t *testing.T) {
 	if _, err := service.End(context.Background(), Invocation{}, EndClassMemberCommand{ID: current.ID.String()}); !Is(err, "resource.not_found") {
 		t.Fatalf("End() error = %v, want concealed resource.not_found", err)
 	}
+}
+
+func (s *classMemberStoreFake) ListPageByClass(_ context.Context, options store.ClassMemberPageOptions) (*store.ClassMemberPage, error) {
+	*s.events = append(*s.events, "list-page")
+	s.pageOptions = options
+	if s.pageResult != nil {
+		return s.pageResult, nil
+	}
+	return &store.ClassMemberPage{}, nil
 }

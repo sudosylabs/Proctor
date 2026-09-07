@@ -66,6 +66,7 @@ func hasUsableSystemAdministratorAuthenticationPath(ctx context.Context, executo
 		AND rb.scope_type='institution' AND rb.archived_at IS NULL
 		AND rb.start_at<=$2 AND (rb.end_at IS NULL OR rb.end_at>$2)
 		AND u.archived_at IS NULL AND u.disabled_at IS NULL
+		AND NOT EXISTS(SELECT 1 FROM user_mfa_recovery mr WHERE mr.user_id=u.id AND mr.reenrollment_required)
 		AND ($3='' OR u.id=$3) AND ($4='' OR rb.id=$4)
 		AND ($5='' OR u.id<>$5) AND ($6='' OR rb.id<>$6)
 		AND (

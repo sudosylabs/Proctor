@@ -14,6 +14,11 @@ This recipe starts with an authenticated Web Session at the assurance declared
 by each operation. A Personal Access Token cannot substitute for Session-only,
 recent, or strong-recent operations.
 
+The hosted `/account/security` page provides MFA status, authenticator setup,
+Session step-up, recovery-code replacement, and explicit authenticator removal.
+It uses the same API contracts described below. The other security APIs support
+their dedicated clients; this page is a focused account task.
+
 ## 1. Inspect Before Mutating
 
 Read the current state through:
@@ -27,12 +32,58 @@ Read the current state through:
 These are separate resources. Never infer a Desktop Registration from a
 user-agent string or infer a provider link from an email address.
 
-## 2. Activate MFA as One Deliberate Ceremony
+MFA status also reports service availability, a required recovery restriction,
+and the current Session's primary method, strength, and recency. Use this
+bounded status during assisted recovery: a restricted Session cannot read
+ordinary account resources. If MFA service is unavailable, preserve the
+restriction and explain that an operator must restore enrollment service.
+
+## 2. Refresh Primary Proof When Required
+
+The hosted `/account/reauthenticate` page returns to one of two supported tasks:
+account security or provider connection. A continuation selects a known local
+task; it cannot supply an arbitrary return URL. Returning restores current state
+and requires the person to choose the sensitive action again.
+
+For a password-authenticated Session, call
+<Link to="/api/reference/reauthenticate-password">Reauthenticate Password</Link>
+with the current User's password. This refreshes proof on that Session and
+does not create a separate login or change its original authentication method.
+
+For an externally authenticated Session, call
+<Link to="/api/reference/begin-external-reauthentication">Begin External Reauthentication</Link>
+after an explicit person action and navigate to the returned redirect. The
+server selects the Session's original provider, binds the same existing User
+and intended task, and verifies fresh provider proof before returning. A
+different provider identity, unsupported freshness proof, or unavailable
+provider cannot satisfy this ceremony. Do not substitute email matching or a
+locally enrolled password for the original provider.
+
+Fresh primary proof and MFA strength are separate. Password or provider
+reauthentication does not manufacture a new local MFA completion. When strong
+assurance is also required, complete the Session challenge using the active
+authenticator. Passwords and codes stay out of URLs, browser storage, and logs.
+
+## 3. Activate MFA as One Deliberate Ceremony
 
 Call <Link to="/api/reference/setup-mfa">Set up MFA</Link>, enroll the returned
 secret in the authenticator, then call <Link to="/api/reference/activate-mfa">Activate MFA</Link>
 with a current code. Treat setup without successful activation as incomplete.
-Return recovery codes once to the user and never log them.
+The hosted page supports manual entry of the setup key. Restarting pending
+setup explicitly invalidates its previous secret.
+
+Activation and recovery-code regeneration show the newly generated codes once.
+The hosted page supports deliberate downloading or manual saving and requires
+an acknowledgement before leaving this step. That acknowledgement records a
+person's action; it does not prove a file was saved. Closing or refreshing the
+page can lose the one-time view. Secrets remain in page memory and never enter
+persistent browser storage, URLs, ordinary logs, or third-party requests.
+
+If activation succeeds but its response is lost, refresh authoritative status.
+Use a current code from the new authenticator to challenge the Session, then
+explicitly regenerate recovery codes. Status cannot reconstruct the lost set.
+An ambiguous regeneration response requires the same deliberate recovery; do
+not repeatedly replay an action in the background.
 
 Use <Link to="/api/reference/regenerate-mfa-recovery-codes">Regenerate recovery codes</Link>
 only after the declared strong recent authentication. The replacement set
@@ -40,12 +91,16 @@ invalidates the previous set. <Link to="/api/reference/disable-mfa">Disable MFA<
 is also an assurance-sensitive change; never automate a fallback to a bearer
 token when reauthentication is required.
 
+Replacing an active authenticator requires explicit disablement followed by a
+new setup and activation. The hosted confirmation explains the interval without
+local MFA. It never disables an authenticator silently to restart setup.
+
 When a sensitive operation requires a stronger current Session, use
 <Link to="/api/reference/challenge-mfa">Challenge MFA</Link> with a current TOTP
 or one unused recovery code. The upgraded assurance belongs to that Session;
 it is not a reusable authorization receipt for another client.
 
-## 3. Connect or Remove Authentication Methods
+## 4. Connect or Remove Authentication Methods
 
 Provider connection begins with <Link to="/api/reference/begin-provider-connection">Begin provider connection</Link>
 and completes in the hosted callback. Preserve browser proof and purpose; do
@@ -62,7 +117,36 @@ list the methods again and confirm another currently permitted method remains.
 The server's last-usable-method fence is authoritative and may reject a state
 that became unsafe after the read.
 
-## 4. Revoke the Smallest Compromised Boundary
+## 5. Recover After an Assisted MFA Reset
+
+When all authenticators and recovery codes are unavailable, the institution
+verifies the person's identity outside Proctor. A separately authorized
+administrator may then call
+<Link to="/api/reference/reset-user-mfa">Reset User MFA</Link> with strong recent
+interactive authentication and the required identity-verification attestation.
+Administrative self-reset is prohibited.
+
+This operation does not support idempotent retries. If its response is lost,
+review the reset's audit outcome before deciding whether another explicit reset
+is needed. Do not retry automatically: a repeated reset starts a new recovery
+generation and invalidates Sessions and MFA material created after the first
+reset.
+
+A successful reset atomically invalidates the target's former MFA material,
+Sessions, Personal Access Tokens, and unfinished access grants. It records the
+outcome and reserves a security notice. The target must supply fresh primary
+proof and enroll a new local authenticator before ordinary account access
+returns. A trusted provider assertion or an ordinary MFA challenge cannot
+silently clear this restriction.
+
+The hosted login and completion flows send this restricted Web Session to
+`/account/security`. The page offers reenrollment and sign-out. External-only
+Users continue with their existing permitted provider; an unavailable provider
+must be restored rather than replaced through an email match. An operator MFA
+reset for administrator recovery is a distinct
+<Link to="/reference/command-line/">all-nodes-stopped command</Link>.
+
+## 6. Revoke the Smallest Compromised Boundary
 
 - Use <Link to="/api/reference/revoke-current-user-session">Revoke current User Session</Link>
   for one known Session.

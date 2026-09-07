@@ -245,6 +245,16 @@ bounded deadlines. Every goroutine, client, queue, channel, and closer has an
 owner and shutdown path; request/event fan-out is bounded with an explicit
 backpressure, drop, or disconnect policy.
 
+The WebSocket Hub owns connection shutdown through pump termination, Attempt
+Terminal disposal, and durable Attempt Connection finalization. Its Close uses
+one `Server.ShutdownTimeout` budget, stops new work, and waits for these owned
+operations before normal dependency disposal. Close frames share one short
+write deadline across all peers; a slow peer cannot multiply the shutdown
+budget by the number of connections. Deadline exhaustion force-closes sockets,
+cancels active finalizers, and returns the same retained error to concurrent
+or repeated Close callers. Ordinary connection termination keeps its bounded
+finalization context even after the transport request is canceled.
+
 Operational logging and telemetry follow
 the [`authorization-audit` security reference](../../authorization-audit/references/security.md#logging-and-observability). Liveness says
 the process is functioning; readiness says it can safely receive traffic;

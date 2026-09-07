@@ -1,0 +1,100 @@
+# ---------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Sudosy Labs. All rights reserved.
+# Licensed under the GNU Affero General Public License, version 3 only.
+# See LICENSE in the server module root for license information.
+# SPDX-License-Identifier: AGPL-3.0-only
+# ---------------------------------------------------------------------------------------------
+
+paths:
+  /api/v1/users/{user_id}/mfa/reset:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    post:
+      operationId: resetUserMFA
+      summary: Reset another User's local MFA after institution verification
+      description: >-
+        Requires the protected system-administrator action user.mfa.reset and strong recent interactive authentication. Administrative self-reset is prohibited. The institution verifies identity outside Proctor and records a bounded attestation reference. Old local MFA material, all target Sessions and PATs, and unfinished access grants are invalidated atomically with mandatory audit and security-notice reservation. Fresh primary proof then creates a restricted Web Session; activation of a new local authenticator restores ordinary access. Existing provider identity and primary credentials remain unchanged. The request fails when local enrollment is unavailable or when it would remove the last usable administrator authentication path. A repeated explicit reset creates a new recovery generation.
+      tags: [Authentication]
+      x-proctor-auth: strong_recent_session_required
+      x-proctor-idempotency: none
+      x-proctor-error-codes:
+        - authentication.required
+        - authentication.invalid_token
+        - authentication.credential_ambiguous
+        - authentication.csrf.invalid
+        - authentication.dpop.invalid
+        - authentication.dpop.replayed
+        - authentication.dpop.use_nonce
+        - authentication.dpop.unavailable
+        - authentication.strong_required
+        - authentication.reauthentication_required
+        - authorization.denied
+        - authorization.request.invalid
+        - authorization.unavailable
+        - audit.unavailable
+        - request.invalid
+        - resource.not_found
+        - authentication.mfa.reset_invalid
+        - authentication.mfa.disabled
+        - authentication.mfa.not_found
+        - authentication.mfa.conflict
+        - authentication.mfa.unavailable
+        - authentication.internal
+      security:
+        - bearerAuth: []
+        - dpopAuth: []
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        $ref: '#/components/requestBodies/ResetUserMFA'
+      responses:
+        "204":
+          $ref: '#/components/responses/SensitiveNoContent'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalError'
+        "501":
+          $ref: '#/components/responses/NotImplemented'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  requestBodies:
+    ResetUserMFA:
+      description: The administrator's identity-verification attestation, bounded reset reason, and reference to the Institution's verification record for the target User.
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ResetUserMFARequest'}
+          example:
+            identity_verified: true
+            reason: Authenticator is no longer available.
+            verification_reference: case-2026-0042
+  schemas:
+    ResetUserMFARequest:
+      type: object
+      additionalProperties: false
+      required: [identity_verified, reason, verification_reference]
+      properties:
+        identity_verified:
+          type: boolean
+          const: true
+          description: Attests that institution identity verification has been completed.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: A bounded administrative reason. Do not include passwords, secrets, recovery codes or identity documents.
+        verification_reference:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Reference to the institution's verification record; do not include the verification evidence itself.

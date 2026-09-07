@@ -15,6 +15,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	gorilla "github.com/gorilla/websocket"
 
@@ -140,24 +141,27 @@ func (c *connectionRuntime) enqueueError(sequence int64, code string, presentati
 }
 
 func (c *connectionRuntime) close(code int, reason string, replayable bool) {
+	c.closeWithDeadline(code, reason, replayable, c.clock.Now().Add(writeWait))
+}
+
+func (c *connectionRuntime) closeWithDeadline(code int, reason string, replayable bool, deadline time.Time) {
 	if !replayable {
 		c.mu.Lock()
 		c.replayable = false
 		c.mu.Unlock()
 	}
-	c.closeOnce.Do(func() {
+	if c.closeStarted.CompareAndSwap(false, true) {
 		message := gorilla.FormatCloseMessage(code, reason)
-		_ = c.socket.WriteControl(
-			websocketCloseMessage,
-			message,
-			c.clock.Now().Add(writeWait),
-		)
-		_ = c.socket.Close()
-	})
+		if c.clock.Now().Before(deadline) {
+			_ = c.socket.WriteControl(websocketCloseMessage, message, deadline)
+		}
+		c.closeTransport()
+	}
 }
 
 func (c *connectionRuntime) closeTransport() {
-	c.closeOnce.Do(func() {
+	c.closeStarted.Store(true)
+	c.transportCloseOnce.Do(func() {
 		_ = c.socket.Close()
 	})
 }

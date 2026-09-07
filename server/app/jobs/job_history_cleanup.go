@@ -31,6 +31,13 @@ type JobHistoryCleanupCheckpointV1 struct {
 	Deleted          int64       `json:"deleted"`
 }
 
+// Version 2 records whether the bounded pass exhausted the eligible history.
+// Version 1 remains readable; its unknown remainder gets a conservative pass.
+type JobHistoryCleanupCheckpointV2 struct {
+	JobHistoryCleanupCheckpointV1
+	Done bool `json:"done"`
+}
+
 type JobHistoryCleanupResultV1 struct {
 	Deleted int64 `json:"deleted"`
 }
@@ -86,54 +93,101 @@ type JobHistoryCleaner interface {
 }
 
 type jobHistoryCleanupHandler struct {
-	jobs     JobHistoryCleaner
-	policies []store.JobRetentionPolicy
+	jobs          JobHistoryCleaner
+	continuations JobEnqueuer
+	policies      []store.JobRetentionPolicy
+	now           func() time.Time
 }
 
 func (h jobHistoryCleanupHandler) Run(ctx context.Context, execution jobengine.Execution) jobengine.Outcome {
-	if execution.Job == nil {
-		return jobengine.PermanentFailure("job.command.invalid", errors.New("job is missing"))
+	if execution.Job == nil || !execution.Job.ID.IsValid() || h.jobs == nil || h.continuations == nil || h.now == nil {
+		return jobengine.PermanentFailure("job.command.invalid", errors.New("job history cleanup dependencies or execution are missing"))
 	}
 	command, err := DecodeJobHistoryCleanupCommand(execution.Job.CommandVersion, execution.Job.Command)
 	if err != nil {
 		return jobengine.PermanentFailure("job.command.invalid", err)
 	}
-	checkpoint := JobHistoryCleanupCheckpointV1{}
+	if execution.Job.WorkReserved < 0 || execution.Job.WorkReserved > command.BatchSize {
+		return jobengine.PermanentFailure("job.invariant_failed", errors.New("job history cleanup reservation exceeds its work bound"))
+	}
+	checkpoint := JobHistoryCleanupCheckpointV2{}
 	if len(execution.Job.Checkpoint) != 0 {
-		checkpoint, err = DecodeJobHistoryCleanupCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
+		checkpoint, err = decodeHistoryCleanupCheckpoint(execution.Job.CheckpointVersion, execution.Job.Checkpoint)
 		if err != nil {
 			return jobengine.PermanentFailure("job.checkpoint.invalid", err)
 		}
-		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{Deleted: checkpoint.Deleted})
-		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		return h.finish(ctx, execution.Job, command, checkpoint)
 	}
 	remaining := command.BatchSize - execution.Job.WorkReserved
 	if remaining <= 0 {
-		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{})
-		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		// A reservation survives a crash before deletion or checkpoint. Never
+		// reuse it; the successor starts from the oldest remaining history.
+		return h.finish(ctx, execution.Job, command, checkpoint)
 	}
 	reserved, reserveErr := execution.ReserveWork(ctx, remaining, command.BatchSize)
 	if reserveErr != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", reserveErr)
 	}
 	if !reserved {
-		document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{})
-		return jobengine.Outcome{Kind: jobengine.OutcomeSucceeded, ResultVersion: 1, Result: document, Err: marshalErr}
+		return h.finish(ctx, execution.Job, command, checkpoint)
 	}
 	page, deleteErr := h.jobs.DeleteTerminalHistory(ctx, &store.JobHistoryCleanup{ExcludeJobID: execution.Job.ID, Policies: h.policies, Limit: remaining})
 	if deleteErr != nil {
 		return jobengine.RetryableFailure("dependency.unavailable", deleteErr)
 	}
+	if page == nil || page.Deleted < 0 || page.Deleted > int64(remaining) {
+		return jobengine.PermanentFailure("job.invariant_failed", errors.New("job history cleanup returned an invalid page"))
+	}
 	checkpoint.Deleted = page.Deleted
 	checkpoint.AfterCompletedAt = page.LastCompletedAt
 	checkpoint.AfterJobID = page.LastJobID
-	if page.Deleted > 0 {
-		document, encodeErr := EncodeJobHistoryCleanupCheckpoint(checkpoint)
-		if encodeErr != nil {
-			return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
+	checkpoint.Done = page.Done
+	if err := validateJobHistoryCleanupCheckpoint(checkpoint.JobHistoryCleanupCheckpointV1); err != nil {
+		return jobengine.PermanentFailure("job.invariant_failed", err)
+	}
+	document, encodeErr := json.Marshal(checkpoint)
+	if encodeErr != nil {
+		return jobengine.PermanentFailure("job.invariant_failed", encodeErr)
+	}
+	var progress *model.JobProgress
+	if checkpoint.Deleted > 0 {
+		progress = &model.JobProgress{Current: checkpoint.Deleted, Total: checkpoint.Deleted, Stage: "completed"}
+	}
+	if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 2, Progress: progress, Document: document}); checkpointErr != nil {
+		return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
+	}
+	return h.finish(ctx, execution.Job, command, checkpoint)
+}
+
+func decodeHistoryCleanupCheckpoint(version int, document json.RawMessage) (JobHistoryCleanupCheckpointV2, error) {
+	if version == 1 {
+		previous, err := DecodeJobHistoryCleanupCheckpoint(version, document)
+		return JobHistoryCleanupCheckpointV2{JobHistoryCleanupCheckpointV1: previous}, err
+	}
+	var value JobHistoryCleanupCheckpointV2
+	if version != 2 {
+		return value, fmt.Errorf("unsupported job history cleanup checkpoint version %d", version)
+	}
+	if err := decodeStrictJobDocument(document, &value); err != nil {
+		return value, err
+	}
+	return value, validateJobHistoryCleanupCheckpoint(value.JobHistoryCleanupCheckpointV1)
+}
+
+func (h jobHistoryCleanupHandler) finish(ctx context.Context, parent *model.Job, command JobHistoryCleanupCommandV1, checkpoint JobHistoryCleanupCheckpointV2) jobengine.Outcome {
+	if !checkpoint.Done {
+		document, err := EncodeJobHistoryCleanupCommand(command)
+		if err != nil {
+			return jobengine.PermanentFailure("job.invariant_failed", err)
 		}
-		if checkpointErr := execution.Checkpoint(ctx, jobengine.CheckpointValue{Version: 1, Progress: &model.JobProgress{Current: checkpoint.Deleted, Total: checkpoint.Deleted, Stage: "completed"}, Document: document}); checkpointErr != nil {
-			return jobengine.RetryableFailure("dependency.unavailable", checkpointErr)
+		at := model.TimeUTC(h.now())
+		successor, err := model.NewJobWithDedupePolicy(model.NewJobID(), model.JobTypeCleanup, 1, document,
+			"job-history-cleanup:after:"+parent.ID.String(), model.JobDedupePermanent, at, at, 5)
+		if err != nil {
+			return jobengine.PermanentFailure("job.invariant_failed", err)
+		}
+		if _, _, err = h.continuations.Enqueue(ctx, &store.JobEnqueue{Job: successor}); err != nil {
+			return jobengine.RetryableFailure("dependency.unavailable", err)
 		}
 	}
 	document, marshalErr := json.Marshal(JobHistoryCleanupResultV1{Deleted: checkpoint.Deleted})
@@ -161,5 +215,5 @@ func (p jobHistoryCleanupProposer) Propose(ctx context.Context, occurrence time.
 }
 
 func jobHistoryCleanupDescriptor(handler jobengine.Handler) jobengine.Descriptor {
-	return jobengine.Descriptor{Type: model.JobTypeCleanup, CommandVersions: []int{1}, CheckpointVersions: []int{1}, ResultVersions: []int{1}, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
+	return jobengine.Descriptor{Type: model.JobTypeCleanup, CommandVersions: []int{1}, CheckpointVersions: []int{1, 2}, ResultVersions: []int{1}, ProgressStages: []string{"completed"}, PublicErrorCodes: []string{"dependency.unavailable", "job.checkpoint.invalid", "job.command.invalid", "job.invariant_failed"}, Timeout: 10 * time.Minute, Concurrency: 1, MaximumAttempts: 5, LeaseDuration: time.Minute, HeartbeatInterval: 15 * time.Second, BaseRetryDelay: time.Second, MaximumRetryDelay: time.Minute, Visibility: jobengine.VisibilityOperator, SuccessRetention: 30 * 24 * time.Hour, FailureRetention: 90 * 24 * time.Hour, Handler: handler}
 }

@@ -139,6 +139,29 @@ Mutable, conflict-prone aggregates carry explicit revisions. Updates compare
 and increment the expected revision; timestamps are not concurrency tokens and
 revisions are not added mechanically to immutable or append-only records.
 
+Academic Unit, Programme, Programme Level, Academic Period, and Class responses
+expose their current `revision`. Their v1 PATCH commands accept optional,
+positive, non-null `expected_revision`; bodyless archive commands accept the
+same optional query parameter. Omission preserves existing clients. A supplied
+stale revision fails with the resource's existing conflict error after
+resource authorization and before any mutation. Store compare-and-swap still
+fences a change between the authorized read and commit, including archives.
+The existing v1 epoch-millisecond presentation fields remain compatible;
+neither those timestamps nor presentation fields replace revision checks.
+
+Class and Academic Unit membership enumeration can opt into bounded paging
+with `limit` or `cursor` while retaining the v1 array response. Pages use stable
+`(user_id, id)` ordering, a default size of 50, and a maximum size of 200.
+Continuation uses the HTTP `Link` header. Each page authorizes its exact
+resource afresh; a cursor grants no authority. The cursor fixes the resource
+and either a positive effective instant or the history filter. Effective
+membership uses `[start, end)`; history includes ended and future memberships,
+while both modes exclude archived rows. Paged `history=true` excludes an
+explicit `active_at`; cursor requests may inherit their original filter.
+Pages are a live view, so later writes may change later results; no database
+snapshot is held between requests. Omitting paging parameters retains the
+legacy full-list behavior and its existing filter precedence.
+
 ## Responsibility and validation
 
 - transport owns encoding, wire shape, and size limits;

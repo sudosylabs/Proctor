@@ -8,12 +8,9 @@
 package jobs
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	netmail "net/mail"
-	"strings"
 	"time"
 
 	jobengine "github.com/sudosylabs/proctor/server/app/job"
@@ -141,13 +138,12 @@ func (h mailDeliveryHandler) Run(ctx context.Context, execution jobengine.Execut
 		return mailDeliverySucceeded(sending)
 	}
 	h.recordAttempt(ctx, sending)
-	payload, err := openFrozenMailPayload(h.sealer, sending)
+	message, err := appmail.OpenDelivery(h.sealer, sending)
 	if err != nil {
+		if errors.Is(err, appmail.ErrInvalidMessage) {
+			return h.fail(ctx, sending, "mail.message.invalid", err)
+		}
 		return h.fail(ctx, sending, "mail.payload.unavailable", err)
-	}
-	message := appmail.Outbound{From: appmail.Address{Name: payload.FromName, Address: payload.FromAddress}, EnvelopeFrom: payload.FromAddress, To: appmail.Address{Name: payload.RecipientName, Address: payload.RecipientAddress}, Subject: payload.Subject, Text: payload.Text, HTML: payload.HTML, Headers: map[string][]string{"Auto-Submitted": {payload.AutoSubmitted}, "X-Auto-Response-Suppress": {payload.AutoResponseSuppress}}, MessageID: sending.MessageID, Date: sending.MessageDate}
-	if err = validateOutboundMail(message); err != nil {
-		return h.fail(ctx, sending, "mail.message.invalid", err)
 	}
 	classification, err := h.sender.Send(ctx, message)
 	if err != nil {
@@ -270,42 +266,6 @@ func (h mailDeliveryHandler) recordAttempt(ctx context.Context, delivery *model.
 	h.recorder.RecordJobMailAttempt(ctx, MailAttemptMetric{TemplateKey: delivery.TemplateKey, State: delivery.State})
 }
 
-func openFrozenMailPayload(sealer *secretseal.Sealer, delivery *model.MailDelivery) (appmail.FrozenPayloadV1, error) {
-	var envelope secretseal.Envelope
-	if delivery == nil || len(delivery.EncryptedPayload) == 0 || json.Unmarshal(delivery.EncryptedPayload, &envelope) != nil {
-		return appmail.FrozenPayloadV1{}, errors.New("encrypted mail payload is invalid")
-	}
-	plaintext, err := sealer.Open(secretseal.Binding{Purpose: appmail.DeliverySealingPurpose, Owner: delivery.ID.String()}, envelope)
-	if err != nil {
-		return appmail.FrozenPayloadV1{}, err
-	}
-	var payload appmail.FrozenPayloadV1
-	decoder := json.NewDecoder(bytes.NewReader(plaintext))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&payload); err != nil || decoder.Decode(&struct{}{}) == nil || payload.Version != 1 || payload.RecipientAddress == "" || payload.FromAddress == "" || payload.Subject == "" || (payload.Text == "" && payload.HTML == "") || payload.AutoSubmitted != "auto-generated" || payload.AutoResponseSuppress != "All" {
-		return appmail.FrozenPayloadV1{}, errors.New("frozen mail payload is invalid")
-	}
-	return payload, nil
-}
-
-func OpenFrozenMailPayload(sealer *secretseal.Sealer, delivery *model.MailDelivery) (appmail.FrozenPayloadV1, error) {
-	return openFrozenMailPayload(sealer, delivery)
-}
-
-func validateOutboundMail(message appmail.Outbound) error {
-	if _, err := netmail.ParseAddress(message.From.Address); err != nil {
-		return errors.New("mail sender address is invalid")
-	}
-	if _, err := netmail.ParseAddress(message.To.Address); err != nil {
-		return errors.New("mail recipient address is invalid")
-	}
-	if message.EnvelopeFrom == "" || message.Subject == "" || (message.Text == "" && message.HTML == "") ||
-		message.MessageID == "" || message.Date.IsZero() || strings.ContainsAny(message.Subject, "\x00\r\n") {
-		return errors.New("mail message is invalid")
-	}
-	return nil
-}
-
 func mailTransportFailureCode(outcome appmail.TransportOutcome) string {
 	switch outcome {
 	case appmail.TransportPermanent:
@@ -317,10 +277,6 @@ func mailTransportFailureCode(outcome appmail.TransportOutcome) string {
 	default:
 		return "mail.transport.unknown"
 	}
-}
-
-func MailTransportFailureCode(outcome appmail.TransportOutcome) string {
-	return mailTransportFailureCode(outcome)
 }
 
 func mailDeliveryDependencyOutcome(err error) jobengine.Outcome {

@@ -559,10 +559,12 @@ type moveCandidateWorkspaceEntryRequest struct {
 }
 
 type deleteCandidateWorkspaceEntryRequest struct {
-	ParticipationID        string `json:"participation_id"`
-	Generation             int64  `json:"generation"`
-	ExpectedPath           string `json:"expected_path"`
-	ExpectedContentVersion string `json:"expected_content_version,omitempty"`
+	ParticipationID         string          `json:"participation_id"`
+	Generation              int64           `json:"generation"`
+	ExpectedPath            string          `json:"expected_path"`
+	ExpectedContentVersion  string          `json:"expected_content_version,omitempty"`
+	Recursive               bool            `json:"recursive,omitempty"`
+	ExpectedWorkspaceCursor Optional[int64] `json:"expected_workspace_cursor,omitempty"`
 }
 
 type candidateWorkspaceMutationResponse struct {
@@ -678,9 +680,10 @@ type examSubmissionManagerResponse struct {
 	ManifestDigest           string `json:"manifest_digest"`
 	ManifestEntryCount       int    `json:"manifest_entry_count"`
 	ManifestTotalFileBytes   int64  `json:"manifest_total_file_bytes"`
-	FinalFocusLossSequence   int64  `json:"final_focus_loss_sequence"`
+	FinalFocusLossSequence   *int64 `json:"final_focus_loss_sequence,omitempty"`
 	IntegrityState           string `json:"integrity_state"`
-	UnresolvedIntegrityCount int64  `json:"unresolved_integrity_count"`
+	IntegrityRetiredAt       string `json:"integrity_retired_at,omitempty"`
+	UnresolvedIntegrityCount *int64 `json:"unresolved_integrity_count,omitempty"`
 	SubmittedAt              string `json:"submitted_at"`
 }
 
@@ -711,6 +714,7 @@ type candidateWorkspaceJournalEntryResponse struct {
 	NewPath        string `json:"new_path,omitempty"`
 	ContentVersion string `json:"content_version,omitempty"`
 	ChangedAt      string `json:"changed_at"`
+	Recursive      bool   `json:"recursive,omitempty"`
 }
 
 type candidateWorkspaceJournalResponse struct {
@@ -764,7 +768,7 @@ func examAttemptResource(application ExamAttemptApplication) resource {
 	replaceMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
 		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.size_limit", "exam.attempt.workspace.object_conflict")
 	deleteMutationErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.path_conflict", "exam.attempt.workspace.entry_conflict",
-		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty")
+		"exam.attempt.workspace.content_conflict", "exam.attempt.workspace.directory_not_empty", "exam.attempt.workspace.cursor_conflict")
 	submissionErrors := candidateWorkspaceMutationErrors("exam.attempt.workspace.cursor_conflict", "exam.attempt.focus_loss_conflict",
 		"exam.attempt.revision_conflict", "exam.attempt.correction_conflict", "exam.attempt.browser_activity_conflict",
 		"exam.attempt.connection_lost")
@@ -1269,7 +1273,7 @@ func (module examAttemptHTTPModule) workspaceChanges(request operationRequest) (
 		response.Entries = append(response.Entries, candidateWorkspaceJournalEntryResponse{Cursor: entry.Cursor,
 			EntryID: entry.EntryID.String(), Kind: string(entry.EntryKind), Operation: string(entry.Operation), OldPath: entry.OldPath,
 			NewPath: entry.NewPath, ContentVersion: entry.ContentVersion.String(),
-			ChangedAt: model.TimeUTC(entry.ChangedAt).Format(time.RFC3339Nano)})
+			ChangedAt: model.TimeUTC(entry.ChangedAt).Format(time.RFC3339Nano), Recursive: entry.Recursive})
 	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
@@ -1351,9 +1355,14 @@ func (module examAttemptHTTPModule) getSubmission(request operationRequest) (ope
 		ManifestSchemaVersion: submission.ManifestSchemaVersion,
 		WorkspaceCursor:       submission.WorkspaceCursor, ManifestDigest: submission.ManifestDigest,
 		ManifestEntryCount: submission.ManifestEntryCount, ManifestTotalFileBytes: submission.ManifestTotalFileBytes,
-		FinalFocusLossSequence: submission.FinalFocusLossSequence, IntegrityState: string(submission.IntegrityState),
-		UnresolvedIntegrityCount: submission.UnresolvedIntegrityCount,
-		SubmittedAt:              model.TimeUTC(submission.SubmittedAt).Format(time.RFC3339Nano)}
+		IntegrityState: string(submission.IntegrityState),
+		SubmittedAt:    model.TimeUTC(submission.SubmittedAt).Format(time.RFC3339Nano)}
+	if submission.IntegrityState == model.SubmissionIntegrityRetired {
+		response.IntegrityRetiredAt = model.TimeUTC(submission.IntegrityRetiredAt.Time).Format(time.RFC3339Nano)
+	} else {
+		response.FinalFocusLossSequence = &submission.FinalFocusLossSequence
+		response.UnresolvedIntegrityCount = &submission.UnresolvedIntegrityCount
+	}
 	return jsonResult(http.StatusOK, response).withHeaders(noStoreHeaders()), nil
 }
 
@@ -1524,6 +1533,11 @@ func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationReques
 	if err = decodeCandidateWorkspaceJSON(request, &body, "deleteCandidateExamWorkspaceEntry"); err != nil {
 		return operationResult{}, err
 	}
+	cursor := body.ExpectedWorkspaceCursor.ValuePointer()
+	if body.ExpectedWorkspaceCursor.IsNull() || (body.Recursive && (cursor == nil || *cursor < 0 || body.ExpectedContentVersion != "")) ||
+		(!body.Recursive && cursor != nil) {
+		return operationResult{}, invalidRequestError("recursive_delete", errors.New("recursive directory deletion requires expected_workspace_cursor and no content version"))
+	}
 	mutationAccess, err := candidateWorkspaceMutationAccess(access, candidateWorkspaceMutationAccessRequest{ParticipationID: body.ParticipationID, Generation: body.Generation})
 	if err != nil {
 		return operationResult{}, err
@@ -1537,7 +1551,8 @@ func (module examAttemptHTTPModule) deleteWorkspaceEntry(request operationReques
 	}
 	result, err := module.application.DeleteCandidateExamWorkspaceEntry(request.context, request.invocation(),
 		application.DeleteCandidateExamWorkspaceEntryCommand{Access: mutationAccess, EntryID: entryID,
-			ExpectedPath: body.ExpectedPath, ExpectedContentVersion: version, IdempotencyKey: request.idempotencyKey})
+			ExpectedPath: body.ExpectedPath, ExpectedContentVersion: version, Recursive: body.Recursive,
+			ExpectedWorkspaceCursor: cursor, IdempotencyKey: request.idempotencyKey})
 	if err != nil {
 		return operationResult{}, err
 	}

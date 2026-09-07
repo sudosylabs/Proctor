@@ -8,6 +8,22 @@
 -- Rolls back the pre-release schema baseline. Development databases should
 -- normally be dropped and recreated rather than rolled back.
 
+DROP FUNCTION IF EXISTS retention_allows_integrity_delete(varchar);
+DROP TABLE IF EXISTS user_mfa_recovery;
+DROP TABLE IF EXISTS retention_purge_objects;
+DROP TABLE IF EXISTS exam_export_artifacts;
+DROP TABLE IF EXISTS exam_export_submissions;
+DROP TABLE IF EXISTS retention_source_protections;
+DROP TABLE IF EXISTS exam_exports;
+DROP TABLE IF EXISTS retention_notices;
+DROP TABLE IF EXISTS retention_expiry_schedules;
+DROP TABLE IF EXISTS retention_retirements;
+DROP TABLE IF EXISTS retention_controls;
+DROP TABLE IF EXISTS retention_previews;
+DROP TABLE IF EXISTS retention_holds;
+DROP TABLE IF EXISTS submission_review_waivers;
+DROP TABLE IF EXISTS exam_sitting_records_completions;
+
 DROP TABLE IF EXISTS cluster_discovery_nodes;
 DROP TABLE IF EXISTS serving_node_leases;
 DROP TABLE IF EXISTS mail_send_rate_limit;
@@ -31,6 +47,7 @@ DROP TABLE IF EXISTS job_permanent_occurrences;
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS administrator_recovery_records;
 DROP TABLE IF EXISTS installation_states;
+DROP TABLE IF EXISTS retention_policies;
 DROP TABLE IF EXISTS desktop_compatibility_policies;
 DROP TABLE IF EXISTS access_policy_transitions;
 DROP FUNCTION IF EXISTS reject_access_policy_transition_update();
@@ -41,6 +58,10 @@ DROP TABLE IF EXISTS exam_sitting_live_corrections;
 DROP TABLE IF EXISTS exam_sitting_private_actions;
 DROP FUNCTION IF EXISTS reject_exam_sitting_private_action_mutation();
 DROP TABLE IF EXISTS exam_attempt_manager_end_actions;
+ALTER TABLE IF EXISTS exam_starter_workspace_objects
+    DROP CONSTRAINT IF EXISTS exam_starter_workspace_objects_retirement_fkey;
+ALTER TABLE IF EXISTS exam_attempt_workspace_objects
+    DROP CONSTRAINT IF EXISTS exam_attempt_workspace_objects_retirement_fkey;
 DROP TABLE IF EXISTS audit_events;
 DROP TABLE IF EXISTS mfa_recovery_codes;
 DROP TABLE IF EXISTS mfa_credentials;
@@ -135,3 +156,5 @@ DROP TABLE IF EXISTS programme_levels;
 DROP TABLE IF EXISTS programmes;
 DROP TABLE IF EXISTS academic_units;
 DROP TABLE IF EXISTS institutions;
+
+DROP FUNCTION IF EXISTS cancel_referenced_audit_expiry();

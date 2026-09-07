@@ -55,7 +55,7 @@ const endedFocusLossAccessSelect = `SELECT a.exam_id,a.exam_sitting_id AS sittin
 	se.idle_expires_at AS session_idle_expires_at,se.expires_at AS session_expires_at,
 	u.archived_at AS user_archived_at,u.disabled_at AS user_disabled_at
 	FROM exam_attempts a JOIN exam_sittings s ON s.id=a.exam_sitting_id AND s.exam_id=a.exam_id
-	JOIN exam_submissions sub ON sub.exam_attempt_id=a.id AND sub.sealed=true
+	JOIN exam_submissions sub ON sub.exam_attempt_id=a.id AND sub.sealed=true AND sub.integrity_retired_at IS NULL
 	JOIN exam_attempt_participations p ON p.id=? AND p.id=sub.participation_id AND
 		p.exam_attempt_id=a.id AND p.generation=sub.generation
 	JOIN exam_attempt_connections co ON co.id=? AND co.id=sub.connection_id AND
@@ -165,6 +165,9 @@ func (s *sqlExamAttemptStore) RecordEndedFocusLoss(ctx context.Context,
 			if err != nil {
 				return nil, fmt.Errorf("insert Integrity Discrepancy: %w", translateError("integrity_discrepancy", value.ID.String(), err))
 			}
+			if err = invalidateSittingRecordsForIntegrity(ctx, tx, target.SittingID, access.DatabaseNow); err != nil {
+				return nil, err
+			}
 			result := &store.ExamAttemptFocusLossDiscrepancyResult{Target: *target, Discrepancy: value}
 			if err = completeEndedFocusLossAudit(ctx, tx, result, input.AuditEventID, input.AuditAt); err != nil {
 				return nil, err
@@ -177,6 +180,20 @@ func lockEndedFocusLossAccess(ctx context.Context, tx *sqlxTxWrapper, input stor
 	mutating bool,
 ) (endedFocusLossAccessRow, error) {
 	var row endedFocusLossAccessRow
+	// Records completion and retirement lock the Sitting before its Submissions.
+	// Use that same order so late accepted data cannot race a completion check.
+	var sittingID string
+	if err := tx.Get(ctx, &sittingID, `SELECT exam_sitting_id FROM exam_attempts WHERE id=? AND candidate_user_id=?`,
+		input.AttemptID.String(), input.CandidateUserID.String()); err != nil {
+		return row, translateError("exam_attempt", input.AttemptID.String(), err)
+	}
+	sittingLock := ` FOR SHARE`
+	if mutating {
+		sittingLock = ` FOR UPDATE`
+	}
+	if err := tx.Get(ctx, &sittingID, `SELECT id FROM exam_sittings WHERE id=?`+sittingLock, sittingID); err != nil {
+		return row, err
+	}
 	lock := ` FOR SHARE OF a,p,co,sub,s,se,u`
 	if mutating {
 		lock = ` FOR UPDATE OF a,p,co,sub FOR SHARE OF s,se,u`

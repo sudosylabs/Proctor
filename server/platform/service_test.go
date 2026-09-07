@@ -427,12 +427,16 @@ func (testStore) AccessPolicy() store.AccessPolicyStore { return nil }
 func (testStore) DesktopCompatibilityPolicy() store.DesktopCompatibilityPolicyStore {
 	return nil
 }
+func (testStore) RetentionPolicy() store.RetentionPolicyStore           { return nil }
+func (testStore) Retention() store.RetentionStore                       { return nil }
 func (testStore) AcademicUnit() store.AcademicUnitStore                 { return nil }
 func (testStore) Programme() store.ProgrammeStore                       { return nil }
 func (testStore) ProgrammeLevel() store.ProgrammeLevelStore             { return nil }
 func (testStore) AcademicPeriod() store.AcademicPeriodStore             { return nil }
 func (testStore) ExamAuthoring() store.ExamAuthoringStore               { return nil }
 func (testStore) ExamCorrection() store.ExamCorrectionStore             { return nil }
+func (testStore) ExamRecords() store.ExamRecordsStore                   { return nil }
+func (testStore) ExamExport() store.ExamExportStore                     { return nil }
 func (testStore) ExamAttempt() store.ExamAttemptStore                   { return nil }
 func (testStore) ExamAttemptWorkspace() store.ExamAttemptWorkspaceStore { return nil }
 func (testStore) ExamSubmission() store.ExamSubmissionStore             { return nil }

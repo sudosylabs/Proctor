@@ -288,6 +288,24 @@ lease is unexpired. Graceful shutdown withdraws its lease; after a crashed node,
 wait for the bounded lease to expire before retrying. Merely constructing this
 offline command never creates a serving lease.
 
+MFA recovery has its own host command under those same stopped-node safeguards:
+
+```console
+proctor administrator reset-mfa --config /etc/proctor.json \
+  --institution-id <institution-id> --user-id <user-id>
+```
+
+Enable and configure MFA before running it. The exact active administrator
+must retain an existing permitted password or provider authentication path.
+The command accepts no password or factor proof and does not change primary
+credentials or enable local login. It revokes the target's Sessions, PATs,
+old authenticators, recovery codes, and unfinished access grants, then records
+the reset and required reenrollment atomically. Restart normally to reconcile
+the host recovery audit. The administrator must sign in with fresh primary
+proof and enroll a new authenticator before ordinary account access returns.
+An external-only administrator needs their existing permitted provider to be
+available. Only one unreconciled host recovery command can be pending.
+
 Production sets `Authentication.Bootstrap.Secret` (or
 `PROCTOR_AUTHENTICATION_BOOTSTRAP_SECRET`) to an operator-generated value of at
 least 32 bytes. Only loopback listener plus loopback public-origin development

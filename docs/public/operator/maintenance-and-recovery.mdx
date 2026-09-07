@@ -42,9 +42,13 @@ encryption only; it does not rotate TLS, MFA, mail, or dependency credentials.
 
 Stop every application node, verify the exact Institution and active
 system-administrator User identifiers, then use the host-only command described
-in the [CLI reference](../reference/command-line.mdx). It can re-enable local
-login and/or read a replacement password from private standard input. The
-command starts no workers, listeners, or transports.
+in the [CLI reference](../reference/command-line.mdx). `administrator recover`
+can re-enable local login and/or read a replacement password from private
+standard input. `administrator reset-mfa` retires lost MFA material, revokes
+the administrator's existing access, and requires fresh primary sign-in and
+reenrollment. MFA must be enabled and an existing permitted primary method
+available; external-only accounts continue using their linked provider.
+These commands start no workers, listeners, or transports.
 
 Restart normally so Proctor reconciles the durable recovery record into audit.
 Do not use this path as a routine password reset or run it while another node is

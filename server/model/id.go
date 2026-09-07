@@ -70,6 +70,18 @@ type ExamAttemptWorkspaceID string
 // SubmissionID identifies the single immutable Submission sealed from one Attempt.
 type SubmissionID string
 
+// RetentionHoldID identifies one manually released preservation hold.
+type RetentionHoldID string
+
+// RetentionPreviewID identifies one revision-bound retention preview.
+type RetentionPreviewID string
+
+// RetentionRetirementID identifies one irreversible category retirement receipt.
+type RetentionRetirementID string
+
+// ExamExportID identifies one finite examination archive.
+type ExamExportID string
+
 // AttemptParticipationID identifies one bounded continuity-credential lease.
 type AttemptParticipationID string
 

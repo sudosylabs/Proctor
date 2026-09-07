@@ -18,6 +18,11 @@ states remain distinct. Several providers form one accessible radio group;
 one provider retains the same explicit Continue action and never redirects on
 page load.
 
+A fresh-proof failure exposes the bounded
+`/account/reauthenticate?task=connect-provider` journey. Returning refreshes the
+chooser and requires explicit provider selection and Continue again; the page
+never replays a provider-connection mutation after proof.
+
 The ready chooser uses one centered task column and a visible native radio
 indicator. Two compact shared `Notice` instances keep the password/profile and
 email non-merge guarantees together without introducing a progress rail or

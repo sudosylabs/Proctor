@@ -122,6 +122,9 @@ components:
         changed_at:
           type: string
           format: date-time
+        recursive:
+          type: boolean
+          description: When true, this directory deletion removes old_path and all descendants whose paths start with old_path followed by a slash. Clients apply the entire subtree removal at this one cursor.
     CandidateWorkspaceJournalResponse:
       type: object
       additionalProperties: false

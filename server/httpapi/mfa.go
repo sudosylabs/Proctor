@@ -39,10 +39,16 @@ type mfaActivationResponse struct {
 }
 
 type mfaStatusResponse struct {
-	Enabled                bool  `json:"enabled"`
-	Pending                bool  `json:"pending"`
-	PendingExpiresAt       int64 `json:"pending_expires_at,omitempty"`
-	RecoveryCodesRemaining int   `json:"recovery_codes_remaining"`
+	ServiceEnabled           bool   `json:"service_enabled"`
+	MFARecoveryRequired      bool   `json:"mfa_recovery_required"`
+	AuthenticationMethod     string `json:"authentication_method"`
+	AuthenticationProviderID string `json:"authentication_provider_id,omitempty"`
+	AuthenticationStrength   string `json:"authentication_strength"`
+	RecentlyAuthenticated    bool   `json:"recently_authenticated"`
+	Enabled                  bool   `json:"enabled"`
+	Pending                  bool   `json:"pending"`
+	PendingExpiresAt         int64  `json:"pending_expires_at,omitempty"`
+	RecoveryCodesRemaining   int    `json:"recovery_codes_remaining"`
 }
 
 type mfaResourceModule struct {
@@ -54,10 +60,10 @@ func mfaResource(mfa MFA) resource {
 	base := apiPath(literal("users"), literal("me"), literal("mfa"))
 	return newResource(
 		"multi-factor-authentication",
-		sessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.mfa.disabled", "authentication.mfa.unavailable"), module.status),
-		recentSessionRoute(http.MethodPost, appendRoutePath(base, literal("setup")), mfaRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.setup),
-		recentSessionRoute(http.MethodPost, appendRoutePath(base, literal("activate")), mfaRecentMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.activate),
-		sessionRoute(http.MethodPost, appendRoutePath(base, literal("challenge")), mfaSessionMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.challenge),
+		mfaRecoverySessionRoute(http.MethodGet, base, personalAccessTokenSessionCodes("authentication.mfa.disabled", "authentication.mfa.unavailable"), module.status),
+		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("setup")), mfaRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.setup),
+		recentMFARecoverySessionRoute(http.MethodPost, appendRoutePath(base, literal("activate")), mfaRecentMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.activate),
+		sessionRoute(http.MethodPost, appendRoutePath(base, literal("challenge")), mfaSessionMutationCodes("request.invalid", "authentication.mfa.invalid_code", "authentication.rate_limited", "authentication.rate_limit_unavailable", "authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.challenge),
 		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("recovery-codes"), literal("regenerate")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "authentication.internal", "audit.unavailable"), module.regenerateRecoveryCodes),
 		strongRecentSessionRoute(http.MethodPost, appendRoutePath(base, literal("disable")), mfaStrongRecentMutationCodes("authentication.mfa.disabled", "authentication.mfa.not_found", "authentication.mfa.conflict", "authentication.mfa.unavailable", "audit.unavailable"), module.disable),
 	)
@@ -85,6 +91,9 @@ func (module mfaResourceModule) status(request operationRequest) (operationResul
 		return operationResult{}, err
 	}
 	return jsonResult(http.StatusOK, mfaStatusResponse{
+		ServiceEnabled: status.ServiceEnabled, MFARecoveryRequired: status.MFARecoveryRequired,
+		AuthenticationMethod: status.AuthenticationMethod, AuthenticationProviderID: status.AuthenticationProviderID,
+		AuthenticationStrength: string(status.AuthenticationStrength), RecentlyAuthenticated: status.RecentlyAuthenticated,
 		Enabled:                status.Enabled,
 		Pending:                status.Pending,
 		PendingExpiresAt:       status.PendingExpiresAt.Millis(),

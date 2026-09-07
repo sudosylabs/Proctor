@@ -14,7 +14,7 @@ paths:
         Returns whether MFA is active, whether a setup is pending, and the count of unused recovery codes for the current User. TOTP secrets and recovery-code values are never returned by this status view.
       tags:
         - Authentication
-      x-proctor-auth: session_required
+      x-proctor-auth: mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
         - authentication.invalid_token
@@ -56,7 +56,7 @@ paths:
               https://proctor.example.edu/api/v1/users/me/mfa/setup
       tags:
         - Authentication
-      x-proctor-auth: recent_session_required
+      x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
         - authentication.invalid_token
@@ -106,7 +106,7 @@ paths:
         Verifies a current TOTP code against the pending setup, activates MFA, and returns a new recovery-code set exactly once. An expired or superseded setup cannot be activated.
       tags:
         - Authentication
-      x-proctor-auth: recent_session_required
+      x-proctor-auth: recent_mfa_recovery_session_required
       x-proctor-error-codes:
         - authentication.required
         - authentication.invalid_token
@@ -115,6 +115,8 @@ paths:
         - authentication.reauthentication_required
         - request.invalid
         - authentication.mfa.invalid_code
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
         - authentication.mfa.disabled
         - authentication.mfa.not_found
         - authentication.mfa.conflict
@@ -146,6 +148,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/InternalError'
         "501":
@@ -168,6 +172,8 @@ paths:
         - authentication.csrf.invalid
         - request.invalid
         - authentication.mfa.invalid_code
+        - authentication.rate_limited
+        - authentication.rate_limit_unavailable
         - authentication.mfa.disabled
         - authentication.mfa.not_found
         - authentication.mfa.conflict
@@ -199,6 +205,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/Conflict'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/InternalError'
         "501":
@@ -436,10 +444,32 @@ components:
       type: object
       additionalProperties: false
       required:
+        - service_enabled
+        - mfa_recovery_required
+        - authentication_method
+        - authentication_strength
+        - recently_authenticated
         - enabled
         - pending
         - recovery_codes_remaining
       properties:
+        service_enabled:
+          type: boolean
+          description: Whether local authenticator enrollment and verification are currently available.
+        mfa_recovery_required:
+          type: boolean
+          description: Whether this Session is restricted to fresh primary proof and local authenticator enrollment after an assisted reset.
+        authentication_method:
+          type: string
+          enum: [password, oidc, cas]
+        authentication_provider_id:
+          type: string
+          description: Original provider for an external Session; absent for password Sessions.
+        authentication_strength:
+          type: string
+          enum: [single_factor, multi_factor]
+        recently_authenticated:
+          type: boolean
         enabled:
           type: boolean
         pending:

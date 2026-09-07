@@ -26,6 +26,8 @@ type administratorRecoveryRow struct {
 	UserID             string         `db:"user_id"`
 	LocalLoginEnabled  bool           `db:"local_login_enabled"`
 	PasswordRotated    bool           `db:"password_rotated"`
+	MFAReset           bool           `db:"mfa_reset"`
+	MFAGeneration      sql.NullInt64  `db:"mfa_recovery_generation"`
 	PolicyFromRevision sql.NullInt64  `db:"policy_from_revision"`
 	PolicyToRevision   sql.NullInt64  `db:"policy_to_revision"`
 	ReconciledAt       sql.NullTime   `db:"reconciled_at"`
@@ -37,45 +39,9 @@ func (s SQLInstallationStore) RecoverAdministratorAccess(ctx context.Context, in
 		return nil, err
 	}
 	return runSQLTransaction(ctx, s.GetMaster().Begin, "offline administrator recovery", func(ctx context.Context, tx *sqlxTxWrapper) (*store.AdministratorRecoveryResult, error) {
-		if err := lockServingNodeLeaseFence(ctx, tx); err != nil {
-			return nil, err
-		}
-		if err := lockSystemAdministratorAuthenticationPaths(ctx, tx); err != nil {
-			return nil, err
-		}
-		var databaseNow time.Time
-		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
-			return nil, fmt.Errorf("read administrator recovery time: %w", err)
-		}
-		var installation installationStateRow
-		if err := tx.Get(ctx, &installation, `SELECT initialized_at, institution_id, administrator_user_id FROM installation_states WHERE singleton=1 FOR UPDATE`); err != nil {
-			return nil, translateError("installation", "singleton", err)
-		}
-		if installation.InstitutionID != input.InstitutionID.String() {
-			return nil, store.NewErrConflict("administrator_recovery", "installation_mismatch", nil)
-		}
-		var serving bool
-		if err := tx.Get(ctx, &serving, `SELECT EXISTS (SELECT 1 FROM serving_node_leases WHERE expires_at > $1)`, databaseNow); err != nil {
-			return nil, fmt.Errorf("check live serving nodes: %w", err)
-		}
-		if serving {
-			return nil, store.NewErrConflict("administrator_recovery", "serving_node_active", nil)
-		}
-
-		_, err := getPendingAdministratorRecovery(ctx, tx)
-		if err == nil {
-			return nil, store.NewErrConflict("administrator_recovery", "pending", nil)
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("read pending administrator recovery: %w", err)
-		}
-
-		active, err := isActiveSystemAdministrator(ctx, tx, input.UserID.String(), databaseNow)
+		databaseNow, err := lockOfflineAdministratorRecovery(ctx, tx, input.InstitutionID, input.UserID)
 		if err != nil {
 			return nil, err
-		}
-		if !active {
-			return nil, store.NewErrConflict("administrator_recovery", "target_not_active_system_administrator", nil)
 		}
 		policy, err := getAccessPolicy(ctx, tx, "FOR UPDATE")
 		if err != nil {
@@ -136,25 +102,37 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 		if err := tx.Get(ctx, &databaseNow, `SELECT clock_timestamp()`); err != nil {
 			return nil, fmt.Errorf("read administrator recovery reconciliation time: %w", err)
 		}
-		changedFields := make([]string, 0, 2)
+		changedFields := make([]string, 0, 4)
 		if row.LocalLoginEnabled {
 			changedFields = append(changedFields, "local_login_enabled")
 		}
 		if row.PasswordRotated {
 			changedFields = append(changedFields, "password_credential")
 		}
-		result, err := model.EncodeAuditData(map[string]any{
+		action := "authentication.administrator_recovery"
+		resultFields := map[string]any{
 			"changed_fields":       changedFields,
 			"local_login_enabled":  row.LocalLoginEnabled,
 			"password_rotated":     row.PasswordRotated,
 			"policy_from_revision": administratorRecoveryNullableInt64(row.PolicyFromRevision),
 			"policy_to_revision":   administratorRecoveryNullableInt64(row.PolicyToRevision),
-		})
+		}
+		if row.MFAReset {
+			if !row.MFAGeneration.Valid || row.MFAGeneration.Int64 <= 0 {
+				return nil, store.NewErrConflict("administrator_recovery", "mfa_evidence_invalid", nil)
+			}
+			action = "authentication.administrator_mfa_reset"
+			resultFields = map[string]any{
+				"changed_fields": []string{"mfa_credentials", "mfa_recovery_codes", "user_mfa_recovery", "user_access"},
+				"mfa_reset":      true, "mfa_recovery_generation": row.MFAGeneration.Int64, "reenrollment_required": true,
+			}
+		}
+		result, err := model.EncodeAuditData(resultFields)
 		if err != nil {
 			return nil, err
 		}
 		event := &model.AuditEvent{
-			Action: "authentication.administrator_recovery", Resource: model.Resource{Type: model.ResourceUser, ID: row.UserID},
+			Action: action, Resource: model.Resource{Type: model.ResourceUser, ID: row.UserID},
 			ScopeType: model.RoleScopeInstitution, ScopeID: row.InstitutionID, Status: model.AuditStatusSuccess,
 			NodeID: strings.TrimSpace(input.NodeID), ClientType: "system", Result: result,
 		}
@@ -174,7 +152,7 @@ func (s SQLInstallationStore) ReconcileAdministratorRecovery(ctx context.Context
 
 func getPendingAdministratorRecovery(ctx context.Context, executor sqlxExecutor) (administratorRecoveryRow, error) {
 	var row administratorRecoveryRow
-	err := executor.Get(ctx, &row, `SELECT id, created_at, institution_id, user_id, local_login_enabled, password_rotated, policy_from_revision, policy_to_revision, reconciled_at, audit_event_id FROM administrator_recovery_records WHERE reconciled_at IS NULL ORDER BY created_at, id LIMIT 1 FOR UPDATE`)
+	err := executor.Get(ctx, &row, `SELECT id, created_at, institution_id, user_id, local_login_enabled, password_rotated, mfa_reset, mfa_recovery_generation, policy_from_revision, policy_to_revision, reconciled_at, audit_event_id FROM administrator_recovery_records WHERE reconciled_at IS NULL ORDER BY created_at, id LIMIT 1 FOR UPDATE`)
 	return row, err
 }
 

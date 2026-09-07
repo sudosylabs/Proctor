@@ -29,15 +29,17 @@ type CreateAcademicUnitCommand struct {
 }
 
 type UpdateAcademicUnitCommand struct {
-	ID          string
-	ParentID    *string
-	Name        *string
-	DisplayName *string
-	Description *string
+	ExpectedRevision *int64
+	ID               string
+	ParentID         *string
+	Name             *string
+	DisplayName      *string
+	Description      *string
 }
 
 type ArchiveAcademicUnitCommand struct {
-	ID string
+	ExpectedRevision *int64
+	ID               string
 }
 
 type academicUnitCommandStore interface {
@@ -278,6 +280,9 @@ func (s *academicUnitCommandService) Update(
 	if err != nil {
 		return nil, academicUnitReadError("academic_unit", err)
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_unit.conflict"); err != nil {
+		return nil, err
+	}
 	candidate := *current
 	if command.ParentID != nil {
 		parentID := strings.TrimSpace(*command.ParentID)
@@ -369,6 +374,9 @@ func (s *academicUnitCommandService) Archive(
 	if err != nil {
 		return academicUnitReadError("academic_unit", err)
 	}
+	if err := checkAcademicRevision(command.ExpectedRevision, current.Revision, "academic_unit.conflict"); err != nil {
+		return err
+	}
 	archived, err := runAuditedMutation(
 		ctx,
 		s.audit,
@@ -383,7 +391,8 @@ func (s *academicUnitCommandService) Archive(
 		s.now,
 		func(ctx context.Context, reference mutationAttemptReference) (*model.AcademicUnit, error) {
 			return s.store.ArchiveWithAudit(ctx, &store.AcademicUnitArchive{
-				ID: command.ID, ArchiveAt: reference.MutationAtMillis,
+				ExpectedRevision: current.Revision,
+				ID:               command.ID, ArchiveAt: reference.MutationAtMillis,
 				AuditEventID: reference.ID, AuditAt: reference.MutationAtMillis,
 			})
 		},

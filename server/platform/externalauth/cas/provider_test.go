@@ -228,3 +228,56 @@ func (f roundTripperFunc) RoundTrip(
 ) (*http.Response, error) {
 	return f(request)
 }
+
+func TestProviderFreshProofRenewsAtLoginAndValidation(t *testing.T) {
+	for _, reject := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fresh ticket", true: "SSO ticket rejected"}[reject], func(t *testing.T) {
+			validated := false
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				validated = true
+				if r.URL.Query().Get("renew") != "true" {
+					t.Error("ticket validation did not require primary credentials")
+				}
+				w.Header().Set("Content-Type", "application/xml")
+				body := `<cas:serviceResponse xmlns:cas="urn:cas"><cas:authenticationSuccess><cas:user>same-user</cas:user></cas:authenticationSuccess></cas:serviceResponse>`
+				if reject {
+					body = `<cas:serviceResponse xmlns:cas="urn:cas"><cas:authenticationFailure code="INVALID_TICKET">renew required</cas:authenticationFailure></cas:serviceResponse>`
+				}
+				_, _ = w.Write([]byte(body))
+			}))
+			defer server.Close()
+			settings := testSettings(server.URL)
+			settings.AutoProvision = false
+			settings.Claims.AllowedHomeOrganizations = nil
+			created, err := NewFactory().New(settings)
+			if err != nil {
+				t.Fatal(err)
+			}
+			provider := created.(*Provider)
+			now := time.Now()
+			provider.now = func() time.Time { return now }
+			state := model.NewCredentialToken()
+			request := completeRequest(state, "ST-fresh")
+			request.AuthenticationStartedAt = now.Add(-time.Second)
+			start, err := provider.Begin(context.Background(), externalauth.BeginRequest{CallbackURL: request.CallbackURL, State: state, Proof: request.Proof, FreshAuthentication: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, _ := url.Parse(start.RedirectURL)
+			if u.Query().Get("renew") != "true" {
+				t.Fatal("CAS login did not request new primary proof")
+			}
+			assertion, err := provider.Complete(context.Background(), request)
+			if !validated {
+				t.Fatal("ticket was not validated")
+			}
+			if reject {
+				if !errors.Is(err, externalauth.ErrAuthenticationRejected) || assertion != nil {
+					t.Fatalf("SSO failure = %v", err)
+				}
+			} else if err != nil || assertion.AuthenticatedAt != request.AuthenticationStartedAt.UnixMilli() {
+				t.Fatalf("fresh CAS proof = %v", err)
+			}
+		})
+	}
+}

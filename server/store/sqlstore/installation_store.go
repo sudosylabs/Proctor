@@ -100,6 +100,9 @@ func (s SQLInstallationStore) Bootstrap(
 		if err := insertInitialAccessPolicy(ctx, tx, prepared.AccessPolicy); err != nil {
 			return nil, err
 		}
+		if err := insertInitialRetentionPolicy(ctx, tx, prepared.RetentionPolicy); err != nil {
+			return nil, err
+		}
 		if err := insertInitialDesktopCompatibilityPolicy(ctx, tx, prepared.DesktopCompatibilityPolicy); err != nil {
 			return nil, err
 		}
@@ -356,6 +359,7 @@ func prepareInstallationBootstrap(
 	}
 	accessPolicy := model.NewInitialAccessPolicy(model.NewAccessPolicyID(), at)
 	desktopCompatibilityPolicy := model.NewInitialDesktopCompatibilityPolicy(institution.ID, at)
+	retentionPolicy := model.NewInitialRetentionPolicy(institution.ID, at)
 	event := input.AuditEvent.Clone()
 	event.ID = ""
 	event.CreatedAt = time.Time{}
@@ -375,6 +379,7 @@ func prepareInstallationBootstrap(
 		"role_binding":                 binding.Auditable(),
 		"access_policy":                accessPolicy.Auditable(),
 		"desktop_compatibility_policy": desktopCompatibilityPolicy.Auditable(),
+		"retention_policy":             retentionPolicy.Auditable(),
 	})
 	if appErr != nil {
 		return nil, appErr
@@ -394,6 +399,7 @@ func prepareInstallationBootstrap(
 			State: state, Institution: institution, Administrator: &administrator,
 			Role: role, RoleBinding: &binding, AccessPolicy: accessPolicy,
 			DesktopCompatibilityPolicy: desktopCompatibilityPolicy,
+			RetentionPolicy:            retentionPolicy,
 		},
 		credential:               credential,
 		auditEvent:               event,
@@ -504,14 +510,14 @@ func replayInstallationBootstrap(
 func validateRetainedBootstrapResult(result *model.InstallationBootstrapResult, row installationStateRow) error {
 	if result == nil || result.State == nil || result.Institution == nil ||
 		result.Administrator == nil || result.Role == nil || result.RoleBinding == nil ||
-		result.AccessPolicy == nil || result.DesktopCompatibilityPolicy == nil || result.State.Validate() != nil ||
+		result.AccessPolicy == nil || result.DesktopCompatibilityPolicy == nil || result.RetentionPolicy == nil || result.State.Validate() != nil ||
 		result.Institution.Validate() != nil || result.Administrator.Validate() != nil ||
 		result.Role.Validate() != nil || result.RoleBinding.Validate() != nil ||
-		result.AccessPolicy.Validate() != nil || result.DesktopCompatibilityPolicy.Validate() != nil ||
+		result.AccessPolicy.Validate() != nil || result.DesktopCompatibilityPolicy.Validate() != nil || result.RetentionPolicy.Validate() != nil ||
 		result.State.InstitutionID.String() != row.InstitutionID ||
 		result.State.AdministratorUserID.String() != row.AdministratorUserID ||
 		result.AccessPolicy.ID.String() != row.AccessPolicyID ||
-		result.DesktopCompatibilityPolicy.InstitutionID != result.State.InstitutionID {
+		result.DesktopCompatibilityPolicy.InstitutionID != result.State.InstitutionID || result.RetentionPolicy.InstitutionID != result.State.InstitutionID {
 		return store.NewErrConflict("installation", "retained_bootstrap_result_invalid", nil)
 	}
 	return nil
