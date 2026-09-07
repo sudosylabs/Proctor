@@ -31,7 +31,9 @@ application metadata, templates, database records, or caching.
 
 The S3 backend reports conditional destination writes and atomic moves as
 unsupported. An S3 move is a copy followed by deletion, so a failed deletion
-can leave both paths present.
+can leave both paths present. Moves with a source revision are rejected with
+ErrUnsupported before either path changes: the adapter cannot condition
+deletion on the current source revision. Copy still supports source revisions.
 
 ## Example
 
@@ -97,6 +99,19 @@ The local backend rejects symbolic links observed beneath its root. The root
 must still be writable only by the application. Portable Go filesystem APIs
 cannot eliminate every time-of-check to time-of-use race caused by another
 hostile local process.
+
+Writes and copies stage their bytes before taking the short publication lock.
+Unrelated operations can proceed while an upload is stalled, and the existing
+destination remains readable until publication. Revision and overwrite
+conditions are checked again before the complete file becomes visible. Listing
+starts in the directory specified by the prefix and skips unrelated subtrees;
+work within the matching subtree can still exceed the requested page size.
+
+Synchronization and temporary-file visibility belong to one `local.FS` value.
+Independently constructed values or processes sharing a directory do not share
+those guarantees. Exact active staging paths are hidden without reserving a
+filename prefix. Abrupt process termination can leave temporary files; the
+backend does not automatically identify or recover unfinished writes on restart.
 
 ## Backend conformance
 

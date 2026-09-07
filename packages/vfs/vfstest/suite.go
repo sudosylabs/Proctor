@@ -175,6 +175,60 @@ func Run(t *testing.T, factory Factory) {
 		}
 	})
 
+	t.Run("source revision move", func(t *testing.T) {
+		filesystem := factory(t)
+		ctx := context.Background()
+		source, err := filesystem.Write(ctx, "source.txt", bytes.NewBufferString("content"), vfs.WriteOptions{})
+		if err != nil {
+			t.Fatalf("write source: %v", err)
+		}
+		moved, err := filesystem.Move(ctx, "source.txt", "destination.txt", vfs.TransferOptions{
+			SourceRevision: source.Revision,
+		})
+		if errors.Is(err, vfs.ErrUnsupported) {
+			assertRevision(t, filesystem, "source.txt", source.Revision)
+			if _, err := filesystem.Stat(ctx, "destination.txt"); !errors.Is(err, vfs.ErrNotFound) {
+				t.Fatalf("unsupported move changed destination: %v", err)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("move: %v", err)
+		}
+		if moved.Path != "destination.txt" {
+			t.Fatalf("unexpected moved path: %q", moved.Path)
+		}
+		if _, err := filesystem.Stat(ctx, "source.txt"); !errors.Is(err, vfs.ErrNotFound) {
+			t.Fatalf("source still exists after move: %v", err)
+		}
+		assertRevision(t, filesystem, "destination.txt", moved.Revision)
+	})
+
+	t.Run("move rejects stale source revision", func(t *testing.T) {
+		filesystem := factory(t)
+		ctx := context.Background()
+		source, err := filesystem.Write(ctx, "source.txt", bytes.NewBufferString("original"), vfs.WriteOptions{})
+		if err != nil {
+			t.Fatalf("write original source: %v", err)
+		}
+		replacement, err := filesystem.Write(ctx, "source.txt", bytes.NewBufferString("replacement"), vfs.WriteOptions{})
+		if err != nil {
+			t.Fatalf("replace source: %v", err)
+		}
+		destination, err := filesystem.Write(ctx, "destination.txt", bytes.NewBufferString("destination"), vfs.WriteOptions{})
+		if err != nil {
+			t.Fatalf("write destination: %v", err)
+		}
+		_, err = filesystem.Move(ctx, "source.txt", "destination.txt", vfs.TransferOptions{
+			SourceRevision: source.Revision,
+		})
+		if !errors.Is(err, vfs.ErrConflict) && !errors.Is(err, vfs.ErrUnsupported) {
+			t.Fatalf("Move() error = %v, want ErrConflict or ErrUnsupported", err)
+		}
+		assertRevision(t, filesystem, "source.txt", replacement.Revision)
+		assertRevision(t, filesystem, "destination.txt", destination.Revision)
+	})
+
 	t.Run("recursive and delimited listing", func(t *testing.T) {
 		filesystem := factory(t)
 		ctx := context.Background()
@@ -237,6 +291,17 @@ func Run(t *testing.T, factory Factory) {
 			t.Fatalf("expected canceled context, got %v", err)
 		}
 	})
+}
+
+func assertRevision(t *testing.T, filesystem vfs.FileSystem, path, want string) {
+	t.Helper()
+	info, err := filesystem.Stat(context.Background(), path)
+	if err != nil {
+		t.Fatalf("stat %q: %v", path, err)
+	}
+	if info.Revision != want {
+		t.Fatalf("revision for %q = %q, want %q", path, info.Revision, want)
+	}
 }
 
 func assertPaths(t *testing.T, entries []vfs.Info, expected []string) {

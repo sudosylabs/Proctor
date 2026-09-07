@@ -3,8 +3,8 @@
 //
 // S3 does not provide atomic rename. Move is implemented as server-side copy
 // followed by removal of the source, and a failed removal may leave both
-// objects present. Conditional destination writes are rejected rather than
-// emulated with a racy stat-then-write sequence.
+// objects present. Revision-protected moves and conditional destination writes
+// are rejected rather than emulated with a racy stat-then-mutate sequence.
 package s3
 
 import (
@@ -298,6 +298,15 @@ func (f *FS) Copy(ctx context.Context, source, destination string, options vfs.T
 }
 
 func (f *FS) Move(ctx context.Context, source, destination string, options vfs.TransferOptions) (vfs.Info, error) {
+	source, destination, err := normalizeTransfer(source, destination, options)
+	if err != nil {
+		return vfs.Info{}, vfs.Error("move", source+" -> "+destination, err)
+	}
+	// The client cannot condition deletion on the current source revision.
+	// Reject before copying so an unsupported move changes neither path.
+	if options.SourceRevision != "" {
+		return vfs.Info{}, vfs.Error("move", source, vfs.ErrUnsupported)
+	}
 	info, err := f.Copy(ctx, source, destination, options)
 	if err != nil {
 		return vfs.Info{}, err

@@ -30,8 +30,9 @@ const (
 
 // FS is a concurrency-safe filesystem rooted in one local directory.
 type FS struct {
-	root string
-	mu   sync.RWMutex
+	root    string
+	mu      sync.RWMutex
+	staging map[string]fs.FileInfo
 }
 
 // New creates or opens a local filesystem rooted at root.
@@ -122,7 +123,7 @@ func (f *FS) Open(ctx context.Context, name string, options vfs.OpenOptions) (*v
 	return &vfs.File{Info: info, Body: body}, nil
 }
 
-func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs.WriteOptions) (vfs.Info, error) {
+func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs.WriteOptions) (_ vfs.Info, resultErr error) {
 	const op = "write"
 	name, err := vfs.NormalizePath(name)
 	if err != nil {
@@ -138,56 +139,30 @@ func (f *FS) Write(ctx context.Context, name string, body io.Reader, options vfs
 		return vfs.Info{}, vfs.Error(op, name, err)
 	}
 
+	temporary, err := f.prepareWrite(ctx, name, options)
+	if err != nil {
+		return vfs.Info{}, vfs.Error(op, name, err)
+	}
+	defer func() {
+		if err := f.discardTemporary(temporary.Name()); err != nil {
+			resultErr = errors.Join(resultErr, vfs.Error(op, name, err))
+		}
+	}()
+	if err := writeTemporary(ctx, temporary, body, options.Size); err != nil {
+		return vfs.Info{}, vfs.Error(op, name, err)
+	}
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
-	fullPath, err := f.resolve(name)
+	if err := ctx.Err(); err != nil {
+		return vfs.Info{}, vfs.Error(op, name, err)
+	}
+	fullPath, err := f.writeDestination(name, options)
 	if err != nil {
 		return vfs.Info{}, vfs.Error(op, name, err)
 	}
-	current, exists, err := localInfo(name, fullPath)
-	if err != nil {
-		return vfs.Info{}, vfs.Error(op, name, err)
-	}
-	if exists && current.IsDir {
-		return vfs.Info{}, vfs.Error(op, name, vfs.ErrIsDirectory)
-	}
-	if options.NoOverwrite && exists {
-		return vfs.Info{}, vfs.Error(op, name, vfs.ErrAlreadyExists)
-	}
-	if options.ExpectedRevision != "" && (!exists || current.Revision != options.ExpectedRevision) {
-		return vfs.Info{}, vfs.Error(op, name, vfs.ErrConflict)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(fullPath), directoryMode); err != nil {
-		return vfs.Info{}, vfs.Error(op, name, err)
-	}
-	written, err := f.writeTemporary(ctx, fullPath, body, options.Size)
-	if err != nil {
-		return vfs.Info{}, vfs.Error(op, name, err)
-	}
-
-	if options.NoOverwrite {
-		if err := os.Link(written.temporaryPath, fullPath); err != nil {
-			_ = os.Remove(written.temporaryPath)
-			if errors.Is(err, fs.ErrExist) {
-				return vfs.Info{}, vfs.Error(op, name, vfs.ErrAlreadyExists)
-			}
-			return vfs.Info{}, vfs.Error(op, name, err)
-		}
-		if err := os.Remove(written.temporaryPath); err != nil {
-			return vfs.Info{}, vfs.Error(op, name, err)
-		}
-	} else if err := os.Rename(written.temporaryPath, fullPath); err != nil {
-		_ = os.Remove(written.temporaryPath)
-		return vfs.Info{}, vfs.Error(op, name, err)
-	}
-
-	info, _, err := localInfo(name, fullPath)
-	if err != nil {
-		return vfs.Info{}, vfs.Error(op, name, err)
-	}
-	return info, nil
+	info, err := f.publishTemporary(name, fullPath, temporary.Name(), options.NoOverwrite)
+	return info, vfs.Error(op, name, err)
 }
 
 func (f *FS) Stat(ctx context.Context, name string) (vfs.Info, error) {
@@ -264,15 +239,22 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
+	root, exists, err := f.listRoot(ctx, options.Prefix)
+	if err != nil {
+		return vfs.Page{}, vfs.Error(op, options.Prefix, err)
+	}
+	if !exists {
+		return vfs.Page{Entries: []vfs.Info{}}, nil
+	}
 	entries := make(map[string]vfs.Info)
-	err = filepath.WalkDir(f.root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if fullPath == f.root {
+		if fullPath == root {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -281,8 +263,17 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 			}
 			return nil
 		}
-		if entry.IsDir() {
+		if _, staged := f.staging[fullPath]; staged {
 			return nil
+		}
+		if len(f.staging) > 0 && !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if f.isStaged(info) {
+				return nil
+			}
 		}
 
 		relative, err := filepath.Rel(f.root, fullPath)
@@ -290,6 +281,15 @@ func (f *FS) List(ctx context.Context, options vfs.ListOptions) (vfs.Page, error
 			return err
 		}
 		name := filepath.ToSlash(relative)
+		if entry.IsDir() {
+			// A lexical prefix can end in the middle of a directory name.
+			// Descend only if this directory can contain a matching file.
+			directory := name + "/"
+			if !strings.HasPrefix(directory, options.Prefix) && !strings.HasPrefix(options.Prefix, directory) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if !strings.HasPrefix(name, options.Prefix) {
 			return nil
 		}
@@ -364,7 +364,7 @@ func (f *FS) Move(ctx context.Context, source, destination string, options vfs.T
 	return info, nil
 }
 
-func (f *FS) copy(ctx context.Context, op, source, destination string, options vfs.TransferOptions) (vfs.Info, error) {
+func (f *FS) copy(ctx context.Context, op, source, destination string, options vfs.TransferOptions) (_ vfs.Info, resultErr error) {
 	source, destination, err := normalizeTransfer(source, destination, options)
 	if err != nil {
 		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
@@ -373,43 +373,180 @@ func (f *FS) copy(ctx context.Context, op, source, destination string, options v
 		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
 	}
 
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	sourcePath, destinationPath, sourceInfo, err := f.prepareTransfer(source, destination, options)
+	sourceFile, temporary, sourceInfo, err := f.prepareCopy(ctx, source, destination, options)
 	if err != nil {
 		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
 	}
+	defer sourceFile.Close()
+	defer func() {
+		if err := f.discardTemporary(temporary.Name()); err != nil {
+			resultErr = errors.Join(resultErr, vfs.Error(op, destination, err))
+		}
+	}()
+	if err := writeTemporary(ctx, temporary, sourceFile, &sourceInfo.Size); err != nil {
+		return vfs.Info{}, vfs.Error(op, destination, err)
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return vfs.Info{}, vfs.Error(op, destination, err)
+	}
+	_, destinationPath, _, err := f.prepareTransfer(source, destination, options)
+	if err != nil {
+		return vfs.Info{}, vfs.Error(op, source+" -> "+destination, err)
+	}
+	info, err := f.publishTemporary(destination, destinationPath, temporary.Name(), options.NoOverwrite)
+	return info, vfs.Error(op, destination, err)
+}
+
+func (f *FS) prepareWrite(ctx context.Context, name string, options vfs.WriteOptions) (*os.File, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	destination, err := f.writeDestination(name, options)
+	if err != nil {
+		return nil, err
+	}
+	return f.newTemporary(destination)
+}
+
+func (f *FS) writeDestination(name string, options vfs.WriteOptions) (string, error) {
+	fullPath, err := f.resolve(name)
+	if err != nil {
+		return "", err
+	}
+	current, exists, err := localInfo(name, fullPath)
+	if err != nil {
+		return "", err
+	}
+	if exists && current.IsDir {
+		return "", vfs.ErrIsDirectory
+	}
+	if options.NoOverwrite && exists {
+		return "", vfs.ErrAlreadyExists
+	}
+	if options.ExpectedRevision != "" && (!exists || current.Revision != options.ExpectedRevision) {
+		return "", vfs.ErrConflict
+	}
+	return fullPath, nil
+}
+
+func (f *FS) prepareCopy(ctx context.Context, source, destination string, options vfs.TransferOptions) (*os.File, *os.File, vfs.Info, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, vfs.Info{}, err
+	}
+	sourcePath, destinationPath, sourceInfo, err := f.prepareTransfer(source, destination, options)
+	if err != nil {
+		return nil, nil, vfs.Info{}, err
+	}
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
-		return vfs.Info{}, vfs.Error(op, source, err)
+		return nil, nil, vfs.Info{}, err
 	}
-	defer sourceFile.Close()
+	temporary, err := f.newTemporary(destinationPath)
+	if err != nil {
+		return nil, nil, vfs.Info{}, errors.Join(err, sourceFile.Close())
+	}
+	return sourceFile, temporary, sourceInfo, nil
+}
 
-	if err := os.MkdirAll(filepath.Dir(destinationPath), directoryMode); err != nil {
-		return vfs.Info{}, vfs.Error(op, destination, err)
+// newTemporary and publishTemporary run with the publication lock held. Exact
+// temporary paths are hidden, without reserving any otherwise valid VFS name.
+func (f *FS) newTemporary(destination string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(destination), directoryMode); err != nil {
+		return nil, err
 	}
-	written, err := f.writeTemporary(ctx, destinationPath, sourceFile, &sourceInfo.Size)
+	temporary, err := os.CreateTemp(filepath.Dir(destination), ".vfs-*")
 	if err != nil {
-		return vfs.Info{}, vfs.Error(op, destination, err)
+		return nil, err
 	}
-	if options.NoOverwrite {
-		if err := os.Link(written.temporaryPath, destinationPath); err != nil {
-			_ = os.Remove(written.temporaryPath)
-			if errors.Is(err, fs.ErrExist) {
-				return vfs.Info{}, vfs.Error(op, destination, vfs.ErrAlreadyExists)
-			}
-			return vfs.Info{}, vfs.Error(op, destination, err)
+	info, err := temporary.Stat()
+	if err != nil {
+		return nil, errors.Join(err, temporary.Close(), os.Remove(temporary.Name()))
+	}
+	if f.staging == nil {
+		f.staging = make(map[string]fs.FileInfo)
+	}
+	f.staging[temporary.Name()] = info
+	return temporary, nil
+}
+
+// Filesystem aliases (for example, on case-insensitive volumes) must not expose
+// an in-progress object whose registered path uses a different spelling.
+func (f *FS) isStaged(info fs.FileInfo) bool {
+	for _, staged := range f.staging {
+		if os.SameFile(staged, info) {
+			return true
 		}
-		_ = os.Remove(written.temporaryPath)
-	} else if err := os.Rename(written.temporaryPath, destinationPath); err != nil {
-		_ = os.Remove(written.temporaryPath)
-		return vfs.Info{}, vfs.Error(op, destination, err)
 	}
-	info, _, err := localInfo(destination, destinationPath)
-	if err != nil {
-		return vfs.Info{}, vfs.Error(op, destination, err)
+	return false
+}
+
+func (f *FS) publishTemporary(name, destination, temporary string, noOverwrite bool) (vfs.Info, error) {
+	if noOverwrite {
+		if err := os.Link(temporary, destination); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return vfs.Info{}, vfs.ErrAlreadyExists
+			}
+			return vfs.Info{}, err
+		}
+		if err := os.Remove(temporary); err != nil {
+			return vfs.Info{}, err
+		}
+	} else if err := os.Rename(temporary, destination); err != nil {
+		return vfs.Info{}, err
 	}
-	return info, nil
+	delete(f.staging, temporary)
+	info, _, err := localInfo(name, destination)
+	return info, err
+}
+
+// Cleanup does not inherit cancellation from the interrupted write. If removal
+// itself fails, retain the registration so the unfinished bytes stay invisible.
+func (f *FS) discardTemporary(name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, staged := f.staging[name]; !staged {
+		return nil
+	}
+	if err := os.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	delete(f.staging, name)
+	return nil
+}
+
+// Start inside the fully specified directory portion of the lexical prefix.
+// Missing directories, files, and observed symlinks contain no listable matches.
+func (f *FS) listRoot(ctx context.Context, prefix string) (string, bool, error) {
+	lastSlash := strings.LastIndexByte(prefix, '/')
+	if lastSlash < 0 {
+		return f.root, true, nil
+	}
+	current := f.root
+	for _, part := range strings.Split(prefix[:lastSlash], "/") {
+		if err := ctx.Err(); err != nil {
+			return "", false, err
+		}
+		// Match directory names byte-for-byte, as a walk from the root would.
+		// Opening the prefix directly could follow a filesystem case alias and
+		// change the VFS's lexical-prefix results.
+		entries, err := os.ReadDir(current)
+		if err != nil {
+			return "", false, err
+		}
+		index := sort.Search(len(entries), func(i int) bool { return entries[i].Name() >= part })
+		if index == len(entries) || entries[index].Name() != part || !entries[index].IsDir() || entries[index].Type()&os.ModeSymlink != 0 {
+			return "", false, nil
+		}
+		current = filepath.Join(current, part)
+	}
+	return current, true, nil
 }
 
 func (f *FS) prepareTransfer(source, destination string, options vfs.TransferOptions) (string, string, vfs.Info, error) {
@@ -462,12 +599,18 @@ func (f *FS) resolve(name string) (string, error) {
 	parts := strings.Split(filepath.Clean(relative), string(filepath.Separator))
 	for index, part := range parts {
 		current = filepath.Join(current, part)
+		if _, staged := f.staging[current]; staged {
+			return "", vfs.ErrNotFound
+		}
 		info, err := os.Lstat(current)
 		if errors.Is(err, fs.ErrNotExist) {
 			break
 		}
 		if err != nil {
 			return "", err
+		}
+		if !info.IsDir() && f.isStaged(info) {
+			return "", vfs.ErrNotFound
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("%w: symbolic links are not allowed", vfs.ErrInvalidPath)
@@ -479,42 +622,22 @@ func (f *FS) resolve(name string) (string, error) {
 	return fullPath, nil
 }
 
-type temporaryWrite struct {
-	temporaryPath string
-}
-
-func (f *FS) writeTemporary(ctx context.Context, destination string, body io.Reader, expectedSize *int64) (temporaryWrite, error) {
-	temporary, err := os.CreateTemp(filepath.Dir(destination), ".vfs-*")
-	if err != nil {
-		return temporaryWrite{}, err
-	}
-	temporaryPath := temporary.Name()
-	cleanup := func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}
+func writeTemporary(ctx context.Context, temporary *os.File, body io.Reader, expectedSize *int64) (resultErr error) {
+	defer func() { resultErr = errors.Join(resultErr, temporary.Close()) }()
 	if err := temporary.Chmod(fileMode); err != nil {
-		cleanup()
-		return temporaryWrite{}, err
+		return err
 	}
 	written, err := io.Copy(temporary, &contextReader{ctx: ctx, reader: body})
 	if err != nil {
-		cleanup()
-		return temporaryWrite{}, err
+		return err
 	}
 	if expectedSize != nil && written != *expectedSize {
-		cleanup()
-		return temporaryWrite{}, fmt.Errorf("size mismatch: expected %d bytes, received %d", *expectedSize, written)
+		return fmt.Errorf("size mismatch: expected %d bytes, received %d", *expectedSize, written)
 	}
-	if err := temporary.Sync(); err != nil {
-		cleanup()
-		return temporaryWrite{}, err
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if err := temporary.Close(); err != nil {
-		_ = os.Remove(temporaryPath)
-		return temporaryWrite{}, err
-	}
-	return temporaryWrite{temporaryPath: temporaryPath}, nil
+	return temporary.Sync()
 }
 
 func localInfo(name, fullPath string) (vfs.Info, bool, error) {
