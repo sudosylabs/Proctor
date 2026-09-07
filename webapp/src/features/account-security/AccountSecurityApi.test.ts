@@ -40,13 +40,28 @@ describe("bounded account security context", () => {
 });
 
 describe("explicit MFA mutations", () => {
-  it("projects only the setup key and expiry from a valid creation response", async () => {
+  it("keeps the matching provisioning URI with the setup key and expiry", async () => {
+    const provisioningURI = "otpauth://totp/Proctor:preview?secret=SETUPKEY&issuer=Proctor";
     const post = vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(201, {
-      data: { secret: "SETUPKEY", provisioning_uri: "otpauth://secret-not-projected", expires_at: 1_900_000_000_000 },
+      data: { secret: "SETUPKEY", provisioning_uri: provisioningURI, expires_at: 1_900_000_000_000 },
     }));
-    await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "success", setup: { secret: "SETUPKEY", expiresAt: 1_900_000_000_000 } });
+    await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "success", setup: { secret: "SETUPKEY", provisioningURI, expiresAt: 1_900_000_000_000 } });
     expect(post).toHaveBeenCalledOnce();
     post.mockResolvedValue(apiResult(201, { data: { secret: "SETUPKEY", expires_at: 1e20 } }));
+    await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "unavailable" });
+  });
+
+  it.each([
+    undefined, "", "https://example.test/qr?secret=SETUPKEY", "otpauth://hotp/Proctor?secret=SETUPKEY",
+    "otpauth://totp/Proctor?secret=DIFFERENT", "otpauth://totp/Proctor?secret=SETUPKEY&secret=OTHER",
+    "otpauth://totp/Proctor?secret=SETUPKEY&digits=8", "otpauth://totp/Proctor?secret=SETUPKEY&period=60",
+    "otpauth://totp/Proctor?secret=SETUPKEY&algorithm=SHA256", "otpauth://totp/?secret=SETUPKEY",
+    "otpauth://user:password@totp/Proctor?secret=SETUPKEY", "otpauth://totp/Proctor?secret=SETUPKEY#fragment",
+    `otpauth://totp/${"a".repeat(2048)}?secret=SETUPKEY`,
+  ])("rejects an unusable or mismatched provisioning URI: %s", async (provisioning_uri) => {
+    vi.spyOn(apiClient, "POST").mockResolvedValue(apiResult(201, {
+      data: { secret: "SETUPKEY", provisioning_uri, expires_at: 1_900_000_000_000 },
+    }));
     await expect(beginAuthenticatorSetup()).resolves.toEqual({ kind: "unavailable" });
   });
 

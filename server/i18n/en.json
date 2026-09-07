@@ -2208,12 +2208,36 @@
     "translation": "Skip to password recovery"
   },
   {
+    "id": "webapp.form.otp.help",
+    "translation": "Enter the six-digit code from your authenticator app."
+  },
+  {
+    "id": "webapp.form.otp.incomplete",
+    "translation": "Enter all six digits of your authenticator code."
+  },
+  {
+    "id": "webapp.form.otp.use",
+    "translation": "Use an authenticator code"
+  },
+  {
     "id": "webapp.form.password_hide",
     "translation": "Hide password"
   },
   {
     "id": "webapp.form.password_show",
     "translation": "Show password"
+  },
+  {
+    "id": "webapp.form.recovery_code.help",
+    "translation": "Enter one unused recovery code. Each code can be used once."
+  },
+  {
+    "id": "webapp.form.recovery_code.label",
+    "translation": "Recovery code"
+  },
+  {
+    "id": "webapp.form.recovery_code.use",
+    "translation": "Use a recovery code instead"
   },
   {
     "id": "webapp.join.accepted.body",
@@ -2450,10 +2474,6 @@
   {
     "id": "webapp.login.form.mfa_back",
     "translation": "Use a different password"
-  },
-  {
-    "id": "webapp.login.form.mfa_code",
-    "translation": "Authentication code"
   },
   {
     "id": "webapp.login.form.mfa_heading",
@@ -2984,18 +3004,6 @@
     "translation": "Authenticator code"
   },
   {
-    "id": "webapp.security.code.enrollment_help",
-    "translation": "Enter the current six-digit code from the authenticator you just added."
-  },
-  {
-    "id": "webapp.security.code.help",
-    "translation": "Use a current authenticator code or one unused recovery code. Each recovery code can be used once."
-  },
-  {
-    "id": "webapp.security.code.label",
-    "translation": "Authenticator or recovery code"
-  },
-  {
     "id": "webapp.security.code.required",
     "translation": "Enter a code to continue."
   },
@@ -3165,7 +3173,7 @@
   },
   {
     "id": "webapp.security.setup.body",
-    "translation": "In your authenticator app, add an account using a setup key. Choose time-based codes, enter the key below, then enter a code from the app."
+    "translation": "Scan this QR code with your authenticator app, then enter the six-digit code it generates."
   },
   {
     "id": "webapp.security.setup.expires",
@@ -3180,12 +3188,24 @@
     "translation": "Setup key"
   },
   {
+    "id": "webapp.security.setup.manual",
+    "translation": "Can’t scan the code?"
+  },
+  {
+    "id": "webapp.security.setup.manual_help",
+    "translation": "Add an account manually in your authenticator app, choose a time-based code, and enter this key."
+  },
+  {
     "id": "webapp.security.setup.pending",
     "translation": "A setup is pending. Restarting replaces its setup key; the old key will no longer activate MFA."
   },
   {
     "id": "webapp.security.setup.private",
-    "translation": "Keep this key private. Anyone with it can generate your authenticator codes. It is shown only during this setup."
+    "translation": "Keep this QR code and setup key private. Anyone with either can generate your authenticator codes."
+  },
+  {
+    "id": "webapp.security.setup.qr_label",
+    "translation": "QR code for authenticator setup"
   },
   {
     "id": "webapp.security.setup.restart",

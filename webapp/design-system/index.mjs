@@ -13,6 +13,8 @@ const generatedTokenPath = 'src/styles/tokens.css';
 const generatedThemePath = 'src/generated/design-system/themes.ts';
 
 const requiredColorTokens = [
+  'machine-readable-background',
+  'machine-readable-foreground',
   'background-canvas',
   'background-subtle',
   'background-surface',
@@ -270,6 +272,13 @@ export function auditTokenContract(tokens = designTokens) {
     if (!keysEqual(Object.keys(color), requiredColorTokens)) {
       continue;
     }
+    checkContrast(
+      failures,
+      `${id} machine-readable modules`,
+      color['machine-readable-foreground'],
+      color['machine-readable-background'],
+      7,
+    );
     for (const backgroundName of [
       'background-canvas',
       'background-subtle',
@@ -407,7 +416,7 @@ function auditAuthoredCSS(source, name) {
     }
   }
   for (const match of source.matchAll(/\bbox-shadow\s*:\s*([^;}]*)/gi)) {
-    const value = match[1].trim();
+    const value = match[1].replace(/\s*!important\s*$/i, '').trim();
     if (value !== 'none' && !value.startsWith('var(--proctor-shadow-')) {
       failures.push(`${name}: box shadows must use semantic elevation tokens`);
     }

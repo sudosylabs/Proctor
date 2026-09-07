@@ -6,10 +6,10 @@ import type {
 import { message } from "../../i18n/messages";
 import { AccessTaskIntro } from "../AccessTaskIntro/AccessTaskIntro";
 import { Button, ButtonLink } from "../Button/Button";
-import { InputField } from "../InputField/InputField";
 import { Notice } from "../Notice/Notice";
 import { TaskState, TaskStateActions, TaskStateAnnouncement } from "../TaskState/TaskState";
 import { RecoveryCodes } from "./RecoveryCodes";
+import { AuthenticatorSetup as AuthenticatorSetupContent } from "./AuthenticatorSetup";
 import { SecurityCodeForm } from "./SecurityCodeForm";
 import { SecurityFeedback } from "./SecurityFeedback";
 import styles from "./AccountSecurity.module.css";
@@ -177,9 +177,7 @@ export function AccountSecurityContent({ actions, loading, onRefresh, state }: {
       </> : null}
       {task.kind === "setup" ? <>
         <Notice tone="warning">{message("webapp.security.setup.private")}</Notice>
-        <InputField id="authenticator-secret" label={message("webapp.security.setup.key")} inputClassName={styles.secret}
-          readOnly value={task.setup.secret} autoComplete="off" spellCheck={false} translate="no"
-          description={message("webapp.security.setup.expires", { Time: new Date(task.setup.expiresAt).toLocaleString() })} />
+        <AuthenticatorSetupContent setup={task.setup} />
         <SecurityCodeForm pending={pending} onSubmit={activate} enrollment />
       </> : null}
       {task.kind === "codes" ? <RecoveryCodes codes={task.codes} onDone={() => refresh(message("webapp.security.codes.saved"))} /> : null}

@@ -1,0 +1,11 @@
+/* Copyright (c) 2026 Sudosy Labs. SPDX-License-Identifier: AGPL-3.0-only */
+@layer components {
+  .field {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    gap: var(--proctor-space-2);
+  }
+
+  .switchMethod { align-self: flex-start; }
+}

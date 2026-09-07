@@ -627,7 +627,7 @@ test("local login enters MFA without placing credentials in the URL", async ({ p
   await page.locator("#password").fill("private-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByLabel("Authentication code")).toBeFocused();
+  await expect(page.getByLabel("Authenticator code")).toBeFocused();
   await expect(page.locator("#mfa-code")).toHaveAttribute("required", "");
   await expect(
     page.locator('label[for="mfa-code"] [data-required-indicator]'),

@@ -68,6 +68,16 @@ test('dark theme preserves the governed neutral, accent, and state palette', () 
   );
 });
 
+test('machine-readable codes retain dark modules on paper in every theme', () => {
+  for (const theme of Object.values(designTokens.themes)) {
+    assert.equal(theme.color['machine-readable-background'], '#ffffff');
+    assert.equal(theme.color['machine-readable-foreground'], '#161616');
+  }
+  const tokens = structuredClone(designTokens);
+  tokens.themes.dark.color['machine-readable-foreground'] = '#ffffff';
+  assert(auditTokenContract(tokens).some((failure) => failure.includes('machine-readable modules')));
+});
+
 test('generated CSS supports system, light, dark, and reduced-motion modes', () => {
   const source = renderDesignTokenCSS();
   assert.match(source, /:root:not\(\[data-theme\]\)/);

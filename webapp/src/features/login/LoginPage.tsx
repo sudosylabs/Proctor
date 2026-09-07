@@ -9,6 +9,7 @@ import { useAsyncResource } from "../../app/AsyncResource";
 import { navigateToProvider } from "../../auth/navigation";
 import type { PublicAccessDiscovery } from "../../auth/PublicAccessDiscovery";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
+import { AuthenticationCodeField, isCompleteAuthenticationCode, type AuthenticationCodeValue } from "../../components/AuthenticationCodeField/AuthenticationCodeField";
 import { Button, ButtonLink } from "../../components/Button/Button";
 import { FormFeedback } from "../../components/FormFeedback/FormFeedback";
 import { InputField } from "../../components/InputField/InputField";
@@ -267,7 +268,7 @@ function LocalLoginForm({
 }) {
   const [loginID, setLoginID] = useState("");
   const [password, setPassword] = useState("");
-  const [mfaCode, setMFACode] = useState("");
+  const [mfaCode, setMFACode] = useState<AuthenticationCodeValue>({ kind: "authenticator", code: "" });
   const [mfaRequired, setMFARequired] = useState(false);
   const [pending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -301,7 +302,7 @@ function LocalLoginForm({
     if (password === "") {
       nextErrors.password = message("webapp.login.form.error.password_required");
     }
-    if (mfaRequired && mfaCode.trim() === "") {
+    if (mfaRequired && !isCompleteAuthenticationCode(mfaCode)) {
       nextErrors.mfa_code = message("webapp.login.form.error.mfa_invalid");
     }
     setFieldErrors(nextErrors);
@@ -325,19 +326,19 @@ function LocalLoginForm({
       const result = await authenticate({
         loginID,
         password,
-        ...(mfaRequired ? { mfaCode } : {}),
+        ...(mfaRequired ? { mfaCode: mfaCode.code } : {}),
       });
       if (result.kind === "authenticated" || result.kind === "recovery_required") {
         setLoginID("");
         setPassword("");
-        setMFACode("");
+        setMFACode({ kind: "authenticator", code: "" });
         window.location.replace(result.kind === "recovery_required" ? "/account/security" : "/authorization/complete");
         return;
       }
 
       if (result.kind === "mfa_required") {
         setMFARequired(true);
-        setMFACode("");
+        setMFACode({ kind: "authenticator", code: "" });
         setFieldErrors({});
         setFormError(undefined);
         setLiveMessage(message("webapp.login.form.mfa_help"));
@@ -434,21 +435,16 @@ function LocalLoginForm({
             <h2>{message("webapp.login.form.mfa_heading")}</h2>
             <p id="mfa-help">{message("webapp.login.form.mfa_help")}</p>
           </div>
-          <InputField
+          <AuthenticationCodeField
             ref={mfaCodeRef}
             id="mfa-code"
             name="mfa_code"
-            label={message("webapp.login.form.mfa_code")}
-            type="text"
-            autoCapitalize="none"
-            autoComplete="one-time-code"
             describedBy="mfa-help"
-            spellCheck={false}
             value={mfaCode}
             errorMessage={fieldErrors.mfa_code}
-            required
-            onChange={(event) => {
-              setMFACode(event.currentTarget.value);
+            disabled={pending}
+            onChange={(value) => {
+              setMFACode(value);
               setFieldErrors((errors) => ({ ...errors, mfa_code: undefined }));
               clearFormFailure();
             }}
@@ -459,7 +455,7 @@ function LocalLoginForm({
             onClick={() => {
               setMFARequired(false);
               setPassword("");
-              setMFACode("");
+              setMFACode({ kind: "authenticator", code: "" });
               setFieldErrors({});
               setFormError(undefined);
               setLiveMessage("");

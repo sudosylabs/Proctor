@@ -140,6 +140,8 @@
     --proctor-layer-dialog: 40;
     --proctor-layer-notification: 50;
     color-scheme: light;
+    --proctor-color-machine-readable-background: #ffffff;
+    --proctor-color-machine-readable-foreground: #161616;
     --proctor-color-background-canvas: #ffffff;
     --proctor-color-background-subtle: #f7f5f9;
     --proctor-color-background-surface: #ffffff;
@@ -184,6 +186,8 @@
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme]) {
     color-scheme: dark;
+    --proctor-color-machine-readable-background: #ffffff;
+    --proctor-color-machine-readable-foreground: #161616;
     --proctor-color-background-canvas: #111111;
     --proctor-color-background-subtle: #171717;
     --proctor-color-background-surface: #1c1c1c;
@@ -228,6 +232,8 @@
 
   :root[data-theme="light"] {
     color-scheme: light;
+    --proctor-color-machine-readable-background: #ffffff;
+    --proctor-color-machine-readable-foreground: #161616;
     --proctor-color-background-canvas: #ffffff;
     --proctor-color-background-subtle: #f7f5f9;
     --proctor-color-background-surface: #ffffff;
@@ -271,6 +277,8 @@
 
   :root[data-theme="dark"] {
     color-scheme: dark;
+    --proctor-color-machine-readable-background: #ffffff;
+    --proctor-color-machine-readable-foreground: #161616;
     --proctor-color-background-canvas: #111111;
     --proctor-color-background-subtle: #171717;
     --proctor-color-background-surface: #1c1c1c;

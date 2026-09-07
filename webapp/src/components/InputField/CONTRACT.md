@@ -27,3 +27,26 @@ a justified local input seam. They own control height, padding, border,
 typography, theme, hover, disabled, error, focus, and forced-colors behavior.
 They do not own multiline text, selection controls, date/time controls, or
 feature-specific state.
+
+`OneTimeCodeField` is the six-digit variant used by authenticator enrollment
+and Session proof. It wraps the pinned `input-otp` primitive with one labelled
+native text input (`inputmode="numeric"`, `autocomplete="one-time-code"`) and
+six decorative slots. There is one tab stop; normal selection, arrow keys,
+Backspace, leading zeroes, typing, paste, and autofill retain native input
+semantics. Spaces and hyphens may separate pasted digits; letters are rejected.
+Completion never submits automatically.
+
+The active slot owns the visible focus ring; a stationary caret needs no
+motion. Error, disabled, hover, both themes, forced colors, and narrow or zoomed
+layouts preserve the same field semantics. Digits remain left-to-right in an
+RTL document. Values, validation decisions, submission, and alternative proof
+methods remain consumer-owned. Browser tests cover real editing and the
+production bundle under the server's Content Security Policy.
+
+The pinned primitive normally inserts an inline compatibility stylesheet.
+Proctor bundles the attributed `InputOTPCompatibility.css` instead and supplies
+the primitive's `input-otp-style` guard marker in `index.html` before mounting.
+An upgrade must verify that guard and the static selection, autofill, and iOS
+rules against upstream, then pass the production-CSP browser test. The React
+application disables the primitive's inline no-script fallback; it does not
+add a CSP nonce or allow inline styles.

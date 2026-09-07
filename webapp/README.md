@@ -97,5 +97,12 @@ For same-origin development with Vite, configure the server PublicURL as
 `http://127.0.0.1:8065`. Production packages contain `dist/` beside the server
 binary and do not require Node.js.
 
+The browser gate builds the production assets before exercising hosted pages,
+including OTP entry and local QR generation under the server's Content Security
+Policy. Authentication entry uses the pinned `input-otp` primitive behind
+shadcn/ui's OTP control with Proctor styling; `qrcode.react` encodes setup data
+locally. Neither dependency owns authentication policy or makes a QR-service
+request.
+
 The module is part of the combined Proctor server product and is licensed under
 AGPL-3.0-only. See [`../server/LICENSE`](../server/LICENSE).

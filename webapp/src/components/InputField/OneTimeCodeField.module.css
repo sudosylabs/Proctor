@@ -1,0 +1,54 @@
+/* Copyright (c) 2026 Sudosy Labs. SPDX-License-Identifier: AGPL-3.0-only */
+@layer components {
+  .container {
+    inline-size: min(100%, 20rem);
+    direction: ltr;
+  }
+
+  .slots {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--proctor-space-2);
+    inline-size: 100%;
+  }
+
+  .slot {
+    position: relative;
+    display: grid;
+    min-inline-size: 0;
+    block-size: var(--proctor-control-size-comfortable);
+    place-items: center;
+    border: var(--proctor-border-width-hairline) solid var(--proctor-color-border-strong);
+    border-radius: var(--proctor-radius-control);
+    background: var(--proctor-color-background-surface);
+    color: var(--proctor-color-foreground-default);
+    font-family: var(--proctor-font-family-mono);
+    font-size: var(--proctor-font-size-heading-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .slots[data-hovering] .slot { border-color: var(--proctor-color-border-interactive); }
+  .slots[data-invalid] .slot { border-color: var(--proctor-color-state-danger); }
+
+  .slot[data-active] {
+    outline: var(--proctor-border-width-focus) solid var(--proctor-color-focus-ring);
+    outline-offset: calc(var(--proctor-space-1) / 2);
+  }
+
+  .slots[data-disabled] .slot {
+    border-color: var(--proctor-color-border-default);
+    background: var(--proctor-color-background-subtle);
+    color: var(--proctor-color-foreground-disabled);
+  }
+
+  .caret {
+    block-size: 1em;
+    border-inline-start: var(--proctor-border-width-hairline) solid currentColor;
+  }
+
+  @media (forced-colors: active) {
+    .slot { background: Canvas; color: CanvasText; border-color: ButtonText; }
+    .slot[data-active] { outline-color: Highlight; }
+    .slots[data-disabled] .slot { color: GrayText; border-color: GrayText; }
+  }
+}

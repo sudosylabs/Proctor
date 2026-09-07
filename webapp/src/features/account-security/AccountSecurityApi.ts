@@ -28,7 +28,7 @@ export type SecurityFailure = {
 export type SecurityContextResult =
   | { kind: "ready"; context: SecurityContext }
   | SecurityFailure;
-export interface AuthenticatorSetup { secret: string; expiresAt: number }
+export interface AuthenticatorSetup { secret: string; provisioningURI: string; expiresAt: number }
 export type SetupResult = { kind: "success"; setup: AuthenticatorSetup } | SecurityFailure;
 export type RecoveryCodesResult = { kind: "success"; codes: string[] } | SecurityFailure;
 export type SecurityMutationResult = { kind: "success" } | SecurityFailure;
@@ -55,11 +55,25 @@ export async function requestSecurityContext(): Promise<SecurityContextResult> {
 export async function beginAuthenticatorSetup(): Promise<SetupResult> {
   try {
     const { data, error, response } = await apiClient.POST("/api/v1/users/me/mfa/setup");
-    if (response.status === 201 && isRecord(data) && boundedText(data.secret, 256) && positiveTimestamp(data.expires_at)) {
-      return { kind: "success", setup: { secret: data.secret, expiresAt: data.expires_at } };
+    if (response.status === 201 && isRecord(data) && boundedText(data.secret, 256) &&
+      positiveTimestamp(data.expires_at) && validProvisioningURI(data.provisioning_uri, data.secret)) {
+      return { kind: "success", setup: { secret: data.secret, provisioningURI: data.provisioning_uri, expiresAt: data.expires_at } };
     }
     return securityFailure(error, response.status);
   } catch { return { kind: "unavailable" }; }
+}
+
+function validProvisioningURI(value: unknown, secret: string): value is string {
+  if (!boundedText(value, 2048) || new TextEncoder().encode(value).length > 2048 || !/^[A-Z2-7]+$/.test(secret)) return false;
+  try {
+    const uri = new URL(value);
+    return uri.protocol === "otpauth:" && uri.host === "totp" && uri.pathname.length > 1 &&
+      uri.username === "" && uri.password === "" && uri.hash === "" &&
+      uri.searchParams.getAll("secret").length === 1 && uri.searchParams.get("secret") === secret &&
+      (!uri.searchParams.has("digits") || uri.searchParams.get("digits") === "6") &&
+      (!uri.searchParams.has("period") || uri.searchParams.get("period") === "30") &&
+      (!uri.searchParams.has("algorithm") || uri.searchParams.get("algorithm") === "SHA1");
+  } catch { return false; }
 }
 
 export async function activateAuthenticator(code: string): Promise<RecoveryCodesResult> {

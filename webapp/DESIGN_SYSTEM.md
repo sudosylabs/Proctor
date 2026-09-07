@@ -473,6 +473,21 @@ Authored styles do not contain literal colors, literal font families,
 unreviewed shadows, `transition: all`, or removed outlines. The automated audit
 enforces those rules for every authored CSS file under `src`.
 
+A shadcn/ui component or its underlying primitive may be adopted for a concrete
+interaction need through an owned adapter. It must use Proctor tokens and CSS
+Modules, preserve the production Content Security Policy, carry its provenance,
+and pass the same accessibility and browser checks. Adoption does not imply a
+second design system or a general framework migration. The six-digit field uses
+the `input-otp` primitive behind shadcn's OTP component for native selection,
+paste, and autofill behavior, with Proctor-owned presentation.
+
+Authenticator QR codes are machine-readable protocol data, not product icons.
+The `machine-readable-foreground` and `machine-readable-background` roles keep
+dark modules on paper in every theme, including forced colors. The renderer
+preserves at least four modules of quiet margin and never embeds decoration.
+It encodes the server's validated provisioning URI locally; an adjacent manual
+setup key supplies the nonvisual and same-device alternative.
+
 A component enters the shared system only when at least two real consumers
 need the same semantics and behavior. Its contract then documents:
 

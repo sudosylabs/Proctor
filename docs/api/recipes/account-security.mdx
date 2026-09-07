@@ -69,8 +69,12 @@ authenticator. Passwords and codes stay out of URLs, browser storage, and logs.
 Call <Link to="/api/reference/setup-mfa">Set up MFA</Link>, enroll the returned
 secret in the authenticator, then call <Link to="/api/reference/activate-mfa">Activate MFA</Link>
 with a current code. Treat setup without successful activation as incomplete.
-The hosted page supports manual entry of the setup key. Restarting pending
-setup explicitly invalidates its previous secret.
+The hosted page renders a QR code for scanning in your authenticator app and
+keeps manual key entry under “Can’t scan the code?”. QR generation stays in the
+browser; setup material is never sent to a third-party image service. Enter the
+six-digit authenticator code in the segmented field to activate it. Sign-in and
+Session challenges also offer a separate recovery-code field. Restarting pending
+setup explicitly invalidates its previous secret and QR code.
 
 Activation and recovery-code regeneration show the newly generated codes once.
 The hosted page supports deliberate downloading or manual saving and requires

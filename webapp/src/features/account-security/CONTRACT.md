@@ -12,9 +12,15 @@ reenroll or sign out; it is not sent through ordinary account APIs. Disabling
 the service does not remove a recovery restriction. Fresh primary proof and
 strong assurance are checked by the server for each operation.
 
-Setup keys, authenticator inputs, and recovery codes live only in component
+Setup keys, provisioning URIs, authenticator inputs, and recovery codes live only in component
 memory. They never enter navigation, browser storage, logs, or third-party
-requests. Setup uses manual key entry with an authenticator. Recovery codes
+requests. Setup renders a scannable QR code locally from the bounded server
+provisioning URI after validating its TOTP type, matching secret, and supported
+six-digit parameters. A native disclosure retains manual key entry as a fallback.
+The QR code and key share the existing setup lifetime and are discarded together.
+Enrollment accepts a complete six-digit authenticator code. Session challenges
+also offer an explicit recovery-code field; changing entry method clears the
+previous value and focuses the replacement field. Recovery codes
 appear only in a successful activation or regeneration response. An explicit
 download or manual saving and a required acknowledgement precede leaving that
 step. The acknowledgement is a User action, not evidence that a file was saved.

@@ -4,6 +4,7 @@ import type { DesktopAuthorizationContext, DesktopAuthorizationProvider, Desktop
 import type { DesktopAuthorizationJourney, DesktopJourneySnapshot, DesktopLocalFeedback, DesktopTerminalState } from "../../features/desktop-authorization/DesktopAuthorizationJourney";
 import { message } from "../../i18n/messages";
 import { AccessTaskIntro } from "../AccessTaskIntro/AccessTaskIntro";
+import { AuthenticationCodeField, isCompleteAuthenticationCode, type AuthenticationCodeValue } from "../AuthenticationCodeField/AuthenticationCodeField";
 import { Button, ButtonLink } from "../Button/Button";
 import { FormFeedback } from "../FormFeedback/FormFeedback";
 import { InputField } from "../InputField/InputField";
@@ -233,7 +234,7 @@ function DesktopLocalLoginForm({ authenticate, busy, authenticating }: {
 }) {
   const [loginID, setLoginID] = useState("");
   const [password, setPassword] = useState("");
-  const [mfaCode, setMFACode] = useState("");
+  const [mfaCode, setMFACode] = useState<AuthenticationCodeValue>({ kind: "authenticator", code: "" });
   const [mfaRequired, setMFARequired] = useState(false);
   const [formError, setFormError] = useState<string>();
   const loginIDRef = useRef<HTMLInputElement>(null);
@@ -261,7 +262,7 @@ function DesktopLocalLoginForm({ authenticate, busy, authenticating }: {
       passwordRef.current?.focus();
       return;
     }
-    if (mfaRequired && mfaCode.trim() === "") {
+    if (mfaRequired && !isCompleteAuthenticationCode(mfaCode)) {
       setFormError(message("webapp.login.form.error.mfa_invalid"));
       mfaCodeRef.current?.focus();
       return;
@@ -271,16 +272,16 @@ function DesktopLocalLoginForm({ authenticate, busy, authenticating }: {
     const result = await authenticate({
       loginID,
       password,
-      ...(mfaRequired ? { mfaCode } : {}),
+      ...(mfaRequired ? { mfaCode: mfaCode.code } : {}),
     });
     if (result === "authenticated") {
       setPassword("");
-      setMFACode("");
+      setMFACode({ kind: "authenticator", code: "" });
       return;
     }
     if (result === "mfa_required") {
       setMFARequired(true);
-      setMFACode("");
+      setMFACode({ kind: "authenticator", code: "" });
       return;
     }
     if (result === "mfa_invalid") {
@@ -333,18 +334,14 @@ function DesktopLocalLoginForm({ authenticate, busy, authenticating }: {
         }}
       />
       {mfaRequired ? (
-        <InputField
+        <AuthenticationCodeField
           ref={mfaCodeRef}
           id="desktop-mfa-code"
           name="mfa_code"
-          label={message("webapp.login.form.mfa_code")}
-          type="text"
-          autoComplete="one-time-code"
-          inputMode="numeric"
           value={mfaCode}
-          required
-          onChange={(event) => {
-            setMFACode(event.currentTarget.value);
+          disabled={busy}
+          onChange={(value) => {
+            setMFACode(value);
             setFormError(undefined);
           }}
         />

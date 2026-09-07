@@ -162,6 +162,8 @@ export const designTokens = {
       label: 'Light',
       colorScheme: 'light',
       color: {
+        'machine-readable-background': palette.paper,
+        'machine-readable-foreground': palette.ink,
         'background-canvas': palette.paper,
         'background-subtle': '#f7f5f9',
         'background-surface': palette.paper,
@@ -209,6 +211,8 @@ export const designTokens = {
       label: 'Dark',
       colorScheme: 'dark',
       color: {
+        'machine-readable-background': palette.paper,
+        'machine-readable-foreground': palette.ink,
         'background-canvas': '#111111',
         'background-subtle': '#171717',
         'background-surface': '#1c1c1c',

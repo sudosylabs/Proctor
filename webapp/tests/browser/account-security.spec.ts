@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import jsQR from "jsqr";
+import { PNG } from "pngjs";
 
 const baseContext = {
   enabled: false, pending: false, recovery_codes_remaining: 0,
@@ -8,6 +10,7 @@ const baseContext = {
   recently_authenticated: true,
 };
 const setupKey = "JBSWY3DPEHPK3PXP";
+const provisioningURI = `otpauth://totp/Proctor:preview?secret=${setupKey}&issuer=Proctor`;
 const recoveryCodes = ["ABCD-EFGH-IJKL", "MNOP-QRST-UVWX", "2345-6789-ABCD", "EFGH-IJKL-MNOP"];
 
 async function mockSecurity(page: Page, context = baseContext) {
@@ -29,7 +32,7 @@ async function mockSecurity(page: Page, context = baseContext) {
     if (path === "/api/v1/users/me/mfa/setup") {
       if (!state.context.recently_authenticated) return problem("authentication.reauthentication_required");
       state.context.pending = true;
-      return json({ secret: setupKey, provisioning_uri: `otpauth://totp/Proctor?secret=${setupKey}`, expires_at: Date.now() + 600_000 }, 201);
+      return json({ secret: setupKey, provisioning_uri: provisioningURI, expires_at: Date.now() + 600_000 }, 201);
     }
     if (path === "/api/v1/users/me/mfa/activate") {
       if (request.postDataJSON().code !== "123456") return problem("authentication.mfa.invalid_code");
@@ -77,6 +80,147 @@ async function activate(page: Page) {
   await page.getByRole("button", { name: "Activate authenticator", exact: true }).click();
 }
 
+async function expectScannableSetup(page: Page) {
+  const qr = page.getByRole("img", { name: "QR code for authenticator setup" });
+  await expect(qr).toBeVisible();
+  const png = PNG.sync.read(await qr.screenshot());
+  const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  expect(decoded?.data).toBe(provisioningURI);
+}
+
+for (const colorScheme of ["light", "dark"] as const) {
+  for (const width of [320, 1440]) {
+    test(`QR setup and OTP entry remain usable at ${width}px in ${colorScheme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await mockSecurity(page);
+      const external: string[] = [];
+      page.on("request", (request) => {
+        if (!request.url().startsWith("http://127.0.0.1:5173/")) external.push(request.url());
+      });
+      await page.goto("/account/security");
+      await page.getByRole("button", { name: "Set up an authenticator", exact: true }).click();
+      await expectScannableSetup(page);
+      await expect(page.getByLabel("Setup key", { exact: true })).not.toBeVisible();
+      const manual = page.getByText("Can’t scan the code?", { exact: true });
+      await manual.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByLabel("Setup key", { exact: true })).toHaveValue(setupKey);
+      await expect(page.getByLabel("Setup key", { exact: true })).toBeVisible();
+      await page.getByLabel("Authenticator code").fill("012345");
+      await expect(page.locator("[data-proctor-otp-slot]")).toHaveText(["0", "1", "2", "3", "4", "5"]);
+      await page.screenshot({ path: testInfo.outputPath(`mfa-setup-${width}-${colorScheme}.png`), fullPage: true });
+      await page.evaluate(() => { document.body.style.zoom = "2"; document.documentElement.dir = "rtl"; });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      await expect(page.getByLabel("Authenticator code")).toHaveAttribute("dir", "ltr");
+      await expectScannableSetup(page);
+      await page.emulateMedia({ forcedColors: "active" });
+      await expectScannableSetup(page);
+      const focus = await page.locator("[data-proctor-otp-slot][data-active]").evaluate((slot) => ({
+        style: getComputedStyle(slot).outlineStyle, width: getComputedStyle(slot).outlineWidth,
+      }));
+      expect(focus).toEqual({ style: "solid", width: "3px" });
+      expect(external).toEqual([]);
+    });
+  }
+}
+
+test("OTP supports leading zeroes, editing, paste, validation and explicit submission", async ({ page }) => {
+  const state = await mockSecurity(page);
+  await page.goto("/account/security");
+  await page.getByRole("button", { name: "Set up an authenticator", exact: true }).click();
+  const input = page.getByLabel("Authenticator code");
+  await expect(input).toHaveAttribute("type", "text");
+  await expect(input).toHaveAttribute("inputmode", "numeric");
+  await expect(input).toHaveAttribute("autocomplete", "one-time-code");
+  await input.pressSequentially("012");
+  await page.getByRole("button", { name: "Activate authenticator" }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Enter all six digits of your authenticator code.")).toBeVisible();
+  expect(mutations(state, "/activate")).toHaveLength(0);
+  await input.fill("");
+  await input.pressSequentially("012345");
+  expect(mutations(state, "/activate")).toHaveLength(0);
+  await input.press("Backspace");
+  await expect(input).toHaveValue("01234");
+  await input.press("ArrowLeft");
+  await input.press("9");
+  await expect(input).toHaveValue("01239");
+  await input.press("ControlOrMeta+A");
+  await input.press("Backspace");
+  await input.pressSequentially("ABC");
+  await expect(input).toHaveValue("");
+  await input.evaluate((element) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "123 456");
+    const event = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+    // Firefox drops clipboardData supplied to an untrusted event constructor.
+    Object.defineProperty(event, "clipboardData", { value: data });
+    element.dispatchEvent(event);
+  });
+  await expect(input).toHaveValue("123456");
+  await expect(page.locator("[data-proctor-otp-slot]")).toHaveText(["1", "2", "3", "4", "5", "6"]);
+  expect(mutations(state, "/activate")).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page.getByRole("heading", { name: "Save your recovery codes" })).toBeVisible();
+  expect(mutations(state, "/activate")[0]?.body).toEqual({ code: "123456" });
+  await expect(page.getByRole("img", { name: "QR code for authenticator setup" })).toHaveCount(0);
+});
+
+test("switching proof methods clears values, restores focus and preserves recovery codes", async ({ page }) => {
+  const state = await mockSecurity(page, { ...baseContext, enabled: true });
+  await page.goto("/account/security");
+  await page.getByRole("button", { name: "Verify this session", exact: true }).click();
+  await page.getByLabel("Authenticator code").fill("012345");
+  await page.getByRole("button", { name: "Use a recovery code instead" }).click();
+  const recovery = page.getByRole("textbox", { name: "Recovery code", exact: true });
+  await expect(recovery).toBeFocused();
+  await expect(recovery).toHaveValue("");
+  await recovery.fill("ABCD-EFGH-IJKL");
+  await page.getByRole("button", { name: "Use an authenticator code" }).click();
+  await expect(page.getByLabel("Authenticator code")).toBeFocused();
+  await expect(page.getByLabel("Authenticator code")).toHaveValue("");
+  await page.getByRole("button", { name: "Verify code", exact: true }).click();
+  await expect(page.getByLabel("Authenticator code")).toBeFocused();
+  expect(mutations(state, "/challenge")).toHaveLength(0);
+  await page.getByRole("button", { name: "Use a recovery code instead" }).click();
+  await recovery.fill("ABCD-EFGH-IJKL");
+  await recovery.press("Enter");
+  await expect(page.getByRole("heading", { name: "Account security", exact: true })).toBeVisible();
+  expect(mutations(state, "/challenge")[0]?.body).toEqual({ code: "ABCD-EFGH-IJKL" });
+});
+
+test("production QR and OTP work under the server Content Security Policy", async ({ page }) => {
+  const serverSource = await readFile("../server/webui/webui.go", "utf8");
+  const policy = serverSource.match(/header\.Set\("Content-Security-Policy", "([^"]+)"\)/)?.[1];
+  expect(policy).toBeDefined();
+  await mockSecurity(page);
+  await page.route("**/account/security", async (route) => route.fulfill({
+    contentType: "text/html", body: await readFile("dist/index.html"),
+    headers: { "Content-Security-Policy": policy! },
+  }));
+  await page.route("**/assets/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    expect(path).toMatch(/^\/assets\/[A-Za-z0-9_.-]+$/);
+    const type = path.endsWith(".js") ? "text/javascript" : path.endsWith(".css") ? "text/css"
+      : path.endsWith(".woff2") ? "font/woff2" : path.endsWith(".svg") ? "image/svg+xml" : "image/png";
+    await route.fulfill({ contentType: type, body: await readFile(`dist${path}`) });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (entry) => { if (entry.type() === "error") errors.push(entry.text()); });
+  await page.goto("/account/security");
+  await page.getByRole("button", { name: "Set up an authenticator", exact: true }).click();
+  // QR decoding is covered separately: Playwright's WebKit screenshots inject an inline style.
+  await expect(page.getByRole("img", { name: "QR code for authenticator setup" })).toBeVisible();
+  await page.getByLabel("Authenticator code").pressSequentially("123456");
+  await expect(page.locator("[data-proctor-otp-slot]")).toHaveText(["1", "2", "3", "4", "5", "6"]);
+  await page.getByRole("button", { name: "Activate authenticator", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Save your recovery codes" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("enrollment shows codes once and requires acknowledgement before hiding them", async ({ page }) => {
   const state = await mockSecurity(page);
   const logs: string[] = [];
@@ -122,7 +266,7 @@ test("lost activation confirmation reads status and requires explicit challenge 
   expect(mutations(state, "/activate")).toHaveLength(1);
   expect(mutations(state, "/regenerate")).toHaveLength(0);
   await page.getByRole("button", { name: "Verify this session", exact: true }).click();
-  await page.getByLabel("Authenticator or recovery code").fill("123456");
+  await page.getByLabel("Authenticator code").fill("123456");
   await page.getByRole("button", { name: "Verify code", exact: true }).click();
   expect(mutations(state, "/regenerate")).toHaveLength(0);
   await page.getByRole("button", { name: "Generate new recovery codes", exact: true }).click();
@@ -158,7 +302,8 @@ test("fresh password proof and MFA challenge return without replaying the securi
   await expect(page.getByLabel("Current password", { exact: false })).toHaveValue("");
   await page.getByLabel("Current password", { exact: false }).fill("current-password");
   await page.getByRole("button", { name: "Confirm password" }).click();
-  await page.getByLabel("Authenticator or recovery code").fill("ABCD-EFGH");
+  await page.getByRole("button", { name: "Use a recovery code instead" }).click();
+  await page.getByRole("textbox", { name: "Recovery code", exact: true }).fill("ABCD-EFGH");
   await page.getByRole("button", { name: "Verify code" }).click();
   await expect(page.getByRole("heading", { name: "Your proof is ready" })).toBeVisible();
   await page.getByRole("link", { name: "Return to your task" }).click();
