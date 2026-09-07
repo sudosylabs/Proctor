@@ -164,10 +164,17 @@ func validateHeaders(headers map[string][]string) error {
 	}
 	seen := make(map[string]struct{}, len(headers))
 	for name, values := range headers {
-		canonical := textproto.CanonicalMIMEHeaderKey(name)
-		if name == "" || len(name) > 78 || canonical == "" {
+		if name == "" || len(name) > 78 {
 			return fmt.Errorf("%w: invalid header name %q", ErrInvalidHeader, name)
 		}
+		// RFC 5322 field names contain printable ASCII other than colon.
+		// CanonicalMIMEHeaderKey leaves invalid names unchanged.
+		for index := range len(name) {
+			if name[index] < '!' || name[index] > '~' || name[index] == ':' {
+				return fmt.Errorf("%w: invalid header name %q", ErrInvalidHeader, name)
+			}
+		}
+		canonical := textproto.CanonicalMIMEHeaderKey(name)
 		lower := strings.ToLower(canonical)
 		if _, duplicate := seen[lower]; duplicate {
 			return fmt.Errorf("%w: duplicate header name %q", ErrInvalidHeader, name)

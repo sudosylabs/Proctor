@@ -95,6 +95,22 @@ func Run(t *testing.T, factory Factory) {
 		}
 	})
 
+	t.Run("header name injection", func(t *testing.T) {
+		sender := factory(t)
+		if !sender.Capabilities().CustomHeaders {
+			t.Skip("sender does not advertise custom headers")
+		}
+		message := basicMessage("header-name-injection")
+		message.Headers = map[string][]string{"X-Test: safe\r\nSubject": {"injected"}}
+		_, err := sender.Send(context.Background(), message)
+		if !errors.Is(err, mail.ErrInvalidHeader) {
+			t.Fatalf("Send() error = %v, want ErrInvalidHeader", err)
+		}
+		if outcome := mail.Classify(err); outcome != mail.OutcomePermanent {
+			t.Fatalf("Classify(Send() error) = %q, want %q", outcome, mail.OutcomePermanent)
+		}
+	})
+
 	t.Run("concurrent sends", func(t *testing.T) {
 		sender := factory(t)
 		const workers = 12

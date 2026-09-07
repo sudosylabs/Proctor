@@ -184,6 +184,38 @@ func TestComposerRejectsUnsafeAndLargeMessages(t *testing.T) {
 	}
 }
 
+func TestComposerRejectsInvalidHeaderNames(t *testing.T) {
+	t.Parallel()
+
+	composer := mustComposer(t, mail.ComposerConfig{MessageIDDomain: "example.test"})
+	for _, name := range []string{
+		"",
+		"X-Test\r",
+		"X-Test\n",
+		"X-Audit: safe\r\nSubject",
+		"X-Test: injected",
+		"X Test",
+		"X-Test\t",
+		"X-Test\x00",
+		"X-Test\x7f",
+		"X-Catégorie",
+		strings.Repeat("X", 79),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			message := basicMessage()
+			message.Headers = map[string][]string{name: {"value"}}
+			delivery, err := composer.Compose(message)
+			if !errors.Is(err, mail.ErrInvalidHeader) {
+				t.Fatalf("Compose() error = %v, want ErrInvalidHeader", err)
+			}
+			if len(delivery.Data) != 0 {
+				t.Fatal("Compose() returned message bytes for an invalid header name")
+			}
+		})
+	}
+}
+
 type decodedPart struct {
 	mediaType   string
 	disposition string
