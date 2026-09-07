@@ -347,7 +347,7 @@ func createStarterWorkspaceDirectory(ctx context.Context, tx *sqlxTxWrapper, inp
 	if err := ensureStarterWorkspaceParent(ctx, tx, input.ExamID, input.Path); err != nil {
 		return nil, err
 	}
-	entry, err := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, model.TimeFromMillis(input.ChangedAt))
+	entry, err := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, input.ChangedAt)
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace_entry", "value", nil).Wrap(err)
 	}
@@ -371,7 +371,7 @@ func createStarterWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *s
 	if err != nil {
 		return nil, err
 	}
-	entry, err := model.NewStarterWorkspaceFile(input.EntryID, input.ExamID, input.Path, input.ObjectID, model.TimeFromMillis(input.ChangedAt))
+	entry, err := model.NewStarterWorkspaceFile(input.EntryID, input.ExamID, input.Path, input.ObjectID, input.ChangedAt)
 	if err != nil {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace_entry", "value", nil).Wrap(err)
 	}
@@ -432,7 +432,7 @@ func moveStarterWorkspaceEntry(ctx context.Context, tx *sqlxTxWrapper, input *st
 			}
 		}
 	}
-	at := model.TimeFromMillis(input.ChangedAt)
+	at := input.ChangedAt
 	for movingID, target := range newPaths {
 		if _, err := tx.Exec(ctx, `UPDATE exam_starter_workspace_entries SET path = ?, updated_at = ? WHERE exam_id = ? AND id = ? AND archived_at IS NULL`,
 			target, at, input.ExamID.String(), movingID.String()); err != nil {
@@ -473,7 +473,7 @@ func replaceStarterWorkspaceFile(ctx context.Context, tx *sqlxTxWrapper, input *
 	if err != nil {
 		return nil, err
 	}
-	at := model.TimeFromMillis(input.ChangedAt)
+	at := input.ChangedAt
 	reclaimAt := at.Add(model.StarterWorkspaceReclaimSafetyWindow)
 	if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_objects SET state = 'reclaimable', updated_at = ?, reclaim_after = ? WHERE id = ? AND state = 'current'`,
 		at, reclaimAt, item.Object.ID.String()); err != nil {
@@ -508,7 +508,7 @@ func removeStarterWorkspaceEntry(ctx context.Context, tx *sqlxTxWrapper, input *
 	} else if input.Recursive {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace", "recursive_remove", nil)
 	}
-	at := model.TimeFromMillis(input.ChangedAt)
+	at := input.ChangedAt
 	if input.Recursive {
 		if _, err = tx.Exec(ctx, `UPDATE exam_starter_workspace_objects objects
 			SET state='reclaimable',updated_at=?,reclaim_after=?,retired_by_audit_event_id=?
@@ -649,7 +649,7 @@ func consumeStarterWorkspaceObject(ctx context.Context, tx *sqlxTxWrapper, input
 	object := &model.StarterWorkspaceObject{ID: model.StarterWorkspaceObjectID(row.ID), ExamID: model.ExamID(row.ExamID),
 		CreatedByUserID: model.UserID(row.CreatedByUserID), CreatedAt: model.TimeUTC(row.CreatedAt), UpdatedAt: model.TimeUTC(row.UpdatedAt),
 		ExpiresAt: model.TimeUTC(row.ExpiresAt), State: model.StarterWorkspaceObjectStaged}
-	if err := object.MarkCurrent(input.ContentVersion, input.MediaType, input.SizeBytes, input.SHA256, model.TimeFromMillis(input.ChangedAt)); err != nil {
+	if err := object.MarkCurrent(input.ContentVersion, input.MediaType, input.SizeBytes, input.SHA256, input.ChangedAt); err != nil {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace_object", "content", nil).Wrap(err)
 	}
 	result, err := tx.Exec(ctx, `UPDATE exam_starter_workspace_objects SET state = 'current', updated_at = ?, content_version = ?, media_type = ?, size_bytes = ?, sha256 = ? WHERE id = ? AND state = 'staged'`,
@@ -679,7 +679,7 @@ func insertStarterWorkspaceEntry(ctx context.Context, tx *sqlxTxWrapper, entry *
 func completeStarterWorkspaceMutation(ctx context.Context, tx *sqlxTxWrapper, input *store.ExamStarterWorkspaceMutation, entry *model.StarterWorkspaceEntry, object *model.StarterWorkspaceObject, operation string, reclaimable model.StarterWorkspaceObjectID) (*store.ExamStarterWorkspaceMutationResult, error) {
 	var revision int64
 	if err := tx.Get(ctx, &revision, `UPDATE exam_drafts SET revision = revision + 1, updated_at = ? WHERE exam_id = ? RETURNING revision`,
-		model.TimeFromMillis(input.ChangedAt), input.ExamID.String()); err != nil {
+		input.ChangedAt, input.ExamID.String()); err != nil {
 		return nil, fmt.Errorf("advance Starter Workspace Draft revision: %w", err)
 	}
 	encoded, err := model.EncodeAuditData(map[string]any{
@@ -793,10 +793,11 @@ func validateStarterWorkspaceReservation(input *store.ExamStarterWorkspaceReserv
 
 func prepareStarterWorkspaceMutation(input *store.ExamStarterWorkspaceMutation) (*store.ExamStarterWorkspaceMutation, error) {
 	if input == nil || !input.ExamID.IsValid() || !input.ActorUserID.IsValid() || !input.EntryID.IsValid() ||
-		input.ExpectedDraftRevision < 1 || input.ChangedAt <= 0 || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
+		input.ExpectedDraftRevision < 1 || input.ChangedAt.IsZero() || !model.IsValidId(input.AuditEventID) || input.AuditAt <= 0 {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace", "mutation", nil)
 	}
 	prepared := *input
+	prepared.ChangedAt = model.TimeUTC(prepared.ChangedAt)
 	if !prepared.ExpectedContentVersion.IsZero() && !prepared.ExpectedContentVersion.IsValid() {
 		return nil, store.NewErrInvalidInput("exam_starter_workspace_object", "expected_content_version", nil)
 	}

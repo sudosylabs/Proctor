@@ -52,6 +52,25 @@ func TestServiceCreatesAFileOnlyAfterOpaqueContentAndDurableFinalize(t *testing.
 	assertStoreBoundaryCommand(t, fixture.persistence.idempotency, wantIdempotency)
 }
 
+func TestFileFinalizationPreservesReservationMicroseconds(t *testing.T) {
+	t.Parallel()
+	fixture := newServiceFixture(t)
+	at := time.Date(2026, 8, 14, 10, 0, 0, 123456789, time.UTC)
+	fixture.service.now = func() time.Time { return at }
+	_, err := fixture.service.CreateFile(context.Background(), fixture.call, CreateFileCommand{
+		ExamID: fixture.examID, ExpectedDraftRevision: 1, Path: "empty.txt", MediaType: "text/plain",
+		ExpectedSHA256: strings.Repeat("a", 64), Body: bytes.NewReader(nil), Size: 0, IdempotencyKey: "microsecond-file",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := model.TimeUTC(at)
+	if !fixture.persistence.reservation.Object.CreatedAt.Equal(want) ||
+		!fixture.persistence.mutation.ChangedAt.Equal(want) || !fixture.effects.changedAt.Equal(want) {
+		t.Fatal("reservation, finalization, and publication must preserve the same microsecond instant")
+	}
+}
+
 func TestServiceStopsWhenCurrentManagerMembershipCannotBeRead(t *testing.T) {
 	t.Parallel()
 	fixture := newServiceFixture(t)
@@ -325,20 +344,20 @@ func (f *fakeWorkspaceStore) finish(input *store.ExamStarterWorkspaceMutation) (
 		replayed.Replayed = true
 		return &replayed, nil
 	}
-	object, _ := model.NewStagedStarterWorkspaceObject(input.ObjectID, input.ExamID, input.ActorUserID, model.TimeFromMillis(input.ChangedAt-1000), model.TimeFromMillis(input.ChangedAt).Add(time.Hour))
-	_ = object.MarkCurrent(input.ContentVersion, input.MediaType, input.SizeBytes, input.SHA256, model.TimeFromMillis(input.ChangedAt))
+	object, _ := model.NewStagedStarterWorkspaceObject(input.ObjectID, input.ExamID, input.ActorUserID, input.ChangedAt.Add(-time.Second), input.ChangedAt.Add(time.Hour))
+	_ = object.MarkCurrent(input.ContentVersion, input.MediaType, input.SizeBytes, input.SHA256, input.ChangedAt)
 	path := input.Path
 	if path == "" {
 		path = "main.go"
 	}
-	entry, _ := model.NewStarterWorkspaceFile(input.EntryID, input.ExamID, path, input.ObjectID, model.TimeFromMillis(input.ChangedAt))
+	entry, _ := model.NewStarterWorkspaceFile(input.EntryID, input.ExamID, path, input.ObjectID, input.ChangedAt)
 	result := &store.ExamStarterWorkspaceMutationResult{Entry: entry, Object: object, DraftRevision: input.ExpectedDraftRevision + 1}
 	f.committed = result
 	return result, nil
 }
 func (f *fakeWorkspaceStore) CreateDirectory(_ context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
 	f.mutation, f.idempotency = input, command
-	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, model.TimeFromMillis(input.ChangedAt))
+	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, input.ChangedAt)
 	return &store.ExamStarterWorkspaceMutationResult{Entry: entry, DraftRevision: input.ExpectedDraftRevision + 1}, nil
 }
 func (f *fakeWorkspaceStore) CreateFile(_ context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
@@ -347,7 +366,7 @@ func (f *fakeWorkspaceStore) CreateFile(_ context.Context, input *store.ExamStar
 }
 func (f *fakeWorkspaceStore) MoveEntry(_ context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
 	f.mutation, f.idempotency = input, command
-	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, model.TimeFromMillis(input.ChangedAt))
+	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, input.Path, input.ChangedAt)
 	return &store.ExamStarterWorkspaceMutationResult{Entry: entry, DraftRevision: input.ExpectedDraftRevision + 1}, nil
 }
 func (f *fakeWorkspaceStore) ReplaceFile(_ context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
@@ -356,7 +375,7 @@ func (f *fakeWorkspaceStore) ReplaceFile(_ context.Context, input *store.ExamSta
 }
 func (f *fakeWorkspaceStore) RemoveEntry(_ context.Context, input *store.ExamStarterWorkspaceMutation, command *store.CommandIdempotency) (*store.ExamStarterWorkspaceMutationResult, error) {
 	f.mutation, f.idempotency = input, command
-	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, "removed", model.TimeFromMillis(input.ChangedAt))
+	entry, _ := model.NewStarterWorkspaceDirectory(input.EntryID, input.ExamID, "removed", input.ChangedAt)
 	return &store.ExamStarterWorkspaceMutationResult{Entry: entry, DraftRevision: input.ExpectedDraftRevision + 1}, nil
 }
 func (f *fakeWorkspaceStore) MarkObjectReclaimable(_ context.Context, id model.StarterWorkspaceObjectID, _ time.Time) error {

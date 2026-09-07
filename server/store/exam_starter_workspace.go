@@ -26,13 +26,14 @@ type ExamStarterWorkspaceReservation struct {
 }
 
 // ExamStarterWorkspaceMutation is the common authorization, optimistic
-// concurrency, audit, and timing envelope for a hierarchy mutation.
+// concurrency, audit, and timing envelope for a hierarchy mutation. ChangedAt
+// preserves UTC microsecond precision through reservation and finalization.
 type ExamStarterWorkspaceMutation struct {
 	ExamID                 model.ExamID
 	ActorUserID            model.UserID
 	ManagerOverride        bool
 	ExpectedDraftRevision  int64
-	ChangedAt              int64
+	ChangedAt              time.Time
 	AuditEventID           string
 	AuditAt                int64
 	EntryID                model.StarterWorkspaceEntryID

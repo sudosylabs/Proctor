@@ -234,7 +234,7 @@ func (service *Service) CreateDirectory(ctx context.Context, call Call, command 
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		ChangedAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
+		ChangedAt: at, EntryID: entryID, Path: path}
 	return service.runMutation(ctx, call, authorization, "directory_create", ChangeDirectoryCreated, mutation, idempotency, service.persistence.CreateDirectory)
 }
 
@@ -276,7 +276,7 @@ func (service *Service) MoveEntry(ctx context.Context, call Call, command MoveEn
 	at := model.TimeUTC(service.now())
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID, Path: path}
+		ChangedAt: at, EntryID: command.EntryID, Path: path}
 	return service.runMutation(ctx, call, authorization, "entry_move", ChangeEntryMoved, mutation, idempotency, service.persistence.MoveEntry)
 }
 
@@ -320,7 +320,7 @@ func (service *Service) RemoveEntry(ctx context.Context, call Call, command Remo
 	at := model.TimeUTC(service.now())
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: command.ExamID, ActorUserID: call.Principal().UserID,
 		ManagerOverride: authorization.override, ExpectedDraftRevision: command.ExpectedDraftRevision,
-		ChangedAt: model.MillisFromTime(at), EntryID: command.EntryID, Recursive: command.Recursive}
+		ChangedAt: at, EntryID: command.EntryID, Recursive: command.Recursive}
 	return service.runMutation(ctx, call, authorization, "entry_remove", ChangeEntryRemoved, mutation, idempotency, service.persistence.RemoveEntry)
 }
 
@@ -372,7 +372,7 @@ func (service *Service) runMutation(ctx context.Context, call Call, authorizatio
 		return Result{}, err
 	}
 	mutation.AuditEventID = auditID
-	mutation.AuditAt = mutation.ChangedAt
+	mutation.AuditAt = model.MillisFromTime(mutation.ChangedAt)
 	result, err := run(ctx, mutation, idempotency)
 	if err != nil {
 		mapped := mapStoreError(err)
@@ -385,7 +385,7 @@ func (service *Service) runMutation(ctx context.Context, call Call, authorizatio
 		return Result{}, unavailable(errors.New("Starter Workspace Store returned incomplete mutation result"))
 	}
 	if !result.Replayed {
-		if effectErr := service.effects.Changed(ctx, mutation.ExamID, result.Entry.ID, result.DraftRevision, effectOperation, model.TimeFromMillis(mutation.ChangedAt)); effectErr != nil {
+		if effectErr := service.effects.Changed(ctx, mutation.ExamID, result.Entry.ID, result.DraftRevision, effectOperation, mutation.ChangedAt); effectErr != nil {
 			service.failures.Report(ctx, "exam_starter_workspace_"+string(effectOperation), effectErr)
 		}
 	}
@@ -424,7 +424,7 @@ func (service *Service) stageAndFinalize(ctx context.Context, call Call, authori
 		return Result{}, invalid("sha256")
 	}
 	mutation := &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: call.Principal().UserID, ManagerOverride: authorization.override,
-		ExpectedDraftRevision: expectedRevision, ChangedAt: model.MillisFromTime(at), EntryID: entryID, Path: path, ObjectID: objectID,
+		ExpectedDraftRevision: expectedRevision, ChangedAt: at, EntryID: entryID, Path: path, ObjectID: objectID,
 		ExpectedContentVersion: expectedContentVersion, ContentVersion: version, MediaType: staged.MediaType, SizeBytes: staged.SizeBytes, SHA256: staged.SHA256}
 	result, err := service.runMutation(ctx, call, authorization, auditOperation, effectOperation, mutation, idempotency, run)
 	if err != nil {

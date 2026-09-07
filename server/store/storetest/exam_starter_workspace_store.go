@@ -26,7 +26,7 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	institution := saveInstitution(t, ctx, ss)
 	unit := saveAcademicUnit(t, ctx, ss, institution.ID.String(), "", "starter-workspace-unit")
 	creator := saveUser(t, ctx, ss)
-	at := model.NowUTC()
+	at := model.NowUTC().Truncate(time.Millisecond).Add(123 * time.Microsecond)
 	created := createCatalogExam(t, ctx, ss, unit.ID, creator.ID, at, "starter-workspace-exam")
 	examID := created.Value.Exam.ID
 
@@ -49,6 +49,9 @@ func TestExamStarterWorkspaceStore(t *testing.T, ss store.Store, probes ...Start
 	requireNoError(t, err)
 	if fileResult.DraftRevision != 4 || fileResult.Object == nil || fileResult.Entry.CurrentObjectID != fileResult.Object.ID {
 		t.Fatalf("file result = %#v", fileResult)
+	}
+	if !fileResult.Object.CreatedAt.Equal(at.Add(3*time.Second)) || !fileResult.Object.UpdatedAt.Equal(fileResult.Object.CreatedAt) {
+		t.Fatal("file finalization lost the reservation timestamp precision")
 	}
 	// The exact retry arrives after the first finalize advanced the Draft. Its
 	// fresh opaque reservation must remain possible so the named idempotent
@@ -234,7 +237,7 @@ func starterWorkspaceMutation(t *testing.T, ctx context.Context, ss store.Store,
 	t.Helper()
 	audit := saveExamResourceAudit(t, ctx, ss, examID, actorID, unitID)
 	return &store.ExamStarterWorkspaceMutation{ExamID: examID, ActorUserID: actorID, ExpectedDraftRevision: expected,
-		ChangedAt: model.MillisFromTime(at), AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
+		ChangedAt: at, AuditEventID: audit.ID.String(), AuditAt: model.MillisFromTime(at), EntryID: entryID, Path: path}
 }
 
 func reserveStarterWorkspaceObject(t *testing.T, ctx context.Context, ss store.Store, examID model.ExamID, actorID model.UserID,
@@ -244,7 +247,7 @@ func reserveStarterWorkspaceObject(t *testing.T, ctx context.Context, ss store.S
 	requireNoError(t, err)
 	_, err = ss.ExamStarterWorkspace().ReserveObject(ctx, &store.ExamStarterWorkspaceReservation{Object: object})
 	requireNoError(t, err)
-	mutation := starterWorkspaceMutation(t, ctx, ss, examID, actorID, unitID, expected, entryID, path, at.Add(time.Millisecond))
+	mutation := starterWorkspaceMutation(t, ctx, ss, examID, actorID, unitID, expected, entryID, path, at)
 	mutation.ObjectID = object.ID
 	mutation.ContentVersion = model.NewWorkspaceContentVersion()
 	mutation.MediaType = "text/plain"
