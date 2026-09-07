@@ -101,8 +101,8 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	return renditions, nil
 }
 
-// GenerateAndStoreDefaultProfilePicture stores version-two deterministic
-// default-picture renditions for a stable per-user seed.
+// GenerateAndStoreDefaultProfilePicture stores deterministic default-picture
+// renditions for a stable per-user seed.
 func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, revisionID model.FileRevisionID, seed string, at time.Time) ([]model.FileRendition, error) {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() {
 		return nil, app.ErrInvalidProfilePicture
@@ -112,7 +112,7 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 		return nil, err
 	}
 	defer finish()
-	master, err := renderDefaultProfilePictureV2(ctx, seed)
+	master, err := renderDefaultProfilePicture(ctx, seed)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 	return renditions, nil
 }
 
-// RenderDefaultProfilePicture renders an unpersisted version-two fallback.
+// RenderDefaultProfilePicture renders an unpersisted deterministic fallback.
 func (c *Content) RenderDefaultProfilePicture(ctx context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
 	if c == nil || c.filesystem == nil {
 		return nil, app.ErrInvalidProfilePicture
@@ -159,7 +159,7 @@ func (c *Content) RenderDefaultProfilePicture(ctx context.Context, seed string, 
 	if size != 128 && size != 256 && size != 512 {
 		return nil, fmt.Errorf("unsupported default profile-picture size %d", size)
 	}
-	master, err := renderDefaultProfilePictureV2(ctx, seed)
+	master, err := renderDefaultProfilePicture(ctx, seed)
 	if err != nil {
 		return nil, err
 	}

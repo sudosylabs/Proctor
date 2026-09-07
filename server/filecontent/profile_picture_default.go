@@ -31,9 +31,8 @@ const (
 
 type defaultProfilePictureGlyph [5][5]bool
 
-// The hash domains preserve the seed-to-image mapping of the approved visual
-// prototype. Changing them, the geometry, or the filters changes version two.
-func renderDefaultProfilePictureV2(ctx context.Context, seed string) (*image.NRGBA, error) {
+// renderDefaultProfilePicture builds one antialiased master for every rendition.
+func renderDefaultProfilePicture(ctx context.Context, seed string) (*image.NRGBA, error) {
 	if len(seed) != model.ProfilePictureSeedLength {
 		return nil, fmt.Errorf("invalid default profile-picture seed")
 	}

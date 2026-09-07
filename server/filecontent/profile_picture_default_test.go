@@ -34,7 +34,7 @@ func TestDefaultProfilePictureVisualPropertiesAndConsistentRenditions(t *testing
 	cases := []struct{ name, seed string }{
 		{name: "zero seed", seed: strings.Repeat("0", 64)},
 		{name: "maximum seed", seed: strings.Repeat("f", 64)},
-		{name: "golden", seed: defaultProfilePictureV2Seed},
+		{name: "golden", seed: defaultProfilePictureSeed},
 	}
 	for index := range 8 {
 		name := fmt.Sprintf("sample %d", index)
@@ -128,7 +128,7 @@ func TestDefaultProfilePictureRejectsInvalidInput(t *testing.T) {
 	}
 	for _, size := range []int{-1, 0, 64, 129, 1024} {
 		t.Run(fmt.Sprintf("size %d", size), func(t *testing.T) {
-			picture, err := content.RenderDefaultProfilePicture(context.Background(), defaultProfilePictureV2Seed, size)
+			picture, err := content.RenderDefaultProfilePicture(context.Background(), defaultProfilePictureSeed, size)
 			if err == nil || picture != nil {
 				t.Fatalf("invalid size rendered: picture=%v error=%v", picture, err)
 			}
@@ -144,13 +144,13 @@ func TestDefaultProfilePictureSeedHexCaseDoesNotChangeImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	picture, err := content.RenderDefaultProfilePicture(
-		context.Background(), strings.ToUpper(defaultProfilePictureV2Seed), 128,
+		context.Background(), strings.ToUpper(defaultProfilePictureSeed), 128,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer picture.Body.Close()
-	if picture.SHA256 != defaultProfilePictureV2Checksum128 {
+	if picture.SHA256 != defaultProfilePictureChecksum128 {
 		t.Fatalf("hex case changed the rendered image: %s", picture.SHA256)
 	}
 }
