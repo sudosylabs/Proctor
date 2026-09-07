@@ -5,22 +5,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-package main
-
-import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
-
-	"github.com/sudosylabs/proctor/server/cmd/ptool/commands"
-)
-
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := commands.Execute(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
+// Package devseed creates bounded synthetic development fixtures through the
+// public HTTP API. It owns scenario data, a private recovery journal, and a
+// loopback-only client; it never constructs a server or accesses its stores.
+package devseed

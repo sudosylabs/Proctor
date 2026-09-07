@@ -63,6 +63,10 @@ umask 077
 	write_assignment PROCTOR_METRICS_TLS_CERTIFICATE_FILE "$PROCTOR_METRICS_TLS_CERTIFICATE_FILE"
 	write_assignment PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE "$PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE"
 	write_assignment PROCTOR_AUTHENTICATION_BOOTSTRAP_DEVELOPMENT_MODE true
+	write_assignment PROCTOR_AUTHENTICATION_MFA_ENABLED true
+	# The local dataset admits hundreds of distinct Users from one loopback source.
+	# Keep per-claim limits, and leave production configuration defaults untouched.
+	write_assignment PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS 10000
 } >"$temporary_file"
 chmod 600 "$temporary_file"
 mv "$temporary_file" "$output_file"

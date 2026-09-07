@@ -26,6 +26,22 @@ was behaviorally compared with Mattermost revision
 Proctor's corresponding walking-skeleton implementation was independently
 written and does not copy those Mattermost sources.
 
+Development fixture behavioral reference
+------------------------------------------
+
+The development seed's account-state and custom-picture scenarios were
+behaviorally compared with Mattermost revision
+f6f2719165ffb132e351342add570f3b1b6fd07a, principally:
+
+- server/cmd/mmctl/commands/sampledata.go;
+- server/cmd/mmctl/commands/sampledata_util.go.
+
+These paths are governed by the GNU Affero General Public License v3 under
+the upstream repository licensing policy. Proctor's HTTP seed client,
+procedurally generated artwork, academic exercise templates, and recovery
+logic were independently written. No Mattermost source, images, generated
+content, or credentials were copied.
+
 Canonical configuration rendering behavioral reference
 --------------------------------------------------------
 

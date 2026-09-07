@@ -18,7 +18,6 @@ build-scripts-check:
 	@"$(ROOT_DIR)/build/scripts/test-repository-toolchain" "$(ROOT_DIR)"
 	@"$(ROOT_DIR)/build/scripts/test-dev-doctor" "$(ROOT_DIR)/build/scripts/dev-doctor"
 	@"$(ROOT_DIR)/build/scripts/test-dev-secrets" "$(ROOT_DIR)/build/scripts/dev-secrets" "$(ROOT_DIR)/build/dev/metrics-openssl.cnf"
-	@"$(ROOT_DIR)/build/scripts/test-dev-seed" "$(ROOT_DIR)/build/scripts/dev-seed"
 	@"$(ROOT_DIR)/build/scripts/test-dev-server-env" "$(ROOT_DIR)/build/scripts/dev-server-env"
 	@"$(ROOT_DIR)/build/scripts/test-with-dev-server-env" "$(ROOT_DIR)/build/scripts/with-dev-server-env"
 	@"$(ROOT_DIR)/build/scripts/test-test-diagnostics" "$(ROOT_DIR)/build/scripts/test-diagnostics"

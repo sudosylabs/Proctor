@@ -496,6 +496,7 @@ var dependencyRules = []dependencyRule{
 		name:    "ptool commands",
 		sources: []pathPattern{subtree(serverModule + "/cmd/ptool/commands")},
 		project: only(
+			exact(serverModule+"/cmd/ptool/devseed"),
 			exact(serverModule+"/app/mail"),
 			exact(serverModule+"/cmd/proctor/commands"),
 			exact(serverModule+"/httpapi"),
@@ -504,6 +505,10 @@ var dependencyRules = []dependencyRule{
 			exact(serverModule+"/websocket"),
 		),
 		thirdParty: only(exact("github.com/spf13/cobra")),
+	},
+	{
+		name:    "development seed HTTP client",
+		sources: []pathPattern{exact(serverModule + "/cmd/ptool/devseed")},
 	},
 	{
 		name:            "unknown ptool children",

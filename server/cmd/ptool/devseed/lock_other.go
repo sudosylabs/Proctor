@@ -1,3 +1,5 @@
+//go:build !darwin && !linux
+
 // ---------------------------------------------------------------------------------------------
 // Copyright (c) 2026 Sudosy Labs. All rights reserved.
 // Licensed under the GNU Affero General Public License, version 3 only.
@@ -5,22 +7,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // ---------------------------------------------------------------------------------------------
 
-package main
+package devseed
 
-import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
+import "errors"
 
-	"github.com/sudosylabs/proctor/server/cmd/ptool/commands"
-)
-
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	if err := commands.Execute(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+func lockState(string) (func(), error) {
+	return nil, errors.New("development seeding currently supports macOS and Linux")
 }

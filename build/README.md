@@ -41,12 +41,14 @@ Run `make help` for the current command surface. The main lifecycles are:
   `make debug-test`, `make profile-test`, and `make trace-test` provide focused
   package diagnostics below `.build/dev/diagnostics` without exposing a
   production profiling endpoint.
-- `make dev-seed` uses only the public HTTP API and locally captured Mailpit
-  invitations to create a guarded synthetic Institution, administrator, Exam
-  Manager, Candidate, academic structure, Exam Revision, and future Sitting.
-  It refuses non-loopback servers, an Installation it did not initialize, and
-  ambiguous partial state. Credentials and fixture identifiers are written
-  mode `0600` below `.build/dev/seed`; a successful replay is read-only.
+- `make dev-seed` runs `ptool dev seed` to create, resume, or verify a realistic
+  desktop-development dataset through the public HTTP API and local Mailpit.
+  It owns a private recovery journal and refuses foreign Installations.
+  The default profile includes 150 candidates, 10 teachers, a limited academic
+  reader, an administrator, academic structure, authoring files and Resources,
+  multiple published Revisions, and upcoming and canceled Sittings. It does
+  not create live participation, Attempts, Submissions, or Reviews. See
+  [development datasets](#development-datasets) for profiles and recovery.
 - `make dev-doctor` performs a bounded, read-only check of the host toolchain,
   Docker daemon, expected Compose containers, generated local artifacts, and
   loopback service, server, and hosted-webapp health. It prints closed check
@@ -125,6 +127,91 @@ release archiver normalizes ordering, ownership, permissions, and timestamps;
 `SOURCE_DATE_EPOCH` defaults to the source commit time. Release output must not
 already exist, avoiding accidental reuse of a directory containing operator
 configuration.
+
+## Development datasets
+
+Keep `make run-server` running in one terminal, then seed from the repository
+root in another:
+
+```sh
+make dev-seed
+# Choose the profile and content seed on the first run:
+make dev-seed DEV_SEED_PROFILE=small DEV_SEED=42
+```
+
+Profiles are fixed, bounded scenarios: `small` has 8 candidates, 3 teachers and
+4 Exams; `desktop` has 150 candidates, 10 teachers and 12 Exams; `large` has
+600 candidates, 24 teachers and 36 Exams. Each also has the bootstrap
+administrator, a limited academic reader, and dedicated `disabled-student` and
+`disabled-teacher` accounts. Total account counts are 15, 164, and 628. Half of
+the candidates share one Class, so desktop and large exercise roster pagination. The academic hierarchy
+includes nested Units, three Programmes, two Levels each, current and previous
+Periods, an empty current Class, and an ended historical enrollment.
+
+Exams include bare drafts and richer published examples, Markdown instructions,
+three distinct exercises (stable deduplication in Python, library reporting in
+SQL, and sensor analysis in Python), and Markdown, CSV, and JSON Resources.
+Starter Workspaces vary in size and depth, including Unicode and long filenames,
+an empty file, and empty directories. Six Users have locally generated custom
+PNG pictures uploaded through the real normalization pipeline; the remaining
+Users retain their Default Profile Pictures. Disabled Users remain discoverable
+through administrative filters and cannot sign in. Some Exams have two
+Revisions; future Sittings include a canceled example. Two accounts have real
+MFA enrollment, and several have varied JSONC User Settings. The generated
+local server environment enables MFA with its existing separately generated
+sealing key and raises the recovery/Invitation source limit to 10,000 attempts
+per window for local bulk admission. Per-claim limits and production defaults
+stay intact. The seed never changes deployment configuration through HTTP.
+
+The equivalent direct invocation is:
+
+```sh
+go run ./server/cmd/ptool dev seed --profile desktop --seed 42
+```
+
+Paths default relative to the command's working directory. `--server`,
+`--mailpit`, `--environment-file`, and `--state-dir` support an independently
+prepared local stack. Both service URLs must be HTTP loopback origins, and the
+server must advertise the exact canonical origin. Mail must reach the supplied
+Mailpit and background Jobs must be running.
+
+The first run requires a pristine Installation. Subsequent runs with the same
+options resume the saved journal or verify the fixture. Read the generated
+`fixture.json` for stable account aliases, resource IDs, labels and API paths;
+read the private `credentials.json` for passwords and authenticator secrets.
+The manifest flags `seeded_disabled` and `seeded_custom_picture` identify initial
+scenarios; they do not override or describe subsequent developer edits.
+Credentials are never printed. A completed replay preserves edits made during
+Desktop development. Keep all seed files private; the journal also contains
+sensitive recovery state.
+
+If interrupted, rerun the same command. It reconciles a lost create response
+instead of restarting the whole dataset. If authority is ambiguous, a record
+was deleted, an Invitation expired, or a server command's replay window has
+elapsed, inspect the reported step rather than forcing a write. Legacy shell
+fixtures are not imported. To replace a disposable installation deliberately,
+`make dev-reset` removes its containers, volumes, and seed state; it is not a
+routine retry mechanism. Dataset version 3 adds these picture, disabled-account,
+and exercise scenarios; older journals are refused rather than silently
+migrated. Use a separate pristine development stack, or explicitly reset a
+disposable existing stack, to generate the new dataset.
+
+To add fresh future Sittings after finishing a fixture:
+
+```sh
+make dev-seed DEV_SEED_REFRESH=true
+```
+
+Existing Sittings and completed history stay intact. If this operation is
+interrupted, resume without `DEV_SEED_REFRESH=true`; a fresh request always means
+another generation. Academic Period bounds still apply.
+
+The [seed component contract](../server/cmd/ptool/devseed/CONTRACT.md) describes
+recovery and privacy boundaries. `make -C server integration-all` includes its
+small integration profile. To exercise the desktop or large dataset in that
+gate, set `PROCTOR_TEST_SEED_PROFILE=desktop` or `large`. For the large profile,
+allow for real password hashing, mail delivery, and synchronized recovery writes
+with `GO_TEST='go test -timeout=30m'`.
 
 ## CI reports and failure diagnosis
 

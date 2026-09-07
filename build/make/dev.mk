@@ -38,11 +38,11 @@ dev-server-env: dev-secrets dev-config
 
 dev-state: dev-server-env
 
-dev-seed: dev-tools dev-state ## Create or report the guarded synthetic local-development fixture.
-	@"$(ROOT_DIR)/build/scripts/dev-seed" \
-		"$(DEV_SEED_DIR)" "$(DEV_ENV_FILE)" \
-		"http://127.0.0.1:$(PROCTOR_SERVER_PORT)" "http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)" \
-		"$(JQ)" "$(CURL)" openssl
+dev-seed: dev-tools dev-state ## Create, resume, or verify the synthetic desktop-development dataset.
+	$(GO) run $(GOFLAGS) ./server/cmd/ptool dev seed \
+		--state-dir "$(DEV_SEED_DIR)" --environment-file "$(DEV_ENV_FILE)" \
+		--server "$(PROCTOR_SERVER_PUBLIC_URL)" --mailpit "http://127.0.0.1:$(PROCTOR_MAILPIT_HTTP_PORT)" \
+		--profile "$(DEV_SEED_PROFILE)" --seed "$(DEV_SEED)" $(if $(filter true,$(DEV_SEED_REFRESH)),--refresh-sittings,)
 
 webapp-build: webapp-install ## Compile the hosted webapp with matching build identity.
 	cd "$(WEBAPP_DIR)" && PROCTOR_BUILD_VERSION='$(VERSION)' PROCTOR_BUILD_COMMIT='$(COMMIT)' $(NPM) run build
@@ -99,6 +99,8 @@ dev-down: ## Stop developer services without deleting persistent data.
 dev-reset: ## Delete all developer containers and persistent volumes.
 	@$(DEV_COMPOSE) down --volumes --remove-orphans
 	@rm -f "$(DEV_SEED_CREDENTIALS_FILE)" "$(DEV_SEED_FIXTURE_FILE)" "$(DEV_SEED_IN_PROGRESS_FILE)"
+	@rm -f "$(DEV_SEED_DIR)/journal.json" "$(DEV_SEED_DIR)/lock"
+	@rm -f "$(DEV_SEED_DIR)"/.seed-*
 	@rmdir "$(DEV_SEED_DIR)" 2>/dev/null || true
 
 dev-logs: ## Follow dependency and observability logs.

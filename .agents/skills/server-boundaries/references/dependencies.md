@@ -18,6 +18,7 @@ secretseal ← app
 {model, localization, app/mail} ← cmd/mailpreview
 {localization, app/mail, cmd/proctor/commands, httpapi, websocket} ← cmd/ptool
 internal/openapidoc ← cmd/ptool
+cmd/ptool/devseed ← cmd/ptool/commands
 logging ← platform
 {config, store/timerlayer, store/localcachelayer} ← metrics ← server
 app ← httpapi
@@ -70,6 +71,7 @@ inside `app/` are application-owned modules, not transports.
 | `cmd/proctor/commands` | Module-root `server`, `localization`, Cobra, and standard-library presentation concerns | Application packages, persistence, platform, and independent infrastructure construction |
 | `cmd/mailpreview` | `model`, `localization`, `app/mail`, standard library, and repository source assets | parent application, persistence, infrastructure adapters, mail delivery |
 | `cmd/ptool` | `localization` plus the consumer-owned localization definition registries in `app/mail`, `cmd/proctor/commands`, `httpapi`, and `websocket`; `internal/openapidoc` behind the local-filesystem build/check adapter | runtime composition and concrete infrastructure construction |
+| `cmd/ptool/devseed` | Standard-library HTTP, synthetic fixture construction, and private local journal I/O | Application packages, persistence, runtime composition, concrete server adapters |
 
 Tests and `testlib` may cross production boundaries for verification. Ordered,
 declarative package rules enforce the production allowlist with no debt or

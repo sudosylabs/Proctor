@@ -28,8 +28,8 @@ PROCTOR_SERVER_LISTEN_ADDRESS=127.0.0.1:8065 \
 	PROCTOR_METRICS_TLS_PRIVATE_KEY_FILE="$fixture/key.pem" \
 	"$script" "$fixture/secrets" "$fixture/server-environment"
 
-output=$(sh -c 'set -a; . "$1"; set +a; printf "%s|%s|%s|%s" "$PROCTOR_SERVER_LISTEN_ADDRESS" "$PROCTOR_METRICS_BEARER_TOKEN" "$PROCTOR_VFS_BACKEND" "$PROCTOR_SERVER_WEBAPP_DIRECTORY"' sh "$fixture/server-environment")
-if [ "$output" != "127.0.0.1:8065|test-token|s3|$fixture/web'app" ]; then
+output=$(sh -c 'set -a; . "$1"; set +a; printf "%s|%s|%s|%s|%s|%s" "$PROCTOR_SERVER_LISTEN_ADDRESS" "$PROCTOR_METRICS_BEARER_TOKEN" "$PROCTOR_VFS_BACKEND" "$PROCTOR_SERVER_WEBAPP_DIRECTORY" "$PROCTOR_AUTHENTICATION_MFA_ENABLED" "$PROCTOR_AUTHENTICATION_ACCOUNT_RECOVERY_RATE_LIMIT_MAXIMUM_SOURCE_ATTEMPTS"' sh "$fixture/server-environment")
+if [ "$output" != "127.0.0.1:8065|test-token|s3|$fixture/web'app|true|10000" ]; then
 	printf 'unexpected bundled development server environment: %s\n' "$output" >&2
 	exit 1
 fi
