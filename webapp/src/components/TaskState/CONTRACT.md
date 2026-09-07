@@ -6,6 +6,13 @@ connection, and Desktop authorization. It owns one ordered purpose label,
 display-scale `h1`, supporting body, and responsive action rhythm. Feature
 modules retain state, copy, evidence, maximum width, and available actions.
 
+During initial or replacement loading, `busy` retains the purpose label and
+an accessible page heading while the shared Loading indicator displays the
+supporting message below its spinner. The heading is visually hidden and does
+not receive focus until a completed user-triggered replacement requires it.
+TaskState owns a bounded content reservation; Loading owns no page height.
+The feature's existing TaskStateAnnouncement remains the one live region.
+
 `TaskStateAnnouncement` supplies the persistent polite live region that a
 feature keeps mounted while its active task changes. It announces bounded
 localized state copy, never credentials, identifiers, or arbitrary server

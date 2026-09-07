@@ -1,0 +1,42 @@
+@layer components {
+  .loading {
+    display: inline-flex;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--proctor-space-3);
+    vertical-align: middle;
+  }
+
+  .label {
+    max-inline-size: min(100%, 42ch);
+    font-size: var(--proctor-font-size-body-small);
+    line-height: var(--proctor-line-height-body-small);
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
+  .visuallyHidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    margin: -1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner {
+      animation: spin calc(var(--proctor-duration-slow) * 3) linear infinite;
+    }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+}

@@ -14,6 +14,7 @@ import { Button, ButtonLink } from "../../components/Button/Button";
 import { FormFeedback } from "../../components/FormFeedback/FormFeedback";
 import { InputField } from "../../components/InputField/InputField";
 import { PasswordField } from "../../components/InputField/PasswordField";
+import { Loading } from "../../components/Loading/Loading";
 import { Notice } from "../../components/Notice/Notice";
 import { message } from "../../i18n/messages";
 import { authenticateLocal, type AuthenticateLocal } from "./LoginApi";
@@ -52,9 +53,7 @@ function LoginContext({ state }: { state: LoginDiscoveryState }) {
       </p>
       <div className={styles.contextRule} aria-hidden="true" />
       <p className={styles.contextBody}>
-        {state.kind === "loading"
-          ? message("webapp.login.institution.checking")
-          : message("webapp.login.institution.body")}
+        {message("webapp.login.institution.body")}
       </p>
     </div>
   );
@@ -89,12 +88,14 @@ export function LoginPage({ externalLoginFailed }: LoginPageProps) {
           </Notice>
         ) : null}
 
-        <DiscoveryContent
-          authenticate={authenticateLocal}
-          state={discoveryState}
-          onRetry={discoveryResource.retry}
-          onAuthenticationAction={() => setExternalNotice(false)}
-        />
+        <div className={styles.discovery}>
+          <DiscoveryContent
+            authenticate={authenticateLocal}
+            state={discoveryState}
+            onRetry={discoveryResource.retry}
+            onAuthenticationAction={() => setExternalNotice(false)}
+          />
+        </div>
       </section>
     </AccessPageShell>
   );
@@ -115,9 +116,7 @@ function DiscoveryContent({
 }: DiscoveryContentProps) {
   if (state.kind === "loading") {
     return (
-      <p className={styles.loading} role="status" aria-live="polite">
-        {message("webapp.login.loading")}
-      </p>
+      <Loading className={styles.loading} label={message("webapp.login.loading")} showLabel size="large" />
     );
   }
   if (state.kind === "setup") {

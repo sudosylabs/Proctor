@@ -12,7 +12,8 @@ The page first requests `GET /api/v1/bootstrap` and accepts only a response
 with a boolean `initialized` value.
 
 - While the request is pending, the page names the bounded check and exposes
-  no form.
+  no form. The shared Loading indicator and message occupy the main content
+  reservation while the setup title and operator context remain visible.
 - When `initialized` is false, the setup form becomes available.
 - When `initialized` is true, the page explains that setup is complete and
   links to `/login`; it never offers to replace the Institution or first

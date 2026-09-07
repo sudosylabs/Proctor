@@ -50,6 +50,10 @@ Product icons use semantic names from the owned
 [`Icon`](./src/components/Icon/CONTRACT.md) adapter; feature code never imports
 the underlying icon library directly. Brand and provider marks remain governed
 assets rather than product icons.
+The shared [`Loading`](./src/components/Loading/CONTRACT.md) indicator serves
+pending controls and page content without owning their layout or operations.
+Buttons preserve their original dimensions; hosted pages keep known context
+visible and reserve the loading region locally.
 Repeated action styling, single-line field behavior, and inline state evidence
 live beside the narrow
 [`Button`](./src/components/Button/CONTRACT.md) and

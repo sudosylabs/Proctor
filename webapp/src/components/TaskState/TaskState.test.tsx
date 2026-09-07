@@ -41,7 +41,7 @@ describe("TaskState", () => {
     expect(markup).toContain('aria-atomic="true"');
   });
 
-  it("exposes pending state and opt-in heading focus without changing hierarchy", () => {
+  it("shows bounded loading content without taking focus from the current control", () => {
     const markup = renderToStaticMarkup(
       <TaskState
         body="Please wait."
@@ -53,7 +53,18 @@ describe("TaskState", () => {
     );
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain('id="checking-heading"');
-    expect(markup).toContain('tabindex="-1"');
+    expect(markup).not.toContain("tabindex");
+    expect(markup).toContain('data-proctor-icon="loading"');
+    expect(markup).toContain("Please wait.");
+    expect(markup).not.toContain('role="status"');
     expect(markup).not.toContain("<h2");
+  });
+
+  it("retains opt-in heading focus for completed task replacements", () => {
+    const markup = renderToStaticMarkup(
+      <TaskState body="Try again." focusHeading heading="Request unavailable" headingID="unavailable-heading" />,
+    );
+    expect(markup).toContain('tabindex="-1"');
+    expect(markup).not.toContain("data-proctor-loading");
   });
 });

@@ -5,6 +5,7 @@ import {
   useRef,
 } from "react";
 
+import { Loading } from "../Loading/Loading";
 import styles from "./TaskState.module.css";
 
 export interface TaskStateProps {
@@ -35,10 +36,14 @@ export function TaskState({
       className={classes(styles.state, className)}
     >
       {label === undefined ? null : <p className={styles.label}>{label}</p>}
-      <TaskHeading focus={focusHeading} id={headingID}>
+      <TaskHeading className={busy ? styles.visuallyHidden : undefined} focus={focusHeading && !busy} id={headingID}>
         {heading}
       </TaskHeading>
-      <p className={styles.body}>{body}</p>
+      {busy ? (
+        <div className={styles.loading}>
+          <Loading label={body} showLabel size="large" announce={false} />
+        </div>
+      ) : <p className={styles.body}>{body}</p>}
       {children}
     </section>
   );
@@ -46,12 +51,14 @@ export function TaskState({
 
 export interface TaskHeadingProps {
   children: ReactNode;
+  className?: string;
   focus?: boolean;
   id: string;
 }
 
 export function TaskHeading({
   children,
+  className,
   focus = false,
   id,
 }: TaskHeadingProps) {
@@ -66,7 +73,7 @@ export function TaskHeading({
   }, [focus]);
 
   return (
-    <h1 ref={headingRef} id={id} tabIndex={focus ? -1 : undefined}>
+    <h1 className={className} ref={headingRef} id={id} tabIndex={focus ? -1 : undefined}>
       {children}
     </h1>
   );

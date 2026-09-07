@@ -1,4 +1,12 @@
 @layer components {
+  .loading {
+    display: grid;
+    min-inline-size: 0;
+    min-block-size: 20rem;
+    place-items: center;
+    color: var(--proctor-color-foreground-muted);
+  }
+
   .page,
   .form,
   .section,

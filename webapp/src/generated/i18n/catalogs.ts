@@ -180,7 +180,6 @@ export const catalogs = {
     "webapp.login.form.signing_in": "Signing in…",
     "webapp.login.heading": "Sign in",
     "webapp.login.institution.body": "Your institution controls which sign-in methods are available.",
-    "webapp.login.institution.checking": "Checking this installation’s access policy…",
     "webapp.login.institution.fallback": "Institution access",
     "webapp.login.institution.label": "Institution",
     "webapp.login.lede": "Use your institution account to continue.",

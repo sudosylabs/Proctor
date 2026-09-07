@@ -59,7 +59,7 @@ The visible structure contains:
 
 - a first-focusable skip link targeting `main-content`;
 - exactly one `main` landmark with `id="main-content"`;
-- exactly one state-specific page heading;
+- exactly one state-specific page heading, visually hidden during initial loading;
 - one page-owned polite live region for asynchronous status; and
 - only the actions admitted by the state table below.
 
@@ -89,6 +89,12 @@ The feature owns these mutually exclusive states:
 The page performs no automatic timed retry, redirect, logout, refresh-token
 call, or provider restart. It never uses animation as the only indication of
 pending work.
+
+Initial confirmation uses the shared Loading indicator and supporting message
+within the existing bounded status area. The status label and rail remain
+visible, and the page heading remains accessible without taking focus. The
+existing page-owned live region announces progress. An explicit retry keeps
+its current result in place and shows the spinner inside the retry button.
 
 Only a valid `200` response proves Signed in. The page may validate the
 minimum generated User shape needed to reject malformed success data, but it

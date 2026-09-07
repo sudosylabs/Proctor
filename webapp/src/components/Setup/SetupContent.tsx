@@ -7,6 +7,7 @@ import type {
 } from "../../features/setup/SetupApi";
 import { message } from "../../i18n/messages";
 import { Button, ButtonLink } from "../Button/Button";
+import { Loading } from "../Loading/Loading";
 import { SetupForm } from "./SetupForm";
 import styles from "./Setup.module.css";
 
@@ -27,9 +28,9 @@ export function SetupContent({
     return (
       <section className={styles.routeState} aria-labelledby="setup-status-heading">
         <h2 id="setup-status-heading">{message("webapp.setup.heading")}</h2>
-        <p role="status" aria-live="polite">
-          {message("webapp.setup.loading")}
-        </p>
+        <div className={styles.loading}>
+          <Loading label={message("webapp.setup.loading")} showLabel size="large" />
+        </div>
       </section>
     );
   }

@@ -96,6 +96,13 @@ values remain untranslated where required.
 
 ## Discovery states
 
+Discovery loading occupies only the sign-in methods region. The branding,
+page heading, supporting introduction, and default Institution context remain
+visible. The methods region reserves a bounded minimum footprint in both
+pending and resolved states; its spinner centers within that region and the
+loaded methods may grow naturally. The shared Loading message appears below
+the icon and is the sole discovery-progress announcement.
+
 The feature owns these mutually exclusive initial states:
 
 | State | Entry | Available action |

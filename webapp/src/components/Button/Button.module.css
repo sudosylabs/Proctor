@@ -1,5 +1,6 @@
 @layer components {
   .button {
+    position: relative;
     display: inline-flex;
     min-block-size: var(--proctor-control-size-comfortable);
     align-items: center;
@@ -14,6 +15,21 @@
     transition-duration: var(--proctor-duration-fast);
     transition-property: background-color, border-color, color;
     transition-timing-function: var(--proctor-easing-standard);
+  }
+
+  .content {
+    display: inline-flex;
+    min-inline-size: 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--proctor-space-2);
+  }
+
+  .content[aria-hidden] { visibility: hidden; }
+
+  .loading {
+    position: absolute;
+    inset: 0;
   }
 
   .primary {
@@ -39,6 +55,12 @@
     color: var(--proctor-color-foreground-disabled);
   }
 
+  .primary[aria-busy] {
+    border-color: var(--proctor-color-action-primary);
+    background: var(--proctor-color-action-primary);
+    color: var(--proctor-color-action-on-primary);
+  }
+
   .secondary {
     border: var(--proctor-border-width-hairline) solid
       var(--proctor-color-border-interactive);
@@ -59,6 +81,8 @@
     color: var(--proctor-color-foreground-disabled);
   }
 
+  .secondary[aria-busy] { color: var(--proctor-color-action-on-secondary); }
+
   .text {
     min-block-size: var(--proctor-control-size-default);
     align-self: flex-start;
@@ -78,6 +102,8 @@
   .text:disabled {
     color: var(--proctor-color-foreground-disabled);
   }
+
+  .text[aria-busy] { color: var(--proctor-color-foreground-link); }
 
   @media (forced-colors: active) {
     .button {

@@ -5,6 +5,7 @@ import { readProblemValue } from "../../api/problem";
 import { useAsyncResource } from "../../app/AsyncResource";
 import { AccessPageShell } from "../../components/AccessPageShell/AccessPageShell";
 import { Button, ButtonLink } from "../../components/Button/Button";
+import { Loading } from "../../components/Loading/Loading";
 import { message } from "../../i18n/messages";
 import { requestSecurityContext } from "../account-security/AccountSecurityApi";
 import styles from "./AuthorizationCompletePage.module.css";
@@ -134,8 +135,10 @@ function StatusContent({
       </div>
       <div className={styles.content}>
         <p className={styles.label}>{content.label}</p>
-        <h1>{content.heading}</h1>
-        <p className={styles.body}>{content.body}</p>
+        <h1 className={state === "checking" ? styles.visuallyHidden : undefined}>{content.heading}</h1>
+        {state === "checking" ? (
+          <Loading className={styles.loading} label={content.body} showLabel size="large" announce={false} />
+        ) : <p className={styles.body}>{content.body}</p>}
         {state === "signed_in" || state === "recovery_required" ? (
           <div className={styles.actions}><ButtonLink href="/account/security">
             {message(state === "recovery_required" ? "webapp.security.restore_access" : "webapp.security.heading")}

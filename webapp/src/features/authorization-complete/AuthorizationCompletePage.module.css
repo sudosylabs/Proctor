@@ -103,6 +103,12 @@
     line-height: var(--proctor-line-height-body-large);
   }
 
+  .loading {
+    flex: 1;
+    align-self: stretch;
+    color: var(--proctor-color-foreground-muted);
+  }
+
   .actions {
     display: flex;
     flex-wrap: wrap;

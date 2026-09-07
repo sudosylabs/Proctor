@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { Button, ButtonLink } from "./Button";
 
 describe("Button", () => {
-  it("owns the pending label and disabled state", () => {
+  it("keeps the action footprint while exposing a named pending spinner", () => {
     const markup = renderToStaticMarkup(
       <Button isLoading loadingLabel="Saving…" type="submit">
         Save changes
@@ -15,7 +15,16 @@ describe("Button", () => {
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain("disabled");
     expect(markup).toContain("Saving…");
-    expect(markup).not.toContain("Save changes");
+    expect(markup).toContain("Save changes");
+    expect(markup).toMatch(/<span[^>]*aria-hidden="true"[^>]*>Save changes<\/span>/);
+    expect(markup).toContain('data-proctor-icon="loading"');
+    expect(markup).not.toContain('role="status"');
+  });
+
+  it("retains an accessible action name when no loading label is supplied", () => {
+    const markup = renderToStaticMarkup(<Button isLoading>Retry</Button>);
+    expect(markup).toContain('data-proctor-loading="true"');
+    expect(markup.match(/Retry/g)).toHaveLength(2);
   });
 
   it("keeps navigation as an anchor", () => {

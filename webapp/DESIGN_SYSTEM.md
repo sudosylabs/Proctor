@@ -359,10 +359,12 @@ supporting copy, controls, evidence, and actions follow document order without
 an explanatory step rail. The form widths remain feature-owned, while the
 shell keeps their starting position and page rhythm consistent. Stable
 pre-action evidence uses `Notice`; action-adjacent submission failures remain
-owned by `FormFeedback`. Loading, unavailable, terminal, and user-triggered
+owned by `FormFeedback`. Unavailable, terminal, and user-triggered
 context-replacement states use the same display-scale heading, supporting-copy
-measure, and action rhythm through `TaskState`; feature modules continue to
-own copy, state choice, evidence, actions, and maximum width. Under `30rem`,
+measure, and action rhythm through `TaskState`. Pending task content uses a
+bounded spinner and supporting message, retaining an accessible heading and
+any available purpose label. Feature modules continue to own copy, state
+choice, evidence, actions, and maximum width. Under `30rem`,
 task-state actions stack in document order and fill the available inline size.
 The live status region remains mounted across task replacement. It announces
 bounded localized state copy, while heading focus moves only when a
@@ -402,6 +404,17 @@ Motion explains a state change or preserves orientation. The scale is `80ms`,
 prefer `transform` and `opacity`. Generated tokens collapse those durations
 under `prefers-reduced-motion`, but a component must also keep its complete
 meaning without animation and stop non-essential repeated motion.
+
+Pending work uses the shared [`Loading`](./src/components/Loading/CONTRACT.md)
+indicator: the Lucide Loader glyph through the Icon adapter, with an optional
+message below it. Its color and footprint follow its owning container. Page
+layouts reserve a bounded area for the pending content and keep available
+headings and context outside it; the spinner introduces no viewport sizing or
+overlay. Loading buttons preserve the dimensions of their original content
+and show only the spinner visually, with an accessible progress label.
+Each flow retains one announcement path and never moves focus for loading.
+Rotation uses a steady cycle of three slow-duration intervals and stops under
+reduced motion; meaning remains available through text and semantics.
 
 ## Accessibility and content
 

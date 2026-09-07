@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { Icon, type IconName, type IconSize } from "./Icon";
 
-const names: IconName[] = ["showPassword", "hidePassword"];
+const names: IconName[] = ["showPassword", "hidePassword", "loading"];
 
 describe("Icon", () => {
   it.each(names)("renders the governed %s icon as decorative SVG", (name) => {

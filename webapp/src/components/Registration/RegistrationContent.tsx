@@ -7,6 +7,7 @@ import type {
 } from "../../features/register/RegistrationApi";
 import { message } from "../../i18n/messages";
 import { Button, ButtonLink } from "../Button/Button";
+import { Loading } from "../Loading/Loading";
 import { RegistrationForm } from "./RegistrationForm";
 import styles from "./Registration.module.css";
 
@@ -45,10 +46,13 @@ export function RegistrationContent({
   if (state.kind === "loading") {
     return (
       <section className={styles.routeState} aria-labelledby="register-heading">
-        <h1 id="register-heading">{message("webapp.register.heading")}</h1>
-        <p role="status" aria-live="polite">
-          {message("webapp.register.loading")}
-        </p>
+        <header className={styles.headingGroup}>
+          <h1 id="register-heading">{message("webapp.register.heading")}</h1>
+          <p>{message("webapp.register.lede")}</p>
+        </header>
+        <div className={styles.loading}>
+          <Loading label={message("webapp.register.loading")} showLabel size="large" />
+        </div>
       </section>
     );
   }

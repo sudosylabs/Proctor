@@ -65,8 +65,15 @@
     color: var(--proctor-color-foreground-muted);
   }
 
+  .discovery {
+    display: grid;
+    min-inline-size: 0;
+    min-block-size: 20rem;
+    align-items: start;
+  }
+
   .loading {
-    padding-block: var(--proctor-space-4);
+    align-self: stretch;
     color: var(--proctor-color-foreground-muted);
   }
 

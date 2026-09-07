@@ -2504,10 +2504,6 @@
     "translation": "Your institution controls which sign-in methods are available."
   },
   {
-    "id": "webapp.login.institution.checking",
-    "translation": "Checking this installation’s access policy…"
-  },
-  {
     "id": "webapp.login.institution.fallback",
     "translation": "Institution access"
   },

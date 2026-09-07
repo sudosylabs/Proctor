@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { Loading } from "../Loading/Loading";
 import styles from "./Button.module.css";
 
 export type ButtonVariant = "primary" | "secondary" | "text";
@@ -38,7 +39,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || isLoading}
         type={type}
       >
-        {isLoading && loadingLabel !== undefined ? loadingLabel : children}
+        <span className={styles.content} aria-hidden={isLoading || undefined}>
+          {children}
+        </span>
+        {isLoading ? (
+          <Loading className={styles.loading} label={loadingLabel ?? children} announce={false} />
+        ) : null}
       </button>
     );
   },

@@ -14,7 +14,9 @@ The shared hosted-authentication boundary owns that fetch, validation, and
 origin comparison. Registration receives its bounded result and alone decides
 whether setup, public registration, or Invitation admission applies.
 
-- Loading names the bounded policy check and exposes no form.
+- Loading names the bounded policy check and exposes no form. The shared
+  Loading indicator and message occupy the form region; the registration
+  heading, introduction, and default Institution context remain visible.
 - An uninitialized installation links to `/setup`.
 - An initialized, same-origin installation with
   `capabilities.public_registration` true exposes the form and safe

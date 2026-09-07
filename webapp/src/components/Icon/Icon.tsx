@@ -1,12 +1,14 @@
 import {
   Eye,
   EyeOff,
+  Loader,
   type LucideIcon,
 } from "lucide-react";
 
 import styles from "./Icon.module.css";
 
 const iconComponents = {
+  loading: Loader,
   hidePassword: EyeOff,
   showPassword: Eye,
 } satisfies Record<string, LucideIcon>;
