@@ -7,12 +7,12 @@
 
 module github.com/sudosylabs/proctor/server
 
-go 1.25.13
+go 1.26.0
 
 require (
 	github.com/HugoSmits86/nativewebp v1.3.0
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/coreos/go-oidc/v3 v3.20.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/gorilla/mux v1.8.1
@@ -31,7 +31,7 @@ require (
 	github.com/sudosylabs/proctor/packages/cache v0.0.0-20260822110732-6d79c696cde0
 	github.com/sudosylabs/proctor/packages/mail v0.0.0-20260818045022-b7abab1f5132
 	github.com/sudosylabs/proctor/packages/vfs v0.0.0-20260811012629-fe3dc2e7fe5b
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/image v0.45.0
 	golang.org/x/net v0.58.0
 	golang.org/x/oauth2 v0.36.0
