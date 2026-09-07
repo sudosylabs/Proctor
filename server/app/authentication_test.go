@@ -931,10 +931,12 @@ func TestAuthenticationConsumesMFAAndPATThroughBehavioralPorts(t *testing.T) {
 }
 
 type authenticationMFAVerifierFake struct {
-	calls       int
-	strength    model.AuthenticationStrength
-	completedAt int64
-	afterVerify func()
+	recoveryCalls int
+	recoveryErr   error
+	calls         int
+	strength      model.AuthenticationStrength
+	completedAt   int64
+	afterVerify   func()
 }
 
 func (f *authenticationMFAVerifierFake) VerifyLogin(
@@ -1048,6 +1050,35 @@ func TestLoginRejectsExistingLocalCredentialWhenCurrentPolicyDisablesLocalLogin(
 	}
 	if len(persistence.sessions) != 0 {
 		t.Fatalf("disabled local login created %d sessions", len(persistence.sessions))
+	}
+}
+
+func TestLoginRejectsDisabledUserBeforeMFARecoveryRead(t *testing.T) {
+	t.Parallel()
+	for _, password := range []string{"CorrectHorseBatteryStaple1!", "incorrect password"} {
+		name := "wrong password"
+		if password == "CorrectHorseBatteryStaple1!" {
+			name = "correct password"
+		}
+		t.Run(name, func(t *testing.T) {
+			persistence := newAuthenticationStoreFake()
+			service := newTestAuthenticationService(t, persistence)
+			user, err := service.createLocalUser(context.Background(), CreateLocalUserCommand{
+				User: &model.User{Username: "disabled-user", Email: "disabled@example.edu"}, Password: "CorrectHorseBatteryStaple1!",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			persistence.usersByEmail[user.Email].DisabledAt = model.OptionalTimeFrom(time.Now())
+			mfa := &authenticationMFAVerifierFake{recoveryErr: errors.New("disabled User has no active MFA recovery state")}
+			service.mfa = mfa
+			result, err := service.login(context.Background(), LoginCommand{
+				LoginID: user.Email, Password: password, ClientType: model.SessionClientCLI, Source: "192.0.2.7",
+			})
+			if result != nil || !Is(err, "authentication.invalid_credentials") || mfa.recoveryCalls != 0 || mfa.calls != 0 || len(persistence.sessions) != 0 {
+				t.Fatalf("disabled login reached MFA or issued a Session: %v; recovery reads=%d, MFA calls=%d", err, mfa.recoveryCalls, mfa.calls)
+			}
+		})
 	}
 }
 
@@ -1447,6 +1478,10 @@ func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
 func (discardAuthenticationMFAVerifier) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
 	return &model.UserMFARecovery{UserID: userID}, nil
 }
-func (*authenticationMFAVerifierFake) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+func (f *authenticationMFAVerifierFake) RecoveryState(_ context.Context, userID model.UserID) (*model.UserMFARecovery, error) {
+	f.recoveryCalls++
+	if f.recoveryErr != nil {
+		return nil, f.recoveryErr
+	}
 	return &model.UserMFARecovery{UserID: userID}, nil
 }

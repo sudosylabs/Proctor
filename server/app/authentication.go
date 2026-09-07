@@ -403,6 +403,14 @@ func (s *authenticationService) authenticateLocal(
 		}
 		return nil, invalidCredentialsAppError()
 	}
+	// Recovery state exists only for active Users. Do equivalent password work
+	// before rejecting disabled accounts, without consulting their MFA state.
+	if !user.IsActive() {
+		if dummyErr := s.hasher.VerifyDummy(ctx, command.Password); dummyErr != nil {
+			return nil, passwordWorkError(dummyErr, "authentication.internal")
+		}
+		return nil, invalidCredentialsAppError()
+	}
 	recovery, err := s.mfa.RecoveryState(ctx, user.ID)
 	if err != nil {
 		return nil, err
