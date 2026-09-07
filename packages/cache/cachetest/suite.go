@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"testing"
@@ -181,6 +182,90 @@ func Run(t *testing.T, factory Factory) {
 		if err != nil || value != 0 {
 			t.Fatalf("counter after expiry = %d, %v; want 0, nil", value, err)
 		}
+	})
+
+	t.Run("counter integer precision", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			value int64
+		}{
+			{name: "positive above float precision", value: 1<<53 + 1},
+			{name: "negative below float precision", value: -(1<<53 + 1)},
+			{name: "maximum int64", value: math.MaxInt64},
+			{name: "minimum int64", value: math.MinInt64},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				store := factory(t)
+				if !store.Capabilities().AtomicCounter {
+					t.Skip("backend does not advertise atomic counters")
+				}
+				counter := store.(cache.Counter)
+				value, err := counter.Add(context.Background(), "counter", test.value, cache.CounterOptions{})
+				if err != nil || value != test.value {
+					t.Fatalf("Add() = %d, %v; want %d, nil", value, err, test.value)
+				}
+				assertGet(t, store, "counter", strconv.FormatInt(test.value, 10))
+				value, err = counter.Add(context.Background(), "counter", 0, cache.CounterOptions{})
+				if err != nil || value != test.value {
+					t.Fatalf("Add(0) = %d, %v; want %d, nil", value, err, test.value)
+				}
+			})
+		}
+	})
+
+	t.Run("counter rejected update preserves value", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			initial string
+			delta   int64
+		}{
+			{name: "positive overflow", initial: "9223372036854775807", delta: 1},
+			{name: "negative overflow", initial: "-9223372036854775808", delta: -1},
+			{name: "noninteger", initial: "not-an-integer", delta: 1},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				store := factory(t)
+				if !store.Capabilities().AtomicCounter {
+					t.Skip("backend does not advertise atomic counters")
+				}
+				mustSet(t, store, "counter", test.initial, cache.SetOptions{})
+				counter := store.(cache.Counter)
+				_, err := counter.Add(context.Background(), "counter", test.delta, cache.CounterOptions{})
+				if !errors.Is(err, cache.ErrInvalidValue) {
+					t.Fatalf("Add() error = %v, want ErrInvalidValue", err)
+				}
+				assertGet(t, store, "counter", test.initial)
+				if test.initial == "-9223372036854775808" {
+					value, err := counter.Add(context.Background(), "counter", math.MaxInt64, cache.CounterOptions{})
+					if err != nil || value != -1 {
+						t.Fatalf("Add() after rejected overflow = %d, %v; want -1, nil", value, err)
+					}
+					assertGet(t, store, "counter", "-1")
+				}
+			})
+		}
+	})
+
+	t.Run("counter rejected update preserves expiration", func(t *testing.T) {
+		store := factory(t)
+		caps := store.Capabilities()
+		if !caps.AtomicCounter || !caps.TTL {
+			t.Skip("backend lacks TTL or atomic counters")
+		}
+		const initial = "9223372036854775807"
+		mustSet(t, store, "counter", initial, cache.SetOptions{TTL: 250 * time.Millisecond})
+		counter := store.(cache.Counter)
+		_, err := counter.Add(context.Background(), "counter", 1, cache.CounterOptions{})
+		if !errors.Is(err, cache.ErrInvalidValue) {
+			t.Fatalf("Add() error = %v, want ErrInvalidValue", err)
+		}
+		assertGet(t, store, "counter", initial)
+		eventually(t, 2*time.Second, func() bool {
+			_, err := store.Get(context.Background(), "counter")
+			return errors.Is(err, cache.ErrNotFound)
+		})
 	})
 
 	t.Run("purge", func(t *testing.T) {

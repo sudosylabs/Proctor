@@ -12,13 +12,13 @@ import (
 )
 
 const counterScript = `
-local value = redis.call("INCRBY", KEYS[1], ARGV[1])
+redis.call("INCRBY", KEYS[1], ARGV[1])
 if ARGV[2] == "0" then
 	redis.call("PERSIST", KEYS[1])
 else
 	redis.call("PEXPIRE", KEYS[1], ARGV[2])
 end
-return value
+return redis.call("GET", KEYS[1])
 `
 
 var addCounter = rueidis.NewLuaScript(counterScript)
@@ -141,7 +141,8 @@ func (s *Store[V]) Delete(ctx context.Context, key string) error {
 }
 
 // Add atomically increments a Redis integer and refreshes its expiration in
-// the same server-side script.
+// the same server-side script. The script returns the stored decimal string
+// so Lua's floating-point numbers cannot round the int64 result.
 func (s *Store[V]) Add(ctx context.Context, key string, delta int64, options cache.CounterOptions) (int64, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, cache.Error("add", key, err)
