@@ -246,11 +246,18 @@ not encode custom/default state through timestamp signs or storage-path
 conventions.
 
 Default pictures are abstract geometric images generated from a stable random
-per-user seed and contain no initials or other profile data. Creation is
-idempotent and reconciled after user creation, so VFS availability cannot block
-account provisioning. Reads may render the same deterministic fallback until
-the generated entry is attached. Concurrent generators race through a named
-conditional store operation; losing upload leases are reclaimed.
+per-user seed and contain no initials or other profile data. Newly generated
+defaults use a connected, horizontally mirrored glyph with rounded outer
+corners, opaque colors, and at least 4.5:1 foreground/background contrast.
+All sizes derive from one antialiased master so the silhouette stays consistent
+at avatar sizes and fits a circular crop. Stored defaults remain immutable
+when the generator changes; changing existing users' pictures requires an
+explicit regeneration lifecycle rather than rewriting retained rendition bytes.
+
+Creation is idempotent and reconciled after user creation, so VFS availability
+cannot block account provisioning. Reads may render the same deterministic
+fallback until the generated entry is attached. Concurrent generators race
+through a named conditional store operation; losing upload leases are reclaimed.
 
 Clients access only the authorized current-picture route. The generated
 default is an internal fallback rather than a separate public endpoint.

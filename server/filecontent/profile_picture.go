@@ -11,10 +11,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"image"
-	"image/color"
 	"io"
 	"time"
 
@@ -103,7 +101,7 @@ func (c *Content) NormalizeAndStoreProfilePicture(ctx context.Context, revisionI
 	return renditions, nil
 }
 
-// GenerateAndStoreDefaultProfilePicture stores version-one deterministic
+// GenerateAndStoreDefaultProfilePicture stores version-two deterministic
 // default-picture renditions for a stable per-user seed.
 func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, revisionID model.FileRevisionID, seed string, at time.Time) ([]model.FileRendition, error) {
 	if c == nil || c.filesystem == nil || !revisionID.IsValid() {
@@ -114,12 +112,16 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 		return nil, err
 	}
 	defer finish()
+	master, err := renderDefaultProfilePictureV2(ctx, seed)
+	if err != nil {
+		return nil, err
+	}
 	renditions := make([]model.FileRendition, 0, len(profilePictureSizes))
 	for _, target := range profilePictureSizes {
 		if err = ctx.Err(); err != nil {
 			return nil, err
 		}
-		encoded, checksum, err := renderDefaultProfilePictureV1(seed, target)
+		encoded, checksum, err := encodeDefaultProfilePicture(master, target)
 		if err != nil {
 			_ = c.RemoveProfilePictureRenditions(ctx, revisionID, renditions)
 			return nil, err
@@ -141,7 +143,7 @@ func (c *Content) GenerateAndStoreDefaultProfilePicture(ctx context.Context, rev
 	return renditions, nil
 }
 
-// RenderDefaultProfilePicture renders an unpersisted version-one fallback.
+// RenderDefaultProfilePicture renders an unpersisted version-two fallback.
 func (c *Content) RenderDefaultProfilePicture(ctx context.Context, seed string, size int) (*app.RenderedProfilePicture, error) {
 	if c == nil || c.filesystem == nil {
 		return nil, app.ErrInvalidProfilePicture
@@ -154,7 +156,14 @@ func (c *Content) RenderDefaultProfilePicture(ctx context.Context, seed string, 
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	encoded, checksum, err := renderDefaultProfilePictureV1(seed, size)
+	if size != 128 && size != 256 && size != 512 {
+		return nil, fmt.Errorf("unsupported default profile-picture size %d", size)
+	}
+	master, err := renderDefaultProfilePictureV2(ctx, seed)
+	if err != nil {
+		return nil, err
+	}
+	encoded, checksum, err := encodeDefaultProfilePicture(master, size)
 	if err != nil {
 		return nil, err
 	}
@@ -172,42 +181,4 @@ func (c *Content) RemoveProfilePictureRenditions(ctx context.Context, revisionID
 		ids = append(ids, rendition.ID)
 	}
 	return c.removeRenditions(ctx, revisionID, ids)
-}
-
-func renderDefaultProfilePictureV1(seed string, size int) ([]byte, string, error) {
-	if size != 128 && size != 256 && size != 512 {
-		return nil, "", fmt.Errorf("unsupported default profile-picture size %d", size)
-	}
-	seedBytes, err := hex.DecodeString(seed)
-	if err != nil || len(seedBytes) != model.ProfilePictureSeedLength/2 {
-		return nil, "", fmt.Errorf("invalid default profile-picture seed")
-	}
-	palette := sha256.Sum256(seedBytes)
-	canvas := image.NewNRGBA(image.Rect(0, 0, size, size))
-	background := color.NRGBA{R: 48 + palette[0]%128, G: 48 + palette[1]%128, B: 48 + palette[2]%128, A: 255}
-	foreground := color.NRGBA{R: 96 + palette[3]%160, G: 96 + palette[4]%160, B: 96 + palette[5]%160, A: 220}
-	accent := color.NRGBA{R: 64 + palette[6]%192, G: 64 + palette[7]%192, B: 64 + palette[8]%192, A: 210}
-	centerX := size/3 + int(palette[9])*(size/3)/255
-	centerY := size/3 + int(palette[10])*(size/3)/255
-	radius := size/5 + int(palette[11])*(size/8)/255
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			pixel := background
-			dx, dy := x-centerX, y-centerY
-			if dx*dx+dy*dy <= radius*radius {
-				pixel = foreground
-			}
-			if (x+y+int(palette[12]))%(max(2, size/5)) < max(1, size/18) {
-				pixel = accent
-			}
-			canvas.SetNRGBA(x, y, pixel)
-		}
-	}
-	var output bytes.Buffer
-	if err = nativewebp.Encode(&output, canvas, &nativewebp.Options{CompressionLevel: nativewebp.DefaultCompression}); err != nil {
-		return nil, "", err
-	}
-	encoded := output.Bytes()
-	checksum := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	return append([]byte(nil), encoded...), checksum, nil
 }
